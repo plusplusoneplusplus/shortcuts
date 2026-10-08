@@ -136,8 +136,12 @@ windows/controllers. A stdin reader only queues typed JSON commands and wakes
 the UI message pump. COM callbacks and controller operations stay on that
 thread. The helper-process boundary isolates this lifecycle from Electron's
 Node event loop and from server N-API capabilities.
-Visible embedded views raise their child HWND above Electron's renderer without
-activation; null bounds hide them for inactive tabs and SPA overlays.
+Embedded bounds are renderer-relative DIP plus a physical screen `contentOrigin`
+from Electron's content bounds. The helper maps that origin into the parent HWND's
+client coordinates and DPI-scales only the relative bounds, keeping native views
+aligned below Windows menu bars across owner moves, zoom and fullscreen.
+Visible views raise their child HWND without activation; null bounds hide them
+for inactive tabs and SPA overlays.
 Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
 the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
 not transfer keyboard input away from the cross-process WebView2 controller.
@@ -152,7 +156,14 @@ do not start it. `build:native` and `ensure:native` include it only on Windows
 x64; other targets retain their native server artifacts without WebView2
 initialization. `--check` detects the runtime without opening a view. Hosted
 pages receive no host objects or CoC bridge; navigation is HTTP(S)-only, with
-`about:blank` allowed inside authentication popups.
+`about:blank` allowed inside authentication popups. Typed `import-cookies` commands
+target an existing view and use its profile cookie manager independently of the
+current page URL. `import-profile-cookies` initializes the helper when needed,
+uses a hidden controller for profile access without navigating or registering a
+page. The helper retains it until a replacement controller exists or shutdown,
+keeping imported session cookies alive before the first page. The desktop main process validates domain, fields and batch
+limits before sending cookies; the helper prepares cookies before adding them
+and returns failures without cookie values.
 
 Windows-account SSO is enabled by default. The helper sets
 `AllowSingleSignOnUsingOSPrimaryAccount` before environment creation, without an
@@ -162,7 +173,7 @@ Access compliance or change organization policy. Clearing browser data does not
 disconnect Windows accounts; SSO can authenticate again.
 
 Run `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-webview2`
-for protocol policy, default SSO, and Windows child-window stacking checks. Real desktop contracts require Windows x64 with
+for protocol policy, default SSO, and Windows child-window positioning and stacking checks. Real desktop contracts require Windows x64 with
 WebView2 installed, `npm run build:native -w packages/coc-native`,
 `npm run build -w packages/coc-native`, and
 `npm run build -w packages/coc-desktop`, then set `COC_DESKTOP_E2E=1` and run

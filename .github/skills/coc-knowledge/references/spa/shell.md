@@ -113,7 +113,7 @@ The Windows desktop helper enables OS-account SSO by default at environment crea
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
-WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
+WebView2 placement combines renderer-relative DIP bounds with Electron's physical screen content origin. The helper maps that origin into the parent HWND's client coordinates and DPI-scales only relative bounds, keeping pages aligned below Windows menu bars through moves, zoom and fullscreen. It raises the child HWND without activation; null bounds hide it for inactive tabs and DOM overlays.
 
 `browser-webview-guard.ts` registers exact main SPA documents and denies every
 other embedder. `sanitizeWebviewAttach` replaces renderer preferences and strips
@@ -124,7 +124,13 @@ when stock Electron exposes `getWebContentsId`, and rejects foreign/reused guest
 
 `BrowserWebviewLayer` mounts once beside `App` and retains each guest outside keyed workspace subtrees. Placeholders register in `browserWebviewLayerStore`; fixed hosts track their rectangles and clip to ancestor overflow viewports. Hidden hosts use visibility and pointer-events, never display. Close and `onClosed` remove guests, with identity checks rejecting late open replies.
 
-`BrowserToolbarMenu` portals a dropdown above the live Electron page; the page title belongs in the tab label. Native surfaces use `useNativeViewPlacement` to hide for overlapping DOM content and explicit `data-native-view-overlay` elements. DOM webviews stay visible under menus, dialogs and toasts.
+`BrowserToolbarMenu` portals a dropdown above the live Electron page; the page title belongs in the tab label. Its Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+
+Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
+
+Main-process validation rejects unrelated domains, invalid fields and partitioned cookies before writes; engine failures omit cookie values. Imports coordinate with profile cleanup and never navigate. JSON retains attributes and exact values, including literal double quotes and backslashes escaped with JSON syntax. Pairs retain quotes/backslashes literally, trim surrounding spaces, and default to host-only, secure session cookies at `/` with SameSite Lax. Values reject controls, non-ASCII characters, spaces, semicolons and commas; pairs reject controls before trimming. Size and batch limits apply.
+
+Electron `cookies.set` and WebView2 `CreateCookie`/`AddOrUpdateCookie` receive values without unquoting or decoding. Import compatibility does not guarantee site authentication. Cookie text stays in dialog memory. Native surfaces use `useNativeViewPlacement` to hide for overlapping DOM content and explicit `data-native-view-overlay` elements. DOM webviews stay visible under menus, dialogs and toasts.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
 The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward

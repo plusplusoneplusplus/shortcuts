@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
@@ -56,13 +57,14 @@ export function UnifiedBrowserTab({
     const [startupError, setStartupError] = useState<{ reason: string; message: string } | null>(null);
     const [retry, setRetry] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
     const addressRef = useRef<HTMLInputElement>(null);
     const latestUrl = useRef(url);
     latestUrl.current = url;
     const onPageStateRef = useRef(onPageState);
     onPageStateRef.current = onPageState;
 
-    useEffect(() => { setMenuOpen(false); }, [active, visible, viewId, sessionKey]);
+    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); }, [active, visible, viewId, sessionKey]);
 
     // The page's own navigation moves the address unless the user is editing.
     useEffect(() => {
@@ -201,6 +203,7 @@ export function UnifiedBrowserTab({
                 engine={engine}
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
+                onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
             />
         </form>
     );
@@ -215,6 +218,10 @@ export function UnifiedBrowserTab({
             placeholderTestId="browser-placeholder"
             toolbar={toolbar}
         >
+            {cookieDialogOpen && bridge && <BrowserCookieImportDialog bridge={bridge} viewId={opened ? viewId : null} relatedEngine={engine ?? relatedEngine}
+                initialDomain={(() => { try { return new URL(currentUrl ?? '').hostname; } catch { return ''; } })()}
+                onClose={() => { setCookieDialogOpen(false); addressRef.current?.focus(); }}
+                onImported={domain => { setCookieDialogOpen(false); setNotice(`Cookies imported for ${domain}. Open the original URL to continue.`); addressRef.current?.focus(); }} />}
             {error && (
                 <div role="alert" className="px-3 py-1.5 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="browser-address-error">
                     {error}

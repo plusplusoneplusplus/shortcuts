@@ -16,7 +16,8 @@ use windows::{
     Win32::{
         Foundation::*,
         Graphics::Gdi::{
-            GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+            GetMonitorInfoW, MonitorFromWindow, ScreenToClient, MONITORINFO,
+            MONITOR_DEFAULTTONEAREST,
         },
         System::{Com::*, Threading::*},
         UI::{
@@ -35,6 +36,7 @@ thread_local! { static WINDOWS: RefCell<HashMap<usize, Weak<View>>> = RefCell::n
 struct Host {
     environment: Option<ICoreWebView2Environment>,
     views: HashMap<String, Rc<View>>,
+    profile_view: Option<Rc<View>>,
     pending: Vec<Command>,
     initializing: bool,
     profile: HSTRING,
@@ -179,10 +181,12 @@ impl View {
                 let scaled = |value: i32| (value as f64 * scale.max(1.0)).round() as i32;
                 let width = scaled(bounds.width).max(1);
                 let height = scaled(bounds.height).max(1);
+                // The screen origin is already physical; only viewport bounds need DPI scaling.
+                let origin = browser_content_origin(self.parent, bounds.content_origin)?;
                 position_browser_window(
                     self.window,
-                    scaled(bounds.x),
-                    scaled(bounds.y),
+                    origin.x + scaled(bounds.x),
+                    origin.y + scaled(bounds.y),
                     width,
                     height,
                 )?;
@@ -218,6 +222,12 @@ impl View {
     }
 }
 
+unsafe fn browser_content_origin(parent: HWND, origin: protocol::Point) -> Result<POINT> {
+    let mut point = POINT { x: origin.x, y: origin.y };
+    ScreenToClient(parent, &mut point).ok()?;
+    Ok(point)
+}
+
 unsafe fn position_browser_window(
     window: HWND,
     x: i32,
@@ -240,6 +250,7 @@ impl Drop for View {
 #[cfg(test)]
 mod layout_tests {
     use super::*;
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
 
     struct TestWindow(HWND);
 
@@ -268,6 +279,29 @@ mod layout_tests {
     impl Drop for TestWindow {
         fn drop(&mut self) {
             unsafe { DestroyWindow(self.0).unwrap() };
+        }
+    }
+
+    #[test]
+    fn browser_origin_tracks_renderer_offsets_without_scaling_screen_coordinates() {
+        unsafe {
+            let parent = TestWindow::new(None, 640, 480);
+            let browser = TestWindow::new(Some(parent.0), 1, 1);
+            for (left, top) in [(0, 26), (15, 52), (0, 0)] {
+                let mut screen_origin = POINT { x: left, y: top };
+                ClientToScreen(parent.0, &mut screen_origin).ok().unwrap();
+                let origin = browser_content_origin(
+                    parent.0,
+                    protocol::Point { x: screen_origin.x, y: screen_origin.y },
+                )
+                .unwrap();
+                assert_eq!((origin.x, origin.y), (left, top));
+                position_browser_window(browser.0, origin.x + 10, origin.y + 111, 300, 200)
+                    .unwrap();
+                let mut rect = RECT::default();
+                GetWindowRect(browser.0, &mut rect).unwrap();
+                assert_eq!((rect.left, rect.top), (screen_origin.x + 10, screen_origin.y + 111));
+            }
         }
     }
 
@@ -372,6 +406,7 @@ pub fn run() -> HostResult<()> {
     let state = Rc::new(RefCell::new(Host {
         environment: None,
         views: HashMap::new(),
+        profile_view: None,
         pending: Vec::new(),
         initializing: false,
         profile: HSTRING::from(profile),
@@ -439,6 +474,10 @@ pub fn run() -> HostResult<()> {
         view.close()?;
     }
     drop(views);
+    let profile_view = state.borrow_mut().profile_view.take();
+    if let Some(view) = profile_view {
+        view.close()?;
+    }
     state.borrow_mut().environment = None;
     unsafe {
         CoUninitialize();
@@ -454,7 +493,7 @@ fn dispatch(state: &State, command: Command) {
         }
         return;
     }
-    if command.op == "open" || command.op == "clear" {
+    if command.op == "open" || command.op == "clear" || command.op == "import-profile-cookies" {
         if command.op == "open"
             && (!command.url.as_deref().is_some_and(|url| allowed_url(url, false))
                 || command.view_id.as_ref().is_none_or(|id| !allowed_view_id(id)))
@@ -508,6 +547,18 @@ fn dispatch(state: &State, command: Command) {
         protocol::failure(command.id, "not-found", "Browser view not found.");
         return;
     };
+    if command.op == "import-cookies" {
+        let result = import_cookies(&view, command.cookies.as_deref().unwrap_or_default());
+        match result {
+            Ok(()) => protocol::success(command.id),
+            Err(_) => protocol::failure(
+                command.id,
+                "invalid",
+                "Cookie import failed. Some cookies may have been added.",
+            ),
+        }
+        return;
+    }
     let result = unsafe {
         match command.op.as_str() {
             "navigate" => {
@@ -570,6 +621,47 @@ fn dispatch(state: &State, command: Command) {
             protocol::failure(command.id, "runtime-crashed", error);
         }
     }
+}
+
+fn import_cookies(view: &View, cookies: &[protocol::ImportCookie]) -> Result<()> {
+    if cookies.is_empty() || cookies.len() > 200 {
+        return Err(windows::core::Error::from(E_INVALIDARG));
+    }
+    unsafe {
+        let manager = view.webview.cast::<ICoreWebView2_2>()?.CookieManager()?;
+        // Prepare the whole batch before modifying the shared profile.
+        let mut prepared = Vec::with_capacity(cookies.len());
+        for item in cookies {
+            let url =
+                url::Url::parse(&item.url).map_err(|_| windows::core::Error::from(E_INVALIDARG))?;
+            let domain = item
+                .domain
+                .as_deref()
+                .or_else(|| url.host_str())
+                .ok_or_else(|| windows::core::Error::from(E_INVALIDARG))?;
+            let cookie = manager.CreateCookie(
+                &HSTRING::from(&item.name),
+                &HSTRING::from(&item.value),
+                &HSTRING::from(domain),
+                &HSTRING::from(&item.path),
+            )?;
+            cookie.SetIsSecure(item.secure)?;
+            cookie.SetIsHttpOnly(item.http_only)?;
+            cookie.SetSameSite(match item.same_site {
+                protocol::SameSite::Lax => COREWEBVIEW2_COOKIE_SAME_SITE_KIND_LAX,
+                protocol::SameSite::Strict => COREWEBVIEW2_COOKIE_SAME_SITE_KIND_STRICT,
+                protocol::SameSite::None => COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE,
+            })?;
+            if let Some(expiry) = item.expiration_date {
+                cookie.SetExpires(expiry)?;
+            }
+            prepared.push(cookie);
+        }
+        for cookie in prepared {
+            manager.AddOrUpdateCookie(&cookie)?;
+        }
+    }
+    Ok(())
 }
 
 fn browser_environment_options() -> ICoreWebView2EnvironmentOptions {
@@ -665,6 +757,7 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
         .and_then(|value| value.parse::<usize>().ok())
         .map(|value| HWND(value as *mut _));
     if command.op != "clear"
+        && command.op != "import-profile-cookies"
         && parent.is_none_or(|parent| !unsafe { IsWindow(Some(parent)) }.as_bool())
     {
         startup_failure(state, &popup, command.id, "no-window", "Desktop window is closed.");
@@ -749,6 +842,34 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
                         view.webview.Settings()?.SetAreDevToolsEnabled(false)?;
+                        if command.op == "import-profile-cookies" {
+                            let imported = import_cookies(
+                                &view,
+                                command.cookies.as_deref().unwrap_or_default(),
+                            );
+                            // Keep a controller alive until a replacement can retain session cookies.
+                            let cleanup = if imported.is_ok() {
+                                let previous =
+                                    callback_state.borrow_mut().profile_view.replace(view);
+                                previous.map_or(Ok(()), |view| view.close())
+                            } else {
+                                view.close()
+                            };
+                            if imported.is_ok() && cleanup.is_ok() {
+                                protocol::success(response_id);
+                            } else {
+                                protocol::failure(
+                                    response_id,
+                                    "invalid",
+                                    "Cookie import failed. Some cookies may have been added.",
+                                );
+                            }
+                            return Ok(());
+                        }
+                        let profile_view = callback_state.borrow_mut().profile_view.take();
+                        if let Some(profile_view) = profile_view {
+                            profile_view.close()?;
+                        }
                         if command.op == "clear" {
                             clear_profile(view, response_id)?;
                             return Ok(());
@@ -1120,6 +1241,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     url: Some(url),
                     bounds: None,
                     action: None,
+                    cookies: None,
                 };
                 start_controller(
                     &callback_state,

@@ -1,4 +1,5 @@
-import { BrowserWindow, shell, webContents } from 'electron';
+import type { BrowserImportCookie } from './browser-cookie-import';
+import { BrowserWindow, screen, shell, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
@@ -59,10 +60,13 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         }
     }
 
-    private bounds(entry: NativeEntry): HtmlPageBounds | null {
-        if (!entry.bounds || !entry.fullscreen || entry.window.isDestroyed()) { return entry.bounds; }
-        const { width, height } = entry.window.getContentBounds();
-        return { x: 0, y: 0, width, height };
+    private bounds(entry: NativeEntry): (HtmlPageBounds & { contentOrigin: { x: number; y: number } }) | null {
+        if (!entry.bounds || entry.window.isDestroyed()) { return null; }
+        const { x, y, width, height } = entry.window.getContentBounds();
+        return {
+            ...(entry.fullscreen ? { x: 0, y: 0, width, height } : entry.bounds),
+            contentOrigin: screen.dipToScreenPoint({ x, y }),
+        };
     }
 
     async create(request: BrowserViewRequest, sink: BrowserEventSink): Promise<BrowserHostedView> {
@@ -88,6 +92,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             throw error;
         }
         return {
+            importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
                 entry.request.url = url;
@@ -182,6 +187,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             entry.window.setFullScreen(message.fullscreen || entry.wasFullscreen);
             entry.reposition();
         }
+    }
+
+    async importCookies(cookies: BrowserImportCookie[]): Promise<void> {
+        await this.process.request('import-profile-cookies', { cookies });
     }
 
     async clearData(): Promise<void> {

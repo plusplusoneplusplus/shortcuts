@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, dialog, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, session, shell } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
@@ -13,7 +13,11 @@ const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
 const restart = process.argv.includes('--restart-check');
 const afterClear = process.argv.includes('--after-clear');
+const blankClearCheck = process.argv.includes('--blank-cookie-import-clear-check');
+const blankImportCheck = process.argv.includes('--blank-cookie-import-check') || blankClearCheck;
+const cookieImportCheck = process.argv.includes('--cookie-import-check');
 const focusCheck = process.argv.includes('--focus-check');
+const layoutCheck = process.argv.includes('--layout-check');
 const execFileAsync = promisify(execFile);
 // The profile (userData/coc/browser/electron) must sit inside Electron's userData:
 // macOS sandboxes the network service to userData and the user temp dir, and a
@@ -27,6 +31,13 @@ const emit = (step, value) => console.log('E2E::' + JSON.stringify({ step, ...va
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const commands = new Map();
 const reports = new Map();
+const importedRequests = new Map();
+const importCookies = [
+    { name: 'imported', value: 'auth-token', path: '/', secure: false, httpOnly: true, sameSite: 'lax' },
+    { name: 'fixture_session', value: '"fixture\\segment"', path: '/', secure: false, httpOnly: true, sameSite: 'lax' },
+    { name: 'fixture_auth_0', value: 'fixture-part-0==%2F+/', path: '/', secure: false, httpOnly: true, sameSite: 'lax' },
+    { name: 'fixture_auth_1', value: 'fixture-part-1==', path: '/', secure: false, httpOnly: true, sameSite: 'lax' },
+];
 let helperProbe;
 let server;
 let base;
@@ -47,22 +58,30 @@ function handle(req, res) {
         req.on('end', () => { reports.set(url.searchParams.get('tab'), JSON.parse(body)); res.end('ok'); });
         return;
     }
+    if (url.pathname === '/cookie-auth') {
+        const pairs = req.headers.cookie?.split('; ') ?? [];
+        importedRequests.set(url.searchParams.get('tab'), pairs);
+        if (!importCookies.every(({ name, value }) => pairs.includes(`${name}=${value}`))) {
+            res.writeHead(302, { Location: base + '/login?tab=main' }); res.end(); return;
+        }
+    }
     if (url.pathname === '/redirect') { res.writeHead(302, { Location: '/second?tab=main' }); res.end(); return; }
     if (url.pathname === '/download') { res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fixture.zip"' }); res.end('fixture'); return; }
     if (url.pathname === '/slow') { res.setHeader('Content-Type', 'text/html'); res.write('<html><head><title>Slow</title></head>'); return; }
     const title = url.pathname === '/second' ? 'Second' : url.pathname === '/login' ? 'Login' : 'Home';
     res.setHeader('Content-Type', 'text/html');
-    res.end(`<html><head><title>${title}</title></head><body><input id="input"><a href="/second?tab=main">Next</a>${script}
+    res.end(`<html><head><title>${title}</title></head><body><input id="input"><a href="/second?tab=main">Next</a><script>window.cookieAuthenticated=${url.pathname === "/cookie-auth"};</script>${script}
         ${url.pathname === '/login' ? '<script>window.opener.postMessage("authenticated","*");</script>' : ''}</body></html>`);
 }
 async function waitFor(predicate, description, timeout = 10000) {
     const end = Date.now() + timeout;
     while (Date.now() < end) { const value = await predicate(); if (value) return value; await delay(40); }
-    throw new Error(`Timed out waiting for ${description}; reports=${JSON.stringify([...reports])}`);
+    throw new Error(`Timed out waiting for ${description}; reports=${JSON.stringify([...reports])}; importedRequests=${JSON.stringify([...importedRequests])}`);
 }
 function command(key, value) { commands.set(key, value); }
 
 app.whenReady().then(async () => {
+    if (layoutCheck) Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Fixture', submenu: [{ label: 'Item' }] }]));
     const dataDir = path.join(userData, 'coc');
     registerBrowserViewIpc(dataDir);
     const portFile = path.join(userData, 'fixture-port');
@@ -98,12 +117,67 @@ app.whenReady().then(async () => {
     const pref = await call(main, 'getPreferences');
     if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
     await call(main, 'setDefaultEngine', engine);
-    const opened = await call(main, 'open', 'main', base + '/?tab=main', 'workspace-a');
+    if (blankImportCheck) {
+        const imported = await call(main, 'importCookies', null, 'localhost', JSON.stringify(importCookies.slice(0, 2)));
+        const remaining = await call(main, 'importCookies', null, 'localhost', JSON.stringify(importCookies.slice(2)));
+        emit('blank-import', { imported, remaining, states: await spa('window.states') });
+        if (blankClearCheck) {
+            confirmation = 1;
+            emit('blank-clear', { result: await call(main, 'clearData', engine) });
+        }
+    }
+    const initialUrl = blankImportCheck ? base.replace('127.0.0.1', 'localhost') + '/cookie-auth?tab=main' : base + '/?tab=main';
+    const opened = await call(main, 'open', 'main', initialUrl, 'workspace-a');
     if (!opened.ok) throw new Error('Browser startup failed: ' + JSON.stringify(opened));
-    const home = await settled(main, 'main', s => s.title === 'Home');
+    const home = await settled(main, 'main', s => s.title === (blankClearCheck ? 'Login' : 'Home'));
     await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
     await waitFor(() => reports.get('main'), 'fixture page report');
-    if (focusCheck) {
+    if (blankImportCheck) {
+        emit('blank-authenticated', { url: home.url, report: reports.get('main'), receivedCookies: importedRequests.get('main') });
+    } else if (cookieImportCheck) {
+        const original = base.replace('127.0.0.1', 'localhost') + '/cookie-auth?tab=main';
+        await call(main, 'navigate', 'main', original);
+        const redirected = await settled(main, 'main', s => s.title === 'Login' && s.url.startsWith(base));
+        const imported = await call(main, 'importCookies', 'main', 'localhost', JSON.stringify(importCookies));
+        const afterImport = await state(main, 'main');
+        reports.delete('main');
+        await call(main, 'navigate', 'main', original);
+        const authenticated = await settled(main, 'main', s => s.title === 'Home' && s.url === original);
+        const report = await waitFor(() => reports.get('main')?.authenticated && reports.get('main'), 'imported HttpOnly cookie authenticated original domain');
+        emit('cookie-import', { redirected: redirected.url, imported, afterImport: afterImport.url, authenticated: authenticated.url, report, receivedCookies: importedRequests.get('main') });
+    } else if (layoutCheck) {
+        const handle = main.getNativeWindowHandle().readBigUInt64LE().toString();
+        await spa(`document.getElementById('address').style.cssText='position:absolute;left:350px;top:30px;width:400px;height:26px';
+            const slot=document.createElement('div');slot.id='browser-slot';slot.style.cssText='position:absolute;left:350px;top:70px;width:420px;height:320px';document.body.append(slot);`);
+        const layouts = [];
+        for (const [menu, zoom] of [[true, 1], [false, 1], [true, 1.25]]) {
+            main.setMenuBarVisibility(menu);
+            main.webContents.setZoomFactor(zoom);
+            main.setSize(900, 650);
+            await delay(150);
+            const bounds = await spa(`(() => {const r=document.getElementById('browser-slot').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()`);
+            await call(main, 'setBounds', 'main', bounds);
+            await delay(150);
+            const { stdout } = await execFileAsync('powershell.exe', [
+                '-NoProfile', '-NonInteractive', '-File', path.join(__dirname, 'browser-window-geometry.ps1'),
+                '-WindowHandle', handle,
+            ], { windowsHide: true });
+            const geometry = JSON.parse(stdout.trim());
+            const scale = zoom * geometry.dpi / 96;
+            const expected = {
+                x: geometry.rendererX + Math.round(bounds.x * scale),
+                y: geometry.rendererY + Math.round(bounds.y * scale),
+                width: Math.round((bounds.x + bounds.width) * scale) - Math.round(bounds.x * scale),
+                height: Math.round((bounds.y + bounds.height) * scale) - Math.round(bounds.y * scale),
+            };
+            if (geometry.browserX !== expected.x || geometry.browserY !== expected.y
+                || geometry.width !== expected.width || geometry.height !== expected.height) {
+                throw new Error(`Browser overlaps its toolbar or misses its placeholder: ${JSON.stringify({ menu, zoom, geometry, expected })}`);
+            }
+            layouts.push({ menu, zoom, aligned: true });
+        }
+        emit('layout', { layouts });
+    } else if (focusCheck) {
         main.focus();
         const handle = main.getNativeWindowHandle();
         const hwnd = handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());

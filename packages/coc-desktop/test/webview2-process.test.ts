@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebView2Process } from '../src/webview2-process';
+import { parseBrowserCookies } from '../src/browser-cookie-import';
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn: (...args: unknown[]) => mocks.spawn(...args) }));
@@ -106,4 +107,21 @@ describe('WebView2 UI-process transport', () => {
         await expect(open).rejects.toMatchObject({ reason: 'runtime-crashed' });
         expect(native.kill).toHaveBeenCalledOnce();
     });
+});
+
+it('cold-starts the helper and preserves quoted cookie values in the JSON transport without opening a page', async () => {
+    const native = child();
+    mocks.spawn.mockReturnValue(native);
+    const failure = vi.fn();
+    const transport = new WebView2Process(() => 'native-host', 'profile', vi.fn(), failure);
+    const cookies = parseBrowserCookies('app.example.com', String.raw`[{"name":"fixture_session","value":"\"fixture\\segment\""}]`);
+    const importing = transport.request('import-profile-cookies', { cookies });
+    native.stdout.emit('data', '{"event":"ready"}\n');
+    await vi.waitFor(() => expect(native.stdin.write).toHaveBeenCalled());
+    expect(JSON.parse(native.stdin.write.mock.calls[0][0])).toMatchObject({ op: 'import-profile-cookies', cookies });
+    native.stdout.emit('data', '{"id":1,"ok":true}\n');
+    await importing;
+    expect(failure).not.toHaveBeenCalled();
+    native.stdin.write.mockImplementation(() => { native.exitCode = 0; native.emit('exit', 0, null); });
+    await transport.dispose();
 });

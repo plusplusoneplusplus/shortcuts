@@ -1,4 +1,5 @@
 import type { BrowserAvailability, BrowserDownloadEvent, BrowserEngine, BrowserFailureReason, BrowserNavAction, BrowserViewState } from './browser-view-policy';
+import type { BrowserImportCookie } from './browser-cookie-import';
 import type { HtmlPageBounds } from './html-page-policy';
 
 export interface BrowserViewRequest {
@@ -32,6 +33,7 @@ export interface BrowserHostedView {
     readonly src?: string;
     readonly partition?: string;
     adopt?(guestId: number): void | Promise<void>;
+    importCookies?(cookies: BrowserImportCookie[]): Promise<void>;
     snapshot(): BrowserViewState;
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;
@@ -44,6 +46,7 @@ export interface BrowserEngineHost {
     readonly engine: BrowserEngine;
     availability(): Promise<BrowserAvailability>;
     create(request: BrowserViewRequest, sink: BrowserEventSink): Promise<BrowserHostedView>;
+    importCookies?(cookies: BrowserImportCookie[]): Promise<void>;
     clearData(): Promise<void>;
     dispose(): Promise<void>;
 }

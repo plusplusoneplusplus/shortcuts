@@ -4,7 +4,7 @@ import { runInNewContext } from 'node:vm';
 
 const { browserPageScript } = createRequire(import.meta.url)('./e2e/browser-engine-page.cjs') as { browserPageScript: string };
 
-function pageFixture() {
+function pageFixture(cookieAuthenticated?: boolean) {
     const reports: Record<string, unknown>[] = [];
     const events = new Map<string, () => void>();
     let poll!: () => Promise<void>;
@@ -20,7 +20,7 @@ function pageFixture() {
         URL, document,
         location: { href: 'http://localhost/?tab=main' },
         localStorage: { getItem: () => null },
-        window: { addEventListener: (event: string, handler: () => void) => events.set(event, handler) },
+        window: { cookieAuthenticated, addEventListener: (event: string, handler: () => void) => events.set(event, handler) },
         setInterval: (handler: () => Promise<void>) => { poll = handler; },
         fetch: async (_url: string, options?: { body: string }) => {
             if (options) reports.push(JSON.parse(options.body));
@@ -34,6 +34,14 @@ function pageFixture() {
 }
 
 describe('Live browser page focus reports', () => {
+    it.each([true, false, undefined])('reports cookie authentication %s while retaining actual focus state', async cookieAuthenticated => {
+        const page = pageFixture(cookieAuthenticated);
+        expect(page.reports.at(-1)).toMatchObject({ authenticated: cookieAuthenticated === true, inputFocused: false });
+        await page.focusInput();
+        page.events.get('focus')!();
+        expect(page.reports.at(-1)).toMatchObject({ authenticated: cookieAuthenticated === true, inputFocused: true, focusEvent: true });
+    });
+
     it('retains actual input focus when a window focus report overwrites the command report', async () => {
         const page = pageFixture();
         await page.focusInput();

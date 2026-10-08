@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
         clearData: vi.fn().mockResolvedValue(undefined),
         clearAuthCache: vi.fn().mockResolvedValue(undefined),
         clearCodeCaches: vi.fn().mockResolvedValue(undefined),
-        cookies: { flushStore: vi.fn().mockResolvedValue(undefined) },
+        cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined) },
         flushStorageData: vi.fn(),
     },
     contents: {
@@ -181,4 +181,19 @@ describe('Electron browser add-menu forwarding', () => {
         expect(press().preventDefault).not.toHaveBeenCalled();
         await hosted.close();
     });
+});
+
+it.each([false, true])('preserves quoted session values and auth-cookie parts in the Electron profile (with page: %s)', async withPage => {
+    const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+    const cookies = parseBrowserCookies('original.example.com', JSON.stringify([
+        { name: 'fixture_session', value: '"fixture\\segment"', httpOnly: true },
+        { name: 'fixture_auth_0', value: 'fixture-part-0==%2F+/', httpOnly: true },
+        { name: 'fixture_auth_1', value: 'fixture-part-1==', httpOnly: true },
+    ]));
+    const host = withPage ? (await view()).hosted : new ElectronBrowserHost('profile');
+    mocks.contents.loadURL.mockClear();
+    await host.importCookies!(cookies);
+    expect(mocks.profile.cookies.set.mock.calls.map(([cookie]) => cookie)).toEqual(cookies);
+    expect(mocks.profile.cookies.flushStore).toHaveBeenCalledOnce();
+    expect(mocks.contents.loadURL).not.toHaveBeenCalled();
 });
