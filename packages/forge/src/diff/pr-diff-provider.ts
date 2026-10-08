@@ -3,66 +3,42 @@
  *
  * Both providers work by fetching the full unified diff from the remote
  * provider (via `IPullRequestsService.getDiff()` or a caller-supplied
- * callback) and then parsing it into per-file chunks.
+ * callback) and processing it through the Rust patch backend.
  *
  * This keeps the diff module decoupled from provider-specific APIs (ADO, GitHub).
  */
 
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { IPullRequestsService } from '../providers/interfaces';
 import type {
-    DiffContent,
-    DiffFileEntry,
-    DiffSummary,
     GetFileDiffOptions,
     IDiffProvider,
     PullRequestDiffSource,
     PullRequestIterationDiffSource,
 } from './types';
-import { makeDiffContent, computeSummary, parseFullDiff, truncateDiffContent } from './diff-utils';
+import { nativePatchToDiff } from './diff-utils';
 
 // ── Core remote provider builder ─────────────────────────────
 function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestIterationDiffSource>(
     source: S,
     fetchFullDiff: () => Promise<string>,
 ): IDiffProvider {
-    let cached: { files: DiffFileEntry[]; contentByPath: Map<string, DiffContent> } | undefined;
-
-    async function ensureParsed() {
-        if (!cached) {
-            const fullDiff = await fetchFullDiff();
-            cached = parseFullDiff(fullDiff);
-        }
-        return cached;
+    async function load() {
+        const addon = loadNativeGit();
+        return addon.processGitPatch(await fetchFullDiff());
     }
 
     return {
         source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            const { files } = await ensureParsed();
-            return files;
+        async listFiles() { return nativePatchToDiff((await load()).files).files; },
+        async getFileDiff(filePath: string, options?: GetFileDiffOptions) {
+            const raw = (await load()).files.find(file => file.path === filePath)?.raw ?? '';
+            const maxLines = options?.maxLines == null ? undefined : Math.floor(options.maxLines);
+            return (await loadNativeGit().processGitPatch(raw, maxLines)).content;
         },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const { contentByPath } = await ensureParsed();
-            const content = contentByPath.get(filePath) ?? makeDiffContent('');
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-        },
-
-        async getFullDiff(): Promise<DiffContent> {
-            const fullDiff = await fetchFullDiff();
-            return makeDiffContent(fullDiff);
-        },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const { contentByPath } = await ensureParsed();
-            return new Map(contentByPath);
-        },
-
-        async getSummary(): Promise<DiffSummary> {
-            const { files } = await ensureParsed();
-            return computeSummary(files);
-        },
+        async getFullDiff() { return (await load()).content; },
+        async prefetchAll() { return nativePatchToDiff((await load()).files).contentByPath; },
+        async getSummary() { return (await load()).summary; },
     };
 }
 
@@ -123,8 +99,8 @@ export function createPullRequestDiffProviderFromParams(
  * for the given iteration. This keeps the diff module decoupled from
  * provider-specific iteration APIs.
  *
- * For ADO, the caller would use `AdoPullRequestsService.getPullRequestIterationChanges()`
- * and `buildUnifiedDiff()` to construct the diff string.
+ * The callback supplies existing iteration data; this factory does not fetch
+ * provider iterations or implement inter-iteration comparisons.
  */
 export function createPullRequestIterationDiffProvider(
     source: PullRequestIterationDiffSource,
