@@ -1613,3 +1613,14 @@ impl Task for GitResolvedGitDirTask {
 pub fn git_resolved_git_dir(path: String) -> AsyncTask<GitResolvedGitDirTask> {
     AsyncTask::new(GitResolvedGitDirTask { path: PathBuf::from(path) })
 }
+
+/// Parse supplied host, WSL or remote unified-patch text on a libuv worker.
+/// No Git execution, repository lookup, authentication or cached state is involved.
+#[napi(ts_return_type = "Promise<PatchFile[]>")]
+pub fn parse_git_patch(
+    raw: String,
+) -> AsyncTask<crate::task::Blocking<Vec<coc_native_core::git::patch::PatchFile>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::parse_patch(&raw))
+    }))
+}

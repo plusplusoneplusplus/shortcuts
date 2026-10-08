@@ -3,16 +3,17 @@
 
 use super::status::ChangeStatus;
 
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchFile {
     pub path: String,
     pub original_path: Option<String>,
-    pub status: ChangeStatus,
+    pub status: String,
     pub additions: u32,
     pub deletions: u32,
     pub is_binary: bool,
     pub raw: String,
-    pub total_lines: usize,
+    pub total_lines: i64,
 }
 
 /// Split at actual file headers, retaining every newline inside each patch.
@@ -31,7 +32,7 @@ pub fn parse_patch(raw: &str) -> Vec<PatchFile> {
 }
 
 fn parse_file(raw: &str) -> Option<PatchFile> {
-    let mut lines = raw.split('\n');
+    let mut lines = raw.split('\n').map(|line| line.strip_suffix('\r').unwrap_or(line));
     let (mut before, mut after) = header_paths(lines.next()?.strip_prefix("diff --git ")?)?;
     let mut status = ChangeStatus::Modified;
     let mut additions = 0;
@@ -75,12 +76,12 @@ fn parse_file(raw: &str) -> Option<PatchFile> {
     Some(PatchFile {
         path: after,
         original_path,
-        status,
+        status: status.as_str().to_string(),
         additions,
         deletions,
         is_binary,
         raw: raw.to_string(),
-        total_lines: raw.split('\n').count(),
+        total_lines: raw.split('\n').count() as i64,
     })
 }
 

@@ -2,7 +2,6 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::patch::parse_patch;
-use coc_native_core::git::status::ChangeStatus;
 
 fn git(root: &Path, args: &[&str]) -> String {
     let output = Command::new("git").arg("-C").arg(root).args(args).output().expect("git on PATH");
@@ -18,7 +17,7 @@ fn preserves_raw_chunks_order_and_js_line_accounting() {
     assert_eq!(files.len(), 2);
     assert_eq!(files[0].path, "z");
     assert_eq!(files[0].raw, first);
-    assert_eq!(files[0].total_lines, first.split('\n').count());
+    assert_eq!(files[0].total_lines, first.split('\n').count() as i64);
     assert_eq!((files[0].additions, files[0].deletions), (1, 1));
     assert_eq!(files[1].path, "a");
     assert_eq!(files[1].raw, second);
@@ -30,7 +29,7 @@ fn preserves_raw_chunks_order_and_js_line_accounting() {
 #[test]
 fn counts_header_like_hunk_content_and_does_not_infer_status_from_it() {
     let files = parse_patch("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n--- /dev/null\n+++ /dev/null\n-old\n+new\n\\ No newline at end of file");
-    assert_eq!(files[0].status, ChangeStatus::Modified);
+    assert_eq!(files[0].status, "modified");
     assert_eq!((files[0].additions, files[0].deletions), (2, 2));
     assert!(!files[0].is_binary);
 }
@@ -46,7 +45,7 @@ new file mode 100644
 "#;
     let files = parse_patch(patch);
     assert_eq!(files[0].path, "café\t\"\\.txt");
-    assert_eq!(files[0].status, ChangeStatus::Added);
+    assert_eq!(files[0].status, "added");
     assert_eq!(files[0].additions, 1);
     let high_bytes = parse_patch(
         r#"diff --git "a/\360\237\230\200" "b/\360\237\230\200"
@@ -67,7 +66,7 @@ fn handles_spaces_separators_renames_and_copies() {
     );
     assert_eq!(files[0].path, "space b/inside");
     assert!(!files[0].is_binary);
-    for (operation, status) in [("rename", ChangeStatus::Renamed), ("copy", ChangeStatus::Copied)] {
+    for (operation, status) in [("rename", "renamed"), ("copy", "copied")] {
         let patch = format!("diff --git a/old name b/new name\nsimilarity index 100%\n{operation} from old name\n{operation} to new name\n");
         let files = parse_patch(&patch);
         assert_eq!(files[0].status, status);
@@ -100,11 +99,11 @@ fn classifies_only_explicit_binary_markers_as_binary() {
     let files = parse_patch(patch);
     assert_eq!(files.len(), 5);
     assert!(files[0].is_binary);
-    assert_eq!(files[0].status, ChangeStatus::Added);
+    assert_eq!(files[0].status, "added");
     assert!(!files[1].is_binary);
-    assert_eq!(files[1].status, ChangeStatus::Added);
+    assert_eq!(files[1].status, "added");
     assert!(!files[2].is_binary);
-    assert_eq!(files[2].status, ChangeStatus::Deleted);
+    assert_eq!(files[2].status, "deleted");
     assert!(!files[3].is_binary);
     assert!(files[4].is_binary);
 }
@@ -137,17 +136,17 @@ fn real_git_fixture_covers_quoted_paths_binary_empty_rename_and_mode() {
     assert_eq!(files.len(), 5, "{raw}");
     let find = |path: &str| files.iter().find(|f| f.path == path).unwrap();
     assert_eq!((find("café.txt").additions, find("café.txt").deletions), (1, 1));
-    assert_eq!(find("new name").status, ChangeStatus::Renamed);
+    assert_eq!(find("new name").status, "renamed");
     assert_eq!(find("new name").original_path.as_deref(), Some("old name"));
     assert!(!find("new name").is_binary);
-    assert_eq!(find("delete").status, ChangeStatus::Deleted);
+    assert_eq!(find("delete").status, "deleted");
     assert!(!find("delete").is_binary);
-    assert_eq!(find("empty").status, ChangeStatus::Added);
+    assert_eq!(find("empty").status, "added");
     assert!(!find("empty").is_binary);
     assert!(find("binary").is_binary);
     assert_eq!(files.iter().map(|f| f.raw.as_str()).collect::<String>(), raw);
     for file in &files {
-        assert_eq!(file.total_lines, file.raw.split('\n').count());
+        assert_eq!(file.total_lines, file.raw.split('\n').count() as i64);
     }
     // Disabling quoting must preserve the same literal paths and metadata.
     let unquoted = parse_patch(&git(
@@ -158,4 +157,14 @@ fn real_git_fixture_covers_quoted_paths_binary_empty_rename_and_mode() {
         files.iter().map(|f| &f.path).collect::<Vec<_>>(),
         unquoted.iter().map(|f| &f.path).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn crlf_headers_decode_quoted_paths_without_changing_raw_text() {
+    let raw = "diff --git \"a/caf\\303\\251\" \"b/caf\\303\\251\"\r\n--- \"a/caf\\303\\251\"\r\n+++ \"b/caf\\303\\251\"\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\n";
+    let files = parse_patch(raw);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, "café");
+    assert_eq!(files[0].raw, raw);
+    assert_eq!((files[0].additions, files[0].deletions), (1, 1));
 }

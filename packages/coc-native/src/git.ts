@@ -132,8 +132,12 @@ export type NativeGitUpstreamConfig = Bindings.GitUpstreamConfig;
  */
 export type NativeGitNoIndexDiffInput = Bindings.GitNoIndexDiffInput;
 
+/** Parsed supplied patch metadata and raw per-file content. */
+export type NativeGitPatchFile = Bindings.PatchFile;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
+    parseGitPatch: typeof Bindings.parseGitPatch;
     execGit: typeof Bindings.execGit;
     gitStatusEntries: typeof Bindings.gitStatusEntries;
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
@@ -178,6 +182,7 @@ export interface NativeGitAddon {
  * at the first call with `undefined is not a function`.
  */
 const GIT_EXPORTS = [
+    'parseGitPatch',
     'execGit',
     'gitStatusEntries',
     'parseGitStatusPorcelain',
