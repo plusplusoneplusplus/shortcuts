@@ -321,7 +321,10 @@ references before editing. Paths are package-relative.
   Rust parsing/summaries, preserving quoted paths and raw bytes; required-native
   failures remain visible. PR full-context patches use Forge loadComparisonPatch with
   direct base/head Rust planning and host/WSL execution; TypeScript orchestrates commit
-  fetch/retry and provider-hunk fallback. PR combined/stat caches remain a separate boundary. PR snapshot fallback metadata uses Forge parseFullDiffAsync
+  fetch/retry and provider-hunk fallback. List refreshes fetch current provider bytes
+  and map Rust summaries directly to diffStats; only the list response cache retains
+  enriched rows. PR combined-patch caching remains a separate boundary. PR snapshot
+  fallback metadata uses Forge parseFullDiffAsync
   for decoded paths and file existence; full-text loading and its cache remain separate.
 
 ## Messaging and Secrets

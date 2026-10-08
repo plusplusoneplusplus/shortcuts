@@ -327,17 +327,6 @@ interface PrCoworkerCandidateCacheEntry {
 
 const prCoworkerCandidateCache = new Map<string, PrCoworkerCandidateCacheEntry>();
 
-interface PullRequestDiffStats {
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-}
-
-// Diff stats are derived from provider diffs and cached in memory by
-// originId|prId|headSha only. They are never persisted because diffs can contain
-// sensitive source content and can be refetched/recomputed.
-const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
-
 function makePrCacheKey(cacheScopeId: string, status: string, scope: string): string {
     return `${cacheScopeId}|${status}|${scope}`;
 }
@@ -408,7 +397,7 @@ async function refreshPullRequestListCache(
 ): Promise<PrCacheEntry> {
     const prSvc = await resolvePullRequestsService(dataDir, svc, repoId);
     let prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
-    prs = await enrichPullRequestsWithDiffStats(cacheScopeId, repoId, prs, prSvc);
+    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
     const fetchedAt = Date.now();
     const entry = { data: prs, fetchedAt, expiresAt: fetchedAt + PR_LIST_TTL_MS };
     prListCache.set(makePrCacheKey(cacheScopeId, status, scope), entry);
@@ -598,7 +587,6 @@ export async function fetchOriginPullRequestChecksHeadless(
 /** Clear all cached PR list entries. Exported for testing. */
 export function clearPrListCache(): void {
     prListCache.clear();
-    prDiffStatsCache.clear();
     prCoworkerCandidateCache.clear();
     teamScopeCache.clear();
 }
@@ -734,69 +722,25 @@ function normalizePullRequestHeadSha(pr: any): string | undefined {
     return headSha || undefined;
 }
 
-function makePrDiffStatsCacheKey(cacheScopeId: string, pr: any): string | undefined {
-    const headSha = normalizePullRequestHeadSha(pr);
-    if (!headSha) return undefined;
-
-    const prId = getPullRequestProviderId(pr);
-    if (prId == null) return undefined;
-
-    return `${cacheScopeId}|${String(prId)}|${headSha}`;
-}
-
-function clearPrDiffStatsCacheEntries(cacheScopeId: string, prId: string): void {
-    const prefix = `${cacheScopeId}|${prId}|`;
-    for (const key of Array.from(prDiffStatsCache.keys())) {
-        if (key.startsWith(prefix)) {
-            prDiffStatsCache.delete(key);
-        }
-    }
-}
-
-async function buildPullRequestDiffStats(diff: string): Promise<PullRequestDiffStats> {
-    const { summary } = await loadNativeGit().processGitPatch(diff);
-    return {
-        additions: summary.additions,
-        deletions: summary.deletions,
-        changedFiles: summary.filesChanged,
-    };
-}
-
-async function getPullRequestDiffStats(
-    cacheScopeId: string,
-    repoId: string,
-    pr: any,
-    prSvc: IPullRequestsService,
-): Promise<PullRequestDiffStats | undefined> {
-    if (typeof prSvc.getDiff !== 'function') return undefined;
-
-    const prId = getPullRequestProviderId(pr);
-    if (prId == null) return undefined;
-
-    const cacheKey = makePrDiffStatsCacheKey(cacheScopeId, pr);
-    const cached = cacheKey ? prDiffStatsCache.get(cacheKey) : undefined;
-    if (cached) return cached;
-
-    const diff = await prSvc.getDiff(repoId, prId);
-    const stats = await buildPullRequestDiffStats(diff);
-    if (cacheKey) {
-        prDiffStatsCache.set(cacheKey, stats);
-    }
-    return stats;
-}
-
 async function enrichPullRequestsWithDiffStats(
-    cacheScopeId: string,
     repoId: string,
     prs: any[],
     prSvc: IPullRequestsService,
 ): Promise<any[]> {
-    if (typeof prSvc.getDiff !== 'function') return prs;
+    const getDiff = prSvc.getDiff?.bind(prSvc);
+    if (!getDiff) return prs;
 
     return Promise.all(prs.map(async pr => {
         try {
-            const diffStats = await getPullRequestDiffStats(cacheScopeId, repoId, pr, prSvc);
-            return diffStats ? { ...pr, diffStats } : pr;
+            const prId = getPullRequestProviderId(pr);
+            if (prId == null) return pr;
+            const diff = await getDiff(repoId, prId);
+            const { summary } = await loadNativeGit().processGitPatch(diff);
+            return { ...pr, diffStats: {
+                additions: summary.additions,
+                deletions: summary.deletions,
+                changedFiles: summary.filesChanged,
+            } };
         } catch (err) {
             rethrowIfAddonUnavailable(err);
             const prId = getPullRequestProviderId(pr);
@@ -1413,7 +1357,6 @@ export function registerPrRoutes(
         if (force) {
             prDetailCache.delete(cacheKey);
             clearPrDiffCacheEntry(options.cacheScopeId, options.prId);
-            clearPrDiffStatsCacheEntries(options.cacheScopeId, options.prId);
             clearPrSubCacheEntries(options.cacheScopeId, options.prId);
             console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
         }
