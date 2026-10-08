@@ -15,6 +15,27 @@ vi.mock('../../src/git/safe-directory', () => ({ ensureGitSafeDirectoryAsync: vi
 const raw = 'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n@@ -1 +1 @@\n-old\n+new\n';
 
 describe('commit WSL transport using Rust planning and processing', () => {
+    it('GitLogService commit patches use each WSL root and preserve first-parent bytes', async () => {
+        vi.mocked(execFileAsync).mockClear();
+        vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
+            stdout: raw.replace('+new', args?.includes('Debian') ? '+two' : '+one'), stderr: '',
+        }));
+        const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
+        const service = new GitLogService();
+        const results = await Promise.all(roots.map(root => service.getCommitDiff(root, 'HEAD')));
+        for (const [index, marker] of ['one', 'two'].entries()) {
+            expect(results[index]).toBe(raw.replace('+new', `+${marker}`).slice(0, -1));
+            const call = vi.mocked(execFileAsync).mock.calls[index];
+            expect(call[1]).toEqual(expect.arrayContaining([
+                index ? 'Debian' : 'Ubuntu', `/home/${marker}/repo`,
+                '--literal-pathspecs', 'diff-tree', '--root', '--first-parent', 'HEAD',
+            ]));
+            expect(call[1]).not.toContain('show');
+        }
+        vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'commit transport failed' });
+        expect(await service.getCommitDiff(roots[0], 'HEAD')).toBe('');
+    });
+
     it('routes concurrent roots/distro and uses one native plan for all five operations', async () => {
         vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
             stdout: raw.replace('+new', args?.includes('Debian') ? '+two' : '+one'), stderr: '',

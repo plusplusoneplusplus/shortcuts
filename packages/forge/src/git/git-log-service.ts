@@ -1,11 +1,11 @@
 /**
- * Git history/object reads use native capabilities; pending/staged patches use
+ * Git history/object reads use native capabilities; commit/pending/staged patches use
  * the shared Rust patch backend with TypeScript workspace/WSL transport.
  * Native loading stays outside catches so missing capabilities remain visible.
  */
 
 import * as path from 'path';
-import { loadPendingPatch, loadWorkingTreePatch } from '../diff/local-patch';
+import { loadCommitPatch, loadPendingPatch, loadWorkingTreePatch } from '../diff/local-patch';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { NativeGitLogCommit } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
@@ -132,11 +132,9 @@ export class GitLogService {
      * Get the diff for a specific commit.
      */
     async getCommitDiff(repoRoot: string, commitHash: string): Promise<string> {
-        const native = loadNativeGit();
+        loadNativeGit();
         try {
-            return await native.gitCommitDiff(repoRoot, commitHash, {
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
+            return (await loadCommitPatch(repoRoot, commitHash)).content.raw;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get diff for commit ${commitHash}`, error instanceof Error ? error : undefined);
             return '';
