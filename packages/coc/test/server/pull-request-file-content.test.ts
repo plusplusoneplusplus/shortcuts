@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { ProviderPullRequest } from '@plusplusoneplusplus/forge';
 import {
     clearPullRequestFileContentCache,
@@ -171,6 +172,66 @@ describe('pull request file content', () => {
             'repos/acme/widgets/contents/src/old.ts',
             'repos/acme/widgets/contents/src/new.ts',
         ]);
+    });
+
+    it('decodes quoted rename paths before fetching either snapshot', async () => {
+        const repo = tempRepo();
+        const runCommand = vi.fn<PullRequestFileCliRunner>(async () => ({ stdout: Buffer.from('same\n'), stderr: '' }));
+        const result = await loadPullRequestFileContent(request(repo, {
+            filePath: 'src/new café.ts',
+            getProviderDiff: async () => [
+                'diff --git "a/src/old caf\\303\\251.ts" "b/src/new caf\\303\\251.ts"',
+                'similarity index 100%',
+                'rename from "src/old caf\\303\\251.ts"',
+                'rename to "src/new caf\\303\\251.ts"',
+                '',
+            ].join('\n'),
+            runCommand,
+        }));
+        expect(result.base).toEqual({ content: 'same\n', ref: BASE_SHA, exists: true });
+        expect(result.head).toEqual({ content: 'same\n', ref: HEAD_SHA, exists: true });
+        expect(runCommand.mock.calls.map(call => call[1].find(arg => arg.startsWith('repos/')))).toEqual([
+            'repos/acme/widgets/contents/src/old%20caf%C3%A9.ts',
+            'repos/acme/widgets/contents/src/new%20caf%C3%A9.ts',
+        ]);
+    });
+
+    it.each(['added', 'deleted'] as const)('recognizes an empty %s file without fetching its absent side', async status => {
+        const repo = tempRepo();
+        const runCommand = vi.fn<PullRequestFileCliRunner>(async () => ({ stdout: Buffer.alloc(0), stderr: '' }));
+        const result = await loadPullRequestFileContent(request(repo, {
+            getProviderDiff: async () => `diff --git a/src/file.ts b/src/file.ts\n${status === 'added' ? 'new' : 'deleted'} file mode 100644\n`,
+            runCommand,
+        }));
+        expect(result.base.exists).toBe(status === 'deleted');
+        expect(result.head.exists).toBe(status === 'added');
+        expect(result.base.content).toBe('');
+        expect(result.head.content).toBe('');
+        expect(result.binary).toBe(false);
+        expect(runCommand).toHaveBeenCalledTimes(1);
+        expect(runCommand.mock.calls[0][1]).toContain(`ref=${status === 'added' ? HEAD_SHA : BASE_SHA}`);
+    });
+
+    it('loads both text snapshots for a mode-only change', async () => {
+        const repo = tempRepo();
+        const runCommand = vi.fn<PullRequestFileCliRunner>(async () => ({ stdout: Buffer.from('text\n'), stderr: '' }));
+        const result = await loadPullRequestFileContent(request(repo, {
+            getProviderDiff: async () => 'diff --git a/src/file.ts b/src/file.ts\nold mode 100644\nnew mode 100755\n',
+            runCommand,
+        }));
+        expect(result.binary).toBe(false);
+        expect(result.base.content).toBe('text\n');
+        expect(result.head.content).toBe('text\n');
+        expect(runCommand).toHaveBeenCalledTimes(2);
+    });
+
+    it('propagates unavailable native patch processing before fetching content', async () => {
+        const repo = tempRepo();
+        const runCommand = vi.fn<PullRequestFileCliRunner>();
+        const error = new NativeAddonLoadError('Missing patch capability; npm run build:native -w packages/coc-native');
+        vi.spyOn(loadNativeGit(), 'parseGitPatch').mockRejectedValueOnce(error);
+        await expect(loadPullRequestFileContent(request(repo, { runCommand }))).rejects.toBe(error);
+        expect(runCommand).not.toHaveBeenCalled();
     });
 
     it('returns empty content for binary provider files', async () => {

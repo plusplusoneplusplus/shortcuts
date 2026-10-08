@@ -100,7 +100,10 @@ Production server persistence/index capabilities require the addon and fail
 without it, rather than falling back to JavaScript. Supplied unified patches can
 be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
 `parseFullDiffAsync` converts native metadata/chunks to public shapes through
-`nativePatchToDiff`. Supplied PR/iteration providers use `processGitPatch` for all
+`nativePatchToDiff`. PR snapshot fallback metadata uses this async adapter,
+including decoded rename paths and empty-file existence; snapshot content transport
+and its cache remain separate. Forge diff-utils contains wire conversion only;
+patch parsing, summaries and truncation belong to Rust. Supplied PR/iteration providers use `processGitPatch` for all
 five operations, including summaries and per-file truncation. Each operation reads
 current transport data; TypeScript retains source descriptors and holds no parsed
 patch-result cache. ADO patch construction uses Rust `buildRemoteGitPatch` with explicit existence and

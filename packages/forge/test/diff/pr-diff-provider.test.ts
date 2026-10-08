@@ -11,7 +11,7 @@ import {
     createPullRequestIterationDiffProvider,
     createPullRequestIterationDiffProviderFromParams,
 } from '../../src/diff/pr-diff-provider';
-import { parseFullDiff } from '../../src/diff/diff-utils';
+import { parseFullDiffAsync } from '../../src/diff/diff-utils';
 import type { IPullRequestsService } from '../../src/providers/interfaces';
 import type { IDiffProvider, PullRequestDiffSource, PullRequestIterationDiffSource } from '../../src/diff/types';
 
@@ -111,73 +111,73 @@ function mockPrService(diffResult: string): IPullRequestsService {
     };
 }
 
-// ── parseFullDiff tests ─────────────────────────────────────
+// ── parseFullDiffAsync tests ─────────────────────────────────────
 
-describe('parseFullDiff', () => {
-    it('parses a multi-file unified diff into entries and content', () => {
-        const { files, contentByPath } = parseFullDiff(FULL_DIFF);
+describe('parseFullDiffAsync', () => {
+    it('parses a multi-file unified diff into entries and content', async () => {
+        const { files, contentByPath } = await parseFullDiffAsync(FULL_DIFF);
 
         expect(files.length).toBe(4);
         expect(contentByPath.size).toBe(4);
     });
 
-    it('returns sorted files', () => {
-        const { files } = parseFullDiff(FULL_DIFF);
+    it('returns sorted files', async () => {
+        const { files } = await parseFullDiffAsync(FULL_DIFF);
         const paths = files.map(f => f.path);
         expect(paths).toEqual([...paths].sort());
     });
 
-    it('detects added files', () => {
-        const { files } = parseFullDiff(FILE_DIFF_BAR);
+    it('detects added files', async () => {
+        const { files } = await parseFullDiffAsync(FILE_DIFF_BAR);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('added');
         expect(files[0].additions).toBe(2);
         expect(files[0].deletions).toBe(0);
     });
 
-    it('detects deleted files', () => {
-        const { files } = parseFullDiff(FILE_DIFF_DELETED);
+    it('detects deleted files', async () => {
+        const { files } = await parseFullDiffAsync(FILE_DIFF_DELETED);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('deleted');
         expect(files[0].additions).toBe(0);
         expect(files[0].deletions).toBe(3);
     });
 
-    it('detects modified files', () => {
-        const { files } = parseFullDiff(FILE_DIFF_FOO);
+    it('detects modified files', async () => {
+        const { files } = await parseFullDiffAsync(FILE_DIFF_FOO);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('modified');
         expect(files[0].additions).toBe(1);
         expect(files[0].deletions).toBe(1);
     });
 
-    it('detects renamed files with originalPath', () => {
-        const { files } = parseFullDiff(FILE_DIFF_RENAMED);
+    it('detects renamed files with originalPath', async () => {
+        const { files } = await parseFullDiffAsync(FILE_DIFF_RENAMED);
         expect(files).toHaveLength(1);
         expect(files[0].status).toBe('renamed');
         expect(files[0].path).toBe('src/after.ts');
         expect(files[0].originalPath).toBe('src/before.ts');
     });
 
-    it('detects binary files', () => {
-        const { files } = parseFullDiff(FILE_DIFF_BINARY);
+    it('detects binary files', async () => {
+        const { files } = await parseFullDiffAsync(FILE_DIFF_BINARY);
         expect(files).toHaveLength(1);
         expect(files[0].isBinary).toBe(true);
     });
 
-    it('handles empty diff', () => {
-        const { files, contentByPath } = parseFullDiff('');
+    it('handles empty diff', async () => {
+        const { files, contentByPath } = await parseFullDiffAsync('');
         expect(files).toHaveLength(0);
         expect(contentByPath.size).toBe(0);
     });
 
-    it('handles whitespace-only diff', () => {
-        const { files } = parseFullDiff('  \n  \n  ');
+    it('handles whitespace-only diff', async () => {
+        const { files } = await parseFullDiffAsync('  \n  \n  ');
         expect(files).toHaveLength(0);
     });
 
-    it('stores raw content per file', () => {
-        const { contentByPath } = parseFullDiff(FULL_DIFF);
+    it('stores raw content per file', async () => {
+        const { contentByPath } = await parseFullDiffAsync(FULL_DIFF);
         const fooContent = contentByPath.get('src/foo.ts');
         expect(fooContent).toBeDefined();
         expect(fooContent!.raw).toContain('-old line');
@@ -418,7 +418,7 @@ describe('edge cases', () => {
             '+new',
         ].join('\n');
 
-        const { files, contentByPath } = parseFullDiff(diffWithSpaces);
+        const { files, contentByPath } = await parseFullDiffAsync(diffWithSpaces);
         expect(files).toHaveLength(1);
         expect(files[0].path).toBe('path with spaces/file.ts');
         expect(contentByPath.has('path with spaces/file.ts')).toBe(true);
@@ -448,8 +448,6 @@ describe('Rust supplied-patch backend', () => {
         ].join('\n');
         const path = 'name\té.txt';
         const provider = createPullRequestDiffProvider(makePrSource(), mockPrService(raw));
-        // The former TS parser cannot select the quoted path or count these hunk lines.
-        expect(parseFullDiff(raw).files).toEqual([]);
         expect(await provider.listFiles()).toEqual([
             expect.objectContaining({ path, status: 'modified', additions: 1, deletions: 1, isBinary: false }),
         ]);
@@ -466,7 +464,6 @@ describe('Rust supplied-patch backend', () => {
             'diff --git a/empty.txt b/empty.txt', 'new file mode 100644',
             FILE_DIFF_BINARY,
         ].join('\n');
-        expect(parseFullDiff(raw).files.find(f => f.path === 'mode.txt')?.isBinary).toBe(true);
         const provider = createPullRequestIterationDiffProvider(makeIterationSource({ baseIterationId: 1 }), async () => raw);
         expect(provider.source).toEqual(makeIterationSource({ baseIterationId: 1 }));
         expect(await provider.listFiles()).toEqual([

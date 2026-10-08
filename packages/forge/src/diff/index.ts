@@ -26,18 +26,6 @@ export {
     createPullRequestIterationDiffProviderFromParams,
 } from './pr-diff-provider';
 
-export {
-    parseFullDiff,
-    parseFullDiffAsync,
-    splitDiffByFile,
-    makeDiffContent,
-    computeSummary,
-    truncateDiffContent,
-    splitIntoChunks,
-    extractBPath,
-    extractAPath,
-    inferStatusFromDiffChunk,
-    countAdditionsDeletions,
-} from './diff-utils';
+export { parseFullDiffAsync } from './diff-utils';
 
 export { loadCommitShowPatch, loadCommitFiles, loadWorkingTreePatch } from './local-patch';
