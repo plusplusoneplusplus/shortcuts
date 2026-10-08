@@ -100,6 +100,9 @@ references before editing. Paths are package-relative.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
+- `copilot.transformTransport` is an installation-wide Admin setting (Direct HTTP default, restart required).
+  Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
+  System One, the shared Copilot decision backend, and titles use `gpt-6-luna`.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
@@ -192,8 +195,12 @@ references before editing. Paths are package-relative.
   pop-out commit/PR review composers opt in with their diff panel's owner.
   Shared notes and inline review composers leave it unset. Pending seeds retain their owner
   through capability resolution and are discarded when that owner changes.
-- Copilot decisions use a two-minute deadline per initial/repair attempt.
-  Preserve caller cancellation and explicit backend timeout overrides.
+- Copilot decisions use explicit `isTransformAvailable` readiness and a two-minute
+  deadline per initial/repair attempt. Preserve cancellation, timeout overrides,
+  provider error categories and known usage totals. Repair only successful malformed
+  decision text; transport/model/usage failures never trigger another inference.
+  Copilot direct transforms are opt-in, text-only, and never fall back to SDK.
+  Keep agent/session and attachment paths on their established runtimes.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
   under `src/server/executors/`; lifecycle owns persistence.
   Mode directives/style belong in user turns, not the system prefix.

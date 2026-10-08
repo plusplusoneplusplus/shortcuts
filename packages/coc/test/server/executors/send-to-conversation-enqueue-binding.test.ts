@@ -382,7 +382,7 @@ describe('send_to_conversation custom title lifecycle and SQLite restarts', () =
         expect(task.payload.workingDirectory).toBe(targetRoot);
 
         sdkMocks.mockTransform.mockResolvedValue({
-            success: true, text: 'AI generated title', effectiveModel: 'gpt-5.4-mini',
+            success: true, text: 'AI generated title', effectiveModel: 'gpt-6-luna',
         });
         const titles = new TitleGenerationService({
             store,

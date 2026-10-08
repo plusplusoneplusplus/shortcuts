@@ -599,6 +599,7 @@ describe('feature toggle settings-tab placement', () => {
         'sentinel.enabled': 'ai',
         'dangerousCommandGuard.enabled': 'ai',
         'effortLevels.enabled': 'ai',
+        'copilot.transformTransport': 'ai',
         'features.gitWorktreeExecution': 'ai',
         // Chat
         'features.chatFolders': 'chat',

@@ -5,7 +5,7 @@ import { DecisionBackendError } from '../../../src/server/decisions/decision-bac
 import type { LedgerEntry } from '../../../src/server/executors/tool-call-ledger';
 
 const RESPONSE: DecisionResponse = {
-    model: 'gpt-5.4-mini',
+    model: 'gpt-6-luna',
     backend: 'copilot',
     answers: { is_breaking: { type: 'noul', value: 0.12, confidence: 0.8 } },
     usage: { inputTokens: 100, outputTokens: 10 },
@@ -47,7 +47,7 @@ describe('system_one tool', () => {
         expect(JSON.parse(raw as string)).toEqual({
             answers: RESPONSE.answers,
             sources: [{ ref: 'bash#-1', bytes: 11, toolCallId: 'b1' }, { ref: 'text', bytes: 19 }],
-            model: 'gpt-5.4-mini',
+            model: 'gpt-6-luna',
             durationMs: 1830,
         });
     });

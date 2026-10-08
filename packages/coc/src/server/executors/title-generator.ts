@@ -22,7 +22,7 @@ export const TITLE_GENERATION_TIMEOUT_MS = 30_000;
  * policy (model choice) is owned here by the caller; the SDK transform boundary
  * owns no model default.
  */
-export const TITLE_GENERATION_MODEL = 'gpt-5.4-mini';
+export const TITLE_GENERATION_MODEL = 'gpt-6-luna';
 
 export interface TitleGenerationServiceOptions {
     store: ProcessStore;

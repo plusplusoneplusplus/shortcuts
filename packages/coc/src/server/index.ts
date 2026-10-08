@@ -25,7 +25,7 @@ import {
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { warmWslDistroCache } from '@plusplusoneplusplus/forge';
-import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
+import { CopilotSDKService, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -413,8 +413,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
     };
 
+    // Configure the same Copilot service resolved by one-shot consumers before they capture it.
+    const copilotService = resolveCopilotServiceOrUndefined();
+    if (copilotService instanceof CopilotSDKService) {
+        copilotService.configureTransformTransport(resolvedConfig.copilot.transformTransport);
+    }
+
     // Shared by the decision route and the `system_one` chat tool.
-    const decisionService = createDecisionService(resolveCopilotServiceOrUndefined());
+    const decisionService = createDecisionService(copilotService);
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,

@@ -735,7 +735,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'LLMToolSystemOne.enabled', default: false, runtime: 'live', runtimeFlag: 'llmToolSystemOneEnabled',
         ui: {
             group: 'review', order: 64, label: 'System One tool', badge: 'experimental',
-            hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-5.4-mini), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Disabled by default.',
+            hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-6-luna), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Disabled by default.',
             testId: 'toggle-llm-tool-system-one-enabled',
         },
     }),
@@ -759,6 +759,16 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({ key: 'codex.enabled', default: false, runtime: 'live', runtimeFlag: 'codexEnabled' }),
     bool({ key: 'claude.enabled', default: false, runtime: 'live', runtimeFlag: 'claudeEnabled' }),
     bool({ key: 'opencode.enabled', default: false, runtime: 'live', runtimeFlag: 'opencodeEnabled' }),
+    {
+        key: 'copilot.transformTransport',
+        value: { kind: 'enum', values: ['sdk', 'direct'] },
+        default: 'direct',
+        runtime: 'restartRequired',
+        ui: { tab: 'ai', group: 'aiModes', order: 42, label: 'Copilot one-shot transport',
+            hint: 'Used by System One, titles, and other one-shot requests. Direct HTTP uses the Copilot CLI login. Restart the server to apply.',
+            badge: 'restart', control: { type: 'select', options: [{ value: 'sdk', label: 'SDK' }, { value: 'direct', label: 'Direct HTTP' }] },
+            testId: 'select-copilot-transform-transport' },
+    },
     {
         key: 'defaultProvider',
         value: { kind: 'enum', values: ['copilot', 'codex', 'claude', 'opencode'], message: 'defaultProvider must be "copilot", "codex", "claude", or "opencode"' },

@@ -45,6 +45,12 @@ describe('Config', () => {
             expect(COC_DIR).toBe('.coc');
         });
 
+        it('defaults one-shot calls to HTTP while preserving an explicit SDK choice', () => {
+            expect(DEFAULT_CONFIG.copilot.transformTransport).toBe('direct');
+            expect(mergeConfig(DEFAULT_CONFIG, {}).copilot.transformTransport).toBe('direct');
+            expect(mergeConfig(DEFAULT_CONFIG, { copilot: { transformTransport: 'sdk' } }).copilot.transformTransport).toBe('sdk');
+        });
+
         it('should have correct default config', () => {
             expect(DEFAULT_CONFIG.parallel).toBe(5);
             expect(DEFAULT_CONFIG.output).toBe('table');
@@ -1211,6 +1217,8 @@ timeout: 300
                 '  enabled: true',
                 'triggers:',
                 '  enabled: true',
+                'copilot:',
+                '  transformTransport: sdk',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
@@ -1427,6 +1435,9 @@ timeout: 300
                   },
                   "containerDefaultAgent": {
                     "enabled": false,
+                  },
+                  "copilot": {
+                    "transformTransport": "direct",
                   },
                   "cron": {
                     "enabled": true,
@@ -1645,6 +1656,7 @@ timeout: 300
                   "claude.enabled": "default",
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
+                  "copilot.transformTransport": "default",
                   "cron.enabled": "file",
                   "dangerousCommandGuard.enabled": "file",
                   "defaultProvider": "default",

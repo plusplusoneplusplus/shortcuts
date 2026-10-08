@@ -17,7 +17,7 @@ import { buildDecisionPrompt, buildRepairPrompt } from './decision-prompt';
 import { parseDecisionOutput } from './decision-validation';
 
 /** Fixed decision model. Intentionally absent from the user-facing model registry. */
-export const COPILOT_DECISION_MODEL = 'gpt-5.4-mini';
+export const COPILOT_DECISION_MODEL = 'gpt-6-luna';
 export const COPILOT_DECISION_TIMEOUT_MS = 120_000;
 /** Initial prompt plus at most one repair attempt. */
 export const COPILOT_DECISION_MAX_ATTEMPTS = 2;
@@ -29,7 +29,7 @@ export interface CopilotDecisionBackendOptions {
 }
 
 function addUsage(total: DecisionUsage | undefined, result: TransformResult): DecisionUsage | undefined {
-    const usage = result.tokenUsage;
+    const usage = result.tokenUsage ?? result.providerDiagnostics?.tokenCounts;
     if (!usage) return total;
     return {
         inputTokens: (total?.inputTokens ?? 0) + (usage.inputTokens ?? 0),
@@ -78,12 +78,15 @@ export class CopilotDecisionBackend implements DecisionBackend {
     }
 
     private async requireAvailable(): Promise<void> {
-        const availability = this.service ? await this.service.isAvailable() : undefined;
+        const availability = this.service && typeof this.service.isTransformAvailable === 'function'
+            ? await this.service.isTransformAvailable({ model: COPILOT_DECISION_MODEL, loadDefaultMcpConfig: false })
+            : undefined;
         if (!availability?.available) {
             throw new DecisionBackendError({
                 code: 'DECISION_BACKEND_UNAVAILABLE',
                 status: 503,
                 message: `Copilot is unavailable${availability?.error ? `: ${availability.error}` : '.'}`,
+                details: availability?.errorCode ? { providerErrorCode: availability.errorCode } : undefined,
             });
         }
     }
@@ -145,6 +148,7 @@ export class CopilotDecisionBackend implements DecisionBackend {
                 code: 'DECISION_UPSTREAM_FAILED',
                 status: 502,
                 message: `Copilot decision call failed: ${result.error || 'unknown error'}`,
+                details: { providerErrorCode: result.errorCode, requestId: result.requestId, inferenceDispatched: result.inferenceDispatched },
             });
         }
         if (result.effectiveModel && result.effectiveModel !== COPILOT_DECISION_MODEL) {

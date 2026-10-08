@@ -351,3 +351,5 @@ export type {
     DangerousCommandGuardResult,
     DangerousCommandMatcher,
 } from './dangerous-command-guard';
+
+export * from './copilot-http';

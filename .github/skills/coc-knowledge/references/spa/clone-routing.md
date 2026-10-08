@@ -166,8 +166,14 @@ through the same seam — no enqueue-path logic is remote-specific.
 
 `QuickOpen` (Ctrl+P) fetches nothing on open. It debounces keystrokes
 (`SEARCH_DEBOUNCE_MS`, 40ms) into a single aborted-on-change
-`explorerApi.searchFiles` call and renders the server's ranking as-is. The typed
-repo-group equivalent is `repoGroupService.searchRepoGroupFiles`, which selects
+`explorerApi.searchFiles` call and renders the server's ranking as-is.
+`paletteQuery` separates a positive safe trailing `filename:line` target using
+the source-link parser; Windows drive prefixes and invalid suffixes remain
+search text. Selection carries the current line through the existing pinned
+editor navigation, including repeat jumps and delayed mounts. Retained rows
+from a different filename query cannot navigate until its search answers.
+
+The typed repo-group equivalent is `repoGroupService.searchRepoGroupFiles`, which selects
 `getCocClientFor(groupBaseUrl).explorer.searchRepoGroupFiles`. The group owner's
 explicit base URL chooses that transport; a result member's workspace id is identity
 only and never permits local fallback. Highlighting uses the `indices` each result

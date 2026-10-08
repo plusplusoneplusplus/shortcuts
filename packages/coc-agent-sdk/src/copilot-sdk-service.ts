@@ -14,6 +14,10 @@
  * @see image-converter.ts   — image-file → data-URL conversion
  */
 
+import { CopilotHttpClient } from './copilot-http/client';
+import { CopilotDirectError, directError } from './copilot-http/errors';
+import { validateTransport } from './copilot-http/config';
+import type { CopilotProviderConfig } from './copilot-http/types';
 import type { CopilotClient } from '@github/copilot-sdk';
 import { findSdkBinaryPath } from './sdk-loader';
 import { loadCopilotSdk } from './sdk-esm-loader';
@@ -138,7 +142,12 @@ export class CopilotSDKService implements ISDKService {
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
     private static readonly DEFAULT_IDLE_TIMEOUT_MS = DEFAULT_AI_IDLE_TIMEOUT_MS;
 
-    private constructor() {
+    private transformTransport: unknown;
+    private httpClient?: CopilotHttpClient;
+
+    public constructor(config: CopilotProviderConfig = {}) {
+        this.transformTransport = config.transformTransport ?? 'sdk';
+        if (this.transformTransport === 'direct') this.httpClient = new CopilotHttpClient(config.direct);
         this.requestRunner = new RequestRunner(
             () => this.isAvailable(),
             (cwd) => this.createClient(cwd),
@@ -151,6 +160,16 @@ export class CopilotSDKService implements ISDKService {
             logger: getAIServiceLogger(),
             onStateChange: this.warmStatus.emit,
         });
+    }
+
+    /** Configure installation-wide one-shot transport at server startup. Agent calls stay on SDK. */
+    public configureTransformTransport(transport: 'sdk' | 'direct'): void {
+        validateTransport(transport);
+        if (this.disposed) throw new Error('CopilotSDKService has been disposed');
+        if (transport === this.transformTransport) return;
+        this.httpClient?.dispose();
+        this.httpClient = transport === 'direct' ? new CopilotHttpClient() : undefined;
+        this.transformTransport = transport;
     }
 
     public static getInstance(): CopilotSDKService {
@@ -198,6 +217,32 @@ export class CopilotSDKService implements ISDKService {
         this.availabilityCache = { available: true, sdkPath };
         aiLog.debug({ sdkPath }, 'SDK available');
         return this.availabilityCache;
+    }
+
+    private requireDirectOptions(options: TransformOptions = {}): void {
+        validateTransport(this.transformTransport);
+        if (typeof options.model !== 'string' || !options.model || options.loadDefaultMcpConfig === true
+            || (options.loadDefaultMcpConfig !== undefined && typeof options.loadDefaultMcpConfig !== 'boolean')
+            || (options.onPermissionRequest !== undefined && typeof options.onPermissionRequest !== 'function')
+            || Object.keys(options).some(key => !['model', 'timeoutMs', 'cwd', 'signal', 'loadDefaultMcpConfig', 'onPermissionRequest'].includes(key)))
+            throw new CopilotDirectError('DIRECT_NOT_ELIGIBLE', 'Direct transforms require an explicit model and stateless text options without ambient MCP.');
+        if (['COPILOT_PROVIDER_BASE_URL', 'COPILOT_PROVIDER_API_KEY', 'COPILOT_PROVIDER_TYPE', 'COPILOT_OFFLINE'].some(key => process.env[key] !== undefined))
+            throw new CopilotDirectError('DIRECT_CONFIG_INVALID', 'Direct transforms are incompatible with BYOK or offline configuration.');
+        if (!this.httpClient) throw new CopilotDirectError('DIRECT_CONFIG_INVALID', 'Direct credential configuration is required.');
+        this.httpClient.binding(options.model);
+    }
+
+    public async isTransformAvailable(options?: TransformOptions): Promise<SDKAvailabilityResult> {
+        if (this.disposed) return { available: false, error: 'Service has been disposed' };
+        try {
+            validateTransport(this.transformTransport);
+            if (this.transformTransport === 'sdk') return this.isAvailable();
+            this.requireDirectOptions(options);
+            return this.httpClient!.isAvailable(options?.model);
+        } catch (error) {
+            const failure = directError(error);
+            return { available: false, error: failure.message, errorCode: failure.code };
+        }
     }
 
     public clearAvailabilityCache(): void { this.availabilityCache = null; }
@@ -528,6 +573,7 @@ export class CopilotSDKService implements ISDKService {
     public getActiveSessionCount(): number { return this.sessionManager.count(); }
 
     public async cleanup(): Promise<void> {
+        this.httpClient?.cleanup();
         const aiLog = getAIServiceLogger();
         aiLog.debug('Cleaning up SDK service');
         await this.sessionManager.abortAll();
@@ -543,11 +589,27 @@ export class CopilotSDKService implements ISDKService {
         input: string,
         options?: TransformOptions,
     ): Promise<TransformResult> {
-        return this.requestRunner.transform(input, options, this.sendMessage.bind(this));
+        try {
+            if (this.disposed) throw new CopilotDirectError('DIRECT_CANCELLED', 'Copilot service has been disposed.');
+            validateTransport(this.transformTransport);
+            if (this.transformTransport === 'sdk') return this.requestRunner.transform(input, options, this.sendMessage.bind(this));
+            this.requireDirectOptions(options);
+            if (typeof input !== 'string') throw new CopilotDirectError('DIRECT_NOT_ELIGIBLE', 'Direct transforms accept text only.');
+            const model = options!.model!;
+            const result = await this.httpClient!.complete({ model, api: this.httpClient!.binding(model).api,
+                messages: [{ role: 'user', content: input }], timeoutMs: options?.timeoutMs, signal: options?.signal });
+            return { success: true, text: result.text, effectiveModel: result.effectiveModel,
+                tokenUsage: result.tokenUsage, providerDiagnostics: result.diagnostics };
+        } catch (error) {
+            const failure = directError(error);
+            return { success: false, text: '', error: failure.message, errorCode: failure.code,
+                inferenceDispatched: failure.inferenceDispatched, requestId: failure.requestId };
+        }
     }
 
     public dispose(): void {
         this.disposed = true;
+        this.httpClient?.dispose();
         this.streamErrorGuard.remove();
         this.cleanup().catch(() => {});
     }

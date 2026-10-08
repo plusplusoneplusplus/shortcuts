@@ -287,6 +287,8 @@ export interface CLIConfig {
      * Per-chat provider selection overrides this value.
      */
     defaultProvider?: DefaultAgentProvider;
+    /** One-shot Copilot transport; credentials follow the Copilot CLI. */
+    copilot?: { transformTransport?: 'sdk' | 'direct' };
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -666,6 +668,7 @@ export interface ResolvedCLIConfig {
      * Per-chat provider selection overrides this value.
      */
     defaultProvider: DefaultAgentProvider;
+    copilot: { transformTransport: 'sdk' | 'direct' };
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -979,6 +982,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     defaultProvider: 'copilot',
+    copilot: { transformTransport: 'direct' },
     features: {
         autoMemoryPromotion: false,
         focusedDiff: false,
