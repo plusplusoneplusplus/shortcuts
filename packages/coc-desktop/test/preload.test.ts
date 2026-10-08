@@ -68,6 +68,7 @@ import {
     BROWSER_VIEW_DOWNLOAD_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL,
     BROWSER_PREFERENCES_SET_CHANNEL,
+    BROWSER_IMPORT_COOKIES_CHANNEL,
     BROWSER_CLEAR_DATA_CHANNEL,
     BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL,
@@ -150,6 +151,10 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_GET_CHANNEL);
         await api.setDefaultEngine('webview2');
         expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_SET_CHANNEL, 'webview2');
+        await api.importCookies('view', 'app.example.com', 'session=token');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, 'view', 'app.example.com', 'session=token', undefined);
+        await api.importCookies(null, 'app.example.com', 'session=token', 'webview2');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, null, 'app.example.com', 'session=token', 'webview2');
         await api.clearData('electron');
         expect(invoke).toHaveBeenCalledWith(BROWSER_CLEAR_DATA_CHANNEL, 'electron');
         api.focus('view');

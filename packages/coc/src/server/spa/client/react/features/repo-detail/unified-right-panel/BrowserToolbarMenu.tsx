@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import type { BrowserEngine } from '../../../shared/file-path/browser-bridge';
 import { nativeViewToolbarButton } from './NativeViewTab';
 
-export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal }: {
+export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies }: {
     open: boolean;
     onOpenChange(open: boolean): void;
     engine?: BrowserEngine;
     canOpenExternal: boolean;
     onOpenExternal(): void;
+    onImportCookies?: () => void;
 }) {
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -33,7 +34,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
 
     useEffect(() => {
         if (!open) return;
-        (canOpenExternal ? actionRef.current : panelRef.current)?.focus();
+        (panelRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? panelRef.current)?.focus();
         const outside = (event: PointerEvent) => {
             const target = event.target as Node;
             if (!triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) onOpenChange(false);
@@ -82,7 +83,11 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                         triggerRef.current?.focus();
                     } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
                         event.preventDefault();
-                        if (canOpenExternal) actionRef.current?.focus();
+                        const actions = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')];
+                        const current = actions.indexOf(document.activeElement as HTMLButtonElement);
+                        const next = event.key === 'Home' ? 0 : event.key === 'End' ? actions.length - 1
+                            : (current + (event.key === 'ArrowUp' ? -1 : 1) + actions.length) % actions.length;
+                        actions[next]?.focus();
                     }
                 }}
             >
@@ -102,6 +107,8 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                     }}
                     data-testid="browser-open-external"
                 >Open in system browser</button>
+                {onImportCookies && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
+                    onClick={() => { onOpenChange(false); onImportCookies(); }} data-testid="browser-import-cookies">Import cookies…</button>}
             </div>, document.body)}
     </>;
 }

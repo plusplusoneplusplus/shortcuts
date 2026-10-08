@@ -57,6 +57,7 @@ const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
 const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
+const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser-view-focus-address-requested';
@@ -210,6 +211,8 @@ function subscribe<T>(channel: string, callback: (payload: T) => void): () => vo
  */
 const browser = {
     sources: BROWSER_SOURCE_KINDS,
+    importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserOperationResult> =>
+        ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies, engine),
     open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),
     adopt: (viewId: string, guestId: number): Promise<BrowserOperationResult> =>

@@ -9,15 +9,20 @@ const mocks = vi.hoisted(() => ({
         isDestroyed: () => false,
         isFullScreen: () => false,
         getNativeWindowHandle: () => Buffer.alloc(8),
+        getContentBounds: () => mocks.contentBounds,
+        setFullScreen: vi.fn(),
         on: vi.fn(),
         removeListener: vi.fn(),
     },
     owner: { focus: vi.fn() },
+    contentBounds: { x: 100, y: 200, width: 640, height: 480 },
+    dipToScreenPoint: vi.fn(({ x, y }: { x: number; y: number }) => ({ x, y })),
     onEvent: vi.fn<(message: Record<string, unknown>) => void>(),
 }));
 
 vi.mock('electron', () => ({
     BrowserWindow: { fromWebContents: () => ({ ...mocks.window, webContents: mocks.owner }) },
+    screen: { dipToScreenPoint: mocks.dipToScreenPoint },
     webContents: { fromId: () => mocks.owner },
     shell: {},
 }));
@@ -43,6 +48,51 @@ describe('WebView2 native focus handoff', () => {
         vi.mocked(sink.openMenuRequested).mockClear();
         vi.mocked(sink.focusAddressRequested!).mockClear();
         mocks.running = true;
+        mocks.contentBounds = { x: 100, y: 200, width: 640, height: 480 };
+        mocks.dipToScreenPoint.mockReset().mockImplementation(point => point);
+        mocks.window.on.mockClear();
+        mocks.window.setFullScreen.mockClear();
+    });
+
+    it('includes the live content origin in physical screen pixels, independent of viewport bounds', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test' }, sink);
+        mocks.dipToScreenPoint.mockImplementation(({ x, y }) => ({ x: x * 1.5, y: y * 1.5 }));
+        await view.setBounds(bounds);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', {
+            viewId: '7:tab:1', bounds: { ...bounds, contentOrigin: { x: 150, y: 300 } },
+        });
+        mocks.contentBounds = { x: -800, y: 226, width: 640, height: 480 };
+        await view.setBounds(bounds);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', {
+            viewId: '7:tab:1', bounds: { ...bounds, contentOrigin: { x: -1200, y: 339 } },
+        });
+        await view.setBounds(null);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', { viewId: '7:tab:1', bounds: null });
+    });
+
+    it('refreshes the origin when the owner moves or resizes and preserves it in fullscreen', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test' }, sink);
+        await view.setBounds(bounds);
+        mocks.contentBounds = { x: 50, y: 80, width: 800, height: 600 };
+        for (const [event, reposition] of mocks.window.on.mock.calls) {
+            if (event === 'move' || event === 'resize') {
+                reposition();
+                expect(mocks.request).toHaveBeenLastCalledWith('bounds', {
+                    viewId: '7:tab:1', bounds: { ...bounds, contentOrigin: { x: 50, y: 80 } },
+                });
+            }
+        }
+        mocks.onEvent({ event: 'fullscreen', viewId: '7:tab:1', fullscreen: true });
+        expect(mocks.window.setFullScreen).toHaveBeenLastCalledWith(true);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', {
+            viewId: '7:tab:1', bounds: { x: 0, y: 0, width: 800, height: 600, contentOrigin: { x: 50, y: 80 } },
+        });
+        mocks.onEvent({ event: 'fullscreen', viewId: '7:tab:1', fullscreen: false });
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', {
+            viewId: '7:tab:1', bounds: { ...bounds, contentOrigin: { x: 50, y: 80 } },
+        });
     });
 
     it('forwards close only for the matching live visible native view', async () => {
@@ -148,4 +198,21 @@ describe('WebView2 native focus handoff', () => {
         expect(mocks.owner.focus).toHaveBeenCalledOnce();
         await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledExactlyOnceWith('focus-host', { viewId: '1:tab:1' }));
     });
+});
+
+it.each([false, true])('preserves quoted session values and auth-cookie parts through WebView2 (with page: %s)', async withPage => {
+    mocks.request.mockClear();
+    const host = new WebView2BrowserHost('profile');
+    const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn() };
+    const target = withPage ? await host.create({ ownerId: 7, viewId: 'import', sessionKey: 'workspace', url: 'https://login.example.com' }, sink) : host;
+    const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+    const cookies = parseBrowserCookies('original.example.com', JSON.stringify([
+        { name: 'fixture_session', value: '"fixture\\segment"', httpOnly: true },
+        { name: 'fixture_auth_0', value: 'fixture-part-0==%2F+/', httpOnly: true },
+        { name: 'fixture_auth_1', value: 'fixture-part-1==', httpOnly: true },
+    ]));
+    mocks.request.mockClear();
+    await target.importCookies!(cookies);
+    expect(mocks.request).toHaveBeenCalledExactlyOnceWith(withPage ? 'import-cookies' : 'import-profile-cookies',
+        { ...(withPage ? { viewId: '7:import:1' } : {}), cookies });
 });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,13 +38,65 @@ async function scenario(engine: string, userData: string, ...args: string[]) {
     });
 }
 
-afterEach(() => {
+afterEach(async () => {
     // Browser subprocesses can release profile handles just after Electron exits.
-    temporary.forEach(dir => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+    for (const dir of temporary) {
+        await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
     temporary.length = 0;
 });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it.skipIf(engine !== 'webview2')('keeps the page below the address bar with a Windows menu bar and renderer zoom', async () => {
+        const directory = profileRoot('browser-layout-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--layout-check');
+        expect(steps.get('layout')?.layouts).toEqual([
+            { menu: true, zoom: 1, aligned: true },
+            { menu: false, zoom: 1, aligned: true },
+            { menu: true, zoom: 1.25, aligned: true },
+        ]);
+    }, 90_000);
+
+    it('imports cookies from a blank tab before opening the first page', async () => {
+        const directory = profileRoot('blank-import-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--blank-cookie-import-check');
+        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true }, remaining: { ok: true }, states: [] });
+        expect(steps.get('blank-authenticated')?.url).toContain('localhost');
+        expect(steps.get('blank-authenticated')?.report.authenticated).toBe(true);
+        expect(steps.get('blank-authenticated')?.report.cookie).toBe('');
+        expect(steps.get('blank-authenticated')?.receivedCookies).toEqual(expect.arrayContaining([
+            'imported=auth-token', 'fixture_session="fixture\\segment"', 'fixture_auth_0=fixture-part-0==%2F+/', 'fixture_auth_1=fixture-part-1==',
+        ]));
+    }, 90_000);
+
+    it('clears imported session cookies before opening the first page', async () => {
+        const directory = profileRoot('blank-import-clear-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--blank-cookie-import-clear-check');
+        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true }, remaining: { ok: true }, states: [] });
+        expect(steps.get('blank-clear')?.result).toEqual({ ok: true });
+        expect(steps.get('blank-authenticated')?.report.authenticated).toBe(false);
+        expect(steps.get('blank-authenticated')?.receivedCookies).toEqual([]);
+    }, 90_000);
+
+    it('imports an HttpOnly auth cookie for the original domain after a cross-domain login redirect', async () => {
+        const directory = profileRoot('cookie-import-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--cookie-import-check');
+        const result = steps.get('cookie-import');
+        expect(result?.imported).toEqual({ ok: true });
+        expect(result?.redirected).toContain('127.0.0.1');
+        expect(result?.afterImport).toBe(result?.redirected);
+        expect(result?.authenticated).toContain('localhost');
+        expect(result?.report.authenticated).toBe(true);
+        expect(result?.report.cookie).toBe('');
+        expect(result?.receivedCookies).toEqual(expect.arrayContaining([
+            'imported=auth-token', 'fixture_session="fixture\\segment"', 'fixture_auth_0=fixture-part-0==%2F+/', 'fixture_auth_1=fixture-part-1==',
+        ]));
+    }, 90_000);
+
     it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {
         const directory = profileRoot('browser-focus-');
         temporary.push(directory);

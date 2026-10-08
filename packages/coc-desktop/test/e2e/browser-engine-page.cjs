@@ -5,7 +5,7 @@ module.exports = { browserPageScript: `
 const key = new URL(location.href).searchParams.get('tab') || 'main';
 async function report(extra = {}) {
     fetch('/report?tab='+encodeURIComponent(key), {method:'POST', body: JSON.stringify({
-        cookie:document.cookie, storage:localStorage.getItem('fixture'), bridge:typeof window.cocDesktop,
+        authenticated:window.cookieAuthenticated === true, cookie:document.cookie, storage:localStorage.getItem('fixture'), bridge:typeof window.cocDesktop,
         require:typeof require, title:document.title, focused:document.hasFocus(),
         input:document.getElementById('input').value,
         inputFocused:document.activeElement === document.getElementById('input'), ...extra
