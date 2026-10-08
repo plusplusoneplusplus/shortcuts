@@ -104,11 +104,11 @@ describe('createCommitDiffProvider (integration)', () => {
         expect(paths).toEqual(sorted);
     });
 
-    it('should cache listFiles results', async () => {
+    it('returns equivalent fresh results for an immutable commit', async () => {
         if (!repoRoot) return;
         const files1 = await provider.listFiles();
         const files2 = await provider.listFiles();
-        expect(files1).toBe(files2); // Same reference — cached
+        expect(files1).toEqual(files2);
     });
 
     it('should get diff content for a single file', async () => {

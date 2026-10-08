@@ -1,13 +1,11 @@
 /**
  * Git-based diff providers: commit, range, and working-tree.
  *
- * Each factory function returns an `IDiffProvider` backed by the local git CLI
- * (via `execGitAsync` from `../git/exec`).
+ * Commit/range providers use the Rust patch backend through local-patch;
+ * working-tree requests use execGitAsync until their backend migration.
  */
 
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import { execGitAsync } from '../git/exec';
-import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import type { GitChangeStatus } from '../git/types';
 import type {
     CommitDiffSource,
@@ -19,12 +17,10 @@ import type {
     RangeDiffSource,
     WorkingTreeDiffSource,
 } from './types';
-import { loadRangePatch } from './local-patch';
+import { loadCommitPatch, loadRangePatch } from './local-patch';
 import { makeDiffContent, computeSummary, splitDiffByFile, truncateDiffContent } from './diff-utils';
 
 // ── Shared helpers ───────────────────────────────────────────
-
-const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
 /**
  * Build the `-U<n>` flag array for `contextLines`, if specified.
@@ -144,83 +140,7 @@ export function createCommitDiffProvider(
         commitHash,
     };
 
-    let cachedFiles: DiffFileEntry[] | undefined;
-
-    /**
-     * The commit's first parent, or the empty tree for a root commit.
-     *
-     * `gitValidateRef` resolves `<hash>^` out of the object database instead of
-     * spawning `rev-parse --verify`, and answers `null` for the same two cases
-     * that exited non-zero: a root commit, which has no `^`, and a hash that
-     * names nothing. Neither command peeled a tag and neither does this.
-     *
-     * A repository inside a WSL distro keeps the command, because every other
-     * call in this provider reaches git through `execGitAsync` — which sends
-     * it to `wsl.exe` — and the addon runs git on the host.
-     */
-    async function getParentRef(): Promise<string> {
-        try {
-            if (resolveWorkspaceExecutionContext(repositoryRoot).kind === 'wsl') {
-                const parent = await execGitAsync(
-                    ['rev-parse', '--verify', `${commitHash}^`],
-                    repositoryRoot,
-                );
-                return parent.trim() || EMPTY_TREE_HASH;
-            }
-            const parent = await loadNativeGit().gitValidateRef(repositoryRoot, `${commitHash}^`);
-            return parent || EMPTY_TREE_HASH;
-        } catch {
-            return EMPTY_TREE_HASH;
-        }
-    }
-
-    function diffArgs(parentRef: string): string[] {
-        return [parentRef, commitHash];
-    }
-
-    return {
-        source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            if (cachedFiles) return cachedFiles;
-            const parent = await getParentRef();
-            cachedFiles = await buildFileList(repositoryRoot, diffArgs(parent));
-            return cachedFiles;
-        },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const parent = await getParentRef();
-            const contextFlag = contextLinesFlag(options?.contextLines);
-            const raw = await execGitAsync(
-                ['diff', ...contextFlag, ...diffArgs(parent), '--', filePath],
-                repositoryRoot,
-            );
-            const content = makeDiffContent(raw);
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-        },
-
-        async getFullDiff(): Promise<DiffContent> {
-            const parent = await getParentRef();
-            const raw = await execGitAsync(['diff', ...diffArgs(parent)], repositoryRoot);
-            return makeDiffContent(raw);
-        },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const files = await this.listFiles();
-            const parent = await getParentRef();
-            const map = new Map<string, DiffContent>();
-
-            // Single git diff call, then split by file header
-            const fullRaw = await execGitAsync(['diff', ...diffArgs(parent)], repositoryRoot);
-            splitDiffByFile(fullRaw, files, map);
-            return map;
-        },
-
-        async getSummary(): Promise<DiffSummary> {
-            const files = await this.listFiles();
-            return computeSummary(files);
-        },
-    };
+    return localPatchProvider(source, (file, options) => loadCommitPatch(repositoryRoot, commitHash, file, options));
 }
 
 // ── Range diff provider ──────────────────────────────────────
@@ -241,23 +161,21 @@ export function createRangeDiffProvider(
         headRef,
     };
 
+    return localPatchProvider(source, (file, options) => loadRangePatch(repositoryRoot, baseRef, headRef, file, options));
+}
+
+/** Public operations share one transport/conversion boundary for local patches. */
+function localPatchProvider(
+    source: CommitDiffSource | RangeDiffSource,
+    load: (file?: string, options?: GetFileDiffOptions) => ReturnType<typeof loadCommitPatch>,
+): IDiffProvider {
     return {
         source,
-        async listFiles() {
-            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).files;
-        },
-        async getFileDiff(filePath, options) {
-            return (await loadRangePatch(repositoryRoot, baseRef, headRef, filePath, options)).content;
-        },
-        async getFullDiff() {
-            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).content;
-        },
-        async prefetchAll() {
-            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).contentByPath;
-        },
-        async getSummary() {
-            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).summary;
-        },
+        async listFiles() { return (await load()).files; },
+        async getFileDiff(file, options) { return (await load(file, options)).content; },
+        async getFullDiff() { return (await load()).content; },
+        async prefetchAll() { return (await load()).contentByPath; },
+        async getSummary() { return (await load()).summary; },
     };
 }
 

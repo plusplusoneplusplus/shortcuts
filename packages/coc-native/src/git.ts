@@ -137,6 +137,8 @@ export type NativeGitPatchFile = Bindings.PatchFile;
 
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
+    prepareGitCommitPatch: typeof Bindings.prepareGitCommitPatch;
+    gitCommitPatch: typeof Bindings.gitCommitPatch;
     prepareGitRangePatch: typeof Bindings.prepareGitRangePatch;
     processGitPatch: typeof Bindings.processGitPatch;
     gitRangePatch: typeof Bindings.gitRangePatch;
@@ -185,6 +187,8 @@ export interface NativeGitAddon {
  * at the first call with `undefined is not a function`.
  */
 const GIT_EXPORTS = [
+    'prepareGitCommitPatch',
+    'gitCommitPatch',
     'prepareGitRangePatch',
     'processGitPatch',
     'gitRangePatch',
