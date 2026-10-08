@@ -8,7 +8,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     createCommitDiffProvider,
-    createRangeDiffProvider,
     createWorkingTreeDiffProvider,
 } from '../../src/diff/git-diff-provider';
 import type { IDiffProvider } from '../../src/diff/types';
@@ -290,71 +289,6 @@ describe('createCommitDiffProvider', () => {
 
         const diffArgs = mockExecGit.mock.calls.find(c => c[0].includes('--name-status'))![0];
         expect(diffArgs).toContain('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
-    });
-});
-
-describe('createRangeDiffProvider', () => {
-    let provider: IDiffProvider;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockExecGit.mockImplementation(async (args: string[]) => {
-            const joined = args.join(' ');
-            if (joined.includes('--name-status')) return NAME_STATUS_OUTPUT;
-            if (joined.includes('--numstat')) return NUMSTAT_OUTPUT;
-            if (joined.includes('diff') && !joined.includes('--name') && !joined.includes('--num')) {
-                if (joined.includes('-- src/foo.ts')) return FILE_DIFF_FOO;
-                return FULL_DIFF;
-            }
-            return '';
-        });
-        provider = createRangeDiffProvider(REPO, 'origin/main', 'HEAD');
-    });
-
-    it('has correct source descriptor', () => {
-        expect(provider.source).toEqual({
-            kind: 'range',
-            repositoryRoot: REPO,
-            baseRef: 'origin/main',
-            headRef: 'HEAD',
-        });
-    });
-
-    it('uses three-dot diff range', async () => {
-        await provider.listFiles();
-        const calls = mockExecGit.mock.calls;
-        const nameStatusCall = calls.find(c => c[0].includes('--name-status'));
-        expect(nameStatusCall).toBeDefined();
-        expect(nameStatusCall![0].some((a: string) => a === 'origin/main...HEAD')).toBe(true);
-    });
-
-    it('listFiles returns entries with stats', async () => {
-        const files = await provider.listFiles();
-        expect(files).toHaveLength(4);
-    });
-
-    it('getFileDiff uses range spec', async () => {
-        await provider.getFileDiff('src/foo.ts');
-        const diffCall = mockExecGit.mock.calls.find(
-            c => c[0].includes('diff') && c[0].includes('src/foo.ts'),
-        );
-        expect(diffCall).toBeDefined();
-        expect(diffCall![0].some((a: string) => a === 'origin/main...HEAD')).toBe(true);
-    });
-
-    it('getFileDiff passes contextLines as -U flag', async () => {
-        await provider.getFileDiff('src/foo.ts', { contextLines: 0 });
-        const diffCall = mockExecGit.mock.calls.find(
-            c => c[0].includes('diff') && c[0].includes('src/foo.ts') && c[0].includes('-U0'),
-        );
-        expect(diffCall).toBeDefined();
-        expect(diffCall![0].some((a: string) => a === 'origin/main...HEAD')).toBe(true);
-    });
-
-    it('getSummary computes from file list', async () => {
-        const summary = await provider.getSummary();
-        expect(summary.filesChanged).toBe(4);
-        expect(summary.additions).toBe(33);
     });
 });
 

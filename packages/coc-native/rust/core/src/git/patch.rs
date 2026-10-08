@@ -2,6 +2,8 @@
 //! Parsing preserves raw bytes and source order; presentation sorting belongs to callers.
 
 use super::status::ChangeStatus;
+use super::{run_git, GitCommandOptions, GitError};
+use std::path::Path;
 
 #[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,4 +152,94 @@ fn quoted_path(path: &str) -> Option<(String, &str)> {
         i += 1;
     }
     None
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchContent {
+    pub raw: String,
+    pub truncated: bool,
+    pub total_lines: i64,
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchSummary {
+    pub files_changed: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchResult {
+    pub files: Vec<PatchFile>,
+    pub content: PatchContent,
+    pub summary: PatchSummary,
+}
+
+/// Process complete supplied bytes before truncating the display content.
+/// An empty patch has zero lines, matching the public JavaScript contract.
+pub fn process_patch(raw: String, max_lines: Option<i64>) -> PatchResult {
+    let files = parse_patch(&raw);
+    let summary = PatchSummary {
+        files_changed: files.len() as u32,
+        additions: files.iter().map(|file| file.additions).sum(),
+        deletions: files.iter().map(|file| file.deletions).sum(),
+    };
+    let total_lines = if raw.is_empty() { 0 } else { raw.split('\n').count() as i64 };
+    let truncated = max_lines.is_some_and(|limit| limit <= 0 || total_lines > limit);
+    let raw = if truncated {
+        raw.split('\n').take(max_lines.unwrap_or(0).max(0) as usize).collect::<Vec<_>>().join("\n")
+    } else {
+        raw
+    };
+    PatchResult { files, content: PatchContent { raw, truncated, total_lines }, summary }
+}
+
+/// One shared command plan for host execution and the TypeScript WSL transport.
+/// Three-dot comparison preserves branch-range semantics. Literal pathspecs
+/// prevent file names containing Git glob/magic syntax selecting other files.
+pub fn range_patch_args(
+    base: &str,
+    head: &str,
+    path: Option<&str>,
+    context_lines: Option<u32>,
+) -> Vec<String> {
+    let mut args = vec![
+        "--literal-pathspecs".into(),
+        "diff".into(),
+        "-M".into(),
+        "-C".into(),
+        "--no-color".into(),
+        "--src-prefix=a/".into(),
+        "--dst-prefix=b/".into(),
+    ];
+    if let Some(context) = context_lines {
+        args.push(format!("-U{context}"));
+    }
+    args.push("--end-of-options".into());
+    args.push(format!("{base}...{head}"));
+    // Always terminate revision arguments, even for the combined patch.
+    args.push("--".into());
+    if let Some(path) = path {
+        args.push(path.into());
+    }
+    args
+}
+
+pub fn range_patch(
+    root: &Path,
+    base: &str,
+    head: &str,
+    path: Option<&str>,
+    context_lines: Option<u32>,
+    max_lines: Option<i64>,
+) -> Result<PatchResult, GitError> {
+    let raw = run_git(
+        root,
+        &range_patch_args(base, head, path, context_lines),
+        &GitCommandOptions::default(),
+    )?;
+    Ok(process_patch(raw, max_lines))
 }

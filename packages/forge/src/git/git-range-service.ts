@@ -24,6 +24,7 @@ import type {
 import { getLogger, LogCategory } from '../logger';
 import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import { execGitAsync } from './exec';
+import { loadRangePatch } from '../diff/local-patch';
 import { GitChangeStatus, GitCommitRange, GitCommitRangeFile, GitRangeBaseMode, GitRangeConfig } from './types';
 
 /**
@@ -424,12 +425,10 @@ export class GitRangeService {
      * Get the diff content for a specific file in a commit range.
      */
     async getFileDiff(repoRoot: string, baseRef: string, headRef: string, filePath: string): Promise<string> {
+        loadNativeGit();
         try {
             const gitPath = filePath.replace(/\\/g, '/');
-            return await execGitAsync(
-                ['diff', '-U99999', `${baseRef}...${headRef}`, '--', gitPath],
-                repoRoot
-            );
+            return (await loadRangePatch(repoRoot, baseRef, headRef, gitPath, { contextLines: 99999 })).content.raw;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get file diff for ${filePath}`, error instanceof Error ? error : undefined);
             return '';
@@ -463,8 +462,9 @@ export class GitRangeService {
      * Get the full diff for a commit range.
      */
     async getRangeDiff(repoRoot: string, baseRef: string, headRef: string): Promise<string> {
+        loadNativeGit();
         try {
-            return await execGitAsync(['diff', `${baseRef}...${headRef}`], repoRoot);
+            return (await loadRangePatch(repoRoot, baseRef, headRef)).content.raw;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get range diff for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return '';

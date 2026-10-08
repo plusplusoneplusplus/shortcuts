@@ -56,6 +56,12 @@ describe('GitRangeService without a usable addon', () => {
         ).rejects.toThrow(REBUILD);
     });
 
+    it('rejects combined and individual patches instead of reporting empty content', async () => {
+        const service = new GitRangeService();
+        await expect(service.getRangeDiff(repo, 'base', 'head')).rejects.toThrow(REBUILD);
+        await expect(service.getFileDiff(repo, 'base', 'head', 'file')).rejects.toThrow(REBUILD);
+    });
+
     it('rejects the diff statistics instead of reporting zeroes', async () => {
         await expect(
             new GitRangeService().getDiffStats(repo, 'origin/main', 'HEAD'),
