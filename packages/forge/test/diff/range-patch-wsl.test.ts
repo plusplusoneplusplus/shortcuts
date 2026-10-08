@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { GitRangeService } from '../../src/git/git-range-service';
 import { createRangeDiffProvider } from '../../src/diff/git-diff-provider';
 import { execFileAsync } from '../../src/utils/exec-utils';
 
@@ -39,10 +40,26 @@ describe('range WSL transport with actual Rust planning and processing', () => {
         expect((await provider.prefetchAll()).get('café.txt')?.raw).toBe(oneRaw.slice(0, -1));
         expect((await providers[1].getFullDiff()).raw).toContain('+two');
         expect(await provider.getSummary()).toEqual({ filesChanged: 1, additions: 1, deletions: 1 });
+        const service = new GitRangeService();
+        const metadata = await Promise.all(roots.map(root => service.getChangedFiles(root, 'base', 'head')));
+        metadata.forEach((files, index) => expect(files).toEqual([{
+            path: 'café.txt', status: 'modified', additions: 1, deletions: 1,
+            oldPath: undefined, repositoryRoot: roots[index],
+        }]));
+        expect(await service.getDiffStats(roots[1], 'base', 'head')).toEqual({ additions: 1, deletions: 1 });
+        expect(vi.mocked(execFileAsync).mock.calls.every(call =>
+            call[1]?.includes('--literal-pathspecs') && !call[1]?.includes('--numstat') && !call[1]?.includes('--shortstat'),
+        )).toBe(true);
+        service.dispose();
     });
 
     it('propagates external transport errors', async () => {
         vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'WSL failed' });
         await expect(createRangeDiffProvider('\\\\wsl$\\Ubuntu\\home\\one\\repo', 'base', 'head').getFullDiff()).rejects.toThrow('WSL failed');
+        const service = new GitRangeService();
+        const root = '\\\\wsl$\\Ubuntu\\home\\one\\repo';
+        expect(await service.getChangedFiles(root, 'base', 'head')).toEqual([]);
+        expect(await service.getDiffStats(root, 'base', 'head')).toEqual({ additions: 0, deletions: 0 });
+        service.dispose();
     });
 });

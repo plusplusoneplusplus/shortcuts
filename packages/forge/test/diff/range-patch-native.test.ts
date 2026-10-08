@@ -70,6 +70,41 @@ describe('Rust-owned range provider and production patch service', () => {
         service.dispose();
     });
 
+    it('uses decoded patch paths and hunk counts for production range metadata', async () => {
+        const { root, base, head } = fixture();
+        const service = new GitRangeService();
+        const files = await service.getChangedFiles(root, base, head);
+        expect(files.find(file => file.path === 'café.txt')).toMatchObject({
+            status: 'added', additions: 2, deletions: 0, repositoryRoot: root,
+        });
+        expect(files.find(file => file.path === 'new.txt')).toMatchObject({
+            status: 'renamed', oldPath: 'old.txt', additions: 0, deletions: 0,
+        });
+        expect(files.find(file => file.path === 'empty.txt')).toMatchObject({ status: 'added', additions: 0 });
+        expect(files.map(file => file.path)).toEqual((await createRangeDiffProvider(root, base, head).listFiles()).map(file => file.path));
+        expect(await service.getDiffStats(root, base, head)).toEqual({ additions: 3, deletions: 1 });
+        service.dispose();
+    });
+
+    it('preserves source and destination paths for a rename within a directory', async () => {
+        const { root } = fixture();
+        fs.mkdirSync(path.join(root, 'src'));
+        fs.writeFileSync(path.join(root, 'src', 'old.txt'), 'rename content\n');
+        git(root, 'add', '.');
+        git(root, 'commit', '-qm', 'nested source');
+        const base = git(root, 'rev-parse', 'HEAD');
+        fs.renameSync(path.join(root, 'src', 'old.txt'), path.join(root, 'src', 'new.txt'));
+        git(root, 'add', '.');
+        git(root, 'commit', '-qm', 'nested rename');
+        const service = new GitRangeService();
+        expect(await service.getChangedFiles(root, base, 'HEAD')).toEqual([{
+            path: 'src/new.txt', oldPath: 'src/old.txt', status: 'renamed',
+            additions: 0, deletions: 0, repositoryRoot: root,
+        }]);
+        expect(await service.getDiffStats(root, base, 'HEAD')).toEqual({ additions: 0, deletions: 0 });
+        service.dispose();
+    });
+
     it('honors context and truncates without losing total line counts', async () => {
         const { root, initial, head } = fixture();
         const provider = createRangeDiffProvider(root, initial, head);
@@ -85,12 +120,17 @@ describe('Rust-owned range provider and production patch service', () => {
     it('refreshes mutable refs without retaining a TypeScript patch cache', async () => {
         const { root, initial, head } = fixture();
         const provider = createRangeDiffProvider(root, initial, 'feature');
+        const service = new GitRangeService();
+        expect((await service.getChangedFiles(root, initial, 'feature')).some(file => file.path === 'base-only.txt')).toBe(false);
         expect((await provider.listFiles()).some(file => file.path === 'base-only.txt')).toBe(false);
         git(root, 'update-ref', 'refs/heads/feature', git(root, 'rev-parse', 'HEAD'));
         expect((await provider.listFiles()).some(file => file.path === 'base-only.txt')).toBe(true);
         expect((await provider.getSummary()).filesChanged).toBe(6);
         expect((await provider.getFullDiff()).raw).toContain('base-only.txt');
+        expect((await service.getChangedFiles(root, initial, 'feature')).some(file => file.path === 'base-only.txt')).toBe(true);
+        expect(await service.getDiffStats(root, initial, 'feature')).toEqual({ additions: 4, deletions: 1 });
         expect(head).not.toBe(git(root, 'rev-parse', 'feature'));
+        service.dispose();
     });
 
     it('isolates concurrent workspaces with identical relative paths', async () => {
@@ -100,6 +140,12 @@ describe('Rust-owned range provider and production patch service', () => {
         expect(contents[0].raw).toContain('+one');
         expect(contents[0].raw).not.toContain('+two');
         expect(contents[1].raw).toContain('+two');
+        const service = new GitRangeService();
+        const metadata = await Promise.all([one, two].map(({ root, initial, head }) => service.getChangedFiles(root, initial, head)));
+        metadata.forEach((files, index) => expect(files.find(file => file.path === 'shared.txt')).toMatchObject({
+            repositoryRoot: [one, two][index].root, additions: 1, deletions: 1,
+        }));
+        service.dispose();
     });
 
     it('answers empty ranges/missing paths and exposes invalid revisions', async () => {
