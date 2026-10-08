@@ -1784,7 +1784,7 @@ pub fn process_git_working_tree_patch(
     max_lines: Option<i64>,
 ) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::process_working_tree_patch(outputs, max_lines))
+        Ok(coc_native_core::git::patch::process_working_tree_patch(outputs, max_lines, false))
     }))
 }
 
@@ -1803,6 +1803,34 @@ pub fn git_working_tree_patch(
             path.as_deref(),
             context,
             max_lines,
+            false,
+        )
+        .map_err(to_napi_error)
+    }))
+}
+
+/// Headed staged/index-to-disk display uses the same processing as other consumers.
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn process_git_pending_patch(
+    outputs: Vec<String>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::process_working_tree_patch(outputs, None, true))
+    }))
+}
+
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn git_pending_patch(
+    root: String,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::working_tree_patch(
+            &PathBuf::from(root),
+            "all",
+            None,
+            None,
+            None,
+            true,
         )
         .map_err(to_napi_error)
     }))

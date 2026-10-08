@@ -290,7 +290,7 @@ fn working_tree_batch_preserves_comparisons_and_last_metadata() {
     assert!(working_tree_patch_args("bad", None, None).is_err());
     let staged = "diff --git a/same b/same\nnew file mode 100644\n@@ -0,0 +1 @@\n+stage";
     let unstaged = "diff --git a/same b/same\n@@ -1 +1,2 @@\n-stage\n+disk\n+extra";
-    let result = process_working_tree_patch(vec![staged.into(), unstaged.into()], Some(2));
+    let result = process_working_tree_patch(vec![staged.into(), unstaged.into()], Some(2), false);
     assert_eq!(result.files.len(), 1);
     assert_eq!(result.files[0].status, "modified");
     assert_eq!(result.files[0].raw, format!("{staged}\n{unstaged}"));
@@ -298,7 +298,7 @@ fn working_tree_batch_preserves_comparisons_and_last_metadata() {
     assert_eq!((result.summary.additions, result.summary.deletions), (2, 1));
     assert_eq!(result.content.raw, "diff --git a/same b/same\nnew file mode 100644");
     assert!(result.content.truncated);
-    assert_eq!(process_working_tree_patch(vec![String::new()], None).content.total_lines, 0);
+    assert_eq!(process_working_tree_patch(vec![String::new()], None, false).content.total_lines, 0);
 }
 
 #[test]
@@ -311,4 +311,26 @@ fn parses_combined_and_unmerged_headers_without_losing_paths() {
     let file = &parse_patch("* Unmerged path same.txt\n")[0];
     assert_eq!(file.status, "conflict");
     assert_eq!(file.path, "same.txt");
+}
+
+#[test]
+fn pending_headings_preserve_empty_sections_bytes_and_truncation() {
+    use coc_native_core::git::patch::process_working_tree_patch;
+    for (staged, unstaged, expected) in [
+        ("", "", ""),
+        ("stage", "", "# Staged Changes\n\nstage"),
+        ("", "disk", "# Unstaged Changes\n\ndisk"),
+        ("stage", "disk", "# Staged Changes\n\nstage\n\n# Unstaged Changes\n\ndisk"),
+        (" ", "disk\n", "# Unstaged Changes\n\ndisk\n"),
+    ] {
+        let outputs = vec![staged.into(), unstaged.into()];
+        let full = process_working_tree_patch(outputs.clone(), None, true);
+        assert_eq!(full.content.raw, expected);
+        let limited = process_working_tree_patch(outputs, Some(2), true);
+        assert_eq!(limited.content.total_lines, full.content.total_lines);
+        assert_eq!(
+            limited.content.raw,
+            expected.split('\n').take(2).collect::<Vec<_>>().join("\n")
+        );
+    }
 }

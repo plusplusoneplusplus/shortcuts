@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadCommitShowPatch, loadCommitFiles } from '../../src/diff/local-patch';
 import { createCommitDiffProvider, createWorkingTreeDiffProvider } from '../../src/diff/git-diff-provider';
+import { GitLogService } from '../../src/git/git-log-service';
 import { WorkingTreeService } from '../../src/git/working-tree-service';
 import { execFileAsync } from '../../src/utils/exec-utils';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
@@ -115,4 +116,31 @@ it('routes production per-file working-tree patches through WSL with native cont
         expect(args).toEqual(expect.arrayContaining(['Ubuntu', '/home/repo', '--literal-pathspecs', '-U99999', '--', 'café.txt']));
         expect(args?.includes('--cached')).toBe(staged);
     }
+});
+
+it('GitLogService pending/staged patches route WSL batches and compose headings in Rust', async () => {
+    vi.mocked(execFileAsync).mockClear();
+    vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
+        stdout: raw.replace('+new', `+${args?.includes('Debian') ? 'two' : 'one'}-${args?.includes('--cached') ? 'stage' : 'disk'}`), stderr: '',
+    }));
+    const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
+    const service = new GitLogService();
+    const results = await Promise.all(roots.map(root => service.getPendingChangesDiff(root)));
+    for (const [index, marker] of ['one', 'two'].entries()) {
+        expect(results[index]).toBe(`# Staged Changes\n\n${raw.replace('+new', `+${marker}-stage`).slice(0, -1)}\n\n# Unstaged Changes\n\n${raw.replace('+new', `+${marker}-disk`).slice(0, -1)}`);
+        const calls = vi.mocked(execFileAsync).mock.calls.filter(call => call[1]?.includes(index ? 'Debian' : 'Ubuntu'));
+        expect(calls).toHaveLength(2);
+        calls.forEach(call => expect(call[1]).toContain(`/home/${marker}/repo`));
+    }
+    expect(await service.getStagedChangesDiff(roots[0])).toBe(raw.replace('+new', '+one-stage').slice(0, -1));
+    for (const staged of [true, false]) {
+        vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => {
+            if (args?.includes('--cached') === staged) throw { stderr: 'batch failed' };
+            return { stdout: raw, stderr: '' };
+        });
+        expect(await service.getPendingChangesDiff(roots[0])).toBe('');
+    }
+    expect(await service.getStagedChangesDiff(roots[0])).toBe(raw.slice(0, -1));
+    vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'staged failed' });
+    expect(await service.getStagedChangesDiff(roots[0])).toBe('');
 });

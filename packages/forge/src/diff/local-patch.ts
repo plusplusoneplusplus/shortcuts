@@ -24,8 +24,12 @@ export function loadWorkingTreePatch(root: string, scope: 'all' | 'staged' | 'un
     return loadLocalPatch(root, { scope }, filePath, options);
 }
 
+export function loadPendingPatch(root: string) {
+    return loadLocalPatch(root, { scope: 'all', headings: true });
+}
+
 async function loadLocalPatch(
-    root: string, source: { commit: string; show?: boolean } | { base: string; head: string } | { scope: string },
+    root: string, source: { commit: string; show?: boolean } | { base: string; head: string } | { scope: string; headings?: boolean },
     filePath?: string, options?: GetFileDiffOptions,
 ) {
     const addon = loadNativeGit();
@@ -35,7 +39,8 @@ async function loadLocalPatch(
     if (resolveWorkspaceExecutionContext(root).kind === 'wsl') {
         if ('scope' in source) {
             const batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
-            result = await addon.processGitWorkingTreePatch(await Promise.all(batch.map(args => execGitAsync(args, root))), maxLines);
+            const outputs = await Promise.all(batch.map(args => execGitAsync(args, root)));
+            result = source.headings ? await addon.processGitPendingPatch(outputs) : await addon.processGitWorkingTreePatch(outputs, maxLines);
         } else {
             const args = 'commit' in source
                 ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
@@ -44,9 +49,14 @@ async function loadLocalPatch(
         }
     } else {
         await ensureGitSafeDirectoryAsync(root);
-        result = 'scope' in source ? await addon.gitWorkingTreePatch(root, source.scope, filePath, context, maxLines) : 'commit' in source
-            ? await (source.show ? addon.gitShowPatch : addon.gitCommitPatch)(root, source.commit, filePath, context, maxLines)
-            : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
+        if ('scope' in source) {
+            result = source.headings ? await addon.gitPendingPatch(root)
+                : await addon.gitWorkingTreePatch(root, source.scope, filePath, context, maxLines);
+        } else {
+            result = 'commit' in source
+                ? await (source.show ? addon.gitShowPatch : addon.gitCommitPatch)(root, source.commit, filePath, context, maxLines)
+                : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
+        }
     }
     return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
 }

@@ -1,26 +1,11 @@
 /**
- * GitLogService: commit history, diffs, and file content queries.
- *
- * Every method runs in the native addon, so nothing in this file starts a child
- * process. The reads that only touch objects and refs — history, a commit's
- * parent, a file's content at a commit, whether a ref names a commit, the
- * branch names — are `gix`-backed and spawn nothing at all; the diffs and the
- * `diff-tree` metadata/patch plans still shell out, from Rust, because their rename detection
- * and line counts follow git's own diff drivers.
- *
- * Unlike the rest of forge's git code this service never had a WSL branch — it
- * called `execAsync` directly rather than going through `execGitAsync` — so
- * there is no routing split to preserve, and every repository takes one path.
- *
- * `loadNativeGit()` sits outside every try/catch here. Every method in this
- * file answers failure with silence — an empty list, an empty string, an
- * `undefined` — and a missing or stale binary must not look like a repository
- * with no history in it.
- *
- * Extracted from `src/shortcuts/git/git-log-service.ts`.
+ * Git history/object reads use native capabilities; pending/staged patches use
+ * the shared Rust patch backend with TypeScript workspace/WSL transport.
+ * Native loading stays outside catches so missing capabilities remain visible.
  */
 
 import * as path from 'path';
+import { loadPendingPatch, loadWorkingTreePatch } from '../diff/local-patch';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { NativeGitLogCommit } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
@@ -162,27 +147,9 @@ export class GitLogService {
      * Get the diff for pending changes (staged + unstaged).
      */
     async getPendingChangesDiff(repoRoot: string): Promise<string> {
-        const native = loadNativeGit();
+        loadNativeGit();
         try {
-            const unstaged = await native.execGit(['diff'], repoRoot, {
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-            const staged = await native.execGit(['diff', '--cached'], repoRoot, {
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-
-            let combined = '';
-            if (staged.trim()) {
-                combined += '# Staged Changes\n\n' + staged;
-            }
-            if (unstaged.trim()) {
-                if (combined) {
-                    combined += '\n\n';
-                }
-                combined += '# Unstaged Changes\n\n' + unstaged;
-            }
-
-            return combined;
+            return (await loadPendingPatch(repoRoot)).content.raw;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to get pending changes diff', error instanceof Error ? error : undefined);
             return '';
@@ -193,11 +160,9 @@ export class GitLogService {
      * Get the diff for staged changes only.
      */
     async getStagedChangesDiff(repoRoot: string): Promise<string> {
-        const native = loadNativeGit();
+        loadNativeGit();
         try {
-            return await native.execGit(['diff', '--cached'], repoRoot, {
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
+            return (await loadWorkingTreePatch(repoRoot, 'staged')).content.raw;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to get staged changes diff', error instanceof Error ? error : undefined);
             return '';

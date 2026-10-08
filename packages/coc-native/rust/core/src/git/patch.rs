@@ -350,9 +350,29 @@ pub fn working_tree_patch_args(
 }
 
 /// Last patch metadata wins per path, while display bytes retain both comparisons.
-pub fn process_working_tree_patch(outputs: Vec<String>, max_lines: Option<i64>) -> PatchResult {
+pub fn process_working_tree_patch(
+    outputs: Vec<String>,
+    max_lines: Option<i64>,
+    headings: bool,
+) -> PatchResult {
     let content = patch_content(
-        outputs.iter().filter(|raw| !raw.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n"),
+        outputs
+            .iter()
+            .enumerate()
+            .filter(|(_, raw)| !raw.trim().is_empty())
+            .map(|(index, raw)| {
+                if headings {
+                    format!(
+                        "# {} Changes\n\n{}",
+                        if index == 0 { "Staged" } else { "Unstaged" },
+                        raw
+                    )
+                } else {
+                    raw.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(if headings { "\n\n" } else { "\n" }),
         max_lines,
     );
     let mut files: Vec<PatchFile> = Vec::new();
@@ -384,10 +404,11 @@ pub fn working_tree_patch(
     path: Option<&str>,
     context: Option<u32>,
     max_lines: Option<i64>,
+    headings: bool,
 ) -> Result<PatchResult, GitError> {
     let outputs = working_tree_patch_args(scope, path, context)?
         .iter()
         .map(|args| run_git(root, args, &GitCommandOptions::default()))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(process_working_tree_patch(outputs, max_lines))
+    Ok(process_working_tree_patch(outputs, max_lines, headings))
 }

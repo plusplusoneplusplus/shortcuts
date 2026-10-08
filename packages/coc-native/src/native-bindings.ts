@@ -524,6 +524,8 @@ export interface GitNoIndexDiffInput {
   afterLabel: string
 }
 
+export declare function gitPendingPatch(root: string): Promise<PatchResult>
+
 /** Which ref a range is measured against, and whether that was the ref asked for. */
 export interface GitRangeBaseRef {
   /** Absent when the repository has no default branch to fall back to. */
@@ -1061,6 +1063,9 @@ export declare function processGitCommitFiles(nameStatus: string, numstat: strin
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
+
+/** Headed staged/index-to-disk display uses the same processing as other consumers. */
+export declare function processGitPendingPatch(outputs: Array<string>): Promise<PatchResult>
 
 export declare function processGitWorkingTreePatch(outputs: Array<string>, maxLines?: number | undefined | null): Promise<PatchResult>
 
