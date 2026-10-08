@@ -1666,6 +1666,16 @@ pub fn prepare_git_range_patch(
     }))
 }
 
+/// Construct a batch of remote patches on a worker; authentication stays in transport.
+#[napi(ts_return_type = "Promise<string>")]
+pub fn build_remote_git_patch(
+    files: Vec<coc_native_core::git::remote_patch::RemotePatchInput>,
+) -> AsyncTask<crate::task::Blocking<String>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::remote_patch::build_remote_patch(files).map_err(to_napi_error)
+    }))
+}
+
 /// Shared supplied-patch processing, including summaries and truncation.
 #[napi(ts_return_type = "Promise<PatchResult>")]
 pub fn process_git_patch(

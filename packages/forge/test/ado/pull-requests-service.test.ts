@@ -518,6 +518,17 @@ describe('AdoPullRequestsService', () => {
         expect(result).toBe('');
     });
 
+    it('strict content reads reject missing streams and API failures while allowing empty files', async () => {
+        gitApi.getItemText.mockResolvedValue(null);
+        await expect(service.getFileContent('repo-1', '/file', 'sha', 'proj', true))
+            .rejects.toThrow('ADO returned no file content stream');
+        gitApi.getItemText.mockRejectedValue(new Error('transport failed'));
+        await expect(service.getFileContent('repo-1', '/file', 'sha', 'proj', true))
+            .rejects.toThrow('transport failed');
+        gitApi.getItemText.mockResolvedValue(Readable.from([]));
+        await expect(service.getFileContent('repo-1', '/file', 'sha', 'proj', true)).resolves.toBe('');
+    });
+
     it('getFileContent passes versionDescriptor with GitVersionType.Commit (value 2)', async () => {
         const stream = Readable.from([]);
         gitApi.getItemText.mockResolvedValue(stream);
