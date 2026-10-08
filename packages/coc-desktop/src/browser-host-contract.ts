@@ -46,6 +46,7 @@ export interface BrowserEngineHost {
     readonly engine: BrowserEngine;
     availability(): Promise<BrowserAvailability>;
     create(request: BrowserViewRequest, sink: BrowserEventSink): Promise<BrowserHostedView>;
+    importCookies?(cookies: BrowserImportCookie[]): Promise<void>;
     clearData(): Promise<void>;
     dispose(): Promise<void>;
 }

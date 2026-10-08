@@ -14,6 +14,7 @@
  * logic here thin and push everything testable into `browser-view-policy.ts`.
  */
 
+import type { BrowserImportCookie } from './browser-cookie-import';
 import { BrowserWindow, WebContents, session, shell, webContents } from 'electron';
 import * as fs from 'node:fs';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
@@ -326,10 +327,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 entry.authorization!.adopt(guestId);
                 pushState(entry);
             },
-            importCookies: async cookies => {
-                for (const cookie of cookies) { await this.profile().cookies.set(cookie); }
-                await this.profile().cookies.flushStore();
-            },
+            importCookies: cookies => this.importCookies(cookies),
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
@@ -337,6 +335,11 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             focus: () => entry.contents?.focus(),
             close: () => destroyEntry(entry),
         };
+    }
+
+    async importCookies(cookies: BrowserImportCookie[]): Promise<void> {
+        for (const cookie of cookies) { await this.profile().cookies.set(cookie); }
+        await this.profile().cookies.flushStore();
     }
 
     async clearData(): Promise<void> {

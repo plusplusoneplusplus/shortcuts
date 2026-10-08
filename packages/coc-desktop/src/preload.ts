@@ -211,8 +211,8 @@ function subscribe<T>(channel: string, callback: (payload: T) => void): () => vo
  */
 const browser = {
     sources: BROWSER_SOURCE_KINDS,
-    importCookies: (viewId: string, domain: string, cookies: string): Promise<BrowserOperationResult> =>
-        ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies),
+    importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserOperationResult> =>
+        ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies, engine),
     open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),
     adopt: (viewId: string, guestId: number): Promise<BrowserOperationResult> =>

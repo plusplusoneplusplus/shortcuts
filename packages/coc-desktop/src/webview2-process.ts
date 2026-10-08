@@ -125,7 +125,7 @@ export class WebView2Process {
     }
 
     async request(op: string, payload: Record<string, unknown> = {}): Promise<void> {
-        if (!this.child && op !== 'open' && op !== 'clear') {
+        if (!this.child && op !== 'open' && op !== 'clear' && op !== 'import-profile-cookies') {
             throw new BrowserHostError('runtime-crashed', 'WebView2 host is not running. Retry explicitly.');
         }
         await this.start();

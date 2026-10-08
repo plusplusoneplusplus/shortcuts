@@ -252,3 +252,19 @@ describe('browser cookie import', () => {
         expect(screen.queryByRole('menuitem', { name: 'Import cookies…' })).toBeNull();
     });
 });
+
+it.each([undefined, 'webview2'] as const)('imports from a blank tab with related engine %s before opening any page', async relatedEngine => {
+    mocks.bridge!.importCookies = vi.fn(async () => ({ ok: true }));
+    render(<UnifiedBrowserTab tabId="tab" viewId="blank" sessionKey="workspace" relatedEngine={relatedEngine} active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+    expect(screen.getByRole('menuitem', { name: 'Import cookies…' })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByLabelText('Domain')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'app.example.com' } });
+    fireEvent.change(screen.getByLabelText('Cookies'), { target: { value: 'a=b' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Import', exact: true }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cookies imported for app.example.com'));
+    expect(mocks.bridge!.importCookies).toHaveBeenCalledWith(null, 'app.example.com', 'a=b', relatedEngine);
+    expect(open).not.toHaveBeenCalled();
+    expect(mocks.bridge!.navigate).not.toHaveBeenCalled();
+});

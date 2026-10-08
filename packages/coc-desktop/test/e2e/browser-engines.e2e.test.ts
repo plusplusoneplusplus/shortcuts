@@ -44,6 +44,16 @@ afterEach(() => {
 });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it('imports cookies from a blank tab before opening the first page', async () => {
+        const directory = profileRoot('blank-import-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--blank-cookie-import-check');
+        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true }, states: [] });
+        expect(steps.get('blank-authenticated')?.url).toContain('localhost');
+        expect(steps.get('blank-authenticated')?.report.authenticated).toBe(true);
+        expect(steps.get('blank-authenticated')?.report.cookie).not.toContain('imported=');
+    }, 90_000);
+
     it('imports an HttpOnly auth cookie for the original domain after a cross-domain login redirect', async () => {
         const directory = profileRoot('cookie-import-');
         temporary.push(directory);

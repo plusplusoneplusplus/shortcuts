@@ -203,7 +203,7 @@ export function UnifiedBrowserTab({
                 engine={engine}
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
-                onImportCookies={opened && bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
+                onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
             />
         </form>
     );
@@ -218,7 +218,7 @@ export function UnifiedBrowserTab({
             placeholderTestId="browser-placeholder"
             toolbar={toolbar}
         >
-            {cookieDialogOpen && bridge && <BrowserCookieImportDialog bridge={bridge} viewId={viewId}
+            {cookieDialogOpen && bridge && <BrowserCookieImportDialog bridge={bridge} viewId={opened ? viewId : null} relatedEngine={engine ?? relatedEngine}
                 initialDomain={(() => { try { return new URL(currentUrl ?? '').hostname; } catch { return ''; } })()}
                 onClose={() => { setCookieDialogOpen(false); addressRef.current?.focus(); }}
                 onImported={domain => { setCookieDialogOpen(false); setNotice(`Cookies imported for ${domain}. Open the original URL to continue.`); addressRef.current?.focus(); }} />}

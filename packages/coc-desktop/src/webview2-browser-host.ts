@@ -1,3 +1,4 @@
+import type { BrowserImportCookie } from './browser-cookie-import';
 import { BrowserWindow, shell, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -183,6 +184,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             entry.window.setFullScreen(message.fullscreen || entry.wasFullscreen);
             entry.reposition();
         }
+    }
+
+    async importCookies(cookies: BrowserImportCookie[]): Promise<void> {
+        await this.process.request('import-profile-cookies', { cookies });
     }
 
     async clearData(): Promise<void> {

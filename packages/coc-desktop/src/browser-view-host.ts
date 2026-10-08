@@ -71,9 +71,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_VIEW_ADOPT_CHANNEL, (event, id: unknown, guestId: unknown) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender)
             ? manager!.adopt(event.sender.id, id, guestId) : { ok: false, reason: 'no-window' });
-    ipcMain.handle(BROWSER_IMPORT_COOKIES_CHANNEL, (event, id: unknown, domain: unknown, cookies: unknown) =>
+    ipcMain.handle(BROWSER_IMPORT_COOKIES_CHANNEL, (event, id: unknown, domain: unknown, cookies: unknown, engine: unknown) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) && ownWindow(event.sender)
-            ? manager!.importCookies(event.sender.id, id, domain, cookies) : { ok: false, reason: 'no-window' });
+            ? manager!.importCookies(event.sender.id, id, domain, cookies, engine) : { ok: false, reason: 'no-window' });
     ipcMain.handle(BROWSER_VIEW_NAVIGATE_CHANNEL, (event, id: unknown, url: unknown) =>
         ownWindow(event.sender) ? manager!.navigate(event.sender.id, id, url) : { ok: false, reason: 'no-window' });
     ipcMain.on(BROWSER_VIEW_NAV_CHANNEL, (event, id: unknown, action: unknown) => {

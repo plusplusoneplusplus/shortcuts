@@ -454,7 +454,7 @@ fn dispatch(state: &State, command: Command) {
         }
         return;
     }
-    if command.op == "open" || command.op == "clear" {
+    if command.op == "open" || command.op == "clear" || command.op == "import-profile-cookies" {
         if command.op == "open"
             && (!command.url.as_deref().is_some_and(|url| allowed_url(url, false))
                 || command.view_id.as_ref().is_none_or(|id| !allowed_view_id(id)))
@@ -718,6 +718,7 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
         .and_then(|value| value.parse::<usize>().ok())
         .map(|value| HWND(value as *mut _));
     if command.op != "clear"
+        && command.op != "import-profile-cookies"
         && parent.is_none_or(|parent| !unsafe { IsWindow(Some(parent)) }.as_bool())
     {
         startup_failure(state, &popup, command.id, "no-window", "Desktop window is closed.");
@@ -802,6 +803,23 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
                         view.webview.Settings()?.SetAreDevToolsEnabled(false)?;
+                        if command.op == "import-profile-cookies" {
+                            let imported = import_cookies(
+                                &view,
+                                command.cookies.as_deref().unwrap_or_default(),
+                            );
+                            let closed = view.close();
+                            if imported.is_ok() && closed.is_ok() {
+                                protocol::success(response_id);
+                            } else {
+                                protocol::failure(
+                                    response_id,
+                                    "invalid",
+                                    "Cookie import failed. Some cookies may have been added.",
+                                );
+                            }
+                            return Ok(());
+                        }
                         if command.op == "clear" {
                             clear_profile(view, response_id)?;
                             return Ok(());

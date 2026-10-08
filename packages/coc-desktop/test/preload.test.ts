@@ -152,7 +152,9 @@ describe('preload bridge', () => {
         await api.setDefaultEngine('webview2');
         expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_SET_CHANNEL, 'webview2');
         await api.importCookies('view', 'app.example.com', 'session=token');
-        expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, 'view', 'app.example.com', 'session=token');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, 'view', 'app.example.com', 'session=token', undefined);
+        await api.importCookies(null, 'app.example.com', 'session=token', 'webview2');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, null, 'app.example.com', 'session=token', 'webview2');
         await api.clearData('electron');
         expect(invoke).toHaveBeenCalledWith(BROWSER_CLEAR_DATA_CHANNEL, 'electron');
         api.focus('view');

@@ -28,6 +28,7 @@ function harness(defaultEngine: BrowserEngine = 'electron') {
             created.push({ request, sink, view, engine });
             return view;
         }),
+        importCookies: vi.fn(async () => {}),
         clearData: vi.fn(async () => {}), dispose: vi.fn(async () => {}),
     });
     const hosts = { electron: makeHost('electron'), webview2: makeHost('webview2') };
@@ -518,5 +519,40 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s cookie imports', engi
         const reply = await h.manager.importCookies(1, 'view', 'app.example.com', 'a=b');
         expect(reply).toMatchObject({ ok: false, reason: 'invalid' });
         expect(JSON.stringify(reply)).not.toContain('secret');
+    });
+});
+
+describe.each<BrowserEngine>(['electron', 'webview2'])('%s blank-tab cookie imports', engine => {
+    it('imports into the default profile without creating a view or navigating', async () => {
+        const h = harness(engine);
+        expect(await h.manager.importCookies(1, null, 'app.example.com', 'a=b')).toEqual({ ok: true });
+        expect(h.hosts[engine].importCookies).toHaveBeenCalledWith([expect.objectContaining({ name: 'a', value: 'b' })]);
+        expect(h.created).toHaveLength(0);
+        expect(h.send).not.toHaveBeenCalled();
+        const other = engine === 'electron' ? 'webview2' : 'electron';
+        expect(await h.manager.importCookies(2, null, 'app.example.com', 'a=b', other)).toEqual({ ok: true });
+        expect(h.hosts[other].importCookies).toHaveBeenCalledOnce();
+        expect(await h.manager.importCookies(1, 'missing', 'app.example.com', 'a=b')).toMatchObject({ reason: 'not-found' });
+        expect(await h.manager.importCookies(1, null, 'app.example.com', 'a=b', 'unknown')).toMatchObject({ reason: 'bad-engine' });
+    });
+    it('waits for profile imports during cleanup and blocks further imports', async () => {
+        const h = harness(engine);
+        let finish!: () => void;
+        vi.mocked(h.hosts[engine].importCookies!).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+        const importing = h.manager.importCookies(1, null, 'app.example.com', 'a=b');
+        await vi.waitFor(() => expect(h.hosts[engine].importCookies).toHaveBeenCalled());
+        const clearing = h.manager.clear(engine);
+        expect(await h.manager.importCookies(2, null, 'app.example.com', 'a=b')).toEqual({ ok: false, reason: 'busy' });
+        expect(h.hosts[engine].clearData).not.toHaveBeenCalled();
+        finish();
+        expect(await importing).toEqual({ ok: true });
+        expect(await clearing).toEqual({ ok: true });
+    });
+    it('returns unavailable-engine errors without creating a browser', async () => {
+        const h = harness(engine);
+        vi.mocked(h.hosts[engine].availability).mockResolvedValue({ engine, available: false, reason: 'missing-runtime' });
+        expect(await h.manager.importCookies(1, null, 'app.example.com', 'a=b')).toMatchObject({ ok: false, reason: 'missing-runtime' });
+        expect(h.hosts[engine].importCookies).not.toHaveBeenCalled();
+        expect(h.created).toHaveLength(0);
     });
 });

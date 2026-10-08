@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button, Dialog } from '../../../ui';
-import type { DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
+import type { BrowserEngine, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 
-export function BrowserCookieImportDialog({ bridge, viewId, initialDomain, onClose, onImported }: {
+export function BrowserCookieImportDialog({ bridge, viewId, relatedEngine, initialDomain, onClose, onImported }: {
     bridge: DesktopBrowserBridge;
-    viewId: string;
+    viewId: string | null;
+    relatedEngine?: BrowserEngine;
     initialDomain: string;
     onClose(): void;
     onImported(domain: string): void;
@@ -24,7 +25,9 @@ export function BrowserCookieImportDialog({ bridge, viewId, initialDomain, onClo
         setBusy(true);
         setError(null);
         try {
-            const reply = await bridge.importCookies(viewId, domain.trim(), cookies);
+            const reply = await (viewId === null
+                ? bridge.importCookies(null, domain.trim(), cookies, relatedEngine)
+                : bridge.importCookies(viewId, domain.trim(), cookies));
             if (reply.ok) { setCookies(''); onImported(domain.trim()); }
             else setError(reply.message ?? `Could not import cookies: ${reply.reason}.`);
         } catch { setError('Could not import cookies. Try again.'); }

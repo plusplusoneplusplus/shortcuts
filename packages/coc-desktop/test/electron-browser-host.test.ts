@@ -191,3 +191,12 @@ it('imports auth cookies into the persistent profile even while showing a differ
     expect(mocks.profile.cookies.set).toHaveBeenCalledWith(cookies[0]);
     expect(mocks.profile.cookies.flushStore).toHaveBeenCalled();
 });
+
+it('imports directly into the Electron profile without any guest or page', async () => {
+    const host = new ElectronBrowserHost('profile');
+    const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+    const cookies = parseBrowserCookies('app.example.com', 'a=b');
+    await host.importCookies(cookies);
+    expect(mocks.profile.cookies.set).toHaveBeenCalledWith(cookies[0]);
+    expect(mocks.contents.loadURL).not.toHaveBeenCalled();
+});

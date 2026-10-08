@@ -13,6 +13,7 @@ const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
 const restart = process.argv.includes('--restart-check');
 const afterClear = process.argv.includes('--after-clear');
+const blankImportCheck = process.argv.includes('--blank-cookie-import-check');
 const cookieImportCheck = process.argv.includes('--cookie-import-check');
 const focusCheck = process.argv.includes('--focus-check');
 const execFileAsync = promisify(execFile);
@@ -125,12 +126,21 @@ app.whenReady().then(async () => {
     const pref = await call(main, 'getPreferences');
     if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
     await call(main, 'setDefaultEngine', engine);
-    const opened = await call(main, 'open', 'main', base + '/?tab=main', 'workspace-a');
+    if (blankImportCheck) {
+        const imported = await call(main, 'importCookies', null, 'localhost', JSON.stringify([
+            { name: 'imported', value: 'auth-token', path: '/', secure: false, httpOnly: true, sameSite: 'lax' },
+        ]));
+        emit('blank-import', { imported, states: await spa('window.states') });
+    }
+    const initialUrl = blankImportCheck ? base.replace('127.0.0.1', 'localhost') + '/cookie-auth?tab=main' : base + '/?tab=main';
+    const opened = await call(main, 'open', 'main', initialUrl, 'workspace-a');
     if (!opened.ok) throw new Error('Browser startup failed: ' + JSON.stringify(opened));
     const home = await settled(main, 'main', s => s.title === 'Home');
     await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
     await waitFor(() => reports.get('main'), 'fixture page report');
-    if (cookieImportCheck) {
+    if (blankImportCheck) {
+        emit('blank-authenticated', { url: home.url, report: reports.get('main') });
+    } else if (cookieImportCheck) {
         const original = base.replace('127.0.0.1', 'localhost') + '/cookie-auth?tab=main';
         await call(main, 'navigate', 'main', original);
         const redirected = await settled(main, 'main', s => s.title === 'Login' && s.url.startsWith(base));

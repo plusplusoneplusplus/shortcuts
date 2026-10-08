@@ -154,7 +154,9 @@ initialization. `--check` detects the runtime without opening a view. Hosted
 pages receive no host objects or CoC bridge; navigation is HTTP(S)-only, with
 `about:blank` allowed inside authentication popups. Typed `import-cookies` commands
 target an existing view and use its profile cookie manager independently of the
-current page URL. The desktop main process validates domain, fields and batch
+current page URL. `import-profile-cookies` initializes the helper when needed,
+uses a temporary hidden controller for profile access, and closes it without
+navigating or registering a page. The desktop main process validates domain, fields and batch
 limits before sending cookies; the helper prepares cookies before adding them
 and returns failures without cookie values.
 

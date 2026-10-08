@@ -159,3 +159,12 @@ it('imports cookies through the native tab regardless of its current URL', async
     await view.importCookies!(cookies);
     expect(mocks.request).toHaveBeenCalledWith('import-cookies', { viewId: '7:import:1', cookies });
 });
+
+it('imports into the WebView2 profile without creating a page', async () => {
+    mocks.request.mockClear();
+    const host = new WebView2BrowserHost('profile');
+    const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+    const cookies = parseBrowserCookies('app.example.com', 'a=b');
+    await host.importCookies(cookies);
+    expect(mocks.request).toHaveBeenCalledExactlyOnceWith('import-profile-cookies', { cookies });
+});
