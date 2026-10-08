@@ -27,9 +27,8 @@ use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::range::{
-    changed_files, count_commits_ahead, default_remote_branch, diff_stats, merge_base,
-    parse_changed_files, parse_diff_shortstat, resolve_base_ref, upstream_branch, BaseMode,
-    BaseRefResolution, DefaultBranch, DiffStats, RangeFile,
+    count_commits_ahead, default_remote_branch, merge_base, resolve_base_ref, upstream_branch,
+    BaseMode, BaseRefResolution, DefaultBranch,
 };
 use coc_native_core::git::remote::{detect_remote_url, remote_url};
 use coc_native_core::git::repo::{discover_workdir, resolved_git_dir};
@@ -664,43 +663,6 @@ pub struct GitRangeBaseRef {
     pub base_mode_fallback: bool,
 }
 
-/// One file in a commit range, minus the `repositoryRoot` the caller owns.
-#[napi(object)]
-pub struct GitRangeFile {
-    pub path: String,
-    /// A `GitChangeStatus` string union member.
-    pub status: String,
-    pub additions: u32,
-    pub deletions: u32,
-    /// Source path of a rename or copy; absent otherwise.
-    pub old_path: Option<String>,
-}
-
-impl From<RangeFile> for GitRangeFile {
-    fn from(file: RangeFile) -> Self {
-        Self {
-            path: file.path,
-            status: file.status.as_str().to_string(),
-            additions: file.additions,
-            deletions: file.deletions,
-            old_path: file.old_path,
-        }
-    }
-}
-
-/// Added and removed line totals across a range.
-#[napi(object)]
-pub struct GitRangeDiffStats {
-    pub additions: u32,
-    pub deletions: u32,
-}
-
-impl From<DiffStats> for GitRangeDiffStats {
-    fn from(stats: DiffStats) -> Self {
-        Self { additions: stats.additions, deletions: stats.deletions }
-    }
-}
-
 pub struct GitRangeDefaultBranchTask {
     repo_root: PathBuf,
 }
@@ -864,142 +826,6 @@ pub fn git_range_count_ahead(
         base_ref,
         head_ref,
     })
-}
-
-pub struct GitRangeChangedFilesTask {
-    repo_root: PathBuf,
-    base_ref: String,
-    head_ref: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitRangeChangedFilesTask {
-    type Output = Vec<RangeFile>;
-    type JsValue = Vec<GitRangeFile>;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        changed_files(&self.repo_root, &self.base_ref, &self.head_ref, &self.options)
-            .map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into_iter().map(GitRangeFile::from).collect())
-    }
-}
-
-/// Read the files changed between two refs, in git's own order.
-///
-/// Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
-/// range and joins them, so neither output crosses the boundary as text. The
-/// list is not sorted: the caller orders it with `localeCompare`, which is not
-/// a byte comparison and is what the range view already shows.
-#[napi(ts_return_type = "Promise<GitRangeFile[]>")]
-pub fn git_range_changed_files(
-    repo_root: String,
-    base_ref: String,
-    head_ref: String,
-    options: Option<GitExecOptions>,
-) -> AsyncTask<GitRangeChangedFilesTask> {
-    AsyncTask::new(GitRangeChangedFilesTask {
-        repo_root: PathBuf::from(repo_root),
-        base_ref,
-        head_ref,
-        options: resolve_options(options),
-    })
-}
-
-pub struct ParseGitRangeChangedFilesTask {
-    numstat: String,
-    name_status: String,
-}
-
-impl Task for ParseGitRangeChangedFilesTask {
-    type Output = Vec<RangeFile>;
-    type JsValue = Vec<GitRangeFile>;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        Ok(parse_changed_files(&self.numstat, &self.name_status))
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into_iter().map(GitRangeFile::from).collect())
-    }
-}
-
-/// Join `--numstat` and `--name-status` text that was produced somewhere else.
-///
-/// The WSL twin of {@link git_range_changed_files}, for the same reason
-/// {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
-/// runs git through `wsl.exe` in TypeScript, and the parser must still be the
-/// single one in the codebase.
-#[napi(ts_return_type = "Promise<GitRangeFile[]>")]
-pub fn parse_git_range_changed_files(
-    numstat: String,
-    name_status: String,
-) -> AsyncTask<ParseGitRangeChangedFilesTask> {
-    AsyncTask::new(ParseGitRangeChangedFilesTask { numstat, name_status })
-}
-
-pub struct GitRangeDiffStatsTask {
-    repo_root: PathBuf,
-    base_ref: String,
-    head_ref: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitRangeDiffStatsTask {
-    type Output = DiffStats;
-    type JsValue = GitRangeDiffStats;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        diff_stats(&self.repo_root, &self.base_ref, &self.head_ref, &self.options)
-            .map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into())
-    }
-}
-
-/// Read the added and removed line totals between two refs.
-#[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
-pub fn git_range_diff_stats(
-    repo_root: String,
-    base_ref: String,
-    head_ref: String,
-    options: Option<GitExecOptions>,
-) -> AsyncTask<GitRangeDiffStatsTask> {
-    AsyncTask::new(GitRangeDiffStatsTask {
-        repo_root: PathBuf::from(repo_root),
-        base_ref,
-        head_ref,
-        options: resolve_options(options),
-    })
-}
-
-pub struct ParseGitDiffShortstatTask {
-    text: String,
-}
-
-impl Task for ParseGitDiffShortstatTask {
-    type Output = DiffStats;
-    type JsValue = GitRangeDiffStats;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        Ok(parse_diff_shortstat(&self.text))
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into())
-    }
-}
-
-/// Parse `git diff --shortstat` text that was produced somewhere else.
-///
-/// The WSL twin of {@link git_range_diff_stats}.
-#[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
-pub fn parse_git_diff_shortstat(text: String) -> AsyncTask<ParseGitDiffShortstatTask> {
-    AsyncTask::new(ParseGitDiffShortstatTask { text })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

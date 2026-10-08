@@ -543,16 +543,6 @@ export interface GitRangeBaseRef {
 }
 
 /**
- * Read the files changed between two refs, in git's own order.
- *
- * Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
- * range and joins them, so neither output crosses the boundary as text. The
- * list is not sorted: the caller orders it with `localeCompare`, which is not
- * a byte comparison and is what the range view already shows.
- */
-export declare function gitRangeChangedFiles(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeFile[]>
-
-/**
  * How many commits `headRef` has that `baseRef` does not.
  *
  * `git rev-list --count <base>..<head>` as a `gix` walk. A revision that names
@@ -581,26 +571,6 @@ export declare function gitRangeDefaultBranch(repoRoot: string): Promise<GitRang
 export interface GitRangeDefaultBranch {
   name: string
   fromRemote: boolean
-}
-
-/** Read the added and removed line totals between two refs. */
-export declare function gitRangeDiffStats(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeDiffStats>
-
-/** Added and removed line totals across a range. */
-export interface GitRangeDiffStats {
-  additions: number
-  deletions: number
-}
-
-/** One file in a commit range, minus the `repositoryRoot` the caller owns. */
-export interface GitRangeFile {
-  path: string
-  /** A `GitChangeStatus` string union member. */
-  status: string
-  additions: number
-  deletions: number
-  /** Source path of a rename or copy; absent otherwise. */
-  oldPath?: string
 }
 
 /**
@@ -1018,27 +988,10 @@ export declare function openRepoFiles(root: string, ttlMs?: number | undefined |
 export declare function parseGitBranchStatus(output: string): Promise<GitRepositoryStatus>
 
 /**
- * Parse `git diff --shortstat` text that was produced somewhere else.
- *
- * The WSL twin of {@link git_range_diff_stats}.
- */
-export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
-
-/**
  * Parse supplied host, WSL or remote unified-patch text on a libuv worker.
  * No Git execution, repository lookup, authentication or cached state is involved.
  */
 export declare function parseGitPatch(raw: string): Promise<PatchFile[]>
-
-/**
- * Join `--numstat` and `--name-status` text that was produced somewhere else.
- *
- * The WSL twin of {@link git_range_changed_files}, for the same reason
- * {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
- * runs git through `wsl.exe` in TypeScript, and the parser must still be the
- * single one in the codebase.
- */
-export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: string): Promise<GitRangeFile[]>
 
 /**
  * Parse porcelain text that was produced somewhere else.

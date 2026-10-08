@@ -77,18 +77,6 @@ export type NativeGitRangeDefaultBranch = Bindings.GitRangeDefaultBranch;
 export type NativeGitRangeBaseRef = Bindings.GitRangeBaseRef;
 
 /**
- * One file in a commit range as Rust reports it.
- *
- * `repositoryRoot` is absent for the same reason it is on a status entry — it
- * is the caller's own `repoRoot`, not something to rebuild in Rust — and the
- * list arrives in git's order, because sorting it is `localeCompare`'s job.
- */
-export type NativeGitRangeFile = Bindings.GitRangeFile;
-
-/** Added and removed line totals across a range. */
-export type NativeGitRangeDiffStats = Bindings.GitRangeDiffStats;
-
-/**
  * Repository metadata from one `git status --porcelain=v2 --branch` call.
  *
  * Field-for-field the `GitRepositoryStatus` the workspace list renders.
@@ -171,10 +159,6 @@ export interface NativeGitAddon {
     gitRangeResolveBaseRef: typeof Bindings.gitRangeResolveBaseRef;
     gitRangeMergeBase: typeof Bindings.gitRangeMergeBase;
     gitRangeCountAhead: typeof Bindings.gitRangeCountAhead;
-    gitRangeChangedFiles: typeof Bindings.gitRangeChangedFiles;
-    parseGitRangeChangedFiles: typeof Bindings.parseGitRangeChangedFiles;
-    gitRangeDiffStats: typeof Bindings.gitRangeDiffStats;
-    parseGitDiffShortstat: typeof Bindings.parseGitDiffShortstat;
     gitRepositoryStatus: typeof Bindings.gitRepositoryStatus;
     parseGitBranchStatus: typeof Bindings.parseGitBranchStatus;
     gitBranchStatus: typeof Bindings.gitBranchStatus;
@@ -233,10 +217,6 @@ const GIT_EXPORTS = [
     'gitRangeResolveBaseRef',
     'gitRangeMergeBase',
     'gitRangeCountAhead',
-    'gitRangeChangedFiles',
-    'parseGitRangeChangedFiles',
-    'gitRangeDiffStats',
-    'parseGitDiffShortstat',
     'gitRepositoryStatus',
     'parseGitBranchStatus',
     'gitBranchStatus',
