@@ -206,21 +206,31 @@ pub fn range_patch_args(
     path: Option<&str>,
     context_lines: Option<u32>,
 ) -> Vec<String> {
-    let mut args = vec![
-        "--literal-pathspecs".into(),
-        "diff".into(),
-        "-M".into(),
-        "-C".into(),
-        "--no-color".into(),
-        "--src-prefix=a/".into(),
-        "--dst-prefix=b/".into(),
-    ];
-    if let Some(context) = context_lines {
+    patch_args("diff", &[format!("{base}...{head}")], path, context_lines)
+}
+
+fn patch_args(
+    command: &str,
+    revisions: &[String],
+    path: Option<&str>,
+    context: Option<u32>,
+) -> Vec<String> {
+    let mut args = [
+        "--literal-pathspecs",
+        command,
+        "-M",
+        "-C",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+    ]
+    .map(String::from)
+    .to_vec();
+    if let Some(context) = context {
         args.push(format!("-U{context}"));
     }
     args.push("--end-of-options".into());
-    args.push(format!("{base}...{head}"));
-    // Always terminate revision arguments, even for the combined patch.
+    args.extend_from_slice(revisions);
     args.push("--".into());
     if let Some(path) = path {
         args.push(path.into());
@@ -241,5 +251,28 @@ pub fn range_patch(
         &range_patch_args(base, head, path, context_lines),
         &GitCommandOptions::default(),
     )?;
+    Ok(process_patch(raw, max_lines))
+}
+
+/// First-parent provider comparison, including a root commit's empty left side.
+/// diff-tree resolves the parent itself and supports the repository's hash format.
+pub fn commit_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
+    let mut args = patch_args("diff-tree", &[commit.into()], path, context);
+    args.splice(
+        2..2,
+        ["--root", "--first-parent", "-m", "-r", "-p", "--no-commit-id"].map(String::from),
+    );
+    args
+}
+
+pub fn commit_patch(
+    root: &Path,
+    commit: &str,
+    path: Option<&str>,
+    context: Option<u32>,
+    max_lines: Option<i64>,
+) -> Result<PatchResult, GitError> {
+    let raw =
+        run_git(root, &commit_patch_args(commit, path, context), &GitCommandOptions::default())?;
     Ok(process_patch(raw, max_lines))
 }

@@ -1676,3 +1676,36 @@ pub fn git_range_patch(
         .map_err(to_napi_error)
     }))
 }
+
+/// First-parent/root commit plan shared with external WSL execution.
+#[napi(ts_return_type = "Promise<string[]>")]
+pub fn prepare_git_commit_patch(
+    commit: String,
+    path: Option<String>,
+    context: Option<u32>,
+) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::commit_patch_args(&commit, path.as_deref(), context))
+    }))
+}
+
+/// Execute and process a first-parent/root commit patch on a worker.
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn git_commit_patch(
+    root: String,
+    commit: String,
+    path: Option<String>,
+    context: Option<u32>,
+    max_lines: Option<i64>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::commit_patch(
+            &PathBuf::from(root),
+            &commit,
+            path.as_deref(),
+            context,
+            max_lines,
+        )
+        .map_err(to_napi_error)
+    }))
+}

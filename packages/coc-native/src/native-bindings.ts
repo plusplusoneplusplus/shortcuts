@@ -285,6 +285,9 @@ export interface GitCommitFiles {
   files: Array<GitCommitFile>
 }
 
+/** Execute and process a first-parent/root commit patch on a worker. */
+export declare function gitCommitPatch(root: string, commit: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
+
 /**
  * The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
  * the child process.
@@ -1034,6 +1037,9 @@ export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: s
  * worker thread because a large repository's status output runs to megabytes.
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
+
+/** First-parent/root commit plan shared with external WSL execution. */
+export declare function prepareGitCommitPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
 
 /** Rust-owned branch-range command plan for external execution transports. */
 export declare function prepareGitRangePatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>

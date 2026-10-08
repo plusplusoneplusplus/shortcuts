@@ -225,3 +225,46 @@ fn range_plan_keeps_context_revision_boundary_and_literal_path() {
         ]
     );
 }
+
+#[test]
+fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
+    use coc_native_core::git::patch::{commit_patch, commit_patch_args};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "--initial-branch=main"]);
+    git(root, &["config", "user.name", "Test"]);
+    git(root, &["config", "user.email", "test@example.com"]);
+    git(root, &["config", "commit.gpgsign", "false"]);
+    git(root, &["config", "core.autocrlf", "false"]);
+    std::fs::write(root.join("same.txt"), "before\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "root"]);
+    let initial = git(root, &["rev-parse", "HEAD"]).trim().to_owned();
+    let root_patch = commit_patch(root, &initial, None, None, None).unwrap();
+    assert_eq!(root_patch.files[0].status, "added");
+    assert_eq!(root_patch.summary.additions, 1);
+    std::fs::write(root.join("same.txt"), "after\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "ordinary"]);
+    let head = git(root, &["rev-parse", "HEAD"]).trim().to_owned();
+    let side =
+        git(root, &["commit-tree", "HEAD^{tree}", "-p", &initial, "-m", "side"]).trim().to_owned();
+    let merge =
+        git(root, &["commit-tree", "HEAD^{tree}", "-p", &initial, "-p", &side, "-m", "merge"])
+            .trim()
+            .to_owned();
+    for commit in [&head, &merge] {
+        let result = commit_patch(root, commit, None, None, None).unwrap();
+        let expected = git(root, &["diff", "-M", "-C", &initial, commit]);
+        assert_eq!(result.content.raw, expected.trim_end_matches(['\r', '\n']));
+        assert_eq!((result.summary.additions, result.summary.deletions), (1, 1));
+    }
+    // git-show route semantics remain distinct: this merge's combined patch is empty.
+    assert!(git(root, &["show", "--format=", "--patch", &merge]).is_empty());
+    let args = commit_patch_args("--output=oops", Some("[ab].txt"), Some(0));
+    assert!(args.contains(&"--literal-pathspecs".into()));
+    assert!(args.contains(&"-U0".into()));
+    assert_eq!(args.last().unwrap(), "[ab].txt");
+    assert!(commit_patch(root, "--output=oops", None, None, None).is_err());
+    assert!(!root.join("oops").exists());
+}

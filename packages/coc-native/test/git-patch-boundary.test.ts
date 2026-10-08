@@ -7,6 +7,17 @@ const patch = 'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n' +
     '@@ -1 +1 @@\n---body\n+++body\n';
 
 describe('parseGitPatch worker boundary', () => {
+    it('exposes the Rust root/first-parent commit plan on a worker', async () => {
+        const pending = api.prepareGitCommitPatch('HEAD', '[ab].txt', 0);
+        expect(typeof pending.then).toBe('function');
+        const args = await pending;
+        expect(args).toEqual([
+            '--literal-pathspecs', 'diff-tree', '--root', '--first-parent', '-m', '-r', '-p',
+            '--no-commit-id', '-M', '-C', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
+            '-U0', '--end-of-options', 'HEAD', '--', '[ab].txt',
+        ]);
+    });
+
     it('decodes Git quoting, counts header-like content and preserves bytes', async () => {
         const pending = api.parseGitPatch(patch);
         expect(typeof pending.then).toBe('function');
