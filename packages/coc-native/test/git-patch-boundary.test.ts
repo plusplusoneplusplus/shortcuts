@@ -97,3 +97,20 @@ describe('parseGitPatch worker boundary', () => {
         }
     });
 });
+
+it('exposes working-tree batch planning and composition on workers', async () => {
+    const pending = api.prepareGitWorkingTreePatch('all', '[ab].txt', 0);
+    expect(typeof pending.then).toBe('function');
+    const batch = await pending;
+    expect(batch).toHaveLength(2);
+    expect(batch[0]).toContain('--cached');
+    expect(batch[1]).not.toContain('--cached');
+    batch.forEach(args => expect(args).toEqual(expect.arrayContaining(['--literal-pathspecs', '-U0', '[ab].txt'])));
+    const result = await api.processGitWorkingTreePatch([patch, patch.replace('+++body', '+new\n+extra')], 2);
+    expect(result.files).toHaveLength(1);
+    expect(result.summary).toEqual({ filesChanged: 1, additions: 2, deletions: 1 });
+    expect(result.files[0].raw).toContain('+++body');
+    expect(result.files[0].raw).toContain('+extra');
+    expect(result.content.truncated).toBe(true);
+    await expect(api.prepareGitWorkingTreePatch('invalid')).rejects.toThrow('invalid working-tree scope');
+});

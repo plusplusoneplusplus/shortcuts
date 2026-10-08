@@ -63,7 +63,7 @@ const COMPLETE_ADDON =
     "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
     'gitRangeMergeBase: async () => null, ' +
     'gitRangeCountAhead: async () => 0, ' +
-    'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+    'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
     'parseGitRangeChangedFiles: async () => [], ' +
     'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
     'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -240,7 +240,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }) };',
@@ -277,7 +277,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -302,7 +302,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -330,7 +330,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -360,7 +360,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -396,7 +396,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -434,7 +434,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitRangeChangedFiles: async () => [], prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitRangeChangedFiles: async () => [], prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitRangePatch: async () => [], processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
                 'parseGitRangeChangedFiles: async () => [], ' +
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
@@ -483,7 +483,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitCommitFiles', 'processGitCommitFiles', 'prepareGitShowPatch', 'gitShowPatch', 'prepareGitCommitPatch', 'gitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'gitRangePatch'])('rejects stale patch/metadata capability missing %s', (name) => {
+it.each(['prepareGitWorkingTreePatch', 'processGitWorkingTreePatch', 'gitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitFiles', 'prepareGitShowPatch', 'gitShowPatch', 'prepareGitCommitPatch', 'gitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'gitRangePatch'])('rejects stale patch/metadata capability missing %s', (name) => {
     useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
 });

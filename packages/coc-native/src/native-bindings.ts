@@ -746,6 +746,8 @@ export interface GitUpstreamConfig {
  */
 export declare function gitValidateRef(repoRoot: string, rev: string): Promise<string | null>
 
+export declare function gitWorkingTreePatch(root: string, scope: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
+
 /**
  * Screen one shell command against the built-in disallow list.
  *
@@ -1052,11 +1054,15 @@ export declare function prepareGitRangePatch(base: string, head: string, path?: 
 /** Git-show route plan shared with external WSL execution. */
 export declare function prepareGitShowPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
 
+export declare function prepareGitWorkingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[][]>
+
 /** Join transported NUL-delimited metadata on a worker. */
 export declare function processGitCommitFiles(nameStatus: string, numstat: string): Promise<GitCommitFile[]>
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
+
+export declare function processGitWorkingTreePatch(outputs: Array<string>, maxLines?: number | undefined | null): Promise<PatchResult>
 
 /** A file match with the complete native ordering tuple. */
 export interface RankedFileMatch {
