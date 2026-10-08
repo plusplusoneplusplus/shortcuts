@@ -247,6 +247,24 @@ describe('WorkingTreeService.getFileDiff', () => {
         expect(await service.getFileDiff(repo, file, false)).toContain('+and unstaged');
     });
 
+    it('selects a literal glob path with full context and no display-config effects', async () => {
+        const repo = makeRepo();
+        write(repo, '[ab].txt', 'before\n');
+        write(repo, 'a.txt', 'before\n');
+        git(repo, 'add', '.');
+        git(repo, 'commit', '-qm', 'paths');
+        write(repo, '[ab].txt', 'literal\n');
+        write(repo, 'a.txt', 'glob\n');
+        expect(git(repo, 'diff', '--', '[ab].txt')).toContain('+glob');
+        git(repo, 'config', 'color.ui', 'always');
+        git(repo, 'config', 'diff.noprefix', 'true');
+        const diff = await service.getFileDiff(repo, path.join(repo, '[ab].txt'), false);
+        expect(diff).toContain('+literal');
+        expect(diff).not.toContain('+glob');
+        expect(diff).not.toContain('\u001b[');
+        expect(diff).toContain('diff --git a/[ab].txt b/[ab].txt');
+    });
+
     it('returns an empty string when there is no diff', async () => {
         const repo = makeRepo();
         await expect(service.getFileDiff(repo, path.join(repo, 'README.md'), false)).resolves.toBe('');

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadCommitShowPatch, loadCommitFiles } from '../../src/diff/local-patch';
 import { createCommitDiffProvider, createWorkingTreeDiffProvider } from '../../src/diff/git-diff-provider';
+import { WorkingTreeService } from '../../src/git/working-tree-service';
 import { execFileAsync } from '../../src/utils/exec-utils';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 
@@ -100,5 +101,18 @@ it('routes working-tree batches by distro/root with Rust composition', async () 
         expect(calls).toHaveLength(2);
         calls.forEach(call => expect(call[1]).toEqual(expect.arrayContaining([`/home/${index === 0 ? 'one' : 'two'}/repo`, '--literal-pathspecs', 'diff'])));
         expect(calls.filter(call => call[1]?.includes('--cached'))).toHaveLength(1);
+    }
+});
+
+it('routes production per-file working-tree patches through WSL with native context planning', async () => {
+    vi.mocked(execFileAsync).mockClear();
+    vi.mocked(execFileAsync).mockResolvedValue({ stdout: raw, stderr: '' });
+    const root = '\\\\wsl$\\Ubuntu\\home\\repo';
+    const service = new WorkingTreeService();
+    for (const staged of [true, false]) {
+        expect(await service.getFileDiff(root, 'café.txt', staged)).toBe(raw.slice(0, -1));
+        const args = vi.mocked(execFileAsync).mock.calls.at(-1)?.[1];
+        expect(args).toEqual(expect.arrayContaining(['Ubuntu', '/home/repo', '--literal-pathspecs', '-U99999', '--', 'café.txt']));
+        expect(args?.includes('--cached')).toBe(staged);
     }
 });
