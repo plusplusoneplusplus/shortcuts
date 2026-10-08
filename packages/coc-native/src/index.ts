@@ -81,8 +81,6 @@ export type {
     NativeGitPatchFile,
     NativeGitRangeBaseRef,
     NativeGitRangeDefaultBranch,
-    NativeGitRangeDiffStats,
-    NativeGitRangeFile,
     NativeGitRepositoryStatus,
     NativeGitStatusEntry,
     NativeGitUpstreamConfig,

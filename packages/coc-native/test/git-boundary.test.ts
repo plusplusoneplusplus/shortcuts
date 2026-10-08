@@ -520,47 +520,51 @@ describe('commit-range marshalling', () => {
         await expect(gitAddon.gitRangeCountAhead(range, 'origin/main', 'HEAD')).resolves.toBe(1);
     });
 
-    it('marshals the changed-file list', async () => {
-        const files = await gitAddon.gitRangeChangedFiles(range, 'origin/main', 'HEAD');
-        expect(files).toEqual(
-            expect.arrayContaining([
-                { path: 'kept.md', status: 'modified', additions: 1, deletions: 0 },
-                { path: 'added.md', status: 'added', additions: 1, deletions: 0 },
-            ]),
-        );
-        // As with a status entry, an absent `oldPath` is an absent property.
-        expect(files.every(file => !('oldPath' in file))).toBe(true);
+    it('marshals range files and statistics through the shared patch result', async () => {
+        const patch = await gitAddon.gitRangePatch(range, 'origin/main', 'HEAD');
+        expect(patch.files).toEqual(expect.arrayContaining([
+            expect.objectContaining({ path: 'kept.md', status: 'modified', additions: 1, deletions: 0 }),
+            expect.objectContaining({ path: 'added.md', status: 'added', additions: 1, deletions: 0 }),
+        ]));
+        expect(patch.summary).toEqual({ filesChanged: 2, additions: 2, deletions: 0 });
     });
 
-    it('carries the source of a rename across the boundary', async () => {
-        const files = await gitAddon.parseGitRangeChangedFiles(
-            '0\t0\told.ts => new.ts\n',
-            'R100\told.ts\tnew.ts\n',
-        );
-        expect(files).toEqual([
-            { path: 'new.ts', status: 'renamed', additions: 0, deletions: 0, oldPath: 'old.ts' },
+    it('uses the shared parser for supplied quoted nested rename and copy paths', async () => {
+        const raw = 'diff --git "a/src/old\\t.ts" "b/src/new\\t.ts"\n' +
+            'similarity index 100%\nrename from "src/old\\t.ts"\nrename to "src/new\\t.ts"\n' +
+            'diff --git a/src/base.ts b/src/copy.ts\n' +
+            'similarity index 100%\ncopy from src/base.ts\ncopy to src/copy.ts\n';
+        const patch = await gitAddon.processGitPatch(raw);
+        expect(patch.files).toEqual([
+            expect.objectContaining({ path: 'src/new\t.ts', originalPath: 'src/old\t.ts', status: 'renamed' }),
+            expect.objectContaining({ path: 'src/copy.ts', originalPath: 'src/base.ts', status: 'copied' }),
         ]);
+        expect(patch.content.raw).toBe(raw);
     });
 
-    it('parses changed-file text produced elsewhere — the WSL path', async () => {
-        const files = await gitAddon.parseGitRangeChangedFiles(
-            '4\t1\tsrc/a.ts\n',
-            'M\tsrc/a.ts\n',
-        );
-        expect(files).toEqual([{ path: 'src/a.ts', status: 'modified', additions: 4, deletions: 1 }]);
-    });
-
-    it('marshals diff statistics', async () => {
-        await expect(gitAddon.gitRangeDiffStats(range, 'origin/main', 'HEAD')).resolves.toEqual({
-            additions: 2,
-            deletions: 0,
-        });
-    });
-
-    it('parses shortstat text produced elsewhere — the WSL path', async () => {
-        await expect(
-            gitAddon.parseGitDiffShortstat(' 3 files changed, 12 insertions(+), 7 deletions(-)'),
-        ).resolves.toEqual({ additions: 12, deletions: 7 });
+    it('retains nested rename destinations and literal arrows in a real range', async () => {
+        const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-range-rename-'));
+        try {
+            const git = (...args: string[]) => execFileSync('git', ['-C', fixture, ...args]);
+            git('init', '--initial-branch=main');
+            git('config', 'user.name', 'Range');
+            git('config', 'user.email', 'range@example.com');
+            git('config', 'commit.gpgsign', 'false');
+            fs.mkdirSync(path.join(fixture, 'src'));
+            fs.writeFileSync(path.join(fixture, 'src', 'old.ts'), 'unchanged contents\n');
+            git('add', '.');
+            git('commit', '-m', 'base');
+            fs.renameSync(path.join(fixture, 'src', 'old.ts'), path.join(fixture, 'src', 'new => literal.ts'));
+            git('add', '-A');
+            git('commit', '-m', 'rename');
+            const patch = await gitAddon.gitRangePatch(fixture, 'HEAD~1', 'HEAD');
+            expect(patch.files).toEqual([
+                expect.objectContaining({ path: 'src/new => literal.ts', originalPath: 'src/old.ts', status: 'renamed' }),
+            ]);
+            expect(patch.summary).toEqual({ filesChanged: 1, additions: 0, deletions: 0 });
+        } finally {
+            removeDir(fixture);
+        }
     });
 
     it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
@@ -569,8 +573,8 @@ describe('commit-range marshalling', () => {
             await expect(gitAddon.gitRangeDefaultBranch(empty)).rejects.toThrow(
                 /^git rev-parse --verify origin\/main failed: /,
             );
-            await expect(gitAddon.gitRangeChangedFiles(empty, 'origin/main', 'HEAD')).rejects.toThrow(
-                /^git diff --numstat origin\/main\.\.\.HEAD failed: /,
+            await expect(gitAddon.gitRangePatch(empty, 'origin/main', 'HEAD')).rejects.toThrow(
+                /^git --literal-pathspecs diff .* failed: /,
             );
         } finally {
             removeDir(empty);
@@ -1083,19 +1087,19 @@ describe('commit-detail marshalling', () => {
             expect('deletions' in (binary as object)).toBe(false);
         });
 
-        // `diff-tree` compares against parents, so a root commit prints nothing
-        // — the empty-tree parent is reported all the same.
-        it('reports the empty tree and no files for a root commit', async () => {
+        // Root metadata compares against the empty tree.
+        it('reports the empty tree and additions for a root commit', async () => {
             const result = await gitAddon.gitCommitFiles(detail, root);
             expect(result.parentHash).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
-            expect(result.files).toEqual([]);
+            expect(result.files.map(file => file.path)).toEqual(['keep.md', 'logo.bin', 'src/old.ts']);
+            expect(result.files.every(file => file.status === 'added')).toBe(true);
         });
 
         it('rejects with the `git <args> failed:` shape outside a repository', async () => {
             const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-nogit-')));
             try {
                 await expect(gitAddon.gitCommitFiles(outside, 'HEAD')).rejects.toThrow(
-                    /^git diff-tree .* failed: /,
+                    /^git --literal-pathspecs diff-tree .* failed: /,
                 );
             } finally {
                 removeDir(outside);
@@ -1112,7 +1116,7 @@ describe('commit-detail marshalling', () => {
 
         it('rejects for a revision that names nothing', async () => {
             await expect(gitAddon.gitCommitDiff(detail, 'no-such-ref')).rejects.toThrow(
-                /^git diff .* failed: /,
+                /^git --literal-pathspecs diff-tree .* failed: /,
             );
         });
     });

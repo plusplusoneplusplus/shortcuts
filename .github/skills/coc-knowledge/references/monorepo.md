@@ -114,7 +114,8 @@ quoted Git paths and exact chunk bytes survive the HTTP adapter. Native-load fai
 are visible. PR full-context patches use Forge `loadComparisonPatch` and Rust direct base/head
 planning/processing for host and WSL; TypeScript retains missing-commit fetch/retry
 and provider-hunk fallback. Combined-patch/stat caches retain a migration boundary. The commit/range/working-tree providers and production `GitRangeService` patches, file lists
-and statistics use `diff/local-patch.ts`: Rust plans/executes host Git and processes
+and statistics use `diff/local-patch.ts`; the benchmark shares `gitRangePatch` files and summaries.
+Native range capabilities resolve refs and ahead counts. Rust plans/executes host Git and processes
 patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. WorkingTreeService per-file patches and CoC working-tree patch routes also use
 this backend with full context; routes apply native truncation and expose native-load
 failures as HTTP 500 while retaining empty patches for ordinary Git errors. Full-text

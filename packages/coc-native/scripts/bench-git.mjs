@@ -567,13 +567,12 @@ export const CASES = [
         native: async (repo, git) => {
             const resolved = await git.gitRangeResolveBaseRef(repo.root, 'default');
             if (!resolved.baseRef) return null;
-            const [mergeBase, count, files, stats] = await Promise.all([
+            const [mergeBase, count, patch] = await Promise.all([
                 git.gitRangeMergeBase(repo.root, 'HEAD', resolved.baseRef),
                 git.gitRangeCountAhead(repo.root, resolved.baseRef, 'HEAD'),
-                git.gitRangeChangedFiles(repo.root, resolved.baseRef, 'HEAD'),
-                git.gitRangeDiffStats(repo.root, resolved.baseRef, 'HEAD'),
+                git.gitRangePatch(repo.root, resolved.baseRef, 'HEAD'),
             ]);
-            return { baseRef: resolved.baseRef, mergeBase, commitCount: count, files, stats };
+            return { baseRef: resolved.baseRef, mergeBase, commitCount: count, files: patch.files, stats: patch.summary };
         },
     },
     {
