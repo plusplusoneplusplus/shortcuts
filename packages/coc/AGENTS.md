@@ -203,6 +203,11 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
+- `AskUserInline` reply fields share batch submission with the button: Enter submits,
+  Shift+Enter preserves multiline Need context notes, and IME/229 never submits.
+  Keep optional deferred notes, required-answer validation, clone routing, synchronous
+  in-flight/accepted duplicate guards, and retryable drafts intact.
+
 - Monaco selection attachments target a visible follow-up composer or seed the
   new-chat input in their workspace. Hidden or inert composers decline before
   changing state or focus. Attachment channels accept a destination identity

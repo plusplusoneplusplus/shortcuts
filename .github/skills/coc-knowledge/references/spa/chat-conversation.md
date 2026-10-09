@@ -414,6 +414,10 @@ Read-only git commands and generic prose are ignored.
 Live unanswered batches stay owned by `ChatDetail`/`ConversationArea` through
 `processDetails.pendingAskUser` and `AskUserInline`. Each question offers Answer, Skip, or
 Need context; the deferred choice marks the question complete for batch submission.
+Reply fields submit the whole valid batch on Enter through the clone-routed button
+submission path. Need context notes allow Shift+Enter multiline input and remain
+optional. Composition/229 and repeated keydowns do not submit. Synchronous admission
+blocks in-flight and accepted duplicates; failed delivery retains the draft for retry.
 
 Unsubmitted live-batch drafts are saved in `localStorage` scoped by process id and batch
 id, restored after navigation or refresh for the same batch, and cleared on accepted
