@@ -65,6 +65,7 @@ const EXT_TO_MONACO_LANG: Record<string, string> = {
     lua: 'lua',
     perl: 'perl',
     powershell: 'powershell',
+    tla: 'tla',
     bat: 'bat',
     cmd: 'bat',
 };

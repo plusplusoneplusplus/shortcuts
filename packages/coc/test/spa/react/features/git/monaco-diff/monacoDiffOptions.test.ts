@@ -26,6 +26,7 @@ describe('diffLanguageFor', () => {
         ['src/app.ts', 'typescript'],
         ['src/view.tsx', 'typescript'],
         ['lib/x.py', 'python'],
+        ['specs/TwoPhase.tla', 'tla'],
         ['docs/README.md', 'markdown'],
         ['deploy/Dockerfile', 'dockerfile'],
         ['Makefile', 'makefile'],

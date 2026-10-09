@@ -417,6 +417,12 @@ the global `typescriptDefaults` switches only if you want every Monaco instance
 in the page to lose its built-in support — chat source canvases and diffs
 included. The model is put back on its base language when the pane goes away.
 
+Languages the Monaco bundle lacks are registered in `explorer/monaco-setup.ts`
+before any model exists. TLA+ (`shared/monaco/tlaLanguage.ts`, id `tla`) is a
+Monarch tokenizer using standard token classes so `vs`/`vs-dark` color it; add
+the extension to `shared/file-viewer/monacoLanguage.ts` so editors, previews,
+canvases and diffs all resolve it through `getMonacoLanguage`.
+
 The pane also shows a `LanguageStatusBadge` in its floating toolbar. Two
 statuses feed it and neither is complete alone: the document's own (`detached`,
 `ready`, `unavailable`) says whether this file is synchronized, and the host
