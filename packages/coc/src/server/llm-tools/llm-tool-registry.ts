@@ -95,13 +95,13 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         name: 'save_memory',
         label: 'Save Memory (V2)',
         description: 'Explicitly stores a new fact in the redesigned memory system.',
-        enabledByDefault: true,
+        enabledByDefault: false,
     },
     {
         name: 'recall_memory',
         label: 'Recall Memory (V2)',
         description: 'Searches the redesigned memory system for relevant facts.',
-        enabledByDefault: true,
+        enabledByDefault: false,
     },
     {
         name: 'scheduleWakeup',

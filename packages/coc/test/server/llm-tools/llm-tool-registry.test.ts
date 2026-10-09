@@ -48,6 +48,11 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(tavily!.enabledByDefault).toBe(false);
     });
 
+    it.each(['save_memory', 'recall_memory'])('%s is disabled by default', name => {
+        expect(LLM_TOOL_REGISTRY.find(t => t.name === name)?.enabledByDefault).toBe(false);
+        expect(getEffectiveDefaultDisabledTools()).toContain(name);
+    });
+
     it('send_to_conversation is enabled by default', () => {
         const entry = LLM_TOOL_REGISTRY.find(t => t.name === 'send_to_conversation');
         expect(entry).toBeDefined();
@@ -57,7 +62,7 @@ describe('LLM_TOOL_REGISTRY', () => {
     });
 
     it('all other tools are enabled by default', () => {
-        const optIn = new Set(['tavily_web_search']);
+        const optIn = new Set(['tavily_web_search', 'save_memory', 'recall_memory']);
         const enabledByDefaultTools = LLM_TOOL_REGISTRY.filter(t => !optIn.has(t.name));
         for (const tool of enabledByDefaultTools) {
             expect(tool.enabledByDefault).toBe(true);
@@ -117,6 +122,8 @@ describe('filterDisabledLlmTools', () => {
         { name: 'suggest_follow_ups', handler: () => {} },
         { name: 'tavily_web_search', handler: () => {} },
         { name: 'memory', handler: () => {} },
+        { name: 'save_memory', handler: () => {} },
+        { name: 'recall_memory', handler: () => {} },
     ];
 
     it('filters out disabled-by-default tools when disabledList is undefined', () => {
@@ -125,11 +132,13 @@ describe('filterDisabledLlmTools', () => {
         expect(names).toContain('suggest_follow_ups');
         expect(names).toContain('memory');
         expect(names).not.toContain('tavily_web_search');
+        expect(names).not.toContain('save_memory');
+        expect(names).not.toContain('recall_memory');
     });
 
     it('keeps all tools when disabled list is empty', () => {
         const filtered = filterDisabledLlmTools(mockTools, []);
-        expect(filtered).toHaveLength(3);
+        expect(filtered).toHaveLength(mockTools.length);
     });
 
     it('removes only explicitly disabled tools', () => {

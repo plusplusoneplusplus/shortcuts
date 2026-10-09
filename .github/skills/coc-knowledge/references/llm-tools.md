@@ -19,8 +19,8 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 (`KUSTO_LLM_TOOL_NAMES`), and `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`) out of the settings
 list when their flags are off.
 
-`getEffectiveDefaultDisabledTools()` returns the registry-level defaults (`tavily_web_search`
-off). They do not depend on the UI layout mode.
+`getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`, and
+`recall_memory` by default, independently of UI layout mode.
 
 ### Per-repo overrides
 

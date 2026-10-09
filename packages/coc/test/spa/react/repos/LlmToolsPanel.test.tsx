@@ -76,6 +76,27 @@ describe('LlmToolsPanel', () => {
         expect((screen.getByTestId('llm-tool-toggle-tavily_web_search') as HTMLInputElement).checked).toBe(false);
     });
 
+    it.each(['save_memory', 'recall_memory'])('enables %s independently through its existing toggle', async name => {
+        const memoryTools = ['save_memory', 'recall_memory'].map(toolName => ({
+            name: toolName, label: toolName, description: 'Memory V2 tool', enabledByDefault: false,
+        }));
+        const disabledLlmTools = ['tavily_web_search', 'save_memory', 'recall_memory'];
+        mocks.preferences.getLlmToolsConfig.mockResolvedValue({ tools: [...TOOLS, ...memoryTools], disabledLlmTools });
+        const workspaceId = `memory-opt-in-${name}`;
+        render(<LlmToolsPanel workspaceId={workspaceId} />);
+        await waitFor(() => expect(screen.getByTestId(`llm-tool-toggle-${name}`)).toBeTruthy());
+        for (const tool of memoryTools) {
+            expect((screen.getByTestId(`llm-tool-toggle-${tool.name}`) as HTMLInputElement).checked).toBe(false);
+        }
+        await act(async () => { fireEvent.click(screen.getByTestId(`llm-tool-toggle-${name}`)); });
+        expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith(workspaceId, {
+            disabledLlmTools: disabledLlmTools.filter(toolName => toolName !== name),
+        });
+        expect((screen.getByTestId(`llm-tool-toggle-${name}`) as HTMLInputElement).checked).toBe(true);
+        const other = name === 'save_memory' ? 'recall_memory' : 'save_memory';
+        expect((screen.getByTestId(`llm-tool-toggle-${other}`) as HTMLInputElement).checked).toBe(false);
+    });
+
     it('sends disabled tool overrides when a tool is turned off', async () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-demo_tool')).toBeTruthy());

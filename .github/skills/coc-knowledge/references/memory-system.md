@@ -95,7 +95,10 @@ mode's and cost the conversation's prefix cache on a mid-chat mode toggle
 
 `llm-tools/memory-v2-tools.ts` exports `createMemoryStoreFactTool(deps)` and
 `createMemoryRecallTool(deps)`, both taking `MemoryV2ToolDeps`. Writes go through tools, not a
-follow-up prompt.
+follow-up prompt. The registered names are `save_memory` and `recall_memory`; both default
+to disabled in `LLM_TOOL_REGISTRY`. Workspace LLM Tools settings can enable either independently.
+An explicit `disabledLlmTools` list overrides defaults (empty enables both); global/workspace
+`memoryV2.enabled` gates remain independent and control stores and prompt context.
 
 ## REST surface
 

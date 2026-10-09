@@ -69,6 +69,9 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- Memory V2 tools `save_memory` and `recall_memory` default off in `LLM_TOOL_REGISTRY`.
+  Honor explicit workspace `disabledLlmTools` lists; keep memory scope gates and prompt context independent.
+
 - Conversation compaction shares process admission and durable queue dependencies.
   Promote buffered turns before the boundary; later arrivals cannot steer across it.
   Cancel removes queued compaction only. Running compaction never retries after restart.

@@ -19,7 +19,11 @@
  * that the contract cannot be silently broken by future executor refactoring.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
@@ -76,6 +80,11 @@ vi.mock('../../../src/server/executors/note-chat-executor', () => ({
 // ============================================================================
 
 const mockBuildChatTurnContext = vi.fn();
+const mockBuildMemoryV2Addon = vi.fn();
+
+vi.mock('../../../src/server/executors/memory-v2-addon', () => ({
+    buildMemoryV2Addon: (...args: any[]) => mockBuildMemoryV2Addon(...args),
+}));
 
 vi.mock('../../../src/server/executors/chat-turn-context-builder', () => ({
     buildChatTurnContext: (...args: any[]) => mockBuildChatTurnContext(...args),
@@ -154,7 +163,7 @@ function makeOptions(
     };
 }
 
-function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id = 'task-1'): QueuedTask {
+function makeChatTask(mode: 'ask' | 'plan' | 'autopilot' | 'sentinel', id = 'task-1'): QueuedTask {
     return {
         id,
         type: 'chat',
@@ -432,4 +441,65 @@ describe('Memory V2 disabled — no memory tools for any executor', () => {
         expect(toolNames).not.toContain('recall_memory');
         expect(call.excludedTools).toBeUndefined();
     });
+});
+
+// Exercise real preference filtering while stubbing only the memory store addon.
+describe('Memory V2 default tool filtering across executor paths', () => {
+    let tmpDir: string;
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'memory-tool-parity-'));
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'Answer', sessionId: 's', toolCalls: [] });
+        mockBuildMemoryV2Addon.mockReset().mockResolvedValue(makeActiveMemoryContext().memoryV2);
+        const actual = await vi.importActual<typeof import('../../../src/server/executors/chat-turn-context-builder')>(
+            '../../../src/server/executors/chat-turn-context-builder',
+        );
+        mockBuildChatTurnContext.mockReset().mockImplementation(actual.buildChatTurnContext);
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    for (const disabledLlmTools of [undefined, [], ['save_memory', 'recall_memory']]) {
+        it.each(['ask', 'autopilot', 'sentinel', 'ralph', 'follow-up', 'sentinel-follow-up'] as const)(
+            `%s honors memory tool preferences ${JSON.stringify(disabledLlmTools)}`,
+            async mode => {
+                const workspaceId = mode === 'ralph' ? 'ws-parity-ralph' : 'ws-parity-test';
+                if (disabledLlmTools !== undefined) {
+                    writeRepoPreferences(tmpDir, workspaceId, { disabledLlmTools });
+                }
+                // Another owner's opt-in cannot enable these tools for this turn.
+                writeRepoPreferences(tmpDir, 'other-owner', { disabledLlmTools: [] });
+                const options = makeOptions(store);
+                if (mode === 'ralph') {
+                    await new RalphExecutor(store, options, tmpDir).execute(makeRalphTask(), 'Implement');
+                } else if (mode === 'follow-up' || mode === 'sentinel-follow-up') {
+                    const process = makeProcess();
+                    const followUpMode = mode === 'sentinel-follow-up' ? 'sentinel' : 'ask';
+                    await store.addProcess(process);
+                    await new FollowUpExecutor(store, options, tmpDir).executeFollowUp(
+                        process.id, 'Continue', undefined, followUpMode,
+                    );
+                } else if (mode === 'autopilot') {
+                    await new AutopilotExecutor(store, options, tmpDir).execute(makeChatTask(mode), 'Hello');
+                } else {
+                    await new ChatExecutor(store, options, tmpDir).execute(makeChatTask(mode), 'Hello');
+                }
+                expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+                const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+                const names = (call.tools ?? []).map((t: any) => t.name);
+                for (const name of ['save_memory', 'recall_memory']) {
+                    expect(names.includes(name)).toBe(disabledLlmTools?.length === 0);
+                }
+                expect(JSON.stringify(call.systemMessage)).toContain('High priority: prefer TypeScript');
+                expect(call.excludedTools).toEqual(MEMORY_V2_EXCLUDED_BUILTINS);
+                expect(mockBuildChatTurnContext.mock.calls[0][0].workspaceId).toBe(workspaceId);
+            },
+        );
+    }
 });

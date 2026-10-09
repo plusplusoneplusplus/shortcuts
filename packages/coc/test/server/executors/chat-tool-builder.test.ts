@@ -25,6 +25,52 @@ describe('buildChatToolBundle', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
+    describe('Memory V2 tool preferences', () => {
+        const memoryV2 = () => ({
+            tools: ['save_memory', 'recall_memory'].map(name => ({
+                name, description: name, parameters: {}, handler: async () => ({}),
+            })),
+            suffix: '<memory_tool>Memory tool guidance</memory_tool>',
+            systemMessageSuffix: '<memory_snapshot>Stored fact</memory_snapshot>',
+            excludedBuiltinTools: ['vote_memory', 'store_memory'],
+            dispose: vi.fn(),
+        });
+
+        it.each([
+            [undefined, []],
+            [[], ['save_memory', 'recall_memory']],
+            [['save_memory'], ['recall_memory']],
+            [['recall_memory'], ['save_memory']],
+            [['save_memory', 'recall_memory'], []],
+        ] as [string[] | undefined, string[]][])(
+            'honors disabled list %j without changing memory context', (disabledLlmTools, expected) => {
+                writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools });
+                const addon = memoryV2();
+                const result = buildChatToolBundle({
+                    dataDir: tmpDir, workspaceId: WS_ID, store: makeStore(), memoryV2: addon,
+                });
+                expect(result.tools.filter(t => t.name.endsWith('_memory')).map(t => t.name)).toEqual(expected);
+                expect(result.tools.map(t => t.name)).toContain('search_conversations');
+                expect(result.toolGuidance.includes('<memory_tool>')).toBe(expected.length > 0);
+                expect(addon.systemMessageSuffix).toContain('Stored fact');
+                expect(addon.excludedBuiltinTools).toEqual(['vote_memory', 'store_memory']);
+            },
+        );
+
+        it.each([{}, { workspaceId: WS_ID }, { dataDir: 'unused' }])(
+            'uses registry defaults without complete preference ownership: %j', owner => {
+                const result = buildChatToolBundle({
+                    ...owner, store: makeStore(), memoryV2: memoryV2(), excludeTools: ['get_conversation'],
+                });
+                expect(result.tools.map(t => t.name)).not.toContain('save_memory');
+                expect(result.tools.map(t => t.name)).not.toContain('recall_memory');
+                expect(result.tools.map(t => t.name)).not.toContain('get_conversation');
+                expect(result.tools.map(t => t.name)).toContain('search_conversations');
+                expect(result.toolGuidance).not.toContain('<memory_tool>');
+            },
+        );
+    });
+
     it('assembles the common chat tools and suffixes when enabled', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 
