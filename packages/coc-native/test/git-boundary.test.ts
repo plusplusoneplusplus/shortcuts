@@ -1171,6 +1171,29 @@ describe('commit-detail marshalling', () => {
     });
 
     describe('gitCommitFiles', () => {
+        it.each(['root', 'head'] as const)('shares host and supplied metadata conversion for %s', async revision => {
+            const commit = revision === 'root' ? root : head;
+            const commands = await gitAddon.prepareGitCommitFiles(commit);
+            const [nameStatus, numstat, parents] = commands.map(args => detailGit(...args));
+            const host = gitAddon.gitCommitFiles(detail, commit);
+            const supplied = gitAddon.processGitCommitMetadata(nameStatus, numstat, parents);
+            expect(typeof host.then).toBe('function');
+            expect(typeof supplied.then).toBe('function');
+            const [hostResult, suppliedResult] = await Promise.all([host, supplied]);
+            expect(hostResult).toEqual(suppliedResult);
+            const binary = hostResult.files.find(file => file.path === 'logo.bin');
+            expect(binary).toBeDefined();
+            expect(binary).not.toHaveProperty('additions');
+            expect(binary).not.toHaveProperty('deletions');
+        });
+
+        it('keeps execution-option failures asynchronous', async () => {
+            const pending = gitAddon.gitCommitFiles(detail, head, { maxBuffer: 8 });
+            expect(typeof pending.then).toBe('function');
+            await expect(pending).rejects.toThrow(/^git --literal-pathspecs diff-tree .* failed: /);
+            await expect(gitAddon.gitCommitFiles(detail, head)).resolves.toMatchObject({ parentHash: root });
+        });
+
         it('reports the parent and the touched files in one crossing', async () => {
             const result = await gitAddon.gitCommitFiles(detail, head);
             expect(result.parentHash).toBe(root);
@@ -1219,6 +1242,21 @@ describe('commit-detail marshalling', () => {
     });
 
     describe('gitCommitDiff', () => {
+        it.each(['root', 'head'] as const)('matches the shared first-parent plan for %s', async revision => {
+            const commit = revision === 'root' ? root : head;
+            const commands = await gitAddon.prepareGitCommitPatch(commit);
+            const pending = gitAddon.gitCommitDiff(detail, commit);
+            expect(typeof pending.then).toBe('function');
+            await expect(pending).resolves.toBe(detailGit(...commands).replace(/\r?\n$/, ''));
+        });
+
+        it('preserves buffer errors and independent concurrent results', async () => {
+            const failure = gitAddon.gitCommitDiff(detail, head, { maxBuffer: 8 });
+            const success = gitAddon.gitCommitDiff(detail, root);
+            await expect(failure).rejects.toThrow(/^git --literal-pathspecs diff-tree .* failed: /);
+            await expect(success).resolves.toContain('new file mode');
+        });
+
         it('matches the diff the two commands produced', async () => {
             const native = await gitAddon.gitCommitDiff(detail, head);
             const legacy = detailGit('diff', root, head).replace(/\r?\n$/, '');

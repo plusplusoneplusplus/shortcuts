@@ -405,25 +405,12 @@ pub struct GitCommitFiles {
     pub files: Vec<GitCommitFile>,
 }
 
-pub struct GitCommitFilesTask {
-    repo_root: PathBuf,
-    commit: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitCommitFilesTask {
-    type Output = CommitFiles;
-    type JsValue = GitCommitFiles;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        commit_files(&self.repo_root, &self.commit, &self.options).map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(GitCommitFiles {
+impl From<CommitFiles> for GitCommitFiles {
+    fn from(output: CommitFiles) -> Self {
+        Self {
             parent_hash: output.parent_hash,
             files: output.files.into_iter().map(GitCommitFile::from).collect(),
-        })
+        }
     }
 }
 
@@ -437,12 +424,13 @@ pub fn git_commit_files(
     repo_root: String,
     commit: String,
     options: Option<GitExecOptions>,
-) -> AsyncTask<GitCommitFilesTask> {
-    AsyncTask::new(GitCommitFilesTask {
-        repo_root: PathBuf::from(repo_root),
-        commit,
-        options: resolve_options(options),
-    })
+) -> AsyncTask<crate::task::Blocking<GitCommitFiles>> {
+    let options = resolve_options(options);
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        commit_files(&PathBuf::from(repo_root), &commit, &options)
+            .map(GitCommitFiles::from)
+            .map_err(to_napi_error)
+    }))
 }
 
 /// Metadata batch for WSL, sharing the host plan.
@@ -463,49 +451,24 @@ pub fn process_git_commit_metadata(
     parents: String,
 ) -> AsyncTask<crate::task::Blocking<GitCommitFiles>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
-        let result =
-            coc_native_core::git::commit::process_commit_metadata(&name_status, &numstat, &parents);
-        Ok(GitCommitFiles {
-            parent_hash: result.parent_hash,
-            files: result.files.into_iter().map(GitCommitFile::from).collect(),
-        })
+        Ok(coc_native_core::git::commit::process_commit_metadata(&name_status, &numstat, &parents)
+            .into())
     }))
-}
-
-pub struct GitCommitDiffTask {
-    repo_root: PathBuf,
-    commit: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitCommitDiffTask {
-    type Output = String;
-    type JsValue = String;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        commit_diff(&self.repo_root, &self.commit, &self.options).map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
 }
 
 /// Read a commit's diff against its parent.
 ///
-/// The parent resolution is `gix`, so the two children this used to cost are
-/// down to the one `git diff` that still does the real work.
+/// Git renders the shared first-parent/root patch plan on a worker.
 #[napi(ts_return_type = "Promise<string>")]
 pub fn git_commit_diff(
     repo_root: String,
     commit: String,
     options: Option<GitExecOptions>,
-) -> AsyncTask<GitCommitDiffTask> {
-    AsyncTask::new(GitCommitDiffTask {
-        repo_root: PathBuf::from(repo_root),
-        commit,
-        options: resolve_options(options),
-    })
+) -> AsyncTask<crate::task::Blocking<String>> {
+    let options = resolve_options(options);
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        commit_diff(&PathBuf::from(repo_root), &commit, &options).map_err(to_napi_error)
+    }))
 }
 
 pub struct GitFileContentAtCommitTask {
@@ -1383,34 +1346,6 @@ pub struct GitNoIndexDiffInput {
     pub after_label: String,
 }
 
-pub struct GitDiffNoIndexTask {
-    before: String,
-    after: String,
-    before_label: String,
-    after_label: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitDiffNoIndexTask {
-    type Output = String;
-    type JsValue = String;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        diff_no_index(
-            &self.before,
-            &self.after,
-            &self.before_label,
-            &self.after_label,
-            &self.options,
-        )
-        .map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
 /// Render a unified diff of two contents that are already in memory.
 ///
 /// No repository is involved: the contents are written to a private temp
@@ -1425,15 +1360,18 @@ impl Task for GitDiffNoIndexTask {
 pub fn git_diff_no_index(
     input: GitNoIndexDiffInput,
     options: Option<GitExecOptions>,
-) -> AsyncTask<GitDiffNoIndexTask> {
+) -> AsyncTask<crate::task::Blocking<String>> {
     let options = resolve_options(options);
-    AsyncTask::new(GitDiffNoIndexTask {
-        before: input.before,
-        after: input.after,
-        before_label: input.before_label,
-        after_label: input.after_label,
-        options,
-    })
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        diff_no_index(
+            &input.before,
+            &input.after,
+            &input.before_label,
+            &input.after_label,
+            &options,
+        )
+        .map_err(to_napi_error)
+    }))
 }
 
 pub struct GitResolvedGitDirTask {

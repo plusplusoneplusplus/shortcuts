@@ -274,8 +274,7 @@ export interface GitBranchStatus {
 /**
  * Read a commit's diff against its parent.
  *
- * The parent resolution is `gix`, so the two children this used to cost are
- * down to the one `git diff` that still does the real work.
+ * Git renders the shared first-parent/root patch plan on a worker.
  */
 export declare function gitCommitDiff(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<string>
 
