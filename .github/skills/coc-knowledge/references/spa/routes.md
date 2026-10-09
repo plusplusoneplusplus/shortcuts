@@ -151,6 +151,11 @@ never on mount or workspace switch. The optional docked `footer` (the remote-fir
 status cluster) pins bottom-left; when both halves are collapsed neither carries `flex-1`,
 so a `flex-1` spacer keeps the footer down.
 
+While the whole column is collapsed, the hover peek floats at `left-9`, beside the
+`z-40` rail, never beneath it (Notes uses the same offset). The rail is outside the
+peek's dismissal boundary, so any panel area under it would swallow presses and close
+the peek — including the footer Admin gear at bottom-left.
+
 ### The git half's dense skin
 
 `SplitWorkspacePanel` exposes a `gitHeaderExtra` slot on the git section header. Its

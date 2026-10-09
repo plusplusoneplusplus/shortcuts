@@ -995,4 +995,61 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
             vi.useRealTimers();
         }
     });
+
+    function renderWithFooter(workspaceId: string, onAdmin: () => void) {
+        return render(
+            <SplitWorkspacePanel
+                workspaceId={workspaceId}
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={<div data-testid="git-content">git</div>}
+                detail={<div data-testid="detail-content">detail</div>}
+                footer={<button type="button" aria-label="Admin" data-testid="footer-admin" onClick={onAdmin}>⚙</button>}
+            />,
+        );
+    }
+
+    it('floats the peek beside the rail so its left-edge footer controls stay clickable', () => {
+        // Regression: the peek was anchored at `left-0`, so the `z-40` rail covered
+        // the panel's left 36px — exactly where the footer Admin gear sits. The click
+        // landed on the rail, which the peek's outside-mousedown handler treats as
+        // outside, closing the peek and dropping the Admin click.
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-admin'), '1');
+            const onAdmin = vi.fn();
+            renderWithFooter('ws-admin', onAdmin);
+            const body = screen.getByTestId('split-workspace-left');
+
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(body.className).toContain('left-9');
+            expect(body.className).not.toContain('left-0');
+
+            // Real pointer sequence on the footer gear inside the temporary peek.
+            const gear = screen.getByTestId('footer-admin');
+            act(() => { fireEvent.mouseDown(gear); });
+            act(() => { fireEvent.mouseUp(gear); fireEvent.click(gear); });
+            expect(onAdmin).toHaveBeenCalledTimes(1);
+            expect(body.classList.contains('hidden')).toBe(false);
+            // The temporary peek leaves the persisted collapse untouched.
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-admin'))).toBe('1');
+
+            // A press on the rail still counts as outside and dismisses the peek.
+            act(() => { fireEvent.mouseDown(screen.getByTestId('split-workspace-left-rail')); });
+            expect(body.classList.contains('hidden')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('footer controls work in the permanently expanded column', () => {
+        const onAdmin = vi.fn();
+        renderWithFooter('ws-admin-expanded', onAdmin);
+        const body = screen.getByTestId('split-workspace-left');
+        expect(body.className).not.toContain('absolute');
+        const gear = screen.getByTestId('footer-admin');
+        act(() => { fireEvent.mouseDown(gear); fireEvent.click(gear); });
+        expect(onAdmin).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
 });

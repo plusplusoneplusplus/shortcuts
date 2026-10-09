@@ -587,8 +587,12 @@ export function SplitWorkspacePanel({
                     'flex flex-col min-h-0 overflow-hidden border-r border-[#e5e5e5] dark:border-[#333]',
                     !leftCollapsed && 'flex-shrink-0',
                     leftCollapsed && !peeking && 'hidden',
+                    // The peek floats beside the rail (`left-9`), never under it:
+                    // the `z-40` rail would otherwise swallow clicks on the
+                    // panel's left edge (e.g. the footer Admin gear), and the
+                    // peek's outside-mousedown dismissal would close it.
                     peeking &&
-                        'absolute inset-y-0 left-0 z-30 bg-[#fafafa] dark:bg-[#1e1e1e] shadow-xl transition-transform duration-200 ease-out ' +
+                        'absolute inset-y-0 left-9 z-30 bg-[#fafafa] dark:bg-[#1e1e1e] shadow-xl transition-transform duration-200 ease-out ' +
                             (peekVisible ? 'translate-x-0' : '-translate-x-full'),
                 )}
                 style={{ width: leftColumn.width }}
