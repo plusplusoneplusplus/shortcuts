@@ -5,8 +5,10 @@ import * as path from 'node:path';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { execFileAsync as realExecFileAsync } from '@plusplusoneplusplus/coc-agent-sdk/platform';
 import { execFileAsync } from '../../src/utils/exec-utils';
+import * as execution from '../../src/utils/workspace-execution';
 import {
     loadCommitPatch, loadCommitShowPatch, loadComparisonPatch, loadRangePatch, loadWorkingTreePatch,
+    type LocalPatchOptions,
 } from '../../src/diff/local-patch';
 
 vi.mock('../../src/utils/exec-utils', () => ({ execFileAsync: vi.fn() }));
@@ -55,14 +57,98 @@ function exited(pid: number) {
 }
 
 const reads = [
-    ['commit', (root: string) => loadCommitPatch(root, 'HEAD')],
-    ['show', (root: string) => loadCommitShowPatch(root, 'HEAD')],
-    ['range', (root: string) => loadRangePatch(root, 'base', 'head')],
-    ['comparison', (root: string) => loadComparisonPatch(root, 'base', 'head')],
-    ['working-tree', (root: string) => loadWorkingTreePatch(root, 'all')],
+    ['commit', (root: string, options?: LocalPatchOptions) => loadCommitPatch(root, 'HEAD', undefined, options)],
+    ['show', (root: string, options?: LocalPatchOptions) => loadCommitShowPatch(root, 'HEAD', undefined, options)],
+    ['range', (root: string, options?: LocalPatchOptions) => loadRangePatch(root, 'base', 'head', undefined, options)],
+    ['comparison', (root: string, options?: LocalPatchOptions) => loadComparisonPatch(root, 'base', 'head', undefined, options)],
+    ['working-tree', (root: string, options?: LocalPatchOptions) => loadWorkingTreePatch(root, 'all', undefined, options)],
 ] as const;
 
 describe('WSL executing patch transport cancellation', () => {
+    it.each(reads)('stops %s children through the caller signal and removes its listener', async (name, read) => {
+        const { root, store, begin, wslRoot } = fixture();
+        const controller = new AbortController(), reason = new Error('WSL read abandoned');
+        const remove = vi.spyOn(controller.signal, 'removeEventListener');
+        const pending = read(wslRoot, { signal: controller.signal });
+        const rejected = expect(pending).rejects.toBe(reason);
+        try {
+            const markers = name === 'working-tree' ? ['staged', 'unstaged'] : ['unstaged'];
+            await vi.waitFor(() => markers.forEach(marker => expect(fs.existsSync(path.join(root, marker))).toBe(true)));
+            const pids = markers.map(marker => Number(fs.readFileSync(path.join(root, marker), 'utf8')));
+            controller.abort(reason);
+            await rejected;
+            await vi.waitFor(() => pids.forEach(pid => expect(exited(pid)).toBe(true)));
+            expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+            expect(() => begin.mock.results[0].value.checkActive()).toThrow('Cancelled');
+            expect(() => begin.mock.results[0].value.process('')).toThrow('Closed');
+            vi.mocked(execFileAsync).mockResolvedValue({ stdout: patch, stderr: '' });
+            expect((await read(wslRoot)).content.raw).toContain('+new');
+        } finally { controller.abort(reason); store.dispose(); await pending.catch(() => undefined); }
+    });
+
+    it.each(['revision', 'working-tree'] as const)('cancels submitted WSL %s processing after transport completes', async mode => {
+        const { store, begin, wslRoot } = fixture();
+        const controller = new AbortController(), reason = new Error('processing abandoned');
+        const original = Object.getPrototypeOf(store).beginTransport;
+        begin.mockImplementation(() => {
+            const ticket = original.call(store) as ReturnType<typeof store.beginTransport>;
+            if (mode === 'revision') {
+                const submit = ticket.process.bind(ticket);
+                vi.spyOn(ticket, 'process').mockImplementation((...args) => {
+                    const pending = submit(...args);
+                    controller.abort(reason);
+                    return pending;
+                });
+            } else {
+                const submit = ticket.processWorkingTree.bind(ticket);
+                vi.spyOn(ticket, 'processWorkingTree').mockImplementation((...args) => {
+                    const pending = submit(...args);
+                    controller.abort(reason);
+                    return pending;
+                });
+            }
+            return ticket;
+        });
+        vi.mocked(execFileAsync).mockResolvedValue({ stdout: patch, stderr: '' });
+        try {
+            const pending = mode === 'revision' ? loadCommitPatch(wslRoot, 'HEAD', undefined, { signal: controller.signal })
+                : loadWorkingTreePatch(wslRoot, 'all', undefined, { signal: controller.signal });
+            await expect(pending).rejects.toBe(reason);
+            expect(() => begin.mock.results[0].value.process(patch)).toThrow('Closed');
+            begin.mockRestore();
+            expect((await loadCommitPatch(wslRoot, 'HEAD')).content.raw).toContain('+new');
+        } finally { store.dispose(); }
+    });
+
+    it('rejects a pre-aborted WSL read before creating a ticket or transport', async () => {
+        const { store, begin, wslRoot } = fixture();
+        const reason = new Error('pre-aborted WSL');
+        try {
+            vi.mocked(execFileAsync).mockClear();
+            await expect(loadCommitPatch(wslRoot, 'HEAD', undefined, { signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
+            expect(begin).not.toHaveBeenCalled();
+            expect(execFileAsync).not.toHaveBeenCalled();
+        } finally { store.dispose(); }
+    });
+
+    it('cancels unresolved-default-distro transport without inventing a store identity', async () => {
+        const { root, store, begin, wslRoot } = fixture();
+        vi.spyOn(execution, 'resolveWorkspaceExecutionContext').mockReturnValue({
+            kind: 'wsl', linuxWorkingDirectory: root.replaceAll('\\', '/').replace(/^[A-Za-z]:/, ''),
+        });
+        const controller = new AbortController(), reason = new Error('default distro abandoned');
+        const pending = loadCommitPatch(wslRoot, 'HEAD', undefined, { signal: controller.signal });
+        const rejected = expect(pending).rejects.toBe(reason);
+        try {
+            await vi.waitFor(() => expect(fs.existsSync(path.join(root, 'unstaged'))).toBe(true));
+            const pid = Number(fs.readFileSync(path.join(root, 'unstaged'), 'utf8'));
+            controller.abort(reason);
+            await rejected;
+            await vi.waitFor(() => expect(exited(pid)).toBe(true));
+            expect(begin).not.toHaveBeenCalled();
+        } finally { controller.abort(reason); store.dispose(); await pending.catch(() => undefined); }
+    });
+
     it('cancels one executing request without stopping another request in the same scope', async () => {
         const { root, store, begin, wslRoot } = fixture();
         const cancelled = loadCommitPatch(wslRoot, 'HEAD');

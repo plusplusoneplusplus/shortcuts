@@ -89,7 +89,7 @@ manifest.
 
 ### Native build boundary
 
-Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revisions key resolved object IDs; working-tree snapshots fingerprint fresh Git batches. Single-use requests capture generations before I/O/dispatch and submit host or supplied-output work through one boundary. Individual cancellation and refresh/disposal stop direct host Git children and reject delivery. Live waiters retry cancelled owners' failed Git computation. Forge polls unsent ticket validity to abort WSL children and retires timers/tickets on every outcome. Remote identity, execution options and lifecycle limits live in the native instructions.
+Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revisions key resolved object IDs; working-tree snapshots fingerprint fresh Git batches. Single-use requests capture generations before I/O/dispatch and submit host or supplied-output work through one boundary. Individual cancellation and refresh/disposal stop direct host Git children and reject delivery; live waiters retry cancelled owners' failed computation. Forge `LocalPatchOptions.signal` cancels one request and its WSL transport while preserving the caller's abort reason. Unsent WSL validity polling observes refresh/disposal; tickets, listeners and timers retire on every outcome. Native instructions define lifecycle limits.
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64
