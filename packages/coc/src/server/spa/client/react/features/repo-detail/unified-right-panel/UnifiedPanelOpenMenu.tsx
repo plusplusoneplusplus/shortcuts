@@ -35,7 +35,7 @@
  * session, so this component never touches it directly.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
@@ -49,12 +49,14 @@ import {
     firstOpenMenuIndex,
     nextOpenMenuIndex,
     openMenuActions,
+    type OpenMenuActionId,
     type OpenMenuCanvasResult,
     type OpenMenuFileResult,
     type OpenMenuItem,
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import { browserOpenInput } from './unifiedBrowserTabs';
+import { TODO_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** Results requested and rendered per query, matching QuickOpen. */
@@ -496,13 +498,15 @@ export function UnifiedPanelOpenMenu({
     );
 }
 
-const ACTION_ICONS: Record<string, string> = {
+/** Keyed by action id so a new action cannot ship without a leading icon. */
+const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
     terminal: '▶',
     explorer: '🗂',
     notes: '🗒',
     browser: '🌐',
     canvas: '🎨',
     changes: '±',
+    todo: TODO_ICON,
 };
 
 function resourceName(path: string): string {
