@@ -29,6 +29,7 @@ use coc_native_core::git::diff::diff_no_index;
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::patch_store::{
     PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError, PatchTransport,
+    RemotePatchSource,
 };
 use coc_native_core::git::range::{
     count_commits_ahead, default_remote_branch, merge_base, resolve_base_ref, upstream_branch,
@@ -1632,8 +1633,8 @@ pub fn git_pending_patch(
     }))
 }
 
-/// One workspace root's Rust-owned commit/range patch snapshots, keyed by
-/// resolved object IDs. Work runs on workers; `dispose` rejects later calls.
+/// Scoped Rust-owned patch snapshots keyed by object IDs or supplied bytes.
+/// Work runs on workers; `dispose` rejects later calls.
 #[napi]
 pub struct GitPatchStore {
     store: Arc<PatchStore>,
@@ -1647,11 +1648,32 @@ pub fn open_git_patch_store(
     root: String,
     distro: Option<String>,
 ) -> Result<GitPatchStore> {
+    open_patch_store(workspace_id, root, distro, PatchSource::Local { kind: "revision".into() })
+}
+
+/// Open an authenticated-transport patch scope. Source metadata contains no
+/// credentials; beginTransport fingerprints supplied bytes, never mutable refs.
+#[napi]
+pub fn open_remote_git_patch_store(
+    workspace_id: String,
+    root: String,
+    source: RemotePatchSource,
+    distro: Option<String>,
+) -> Result<GitPatchStore> {
+    open_patch_store(workspace_id, root, distro, PatchSource::Remote(source))
+}
+
+fn open_patch_store(
+    workspace_id: String,
+    root: String,
+    distro: Option<String>,
+    source: PatchSource,
+) -> Result<GitPatchStore> {
     let scope = PatchScope {
         workspace_id,
         root: PathBuf::from(root),
         execution: distro.map_or(PatchExecution::Host, |distro| PatchExecution::Wsl { distro }),
-        source: PatchSource::Local { kind: "revision".into() },
+        source,
     };
     PatchStore::open(scope, 64, 64 << 20)
         .map(|store| GitPatchStore { store: Arc::new(store) })

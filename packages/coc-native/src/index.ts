@@ -80,6 +80,7 @@ export type {
     NativeGitNoIndexDiffInput,
     NativeGitPatchFile,
     NativeGitPatchStore,
+    NativeGitRemotePatchSource,
     NativeGitRangeBaseRef,
     NativeGitRangeDefaultBranch,
     NativeGitRepositoryStatus,

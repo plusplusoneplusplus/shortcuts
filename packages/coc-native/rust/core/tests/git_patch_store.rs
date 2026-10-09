@@ -1,6 +1,7 @@
 use coc_native_core::git::patch::{process_patch, PatchResult};
 use coc_native_core::git::patch_store::{
     PatchExecution, PatchKey, PatchScope, PatchSource, PatchStore, PatchStoreError, PatchVersion,
+    RemotePatchSource,
 };
 use std::sync::{mpsc, Arc, Barrier};
 use std::thread;
@@ -11,13 +12,14 @@ fn scope(root: &std::path::Path) -> PatchScope {
         workspace_id: "workspace".into(),
         root: root.into(),
         execution: PatchExecution::Host,
-        source: PatchSource::Remote {
+        source: PatchSource::Remote(RemotePatchSource {
             provider: "ado".into(),
             host: "dev.azure.com".into(),
             repository: "org/project/repository".into(),
+            source_id: "pr:42".into(),
             iteration: Some("2".into()),
             base_iteration: Some("1".into()),
-        },
+        }),
     }
 }
 
@@ -125,24 +127,28 @@ fn validates_identity_and_rejects_every_cross_scope_dimension() {
     let root = tempfile::tempdir().unwrap();
     let identity = scope(root.path());
     let store = PatchStore::open(identity.clone(), 4, 4096).unwrap();
-    let mut variants = vec![identity.clone(); 8];
+    let mut variants = vec![identity.clone(); 9];
     variants[0].workspace_id = "other".into();
     variants[1].root = root.path().join("clone");
     variants[2].execution = PatchExecution::Wsl { distro: "Ubuntu".into() };
-    for (variant, field) in variants[3..].iter_mut().zip(0..5) {
-        if let PatchSource::Remote { provider, host, repository, iteration, base_iteration } =
-            &mut variant.source
-        {
+    for (variant, field) in variants[3..].iter_mut().zip(0..6) {
+        if let PatchSource::Remote(source) = &mut variant.source {
             match field {
-                0 => *provider = "github".into(),
-                1 => *host = "other.example".into(),
-                2 => *repository = "org/project/other".into(),
-                3 => *iteration = Some("3".into()),
-                _ => *base_iteration = None,
+                0 => source.provider = "github".into(),
+                1 => source.host = "other.example".into(),
+                2 => source.repository = "org/project/other".into(),
+                3 => source.iteration = Some("3".into()),
+                4 => source.base_iteration = None,
+                _ => source.source_id = "pr:43".into(),
             }
         }
     }
     for other in variants {
+        let ticket = store.begin_transport(&identity).unwrap();
+        assert_eq!(
+            store.complete_transport(&other, ticket, patch("wrong scope").content.raw, None),
+            Err(PatchStoreError::ScopeMismatch)
+        );
         assert_eq!(
             store.get_or_compute(&other, key("v1"), || panic!("wrong scope")),
             Err(PatchStoreError::ScopeMismatch)
@@ -159,8 +165,8 @@ fn validates_identity_and_rejects_every_cross_scope_dimension() {
         PatchStore::open(invalid.clone(), 1, 1),
         Err(PatchStoreError::InvalidIdentity)
     ));
-    if let PatchSource::Remote { host, .. } = &mut invalid.source {
-        host.clear();
+    if let PatchSource::Remote(source) = &mut invalid.source {
+        source.host.clear();
     }
     invalid.root = root.path().into();
     assert!(matches!(PatchStore::open(invalid, 1, 1), Err(PatchStoreError::InvalidIdentity)));
@@ -173,6 +179,45 @@ fn validates_identity_and_rejects_every_cross_scope_dimension() {
     assert_eq!(
         store.get_or_compute(&identity, revisions, || panic!("mutable refs")),
         Err(PatchStoreError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn remote_sources_require_complete_identity_and_cannot_execute_local_revisions() {
+    let root = tempfile::tempdir().unwrap();
+    let identity = scope(root.path());
+    for field in 0..7 {
+        let mut invalid = identity.clone();
+        if let PatchSource::Remote(source) = &mut invalid.source {
+            match field {
+                0 => source.provider = " ".into(),
+                1 => source.host.clear(),
+                2 => source.repository.clear(),
+                3 => source.source_id.clear(),
+                4 => source.iteration = Some(" ".into()),
+                5 => source.base_iteration = Some(" ".into()),
+                _ => source.iteration = None,
+            }
+        }
+        assert!(matches!(
+            PatchStore::open(invalid, 1, 4096),
+            Err(PatchStoreError::InvalidIdentity)
+        ));
+    }
+    let store = PatchStore::open(identity, 1, 4096).unwrap();
+    assert_eq!(
+        store
+            .revision_patch(
+                "commit",
+                "HEAD",
+                None,
+                None,
+                None,
+                None,
+                &coc_native_core::git::GitCommandOptions::default(),
+            )
+            .unwrap_err(),
+        "patch store: InvalidIdentity"
     );
 }
 

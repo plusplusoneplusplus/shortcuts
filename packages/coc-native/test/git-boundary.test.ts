@@ -224,6 +224,63 @@ describe('gitStatusEntries marshalling', () => {
         expect(entries.map(entry => entry.path)).toEqual(['"a file with spaces.md"']);
     });
 
+    it('validates remote source identities and isolates their transport lifecycles', async () => {
+        const source = {
+            provider: 'ado', host: 'dev.azure.com', repository: 'org/project/repository',
+            sourceId: 'pr:42', iteration: '2', baseIteration: '1',
+        };
+        const root = path.resolve(os.tmpdir(), 'coc-remote-patch-scope');
+        for (const invalid of [
+            ...['provider', 'host', 'repository', 'sourceId', 'iteration', 'baseIteration']
+                .map(field => ({ ...source, [field]: ' ' })),
+            { ...source, iteration: undefined },
+        ]) {
+            expect(() => gitAddon.openRemoteGitPatchStore('workspace', root, invalid))
+                .toThrow('patch store: InvalidIdentity');
+        }
+        expect(() => gitAddon.openRemoteGitPatchStore('', root, source)).toThrow('patch store: InvalidIdentity');
+        expect(() => gitAddon.openRemoteGitPatchStore('workspace', 'relative', source)).toThrow('patch store: InvalidIdentity');
+        const stores = [
+            gitAddon.openRemoteGitPatchStore('workspace', root, source),
+            gitAddon.openRemoteGitPatchStore('clone', root, source),
+            ...[
+                { ...source, sourceId: 'pr:43' },
+                { ...source, provider: 'github', host: 'github.example' },
+                { ...source, repository: 'org/project/other' },
+                { ...source, iteration: '3', baseIteration: '2' },
+                { ...source, iteration: undefined, baseIteration: undefined },
+            ].map(identity => gitAddon.openRemoteGitPatchStore('workspace', root, identity)),
+            gitAddon.openRemoteGitPatchStore('workspace', '/repo', source, 'Ubuntu'),
+        ];
+        const raw = 'diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new\n';
+        try {
+            const results = await Promise.all(stores.map(store => store.beginTransport().process(raw)));
+            expect(results.every(result => result.content.raw === raw)).toBe(true);
+            await expect(stores[0].beginTransport().process(raw, 1)).resolves.toMatchObject({
+                content: { truncated: true },
+            });
+            expect((await stores[0].beginTransport().process(raw)).content.raw).toBe(raw);
+            const delayed = stores[0].beginTransport();
+            stores[0].refresh();
+            await expect(delayed.process(raw)).rejects.toThrow('patch store: Stale');
+            expect((await stores[0].beginTransport().process(raw.replace('+new', '+changed'))).content.raw)
+                .toContain('+changed');
+            const cancelled = stores[0].beginTransport();
+            cancelled.cancel();
+            expect(() => cancelled.process(raw)).toThrow('patch store: Closed');
+            const closed = stores[0].beginTransport();
+            stores[0].dispose();
+            await expect(closed.process(raw)).rejects.toThrow('patch store: Closed');
+            expect(() => stores[0].beginTransport()).toThrow('patch store: Closed');
+            await expect(stores[1].beginTransport().process(raw)).resolves.toMatchObject({
+                summary: { filesChanged: 1, additions: 1, deletions: 1 },
+            });
+            await expect(stores[1].revisionPatch('commit', 'HEAD')).rejects.toThrow('patch store: InvalidIdentity');
+        } finally {
+            stores.forEach(store => store.dispose());
+        }
+    });
+
     it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
         const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-status-'));
         try {
