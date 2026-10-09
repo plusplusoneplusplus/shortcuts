@@ -89,6 +89,8 @@ manifest.
 
 ### Native build boundary
 
+Core `git::patch_store` provides exact workspace/root/execution/source scopes, versioned bounded LRU snapshots and shared in-flight computations. Refresh/disposal revoke pending results and prevent late publication; running computations retain their capacity slot through completion. Its Rust tests cover isolation, bounds, retries and lifecycle races. Production patch adapters use the stateless worker APIs below.
+
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64
 also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
