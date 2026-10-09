@@ -382,6 +382,12 @@ mounts it around its slide-in surface). The dialog lazy-loads through the clone-
 skill client, tries workspace then global lookup, and caches per workspace/name while
 mounted.
 
+`buildWhisperFileDiff` reconstructs tool-call diffs without file I/O. Captured
+`apply_patch` bodies keep their existing anchors; a leading unanchored body gets a
+synthetic `@@` header with old/new counts from its context and change lines.
+`WhisperDiffPanel` uses `hideFileHeaders`, so this boundary keeps added-file content
+outside the viewer's suppressed git preamble.
+
 ### Commit strips
 
 Detected entirely in the SPA from already-loaded turn tool data — no server-side binding or

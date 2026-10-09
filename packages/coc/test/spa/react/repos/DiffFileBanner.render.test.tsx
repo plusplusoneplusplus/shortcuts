@@ -15,6 +15,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
 import { parseFileBanners } from '../../../../src/server/spa/client/react/features/git/diff/fileBannerModel';
+import { buildWhisperFileDiff } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/buildWhisperFileDiff';
 import {
     computeDiffMatches,
     groupMatchesByLine,
@@ -366,6 +367,29 @@ describe('file-name banner — model/render agreement', () => {
 // ============================================================================
 
 describe('hideFileHeaders — single-file diff surfaces', () => {
+    it('renders new-file patch content when the captured patch has no hunk header', () => {
+        const patch = [
+            '*** Begin Patch',
+            '*** Add File: src/probe.cjs',
+            '+const answer = 42;',
+            '+console.log(answer);',
+            '*** End Patch',
+        ].join('\n');
+        const diff = buildWhisperFileDiff([
+            { toolName: 'apply_patch', args: { patch } },
+        ], 'src/probe.cjs')!;
+        const { container } = render(
+            <UnifiedDiffViewer diff={diff} fileName="probe.cjs" hideFileHeaders showLineNumbers />
+        );
+        expect(container.textContent).toContain('const answer = 42;');
+        expect(container.textContent).toContain('console.log(answer);');
+        expect(container.textContent).toContain('@@ -0,0 +1,2 @@');
+        expect(container.textContent).not.toContain('diff --git');
+        expect(container.textContent).not.toContain('new file mode');
+        expect(computeDiffLines(diff.split('\n')).filter(line => line.type === 'added')
+            .map(line => line.newLine)).toEqual([1, 2]);
+    });
+
     it('drops the whole git preamble with nothing in its place', () => {
         const { container } = render(
             <UnifiedDiffViewer diff={MODIFIED_DIFF} hideFileHeaders data-testid="diff" />
