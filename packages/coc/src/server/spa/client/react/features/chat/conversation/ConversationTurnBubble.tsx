@@ -1588,7 +1588,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         let accKey = '';
                         const flushContent = () => {
                             if (accKey && accHtml) {
-                                nodes.push(<MarkdownView key={accKey} html={accHtml} />);
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} tableWrapToggle />);
                                 accHtml = '';
                                 accKey = '';
                             }
@@ -1832,7 +1832,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                         className="err-detail text-[12.5px] leading-snug text-[#2c2f33] dark:text-[#cccccc] [&_code]:font-mono [&_code]:text-[12px] [&_code]:px-1 [&_code]:py-[1px] [&_code]:rounded [&_code]:bg-[#fff] dark:[&_code]:bg-[#1e1e1e] [&_code]:border [&_code]:border-[#f5c2c2] dark:[&_code]:border-[#7a3030]"
                                         data-testid="error-strip-detail"
                                     >
-                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled })} />
+                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled })} tableWrapToggle />
                                     </div>
                                 )}
                                 {onRetry && (
@@ -1984,7 +1984,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         let accKey = '';
                         const flushContent = () => {
                             if (accKey && accHtml) {
-                                nodes.push(<MarkdownView key={accKey} html={accHtml} sectionMarkdown={sectionMarkdown} fullMarkdown={turn.content ?? ''} hideSectionCopy={!!turn.streaming} />);
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} sectionMarkdown={sectionMarkdown} fullMarkdown={turn.content ?? ''} hideSectionCopy={!!turn.streaming} tableWrapToggle />);
                                 accHtml = '';
                                 accKey = '';
                             }

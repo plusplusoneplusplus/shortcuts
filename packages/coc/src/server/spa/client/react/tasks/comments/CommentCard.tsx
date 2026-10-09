@@ -174,7 +174,7 @@ export function CommentCard({
                         </div>
                     </div>
                     <div className={cn(!aiExpanded && 'line-clamp-3')}>
-                        <MarkdownView html={renderMarkdownToHtml(comment.aiResponse)} />
+                        <MarkdownView html={renderMarkdownToHtml(comment.aiResponse)} tableWrapToggle />
                     </div>
                 </div>
             )}

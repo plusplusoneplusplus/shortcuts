@@ -152,6 +152,38 @@ describe('InteractiveTable', () => {
         expect(screen.getByText('5 rows')).toBeTruthy();
     });
 
+    it('has no wrap toggle unless the host opts in (Kusto canvas)', () => {
+        const { container } = render(<InteractiveTable {...defaultProps} />);
+        expect(screen.queryByRole('button', { name: 'Wrap text' })).toBeNull();
+        expect(container.querySelector('.interactive-table-wrapped')).toBeNull();
+    });
+
+    it('renders a controlled wrap toggle with aria-pressed', () => {
+        const onWrapTextChange = vi.fn();
+        const { container, rerender } = render(
+            <InteractiveTable {...defaultProps} onWrapTextChange={onWrapTextChange} />,
+        );
+        const btn = screen.getByRole('button', { name: 'Wrap text' });
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+        expect(btn.getAttribute('title')).toBe('Wrap text to fit the pane');
+        expect(container.querySelector('.interactive-table-wrapped')).toBeNull();
+        expect(container.querySelector('colgroup')).not.toBeNull();
+
+        fireEvent.click(btn);
+        expect(onWrapTextChange).toHaveBeenCalledWith(true);
+
+        rerender(<InteractiveTable {...defaultProps} wrapText onWrapTextChange={onWrapTextChange} />);
+        expect(btn.getAttribute('aria-pressed')).toBe('true');
+        const root = container.querySelector<HTMLElement>('.interactive-table-wrapped');
+        expect(root).not.toBeNull();
+        // Wrapped columns size from their content, not the length-weighted <colgroup>.
+        expect(container.querySelector('colgroup')).toBeNull();
+        // Wrapping never drops cells or their full-text title.
+        expect(container.querySelectorAll('tbody td')).toHaveLength(10);
+        fireEvent.click(btn);
+        expect(onWrapTextChange).toHaveBeenLastCalledWith(false);
+    });
+
     it('renders header cells', () => {
         const { container } = render(<InteractiveTable {...defaultProps} />);
         const ths = container.querySelectorAll('th');

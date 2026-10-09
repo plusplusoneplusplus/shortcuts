@@ -106,7 +106,7 @@ function ThreadTurn({ turn, index, onRetry }: {
                     highlighter, which deliberately keeps the raw ** / ` markers.
                     No wsId and no html/excalidraw/canvas embeds: these are short AI
                     answers in a small popover, not authored chat content. */}
-                    <MarkdownView html={chatMarkdownToHtml(turn.answer)} />
+                    <MarkdownView html={chatMarkdownToHtml(turn.answer)} tableWrapToggle />
                 </div>
             )}
         </div>
@@ -318,7 +318,7 @@ export function QuickAskSidenotePopover({
                         <div className={`overflow-y-auto text-[12px] text-[#1e1e1e] dark:text-[#cccccc] ${answerScrollCls}`} data-testid="quick-ask-popover-answer">
                             {/* Chat renderer, not the notes live-preview highlighter — see the
                                 per-turn answer above for why (no wsId, no embeds). */}
-                            <MarkdownView html={chatMarkdownToHtml(note.answer)} />
+                            <MarkdownView html={chatMarkdownToHtml(note.answer)} tableWrapToggle />
                         </div>
                     )}
                 </>
