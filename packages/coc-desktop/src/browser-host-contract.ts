@@ -7,6 +7,7 @@ export interface BrowserViewRequest {
     viewId: string;
     sessionKey: string;
     url: string;
+    pageZoomPercent?: number;
 }
 
 /** A local HTML preview: `path` is validated by `validateHtmlPagePath` before it gets here. */
@@ -41,6 +42,8 @@ export interface BrowserHostedView {
     snapshot(): BrowserViewState;
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;
+    /** Web content only; file previews deliberately omit this capability. */
+    setPageZoom?(percent: number): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;
     focus(): void | Promise<void>;
     close(): void | Promise<void>;

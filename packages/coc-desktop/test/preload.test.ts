@@ -70,6 +70,7 @@ import {
     BROWSER_VIEW_DOWNLOAD_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL,
     BROWSER_PREFERENCES_SET_CHANNEL,
+    BROWSER_PAGE_ZOOM_SET_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL,
     BROWSER_CLEAR_DATA_CHANNEL,
     BROWSER_PREFERENCES_CHANGED_CHANNEL,
@@ -153,6 +154,8 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_GET_CHANNEL);
         await api.setDefaultEngine('webview2');
         expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_SET_CHANNEL, 'webview2');
+        await api.setPageZoom(125);
+        expect(invoke).toHaveBeenCalledWith(BROWSER_PAGE_ZOOM_SET_CHANNEL, 125);
         await api.importCookies('view', 'app.example.com', 'session=token');
         expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, 'view', 'app.example.com', 'session=token', undefined);
         await api.importCookies(null, 'app.example.com', 'session=token', 'webview2');

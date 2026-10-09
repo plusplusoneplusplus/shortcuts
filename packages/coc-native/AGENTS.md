@@ -173,6 +173,11 @@ client coordinates and DPI-scales only the relative bounds, keeping native views
 aligned below Windows menu bars across owner moves, zoom and fullscreen.
 Visible views raise their child HWND without activation; null bounds hide them
 for inactive tabs and SPA overlays.
+Typed `page-zoom` commands and `open.pageZoomPercent` set controller `ZoomFactor`
+(50-200%, 25-point steps, default/reset 100%). Controllers retain the value across
+navigation; embedded views disable native per-tab keyboard/wheel and pinch zoom.
+Desktop preference IPC coordinates URL views across workspaces/windows; the helper
+does not change Electron shell zoom or local HTML previews.
 Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
 the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
 not transfer keyboard input away from the cross-process WebView2 controller.

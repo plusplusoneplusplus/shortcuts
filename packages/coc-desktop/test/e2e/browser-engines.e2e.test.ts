@@ -47,6 +47,16 @@ afterEach(async () => {
 });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it('shares page zoom across active and hidden guests, windows, navigation and new/restored tabs without zooming the shell', async () => {
+        const directory = profileRoot('browser-zoom-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--zoom-check');
+        const zoom = steps.get('zoom');
+        expect(zoom).toMatchObject({ update: { ok: true }, saved: 150, reset: { ok: true }, shell: 1.25 });
+        for (const key of ['active', 'inactive', 'created', 'navigated', 'restored']) expect(zoom?.[key]).toBeCloseTo(1.5);
+        for (const key of ['earlyResetActive', 'earlyResetInactive', 'resetActive', 'resetInactive', 'resetNew']) expect(zoom?.[key]).toBeCloseTo(1);
+    }, 90_000);
+
     it.skipIf(engine !== 'webview2')('keeps the page below the address bar with a Windows menu bar and renderer zoom', async () => {
         const directory = profileRoot('browser-layout-');
         temporary.push(directory);

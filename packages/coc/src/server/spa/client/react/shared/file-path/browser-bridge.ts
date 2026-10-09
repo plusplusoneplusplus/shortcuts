@@ -7,6 +7,7 @@ export interface BrowserPreferences {
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
     clearing: BrowserEngine[];
+    pageZoom?: { percent: number; min: number; max: number; step: number };
 }
 export type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
 export interface BrowserHistoryEntry {
@@ -81,6 +82,7 @@ export interface DesktopBrowserBridge {
     onNewTab(callback: (request: BrowserNewTabRequest) => void): () => void;
     onDownload(callback: (event: BrowserDownloadEvent) => void): () => void;
     getPreferences(): Promise<BrowserPreferences>;
+    setPageZoom?(percent: number): Promise<BrowserOperationResult>;
     setDefaultEngine(engine: BrowserEngine): Promise<BrowserOperationResult>;
     clearData(engine: BrowserEngine): Promise<BrowserOperationResult>;
     onPreferencesChanged(callback: () => void): () => void;

@@ -29,6 +29,11 @@ pub struct Command {
     pub bounds: Option<Bounds>,
     pub action: Option<String>,
     pub cookies: Option<Vec<ImportCookie>>,
+    pub page_zoom_percent: Option<f64>,
+}
+
+pub fn allowed_page_zoom(percent: f64) -> bool {
+    percent.is_finite() && (50.0..=200.0).contains(&percent) && (percent - 50.0) % 25.0 == 0.0
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +124,25 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_zoom_is_bounded_stepped_and_uses_a_typed_controller_command() {
+        for percent in [50.0, 75.0, 100.0, 125.0, 150.0, 175.0, 200.0] {
+            assert!(allowed_page_zoom(percent));
+        }
+        for percent in [f64::NAN, f64::INFINITY, 49.0, 201.0, 101.0] {
+            assert!(!allowed_page_zoom(percent));
+        }
+        let command: Command = serde_json::from_str(
+            r#"{"id":1,"op":"page-zoom","viewId":"7:tab:1","pageZoomPercent":125}"#,
+        )
+        .unwrap();
+        assert_eq!(command.page_zoom_percent, Some(125.0));
+        assert!(serde_json::from_str::<Command>(
+            r#"{"id":1,"op":"page-zoom","pageZoomPercent":"125"}"#,
+        )
+        .is_err());
+    }
 
     #[test]
     fn imports_cookie_attributes_independently_of_the_current_page() {

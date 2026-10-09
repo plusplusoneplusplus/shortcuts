@@ -1,7 +1,7 @@
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost } from './browser-host-contract';
 import {
     BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
-    isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
+    BROWSER_PAGE_ZOOM, isBrowserPageZoom, isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
     type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
@@ -35,6 +35,8 @@ export interface BrowserManagerOptions {
     fileHost: FilePreviewHost;
     getDefault(): BrowserEngine;
     saveDefault(engine: BrowserEngine): void;
+    getPageZoom(): number;
+    savePageZoom(percent: number): void;
     send(ownerId: number, channel: string, payload: unknown): void;
     changed(): void;
 }
@@ -44,6 +46,7 @@ export class BrowserHostManager {
     private readonly clearing = new Set<BrowserEngine>();
     private disposed = false;
     private readonly imports = new Map<BrowserEngine, Set<Promise<BrowserOperationResult>>>();
+    private zoomUpdate: Promise<unknown> = Promise.resolve();
 
     constructor(private readonly options: BrowserManagerOptions) {}
 
@@ -53,7 +56,35 @@ export class BrowserHostManager {
 
     async preferences(): Promise<BrowserPreferences> {
         const engines = await Promise.all(Object.values(this.options.hosts).map(host => host.availability()));
-        return { defaultEngine: this.options.getDefault(), engines, clearing: [...this.clearing] };
+        return {
+            defaultEngine: this.options.getDefault(), engines, clearing: [...this.clearing],
+            pageZoom: { percent: this.options.getPageZoom(), min: BROWSER_PAGE_ZOOM.min, max: BROWSER_PAGE_ZOOM.max, step: BROWSER_PAGE_ZOOM.step },
+        };
+    }
+
+    setPageZoom(percent: unknown): Promise<BrowserOperationResult> {
+        if (!isBrowserPageZoom(percent)) { return Promise.resolve({ ok: false, reason: 'invalid' }); }
+        const update = this.zoomUpdate.then(async (): Promise<BrowserOperationResult> => {
+            if (this.disposed) { return { ok: false, reason: 'busy' }; }
+            try {
+                this.options.savePageZoom(percent);
+                const entries = [...this.owners.values()].flatMap(owner => [...owner.values()]);
+                const results = await Promise.allSettled(entries.filter(entry => entry.sourceKind === 'url').map(async entry => {
+                    const view = await entry.ready;
+                    if (entry.closed) { return; }
+                    if (!view.setPageZoom) { throw new BrowserHostError('unsupported', 'Web page zoom is unavailable for this browser engine.'); }
+                    await view.setPageZoom(percent);
+                }));
+                throwRejected(results);
+                return { ok: true };
+            } catch (error) {
+                return this.failure(error, 'runtime-crashed');
+            } finally {
+                this.options.changed();
+            }
+        });
+        this.zoomUpdate = update;
+        return update;
     }
 
     async select(engine: unknown): Promise<BrowserOperationResult> {
@@ -156,7 +187,10 @@ export class BrowserHostManager {
         const host = this.options.hosts[entry.engine];
         const availability = await host.availability();
         if (!availability.available) { throw new BrowserHostError(availability.reason ?? 'startup-failed', availability.message ?? 'Browser engine unavailable.'); }
-        return this.start(entry, sink => host.create({ ownerId: entry.ownerId, viewId: entry.viewId, sessionKey: entry.sessionKey, url }, sink));
+        return this.start(entry, sink => host.create({
+            ownerId: entry.ownerId, viewId: entry.viewId, sessionKey: entry.sessionKey, url,
+            pageZoomPercent: this.options.getPageZoom(),
+        }, sink));
     }
 
     private async start(entry: Entry, create: (sink: BrowserEventSink) => Promise<BrowserHostedView>): Promise<BrowserHostedView> {
@@ -195,6 +229,10 @@ export class BrowserHostManager {
             throw new BrowserHostError('not-found', 'Browser tab closed during startup.');
         }
         entry.view = view;
+        if (entry.sourceKind === 'url' && view.setPageZoom) {
+            try { await view.setPageZoom(this.options.getPageZoom()); }
+            catch (error) { await view.close(); entry.view = undefined; throw error; }
+        }
         return view;
     }
 

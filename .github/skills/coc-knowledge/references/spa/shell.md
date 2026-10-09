@@ -101,7 +101,7 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
+`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
 Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned
@@ -179,6 +179,25 @@ IME suppress automatic suffix selection. Owner/revision checks reject stale
 queries; history invalidations refresh open results.
 
 The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+
+### Shared web-page zoom
+
+`browser.setPageZoom(percent)` validates 50-200% in 25-point steps; reset is 100%.
+`BrowserHostManager` serializes mutations, persists the desired value and updates every
+URL guest, including hidden workspaces/windows and pending startup. New/restored URL
+views inherit it; native navigation retains it. Preference broadcasts refresh toolbar
+readouts in every window of that desktop process. Independent desktop processes
+share disk preferences but have no live cross-process synchronization.
+
+Electron sets the authorized guest's `WebContents.setZoomFactor`, retaining pending
+attachment values and reapplying them after navigation. URL guests disable background
+throttling so hidden tabs process zoom/layout updates; file previews retain their
+existing throttling. WebView2 uses controller
+`SetZoomFactor` through typed helper commands. Per-tab native zoom cannot override the
+shared setting. The toolbar's Web page zoom controls are separate from app zoom and
+show unavailable/disabled states without a supported bridge/engine. Apply failures
+are surfaced; persistence records desired zoom even if a guest fails to apply it.
+The SPA shell, editors, terminals, file previews and system browser are unaffected.
 
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 

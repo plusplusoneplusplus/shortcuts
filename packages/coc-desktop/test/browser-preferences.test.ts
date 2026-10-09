@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { browserProfilePath, readBrowserEngine, writeBrowserEngine, BROWSER_PREFERENCES_FILENAME } from '../src/browser-preferences';
+import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, BROWSER_PREFERENCES_FILENAME } from '../src/browser-preferences';
 
 const directories: string[] = [];
 function directory(): string {
@@ -13,6 +13,35 @@ function directory(): string {
 afterEach(() => { directories.forEach(dir => fs.rmSync(dir, { recursive: true, force: true })); directories.length = 0; vi.restoreAllMocks(); });
 
 describe('desktop browser preferences', () => {
+    it('persists page zoom alongside the engine without either write erasing the other', () => {
+        const dir = directory();
+        expect(readBrowserPageZoom(dir)).toBe(100);
+        writeBrowserEngine(dir, 'webview2');
+        writeBrowserPageZoom(dir, 150);
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('webview2');
+        expect(readBrowserPageZoom(dir)).toBe(150);
+        writeBrowserEngine(dir, 'electron');
+        expect(readBrowserPageZoom(dir)).toBe(150);
+        writeBrowserPageZoom(dir, 100);
+        expect(readBrowserEngine(dir)).toBe('electron');
+        expect(readBrowserPageZoom(dir)).toBe(100);
+        expect(fs.readdirSync(dir)).toEqual([BROWSER_PREFERENCES_FILENAME]);
+    });
+
+    it('validates saved page zoom and refuses invalid writes without changing the file', () => {
+        const dir = directory();
+        for (const pageZoomPercent of [null, '125', 49, 201, 101]) {
+            fs.writeFileSync(path.join(dir, BROWSER_PREFERENCES_FILENAME), JSON.stringify({ pageZoomPercent }));
+            expect(readBrowserPageZoom(dir)).toBe(100);
+        }
+        writeBrowserPageZoom(dir, 50);
+        expect(readBrowserPageZoom(dir)).toBe(50);
+        for (const percent of [NaN, Infinity, 25, 225, 111]) expect(() => writeBrowserPageZoom(dir, percent)).toThrow('Invalid');
+        expect(readBrowserPageZoom(dir)).toBe(50);
+        writeBrowserPageZoom(dir, 200);
+        expect(readBrowserPageZoom(dir)).toBe(200);
+    });
+
     it('defaults to Electron and persists a Windows choice atomically', () => {
         const dir = directory();
         expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('electron');

@@ -17,6 +17,8 @@ function deferred<T>() {
 function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'> = {
     clearEngine: vi.fn(async () => true), recordVisit: vi.fn(async () => true), updateTitle: vi.fn(async () => true), flush: vi.fn(async () => {}),
 }) {
+    let pageZoom = 100;
+    const savePageZoom = vi.fn((percent: number) => { pageZoom = percent; });
     const send = vi.fn();
     const changed = vi.fn();
     const created: { request: BrowserViewRequest; sink: BrowserEventSink; view: BrowserHostedView; engine: BrowserEngine }[] = [];
@@ -27,6 +29,7 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
             const view: BrowserHostedView = {
                 snapshot: () => ({ viewId: request.viewId, engine, url: request.url, title: 'Fixture', loading: false, canGoBack: true, canGoForward: false }),
                 navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(),
+                setPageZoom: vi.fn(),
             };
             created.push({ request, sink, view, engine });
             return view;
@@ -47,8 +50,11 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
         }),
         dispose: vi.fn(async () => {}),
     };
-    const manager = new BrowserHostManager({ history, hosts, fileHost, getDefault: () => defaultEngine, saveDefault: engine => { defaultEngine = engine; }, send, changed });
-    return { manager, hosts, fileHost, files, created, send, changed, history };
+    const manager = new BrowserHostManager({
+        history, hosts, fileHost, getDefault: () => defaultEngine, saveDefault: engine => { defaultEngine = engine; },
+        getPageZoom: () => pageZoom, savePageZoom, send, changed,
+    });
+    return { manager, hosts, fileHost, files, created, send, changed, history, savePageZoom };
 }
 
 describe('browser manager history integration', () => {
@@ -165,6 +171,85 @@ describe('browser manager history integration', () => {
         expect(completed).toBe(false);
         pending.resolve();
         expect(await result).toEqual(new Error('Host dispose failed'));
+    });
+});
+
+describe('installation-wide web page zoom', () => {
+    it('updates active and hidden guests across workspaces, windows and engines, and initializes new/restored tabs', async () => {
+        const h = harness();
+        await h.manager.open(1, 'active', 'https://example.test/', 'workspace-a');
+        await h.manager.open(1, 'inactive', 'https://other.test/', 'workspace-b');
+        await h.manager.bounds(1, 'inactive', null);
+        await h.manager.open(2, 'active', 'https://example.test/', 'remote-workspace', 'webview2');
+        expect(await h.manager.setPageZoom(150)).toEqual({ ok: true });
+        for (const { view } of h.created) expect(view.setPageZoom).toHaveBeenLastCalledWith(150);
+        expect(h.changed).toHaveBeenCalledOnce();
+        expect((await h.manager.preferences()).pageZoom).toEqual({ percent: 150, min: 50, max: 200, step: 25 });
+        await h.manager.open(3, 'new', 'https://new.test/', 'workspace-c');
+        expect(h.created[3].request.pageZoomPercent).toBe(150);
+        expect(h.created[3].view.setPageZoom).toHaveBeenLastCalledWith(150);
+        await h.manager.reloadOwner(1);
+        await h.manager.open(1, 'active', 'https://restored.test/', 'workspace-a');
+        expect(h.created[4].request.pageZoomPercent).toBe(150);
+        await h.manager.navigate(1, 'active', 'https://navigation.test/');
+        await h.manager.nav(1, 'active', 'back');
+        await h.manager.open(1, 'active', 'https://ignored.test/', 'workspace-a');
+        expect(h.created[4].view.setPageZoom).toHaveBeenLastCalledWith(150);
+    });
+
+    it('serializes changes and updates a guest that completes startup during a zoom change', async () => {
+        const h = harness();
+        const pending = deferred<BrowserHostedView>();
+        const create = h.hosts.electron.create;
+        vi.mocked(create).mockImplementationOnce(async (request, sink) => {
+            const view = await pending.promise;
+            h.created.push({ request, sink, view, engine: 'electron' });
+            return view;
+        });
+        const opening = h.manager.open(1, 'pending', 'https://example.test/', 'workspace');
+        const first = h.manager.setPageZoom(125);
+        await vi.waitFor(() => expect(h.savePageZoom).toHaveBeenCalledWith(125));
+        const second = h.manager.setPageZoom(175);
+        const setPageZoom = vi.fn();
+        pending.resolve({
+            snapshot: () => ({ viewId: 'pending', engine: 'electron', url: 'https://example.test/', title: '', loading: false, canGoBack: false, canGoForward: false }),
+            navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(), setPageZoom,
+        });
+        expect(await opening).toMatchObject({ ok: true });
+        expect(await first).toEqual({ ok: true });
+        expect(await second).toEqual({ ok: true });
+        expect(setPageZoom).toHaveBeenLastCalledWith(175);
+        expect(h.savePageZoom.mock.calls).toEqual([[125], [175]]);
+    });
+
+    it('rejects unsafe, out-of-range and off-step values, accepts bounds and resets to 100%', async () => {
+        const h = harness();
+        for (const percent of [NaN, Infinity, -Infinity, 49, 201, 101, '125', null]) {
+            expect(await h.manager.setPageZoom(percent)).toEqual({ ok: false, reason: 'invalid' });
+        }
+        expect(h.savePageZoom).not.toHaveBeenCalled();
+        for (const percent of [50, 200, 100]) expect(await h.manager.setPageZoom(percent)).toEqual({ ok: true });
+        expect((await h.manager.preferences()).pageZoom.percent).toBe(100);
+    });
+
+    it('reports engine failures without preventing other guests from updating, and retries explicitly', async () => {
+        const h = harness();
+        await h.manager.open(1, 'bad', 'https://example.test/', 'workspace');
+        await h.manager.open(2, 'good', 'https://example.test/', 'workspace', 'webview2');
+        vi.mocked(h.created[0].view.setPageZoom!).mockRejectedValueOnce(new Error('Zoom failed'));
+        expect(await h.manager.setPageZoom(125)).toMatchObject({ ok: false, message: 'Zoom failed' });
+        expect(h.created[1].view.setPageZoom).toHaveBeenLastCalledWith(125);
+        expect(await h.manager.setPageZoom(125)).toEqual({ ok: true });
+        delete h.created[0].view.setPageZoom;
+        expect(await h.manager.setPageZoom(150)).toMatchObject({ ok: false, reason: 'unsupported' });
+    });
+
+    it('surfaces persistence failures without changing live guests', async () => {
+        const h = harness();
+        await h.manager.open(1, 'a', 'https://example.test/', 'workspace');
+        h.savePageZoom.mockImplementationOnce(() => { throw new Error('Storage unavailable'); });
+        expect(await h.manager.setPageZoom(125)).toMatchObject({ ok: false, message: 'Storage unavailable' });
+        expect(h.created[0].view.setPageZoom).toHaveBeenLastCalledWith(100);
     });
 });
 
@@ -449,6 +534,9 @@ describe('file previews', () => {
         await h.manager.openFile(1, 'p', page, 'owner');
         expect(await h.manager.importCookies(1, 'p', 'app.example.com', 'a=b')).toEqual({ ok: false, reason: 'unsupported' });
         const { view, sink } = h.files[0];
+        view.setPageZoom = vi.fn();
+        await h.manager.setPageZoom(175);
+        expect(view.setPageZoom).not.toHaveBeenCalled();
         await h.manager.bounds(1, 'p', { x: 1, y: 2, width: 3, height: 4 });
         await h.manager.bounds(1, 'p', null);
         await h.manager.nav(1, 'p', 'back');

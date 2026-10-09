@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
         id: 8, on: vi.fn(), once: vi.fn(), setWindowOpenHandler: vi.fn(),
         isDestroyed: () => false, loadURL: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
+        setZoomFactor: vi.fn(),
+        setBackgroundThrottling: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
         navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
@@ -115,6 +117,32 @@ async function view() {
 }
 
 describe('Electron browser add-menu forwarding', () => {
+    it('retains shared page zoom before attachment and reapplies it on navigation without touching the owner', async () => {
+        mocks.deferAttach = true;
+        const { hosted } = await view();
+        await hosted.setPageZoom!(150);
+        expect(mocks.contents.setZoomFactor).not.toHaveBeenCalled();
+        mocks.attach!();
+        expect(mocks.contents.setBackgroundThrottling).toHaveBeenCalledWith(false);
+        expect(mocks.contents.setZoomFactor).toHaveBeenLastCalledWith(1.5);
+        await hosted.setPageZoom!(175);
+        for (const event of ['dom-ready', 'did-navigate', 'zoom-changed']) {
+            mocks.contents.setZoomFactor.mockClear();
+            emit(event);
+            expect(mocks.contents.setZoomFactor).toHaveBeenCalledExactlyOnceWith(1.75);
+        }
+        await hosted.setPageZoom!(100);
+        expect(mocks.contents.setZoomFactor).toHaveBeenLastCalledWith(1);
+        await hosted.close();
+    });
+
+    it('does not allow per-tab keyboard zoom to diverge from the shared toolbar preference', async () => {
+        const { hosted, press } = await view();
+        for (const key of ['+', '=', '-', '_', '0']) expect(press({ key }).preventDefault).toHaveBeenCalledOnce();
+        expect(press({ key: '=', control: false, meta: false }).preventDefault).not.toHaveBeenCalled();
+        await hosted.close();
+    });
+
     it('preserves visibility set on a pending handle before guest attachment and adoption', async () => {
         mocks.deferAttach = true;
         const { hosted, sink, press } = await view();

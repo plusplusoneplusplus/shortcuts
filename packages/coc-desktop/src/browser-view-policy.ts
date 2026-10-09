@@ -176,6 +176,7 @@ export const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
 export const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 export const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 export const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
+export const BROWSER_PAGE_ZOOM_SET_CHANNEL = 'coc-desktop:browser-page-zoom-set';
 export const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 export const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
 export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
@@ -238,6 +239,15 @@ export interface BrowserPreferences {
     defaultEngine: BrowserEngine;
     engines: BrowserAvailability[];
     clearing: BrowserEngine[];
+    pageZoom: { percent: number; min: number; max: number; step: number };
+}
+
+export const BROWSER_PAGE_ZOOM = { min: 50, max: 200, step: 25, default: 100 } as const;
+
+export function isBrowserPageZoom(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value)
+        && value >= BROWSER_PAGE_ZOOM.min && value <= BROWSER_PAGE_ZOOM.max
+        && (value - BROWSER_PAGE_ZOOM.min) % BROWSER_PAGE_ZOOM.step === 0;
 }
 
 export type BrowserOperationResult = { ok: true } | {

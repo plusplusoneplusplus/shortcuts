@@ -136,7 +136,7 @@ describe('browser tab engine-neutral controls', () => {
         expect(fireEvent.keyDown(document.body, chord)).toBe(true);
         expect(fireEvent.keyDown(address, { ...chord, key: 'Tab' })).toBe(true);
         await userEvent.click(button);
-        const action = screen.getByRole('menuitem');
+        const action = screen.getByRole('menuitem', { name: 'Open in system browser' });
         expect(action).toHaveFocus();
         expect(fireEvent.keyDown(action, chord)).toBe(false);
         expect(screen.queryByRole('menu')).toBeNull();
@@ -220,12 +220,12 @@ describe('browser toolbar overflow', () => {
         const trigger = screen.getByRole('button', { name: 'Browser options' });
         trigger.focus();
         await userEvent.keyboard('{ArrowDown}');
-        expect(screen.getByRole('menuitem')).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: 'Open in system browser' })).toHaveFocus();
         await userEvent.keyboard('{Escape}');
         expect(screen.queryByRole('menu')).toBeNull();
         expect(trigger).toHaveFocus();
         await userEvent.keyboard('{Enter}');
-        expect(screen.getByRole('menuitem')).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: 'Open in system browser' })).toHaveFocus();
         await userEvent.tab();
         expect(screen.queryByRole('menu')).toBeNull();
         await userEvent.click(trigger);
@@ -239,7 +239,7 @@ describe('browser toolbar overflow', () => {
         const view = render(<UnifiedBrowserTab {...props} />);
         const trigger = screen.getByRole('button', { name: 'Browser options' });
         await userEvent.click(trigger);
-        expect(screen.getByRole('menuitem')).toBeDisabled();
+        expect(screen.getByRole('menuitem', { name: 'Open in system browser' })).toBeDisabled();
         expect(screen.getByRole('menu')).toHaveFocus();
         expect(screen.queryByTestId('browser-engine')).toBeNull();
         expect(open).not.toHaveBeenCalled();
@@ -347,6 +347,132 @@ describe('browser toolbar overflow', () => {
         expect(off).toHaveBeenCalled();
     });
 
+});
+
+describe('shared desktop web page zoom controls', () => {
+    function zoomBridge(engine: 'electron' | 'webview2' = 'electron') {
+        let percent = 100;
+        const listeners = new Set<() => void>();
+        mocks.bridge!.getPreferences = vi.fn(async () => ({
+            defaultEngine: engine, engines: [{ engine, available: true }], clearing: [],
+            pageZoom: { percent, min: 50, max: 200, step: 25 },
+        }));
+        mocks.bridge!.onPreferencesChanged = callback => { listeners.add(callback); return () => { listeners.delete(callback); }; };
+        mocks.bridge!.setPageZoom = vi.fn(async value => { percent = value; listeners.forEach(fn => fn()); return { ok: true }; });
+        return { notify: (value: number) => { percent = value; act(() => listeners.forEach(fn => fn())); }, listeners };
+    }
+
+    it.each(['electron', 'webview2'] as const)('steps and resets all pages via the %s bridge, retaining the menu', async engine => {
+        zoomBridge(engine);
+        open.mockResolvedValue({ ok: true, engine });
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('100%'));
+        expect(screen.getByRole('group', { name: 'Web page zoom' })).toHaveTextContent('all pages');
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Zoom in all web pages' }));
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('125%'));
+        expect(mocks.bridge!.setPageZoom).toHaveBeenCalledWith(125);
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Zoom out all web pages' }));
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('100%'));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Zoom out all web pages' }));
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('75%'));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Reset all web pages to 100%' }));
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('100%'));
+        expect(screen.getByRole('menuitem', { name: 'Reset all web pages to 100%' })).toBeDisabled();
+        expect(mocks.bridge!.navigate).not.toHaveBeenCalled();
+        expect(mocks.bridge!.setDefaultEngine).not.toHaveBeenCalled();
+        expect(mocks.bridge!.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('refreshes shared window changes, enforces bounds and unsubscribes on workspace switch', async () => {
+        const h = zoomBridge();
+        const props = { tabId: 'tab', viewId: 'view', sessionKey: 'workspace-a', url: 'https://example.test/', active: true, visible: true, onNavigate: vi.fn(), onPageState: vi.fn() };
+        const view = render(<UnifiedBrowserTab {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        h.notify(200);
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('200%'));
+        expect(screen.getByRole('menuitem', { name: 'Zoom in all web pages' })).toBeDisabled();
+        h.notify(50);
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('50%'));
+        expect(screen.getByRole('menuitem', { name: 'Zoom out all web pages' })).toBeDisabled();
+        view.rerender(<UnifiedBrowserTab {...props} viewId="other" sessionKey="workspace-b" />);
+        expect(h.listeners.size).toBe(0);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('50%'));
+    });
+
+    it('shows disabled unavailable controls without a supported desktop bridge', async () => {
+        tab();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('Unavailable');
+        for (const name of ['Zoom in all web pages', 'Zoom out all web pages', 'Reset all web pages to 100%']) {
+            expect(screen.getByRole('menuitem', { name })).toBeDisabled();
+        }
+        expect(mocks.bridge!.getPreferences).not.toHaveBeenCalled();
+    });
+
+    it('shows explicit engine failures and disables an unsupported bridge rather than reporting success', async () => {
+        zoomBridge();
+        mocks.bridge!.setPageZoom = vi.fn(async () => ({ ok: false, reason: 'unsupported', message: 'Web page zoom unavailable in this engine.' }));
+        tab();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Zoom in all web pages' })).not.toBeDisabled());
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Zoom in all web pages' }));
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Web page zoom unavailable'));
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('Unavailable');
+        expect(screen.getByRole('menuitem', { name: 'Zoom in all web pages' })).toBeDisabled();
+    });
+
+    it('disables unavailable engines and reports preference read errors', async () => {
+        zoomBridge();
+        mocks.bridge!.getPreferences = vi.fn(async () => ({
+            defaultEngine: 'electron', engines: [{ engine: 'electron', available: false }], clearing: [],
+            pageZoom: { percent: 100, min: 50, max: 200, step: 25 },
+        }));
+        tab();
+        const trigger = screen.getByRole('button', { name: 'Browser options' });
+        await userEvent.click(trigger);
+        expect(screen.getByRole('menuitem', { name: 'Zoom in all web pages' })).toBeDisabled();
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('Unavailable');
+        expect(mocks.bridge!.setPageZoom).not.toHaveBeenCalled();
+        await userEvent.click(trigger);
+        vi.mocked(mocks.bridge!.getPreferences).mockRejectedValueOnce(new Error('Preferences unavailable'));
+        await userEvent.click(trigger);
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Preferences unavailable'));
+    });
+
+    it('prevents duplicate changes while awaiting the engine and surfaces rejected operations', async () => {
+        zoomBridge();
+        let reject!: (error: Error) => void;
+        mocks.bridge!.setPageZoom = vi.fn(() => new Promise((_resolve, fail) => { reject = fail; }));
+        tab();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        const plus = screen.getByRole('menuitem', { name: 'Zoom in all web pages' });
+        await waitFor(() => expect(plus).not.toBeDisabled());
+        fireEvent.click(plus);
+        fireEvent.click(plus);
+        expect(plus).toBeDisabled();
+        expect(mocks.bridge!.setPageZoom).toHaveBeenCalledOnce();
+        act(() => reject(new Error('Engine disconnected')));
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Engine disconnected'));
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('100%');
+        expect(plus).not.toBeDisabled();
+    });
+
+    it('ignores an older preference read failure after a newer window broadcast succeeds', async () => {
+        const h = zoomBridge();
+        let reject!: (error: Error) => void;
+        vi.mocked(mocks.bridge!.getPreferences).mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+        tab();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        h.notify(150);
+        await waitFor(() => expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('150%'));
+        await act(async () => { reject(new Error('Stale read failed')); });
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(screen.getByTestId('browser-page-zoom-percent')).toHaveTextContent('150%');
+    });
 });
 
 describe('browser cookie import', () => {
