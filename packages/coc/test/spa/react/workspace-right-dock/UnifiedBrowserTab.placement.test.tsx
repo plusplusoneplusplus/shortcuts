@@ -60,6 +60,27 @@ describe('browser toolbar native placement regression', () => {
         expect(bridge.nav).not.toHaveBeenCalled();
     });
 
+    it('hides WebView2 beneath History and restores its bounds on close', async () => {
+        const bridge = mocks.bridge!;
+        vi.mocked(bridge.open).mockResolvedValue({ ok: true, engine: 'webview2' });
+        bridge.history = {
+            query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        render(<UnifiedBrowserTab {...props} onOpenHistoryUrl={vi.fn()} />);
+        await waitFor(() => expect(bridge.setBounds).toHaveBeenLastCalledWith('view', normal));
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'History' }));
+        expect(await screen.findByRole('dialog')).toHaveAttribute('data-native-view-overlay');
+        await waitFor(() => expect(bridge.hide).toHaveBeenCalledWith('view'));
+        vi.mocked(bridge.setBounds).mockClear();
+        await userEvent.click(screen.getByRole('button', { name: 'Close history' }));
+        await waitFor(() => expect(bridge.setBounds).toHaveBeenLastCalledWith('view', normal));
+        expect(bridge.open).toHaveBeenCalledTimes(1);
+        expect(bridge.close).not.toHaveBeenCalled();
+        expect(bridge.navigate).not.toHaveBeenCalled();
+    });
+
     it('dismisses on tab/panel switches and cancels pending placement on disposal without destroying the retained view', async () => {
         const view = render(<UnifiedBrowserTab {...props} />);
         const bridge = mocks.bridge!;

@@ -456,6 +456,30 @@ describe('UnifiedRightPanel', () => {
             Object.defineProperty(window, 'cocDesktop', { value: { browser: bridge }, configurable: true });
         });
 
+        it.each([null, 'remote:server-a:group'])('opens history in a fresh tab using the current dock owner and default engine (%s)', async routingRef => {
+            const history = {
+                query: vi.fn(async () => ({ ok: true, entries: [{ url: 'https://history.test/Case?Q=Value#Hash', title: 'Saved history', lastVisited: 1, visitCount: 2 }], total: 1, recording: true, storageError: null })),
+                suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+            };
+            Object.defineProperty(window, 'cocDesktop', { value: { browser: { ...bridge, history } }, configurable: true });
+            const source = { kind: 'browser' as const, ownerWorkspaceId: 'old-owner', ownerRoutingRef: 'remote:other:old-owner',
+                chatId: null, resourceId: 'original', label: 'Original', browserUrl: 'https://original.test/', browserEngine: 'webview2' as const };
+            writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, source));
+            renderPanel({ routingRef, dock: dockStub({ target: 'current-owner', targets: [{ workspaceId: 'current-owner', label: 'Current repo' }] }) });
+            fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'History' }));
+            fireEvent.click(await screen.findByText('Saved history'));
+            await waitFor(() => expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2));
+            const saved = readUnifiedPanelState(WS).workspaceTabs[1];
+            expect(saved).toMatchObject({ ownerWorkspaceId: 'current-owner', ownerRoutingRef: routingRef === null ? null : 'remote:server-a:current-owner',
+                browserUrl: 'https://history.test/Case?Q=Value#Hash', repoLabel: 'Current repo' });
+            expect(saved.resourceId).not.toBe('original');
+            expect(saved.browserEngine).toBeUndefined();
+            expect(readUnifiedPanelState('current-owner').workspaceTabs).toHaveLength(0);
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(bridge.navigate).not.toHaveBeenCalled();
+        });
+
         it('closes only the active browser source through the existing lifecycle', async () => {
             writeUnifiedTreeState(WS, { open: false, width: 220 });
             const panel = renderPanel({ chatId: 'chat-1' });

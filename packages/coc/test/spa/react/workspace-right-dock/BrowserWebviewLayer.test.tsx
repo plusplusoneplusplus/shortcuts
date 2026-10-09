@@ -72,6 +72,27 @@ describe('persistent browser webview layer', () => {
         expect(bridge.navigate).not.toHaveBeenCalled();
     });
 
+    it('keeps the Electron page attached beneath the History dialog', async () => {
+        bridge.history = {
+            query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        render(<><BrowserWebviewLayer /><UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace"
+            url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} onOpenHistoryUrl={vi.fn()} /></>);
+        await waitFor(() => expect(guest()).toBeTruthy());
+        const original = guest();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'History' }));
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog.closest('[data-testid="dialog-overlay"]')).toHaveClass('z-[10002]');
+        expect(host().style.visibility).toBe('visible');
+        expect(screen.getByTestId('browser-webview-layer').style.zIndex).toBe('1');
+        await userEvent.click(screen.getByRole('button', { name: 'Close history' }));
+        expect(guest()).toBe(original);
+        expect(bridge.open).toHaveBeenCalledTimes(1);
+        expect(bridge.navigate).not.toHaveBeenCalled();
+    });
+
     it('creates one guest and adopts it exactly once without moving it across workspace remounts', async () => {
         render(<BrowserWebviewLayer />);
         const first = render(<Placeholder />);

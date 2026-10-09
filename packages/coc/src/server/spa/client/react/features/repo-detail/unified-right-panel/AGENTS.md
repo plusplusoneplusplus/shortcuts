@@ -580,7 +580,7 @@ engine across all installation workspaces; browser tab descriptors stay
 ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
 Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
-with the actual engine and the current-page system-browser action. The menu is
+with the actual engine, desktop History and the current-page system-browser action. The menu is
 a fixed dropdown portalled to the document body above the live Electron page.
 Escape, outside clicks, repeated trigger clicks, and loss of tab visibility or
 ownership dismiss it. Page titles appear in tab labels; load errors and download
@@ -592,6 +592,16 @@ new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
 panels, and removes their webview hosts.
+
+`BrowserHistoryPanel` is a desktop-only dialog opened from the toolbar menu.
+It queries 50-entry pages by URL/title, shows visit times, deletes individual URLs
+and calls main's native-confirmed history clear. Main invalidations refresh all
+open panels; loading, storage and mutation errors are explicit. Paused history
+remains searchable. Queries and mutation replies are ignored after unmount;
+owner, tab and visibility changes dismiss the dialog. Opening an entry mints a
+fresh tab through the panel's current dock target and concrete clone route, with
+no inherited engine override. Electron guests stay attached under the dialog;
+its modal/overlay marker hides WebView2 surfaces.
 
 Electron opens return `embed: 'webview'` with a main-approved `src` and `partition`.
 The app-level `BrowserWebviewLayer` creates each guest once and calls

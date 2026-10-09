@@ -138,6 +138,15 @@ failures. Queries return recording state and persistent storage errors; mutation
 return explicit failure results. History-only clear preserves profiles, tabs and
 recording state. The optional history surface supports older-host detection.
 
+`BrowserHistoryPanel` opens from the desktop browser toolbar menu. It searches
+URL/title with bounded 50-entry pages, shows latest visit times and calls
+`delete`/native-confirmed `clear`. Main invalidations refresh open panels; failed
+queries/mutations and persistent storage errors stay visible. Pausing retains
+searchable entries. Opening uses the current panel's dock target and concrete
+clone route to mint a fresh default-engine tab. Tab, owner and visibility changes
+dismiss the dialog and invalidate replies. Its modal overlay covers Electron
+guests and hides native WebView2 surfaces.
+
 `query` uses recency pagination for the History panel. `suggest` searches the full
 retained URL/title index case-insensitively and returns at most eight entries:
 URL prefixes (including scheme-omitted prefixes), recency, visit count, then

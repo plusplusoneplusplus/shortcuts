@@ -1511,14 +1511,14 @@ export function UnifiedRightPanel({
         };
     }, [menuOpen]);
 
-    const openBrowserFromShortcut = useCallback(() => {
+    const openBrowserFromShortcut = useCallback((url?: string) => {
         setMenuOpen(false);
         open(browserOpenInput({
             ownerWorkspaceId: target,
             ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
             chatId,
             ...(target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
-        }));
+        }, url));
     }, [open, target, targetRoutingRef, chatId, workspaceId, targetLabel]);
 
     useEffect(() => {
@@ -1739,6 +1739,8 @@ export function UnifiedRightPanel({
                                         active={tab.id === activeId}
                                         visible={isOpen}
                                         nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
+                                        onOpenHistoryUrl={openBrowserFromShortcut}
+                                        historyOwnerKey={JSON.stringify([target, targetRoutingRef])}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}
                                     />
