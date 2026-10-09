@@ -50,7 +50,7 @@ export function CompactionSummaryDisclosure({ summary, wsId }: CompactionSummary
                     )}
                     data-testid="compaction-summary-body"
                 >
-                    <MarkdownView html={chatMarkdownToHtml(summary, wsId)} />
+                    <MarkdownView html={chatMarkdownToHtml(summary, wsId)} tableWrapToggle />
                 </div>
             )}
         </div>

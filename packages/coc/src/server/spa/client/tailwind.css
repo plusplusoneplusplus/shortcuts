@@ -1967,6 +1967,64 @@
     margin: 0;
 }
 
+/*
+ * "Wrap text" toggle on interactive tables (`wrapText`, opted into by AI
+ * response MarkdownViews). Off by default; when on, the table fits the pane and
+ * cell text — long URLs, paths and inline code included — breaks anywhere
+ * instead of ellipsizing. Columns size from their content (no <colgroup>,
+ * auto layout) with a 4rem floor, so a table with too many columns still
+ * scrolls. Columns the user has dragged keep their fixed widths.
+ */
+.interactive-table-btn:focus-visible {
+    outline: 2px solid #0078d4;
+    outline-offset: 1px;
+}
+
+.interactive-table-btn[aria-pressed="true"] {
+    background: #e5f1fb;
+    border-color: #0078d4;
+    color: #005a9e;
+}
+
+.dark .interactive-table-btn[aria-pressed="true"] {
+    background: #04395e;
+    border-color: #4daafc;
+    color: #fff;
+}
+
+.interactive-table-wrapped .interactive-md-table:not(.interactive-md-table-resized) {
+    table-layout: auto;
+    min-width: 0;
+}
+
+.interactive-table-wrapped .md-table.interactive-md-table th,
+.interactive-table-wrapped .md-table.interactive-md-table tbody td,
+.interactive-table-wrapped .md-table.interactive-md-table tbody td > .interactive-table-cell-text {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.interactive-table-wrapped .md-table.interactive-md-table th,
+.interactive-table-wrapped .md-table.interactive-md-table tbody td {
+    min-width: 4rem;
+}
+
+.interactive-table-wrapped .md-table.interactive-md-table tbody td {
+    vertical-align: top;
+}
+
+.interactive-table-wrapped .interactive-table-header-content > * {
+    min-width: 0;
+}
+
+.interactive-table-wrapped code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 /* Wiki article prose — targets standard HTML tags emitted by marked.parse() */
 .wiki-body {
     line-height: 1.65;
@@ -3682,4 +3740,24 @@
 .coc-diff-comment-glyph-button {
     width: 16px; height: 16px; line-height: 14px; font-size: 13px; border-radius: 3px; cursor: pointer;
     color: #fff; background-color: #0078d4;
+}
+
+/* PR banners measure their composer pane, including split panes and pop-outs.
+   rem thresholds compact earlier when the base font is enlarged.
+   Compact labels leave the original keyboard targets and tooltip names intact. */
+.composer-pr-container {
+    container: composer-pr / inline-size;
+}
+@container composer-pr (max-width: 43.6875rem) {
+    .composer-pr-row { gap: 4px; }
+    .composer-pr-label { display: none; }
+    .composer-pr-view { padding-inline: 5px; }
+}
+@container composer-pr (max-width: 31.1875rem) {
+    .composer-pr-author, .composer-pr-secondary { display: none; }
+}
+@container composer-pr (max-width: 23.6875rem) {
+    .composer-pr-row { gap: 3px; padding-inline: 8px; }
+    .composer-pr-decoration { display: none; }
+    .composer-pr-badge { gap: 3px; padding: 2px 4px; }
 }

@@ -28,7 +28,7 @@ export function TaskCompleteBody({ summary }: { summary: string }) {
 
     return (
         <div className="task-complete-body" data-testid="task-complete-markdown">
-            <MarkdownView html={html} />
+            <MarkdownView html={html} tableWrapToggle />
         </div>
     );
 }

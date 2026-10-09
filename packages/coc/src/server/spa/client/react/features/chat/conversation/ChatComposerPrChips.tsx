@@ -103,7 +103,7 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
     );
 
     return (
-        <div className="overflow-hidden rounded-t-lg" data-testid="composer-pr-chips">
+        <div className="composer-pr-container min-w-0 overflow-hidden rounded-t-lg" data-testid="composer-pr-chips">
             {head.map(renderChip)}
             {folded.length > 0 && (
                 <>

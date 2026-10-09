@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { DiffFilePicker } from '../../../../src/server/spa/client/react/features/git/diff/DiffFilePicker';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
-const flags = vi.hoisted(() => ({ enabled: true }));
-vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
-    get SHOW_DIFF_FILE_PICKER() { return flags.enabled; },
-}));
+const setEnabled = (enabled: boolean | undefined) => applyRuntimeConfigPatch({ diffFilePickerEnabled: enabled });
 
 const files = ['src/alpha.ts', 'test/alpha.ts', 'src/Beta.ts'];
 
@@ -17,11 +15,43 @@ function setup(overrides: Partial<React.ComponentProps<typeof DiffFilePicker>> =
 }
 
 describe('DiffFilePicker', () => {
-    beforeEach(() => { flags.enabled = true; });
-    afterEach(() => { vi.restoreAllMocks(); });
+    beforeEach(() => { setEnabled(true); });
+    afterEach(() => { vi.restoreAllMocks(); setEnabled(true); });
 
-    it('is disabled by default flag, without changing the path content or click action', () => {
-        flags.enabled = false;
+    it('is enabled when the admin setting is unset', () => {
+        setEnabled(undefined);
+        const { trigger } = setup();
+        fireEvent.click(trigger);
+        expect(screen.getByRole('dialog', { name: 'Jump to changed file' })).toBeTruthy();
+    });
+
+    it('opens source files on Ctrl/Cmd+click without opening the picker', () => {
+        const onClick = vi.fn();
+        const { trigger } = setup({ onClick });
+        fireEvent.click(trigger, { ctrlKey: true });
+        fireEvent.click(trigger, { metaKey: true });
+        expect(onClick).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('dismisses an open picker and restores the passive path when disabled live, and re-enables live', () => {
+        const onClick = vi.fn();
+        const { trigger } = setup({ onClick });
+        fireEvent.click(trigger);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        act(() => { setEnabled(false); });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.queryByRole('button')).toBeNull();
+        onClick.mockClear();
+        fireEvent.click(screen.getByText('alpha.ts'), { ctrlKey: true });
+        expect(onClick).toHaveBeenCalledOnce();
+        act(() => { setEnabled(true); });
+        fireEvent.click(screen.getByRole('button', { name: 'Jump to file: src/alpha.ts' }));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+
+    it('keeps the passive path and click action when the admin setting is off', () => {
+        setEnabled(false);
         const onClick = vi.fn();
         render(<DiffFilePicker filePath={files[0]} files={files} onSelect={vi.fn()} onClick={onClick}>alpha.ts</DiffFilePicker>);
         expect(screen.queryByRole('button')).toBeNull();

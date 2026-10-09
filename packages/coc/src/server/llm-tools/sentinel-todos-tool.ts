@@ -12,6 +12,7 @@ import {
     type SentinelTodoItem,
     type SentinelTodoOwner,
     type SentinelTodoPatch,
+    type SentinelTodoPriority,
     type SentinelTodoStatus,
 } from '../sentinel-todos/sentinel-todo-store';
 import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
@@ -37,6 +38,7 @@ export interface SentinelTodosArgs {
     notes?: string;
     targetRepo?: TargetRepoArg;
     status?: SentinelTodoStatus;
+    priority?: SentinelTodoPriority;
     reason?: string;
     outcome?: string;
     idempotencyKey?: string;
@@ -54,7 +56,8 @@ const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
     'cancels jobs). `list` returns active items (add `includeArchived: true` for archived ones). `create` needs ' +
     '`title` and a brief `completionCondition`; pass a stable `idempotencyKey` so a retried call cannot duplicate ' +
-    'the item. `update` needs `itemId` and the item\'s current `revision` as `expectedRevision`; a `conflict` ' +
+    'the item. `priority` (`high` or default `regular`) is ledger metadata only, independent of status and job order. ' +
+    '`update` needs `itemId` and the item\'s current `revision` as `expectedRevision`; a `conflict` ' +
     'error returns the newer `current` item — re-read it and only reapply your change if it still makes sense. ' +
     'Setting `status` to `done` or `needs_attention` requires a short `reason`; `done` records that reason as the ' +
     'reviewed outcome unless you pass `outcome`. Only mark `done` after checking evidence against the completion ' +
@@ -131,6 +134,11 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     required: ['workspaceId'],
                 },
                 status: { type: 'string', enum: ['todo', 'in_progress', 'needs_attention', 'done'] },
+                priority: {
+                    type: 'string',
+                    enum: ['high', 'regular'],
+                    description: 'create/update: ledger priority (default regular); independent of status.',
+                },
                 reason: { type: 'string', description: 'Required with status `done` or `needs_attention`.' },
                 outcome: { type: 'string', description: 'update: the reviewed outcome to record.' },
                 idempotencyKey: { type: 'string', description: 'create: stable key that makes retries safe.' },
@@ -165,6 +173,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             ...(args.targetRepo ? { targetRepo: args.targetRepo } : {}),
                             status,
                             ...(reason ? { statusReason: reason } : {}),
+                            ...(args.priority !== undefined ? { priority: args.priority } : {}),
                         }, { actor: 'sentinel', idempotencyKey: args.idempotencyKey });
                         return { item, created };
                     }
@@ -182,6 +191,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         if (args.notes !== undefined) patch.notes = args.notes;
                         if (args.targetRepo) patch.targetRepo = args.targetRepo;
                         if (args.status !== undefined) patch.status = args.status;
+                        if (args.priority !== undefined) patch.priority = args.priority;
                         if (reason) patch.statusReason = reason;
                         const outcome = args.outcome?.trim() || (args.status === 'done' ? reason : undefined);
                         if (outcome) patch.outcome = outcome;

@@ -96,7 +96,7 @@ describe('repo group desktop Git panel', () => {
         appState.gitRouteScope = { routeWorkspaceId: group, workspaceId: 'repo-b' };
         appState.selectedGitCommitHash = 'fed9876';
         render(<GroupPanel />);
-        expect(readUnifiedPanelState(group).workspaceTabs.find(item => item.kind === 'git'))
+        expect((readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).find(item => item.kind === 'git'))
             .toMatchObject({ gitMemberId: 'repo-b', gitView: { type: 'commit', hash: 'fed9876' } });
         expect(screen.getByTestId('unified-git-tab').textContent).toBe('repo-b');
         expect(screen.getByTestId('middle-detail').textContent).toBe('');
@@ -105,7 +105,7 @@ describe('repo group desktop Git panel', () => {
     it('portals a member commit to the far-right tab, not the conversation detail, and restores it on remount', () => {
         const view = render(<GroupPanel />);
         fireEvent.click(screen.getByText('commit'));
-        const tab = readUnifiedPanelState(group).workspaceTabs.find(item => item.kind === 'git');
+        const tab = (readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).find(item => item.kind === 'git');
         expect(tab).toMatchObject({ gitMemberId: 'repo-a', gitView: { type: 'commit', hash: 'abc1234' } });
         expect(screen.getByTestId('unified-git-tab').textContent).toBe('repo-a');
         expect(screen.getByTestId('middle-detail').textContent).toBe('');
@@ -122,10 +122,10 @@ describe('repo group desktop Git panel', () => {
         view.rerender(<GroupPanel />);
         expect(screen.getByTestId('member-git').getAttribute('data-member')).toBe('repo-b');
         expect(lastGitProps?.restoreView).toBeUndefined();
-        expect(readUnifiedPanelState(group).workspaceTabs.filter(item => item.kind === 'git')).toHaveLength(0);
+        expect((readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).filter(item => item.kind === 'git')).toHaveLength(0);
         expect(screen.queryByTestId('unified-git-tab')).toBeNull();
         fireEvent.click(screen.getByText('commit'));
-        expect(readUnifiedPanelState(group).workspaceTabs.filter(item => item.kind === 'git'))
+        expect((readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).filter(item => item.kind === 'git'))
             .toEqual([expect.objectContaining({ gitMemberId: 'repo-b' })]);
     });
 
@@ -136,17 +136,17 @@ describe('repo group desktop Git panel', () => {
         view.rerender(<GroupPanel />);
         expect(screen.queryByTestId('member-git')).toBeNull();
         expect(screen.getByTestId('repo-group-git-unavailable-member')).toBeTruthy();
-        expect(readUnifiedPanelState(group).workspaceTabs.filter(item => item.kind === 'git')).toHaveLength(0);
+        expect((readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).filter(item => item.kind === 'git')).toHaveLength(0);
     });
 
     it('clears selection when the right-panel Git tab is closed', () => {
         render(<GroupPanel />);
         fireEvent.click(screen.getByText('commit'));
-        const tab = readUnifiedPanelState(group).workspaceTabs.find(item => item.kind === 'git')!;
+        const tab = (readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).find(item => item.kind === 'git')!;
         act(() => updateUnifiedPanelState(group, state => closeTab(state, tab.id)));
         expect(lastGitProps?.detailOpen).toBe(false);
         fireEvent.click(screen.getByText('commit'));
-        expect(readUnifiedPanelState(group).workspaceTabs.filter(item => item.kind === 'git')).toHaveLength(1);
+        expect((readUnifiedPanelState(group).chatTabs['@workspace'] ?? []).filter(item => item.kind === 'git')).toHaveLength(1);
     });
 });
 

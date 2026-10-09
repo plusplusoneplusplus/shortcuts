@@ -28,14 +28,15 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | note | git | html-page | browser` are workspace-owned,
-`file | canvas | diff | external | paste | todo` belong to the selected chat (`scopeForKind`).
+Tabs are scoped by kind: `terminal | notes | note | html-page | browser` are workspace-owned,
+`file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
+A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
-`canvas` and `todo` with the workspace kinds as `tools` and `file | diff | external | paste` in
+`canvas`, `git`, and `todo` with the workspace kinds as `tools` and `file | diff | external | paste` in
 `resources`. `visibleTabs` shows workspace tabs, then the chat's canvases, then
 its resources, keeping stored order inside each group; the strip draws its
 divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
@@ -89,7 +90,7 @@ from same-id clones never merge into one tab.
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
-| `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | The one Git tab per panel scope (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu). Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
+| `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu; `unifiedGitTabId` takes the chat id). Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
 | `sentinelTodoPanelModel.ts` + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
@@ -657,7 +658,13 @@ active items (Needs attention, In progress, To do), then collapsed Done and
 Archived sections. Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
-Late loads are dropped by a sequence counter. Job links only navigate; nothing in
+Late loads are dropped by a sequence counter. Choosing Needs attention requires a
+reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
+Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Add and Edit forms carry a Priority select
+(Regular default, High); a High row draws an `aria-hidden` red leading band over the card's
+reserved `pl-1` gutter (every row reserves it, so priority changes never shift content) plus a
+visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
+missing value (older owning server) as Regular. Priority never reorders sections. Job links only navigate; nothing in
 the tab starts, retries, or cancels a job. Tests live in
 `test/server/sentinel-todos/panel.test.tsx` and `panel-model.test.ts`.
 

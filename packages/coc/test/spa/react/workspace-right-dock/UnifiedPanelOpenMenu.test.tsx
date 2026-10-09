@@ -476,4 +476,18 @@ describe('UnifiedPanelOpenMenu — Sentinel To-do', () => {
         expect(onOpenResource).toHaveBeenCalledWith(todoInput);
         expect(onClose).toHaveBeenCalled();
     });
+
+    it('leads with the shared checklist icon like every other action row', () => {
+        renderMenu({ todoInput });
+        const row = screen.getByTestId('unified-panel-open-todo');
+        const icon = row.firstElementChild as HTMLElement;
+        expect(icon.getAttribute('aria-hidden')).not.toBeNull();
+        expect(icon.querySelector('svg polyline')).not.toBeNull();
+        expect(row.textContent).toBe('To-do');
+        for (const action of ['terminal', 'explorer', 'notes', 'browser']) {
+            const leading = screen.getByTestId(`unified-panel-open-${action}`).firstElementChild as HTMLElement;
+            expect(leading.className).toBe(icon.className);
+            expect(leading.textContent || leading.querySelector('svg')).toBeTruthy();
+        }
+    });
 });

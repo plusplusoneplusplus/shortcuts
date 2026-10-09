@@ -63,7 +63,8 @@ turns get no tool and no guidance. The owner is the invoking chat (`workspaceId`
 never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
 `list` (active items; `includeArchived` adds archived), `create` (requires `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
-return `{ code: 'conflict', current }`). `done`/`needs_attention` require a `reason`; `done` stores
+return `{ code: 'conflict', current }`). `create`/`update` accept `priority` (`high`/`regular`,
+default `regular`; ledger metadata only, independent of status). `done`/`needs_attention` require a `reason` (also enforced by the store for non-user actors); `done` stores
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archiving is
 user-only. The addon's `<sentinel_todo_ledger>` guidance tells Sentinel to track concrete work
 only, update instead of duplicating, and report untracked work rather than relaunching jobs.

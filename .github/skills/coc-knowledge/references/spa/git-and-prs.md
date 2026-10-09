@@ -205,7 +205,11 @@ switches. Both engines share the persisted comment shape.
 
 ### Changed-file navigation
 
-`SHOW_DIFF_FILE_PICKER` in `react/featureFlags.ts` defaults off. When enabled,
+Live admin setting `features.diffFilePicker` (Admin -> Configure -> Features ->
+Code Review & Collaboration -> Diff header file picker; runtime flag
+`diffFilePickerEnabled`) defaults on; only an explicit false disables it.
+`DiffFilePicker` reads it through `useDiffFilePickerEnabled`, so toggling applies
+without a reload and disabling dismisses an open picker. When enabled,
 `diff/DiffFilePicker.tsx` makes a navigable multi-file diff's header path a searchable
 changed-file picker. It matches full paths case-insensitively, supports arrow keys and
 Enter, restores trigger focus on selection/Escape, and dismisses on outside interaction,
@@ -453,6 +457,14 @@ eager-loaded `item.checks`, tinted by worst-active status, omitted until the fet
 resolves with ≥1 check), diff counts (`mapPrDetailToCardPr`'s `diffStats` via
 `parseDiffStats`, omitted with no counts), a provider link, and dismiss. Loading rows
 render a skeleton; error rows show the message plus retry.
+
+Every chip and fold row is a single non-wrapping row: controls are `shrink-0`, the
+title (`flex-auto`) outranks the author (`shrink-[10]`) and both truncate. The
+`.composer-pr-container` query container in `tailwind.css` compacts by pane width
+in rem (so larger base text compacts earlier): ≤43.6875rem hides badge/View labels
+(names stay in `aria-label`/`title`), ≤31.1875rem hides author and diff,
+≤23.6875rem drops the glyphs and tightens badges. Guarded by
+`test/e2e/composer-pr-chip-layout.spec.ts`.
 
 Chips order newest-first. Dismiss hides the chip immediately **and** issues
 `deleteChatBindingForOrigin(originId, prId)` (best-effort), so a dismissed PR does not

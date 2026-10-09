@@ -120,6 +120,7 @@ export interface AdminResolvedConfig {
     focusedDiff?: boolean;
     gitCommitLookup?: boolean;
     gitCrossCloneCherryPick?: boolean;
+    diffFilePicker?: boolean;
     sessionContextAttachments?: boolean;
     commitChatLens?: boolean;
     commitChatLensDormantMode?: 'ghost' | 'pill';
@@ -215,6 +216,7 @@ export interface AdminConfigUpdate {
   'workItems.aiAuthoring.enabled'?: boolean;
   'workItems.workflow.enabled'?: boolean;
   'features.gitCrossCloneCherryPick'?: boolean;
+  'features.diffFilePicker'?: boolean;
   'features.sessionContextAttachments'?: boolean;
   'features.ralphMultiAgentGrill'?: boolean;
   'features.commitChatLens'?: boolean;
@@ -277,6 +279,8 @@ export interface RuntimeDashboardConfig {
     workItemsWorkflowEnabled: boolean;
     gitCommitLookupEnabled: boolean;
     gitCrossCloneCherryPickEnabled: boolean;
+    /** Searchable changed-file navigation from diff headers (`features.diffFilePicker`). */
+    diffFilePickerEnabled: boolean;
     sessionContextAttachmentsEnabled: boolean;
     commitChatLensEnabled: boolean;
     commitChatLensDormantMode: 'ghost' | 'pill';

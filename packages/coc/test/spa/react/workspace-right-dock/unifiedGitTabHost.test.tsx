@@ -22,8 +22,8 @@ function HostProbe({ scope }: { scope: string }) {
     return <div data-testid={`probe-${scope}`} data-has-node={node ? 'yes' : 'no'} />;
 }
 
-function SingleRepoProbe() {
-    const panel = useSplitGitPanel({ scopeWorkspaceId: 'single-repo', chatId: null, enabled: true });
+function SingleRepoProbe({ chatId = null }: { chatId?: string | null }) {
+    const panel = useSplitGitPanel({ scopeWorkspaceId: 'single-repo', chatId, enabled: true });
     return <>
         <button data-testid="select-commit" onClick={() => panel.onViewChange?.({
             type: 'commit', commit: {
@@ -34,7 +34,8 @@ function SingleRepoProbe() {
         <span data-testid="single-repo-status"
             data-open={String(panel.detailOpen)}
             data-restored={panel.restoreView?.type === 'commit' ? panel.restoreView.hash : ''}
-            data-host={String(!!panel.detailContainer)} />
+            data-host={String(!!panel.detailContainer)}
+            data-scope={String(panel.viewScopeKey)} />
         {panel.detailOpen && <UnifiedGitTab scopeWorkspaceId="single-repo" />}
     </>;
 }
@@ -109,12 +110,15 @@ describe('unifiedGitTab host store', () => {
         expect(getUnifiedGitTabHost('ws-c')).toBeNull();
     });
 
-    it('repeated opens reuse one Git tab in the panel scope', () => {
+    it('repeated opens reuse one Git tab per chat, and each chat has its own', () => {
         const first = openUnifiedGitTab('ws-d', { ownerWorkspaceId: 'ws-d', chatId: 'chat-1' });
-        const second = openUnifiedGitTab('ws-d', { ownerWorkspaceId: 'ws-d', chatId: 'chat-2' });
-        expect(second).toBe(first);
+        expect(openUnifiedGitTab('ws-d', { ownerWorkspaceId: 'ws-d', chatId: 'chat-1' })).toBe(first);
+        const other = openUnifiedGitTab('ws-d', { ownerWorkspaceId: 'ws-d', chatId: 'chat-2' });
+        expect(other).not.toBe(first);
         const state = readUnifiedPanelState('ws-d');
-        expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
+        expect(state.workspaceTabs).toEqual([]);
+        expect(state.chatTabs['chat-1'].map(tab => tab.id)).toEqual([first]);
+        expect(state.chatTabs['chat-2'].map(tab => tab.id)).toEqual([other]);
     });
 
     it('persists the data member with a group Git view when the same tab is reused', () => {
@@ -127,19 +131,20 @@ describe('unifiedGitTab host store', () => {
             gitView: { type: 'commit', hash: 'def5678' },
         });
         const state = readUnifiedPanelState('group-example');
-        expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
-        expect(parseUnifiedPanelState(serializeUnifiedPanelState(state)).workspaceTabs.find(tab => tab.kind === 'git'))
+        expect(state.chatTabs['@workspace'].filter(tab => tab.kind === 'git')).toHaveLength(1);
+        expect(parseUnifiedPanelState(serializeUnifiedPanelState(state)).chatTabs['@workspace'].find(tab => tab.kind === 'git'))
             .toMatchObject({ gitMemberId: 'repo-b', gitView: { type: 'commit', hash: 'def5678' } });
     });
 
     it('names the opened tab with unifiedGitTabId', () => {
         const id = openUnifiedGitTab('ws-e', { ownerWorkspaceId: 'ws-e', chatId: 'chat-1' });
-        expect(unifiedGitTabId({ ownerWorkspaceId: 'ws-e' })).toBe(id);
+        expect(unifiedGitTabId({ ownerWorkspaceId: 'ws-e', chatId: 'chat-1' })).toBe(id);
+        expect(unifiedGitTabId({ ownerWorkspaceId: 'ws-e', chatId: 'chat-2' })).not.toBe(id);
     });
 
     it('useUnifiedGitTabOpen tracks the tab being opened and closed', () => {
         function OpenProbe() {
-            const open = useUnifiedGitTabOpen('ws-f', { ownerWorkspaceId: 'ws-f' });
+            const open = useUnifiedGitTabOpen('ws-f', { ownerWorkspaceId: 'ws-f', chatId: null });
             return <div data-testid="open-probe" data-open={open ? 'yes' : 'no'} />;
         }
         render(<OpenProbe />);
@@ -162,6 +167,24 @@ describe('unifiedGitTab host store', () => {
         render(<SingleRepoProbe />);
         expect(screen.getByTestId('single-repo-status').dataset).toMatchObject({
             open: 'true', restored: 'abc1234', host: 'true',
+        });
+    });
+
+    it('does not carry one chat\'s Git view into another chat, and restores it on return (regression)', () => {
+        const view = render(<SingleRepoProbe chatId="chat-a" />);
+        fireEvent.click(screen.getByTestId('select-commit'));
+        expect(screen.getByTestId('single-repo-status').dataset).toMatchObject({
+            open: 'true', restored: 'abc1234', host: 'true', scope: 'chat-a',
+        });
+
+        view.rerender(<SingleRepoProbe chatId="chat-b" />);
+        expect(screen.getByTestId('single-repo-status').dataset).toMatchObject({
+            open: 'false', restored: '', host: 'false', scope: 'chat-b',
+        });
+
+        view.rerender(<SingleRepoProbe chatId="chat-a" />);
+        expect(screen.getByTestId('single-repo-status').dataset).toMatchObject({
+            open: 'true', restored: 'abc1234', host: 'true', scope: 'chat-a',
         });
     });
 });

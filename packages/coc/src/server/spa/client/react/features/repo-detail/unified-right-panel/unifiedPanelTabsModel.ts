@@ -11,8 +11,8 @@
  *
  * Four invariants hold for every value this module returns:
  *  1. **Ownership follows the kind.** Terminal and Notes tabs belong
- *     to the workspace and stay visible across chat switches; file, canvas, and
- *     diff tabs belong to the chat that opened them (or to the workspace when
+ *     to the workspace and stay visible across chat switches; file, canvas,
+ *     diff, and Git tabs belong to the chat that opened them (or to the workspace when
  *     no chat is selected). See `scopeForKind`.
  *  2. **One tab per resource per scope.** Ids are derived from kind + scope +
  *     owning clone + canonical resource id, so opening the same file twice
@@ -56,11 +56,12 @@ export interface PersistedNotesView {
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
  * duplicated per chat, or ordered among resources.
  *
- * `git` is the workspace's single git detail view — the commit, file diff,
- * branch range, or working-tree view the split workspace's git list last
- * selected. Its `resourceId` is always `GIT_TAB_RESOURCE_ID`, so each workspace
- * has one Git tab whose content is replaced rather than a tab per commit. It is
- * opened by git clicks only, never from the "+" menu.
+ * `git` is a chat's single git detail view — the commit, file diff, branch
+ * range, or working-tree view the split workspace's git list last selected
+ * while that chat was shown. Its `resourceId` is always `GIT_TAB_RESOURCE_ID`,
+ * so each chat has one Git tab whose content is replaced rather than a tab per
+ * commit, and switching chats never carries one chat's git detail into
+ * another. It is opened by git clicks only, never from the "+" menu.
  *
  * `external` is a read-only standard-library or dependency source a language
  * server named as a definition. Its `resourceId` is the opaque capability the
@@ -94,7 +95,7 @@ export const GIT_TAB_RESOURCE_ID = 'git';
 const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'browser', 'paste']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git', 'html-page', 'browser']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'html-page', 'browser']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -103,9 +104,9 @@ const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['t
 export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
- * Ownership rule (AC-02). Terminals, Notes, note documents, and the Git tab are
- * workspace-owned; specific files, canvases, and diffs follow the chat that
- * opened them. Files opened with no chat selected fall back to the workspace,
+ * Ownership rule (AC-02). Terminals, Notes, and note documents are
+ * workspace-owned; specific files, canvases, diffs, and the Git tab follow the
+ * chat that opened them. Files opened with no chat selected fall back to the workspace,
  * which `scopeKeyFor` handles.
  */
 export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
@@ -116,13 +117,13 @@ export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
 export type UnifiedTabDisplayGroup = 'tools' | 'resources';
 
 /**
- * Display grouping, separate from ownership. Canvases and the To-do tab are chat-owned but render
- * with the workspace tools (Terminal, Notes, Git) because they are something
+ * Display grouping, separate from ownership. Canvases, Git, and the To-do tab are chat-owned but render
+ * with the workspace tools (Terminal, Notes) because they are something
  * the user works in, not a repo file; files, diffs, and external sources form
  * the resource group after the strip's divider.
  */
 export function displayGroupForKind(kind: UnifiedTabKind): UnifiedTabDisplayGroup {
-    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' || kind === 'todo' ? 'tools' : 'resources';
+    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' || kind === 'git' || kind === 'todo' ? 'tools' : 'resources';
 }
 
 /**
@@ -1164,7 +1165,11 @@ export function restoreUnifiedPanelState(raw: string | null): UnifiedPanelRestor
     const migrated = typeof version === 'number' && UNIFIED_PANEL_LEGACY_VERSIONS.includes(version);
     if (version !== UNIFIED_PANEL_STATE_VERSION && !migrated) return noRestore(EMPTY_UNIFIED_PANEL);
 
-    const workspaceTabs = parseList(payload.workspaceTabs, WORKSPACE_SCOPE_KEY);
+    // Only workspace kinds belong in this list. A chat-owned kind found here
+    // was written when it was still workspace-owned (the Git tab) and would
+    // otherwise show in every chat and be unclosable from its chat scope.
+    const workspaceTabs = parseList(payload.workspaceTabs, WORKSPACE_SCOPE_KEY)
+        .filter(tab => scopeForKind(tab.kind) === 'workspace');
     const chatTabs: Record<string, readonly UnifiedPanelTab[]> = {};
     const rawChatTabs = payload.chatTabs;
     if (rawChatTabs !== null && typeof rawChatTabs === 'object' && !Array.isArray(rawChatTabs)) {

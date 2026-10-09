@@ -201,6 +201,10 @@ Bookkeeping per Sentinel chat in the parent workspace's `sentinel-todos.json` (p
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`); a repeated `idempotencyKey` returns the original (`200`) |
 | PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
 
+REST writes are always actor `user` (no caller-supplied actor; unknown keys → `400`). A person may set `done` without a reason; newly marking Done without `outcome` drops the earlier outcome. Non-user actors (Sentinel tool) setting `done`/`needs_attention` without `statusReason` → `invalid`.
+
+Items carry `priority: 'high' | 'regular'` (create defaults to `regular`; items stored without it read as `regular` with no rewrite or revision bump). It is ledger metadata only — independent of status, never job queue priority or list order. A priority-only `PATCH` leaves status, reason and outcome unchanged and does not count as a user edit that supersedes a linked job's result; other values → `400 invalid`.
+
 `coc-client` exposes these as `client.sentinelTodos.get/create/update` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
 
 ## Task Groups

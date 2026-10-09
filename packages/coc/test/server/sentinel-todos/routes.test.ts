@@ -123,6 +123,45 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'GET', '/api/workspaces/bad%2Fid/sentinel-todos/queue_s1')).status).toBe(400);
     });
 
+    it('marks Done for a person without a reason and never takes a caller-supplied actor', async () => {
+        const s = await track(await startServer());
+        const created = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'Fix login' });
+        const itemUrl = `${ledger}/items/${created.body.item.id}`;
+        const spoofed = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 1, status: 'done', actor: 'sentinel' });
+        expect(spoofed.status).toBe(400);
+        expect((await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'x', actor: 'system' })).status).toBe(400);
+        const done = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 1, status: 'done', statusReason: null });
+        expect(done.status).toBe(200);
+        expect(done.body.item).toMatchObject({ status: 'done', revision: 2, updatedBy: 'user' });
+        expect(done.body.item.statusReason).toBeUndefined();
+        expect(done.body.item.outcome).toBeUndefined();
+        const reopened = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 2, status: 'todo', statusReason: null });
+        const reviewed = await req(s.baseUrl, 'PATCH', itemUrl, {
+            expectedRevision: reopened.body.item.revision, status: 'done', statusReason: 'Verified', outcome: 'Verified',
+        });
+        expect(reviewed.body.item).toMatchObject({ statusReason: 'Verified', outcome: { summary: 'Verified', recordedBy: 'user' } });
+    });
+
+    it('round-trips priority through create, priority-only edit, and reload, and rejects unknown values', async () => {
+        const s = await track(await startServer());
+        const plain = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'Plain' });
+        expect(plain.body.item.priority).toBe('regular');
+        const high = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'Urgent', priority: 'high' });
+        expect(high.body.item).toMatchObject({ priority: 'high', createdBy: 'user' });
+        const itemUrl = `${ledger}/items/${high.body.item.id}`;
+        await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 1, status: 'needs_attention', statusReason: 'Blocked' });
+        const lowered = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 2, priority: 'regular' });
+        expect(lowered.status).toBe(200);
+        expect(lowered.body.item).toMatchObject({ priority: 'regular', status: 'needs_attention', statusReason: 'Blocked', revision: 3 });
+        expect((await req(s.baseUrl, 'GET', ledger)).body.items.map((i: { priority: string }) => i.priority)).toEqual(['regular', 'regular']);
+
+        const badCreate = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'x', priority: 'urgent' });
+        expect(badCreate).toMatchObject({ status: 400, body: { code: 'invalid' } });
+        const badEdit = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 3, priority: 'HIGH' });
+        expect(badEdit).toMatchObject({ status: 400, body: { code: 'invalid' } });
+        expect((await req(s.baseUrl, 'GET', ledger)).body.items).toHaveLength(2);
+    });
+
     it('validates bodies', async () => {
         const s = await track(await startServer());
         expect((await req(s.baseUrl, 'POST', `${ledger}/items`, { title: '' })).body).toMatchObject({ code: 'invalid' });

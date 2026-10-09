@@ -103,6 +103,37 @@ describe('SentinelTodoStore', () => {
         expect(reopened.item.targetRepo).toBeUndefined();
     });
 
+    it('lets a person mark Done without a reason and drops the earlier reason and outcome', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        store.update(owner, item.id, 1, { status: 'done', statusReason: 'Old review', outcome: 'Old outcome' }, 'sentinel');
+        store.update(owner, item.id, 2, { status: 'needs_attention', statusReason: 'Regressed' }, 'sentinel');
+        const done = store.update(owner, item.id, 3, { status: 'done', statusReason: null }, 'user');
+        expect(done.item).toMatchObject({ status: 'done', revision: 4, updatedBy: 'user' });
+        expect(done.item.statusReason).toBeUndefined();
+        expect(done.item.outcome).toBeUndefined();
+        expect(done.item.userEditedAt).toBe(done.item.updatedAt);
+        // A supplied reason and outcome still record with the person's provenance.
+        const { item: other } = store.create(owner, { title: 'U' }, { actor: 'user' });
+        const reviewed = store.update(owner, other.id, 1, { status: 'done', statusReason: 'Checked', outcome: 'Checked' }, 'user');
+        expect(reviewed.item).toMatchObject({ statusReason: 'Checked', outcome: { summary: 'Checked', recordedBy: 'user' } });
+        // Edits that do not newly mark Done keep the recorded outcome.
+        const archived = store.update(owner, other.id, 2, { archived: true }, 'user');
+        expect(archived.item.outcome).toMatchObject({ summary: 'Checked' });
+    });
+
+    it('requires a reason when an automated actor sets Done or Needs attention', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        expectTodoError(() => store.update(owner, item.id, 1, { status: 'done' }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.update(owner, item.id, 1, { status: 'done', statusReason: null }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.update(owner, item.id, 1, { status: 'needs_attention' }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.create(owner, { title: 'x', status: 'done' }, { actor: 'sentinel' }), 'invalid');
+        expect(store.get(owner).items).toHaveLength(1);
+        expect(store.get(owner).items[0].revision).toBe(1);
+        expect(store.update(owner, item.id, 1, { status: 'in_progress' }, 'sentinel').item.status).toBe('in_progress');
+    });
+
     it('validates input and reports unknown items', () => {
         const store = new SentinelTodoStore(dataDir);
         expectTodoError(() => store.create(owner, { title: '  ' }, { actor: 'user' }), 'invalid');
@@ -132,6 +163,75 @@ describe('SentinelTodoStore', () => {
         expect(() => failing.update(owner, item.id, 1, { title: 'After' }, 'user')).toThrow('ENOSPC');
         expect(() => failing.create(owner, { title: 'New' }, { actor: 'user' })).toThrow('ENOSPC');
         expect(ok.get(owner)).toMatchObject({ revision: 1, items: [{ title: 'Before', revision: 1 }] });
+    });
+});
+
+describe('SentinelTodoStore priority', () => {
+    let dataDir: string;
+    beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-priority-')); });
+    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+
+    it('defaults new items to regular and stores high when asked', () => {
+        const store = new SentinelTodoStore(dataDir);
+        expect(store.create(owner, { title: 'Plain' }, { actor: 'user' }).item.priority).toBe('regular');
+        const high = store.create(owner, { title: 'Urgent', priority: 'high' }, { actor: 'sentinel' }).item;
+        expect(high).toMatchObject({ priority: 'high', revision: 1, createdBy: 'sentinel' });
+        expect(new SentinelTodoStore(dataDir).get(owner).items.map(item => item.priority)).toEqual(['regular', 'high']);
+    });
+
+    it('reads items stored before priorities existed as regular without rewriting or bumping revisions', () => {
+        const file = getRepoDataPath(dataDir, owner.workspaceId, SENTINEL_TODOS_FILE);
+        const now = new Date().toISOString();
+        const legacy = {
+            id: 'old', title: 'Legacy', completionCondition: '', notes: '', status: 'in_progress', archived: false,
+            revision: 4, createdAt: now, updatedAt: now, createdBy: 'user', updatedBy: 'sentinel', jobs: [],
+        };
+        atomicWriteJsonUnique(file, { version: 1, ledgers: { [owner.processId]: { revision: 7, items: [legacy] } } });
+        const before = fs.readFileSync(file, 'utf8');
+        const store = new SentinelTodoStore(dataDir);
+        expect(store.get(owner)).toMatchObject({ revision: 7, items: [{ id: 'old', priority: 'regular', revision: 4 }] });
+        expect(fs.readFileSync(file, 'utf8')).toBe(before);
+        // The next ordinary edit keeps working and persists the default.
+        const edited = store.update(owner, 'old', 4, { notes: 'n' }, 'user');
+        expect(edited.item).toMatchObject({ priority: 'regular', revision: 5, status: 'in_progress' });
+    });
+
+    it('changes priority alone without touching status, reason, outcome, or audit fields', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        store.update(owner, item.id, 1, { status: 'done', statusReason: 'Checked', outcome: 'All green' }, 'sentinel');
+        const before = store.get(owner).items[0];
+        const raised = store.update(owner, item.id, 2, { priority: 'high' }, 'sentinel');
+        expect(raised.item).toMatchObject({
+            priority: 'high', status: 'done', statusReason: 'Checked', revision: 3, updatedBy: 'sentinel',
+            outcome: before.outcome, createdAt: before.createdAt, createdBy: 'user',
+        });
+        const lowered = store.update(owner, item.id, 3, { priority: 'regular' }, 'user');
+        expect(lowered.item).toMatchObject({ priority: 'regular', status: 'done', statusReason: 'Checked', outcome: before.outcome, updatedBy: 'user' });
+        // Priority is metadata: it is not a user edit that supersedes a linked job's result.
+        expect(lowered.item.userEditedAt).toBeUndefined();
+        // A stale priority edit still conflicts.
+        expectTodoError(() => store.update(owner, item.id, 3, { priority: 'high' }, 'user'), 'conflict');
+    });
+
+    it('lets a failed job still flag an item whose priority a person changed after linking', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        const linked = store.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-a', kind: 'local', openLink: '#repos/ws-a/chats/child',
+        });
+        store.update(owner, item.id, linked.item.revision, { priority: 'high' }, 'user');
+        const result = store.recordJobResult(owner, 'queue_child', { terminalEventId: 'e1', outcome: 'failed' }, () => 'Job failed');
+        expect(result?.item).toMatchObject({ status: 'needs_attention', priority: 'high' });
+    });
+
+    it('rejects unknown or null priorities without writing', () => {
+        const store = new SentinelTodoStore(dataDir);
+        expectTodoError(() => store.create(owner, { title: 'x', priority: 'urgent' } as never, { actor: 'user' }), 'invalid');
+        const { item } = store.create(owner, { title: 'x' }, { actor: 'user' });
+        expectTodoError(() => store.update(owner, item.id, 1, { priority: 'low' } as never, 'user'), 'invalid');
+        expectTodoError(() => store.update(owner, item.id, 1, { priority: null } as never, 'user'), 'invalid');
+        expect(store.get(owner)).toMatchObject({ revision: 1, items: [{ priority: 'regular', revision: 1 }] });
     });
 });
 

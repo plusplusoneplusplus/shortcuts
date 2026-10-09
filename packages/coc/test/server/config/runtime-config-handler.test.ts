@@ -113,6 +113,12 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.markdownPanelPreviewEnabled).toBe(true);
     });
 
+    it('exposes the diff file picker flag, on by default and live-toggleable off', () => {
+        expect(buildRuntimeDashboardConfig(createMockRuntimeConfigService({}), 'my-host', '127.0.0.1').features.diffFilePickerEnabled).toBe(true);
+        const svc = createMockRuntimeConfigService({ features: { diffFilePicker: false } });
+        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.diffFilePickerEnabled).toBe(false);
+    });
+
     it('exposes the HTML page tab flag, on by default and live-toggleable off', () => {
         expect(buildRuntimeDashboardConfig(createMockRuntimeConfigService({}), 'my-host', '127.0.0.1').features.htmlPageTabEnabled).toBe(true);
         const svc = createMockRuntimeConfigService({ features: { htmlPageTab: false } });

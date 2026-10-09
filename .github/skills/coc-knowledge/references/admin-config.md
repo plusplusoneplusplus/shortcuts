@@ -81,6 +81,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | Flag | Default | Gates |
 |------|---------|-------|
 | `gitCrossCloneCherryPick` | on | Cross-clone cherry-pick commit context menu |
+| `diffFilePicker` | on | Searchable changed-file picker on multi-file diff header paths (Unified/Split banners, `FileDiffPanel`); live, explicit false restores passive paths |
 | `sessionContextAttachments` | on | Drag/drop session-context attachments in chat composers |
 | `quickAskSidenotes` | on | Quick Ask side-note endpoints (per-process one-shot AI lookups on assistant turns); SPA rendering also needs the compile-time `QUICK_ASK_SIDENOTES` flag |
 | `commitChatLens` | on | Desktop review-chat lens on commit and PR chat surfaces |

@@ -4,11 +4,7 @@ import React, { createRef } from 'react';
 import { UnifiedDiffViewer, VIRTUALIZE_THRESHOLD, type UnifiedDiffViewerHandle } from '../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
 
-const flags = vi.hoisted(() => ({ SHOW_DIFF_FILE_PICKER: false }));
-vi.mock('../../../src/server/spa/client/react/featureFlags', async importOriginal => ({
-    ...await importOriginal<typeof import('../../../src/server/spa/client/react/featureFlags')>(),
-    get SHOW_DIFF_FILE_PICKER() { return flags.SHOW_DIFF_FILE_PICKER; },
-}));
+import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const PATHS = ['src/first.ts', 'assets/image.png', 'src/deleted.ts', 'src/renamed.ts'];
 
@@ -33,19 +29,13 @@ const VIEWERS = [
     { name: 'split', Viewer: SideBySideDiffViewer },
 ] as const;
 
-it('ships the changed-file picker disabled by default', async () => {
-    const actual = await vi.importActual<typeof import('../../../src/server/spa/client/react/featureFlags')>(
-        '../../../src/server/spa/client/react/featureFlags',
-    );
-    expect(actual.SHOW_DIFF_FILE_PICKER).toBe(false);
-});
 
 describe.each(VIEWERS)('changed-file picker integration — $name', ({ Viewer }) => {
     let rowTops: Record<string, number>;
     const descriptors = new Map<string, PropertyDescriptor | undefined>();
 
     beforeEach(() => {
-        flags.SHOW_DIFF_FILE_PICKER = true;
+        applyRuntimeConfigPatch({ diffFilePickerEnabled: true });
         rowTops = Object.fromEntries(PATHS.map((path, i) => [path, 100 + i * 200]));
         vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
             const path = this.getAttribute('data-file-path');
@@ -60,7 +50,7 @@ describe.each(VIEWERS)('changed-file picker integration — $name', ({ Viewer })
     });
 
     afterEach(() => {
-        flags.SHOW_DIFF_FILE_PICKER = false;
+        applyRuntimeConfigPatch({ diffFilePickerEnabled: true });
         vi.restoreAllMocks();
         for (const [key, descriptor] of descriptors) {
             if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
@@ -233,8 +223,8 @@ describe.each(VIEWERS)('changed-file picker integration — $name', ({ Viewer })
         expect(view.navigation).not.toHaveBeenCalled();
     });
 
-    it('retains noninteractive file paths when the feature flag is off', () => {
-        flags.SHOW_DIFF_FILE_PICKER = false;
+    it('retains noninteractive file paths when the admin setting is off', () => {
+        applyRuntimeConfigPatch({ diffFilePickerEnabled: false });
         const view = mount(comparison());
         const path = within(view.container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!).getByTestId('diff-file-banner-path');
         expect(path.tagName).toBe('SPAN');

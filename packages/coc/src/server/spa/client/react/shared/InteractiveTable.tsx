@@ -260,6 +260,10 @@ export interface InteractiveTableProps extends ExtractedTableData {
      * off and keep growing inline.
      */
     fillHeight?: boolean;
+    /** Wrap cell text to the available width instead of ellipsizing it. */
+    wrapText?: boolean;
+    /** When set, the toolbar shows a "Wrap text" toggle that calls this. */
+    onWrapTextChange?: (wrapText: boolean) => void;
 }
 
 type RowData = Record<string, string>;
@@ -271,6 +275,8 @@ export function InteractiveTable({
     originalMarkdown,
     tableKey,
     fillHeight = false,
+    wrapText = false,
+    onWrapTextChange,
 }: InteractiveTableProps) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -474,7 +480,7 @@ export function InteractiveTable({
         <div
             className={`interactive-table${fillHeight ? ' interactive-table-fill' : ''}${
                 isFullscreen ? ' interactive-table-fullscreen-inner' : ''
-            }`}
+            }${wrapText ? ' interactive-table-wrapped' : ''}`}
             data-testid={`interactive-table-${tableKey}`}
         >
             {/* Toolbar — chrome, excluded from native text selection/copy */}
@@ -485,6 +491,20 @@ export function InteractiveTable({
                         : `${rows.length} rows`}
                 </span>
                 <div className="interactive-table-actions">
+                    {onWrapTextChange && (
+                        <button
+                            type="button"
+                            className="interactive-table-btn"
+                            aria-label="Wrap text"
+                            aria-pressed={wrapText}
+                            onClick={() => onWrapTextChange(!wrapText)}
+                            title={wrapText ? 'Stop wrapping text (scroll wide columns instead)' : 'Wrap text to fit the pane'}
+                            data-testid="interactive-table-wrap-btn"
+                        >
+                            <span aria-hidden="true">{'\u21B5'}</span>{' '}
+                            <span className="interactive-table-btn-label">Wrap</span>
+                        </button>
+                    )}
                     <button
                         className="interactive-table-btn"
                         onClick={() => setShowFilters(f => !f)}
@@ -573,8 +593,9 @@ export function InteractiveTable({
                     {/* Before the first drag the ratio comes from the content.
                         Hidden columns are skipped so each <col> lines up with a
                         rendered cell; once dragged, the explicit px widths on
-                        the <th> take over and this goes away. */}
-                    {!hasSizedColumns && (
+                        the <th> take over and this goes away. Wrapped tables
+                        size their columns from the content instead. */}
+                    {!hasSizedColumns && !wrapText && (
                         <colgroup>
                             {table.getVisibleLeafColumns().map(col => {
                                 const idx = colIds.indexOf(col.id);

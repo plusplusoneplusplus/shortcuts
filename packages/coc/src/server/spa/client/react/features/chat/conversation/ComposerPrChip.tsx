@@ -55,14 +55,14 @@ export interface ComposerPrChipProps {
 }
 
 const ROW_CLASS =
-    'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-xs ' +
+    'composer-pr-row flex min-w-0 flex-nowrap whitespace-nowrap items-center gap-2 px-3 py-1.5 text-xs ' +
     'bg-[#f6f8fa] dark:bg-[#161b22] ' +
     'border-b border-[#d0d7de] dark:border-[#3c3c3c]';
 
 function GitGlyph() {
     return (
         <span
-            className="shrink-0 inline-flex h-[18px] w-[18px] items-center justify-center rounded-md bg-[#1a7f37] text-white dark:bg-[#238636]"
+            className="composer-pr-decoration shrink-0 inline-flex h-[18px] w-[18px] items-center justify-center rounded-md bg-[#1a7f37] text-white dark:bg-[#238636]"
             aria-hidden="true"
         >
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -77,7 +77,7 @@ function GitGlyph() {
 
 function PinGlyph() {
     return (
-        <span className="shrink-0 text-[#57606a] dark:text-[#8b949e]" aria-hidden="true" title="Pinned to this chat">
+        <span className="composer-pr-decoration shrink-0 text-[#57606a] dark:text-[#8b949e]" aria-hidden="true" title="Pinned to this chat">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5.8 2.5h4.4M6.6 2.5l-.5 4.3L4 8.7h8L9.9 6.8l-.5-4.3" />
                 <path d="M8 8.7v4.8" />
@@ -162,7 +162,7 @@ function AuthorLabel({ alias }: { alias: string }) {
     if (!alias) return null;
     return (
         <span
-            className="max-w-[12rem] shrink-0 truncate text-[#57606a] dark:text-[#8b949e]"
+            className="composer-pr-author min-w-0 max-w-[12rem] shrink-[10] truncate text-[#57606a] dark:text-[#8b949e]"
             data-testid="composer-pr-chip-author"
             title={alias}
         >
@@ -175,12 +175,14 @@ function StatusBadge({ status }: { status: string }) {
     const badge = prStatusBadge(status);
     return (
         <span
-            className={cn('shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium', badge.className)}
+            className={cn('composer-pr-badge shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium', badge.className)}
             data-testid="composer-pr-chip-status"
             data-status={status}
+            aria-label={badge.label}
+            title={badge.label}
         >
             <span aria-hidden="true">{badge.emoji}</span>
-            {badge.label}
+            <span className="composer-pr-label">{badge.label}</span>
         </span>
     );
 }
@@ -212,7 +214,7 @@ function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
                 ref={anchorRef}
                 type="button"
                 className={cn(
-                    'shrink-0 inline-flex items-center gap-1 rounded-full border-none px-1.5 py-0.5 text-[10px] font-medium',
+                    'composer-pr-badge shrink-0 inline-flex items-center gap-1 rounded-full border-none px-1.5 py-0.5 text-[10px] font-medium',
                     'cursor-pointer hover:brightness-95 dark:hover:brightness-110',
                     tone,
                 )}
@@ -222,12 +224,13 @@ function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
                 data-waiting={summary.waitingCount}
                 data-blocked={summary.blockedCount}
                 title={`${titleParts.join(' - ')} - click to view reviewers`}
+                aria-label={titleParts.join(' - ')}
                 aria-haspopup="dialog"
                 aria-expanded={open}
                 onClick={() => setOpen(prev => !prev)}
             >
                 <span aria-hidden="true">{summary.blockedCount > 0 ? '!' : summary.waitingCount > 0 ? '...' : '✓'}</span>
-                {summary.approvedCount}/{summary.total} {summary.total === 1 ? 'reviewer' : 'reviewers'}
+                {summary.approvedCount}/{summary.total}<span className="composer-pr-label"> {summary.total === 1 ? 'reviewer' : 'reviewers'}</span>
             </button>
             {open && (
                 <ComposerPrReviewersPopover
@@ -282,7 +285,7 @@ function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; aut
     const title = `${s.passing}/${s.total} checks passing${detail ? ` — ${detail}` : ''}`;
 
     const baseClass = cn(
-        'shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium',
+        'composer-pr-badge shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-medium',
         tone,
     );
     const content = (
@@ -358,12 +361,13 @@ function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; aut
 function AutoFixOnBadge({ itemKey }: { itemKey: string }) {
     return (
         <span
-            className="shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#dafbe1] text-[#1a7f37] dark:bg-[#238636]/25 dark:text-[#3fb950]"
+            className="composer-pr-badge shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#dafbe1] text-[#1a7f37] dark:bg-[#238636]/25 dark:text-[#3fb950]"
             data-testid={`composer-pr-chip-autofix-badge-${itemKey}`}
             title="CI auto-fix is on for this pull request"
+            aria-label="CI auto-fix is on for this pull request"
         >
             <span aria-hidden="true">⚡</span>
-            Auto-fix on
+            <span className="composer-pr-label">Auto-fix on</span>
         </span>
     );
 }
@@ -390,15 +394,16 @@ function ViewLink({ target, itemKey }: { target: PrLinkTarget; itemKey: string }
         <a
             href={target.href}
             {...externalLinkAttrs(target.external)}
-            className="shrink-0 inline-flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#0969da] text-white text-[11px] font-medium no-underline hover:bg-[#0a5cc2] dark:bg-[#1f6feb] dark:hover:bg-[#388bfd]"
+            className="composer-pr-view shrink-0 inline-flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#0969da] text-white text-[11px] font-medium no-underline hover:bg-[#0a5cc2] dark:bg-[#1f6feb] dark:hover:bg-[#388bfd]"
             data-testid={`composer-pr-chip-view-${itemKey}`}
             title="View pull request"
+            aria-label="View pull request"
         >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
                 <circle cx="8" cy="8" r="1.8" />
             </svg>
-            View
+            <span className="composer-pr-label">View</span>
         </a>
     );
 }
@@ -490,7 +495,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
                 #{number}
             </a>
             <span
-                className="min-w-0 flex-[1_0_8rem] truncate font-semibold text-[#1f2328] dark:text-[#c9d1d9]"
+                className="min-w-0 flex-auto truncate font-semibold text-[#1f2328] dark:text-[#c9d1d9]"
                 data-testid="composer-pr-chip-title"
                 title={pr?.title}
             >
@@ -502,7 +507,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
             <ChecksBadge item={item} autoFix={autoFix?.enabled ? autoFixState : undefined} autoMerge={autoFix?.enabled ? autoMergeState : undefined} />
             {autoFix?.enabled && autoFixState.armed && <AutoFixOnBadge itemKey={item.key} />}
             {diff && (
-                <span className="shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">
+                <span className="composer-pr-secondary shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">
                     <span className="font-semibold text-[#1a7f37] dark:text-[#3fb950]">+{diff.additions}</span>{' '}
                     <span className="font-semibold text-[#cf222e] dark:text-[#f85149]">−{diff.deletions}</span>
                 </span>

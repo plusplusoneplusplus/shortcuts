@@ -10,6 +10,8 @@ export const MAX_TODO_JOB_LINKS = 50;
 
 const id = z.string().min(1).max(200);
 export const todoStatusSchema = z.enum(['todo', 'in_progress', 'needs_attention', 'done']);
+/** Ledger metadata only, independent of status; it never affects job queue priority. */
+export const todoPrioritySchema = z.enum(['high', 'regular']);
 /** `system` marks server-recorded job outcomes; it is never a caller-supplied actor. */
 const actorSchema = z.enum(['user', 'sentinel', 'system']);
 const targetRepoSchema = z.object({
@@ -51,6 +53,8 @@ const itemSchema = z.object({
     targetRepo: targetRepoSchema.optional(),
     status: todoStatusSchema,
     statusReason: z.string().min(1).max(2_000).optional(),
+    /** Items stored before priorities existed read as `regular`. */
+    priority: todoPrioritySchema.default('regular'),
     outcome: outcomeSchema.optional(),
     archived: z.boolean(),
     revision: z.number().int().min(1),
@@ -68,6 +72,7 @@ const fileSchema = z.object({ version: z.literal(1), ledgers: z.record(z.string(
 
 export type SentinelTodoItem = z.infer<typeof itemSchema>;
 export type SentinelTodoStatus = z.infer<typeof todoStatusSchema>;
+export type SentinelTodoPriority = z.infer<typeof todoPrioritySchema>;
 export type SentinelTodoActor = z.infer<typeof actorSchema>;
 export type SentinelTodoLedger = z.infer<typeof ledgerSchema>;
 export type SentinelTodoOwner = { workspaceId: string; processId: string };
@@ -82,6 +87,7 @@ export const todoCreateSchema = z.object({
     targetRepo: targetRepoSchema.optional(),
     status: todoStatusSchema.optional(),
     statusReason: itemSchema.shape.statusReason,
+    priority: todoPrioritySchema.optional(),
 }).strict();
 /** `null` clears an optional field; omitted fields are left unchanged. */
 export const todoPatchSchema = z.object({
@@ -91,10 +97,16 @@ export const todoPatchSchema = z.object({
     targetRepo: targetRepoSchema.nullable().optional(),
     status: todoStatusSchema.optional(),
     statusReason: itemSchema.shape.statusReason.nullable(),
+    priority: todoPrioritySchema.optional(),
     outcome: z.string().min(1).max(4_000).nullable().optional(),
     archived: z.boolean().optional(),
 }).strict();
 export type SentinelTodoCreate = z.infer<typeof todoCreateSchema>;
+/**
+ * Statuses an automated actor may only set with a reviewed reason. A person
+ * (`user`, only ever assigned by the REST route) may mark Done without one.
+ */
+const REVIEW_REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs_attention']);
 export type SentinelTodoPatch = z.infer<typeof todoPatchSchema>;
 
 export class SentinelTodoError extends Error {
@@ -142,6 +154,7 @@ export class SentinelTodoStore {
         }
         const now = new Date().toISOString();
         const fields = parse(todoCreateSchema, input);
+        assertReviewReason(opts.actor, fields.status, fields.statusReason);
         const item = parse(itemSchema, {
             id: randomUUID(),
             title: fields.title,
@@ -150,6 +163,7 @@ export class SentinelTodoStore {
             ...(fields.targetRepo ? { targetRepo: fields.targetRepo } : {}),
             status: fields.status ?? 'todo',
             ...(fields.statusReason ? { statusReason: fields.statusReason } : {}),
+            priority: fields.priority ?? 'regular',
             archived: false,
             revision: 1,
             createdAt: now,
@@ -174,6 +188,7 @@ export class SentinelTodoStore {
         actor: SentinelTodoActor,
     ): { item: SentinelTodoItem; ledgerRevision: number } {
         const fields = parse(todoPatchSchema, patch);
+        assertReviewReason(actor, fields.status, fields.statusReason);
         const data = this.read(owner.workspaceId);
         const ledger = data.ledgers[owner.processId];
         const index = ledger?.items.findIndex(item => item.id === itemId) ?? -1;
@@ -184,7 +199,7 @@ export class SentinelTodoStore {
         }
         const now = new Date().toISOString();
         const next: Record<string, unknown> = { ...current };
-        for (const key of ['title', 'completionCondition', 'notes', 'status', 'archived'] as const) {
+        for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
             if (fields[key] !== undefined) next[key] = fields[key];
         }
         for (const key of ['targetRepo', 'statusReason'] as const) {
@@ -195,9 +210,16 @@ export class SentinelTodoStore {
         if (fields.status !== undefined && fields.status !== current.status && fields.statusReason === undefined) {
             delete next.statusReason;
         }
+        // A new Done without a fresh outcome must not show an earlier review as this one's.
+        if (fields.status === 'done' && current.status !== 'done' && fields.outcome === undefined) {
+            delete next.outcome;
+        }
         if (fields.outcome === null) delete next.outcome;
         else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
-        if (actor === 'user') next.userEditedAt = now;
+        // Priority is metadata: a priority-only edit must not supersede a linked job's result.
+        if (actor === 'user' && Object.keys(fields).some(key => key !== 'priority' && fields[key as keyof SentinelTodoPatch] !== undefined)) {
+            next.userEditedAt = now;
+        }
         return this.commit(owner, data, ledger, index, next, actor, now);
     }
 
@@ -301,6 +323,12 @@ export class SentinelTodoStore {
 
     private file(workspaceId: string): string {
         return getRepoDataPath(this.dataDir, workspaceId, SENTINEL_TODOS_FILE);
+    }
+}
+
+function assertReviewReason(actor: SentinelTodoActor, status: SentinelTodoStatus | undefined, reason: string | null | undefined): void {
+    if (actor !== 'user' && status && REVIEW_REASON_REQUIRED.has(status) && !reason?.trim()) {
+        throw new SentinelTodoError('invalid', `status ${status} requires a short reason`);
     }
 }
 

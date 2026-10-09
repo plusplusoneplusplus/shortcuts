@@ -1177,7 +1177,7 @@ export function WhisperCollapsedGroup({
                         let accKey = '';
                         const flushContent = () => {
                             if (accKey && accHtml) {
-                                nodes.push(<MarkdownView key={accKey} html={accHtml} />);
+                                nodes.push(<MarkdownView key={accKey} html={accHtml} tableWrapToggle />);
                                 accHtml = '';
                                 accKey = '';
                             }

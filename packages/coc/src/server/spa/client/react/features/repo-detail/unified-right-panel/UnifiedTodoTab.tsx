@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import type {
     SentinelTodoItem,
     SentinelTodoLedgerResponse,
+    SentinelTodoPriority,
     SentinelTodoStatus,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
@@ -19,15 +20,19 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
+import { formatRelativeTime } from '../../../utils/format';
 import { useSentinelTodoEvents } from './sentinelTodoChats';
 import {
+    SENTINEL_TODO_PRIORITIES,
+    SENTINEL_TODO_PRIORITY_LABELS,
     SENTINEL_TODO_STATUS_LABELS,
     SENTINEL_TODO_STATUSES,
     sentinelTodoJobStateLabel,
+    sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
     sentinelTodoSections,
-    sentinelTodoStatusNeedsReason,
+    sentinelTodoStatusReason,
     type SentinelTodoOwner,
 } from './sentinelTodoPanelModel';
 
@@ -36,8 +41,8 @@ export interface UnifiedTodoTabProps {
     onErrorChange?: (hasError: boolean) => void;
 }
 
-type Draft = { title: string; completionCondition: string; notes: string };
-const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '' };
+type Draft = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
+const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', priority: 'regular' };
 
 const STATUS_STYLES: Readonly<Record<SentinelTodoStatus, { dot: string; badge: string; mark: string }>> = {
     todo: { dot: 'border border-current', badge: 'bg-[#848484]/15 text-[#616161] dark:text-[#bbbbbb]', mark: '○' },
@@ -53,6 +58,17 @@ function newIdempotencyKey(): string {
     return globalThis.crypto?.randomUUID?.() ?? `todo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** Visible High label beside the status badge, so the red band is never the only signal. */
+function HighPriorityBadge({ itemId }: { itemId: string }) {
+    return (
+        <span className="inline-flex shrink-0 items-center rounded bg-[#f14c4c]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#c72e2e] dark:text-[#f48771]"
+            data-testid={`sentinel-todo-priority-high-${itemId}`}>
+            <span aria-hidden="true">High</span>
+            <span className="sr-only">High priority</span>
+        </span>
+    );
+}
+
 function StatusBadge({ status }: { status: SentinelTodoStatus }) {
     const style = STATUS_STYLES[status];
     return (
@@ -60,6 +76,22 @@ function StatusBadge({ status }: { status: SentinelTodoStatus }) {
             data-testid={`sentinel-todo-status-${status}`}>
             <span aria-hidden="true">{style.mark}</span>
             {SENTINEL_TODO_STATUS_LABELS[status]}
+        </span>
+    );
+}
+
+/** Ledger timestamp: relative text, exact local date/time on hover and for screen readers. */
+function TodoTime({ label, iso, testId }: { label: string; iso: string; testId: string }) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return null;
+    const exact = date.toLocaleString();
+    return (
+        <span className="whitespace-nowrap" data-testid={testId}>
+            {label}{' '}
+            <time dateTime={iso} title={exact}>
+                <span aria-hidden="true">{formatRelativeTime(iso)}</span>
+                <span className="sr-only">{exact}</span>
+            </time>
         </span>
     );
 }
@@ -87,6 +119,13 @@ function DraftFields({ draft, onChange, idPrefix }: { draft: Draft; onChange: (d
             <label className="block text-[11px] font-medium" htmlFor={`${idPrefix}-notes`}>Notes</label>
             <textarea id={`${idPrefix}-notes`} className={cn(INPUT, 'min-h-[48px]')} value={draft.notes} maxLength={8000}
                 onChange={event => onChange({ ...draft, notes: event.target.value })} />
+            <label className="block text-[11px] font-medium" htmlFor={`${idPrefix}-priority`}>Priority</label>
+            <select id={`${idPrefix}-priority`} className={cn(INPUT, 'w-auto self-start')} value={draft.priority}
+                onChange={event => onChange({ ...draft, priority: event.target.value as SentinelTodoPriority })}>
+                {SENTINEL_TODO_PRIORITIES.map(priority => (
+                    <option key={priority} value={priority}>{SENTINEL_TODO_PRIORITY_LABELS[priority]}</option>
+                ))}
+            </select>
         </>
     );
 }
@@ -147,6 +186,7 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
                 title: addDraft.title.trim(),
                 completionCondition: addDraft.completionCondition.trim(),
                 notes: addDraft.notes,
+                priority: addDraft.priority,
                 idempotencyKey: addKeyRef.current,
             });
             addKeyRef.current = null;
@@ -311,16 +351,19 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
             title: draft.title.trim(),
             completionCondition: draft.completionCondition.trim(),
             notes: draft.notes,
+            priority: draft.priority,
         }, draft.baseRevision), () => setEditing(null),
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
     };
 
-    const applyStatus = (status: SentinelTodoStatus, reason: string) => {
-        if (sentinelTodoStatusNeedsReason(status) && !reason.trim()) {
+    const applyStatus = (status: SentinelTodoStatus, reason: string, confirmed = false) => {
+        const rule = sentinelTodoStatusReason(status);
+        if (rule && !confirmed && !reason.trim()) {
             setStatusDraft({ status, reason });
             return;
         }
+        if (rule === 'required' && !reason.trim()) return;
         void run(() => onSave(item, {
             status,
             statusReason: reason.trim() ? reason.trim() : null,
@@ -329,11 +372,19 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
     };
 
     const titleId = `sentinel-todo-${item.id}-title`;
+    const high = sentinelTodoPriority(item) === 'high';
+    // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
-        <li className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid={`sentinel-todo-row-${item.id}`}>
+        <li className="relative rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]" data-testid={`sentinel-todo-row-${item.id}`}
+            data-priority={high ? 'high' : 'regular'}>
+            {high && (
+                <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
+                    className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />
+            )}
             <button type="button" aria-expanded={expanded} aria-controls={`sentinel-todo-${item.id}-details`} onClick={onToggle}
                 className="flex w-full items-start gap-2 px-2 py-1.5 text-left hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
                 <StatusBadge status={item.status} />
+                {high && <HighPriorityBadge itemId={item.id} />}
                 <span id={titleId} className={cn('min-w-0 flex-1 break-words', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 {item.targetRepo && (
                     <span className={cn('shrink-0 truncate', MUTED)} title={item.targetRepo.workspaceId}>
@@ -341,6 +392,10 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                     </span>
                 )}
             </button>
+            <div className={cn('flex flex-wrap gap-x-2 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-times-${item.id}`}>
+                <TodoTime label="Created" iso={item.createdAt} testId={`sentinel-todo-created-${item.id}`} />
+                <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
+            </div>
             {item.jobs.length > 0 && (
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Jobs for ${item.title}`}>
                     {item.jobs.map(job => {
@@ -390,15 +445,16 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                     )}
                     {statusDraft && (
                         <form className="flex flex-col gap-1" data-testid={`sentinel-todo-reason-form-${item.id}`}
-                            onSubmit={event => { event.preventDefault(); applyStatus(statusDraft.status, statusDraft.reason); }}>
+                            onSubmit={event => { event.preventDefault(); applyStatus(statusDraft.status, statusDraft.reason, true); }}>
                             <label className="text-[11px] font-medium" htmlFor={`sentinel-todo-${item.id}-reason`}>
                                 Reason for {SENTINEL_TODO_STATUS_LABELS[statusDraft.status]}
+                                {sentinelTodoStatusReason(statusDraft.status) === 'optional' && <span className={MUTED}> (optional)</span>}
                             </label>
                             <input id={`sentinel-todo-${item.id}-reason`} className={INPUT} value={statusDraft.reason} maxLength={2000} autoFocus
                                 onChange={event => setStatusDraft({ ...statusDraft, reason: event.target.value })} />
                             <div className="flex justify-end gap-1">
                                 <Button size="sm" variant="secondary" onClick={() => setStatusDraft(null)}>Cancel</Button>
-                                <Button size="sm" type="submit" disabled={!statusDraft.reason.trim()} loading={busy}>Set status</Button>
+                                <Button size="sm" type="submit" disabled={sentinelTodoStatusReason(statusDraft.status) === 'required' && !statusDraft.reason.trim()} loading={busy}>Set status</Button>
                             </div>
                         </form>
                     )}
@@ -414,7 +470,8 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                                         ))}
                                     </select>
                                     <Button size="sm" variant="secondary" disabled={busy} onClick={() => setEditing({
-                                        title: item.title, completionCondition: item.completionCondition, notes: item.notes, baseRevision: item.revision,
+                                        title: item.title, completionCondition: item.completionCondition, notes: item.notes,
+                                        priority: sentinelTodoPriority(item), baseRevision: item.revision,
                                     })}>Edit</Button>
                                     {item.status === 'done' && (
                                         <Button size="sm" variant="secondary" disabled={busy} onClick={() => applyStatus('todo', '')}>Reopen</Button>

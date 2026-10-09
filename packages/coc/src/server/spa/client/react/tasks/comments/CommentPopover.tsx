@@ -148,7 +148,7 @@ export function CommentPopover({
                         <div data-testid="popover-ai-loading"><Spinner size="sm" /></div>
                     ) : (
                         <div className="max-h-[180px] overflow-y-auto text-[11px] text-[#1e1e1e] dark:text-[#cccccc]">
-                            <MarkdownView html={renderMarkdownToHtml(comment.aiResponse!)} />
+                            <MarkdownView html={renderMarkdownToHtml(comment.aiResponse!)} tableWrapToggle />
                         </div>
                     )}
                 </div>

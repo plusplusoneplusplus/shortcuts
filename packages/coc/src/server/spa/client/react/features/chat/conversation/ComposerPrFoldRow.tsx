@@ -17,7 +17,7 @@ import { prStatusBadge } from '../../pull-requests/pr-utils';
 import type { FoldedPrChipsSummary } from './composerPrChipFold';
 
 const FOLD_ROW_CLASS =
-    'flex w-full items-center gap-2 px-3 py-1 text-left text-xs ' +
+    'composer-pr-row flex min-w-0 w-full flex-nowrap whitespace-nowrap items-center gap-2 px-3 py-1 text-left text-xs ' +
     'bg-[#f6f8fa] dark:bg-[#161b22] ' +
     'border-0 border-b border-solid border-[#d0d7de] dark:border-[#3c3c3c] ' +
     'cursor-pointer hover:brightness-[0.98] dark:hover:brightness-110';
@@ -95,14 +95,14 @@ export function ComposerPrFoldRow({ summary, open, onToggle }: ComposerPrFoldRow
             </span>
             {summary.breakdownText && (
                 <span
-                    className="shrink-0 text-[#57606a] dark:text-[#8b949e]"
+                    className="min-w-0 shrink truncate text-[#57606a] dark:text-[#8b949e]"
                     data-testid="composer-pr-fold-breakdown"
                 >
                     {summary.breakdownText}
                 </span>
             )}
             <span
-                className="ml-auto min-w-0 truncate font-mono text-[11px] text-[#57606a] dark:text-[#8b949e]"
+                className="ml-auto min-w-0 flex-1 truncate font-mono text-[11px] text-[#57606a] dark:text-[#8b949e]"
                 data-testid="composer-pr-fold-numbers"
             >
                 {numbers}

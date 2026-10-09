@@ -21,11 +21,14 @@ export function useSplitGitPanel({
     scopeWorkspaceId, ownerRoutingRef, chatId, memberId, enabled,
 }: SplitGitPanelOptions) {
     const host = useUnifiedGitTabHost(scopeWorkspaceId);
+    // The Git tab is chat-owned: each chat has its own, and the git list
+    // restores that chat's view (or clears) when the selected chat changes.
     const tab = useUnifiedGitTab(scopeWorkspaceId, {
         ownerWorkspaceId: scopeWorkspaceId,
         ownerRoutingRef,
+        chatId,
     });
-    const tabId = unifiedGitTabId({ ownerWorkspaceId: scopeWorkspaceId, ownerRoutingRef });
+    const tabId = unifiedGitTabId({ ownerWorkspaceId: scopeWorkspaceId, ownerRoutingRef, chatId });
     const memberMatches = tab?.gitMemberId === memberId;
 
     // A group member switch (including Back/Forward or an unavailable member)
@@ -68,5 +71,6 @@ export function useSplitGitPanel({
         onViewChange: enabled ? openView : undefined,
         detailOpen: enabled ? !!tab && memberMatches : undefined,
         restoreView: enabled && memberMatches ? tab?.gitView : undefined,
+        viewScopeKey: enabled ? chatId : undefined,
     };
 }

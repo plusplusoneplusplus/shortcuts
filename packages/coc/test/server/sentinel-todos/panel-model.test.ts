@@ -8,10 +8,14 @@ import { describe, expect, it } from 'vitest';
 import type { SentinelTodoItem, SentinelTodoJobLink } from '@plusplusoneplusplus/coc-client';
 import {
     isSentinelTodoChangeFor,
+    SENTINEL_TODO_PRIORITIES,
+    SENTINEL_TODO_PRIORITY_LABELS,
     sentinelTodoJobStateLabel,
+    sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
     sentinelTodoSections,
+    sentinelTodoStatusReason,
     sentinelTodoTabInput,
     shouldAutoOpenSentinelTodoTab,
     withoutSentinelTodoTabs,
@@ -36,7 +40,7 @@ function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return {
         id: `item-${seq}`, title: `Item ${seq}`, completionCondition: '', notes: '', status: 'todo', archived: false,
         revision: 1, createdAt: stamp, updatedAt: stamp, createdBy: 'user', updatedBy: 'user', jobs: [],
-        ...overrides,
+        priority: 'regular', ...overrides,
     };
 }
 
@@ -70,6 +74,23 @@ describe('sentinelTodoSections', () => {
         const first = item({ updatedAt: '2026-10-09T09:00:00.000Z' });
         const second = item();
         expect(sentinelTodoSections([second, first]).active.map(i => i.id)).toEqual([first.id, second.id]);
+    });
+});
+
+describe('priority', () => {
+    it('lists Regular then High and reads a missing or unknown priority as Regular', () => {
+        expect(SENTINEL_TODO_PRIORITIES.map(p => SENTINEL_TODO_PRIORITY_LABELS[p])).toEqual(['Regular', 'High']);
+        expect(sentinelTodoPriority(item({ priority: 'high' }))).toBe('high');
+        expect(sentinelTodoPriority(item())).toBe('regular');
+        // An older owning server omits the field.
+        expect(sentinelTodoPriority({ ...item(), priority: undefined } as never)).toBe('regular');
+        expect(sentinelTodoPriority({ ...item(), priority: 'urgent' } as never)).toBe('regular');
+    });
+
+    it('does not reorder sections by priority', () => {
+        const regular = item();
+        const high = item({ priority: 'high' });
+        expect(sentinelTodoSections([regular, high]).active.map(i => i.id)).toEqual([regular.id, high.id]);
     });
 });
 
@@ -170,6 +191,15 @@ describe('isSentinelTodoChangeFor', () => {
         expect(isSentinelTodoChangeFor({ ...base, processId: 'queue_other' }, OWNER)).toBe(false);
         expect(isSentinelTodoChangeFor({ ...base, type: 'git-changed' }, OWNER)).toBe(false);
         expect(isSentinelTodoChangeFor(null, OWNER)).toBe(false);
+    });
+});
+
+describe('sentinelTodoStatusReason', () => {
+    it('makes a person\'s Done reason optional and keeps Needs attention required', () => {
+        expect(sentinelTodoStatusReason('done')).toBe('optional');
+        expect(sentinelTodoStatusReason('needs_attention')).toBe('required');
+        expect(sentinelTodoStatusReason('todo')).toBeNull();
+        expect(sentinelTodoStatusReason('in_progress')).toBeNull();
     });
 });
 

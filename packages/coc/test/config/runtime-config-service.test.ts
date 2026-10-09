@@ -214,6 +214,22 @@ describe('RuntimeConfigService', () => {
             expect(runtimeFlag()).toBe(true);
         });
 
+        it('defaults the diff file picker on and persists a live explicit opt-out', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.diffFilePickerEnabled;
+            expect(runtimeFlag()).toBe(true);
+            expect(svc.sources['features.diffFilePicker']).toBe('default');
+            const disabled = await svc.updateConfig({ 'features.diffFilePicker': false });
+            expect(disabled.effects).toEqual([{ field: 'features.diffFilePicker', runtime: 'live', requiresRestart: false }]);
+            expect(runtimeFlag()).toBe(false);
+            const restored = new RuntimeConfigService({ configPath });
+            expect(restored.config.features.diffFilePicker).toBe(false);
+            expect(restored.sources['features.diffFilePicker']).toBe('file');
+            await expect(svc.updateConfig({ 'features.diffFilePicker': 'yes' })).rejects.toThrow();
+            await svc.updateConfig({ 'features.diffFilePicker': true });
+            expect(runtimeFlag()).toBe(true);
+        });
+
         it('persists the default-off bot identification gate and exposes live owning-server state', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.botManagedConversationsEnabled;

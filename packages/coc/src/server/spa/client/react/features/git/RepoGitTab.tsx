@@ -120,6 +120,13 @@ interface RepoGitTabProps {
      */
     restoreView?: PersistedGitView | null;
     /**
+     * Which host scope the detail belongs to (the right panel's selected chat).
+     * When it changes, the selection is replaced by that scope's `restoreView`
+     * — or cleared when it has none — so one chat's git detail never stays on
+     * screen for another. Left undefined, the selection is not scoped.
+     */
+    viewScopeKey?: string | null;
+    /**
      * Portal target inside the split panel's "Git" section header. When set
      * (split-workspace only), the compact `GitPanelHeader` toolbar renders
      * there instead of as its own row, saving the toolbar's full height.
@@ -149,7 +156,7 @@ export function RepoGitTab(props: RepoGitTabProps) {
     return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
 }
 
-function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
+function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, viewScopeKey, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -292,6 +299,14 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
         reportedViewIdentityRef.current = gitViewIdentity;
         onViewChangeRef.current?.(gitView);
     }, [gitViewIdentity, gitView]);
+
+    const viewScopeKeyRef = useRef(viewScopeKey);
+    const switchViewScope = selection.switchViewScope;
+    useEffect(() => {
+        if (viewScopeKeyRef.current === viewScopeKey) return;
+        viewScopeKeyRef.current = viewScopeKey;
+        switchViewScope(restoreViewRef.current ?? null);
+    }, [viewScopeKey, switchViewScope]);
 
     // Only a genuine open→closed transition means "the host dropped the
     // detail"; a host that never opened it must not wipe a fresh selection.
