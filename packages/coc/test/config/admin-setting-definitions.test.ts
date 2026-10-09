@@ -634,6 +634,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.teamsBridgeObservability': 'integrations',
         'features.teamsAiAnswerRelay': 'integrations',
         'features.teamsMessageReaction': 'integrations',
+        'features.sentinelDesktopMirror': 'integrations',
         'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
         'mcpOauth.autoRefresh.enabled': 'integrations',

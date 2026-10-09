@@ -41,6 +41,7 @@ export type BotStatus = 'disconnected' | 'connecting' | 'qr-pending' | 'connecte
 
 /** Minimal socket interface consumed by WhatsAppBot (subset of Baileys). */
 export interface WASocket {
+    user?: { id?: string };
     ev: {
         on(event: string, handler: (...args: unknown[]) => void): void;
         off?(event: string, handler: (...args: unknown[]) => void): void;

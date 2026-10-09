@@ -66,6 +66,21 @@ describe('WhatsAppBot', () => {
         expect(mockSocket.end).toHaveBeenCalled();
     });
 
+    it('exposes only an opaque paired-account pin stable across device suffixes', async () => {
+        const bot = new WhatsAppBot({ sessionDir: 'session', onMessage: async () => {}, printQR: false });
+        expect(bot.getMirrorAccountKey()).toBeUndefined();
+        mockSocket.user = { id: 'synthetic-account:1@s.whatsapp.net' };
+        await bot.start();
+        const pin = bot.getMirrorAccountKey();
+        expect(pin).toMatch(/^[a-f0-9]{64}$/);
+        mockSocket.user = { id: 'synthetic-account:2@s.whatsapp.net' };
+        expect(bot.getMirrorAccountKey()).toBe(pin);
+        mockSocket.user = { id: 'different-account:1@s.whatsapp.net' };
+        expect(bot.getMirrorAccountKey()).not.toBe(pin);
+        await bot.stop();
+        expect(bot.getMirrorAccountKey()).toBeUndefined();
+    });
+
     it('should cancel the connection and ignore late connection callbacks after stop', async () => {
         let connected: ((sock: WASocket) => void) | undefined;
         let signal: AbortSignal | undefined;

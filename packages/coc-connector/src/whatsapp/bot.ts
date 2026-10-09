@@ -3,6 +3,7 @@
  */
 
 import type { BotOptions, BotStatus, InboundWAMessage, WASocket } from './types';
+import { createHash } from 'node:crypto';
 import type { ConnectorStatus, MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { createBaileysConnection } from './connection';
 import { createWhatsAppImage } from './inbound-image';
@@ -197,6 +198,13 @@ export class WhatsAppBot implements MessagingConnector {
     /** Current native WhatsApp status (includes 'qr-pending' / 'creating-group'). */
     getNativeStatus(): BotStatus {
         return this._status;
+    }
+
+    /** Hash the paired account, not the reconnecting socket or device suffix. */
+    getMirrorAccountKey(): string | undefined {
+        const id = this.sock?.user?.id;
+        return typeof id === 'string' && id
+            ? createHash('sha256').update(id.replace(/:\d+(?=@)/, '')).digest('hex') : undefined;
     }
 
     /** Last QR code string (null when connected or never received). */

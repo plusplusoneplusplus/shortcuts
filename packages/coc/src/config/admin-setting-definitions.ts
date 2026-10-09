@@ -878,6 +878,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelDesktopMirror', default: false, runtime: 'live', runtimeFlag: 'sentinelDesktopMirrorEnabled',
+        ui: {
+            tab: 'integrations', group: 'dashboard', order: 61.8, label: 'Sentinel desktop messaging mirror', badge: 'experimental',
+            hint: 'Mirror newly accepted dashboard messages and final answers to their active local Sentinel messaging binding. Delivery failures appear in the chat; uncertain sends require manual reconciliation. Existing history is not replayed.',
+            testId: 'toggle-sentinel-desktop-mirror-enabled',
+        },
+    }),
+    bool({
         key: 'features.botManagedConversations', default: false, runtime: 'live', runtimeFlag: 'botManagedConversationsEnabled',
         ui: {
             tab: 'integrations', group: 'dashboard', order: 61.9, label: 'Bot-managed conversations', badge: 'experimental',

@@ -28,3 +28,4 @@ export type { McpChannelRootPage } from './mcp/transport-mcp';
 export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenWithDeviceCode, acquireTokenViaBrowser, getOAuthConfig, exchangeCodeForToken, saveMcpOAuthTokens } from './auth';
 export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode, DeviceCodeInfo, TeamsTransport, TransportSendOptions } from './types';
 export type { GraphOutboundOptions } from './graph/graph-credential';
+export { decodeGraphHtmlEntities } from './graph/inbound-image';

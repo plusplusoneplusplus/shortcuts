@@ -60,6 +60,31 @@ describe('TeamsBot', () => {
         }
 
         describe('start', () => {
+            it('exposes an opaque account pin stable across token renewal and changes it with the account', async () => {
+                const token = (oid: string, exp: number) => `header.${Buffer.from(JSON.stringify({
+                    tid: '11111111-1111-4111-8111-111111111111', oid, exp,
+                })).toString('base64url')}.signature`;
+                const original = '22222222-2222-4222-8222-222222222222';
+                let refresh = token(original, 2);
+                mockGraphTeamResponse();
+                const bot = createGraphBot({ auth: { bearerToken: token(original, 1), onTokenRefresh: async () => refresh } });
+                await bot.start();
+                const pin = bot.getMirrorAccountKey();
+                expect(pin).toMatch(/^[a-f0-9]{64}$/);
+                const message = { channelId: 'channel-123', messageId: 'echo', text: 'CoC mirror', senderAadId: original };
+                expect(bot.isMirrorSender(message)).toBe(true);
+                expect(bot.isMirrorSender({ ...message, senderAadId: '33333333-3333-4333-8333-333333333333' })).toBe(false);
+                expect(bot.isMirrorSender({ ...message, senderAadId: undefined, botAuthored: true })).toBe(false);
+                expect(await (bot as any).refreshToken()).toBe(true);
+                expect(bot.getMirrorAccountKey()).toBe(pin);
+                refresh = token('33333333-3333-4333-8333-333333333333', 3);
+                expect(await (bot as any).refreshToken()).toBe(true);
+                expect(bot.getMirrorAccountKey()).not.toBe(pin);
+                expect(bot.isMirrorSender(message)).toBe(false);
+                expect(bot.isMirrorSender({ ...message, senderAadId: '33333333-3333-4333-8333-333333333333' })).toBe(true);
+                await bot.stop();
+            });
+
             it('polls Graph channels only after live opt-in and skips the initial history', async () => {
                 mockGraphTeamResponse();
                 let enabled = false;
