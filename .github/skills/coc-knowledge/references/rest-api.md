@@ -197,7 +197,7 @@ Bookkeeping per Sentinel chat in the parent workspace's `sentinel-todos.json` (p
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId` | Ledger → `{ revision, items }` |
+| GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId` | Ledger → `{ revision, items }`; each item's `jobs[]` link carries a derived `execution` (remote → `unavailable`) |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`); a repeated `idempotencyKey` returns the original (`200`) |
 | PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
 

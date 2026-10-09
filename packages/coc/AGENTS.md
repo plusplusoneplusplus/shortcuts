@@ -120,6 +120,14 @@ references before editing. Paths are package-relative.
   start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability (undefined while the flag is off).
+  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived
+  `todoItemId` before launch and links the admitted job afterwards (link failures are
+  reported, never repaired by relaunching). Linked items move to In progress; local
+  terminal results reach the item through `createSentinelTodoDelegationHooks` (first result
+  per link wins; failed/cancelled/capped → Needs attention unless a later user edit or a
+  newer completed attempt supersedes it). Completion never marks Done: only an explicit
+  Sentinel/user verdict does. Job execution status is derived on read, separate from item
+  status; remote links are always `unavailable`.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

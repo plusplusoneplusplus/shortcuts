@@ -105,6 +105,34 @@ export interface SendToConversationArgs {
     effortTier?: SendToConversationEffortTier;
     /** Create mode: queue priority. Default `normal`. */
     priority?: 'high' | 'normal' | 'low';
+    /** Create mode with to-do tracking: the Sentinel to-do item this handoff serves. */
+    todoItemId?: string;
+}
+
+/** A job admitted by create mode, as linked to a Sentinel to-do item. */
+export interface SendToConversationAdmittedJob {
+    processId: string;
+    /** Execution workspace on its own server (local ID, or the remote server's ID). */
+    workspaceId: string;
+    serverId?: string;
+    kind: 'local' | 'remote' | 'ralph';
+    sessionId?: string;
+    openLink: string;
+    title?: string;
+}
+
+export type SendToConversationTracking =
+    | { status: 'tracked'; itemId: string; revision: number }
+    | { status: 'failed'; error: string };
+
+/**
+ * Sentinel to-do bookkeeping for create mode. `check` runs before launch and
+ * rejects handoffs without a usable item; `link` runs only after admission and
+ * reports failure instead of retrying, so a job is never relaunched for tracking.
+ */
+export interface SendToConversationTodoTracking {
+    check(todoItemId: string | undefined): Promise<string | undefined>;
+    link(todoItemId: string, job: SendToConversationAdmittedJob): Promise<SendToConversationTracking>;
 }
 
 /**
@@ -181,6 +209,8 @@ export interface SendToConversationToolOptions {
      * `search_conversations` addon's `processId` threading.
      */
     parentProcessId?: string;
+    /** Present only for flag-enabled Sentinel chats; adds the `todoItemId` parameter. */
+    todoTracking?: SendToConversationTodoTracking;
 }
 
 export interface SendToConversationSuccess {
@@ -200,6 +230,8 @@ export interface SendToConversationSuccess {
     workspaceId?: string;
     /** Remote launches cannot return terminal results to the originating conversation. */
     resultDelivery?: { status: 'unavailable'; reason: string };
+    /** Create mode with to-do tracking: whether the job link was saved. */
+    tracking?: SendToConversationTracking;
 }
 
 export interface SendToConversationError {
@@ -245,7 +277,7 @@ const ALLOWED_EFFORT_TIERS: ReadonlySet<string> = new Set<SendToConversationEffo
  * @param options Tool options (store + caller workspace + enqueue/send capabilities).
  */
 export function createSendToConversationTool(options: SendToConversationToolOptions) {
-    const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime } = options;
+    const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime, todoTracking } = options;
     const directory = runtime?.workspaceDirectory ?? createWorkspaceDirectory({ store });
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
@@ -258,7 +290,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Do not promise an automatic return or start a duplicate job. ' +
             'Use `{ action: "cancel", processId }` to stop local work, retaining history. ' +
             'Omit send-only fields; optional `workspaceId` asserts ownership. Returns `cancelled` and `status`; ' +
-            '`cancelled: false` means already terminal. Unknown IDs and failures return errors.',
+            '`cancelled: false` means already terminal. Unknown IDs and failures return errors.' +
+            (todoTracking ? TODO_TRACKING_DESCRIPTION : ''),
         parameters: {
             type: 'object',
             properties: {
@@ -315,6 +348,12 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     enum: ['high', 'normal', 'low'],
                     description: 'Create mode: queue priority. Default `normal`.',
                 },
+                ...(todoTracking ? {
+                    todoItemId: {
+                        type: 'string',
+                        description: 'Create mode: required ID of the unarchived to-do item this new chat or Ralph session serves.',
+                    },
+                } : {}),
             },
             anyOf: [
                 { properties: { action: { const: 'cancel' } }, required: ['action', 'processId'] },
@@ -336,7 +375,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 if (processId.startsWith('remote:') || args.workspaceId?.startsWith('remote:') || args.workspaceId?.includes('@')) {
                     return { error: 'Cancellation on a remote CoC server is not supported. Cancel only accepts local conversation IDs and workspace IDs.' };
                 }
-                if ((['content', 'mode', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority'] as const)
+                if ((['content', 'mode', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority', 'todoItemId'] as const)
                     .some(field => args[field] !== undefined)) {
                     return { error: 'Cancel does not accept send-only fields; use { action: "cancel", processId, workspaceId? }.' };
                 }
@@ -432,6 +471,12 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             }
 
             // --- create mode: start a brand-new conversation ------------------
+            const todoItemId = typeof args.todoItemId === 'string' && args.todoItemId.trim()
+                ? args.todoItemId.trim() : undefined;
+            if (todoTracking) {
+                const untracked = await todoTracking.check(todoItemId);
+                if (untracked) return { error: untracked, code: 'untracked' };
+            }
             return createNewConversation({
                 store,
                 directory,
@@ -450,6 +495,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
                 messagingOrigin: runtime?.messagingOrigin,
                 trackMessagingJob: runtime?.trackMessagingJob,
+                track: todoTracking && todoItemId ? job => todoTracking.link(todoItemId, job) : undefined,
             });
         },
     });
@@ -562,6 +608,7 @@ async function createNewConversation(params: {
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
     messagingOrigin?: SendToConversationRuntimeOptions['messagingOrigin'];
     trackMessagingJob?: SendToConversationRuntimeOptions['trackMessagingJob'];
+    track?: (job: SendToConversationAdmittedJob) => Promise<SendToConversationTracking>;
 }): Promise<SendToConversationResult> {
     const {
         store,
@@ -581,6 +628,7 @@ async function createNewConversation(params: {
         getEffortTiersForProvider,
         messagingOrigin,
         trackMessagingJob,
+        track,
     } = params;
 
     if (args.title !== undefined && (typeof args.title !== 'string' || !args.title.trim())) {
@@ -613,10 +661,10 @@ async function createNewConversation(params: {
     }
 
     if (target.kind === 'remote') {
-        return createRemoteConversation({
+        return withTracking(await createRemoteConversation({
             directory, target, content, mode, title, priority, model,
             explicitProvider, effortTier, store, parentProcessId,
-        });
+        }), track, { kind: 'remote', workspaceId: target.workspaceId, serverId: target.serverId, title });
     }
     const requestedWorkspaceId = target.workspaceId;
 
@@ -677,7 +725,7 @@ async function createNewConversation(params: {
     const origin = mode === 'ralph' || trackMessagingJob ? messagingOrigin?.() : undefined;
 
     if (mode === 'ralph') {
-        return launchRalphConversation({
+        return withTracking(await launchRalphConversation({
             launchRalph,
             goalSpec: content,
             workspaceId: requestedWorkspaceId,
@@ -689,7 +737,7 @@ async function createNewConversation(params: {
             model: resolvedModel,
             reasoningEffort: resolvedEffort,
             effortTier,
-        });
+        }), track, { kind: 'ralph', workspaceId: requestedWorkspaceId, title });
     }
 
     // --- build + validate the task spec, then enqueue in-process ----------
@@ -736,10 +784,36 @@ async function createNewConversation(params: {
         }
     }
 
-    return {
+    return withTracking({
         processId,
         openLink: `#/process/${processId}`,
-    };
+    }, track, { kind: 'local', workspaceId: requestedWorkspaceId, title });
+}
+
+const TODO_TRACKING_DESCRIPTION =
+    ' This Sentinel chat tracks handoffs: create mode requires `todoItemId` of an existing, unarchived to-do item ' +
+    '(create one with `sentinel_todos` first). The result\'s `tracking` reports whether the job link was saved; ' +
+    'if it failed, tell the user the job runs but is not tracked, and never relaunch it to repair tracking.';
+
+/** Link an admitted job to its to-do item; launch errors pass through untouched. */
+async function withTracking(
+    result: SendToConversationResult,
+    track: ((job: SendToConversationAdmittedJob) => Promise<SendToConversationTracking>) | undefined,
+    job: Pick<SendToConversationAdmittedJob, 'kind' | 'workspaceId' | 'serverId' | 'title'>,
+): Promise<SendToConversationResult> {
+    if (!track || 'error' in result) return result;
+    let tracking: SendToConversationTracking;
+    try {
+        tracking = await track({
+            ...job,
+            processId: result.processId,
+            openLink: result.openLink,
+            ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+        });
+    } catch (err) {
+        tracking = { status: 'failed', error: err instanceof Error ? err.message : String(err) };
+    }
+    return { ...result, tracking };
 }
 
 /** The `POST /api/queue` chat task body, shared by local and remote create mode. */

@@ -6,10 +6,12 @@ import { atomicWriteJsonUnique } from '../shared/fs-utils';
 
 export const SENTINEL_TODOS_FILE = 'sentinel-todos.json';
 export const MAX_TODO_ITEMS = 500;
+export const MAX_TODO_JOB_LINKS = 50;
 
 const id = z.string().min(1).max(200);
 export const todoStatusSchema = z.enum(['todo', 'in_progress', 'needs_attention', 'done']);
-const actorSchema = z.enum(['user', 'sentinel']);
+/** `system` marks server-recorded job outcomes; it is never a caller-supplied actor. */
+const actorSchema = z.enum(['user', 'sentinel', 'system']);
 const targetRepoSchema = z.object({
     workspaceId: id, serverId: id.optional(), label: z.string().min(1).max(200).optional(),
 });
@@ -17,6 +19,29 @@ const outcomeSchema = z.object({
     summary: z.string().min(1).max(4_000),
     recordedAt: z.iso.datetime(),
     recordedBy: actorSchema,
+});
+const jobOutcomeSchema = z.enum(['completed', 'failed', 'cancelled', 'capped']);
+const jobResultSchema = z.object({
+    terminalEventId: id,
+    outcome: jobOutcomeSchema,
+    reason: z.string().max(2_000).optional(),
+    recordedAt: z.iso.datetime(),
+});
+/**
+ * An explicit link from an item to one delegated job. `processId` is the
+ * job's conversation on its own server; `result` is the first terminal
+ * execution outcome recorded for a local job (remote jobs never get one).
+ */
+const jobLinkSchema = z.object({
+    processId: id,
+    workspaceId: id,
+    serverId: id.optional(),
+    kind: z.enum(['local', 'remote', 'ralph']),
+    sessionId: id.optional(),
+    openLink: z.string().min(1).max(2_000),
+    title: z.string().max(200).optional(),
+    linkedAt: z.iso.datetime(),
+    result: jobResultSchema.optional(),
 });
 const itemSchema = z.object({
     id,
@@ -34,6 +59,9 @@ const itemSchema = z.object({
     createdBy: actorSchema,
     updatedBy: actorSchema,
     idempotencyKey: id.optional(),
+    jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS).default([]),
+    /** Last user edit; job outcomes recorded before it must not override it. */
+    userEditedAt: z.iso.datetime().optional(),
 });
 const ledgerSchema = z.object({ revision: z.number().int().min(0), items: z.array(itemSchema) });
 const fileSchema = z.object({ version: z.literal(1), ledgers: z.record(z.string(), ledgerSchema) });
@@ -43,6 +71,9 @@ export type SentinelTodoStatus = z.infer<typeof todoStatusSchema>;
 export type SentinelTodoActor = z.infer<typeof actorSchema>;
 export type SentinelTodoLedger = z.infer<typeof ledgerSchema>;
 export type SentinelTodoOwner = { workspaceId: string; processId: string };
+export type SentinelTodoJobLink = z.infer<typeof jobLinkSchema>;
+export type SentinelTodoJobResult = z.infer<typeof jobResultSchema>;
+export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'result'>;
 
 export const todoCreateSchema = z.object({
     title: itemSchema.shape.title,
@@ -166,7 +197,87 @@ export class SentinelTodoStore {
         }
         if (fields.outcome === null) delete next.outcome;
         else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
-        const item = parse(itemSchema, { ...next, revision: current.revision + 1, updatedAt: now, updatedBy: actor });
+        if (actor === 'user') next.userEditedAt = now;
+        return this.commit(owner, data, ledger, index, next, actor, now);
+    }
+
+    /**
+     * Links an admitted job to an item and marks the item in progress.
+     * Relinking the same job is a no-op, so a retried bookkeeping call is safe.
+     */
+    linkJob(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        input: SentinelTodoJobLinkInput,
+    ): { item: SentinelTodoItem; ledgerRevision: number; changed: boolean } {
+        const data = this.read(owner.workspaceId);
+        const ledger = data.ledgers[owner.processId];
+        const index = ledger?.items.findIndex(item => item.id === itemId) ?? -1;
+        if (!ledger || index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
+        const current = ledger.items[index];
+        if (current.jobs.some(job => job.processId === input.processId && job.serverId === input.serverId)) {
+            return { item: current, ledgerRevision: ledger.revision, changed: false };
+        }
+        if (current.jobs.length >= MAX_TODO_JOB_LINKS) {
+            throw new SentinelTodoError('limit', `An item links at most ${MAX_TODO_JOB_LINKS} jobs`);
+        }
+        const now = new Date().toISOString();
+        const next: Record<string, unknown> = {
+            ...current, status: 'in_progress', jobs: [...current.jobs, { ...input, linkedAt: now }],
+        };
+        delete next.statusReason;
+        return { ...this.commit(owner, data, ledger, index, next, 'sentinel', now), changed: true };
+    }
+
+    /**
+     * Records a local job's first terminal outcome on its link. Failed,
+     * cancelled, and capped outcomes move the item to Needs attention unless
+     * the item is archived or done, the user edited it after the job was
+     * linked, or a newer linked attempt already completed. Completion alone
+     * never marks an item done. Replays return `undefined`.
+     */
+    recordJobResult(
+        owner: SentinelTodoOwner,
+        processId: string,
+        result: Omit<SentinelTodoJobResult, 'recordedAt'>,
+        describe: (link: SentinelTodoJobLink) => string,
+    ): { item: SentinelTodoItem; ledgerRevision: number } | undefined {
+        const data = this.read(owner.workspaceId);
+        const ledger = data.ledgers[owner.processId];
+        const index = ledger?.items.findIndex(item =>
+            item.jobs.some(job => job.processId === processId && !job.serverId)) ?? -1;
+        if (!ledger || index < 0) return undefined;
+        const current = ledger.items[index];
+        const link = current.jobs.find(job => job.processId === processId && !job.serverId)!;
+        if (link.result) return undefined;
+        const now = new Date().toISOString();
+        const recorded = { ...link, result: { ...result, recordedAt: now } };
+        const next: Record<string, unknown> = {
+            ...current, jobs: current.jobs.map(job => job === link ? recorded : job),
+        };
+        const supersededByUser = !!current.userEditedAt && current.userEditedAt > link.linkedAt;
+        const supersededByAttempt = current.jobs.some(job =>
+            job !== link && job.linkedAt > link.linkedAt && job.result?.outcome === 'completed');
+        if (result.outcome !== 'completed' && !current.archived && current.status !== 'done'
+            && !supersededByUser && !supersededByAttempt) {
+            next.status = 'needs_attention';
+            next.statusReason = describe(recorded).slice(0, 2_000);
+        }
+        return this.commit(owner, data, ledger, index, next, 'system', now);
+    }
+
+    private commit(
+        owner: SentinelTodoOwner,
+        data: FileShape,
+        ledger: SentinelTodoLedger,
+        index: number,
+        next: Record<string, unknown>,
+        actor: SentinelTodoActor,
+        now: string,
+    ): { item: SentinelTodoItem; ledgerRevision: number } {
+        const item = parse(itemSchema, {
+            ...next, revision: ledger.items[index].revision + 1, updatedAt: now, updatedBy: actor,
+        });
         ledger.items[index] = item;
         ledger.revision += 1;
         this.save(owner.workspaceId, data);

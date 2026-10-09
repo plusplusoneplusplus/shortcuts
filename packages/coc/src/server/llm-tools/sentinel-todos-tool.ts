@@ -14,12 +14,13 @@ import {
     type SentinelTodoPatch,
     type SentinelTodoStatus,
 } from '../sentinel-todos/sentinel-todo-store';
-import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
 
 export interface SentinelTodosToolDeps {
-    service: Pick<SentinelTodoService, 'list' | 'create' | 'update'>;
+    service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob'>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
 }
@@ -42,7 +43,7 @@ export interface SentinelTodosArgs {
 }
 
 export type SentinelTodosResult =
-    | { items: SentinelTodoItem[]; ledgerRevision: number; archivedCount: number }
+    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number }
     | { item: SentinelTodoItem; created?: boolean }
     | { error: string; code?: string; current?: SentinelTodoItem };
 
@@ -57,7 +58,50 @@ const DESCRIPTION =
     'error returns the newer `current` item — re-read it and only reapply your change if it still makes sense. ' +
     'Setting `status` to `done` or `needs_attention` requires a short `reason`; `done` records that reason as the ' +
     'reviewed outcome unless you pass `outcome`. Only mark `done` after checking evidence against the completion ' +
-    'condition. If a call fails, tell the user the item is not tracked.';
+    'condition. Linked `jobs` show each job\'s `execution` separately: a completed job is evidence to review, not a ' +
+    'verdict, and `unavailable` (remote) jobs only settle when you record a reviewed outcome. ' +
+    'If a call fails, tell the user the item is not tracked.';
+
+/**
+ * Binds `send_to_conversation` create mode to the invoking Sentinel's ledger:
+ * every new handoff names an existing, unarchived item before launch, and the
+ * admitted job is linked afterwards. Link failures are reported, never retried.
+ */
+export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToConversationTodoTracking {
+    const { service, owner } = deps;
+    return {
+        async check(itemId) {
+            if (!itemId) {
+                return 'This Sentinel chat tracks every handoff: pass `todoItemId` of the to-do item this work serves '
+                    + '(create a concrete item with `sentinel_todos` first). Nothing was launched.';
+            }
+            try {
+                const item = (await service.list(owner)).items.find(candidate => candidate.id === itemId);
+                if (!item) return `To-do item ${itemId} not found in this chat's ledger. Nothing was launched.`;
+                if (item.archived) return `To-do item ${itemId} is archived; ask the user to restore it first. Nothing was launched.`;
+                return undefined;
+            } catch (err) {
+                return `Could not read the to-do ledger (${err instanceof Error ? err.message : String(err)}). Nothing was launched.`;
+            }
+        },
+        async link(itemId, job) {
+            try {
+                const { item } = await service.linkJob(owner, itemId, {
+                    processId: job.processId,
+                    workspaceId: job.workspaceId,
+                    kind: job.kind,
+                    openLink: job.openLink,
+                    ...(job.serverId ? { serverId: job.serverId } : {}),
+                    ...(job.sessionId ? { sessionId: job.sessionId } : {}),
+                    ...(job.title ? { title: job.title } : {}),
+                });
+                return { status: 'tracked', itemId: item.id, revision: item.revision };
+            } catch (err) {
+                return { status: 'failed', error: err instanceof Error ? err.message : String(err) };
+            }
+        },
+    };
+}
 
 export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     const { service, owner } = deps;

@@ -67,6 +67,14 @@ return `{ code: 'conflict', current }`). `done`/`needs_attention` require a `rea
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archiving is
 user-only. The addon's `<sentinel_todo_ledger>` guidance tells Sentinel to track concrete work
 only, update instead of duplicating, and report untracked work rather than relaunching jobs.
+`list` items carry `jobs[]` links with a derived `execution` (`queued`/`running`/`unknown`,
+terminal outcome plus result-review delivery state, or `unavailable` for remote links).
+
+With the flag on, the Sentinel's `send_to_conversation` gains `todoItemId` (via the optional
+`todoTracking` tool option): create mode rejects a missing, foreign, or archived item with
+`code: 'untracked'` before launching, then links the admitted local, Ralph (one whole-session
+link), or remote job and returns `tracking: { status: 'tracked' | 'failed' }`. Linked parent
+result reviews quote the item and ask Sentinel for an explicit `done`/`needs_attention` verdict.
 
 ### create_pull_request
 

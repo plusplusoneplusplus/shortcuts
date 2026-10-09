@@ -138,6 +138,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.sendMessage,
             options.sendToConversationRuntime,
             options.launchRalph,
+            options.sentinelTodos,
         ));
     }
 

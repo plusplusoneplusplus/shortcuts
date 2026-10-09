@@ -43,6 +43,7 @@ import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-si
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-routes';
+import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerWikiRoutes } from '../wiki';
@@ -489,6 +490,22 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
+    // Sentinel to-do ledger: bookkeeping only, never job control. Live-gated by
+    // `features.sentinelTodoLedger` (default off).
+    const getSentinelTodoLedgerEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.sentinelTodoLedger === true
+        : () => opts.resolvedConfig?.features?.sentinelTodoLedger === true;
+    const sentinelTodos = new SentinelTodoService({
+        todos: new SentinelTodoStore(dataDir), store, jobs: delegatedJobs,
+        getTask: taskId => bridge.getTask(taskId),
+        onChange: ({ owner, ledgerRevision, item }) => getWsServer().broadcastProcessEvent({
+            type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
+            ledgerRevision, itemId: item.id, timestamp: Date.now(),
+        }),
+    });
+    registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
+    opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
+    const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos, getSentinelTodoLedgerEnabled);
     const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade, delegatedJobs });
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
@@ -496,10 +513,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         reconcileMessagingNotices: () => jobNotices.reconcile(),
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
+        findTodo: job => sentinelTodoHooks.findTodo(job),
     });
     const delegatedJobResults = new DelegatedJobResults({
         jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
-        onResult: job => delegatedJobReviews.schedule(job),
+        onResult: job => {
+            sentinelTodoHooks.recordResult(job);
+            return delegatedJobReviews.schedule(job);
+        },
     });
     // Quarantine interrupted outbound sends before recovered results can add new receipts.
     const delegatedResultsRestored = jobNotices.restore().catch(error =>
@@ -510,21 +531,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
         getTask: taskId => bridge.getTask(taskId),
     });
-    // Sentinel to-do ledger: bookkeeping only, never job control. Live-gated by
-    // `features.sentinelTodoLedger` (default off).
-    const getSentinelTodoLedgerEnabled = opts.runtimeConfigService
-        ? () => opts.runtimeConfigService!.config.features?.sentinelTodoLedger === true
-        : () => opts.resolvedConfig?.features?.sentinelTodoLedger === true;
-    const sentinelTodos = new SentinelTodoService({
-        todos: new SentinelTodoStore(dataDir), store,
-        getTask: taskId => bridge.getTask(taskId),
-        onChange: ({ owner, ledgerRevision, item }) => getWsServer().broadcastProcessEvent({
-            type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
-            ledgerRevision, itemId: item.id, timestamp: Date.now(),
-        }),
-    });
-    registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
-    opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
         // Recovery must finish before a new registration can look like an interrupted launch.
         await delegatedResultsRestored;
