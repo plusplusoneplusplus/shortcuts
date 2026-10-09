@@ -261,6 +261,14 @@ registry and passes it into `cloneWsUrl`. Unified Terminal tabs carry their conc
 owner route through `TerminalView` and `TerminalPanel` to both REST and PTY calls;
 explicit `null` selects page origin, while raw workspace IDs stay in API payloads.
 Repo-group add requests use the dock target's workspace and owner route.
+`TerminalPanel` captures native paste only inside its focused container, cancels
+DOM/xterm event handlers, and passes only `text/plain` to xterm `paste()`, whose
+`onData` uses the owning PTY route and read-only gate. Ctrl+V, Ctrl+Shift+V and
+Cmd+V leave native paste enabled without async clipboard reads; Electron Edit
+Paste/Paste and Match Style use that same event path. The terminal context menu
+uses `readText()` and `paste()`; denied/unavailable clipboard reads cannot paste
+from that menu. xterm preserves line breaks as terminal CRs and brackets text
+when the session enables bracketed paste.
 `TerminalView` owns exited-session restart
 through the workspace-routed REST client, shared by the manual control and a plain
 Enter keydown focused inside its active, read-only `TerminalPanel`. Restart admission

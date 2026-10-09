@@ -42,6 +42,10 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
+- Terminal native paste is captured inside the focused `TerminalPanel`, consumes
+  only `text/plain`, cancels parallel/default insertion, and uses xterm `paste()`.
+  Clipboard shortcuts leave browser/Electron paste enabled without async reads;
+  context-menu reads also use `paste()` for newline/bracketed-paste handling.
 - Exited-terminal Enter uses `TerminalView`'s manual restart lifecycle and synchronous
   per-tab admission guard. Only a plain keydown focused inside the active viewport
   triggers restart; pasted input and transport disconnection are not process exit.

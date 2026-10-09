@@ -49,9 +49,9 @@ describe('classifyTerminalKeyEvent', () => {
                 .toBe('paste');
         });
 
-        it('leaves plain Ctrl+V to xterm', () => {
+        it('uses native paste for plain Ctrl+V', () => {
             expect(classifyTerminalKeyEvent(key({ key: 'v', ctrlKey: true }), opts(false)))
-                .toBe('passthrough');
+                .toBe('paste');
         });
 
         it('ignores non-keydown events', () => {
@@ -86,6 +86,10 @@ describe('classifyTerminalKeyEvent', () => {
         });
     });
 
+    it('leaves IME composition keys alone', () => {
+        expect(classifyTerminalKeyEvent(key({ key: 'v', ctrlKey: true, isComposing: true }), { isMac: false, hasSelection: false })).toBe('passthrough');
+    });
+
     it('sends the SIGINT byte for interrupts', () => {
         expect(SIGINT_SEQUENCE).toBe('\x03');
     });
@@ -94,6 +98,7 @@ describe('classifyTerminalKeyEvent', () => {
 describe('readTerminalBuffer', () => {
     function makeTerm(lines: string[]): ClipboardTerminal {
         return {
+            paste: vi.fn(),
             getSelection: () => '',
             selectAll: vi.fn(),
             clear: vi.fn(),
@@ -124,6 +129,7 @@ describe('readTerminalBuffer', () => {
 
     it('falls back to the selection when no buffer is exposed', () => {
         const term: ClipboardTerminal = {
+            paste: vi.fn(),
             getSelection: () => 'sel',
             selectAll: vi.fn(),
             clear: vi.fn(),
@@ -194,7 +200,7 @@ describe('useTerminalClipboard actions', () => {
     }
 
     function stubTerm(selection: string): ClipboardTerminal {
-        return { getSelection: () => selection, selectAll: vi.fn(), clear: vi.fn() };
+        return { paste: vi.fn(), getSelection: () => selection, selectAll: vi.fn(), clear: vi.fn() };
     }
 
     it('copies the selection', async () => {
@@ -210,11 +216,13 @@ describe('useTerminalClipboard actions', () => {
     });
 
     it('sends clipboard text on paste', async () => {
-        const { result, sendInput } = mountHook(stubTerm(''), {
+        const term = stubTerm('');
+        const { result, sendInput } = mountHook(term, {
             readClipboard: () => Promise.resolve('from clipboard'),
         });
         await result.current.paste();
-        expect(sendInput).toHaveBeenCalledWith('from clipboard');
+        expect(term.paste).toHaveBeenCalledExactlyOnceWith('from clipboard');
+        expect(sendInput).not.toHaveBeenCalled();
     });
 
     it('stays silent when the clipboard read is denied', async () => {
@@ -222,6 +230,25 @@ describe('useTerminalClipboard actions', () => {
             readClipboard: () => Promise.reject(new Error('denied')),
         });
         await expect(result.current.paste()).resolves.toBeUndefined();
+        expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it('does not paste into a replaced or disposed terminal after an async read', async () => {
+        const original = stubTerm('');
+        let current: ClipboardTerminal | null = original;
+        let resolveRead!: (text: string) => void;
+        const sendInput = vi.fn();
+        const { result } = renderHook(() => useTerminalClipboard({
+            getTerminal: () => current,
+            sendInput,
+            readClipboard: () => new Promise(resolve => { resolveRead = resolve; }),
+        }));
+        const pending = result.current.paste();
+        current = stubTerm('replacement');
+        resolveRead('late text');
+        await pending;
+        expect(original.paste).not.toHaveBeenCalled();
+        expect(current.paste).not.toHaveBeenCalled();
         expect(sendInput).not.toHaveBeenCalled();
     });
 

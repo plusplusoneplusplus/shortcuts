@@ -19,6 +19,7 @@ import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 /** The parts of xterm's `Terminal` this module touches. */
 export interface ClipboardTerminal {
     getSelection(): string;
+    paste(text: string): void;
     selectAll(): void;
     clear(): void;
     buffer?: {
@@ -36,6 +37,7 @@ export interface TerminalKeyEventLike {
     metaKey?: boolean;
     shiftKey?: boolean;
     altKey?: boolean;
+    isComposing?: boolean;
 }
 
 export type TerminalKeyAction = 'copy' | 'paste' | 'interrupt' | 'noop' | 'passthrough';
@@ -55,12 +57,14 @@ export function classifyTerminalKeyEvent(
     opts: { isMac: boolean; hasSelection: boolean },
 ): TerminalKeyAction {
     if (event.type && event.type !== 'keydown') return 'passthrough';
-    if (event.altKey) return 'passthrough';
+    if (event.altKey || event.isComposing) return 'passthrough';
 
     const key = (event.key ?? '').toLowerCase();
     const ctrl = event.ctrlKey === true;
     const meta = event.metaKey === true;
     const shift = event.shiftKey === true;
+
+    if (ctrl && !meta && key === 'v') return 'paste';
 
     if (opts.isMac) {
         if (meta && !ctrl) {
@@ -77,7 +81,6 @@ export function classifyTerminalKeyEvent(
             // Swallow a selection-less Ctrl+Shift+C so it cannot reach the
             // shell as a stray SIGINT.
             if (key === 'c') return opts.hasSelection ? 'copy' : 'noop';
-            if (key === 'v') return 'paste';
             return 'passthrough';
         }
         if (key === 'c') return opts.hasSelection ? 'copy' : 'interrupt';
@@ -178,14 +181,16 @@ export function useTerminalClipboard({
     }, [getTerminal]);
 
     const paste = useCallback(async () => {
+        const term = getTerminal();
+        if (!term) return;
         try {
             const text = await (readClipboard ? readClipboard() : readClipboardText());
-            if (text) sendInput(text);
+            if (text && getTerminal() === term) term.paste(text);
         } catch {
-            // Clipboard read denied or unavailable — the browser's native
-            // Ctrl+V through xterm's hidden textarea remains the fallback.
+            // Context-menu reads may be denied; native keyboard paste uses
+            // the ClipboardEvent and does not need readText permission.
         }
-    }, [readClipboard, sendInput]);
+    }, [readClipboard, getTerminal]);
 
     const selectAll = useCallback(() => {
         getTerminal()?.selectAll();
@@ -202,7 +207,8 @@ export function useTerminalClipboard({
                 void copySelection();
                 return false;
             case 'paste':
-                void paste();
+                // Skip xterm key translation, but leave the browser default
+                // enabled: the native paste event owns insertion exactly once.
                 return false;
             case 'interrupt':
                 sendInput(SIGINT_SEQUENCE);
@@ -212,7 +218,7 @@ export function useTerminalClipboard({
             default:
                 return true;
         }
-    }, [isMac, hasSelection, copySelection, paste, sendInput]);
+    }, [isMac, hasSelection, copySelection, sendInput]);
 
     return { copySelection, paste, copyAll, selectAll, clearTerminal, hasSelection, handleKeyEvent };
 }
