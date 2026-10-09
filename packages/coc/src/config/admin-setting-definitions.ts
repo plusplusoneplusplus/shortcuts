@@ -627,6 +627,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-sentinel-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelTodoLedger', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoLedgerEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.5, label: 'Sentinel to-do ledger', badge: 'experimental',
+            hint: 'Give each Sentinel chat a persistent To-do tab for planned work, delegated jobs, and reviewed outcomes. Bookkeeping only; never starts or cancels jobs. Disabled by default.',
+            testId: 'toggle-sentinel-todo-ledger-enabled',
+        },
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         value: { kind: 'number', integer: true, min: 1 },

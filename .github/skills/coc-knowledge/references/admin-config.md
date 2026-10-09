@@ -96,6 +96,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
 | `teamsAiAnswerRelay` | on | Admin -> Configure -> Integrations exposes the live relay opt-out beside bridge observability. Missing settings resolve on; explicit false stops answer relay and thread reply polling without restart/reconnect. A connected normal bridge saves per-workspace receipts and relays completed Ask answers or safe terminal notices for new requests to their captured original threads; connectivity, Trouter, Likes and observability remain independent |
 | `teamsMessageReaction` | off | Live Teams channel message Like attempts before routing, independent of answer relay and bridge observability |
+| `sentinelTodoLedger` | off | Live gate for the per-chat Sentinel to-do ledger: REST mutations, AI bookkeeping tools/directive, delegation tracking, and the right-panel To-do tab together |
 | `botManagedConversations` | off | Live integration-control identification gate, independent of AI provider, Teams relay, and bridge observability; runtime capability `botManagedConversationsEnabled` |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |

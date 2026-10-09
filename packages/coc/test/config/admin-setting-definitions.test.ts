@@ -343,6 +343,19 @@ describe('readAdminSettingValue', () => {
 describe('Features card UI metadata', () => {
     const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
 
+    it('exposes the Sentinel to-do ledger as a live, default-off toggle', () => {
+        const ledger = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelTodoLedger')!;
+        expect(ledger.default).toBe(false);
+        expect(ledger.runtime).toBe('live');
+        expect(ledger.ui).toMatchObject({ group: 'aiModes', testId: 'toggle-sentinel-todo-ledger-enabled' });
+        expect(DEFAULT_CONFIG.features.sentinelTodoLedger).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoLedgerEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { sentinelTodoLedger: true },
+        })).sentinelTodoLedgerEnabled).toBe(true);
+        expect(() => CLIConfigSchema.parse({ features: { sentinelTodoLedger: 'yes' } })).toThrow();
+    });
+
     it('exposes Teams message reaction as an independent live, default-off toggle', () => {
         const reaction = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsMessageReaction')!;
         expect(reaction.value).toEqual({ kind: 'boolean' });
@@ -597,6 +610,7 @@ describe('feature toggle settings-tab placement', () => {
         'forEach.enabled': 'ai',
         'mapReduce.enabled': 'ai',
         'sentinel.enabled': 'ai',
+        'features.sentinelTodoLedger': 'ai',
         'dangerousCommandGuard.enabled': 'ai',
         'effortLevels.enabled': 'ai',
         'copilot.transformTransport': 'ai',

@@ -29,7 +29,7 @@ import { createImageBlobDomain } from './image-blob-domain';
 import { createPreferencesDomain } from './preferences-domain';
 import { createScheduleDomain } from './schedule-domain';
 import { createGitOpsDomain } from './git-ops-domain';
-import { createDelegatedJobsDomain } from './delegated-jobs-domain';
+import { createDelegatedJobsDomain, createSentinelTodosDomain } from './delegated-jobs-domain';
 
 /** Build a fresh, ordered set of snapshot domains. */
 export function createSnapshotDomains(): StorageSnapshotDomain[] {
@@ -41,6 +41,7 @@ export function createSnapshotDomains(): StorageSnapshotDomain[] {
         createScheduleDomain(),
         createGitOpsDomain(),
         createDelegatedJobsDomain(),
+        createSentinelTodosDomain(),
     ];
 }
 

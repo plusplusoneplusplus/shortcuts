@@ -113,6 +113,11 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+- Sentinel to-do ledgers (`src/server/sentinel-todos/`) are bookkeeping only: REST and AI
+  tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
+  read/write and emits only after the atomic write commits. Item revisions reject stale
+  writers (`409` with the current item); there is no hard delete. Never let ledger edits
+  start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

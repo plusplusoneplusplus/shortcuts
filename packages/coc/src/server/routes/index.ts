@@ -40,6 +40,9 @@ import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
 import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
+import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
+import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-routes';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerWikiRoutes } from '../wiki';
@@ -505,6 +508,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
         getTask: taskId => bridge.getTask(taskId),
     });
+    // Sentinel to-do ledger: bookkeeping only, never job control. Live-gated by
+    // `features.sentinelTodoLedger` (default off).
+    const getSentinelTodoLedgerEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.features?.sentinelTodoLedger === true
+        : () => opts.resolvedConfig?.features?.sentinelTodoLedger === true;
+    const sentinelTodos = new SentinelTodoService({
+        todos: new SentinelTodoStore(dataDir), store,
+        getTask: taskId => bridge.getTask(taskId),
+        onChange: ({ owner, ledgerRevision, item }) => getWsServer().broadcastProcessEvent({
+            type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
+            ledgerRevision, itemId: item.id, timestamp: Date.now(),
+        }),
+    });
+    registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
         // Recovery must finish before a new registration can look like an interrupted launch.
         await delegatedResultsRestored;

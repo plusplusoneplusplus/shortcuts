@@ -129,6 +129,7 @@ export interface AdminResolvedConfig {
     teamsBridgeObservability?: boolean;
     teamsAiAnswerRelay?: boolean;
     teamsMessageReaction?: boolean;
+    sentinelTodoLedger?: boolean;
     botManagedConversations?: boolean;
     quickAskSidenotes?: boolean;
     arxivPaperIngest?: boolean;
@@ -222,6 +223,7 @@ export interface AdminConfigUpdate {
   'features.teamsBridgeObservability'?: boolean;
   'features.teamsAiAnswerRelay'?: boolean;
   'features.teamsMessageReaction'?: boolean;
+  'features.sentinelTodoLedger'?: boolean;
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
   'features.gitWorktreeExecution'?: boolean;
@@ -283,6 +285,7 @@ export interface RuntimeDashboardConfig {
     teamsBridgeObservabilityEnabled: boolean;
     teamsAiAnswerRelayEnabled: boolean;
     teamsMessageReactionEnabled: boolean;
+    sentinelTodoLedgerEnabled: boolean;
     botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;
