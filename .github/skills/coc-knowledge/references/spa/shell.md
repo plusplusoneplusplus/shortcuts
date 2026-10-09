@@ -102,6 +102,7 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 ### Browser profiles and preferences
 
 `desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
+Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned
 partition is a single-use attachment token, not a new storage partition; existing

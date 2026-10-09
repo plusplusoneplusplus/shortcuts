@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { desktopBrowserBridge, openUrlInSystemBrowser, WEBVIEW2_INSTALL_URL, type BrowserEngine, type BrowserPreferences } from '../shared/file-path/browser-bridge';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { desktopBrowserBridge, openUrlInSystemBrowser, WEBVIEW2_INSTALL_URL, type BrowserEngine, type BrowserPreferences, type DesktopBrowserHistory, type BrowserOperationResult } from '../shared/file-path/browser-bridge';
 import { SettingsCard } from './SettingsCard';
-import { AdminRow } from './adminControls';
+import { AdminRow, AdminToggle } from './adminControls';
 
 export function DesktopBrowserPreferences() {
     const bridge = desktopBrowserBridge();
@@ -29,7 +29,7 @@ export function DesktopBrowserPreferences() {
     }, [bridge]);
 
     if (!bridge) { return null; }
-    const operate = async (kind: BrowserEngine | 'select', action: () => ReturnType<typeof bridge.clearData>, success: string) => {
+    const operate = async (kind: BrowserEngine | 'select', action: () => Promise<BrowserOperationResult>, success: string) => {
         setBusy(kind);
         setError(null);
         setNotice(null);
@@ -83,8 +83,84 @@ export function DesktopBrowserPreferences() {
                     ))}
                 </>
             )}
+            {bridge.history && <DesktopHistoryRecording history={bridge.history} />}
             {error && <p role="alert" style={{ color: 'var(--ar-danger)' }}>{error}</p>}
             {notice && <p role="status" className="ar-muted">{notice}</p>}
         </SettingsCard>
+    );
+}
+
+function DesktopHistoryRecording({ history }: { history: DesktopBrowserHistory }) {
+    const [recording, setRecording] = useState<boolean | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [storageError, setStorageError] = useState<string | null>(null);
+    const mounted = useRef(false);
+    const revision = useRef(0);
+    const operating = useRef(false);
+    const load = useCallback(async () => {
+        const current = ++revision.current;
+        try {
+            const result = await history.query('', 0, 1);
+            if (!mounted.current || current !== revision.current) { return; }
+            if (result.ok) {
+                setRecording(result.recording);
+                setStorageError(result.storageError);
+                setError(null);
+            } else {
+                setError(result.message ?? `Could not load history recording: ${result.reason}.`);
+            }
+        } catch (error) {
+            if (mounted.current && current === revision.current) {
+                setError(error instanceof Error ? error.message : 'Could not load history recording.');
+            }
+        }
+    }, [history]);
+
+    useEffect(() => {
+        mounted.current = true;
+        void load();
+        const off = history.onChanged(() => { void load(); });
+        return () => { mounted.current = false; revision.current++; off(); };
+    }, [history, load]);
+
+    const changeRecording = async (enabled: boolean) => {
+        if (operating.current) { return; }
+        operating.current = true;
+        setBusy(true);
+        setError(null);
+        // Pending reads cannot overwrite the result of this mutation.
+        revision.current++;
+        try {
+            const result = await history.setRecording(enabled);
+            if (!mounted.current) { return; }
+            if (result.ok) { await load(); }
+            else { setError(result.message ?? `Could not save history recording: ${result.reason}.`); }
+        } catch (error) {
+            if (mounted.current) {
+                setError(error instanceof Error ? error.message : 'Could not save history recording.');
+            }
+        } finally {
+            operating.current = false;
+            if (mounted.current) { setBusy(false); }
+        }
+    };
+
+    return (
+        <>
+            <AdminRow name="Record browser history" hint="Saved on this desktop across all workspaces and windows. Pausing keeps existing history available for suggestions.">
+                {recording === null ? <span role="status" className="ar-muted">{error ? 'History recording unavailable.' : 'Loading history recording...'}</span> : (
+                    <AdminToggle aria-label="Record browser history" checked={recording} disabled={busy}
+                        onChange={enabled => { void changeRecording(enabled); }} />
+                )}
+            </AdminRow>
+            {storageError && <p role="alert" style={{ color: 'var(--ar-danger)' }}>History could not be saved: {storageError}</p>}
+            {error && (
+                <p role="alert" style={{ color: 'var(--ar-danger)' }}>
+                    {error} <button type="button" className="ar-btn ar-btn-ghost ar-btn-sm" disabled={busy}
+                        onClick={() => { void load(); }}>Retry history recording</button>
+                </p>
+            )}
+        </>
     );
 }
