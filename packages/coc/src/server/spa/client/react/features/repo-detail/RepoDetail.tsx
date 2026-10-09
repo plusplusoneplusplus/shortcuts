@@ -797,6 +797,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             onViewChange={splitGitPanel.onViewChange}
                                             detailOpen={splitGitPanel.detailOpen}
                                             restoreView={splitGitPanel.restoreView}
+                                            viewScopeKey={splitGitPanel.viewScopeKey}
                                             onDetailDirtyChange={splitGitPanel.onDetailDirtyChange}
                                             onDetailRegisterSave={splitGitPanel.onDetailRegisterSave}
                                             headerToolbarContainer={splitGitHeaderNode}

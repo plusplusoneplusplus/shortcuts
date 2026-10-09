@@ -314,7 +314,9 @@ With the split flag on, group Git URLs select the Chats surface without
 discarding the member and commit route. On desktop, `useSplitGitPanel` gives
 single repos and groups the same unified right-panel Git tab: the chat stays
 in the middle, while the member's Git detail portals into the far-right tab.
-The group tab persists the selected member alongside its Git view, restores
+That tab is chat-owned: each chat keeps its own Git view, and a chat switch
+makes `RepoGitTab` (`viewScopeKey`) drop pending lookups and restore the new
+chat's view or clear the selection. The group tab persists the selected member alongside its Git view, restores
 only for that member, and closes on member changes or unavailable links. Mobile
 keeps the split panel's full-screen detail push; the flag-off Git tab remains
 standalone.

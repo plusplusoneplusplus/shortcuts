@@ -101,11 +101,11 @@ export function getUnifiedGitTabDirtyBridge(scopeWorkspaceId: string): UnifiedGi
     return dirtyBridges.get(scopeWorkspaceId) ?? null;
 }
 
-/** The descriptor of a workspace's one Git tab. */
+/** The descriptor of a chat's one Git tab. */
 export function unifiedGitTabInput(input: {
     ownerWorkspaceId: string;
     ownerRoutingRef?: string | null;
-    /** The chat the panel is showing, so the open focuses the tab in that view. */
+    /** The chat the panel is showing; the tab belongs to that chat. */
     chatId: string | null;
     /** What the tab now shows, persisted so a reload can restore it. */
     gitView?: PersistedGitView;
@@ -124,8 +124,8 @@ export function unifiedGitTabInput(input: {
 }
 
 /**
- * Open (or focus) the Git tab in `scopeWorkspaceId`'s panel and reveal the
- * panel. Repeated opens reuse the one tab: its id carries no view identity.
+ * Open (or focus) the chat's Git tab in `scopeWorkspaceId`'s panel and reveal
+ * the panel. Repeated opens reuse the one tab: its id carries no view identity.
  */
 export function openUnifiedGitTab(
     scopeWorkspaceId: string,
@@ -134,21 +134,26 @@ export function openUnifiedGitTab(
     return openUnifiedPanelTab(scopeWorkspaceId, unifiedGitTabInput(input));
 }
 
-/** The id of a workspace's one Git tab — the same for every chat. */
+/**
+ * The id of a chat's one Git tab. Each chat (or the no-chat draft scope when
+ * `chatId` is null) has its own, so a chat switch never shows another chat's
+ * git detail.
+ */
 export function unifiedGitTabId(input: {
     ownerWorkspaceId: string;
     ownerRoutingRef?: string | null;
+    chatId: string | null;
 }): string {
     return unifiedTabId({
         kind: 'git',
         ownerWorkspaceId: input.ownerWorkspaceId,
         ownerRoutingRef: input.ownerRoutingRef,
-        chatId: null,
+        chatId: input.chatId,
         resourceId: GIT_TAB_RESOURCE_ID,
     });
 }
 
-/** This workspace's Git tab in `scopeWorkspaceId`'s panel, or null when closed. */
+/** The chat's Git tab in `scopeWorkspaceId`'s panel, or null when closed. */
 export function useUnifiedGitTab(
     scopeWorkspaceId: string,
     input: Parameters<typeof unifiedGitTabId>[0],

@@ -366,6 +366,65 @@ describe('RepoGitTab — split-workspace layout', () => {
             expect(container.querySelector('[data-testid="git-detail-restore-not-found"]')).toBeNull();
         });
 
+        describe('switching chats (viewScopeKey)', () => {
+            async function renderScoped(initial: Record<string, unknown>) {
+                const container = document.createElement('div');
+                document.body.appendChild(container);
+                const onViewChange = vi.fn();
+                const base = { workspaceId, layout: 'split-workspace', detailContainer: container, detailActive: true, onViewChange };
+                const result = await renderTab({ ...base, ...initial });
+                const switchTo = (next: Record<string, unknown>) =>
+                    result.rerender(<RepoGitTab {...base} {...next} workspaceId={workspaceId} />);
+                return { container, onViewChange, switchTo };
+            }
+            const selected = () => screen.getByTestId('stub-commit-list').getAttribute('data-selected');
+
+            it('drops chat A\'s detail in a chat without Git, and restores it on return (regression)', async () => {
+                client.git.listCommits.mockResolvedValue({ commits: [commit], unpushedCount: 0 });
+                const { container, onViewChange, switchTo } = await renderScoped({ viewScopeKey: 'chat-a', detailOpen: true });
+                fireEvent.click(screen.getByTestId('stub-commit-select'));
+                await waitFor(() => expect(selected()).toBe('abc123'));
+
+                switchTo({ viewScopeKey: 'chat-b', detailOpen: false });
+                await waitFor(() => expect(selected()).toBe('none'));
+                expect(container.querySelector('[data-testid="stub-commit-detail"]')).toBeNull();
+                expect(onViewChange).toHaveBeenLastCalledWith(null);
+
+                switchTo({ viewScopeKey: 'chat-a', detailOpen: true, restoreView: { type: 'commit', hash: 'abc123' } });
+                await waitFor(() => expect(selected()).toBe('abc123'));
+                expect(container.querySelector('[data-testid="stub-commit-detail"]')?.getAttribute('data-hash')).toBe('abc123');
+            });
+
+            it('replaces chat A\'s detail with chat B\'s own view', async () => {
+                client.git.listCommits.mockResolvedValue({ commits: [commit], unpushedCount: 0 });
+                const { container, switchTo } = await renderScoped({
+                    viewScopeKey: 'chat-a', detailOpen: true, restoreView: { type: 'commit', hash: 'abc123' },
+                });
+                await waitFor(() => expect(selected()).toBe('abc123'));
+
+                switchTo({ viewScopeKey: 'chat-b', detailOpen: true, restoreView: { type: 'branch-range-comments' } });
+                await waitFor(() => expect(selected()).toBe('none'));
+                expect(container.querySelector('[data-testid="stub-commit-detail"]')).toBeNull();
+                expect(container.querySelector('[data-testid="git-detail-no-branch-range"]')).toBeTruthy();
+            });
+
+            it('never lets chat A\'s late commit lookup land in chat B', async () => {
+                let resolveLookup: (value: unknown) => void = () => {};
+                client.git.getCommit.mockImplementation(() => new Promise(resolve => { resolveLookup = resolve; }));
+                const { container, onViewChange, switchTo } = await renderScoped({
+                    viewScopeKey: 'chat-a', detailOpen: true, restoreView: { type: 'commit', hash: 'def456' },
+                });
+                await waitFor(() => expect(client.git.getCommit).toHaveBeenCalledWith(workspaceId, 'def456'));
+
+                switchTo({ viewScopeKey: 'chat-b', detailOpen: false });
+                resolveLookup({ ...commit, hash: 'def456', shortHash: 'def456' });
+                await new Promise(resolve => setTimeout(resolve, 0));
+                await waitFor(() => expect(selected()).toBe('none'));
+                expect(container.querySelector('[data-testid="stub-commit-detail"]')).toBeNull();
+                expect(onViewChange).not.toHaveBeenCalledWith(expect.objectContaining({ commit: expect.objectContaining({ hash: 'def456' }) }));
+            });
+        });
+
         it('restores a non-commit view as-is', async () => {
             const { container, onViewChange } = await renderRestored({ type: 'branch-range-comments' });
             await waitFor(() => expect(onViewChange).toHaveBeenCalledWith({ type: 'branch-range-comments' }));

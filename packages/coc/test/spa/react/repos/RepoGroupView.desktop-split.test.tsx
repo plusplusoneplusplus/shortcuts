@@ -288,7 +288,7 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
         expect(host.querySelector('[data-testid="stub-git-detail"]')).toBeNull();
         expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
-        expect(readUnifiedPanelState(GROUP_ID).workspaceTabs.find(tab => tab.kind === 'git'))
+        expect(readUnifiedPanelState(GROUP_ID).chatTabs['@workspace']?.find(tab => tab.kind === 'git'))
             .toMatchObject({ gitMemberId: 'r1', gitView: { type: 'commit', hash: 'abc1234' } });
 
         click('stub-chat-row');

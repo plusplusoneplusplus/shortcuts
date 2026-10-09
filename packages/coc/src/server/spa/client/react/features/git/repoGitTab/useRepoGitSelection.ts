@@ -137,6 +137,12 @@ export interface UseRepoGitSelectionReturn {
     hydrateFromInitialLoad: (loaded: GitCommitItem[], restore?: PersistedGitView | null) => void;
     /** Set when a restored view's commit no longer exists; cleared by any selection. */
     restoreNotFound: string | null;
+    /**
+     * The host switched to another view scope (e.g. the right panel now shows
+     * another chat): drop the current view and every pending lookup, then
+     * refetch `restore` — that scope's persisted view — or show nothing.
+     */
+    switchViewScope: (restore: PersistedGitView | null) => void;
 }
 
 export function useRepoGitSelection({
@@ -434,6 +440,18 @@ export function useRepoGitSelection({
         applyRoute(commitHash, filePath, loaded);
     }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId]);
 
+    const switchViewScope = useCallback((restore: PersistedGitView | null) => {
+        // A lookup still in flight belongs to the scope being left.
+        lookupGenerationRef.current += 1;
+        setHunkTarget(undefined);
+        setOpenedCommit(null);
+        setCommitLookupLoading(false);
+        setCommitLookupError(null);
+        setRestoreNotFound(null);
+        setView(null);
+        if (restore) restorePersistedView(restore, commitsRef.current);
+    }, [restorePersistedView]);
+
     // Any selection supersedes a restore that came up empty.
     useEffect(() => {
         if (view) setRestoreNotFound(null);
@@ -479,5 +497,6 @@ export function useRepoGitSelection({
         selectWorkingTreeComments, selectBranchRangeComments, clearSelection,
         openedCommit, commitLookupLoading, commitLookupError, clearCommitLookupError,
         lookupCommit, initialCommitHash: routeCommitHash, hydrateFromInitialLoad, restoreNotFound,
+        switchViewScope,
     };
 }

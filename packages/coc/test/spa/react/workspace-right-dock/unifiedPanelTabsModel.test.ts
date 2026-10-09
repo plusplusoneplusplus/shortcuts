@@ -1168,32 +1168,66 @@ describe('git tab kind', () => {
         label: 'Git',
     });
 
-    it('is workspace-owned', () => {
-        expect(scopeForKind('git')).toBe('workspace');
-        expect(scopeKeyFor('git', CHAT_1)).toBe(WORKSPACE_SCOPE_KEY);
+    it('is chat-owned but renders with the tools', () => {
+        expect(scopeForKind('git')).toBe('chat');
+        expect(scopeKeyFor('git', CHAT_1)).toBe(CHAT_1);
+        expect(scopeKeyFor('git', null)).toBe(WORKSPACE_SCOPE_KEY);
+        expect(displayGroupForKind('git')).toBe('tools');
     });
 
-    it('opening it twice keeps one tab, visible in every chat', () => {
-        let state = openTab(EMPTY_UNIFIED_PANEL, gitInput(CHAT_1));
-        state = openTab(state, gitInput(CHAT_2));
-        expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
-        expect(visibleTabs(state, CHAT_1).map(tab => tab.kind)).toEqual(['git']);
-        expect(activeTab(state, CHAT_2)?.kind).toBe('git');
+    it('gives each chat its own Git tab, never visible from another chat (regression)', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, { ...gitInput(CHAT_1), gitView: { type: 'commit', hash: 'aaa' } });
+        expect(state.workspaceTabs).toHaveLength(0);
+        // Switching to a chat that never opened git shows no Git tab and no A view.
+        expect(visibleTabs(state, CHAT_2)).toEqual([]);
+        expect(activeTab(state, CHAT_2)).toBeNull();
+
+        state = openTab(state, { ...gitInput(CHAT_2), gitView: { type: 'branch-range' } });
+        expect(visibleTabs(state, CHAT_1).map(tab => tab.gitView)).toEqual([{ type: 'commit', hash: 'aaa' }]);
+        expect(visibleTabs(state, CHAT_2).map(tab => tab.gitView)).toEqual([{ type: 'branch-range' }]);
+        expect(activeTab(state, CHAT_1)?.gitView).toEqual({ type: 'commit', hash: 'aaa' });
+    });
+
+    it('sits with the tools, before the chat resources', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/a.ts', label: 'a.ts',
+        });
+        state = openTab(state, gitInput(CHAT_1));
+        expect(visibleTabs(state, CHAT_1).map(tab => tab.kind)).toEqual(['git', 'file']);
     });
 
     it('survives a serialize/parse round trip', () => {
-        const state = openTab(EMPTY_UNIFIED_PANEL, gitInput(null));
+        const state = openTab(EMPTY_UNIFIED_PANEL, gitInput(CHAT_1));
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
-        expect(restored.workspaceTabs).toEqual(state.workspaceTabs);
+        expect(restored.chatTabs[CHAT_1]).toEqual(state.chatTabs[CHAT_1]);
     });
+
+    it('drops a legacy workspace-owned Git tab on restore', () => {
+        // The id a workspace-owned Git tab was written under.
+        const legacyId = unifiedTabId({ kind: 'git', ownerWorkspaceId: WS, chatId: null, resourceId: GIT_TAB_RESOURCE_ID });
+        const payload = {
+            version: UNIFIED_PANEL_STATE_VERSION,
+            workspaceTabs: [{
+                id: legacyId, kind: 'git', ownerWorkspaceId: WS, chatId: null,
+                resourceId: GIT_TAB_RESOURCE_ID, label: 'Git', gitView: { type: 'commit', hash: 'aaa' },
+            }],
+            chatTabs: {},
+            activeByScope: { [CHAT_1]: legacyId },
+        };
+        const restored = parseUnifiedPanelState(JSON.stringify(payload));
+        expect(restored.workspaceTabs).toEqual([]);
+        expect(visibleTabs(restored, CHAT_1)).toEqual([]);
+        expect(restored.activeByScope).toEqual({});
+    });
+
     it('replaces its view on each open and keeps it on a plain re-focus', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, { ...gitInput(CHAT_1), gitView: { type: 'commit', hash: 'aaa' } });
         state = openTab(state, { ...gitInput(CHAT_1), gitView: { type: 'commit-file', hash: 'bbb', filePath: 'src/a.ts' } });
-        expect(state.workspaceTabs).toHaveLength(1);
-        expect(state.workspaceTabs[0].gitView).toEqual({ type: 'commit-file', hash: 'bbb', filePath: 'src/a.ts' });
+        expect(state.chatTabs[CHAT_1]).toHaveLength(1);
+        expect(state.chatTabs[CHAT_1][0].gitView).toEqual({ type: 'commit-file', hash: 'bbb', filePath: 'src/a.ts' });
 
-        const refocused = openTab(state, gitInput(CHAT_2));
-        expect(refocused.workspaceTabs[0].gitView).toEqual({ type: 'commit-file', hash: 'bbb', filePath: 'src/a.ts' });
+        const refocused = openTab(state, gitInput(CHAT_1));
+        expect(refocused.chatTabs[CHAT_1][0].gitView).toEqual({ type: 'commit-file', hash: 'bbb', filePath: 'src/a.ts' });
     });
 
     it('persists only the serializable view and restores it', () => {
@@ -1208,9 +1242,9 @@ describe('git tab kind', () => {
             { type: 'multi-commit', hashes: ['a1', 'b2'] },
         ] as const;
         for (const gitView of views) {
-            const state = openTab(EMPTY_UNIFIED_PANEL, { ...gitInput(null), gitView });
+            const state = openTab(EMPTY_UNIFIED_PANEL, { ...gitInput(CHAT_1), gitView });
             const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
-            expect(restored.workspaceTabs[0].gitView).toEqual(gitView);
+            expect(restored.chatTabs[CHAT_1][0].gitView).toEqual(gitView);
         }
     });
 
@@ -1223,12 +1257,12 @@ describe('git tab kind', () => {
     });
 
     it('restores a tab with a malformed view as a Git tab with no view', () => {
-        const state = openTab(EMPTY_UNIFIED_PANEL, gitInput(null));
+        const state = openTab(EMPTY_UNIFIED_PANEL, gitInput(CHAT_1));
         const payload = JSON.parse(serializeUnifiedPanelState(state));
-        payload.workspaceTabs[0].gitView = { type: 'commit', hash: 42, diff: 'huge' };
+        payload.chatTabs[CHAT_1][0].gitView = { type: 'commit', hash: 42, diff: 'huge' };
         const restored = parseUnifiedPanelState(JSON.stringify(payload));
-        expect(restored.workspaceTabs).toHaveLength(1);
-        expect(restored.workspaceTabs[0].gitView).toBeUndefined();
+        expect(restored.chatTabs[CHAT_1]).toHaveLength(1);
+        expect(restored.chatTabs[CHAT_1][0].gitView).toBeUndefined();
     });
 
     it('parsePersistedGitView keeps known fields only and rejects bad shapes', () => {
