@@ -5,8 +5,8 @@
  */
 
 import { useRef } from 'react';
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
 import {
     useAnchoredPanelPosition,
     type AnchoredPanelPlacement,
@@ -38,14 +38,18 @@ function Harness({
     placement,
     triggerRect,
     panelRect,
+    constrainHeight = false,
+    contentHeight,
 }: {
     placement: AnchoredPanelPlacement;
     triggerRect: DOMRect;
     panelRect: DOMRect;
+    constrainHeight?: boolean;
+    contentHeight?: number;
 }) {
     const triggerRef = useRef<HTMLDivElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const pos = useAnchoredPanelPosition({ open: true, placement, triggerRef, panelRef });
+    const pos = useAnchoredPanelPosition({ open: true, placement, triggerRef, panelRef, constrainHeight });
     return (
         <>
             <div
@@ -58,9 +62,15 @@ function Harness({
                 data-testid="panel"
                 data-top={pos.top}
                 data-left={pos.left}
+                data-max-height={pos.maxHeight}
+                data-max-width={pos.maxWidth}
                 ref={el => {
                     panelRef.current = el;
-                    if (el) el.getBoundingClientRect = () => panelRect;
+                    if (el) {
+                        el.getBoundingClientRect = () => panelRect;
+                        Object.defineProperty(el, 'clientHeight', { configurable: true, value: panelRect.height });
+                        Object.defineProperty(el, 'scrollHeight', { configurable: true, value: contentHeight ?? panelRect.height });
+                    }
                 }}
             />
         </>
@@ -76,6 +86,7 @@ function readPos() {
 }
 
 describe('useAnchoredPanelPosition', () => {
+    afterEach(() => vi.unstubAllGlobals());
     // jsdom viewport defaults: innerWidth 1024, innerHeight 768.
 
     it('placement "down": right-aligns to the trigger and opens below', () => {
@@ -124,5 +135,51 @@ describe('useAnchoredPanelPosition', () => {
         );
         // Above would be 10-400-4 = -394 (< margin) → flip below: trigger.bottom (40) + gap (4) = 44
         expect(readPos().top).toBe(44);
+    });
+
+    it('limits tall content to the space below its anchor, not the whole viewport', () => {
+        render(<Harness placement="down" constrainHeight contentHeight={1000}
+            triggerRect={rect({ top: 100, left: 200, width: 60, height: 30 })}
+            panelRect={rect({ top: 0, left: 0, width: 208, height: 400 })} />);
+        expect(readPos()).toEqual({ top: 134, left: 52 });
+        expect(screen.getByTestId('panel')).toHaveAttribute('data-max-height', '626');
+        expect(screen.getByTestId('panel')).toHaveAttribute('data-max-width', '1008');
+    });
+
+    it('chooses the larger space above when neither side fits', () => {
+        render(<Harness placement="down" constrainHeight contentHeight={1000}
+            triggerRect={rect({ top: 500, left: 200, width: 60, height: 30 })}
+            panelRect={rect({ top: 0, left: 0, width: 208, height: 200 })} />);
+        expect(readPos()).toEqual({ top: 8, left: 52 });
+        expect(screen.getByTestId('panel')).toHaveAttribute('data-max-height', '488');
+    });
+
+    it('uses visual viewport bounds and recomputes on zoom/keyboard resize and pan', () => {
+        const viewport = Object.assign(new EventTarget(), {
+            offsetLeft: 30, offsetTop: 50, width: 180, height: 300,
+        });
+        vi.stubGlobal('visualViewport', viewport);
+        const remove = vi.spyOn(viewport, 'removeEventListener');
+        const { unmount } = render(<Harness placement="down" constrainHeight contentHeight={1000}
+            triggerRect={rect({ top: 100, left: 100, width: 60, height: 30 })}
+            panelRect={rect({ top: 0, left: 0, width: 208, height: 200 })} />);
+        const panel = screen.getByTestId('panel');
+        expect(readPos()).toEqual({ top: 134, left: 38 });
+        expect(panel).toHaveAttribute('data-max-height', '208');
+        expect(panel).toHaveAttribute('data-max-width', '164');
+        act(() => {
+            viewport.height = 180;
+            viewport.dispatchEvent(new Event('resize'));
+        });
+        expect(panel).toHaveAttribute('data-max-height', '88');
+        act(() => {
+            viewport.offsetTop = 150;
+            viewport.dispatchEvent(new Event('scroll'));
+        });
+        expect(readPos().top).toBe(158);
+        expect(panel).toHaveAttribute('data-max-height', '164');
+        unmount();
+        expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
+        expect(remove).toHaveBeenCalledWith('scroll', expect.any(Function));
     });
 });

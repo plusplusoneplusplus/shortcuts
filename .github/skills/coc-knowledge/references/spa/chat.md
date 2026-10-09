@@ -141,9 +141,14 @@ For Each and Map Reduce groups are backed by `client.forEach.list(workspaceId)` 
 `payload.context.forEach` / `payload.context.mapReduce`, persisted metadata, or
 `generationProcessId`, so children never duplicate as standalone rows.
 
-Queue pause insert zones open the shared pause-duration menu: until-resumed, hour presets,
-or a custom float in (0, 24]. `durationHours` is sent only for timed markers, which render
-a duration suffix until the executor consumes them.
+Queue pause insert zones and ALL/AP pills share `PauseDurationMenu`, a body-portaled
+overlay positioned by `useAnchoredPanelPosition` with constrained height and width.
+The hook tracks ancestor scrolling/resizing, panel resizing, and visual-viewport resize/pan;
+the menu owns contained vertical scrolling across sidebar splits. Outside interaction
+checks include the portal, and Escape returns focus to its owning trigger.
+Pause selections offer until-resumed, hour presets, or a custom float in (0, 24].
+`durationHours` is sent only for timed markers, which render a duration suffix until
+the executor consumes them.
 
 The ALL and AP pause pills use the same menu for per-scope repeating task delays. The
 delay section offers fixed minute presets, Off, and integer custom minutes from 1 through

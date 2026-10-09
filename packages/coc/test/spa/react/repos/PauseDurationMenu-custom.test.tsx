@@ -35,11 +35,6 @@ vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota',
 
 // ── Minimal mocks required by ChatListPane ───────────────────────────────────
 
-vi.mock('react-dom', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('react-dom')>();
-    return { ...actual, createPortal: (children: React.ReactNode) => children };
-});
-
 vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', () => ({
     ContextMenu: () => null,
 }));
@@ -210,13 +205,54 @@ describe('PauseDurationMenu — Custom… float-hours row', () => {
     it('renders the Custom… row in the ALL menu below the presets', () => {
         renderPane();
         const menu = openAllMenu();
-        expect(menu).toHaveClass('max-h-[calc(100dvh-4rem)]', 'overflow-y-auto', 'overscroll-contain');
+        expect(menu).toHaveClass('overflow-y-auto', 'overscroll-contain');
+        expect(menu.parentElement).toBe(document.body);
+        expect(menu.style.position).toBe('fixed');
         expect(screen.getByTestId('pause-duration-all-custom')).toBeTruthy();
         expect(screen.getByTestId('pause-duration-all-custom').textContent).toContain('Custom');
-        // Presets are unchanged alongside the custom row
         for (const hours of [1, 2, 3, 4, 8]) {
             expect(screen.getByTestId(`pause-duration-all-${hours}h`)).toBeTruthy();
         }
+    });
+
+    it.each(['all', 'autopilot'])('keeps %s portal interactions inside and restores focus on Escape', scope => {
+        const { props } = renderPane();
+        const trigger = screen.getByTestId(scope === 'all' ? 'repo-pause-resume-btn' : 'autopilot-pause-resume-btn');
+        fireEvent.click(trigger);
+        const menu = screen.getByTestId(`pause-duration-menu-${scope}`);
+        expect(menu.parentElement).toBe(document.body);
+        fireEvent.mouseDown(menu);
+        fireEvent.touchStart(menu);
+        fireEvent.click(screen.getByTestId(`pause-duration-${scope}-custom`));
+        const input = screen.getByTestId(`pause-duration-${scope}-custom-input`);
+        expect(input).toHaveFocus();
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(screen.queryByTestId(`pause-duration-menu-${scope}`)).toBeNull();
+        expect(trigger).toHaveFocus();
+        expect(props.onPauseResume).not.toHaveBeenCalled();
+        expect(props.onPauseResumeAutopilot).not.toHaveBeenCalled();
+    });
+
+    it.each(['mousedown', 'touchstart'])('closes the portaled menu on outside %s without an action', event => {
+        const { props } = renderPane();
+        openAllMenu();
+        fireEvent(document.body, new Event(event, { bubbles: true }));
+        expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull();
+        expect(props.onPauseResume).not.toHaveBeenCalled();
+        expect(props.onSetTaskDelay).not.toHaveBeenCalled();
+    });
+
+    it('switches ALL/AP without leaking the previous custom editor', () => {
+        renderPane();
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('pause-duration-all-custom'));
+        fireEvent.change(screen.getByTestId('pause-duration-all-custom-input'), { target: { value: '1.5' } });
+        // Real pointer ordering dismisses ALL before opening AP.
+        fireEvent.mouseDown(screen.getByTestId('autopilot-pause-resume-btn'));
+        openAutopilotMenu();
+        expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull();
+        expect(screen.queryByTestId('pause-duration-autopilot-custom-input')).toBeNull();
+        expect(screen.getByTestId('pause-duration-autopilot-custom')).toBeVisible();
     });
 
     it('renders the Custom… row in the AP (autopilot) menu', () => {

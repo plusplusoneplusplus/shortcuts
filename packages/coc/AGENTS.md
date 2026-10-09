@@ -203,6 +203,10 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
+- Pause and delay menus use body portals and `useAnchoredPanelPosition` with
+  constrained height, viewport-bounded width, and contained vertical scrolling.
+  Outside-click checks include the portal; Escape returns focus to the owning trigger.
+
 - `AskUserInline` reply fields share batch submission with the button: Enter submits,
   Shift+Enter preserves multiline Need context notes, and IME/229 never submits.
   Keep optional deferred notes, required-answer validation, clone routing, synchronous
