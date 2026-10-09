@@ -217,6 +217,60 @@ it('routes working-tree batches by distro/root with Rust composition', async () 
     }
 });
 
+it.each(['refresh', 'dispose'] as const)('revokes delayed working-tree batches after %s', async action => {
+    const addon = loadNativeGit();
+    const store = addon.openGitPatchStore(`working-${action}`, `/repo/working-${action}`, 'Ubuntu');
+    const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+    const stateless = vi.spyOn(addon, 'composeGitWorkingTreePatch');
+    const releases: Array<(value: { stdout: string; stderr: string }) => void> = [];
+    vi.mocked(execFileAsync).mockImplementation(() => new Promise(resolve => releases.push(resolve)));
+    try {
+        const provider = createWorkingTreeDiffProvider(`\\\\wsl$\\Ubuntu\\repo\\working-${action}`);
+        const pending = provider.getFullDiff();
+        await vi.waitFor(() => expect(releases).toHaveLength(2));
+        store[action]();
+        releases.forEach(release => release({ stdout: raw, stderr: '' }));
+        await expect(pending).rejects.toThrow(`patch store: ${action === 'refresh' ? 'Stale' : 'Closed'}`);
+        expect(stateless).not.toHaveBeenCalled();
+        if (action === 'refresh') {
+            vi.mocked(execFileAsync).mockResolvedValue({ stdout: raw.replace('+new', '+fresh'), stderr: '' });
+            expect((await provider.getFullDiff()).raw).toContain('+fresh');
+        }
+    } finally {
+        open.mockRestore();
+        stateless.mockRestore();
+        store.dispose();
+    }
+});
+
+it('retires failed working-tree continuations and reports stale composition before transport', async () => {
+    const addon = loadNativeGit();
+    const store = addon.openGitPatchStore('working-failed', '/repo/working-failed', 'Ubuntu');
+    const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+    const begin = vi.spyOn(store, 'beginTransport');
+    try {
+        const provider = createWorkingTreeDiffProvider('\\\\wsl$\\Ubuntu\\repo\\working-failed');
+        vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'batch failed' });
+        await expect(provider.getFullDiff()).rejects.toThrow('batch failed');
+        const ticket = begin.mock.results[0].value;
+        expect(() => ticket.processWorkingTree([raw])).toThrow('Closed');
+        vi.mocked(execFileAsync).mockResolvedValue({ stdout: raw, stderr: '' });
+        expect((await provider.getFullDiff()).raw).toContain('+new');
+        begin.mockImplementation(() => {
+            const request = Object.getPrototypeOf(store).beginTransport.call(store);
+            Object.defineProperty(request, 'processWorkingTree', { value: undefined });
+            return request;
+        });
+        vi.mocked(execFileAsync).mockClear();
+        await expect(provider.getFullDiff()).rejects.toBeInstanceOf(NativeAddonLoadError);
+        expect(execFileAsync).not.toHaveBeenCalled();
+    } finally {
+        begin.mockRestore();
+        open.mockRestore();
+        store.dispose();
+    }
+});
+
 it('routes production per-file working-tree patches through WSL with native context planning', async () => {
     vi.mocked(execFileAsync).mockClear();
     vi.mocked(execFileAsync).mockResolvedValue({ stdout: raw, stderr: '' });

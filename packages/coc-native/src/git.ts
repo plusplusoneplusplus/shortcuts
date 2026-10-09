@@ -129,11 +129,8 @@ export type NativeGitRemotePatchSource = Bindings.RemotePatchSource;
 
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
-    gitPendingPatch: typeof Bindings.gitPendingPatch;
-    processGitPendingPatch: typeof Bindings.processGitPendingPatch;
     prepareGitWorkingTreePatch: typeof Bindings.prepareGitWorkingTreePatch;
-    processGitWorkingTreePatch: typeof Bindings.processGitWorkingTreePatch;
-    gitWorkingTreePatch: typeof Bindings.gitWorkingTreePatch;
+    composeGitWorkingTreePatch: typeof Bindings.composeGitWorkingTreePatch;
     prepareGitShowPatch: typeof Bindings.prepareGitShowPatch;
     prepareGitCommitPatch: typeof Bindings.prepareGitCommitPatch;
     prepareGitComparisonPatch: typeof Bindings.prepareGitComparisonPatch;
@@ -185,11 +182,8 @@ export interface NativeGitAddon {
  * at the first call with `undefined is not a function`.
  */
 const GIT_EXPORTS = [
-    'gitPendingPatch',
-    'processGitPendingPatch',
     'prepareGitWorkingTreePatch',
-    'processGitWorkingTreePatch',
-    'gitWorkingTreePatch',
+    'composeGitWorkingTreePatch',
     'prepareGitShowPatch',
     'prepareGitCommitPatch',
     'prepareGitComparisonPatch',

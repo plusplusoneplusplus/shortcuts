@@ -3,8 +3,8 @@
 
 use super::commit::validate_ref;
 use super::patch::{
-    commit_patch, comparison_patch, process_patch, range_patch, show_patch, truncate_patch,
-    PatchResult,
+    commit_patch, comparison_patch, process_patch, process_working_tree_patch, range_patch,
+    show_patch, truncate_patch, working_tree_patch_outputs, PatchResult,
 };
 use super::{GitCommandOptions, GitError, GitErrorKind};
 use parking_lot::{Condvar, Mutex};
@@ -280,16 +280,77 @@ impl PatchStore {
         raw: String,
         max_lines: Option<i64>,
     ) -> Result<PatchResult, PatchStoreError> {
+        let fingerprint = blake3::hash(raw.as_bytes()).to_hex().to_string();
+        self.complete_snapshot(scope, ticket, fingerprint, "supplied", max_lines, || {
+            process_patch(raw, None)
+        })
+    }
+
+    pub fn complete_working_tree_transport(
+        &self,
+        scope: &PatchScope,
+        ticket: PatchTransport,
+        outputs: Vec<String>,
+        max_lines: Option<i64>,
+        headings: bool,
+    ) -> Result<PatchResult, PatchStoreError> {
+        if !matches!(scope.source, PatchSource::Local { .. }) {
+            return Err(PatchStoreError::InvalidIdentity);
+        }
+        let mut hash = blake3::Hasher::new();
+        // Length framing preserves staged/unstaged boundaries, including empty outputs.
+        for raw in &outputs {
+            hash.update(&(raw.len() as u64).to_le_bytes());
+            hash.update(raw.as_bytes());
+        }
+        self.complete_snapshot(
+            scope,
+            ticket,
+            hash.finalize().to_hex().to_string(),
+            if headings { "pending" } else { "working-tree" },
+            max_lines,
+            || process_working_tree_patch(outputs, None, headings),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn complete_snapshot(
+        &self,
+        scope: &PatchScope,
+        ticket: PatchTransport,
+        fingerprint: String,
+        variant: &str,
+        max_lines: Option<i64>,
+        process: impl FnOnce() -> PatchResult,
+    ) -> Result<PatchResult, PatchStoreError> {
         if !Arc::ptr_eq(&self.identity, &ticket.identity) {
             return Err(PatchStoreError::ScopeMismatch);
         }
-        let key = PatchKey {
-            version: PatchVersion::Fingerprint(blake3::hash(raw.as_bytes()).to_hex().to_string()),
-            variant: "supplied".into(),
-        };
-        let result =
-            self.compute(scope, key, Some(ticket.generation), || Ok(process_patch(raw, None)))?;
+        let key =
+            PatchKey { version: PatchVersion::Fingerprint(fingerprint), variant: variant.into() };
+        let result = self.compute(scope, key, Some(ticket.generation), || Ok(process()))?;
         Ok(truncate_patch(&result, max_lines))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn working_tree_patch(
+        &self,
+        ticket: PatchTransport,
+        scope: &str,
+        path: Option<&str>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        headings: bool,
+    ) -> Result<PatchResult, String> {
+        if self.scope.execution != PatchExecution::Host
+            || !matches!(self.scope.source, PatchSource::Local { .. })
+        {
+            return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
+        }
+        let outputs = working_tree_patch_outputs(&self.scope.root, scope, path, context)
+            .map_err(|error| error.to_string())?;
+        self.complete_working_tree_transport(&self.scope, ticket, outputs, max_lines, headings)
+            .map_err(|error| format!("patch store: {error:?}"))
     }
 
     /// Host commit (`commit`/`show`) or two-revision (`range`/`comparison`)

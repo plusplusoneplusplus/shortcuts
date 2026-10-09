@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GitLogService } from '../../src/git/git-log-service';
 import { createWorkingTreeDiffProvider } from '../../src/diff/git-diff-provider';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => fs.rmSync(root, { recursive: true, force: true })));
@@ -35,6 +36,26 @@ function fixture(marker = 'disk') {
 }
 
 describe('Rust working-tree provider with real Git', () => {
+    it('captures host generations before worker dispatch and preserves retry after refresh', async () => {
+        const root = fixture();
+        const store = loadNativeGit().openGitPatchStore('working-host', root);
+        try {
+            const pending = store.workingTreePatch('all');
+            store.refresh();
+            await expect(pending).rejects.toThrow('Stale');
+            const complete = await store.workingTreePatch('all');
+            expect(complete.files.find(file => file.path === 'same.txt')).toMatchObject({ additions: 2, deletions: 1 });
+            expect((await store.workingTreePatch('all', undefined, undefined, 1)).content.truncated).toBe(true);
+            expect(await store.workingTreePatch('all')).toEqual(complete);
+            const disposed = store.workingTreePatch('all');
+            store.dispose();
+            await expect(disposed).rejects.toThrow('Closed');
+            expect(() => store.workingTreePatch('all')).toThrow('Closed');
+        } finally {
+            store.dispose();
+        }
+    });
+
     it('preserves comparisons, metadata precedence and all five operations', async () => {
         const root = fixture();
         for (const scope of ['staged', 'unstaged', 'all'] as const) {

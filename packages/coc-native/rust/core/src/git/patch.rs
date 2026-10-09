@@ -438,9 +438,21 @@ pub fn working_tree_patch(
     max_lines: Option<i64>,
     headings: bool,
 ) -> Result<PatchResult, GitError> {
-    let outputs = working_tree_patch_args(scope, path, context)?
+    Ok(process_working_tree_patch(
+        working_tree_patch_outputs(root, scope, path, context)?,
+        max_lines,
+        headings,
+    ))
+}
+
+pub fn working_tree_patch_outputs(
+    root: &Path,
+    scope: &str,
+    path: Option<&str>,
+    context: Option<u32>,
+) -> Result<Vec<String>, GitError> {
+    working_tree_patch_args(scope, path, context)?
         .iter()
         .map(|args| run_git(root, args, &GitCommandOptions::default()))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(process_working_tree_patch(outputs, max_lines, headings))
+        .collect()
 }

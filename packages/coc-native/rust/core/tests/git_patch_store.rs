@@ -35,6 +35,81 @@ fn patch(text: &str) -> PatchResult {
 }
 
 #[test]
+fn working_tree_snapshots_retain_composition_and_reject_revoked_transports() {
+    let root = tempfile::tempdir().unwrap();
+    let mut identity = scope(root.path());
+    identity.source = PatchSource::Local { kind: "revision".into() };
+    let store = PatchStore::open(identity.clone(), 8, 1 << 20).unwrap();
+    let staged = patch("staged").content.raw;
+    let unstaged = patch("disk\n+extra").content.raw;
+    let outputs = vec![staged.clone(), unstaged.clone()];
+    let read = |outputs: Vec<String>, headings, max_lines| {
+        store
+            .complete_working_tree_transport(
+                &identity,
+                store.begin_transport(&identity).unwrap(),
+                outputs,
+                max_lines,
+                headings,
+            )
+            .unwrap()
+    };
+    assert!(read(outputs.clone(), false, Some(1)).content.truncated);
+    let complete = read(outputs.clone(), false, None);
+    assert_eq!(complete.files.len(), 1);
+    assert_eq!(complete.summary.additions, 2);
+    assert_eq!(complete.files[0].raw, format!("{staged}\n{unstaged}"));
+    let mut hash = blake3::Hasher::new();
+    for raw in &outputs {
+        hash.update(&(raw.len() as u64).to_le_bytes());
+        hash.update(raw.as_bytes());
+    }
+    let cached = store
+        .get_or_compute(
+            &identity,
+            PatchKey {
+                version: PatchVersion::Fingerprint(hash.finalize().to_hex().to_string()),
+                variant: "working-tree".into(),
+            },
+            || panic!("complete snapshot must be retained"),
+        )
+        .unwrap();
+    assert_eq!(*cached, complete);
+    assert!(read(outputs, true, None).content.raw.contains("# Staged Changes"));
+    // The same concatenated bytes in different batch positions are not one version.
+    assert!(read(vec![staged.clone(), String::new()], true, None)
+        .content
+        .raw
+        .starts_with("# Staged"));
+    assert!(read(vec![String::new(), staged], true, None).content.raw.starts_with("# Unstaged"));
+    assert!(read(vec![patch("fresh").content.raw], false, None).content.raw.contains("+fresh"));
+    let ticket = store.begin_transport(&identity).unwrap();
+    store.refresh(&identity).unwrap();
+    assert_eq!(
+        store.complete_working_tree_transport(&identity, ticket, vec![], None, false),
+        Err(PatchStoreError::Stale)
+    );
+    let ticket = store.begin_transport(&identity).unwrap();
+    store.dispose(&identity).unwrap();
+    assert_eq!(
+        store.complete_working_tree_transport(&identity, ticket, vec![], None, false),
+        Err(PatchStoreError::Closed)
+    );
+    let remote = scope(root.path());
+    let remote_store = PatchStore::open(remote.clone(), 8, 4096).unwrap();
+    assert_eq!(
+        remote_store.complete_working_tree_transport(
+            &remote,
+            remote_store.begin_transport(&remote).unwrap(),
+            vec![],
+            None,
+            false
+        ),
+        Err(PatchStoreError::InvalidIdentity)
+    );
+}
+
+#[test]
 fn transport_tickets_bind_exact_handles_scopes_and_generations() {
     let root = tempfile::tempdir().unwrap();
     let mut identity = scope(root.path());

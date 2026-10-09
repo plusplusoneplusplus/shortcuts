@@ -1576,60 +1576,17 @@ pub fn prepare_git_working_tree_patch(
 }
 
 #[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn process_git_working_tree_patch(
+pub fn compose_git_working_tree_patch(
     outputs: Vec<String>,
     max_lines: Option<i64>,
+    headings: Option<bool>,
 ) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::process_working_tree_patch(outputs, max_lines, false))
-    }))
-}
-
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn git_working_tree_patch(
-    root: String,
-    scope: String,
-    path: Option<String>,
-    context: Option<u32>,
-    max_lines: Option<i64>,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        coc_native_core::git::patch::working_tree_patch(
-            &PathBuf::from(root),
-            &scope,
-            path.as_deref(),
-            context,
+        Ok(coc_native_core::git::patch::process_working_tree_patch(
+            outputs,
             max_lines,
-            false,
-        )
-        .map_err(to_napi_error)
-    }))
-}
-
-/// Headed staged/index-to-disk display uses the same processing as other consumers.
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn process_git_pending_patch(
-    outputs: Vec<String>,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::process_working_tree_patch(outputs, None, true))
-    }))
-}
-
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn git_pending_patch(
-    root: String,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        coc_native_core::git::patch::working_tree_patch(
-            &PathBuf::from(root),
-            "all",
-            None,
-            None,
-            None,
-            true,
-        )
-        .map_err(to_napi_error)
+            headings.unwrap_or(false),
+        ))
     }))
 }
 
@@ -1686,6 +1643,32 @@ fn store_error(error: PatchStoreError) -> Error {
 
 #[napi]
 impl GitPatchStore {
+    /// Fresh Git bytes fingerprint mutable index/disk state before retaining snapshots.
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn working_tree_patch(
+        &self,
+        scope: String,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        headings: Option<bool>,
+    ) -> Result<AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>>> {
+        let ticket = self.store.begin_transport(self.store.scope()).map_err(store_error)?;
+        let store = self.store.clone();
+        Ok(AsyncTask::new(crate::task::Blocking::new(move || {
+            store
+                .working_tree_patch(
+                    ticket,
+                    &scope,
+                    path.as_deref(),
+                    context,
+                    max_lines,
+                    headings.unwrap_or(false),
+                )
+                .map_err(|message| Error::new(Status::GenericFailure, message))
+        })))
+    }
+
     /// Capture the generation before external I/O without blocking a worker.
     #[napi]
     pub fn begin_transport(&self) -> Result<GitPatchRequest> {
@@ -1744,6 +1727,28 @@ pub struct GitPatchRequest {
 
 #[napi]
 impl GitPatchRequest {
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn process_working_tree(
+        &mut self,
+        outputs: Vec<String>,
+        max_lines: Option<i64>,
+        headings: Option<bool>,
+    ) -> Result<AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>>> {
+        let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
+        let store = self.store.clone();
+        Ok(AsyncTask::new(crate::task::Blocking::new(move || {
+            store
+                .complete_working_tree_transport(
+                    store.scope(),
+                    ticket,
+                    outputs,
+                    max_lines,
+                    headings.unwrap_or(false),
+                )
+                .map_err(store_error)
+        })))
+    }
+
     #[napi(ts_return_type = "Promise<PatchResult>")]
     pub fn process(
         &mut self,
