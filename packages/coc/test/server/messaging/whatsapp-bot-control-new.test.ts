@@ -254,7 +254,7 @@ describe('WhatsApp trusted new and pending conversation admission', () => {
         expect(deps.queued).toHaveBeenCalledWith(binding);
         expect(deps.react).toHaveBeenCalledWith('accepted');
         expect(deps.send).not.toHaveBeenCalled();
-        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('admitted'), expect.any(Error));
+        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('admitted'));
         if (kind === 'existing') {
             expect((await store.getProcess('topic'))?.metadata).toMatchObject({
                 botControl: createBotControlMetadata('whatsapp'), provider: 'claude',

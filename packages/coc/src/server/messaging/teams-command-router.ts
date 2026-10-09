@@ -98,6 +98,7 @@ export interface TeamsCommandRouterDeps {
     sendReply: (text: string, replyToId?: string) => Promise<void>;
     /** Data directory for persisting user state. */
     dataDir: string;
+    isOwnMirrorMessage?: (message: InboundTeamsMessage) => boolean | Promise<boolean>;
 }
 
 // ============================================================================
@@ -160,10 +161,12 @@ export class TeamsCommandRouter {
 
     async handle(msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         if (this.stopped) return;
+        const generation = this.imageGeneration;
+        if (this.deps.isOwnMirrorMessage && await this.deps.isOwnMirrorMessage(msg)) return;
+        if (this.stopped || generation !== this.imageGeneration) return;
         const key = JSON.stringify([msg.channelId, msg.replyToMessageId ?? null,
             msg.replyToMessageId ? null : msg.senderAadId ?? msg.senderName]);
         const previous = this.threadDispatches.get(key);
-        const generation = this.imageGeneration;
         const pending = (previous ?? Promise.resolve()).catch(() => undefined)
             .then(() => generation === this.imageGeneration ? this.handleMessage(msg, observe) : undefined);
         this.threadDispatches.set(key, pending);

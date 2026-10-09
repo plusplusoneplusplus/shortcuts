@@ -31,6 +31,8 @@ import { resolveFollowUpMode } from '../executors/follow-up-mode';
 import { emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
+import type { SentinelMirrorService } from '../messaging/sentinel-mirror-service';
+import type { SentinelMirrorEntry } from '../messaging/sentinel-mirror-outbox';
 
 /** Non-terminal statuses where a task may still be executing (mirrors the route). */
 const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'created']);
@@ -205,6 +207,9 @@ export function isIdleForProviderSwitch(
  * fields plus the content/attachment values the route computed from the body.
  */
 export interface FollowUpMessageInput {
+    /** Assigned by trusted dashboard HTTP paths only, never copied from a request body. */
+    origin?: 'desktop';
+    mirrorContent?: string;
     /** AI-facing content (skill tokens preserved). */
     content: string;
     /** Content as shown in the conversation bubble (skills directive prepended). */
@@ -311,6 +316,7 @@ export interface ProcessMessageDeliveryDeps {
     now?: () => Date;
     /** ID provider — injectable for deterministic pending-message IDs in tests. */
     newId?: () => string;
+    sentinelMirror?: SentinelMirrorService;
 }
 
 /**
@@ -325,6 +331,7 @@ export class ProcessMessageDeliveryService {
     private readonly admission: ProcessOperationAdmission;
     private readonly now: () => Date;
     private readonly newId: () => string;
+    private readonly sentinelMirror?: SentinelMirrorService;
 
     constructor(deps: ProcessMessageDeliveryDeps) {
         this.store = deps.store;
@@ -332,11 +339,12 @@ export class ProcessMessageDeliveryService {
         this.admission = deps.admission ?? processOperationAdmission;
         this.now = deps.now ?? (() => new Date());
         this.newId = deps.newId ?? (() => randomUUID());
+        this.sentinelMirror = deps.sentinelMirror;
     }
 
     async deliver(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
         return this.admission.runExclusive(proc.id, async (contended) => {
-            const currentProc = await this.store.getProcess(proc.id) ?? proc;
+            const currentProc = await this.store.getProcess(proc.id, proc.metadata?.workspaceId) ?? proc;
             const currentBinding = readActiveProviderSession(currentProc);
             const isProviderSwitch = input.provider !== undefined
                 && input.provider !== currentBinding.provider;
@@ -349,7 +357,17 @@ export class ProcessMessageDeliveryService {
             )) {
                 throw new ProviderSwitchRequiresIdleError();
             }
-            return this.deliverAdmitted(currentProc, input);
+            const mirror = input.origin === 'desktop' && typeof currentProc.metadata?.workspaceId === 'string'
+                ? await this.sentinelMirror?.capture(currentProc.metadata.workspaceId, currentProc.id, input.mirrorContent ?? input.displayContent,
+                    input.fileAttachmentMeta?.length ?? input.attachments?.length ?? input.images?.length ?? 0)
+                : undefined;
+            const admittedInput = mirror ? { ...input, relayRequestId: mirror.requestId } : input;
+            try {
+                return await this.deliverAdmitted(currentProc, admittedInput, undefined, mirror);
+            } catch (error) {
+                if (mirror) await this.sentinelMirror!.rejected(mirror);
+                throw error;
+            }
         });
     }
 
@@ -435,7 +453,7 @@ export class ProcessMessageDeliveryService {
             && task.payload.relayRequestId === receiptId;
     }
 
-    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string): Promise<DeliveryResult> {
+    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string, mirror?: SentinelMirrorEntry): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
         const compactionPending = proc.metadata?.compaction?.state === 'queued'
@@ -470,7 +488,7 @@ export class ProcessMessageDeliveryService {
             buffered = true;
             path = 'buffered';
             const pendingMessage = {
-                id: reviewReceiptId ?? this.newId(),
+                id: reviewReceiptId ?? mirror?.requestId ?? this.newId(),
                 ...requestCorrelation,
                 ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
                 content: input.content,
@@ -488,6 +506,7 @@ export class ProcessMessageDeliveryService {
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
+            if (mirror) this.sentinelMirror!.accepted(mirror);
             pendingMessageId = pendingMessage.id;
             events.push({ kind: 'pending-message-added', pendingMessage });
             if (compactionPending && this.bridge.enqueue) {
@@ -525,7 +544,7 @@ export class ProcessMessageDeliveryService {
                     // Terminal status (failed or resumable cancelled) or restart fallback → enqueue.
                     const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
                     taskId = await (this.bridge.enqueueAdmitted ?? this.bridge.enqueue).call(this.bridge, {
-                        ...(reviewReceiptId ? { id: reviewReceiptId } : isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
+                        ...(reviewReceiptId || mirror ? { id: reviewReceiptId ?? mirror!.requestId } : isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
                         processId: id,
                         type: 'chat',
                         priority: 'normal',
@@ -555,6 +574,7 @@ export class ProcessMessageDeliveryService {
                         config: input.effort ? { reasoningEffort: input.effort } : {},
                         displayName,
                     });
+                    if (mirror) this.sentinelMirror!.accepted(mirror);
                     path = 'enqueued';
                 }
             } else {
@@ -567,9 +587,14 @@ export class ProcessMessageDeliveryService {
         } catch (err) {
             // taskAdded observers may throw after durable admission. Retain that
             // exact receipt rather than rolling back accepted work or replaying it.
-            const accepted = reviewReceiptId ? this.bridge.getTask?.(reviewReceiptId) : undefined;
-            if (accepted && this.isReviewTask(accepted, proc, reviewReceiptId!)) {
+            const receiptId = reviewReceiptId ?? mirror?.requestId;
+            const accepted = receiptId ? this.bridge.getTask?.(receiptId) : undefined;
+            if (accepted && this.isReviewTask(accepted, proc, receiptId!)) {
                 taskId = accepted.id;
+                if (mirror) this.sentinelMirror!.accepted(mirror);
+            } else if (mirror && !await this.sentinelMirror!.rejected(mirror)) {
+                // Pending-message observers can fail after the canonical append, too.
+                path = 'buffered';
             } else {
                 await this.store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
                 throw new FollowUpDeliveryError(err);
@@ -606,6 +631,7 @@ export class ProcessMessageDeliveryService {
                 { additionalUpdates: { status: 'running' } },
             );
             turnIndex = appendResult?.turn.turnIndex ?? (proc.conversationTurns?.length ?? 0);
+            if (mirror && appendResult) this.sentinelMirror!.accepted(mirror);
         }
 
         events.push({

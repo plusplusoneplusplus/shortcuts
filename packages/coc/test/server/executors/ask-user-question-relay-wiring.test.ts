@@ -95,6 +95,43 @@ describe('ask_user question relay wiring', () => {
         modelAsks();
     });
 
+    it.each(['initial', 'follow-up'] as const)('qualifies the %s delegation origin by exact owning workspace and request', async kind => {
+        const processId = kind === 'initial' ? 'queue_desktop-task' : 'desktop-parent';
+        const process = existingProcess(processId, 'sentinel');
+        process.metadata = { ...process.metadata, provider: 'copilot' };
+        const store = createMockProcessStore({ initialProcesses: [process] });
+        vi.mocked(store.getWorkspaces).mockResolvedValue([{ id: 'ws-1', name: 'Owner', rootPath: '/workspace' }]);
+        const origin = { connector: 'teams' as const, chatKey: 'captured-chat', threadId: 'captured-thread' };
+        const locateOrigin = vi.fn(() => origin);
+        const enqueue = vi.fn().mockResolvedValue('child-task');
+        const trackMessagingJob = vi.fn();
+        const options = makeOptions();
+        options.runtime.getAskUserQuestionRelay = () => ({ relay: vi.fn(() => false), locateOrigin });
+        options.runtime.getSendToConversationRuntime = () => ({ trackMessagingJob });
+        options.runtime.getEnqueueChat = () => enqueue;
+        sdkMocks.mockSendMessage.mockImplementation(async (sdkOptions: any) => {
+            const tool = sdkOptions.tools.find((tool: any) => tool.name === 'send_to_conversation');
+            expect(await tool.handler({ content: 'delegate this', provider: 'copilot', mode: 'autopilot' }))
+                .not.toHaveProperty('error');
+            return { success: true, response: 'Delegated', sessionId: 'session' };
+        });
+        if (kind === 'initial') {
+            const task = chatTask('sentinel', 'desktop-task', 'desktop-request');
+            task.payload.workspaceId = 'ws-1';
+            await new ChatExecutor(store, options).execute(task, 'delegate this');
+        } else {
+            await new FollowUpExecutor(store, options).executeFollowUp(processId, 'delegate this', undefined, 'sentinel',
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+                { relayRequestId: 'desktop-request' });
+        }
+        expect(locateOrigin).toHaveBeenCalledWith({ workspaceId: 'ws-1', processId, requestId: 'desktop-request' });
+        expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            payload: expect.objectContaining({ context: expect.objectContaining({ messagingOrigin: origin }) }),
+        }));
+        expect(trackMessagingJob).toHaveBeenCalledWith({ workspaceId: 'ws-1', processId: 'queue_child-task', origin });
+        expect((await store.getProcess(processId))?.metadata?.messagingOrigin).toBeUndefined();
+    });
+
     it('relays an Ask first turn under its relay request id', async () => {
         await new ChatExecutor(createMockProcessStore(), makeOptions()).execute(chatTask('ask', 't1', 'req-1'), 'Hello');
         expect(relayed).toHaveLength(1);

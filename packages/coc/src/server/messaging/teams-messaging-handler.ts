@@ -91,6 +91,7 @@ export interface TeamsMessagingRoutesOptions {
     jobNotices?: Pick<MessagingJobNotices, 'register' | 'reconcile'>;
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
+    isOwnMirrorMessage?: (message: InboundTeamsMessage, teamId: string, accountKey: string | undefined, isSelf: boolean | undefined) => boolean | Promise<boolean>;
 }
 
 export function registerTeamsMessagingRoutes(
@@ -154,16 +155,24 @@ export function registerTeamsMessagingRoutes(
                 console.error('[teams-answer-relay] Binding release reconciliation failed');
             }
         };
-        const ready = relay ? reconcileRelease(() => relay.restore()) : undefined;
+        let bindingRestore: Promise<void> | undefined;
+        const ensureBindingsReady = () => {
+            if (!relay) return Promise.resolve();
+            return bindingRestore ??= relay.restore().catch(error => {
+                bindingRestore = undefined;
+                throw error;
+            });
+        };
+        const ready = relay ? reconcileRelease(ensureBindingsReady) : undefined;
         ready?.catch(() => console.error('[teams-answer-relay] Failed to restore bindings'));
         if (relay) {
             const unsubscribe = opts.onAnswerRelayConfigChanged?.(() => {
                 if (getAnswerRelayEnabled()) {
-                    void ready?.then(() => reconcileRelease(() => relay.reconnected()))
+                    void reconcileRelease(ensureBindingsReady).then(() => reconcileRelease(() => relay.reconnected()))
                         .catch(() => console.error('[teams-answer-relay] Config reconciliation failed'));
                 }
             });
-            manager.setAnswerRelay(relay, unsubscribe, getAnswerRelayEnabled);
+            manager.setAnswerRelay(relay, unsubscribe, getAnswerRelayEnabled, ensureBindingsReady);
             opts.questionRelay?.register(relay.questionTransport());
             opts.jobNotices?.register(relay.noticeTransport());
         }
@@ -190,6 +199,8 @@ export function registerTeamsMessagingRoutes(
             }
         };
         const router = new TeamsCommandRouter({
+            ...(opts.isOwnMirrorMessage ? { isOwnMirrorMessage: (message: InboundTeamsMessage) =>
+                opts.isOwnMirrorMessage!(message, manager.getStatus().teamId ?? '', manager.getMirrorAccountKey(), manager.isMirrorSender(message)) } : {}),
             bindImageRoot: async (msg, workspaceId, processId) => {
                 if (relay && getAnswerRelayEnabled()) {
                     await relay.selectThreadTarget({ ...msg, replyToMessageId: msg.messageId }, workspaceId, processId, true);
@@ -330,7 +341,7 @@ export function registerTeamsMessagingRoutes(
             stop: () => { imageConnection.abort(); inboundDispatches.clear(); router.stop(); },
         });
         const dispatch = async (msg: InboundTeamsMessage, observe: Parameters<TeamsCommandRouter['handle']>[1], connection: AbortController) => {
-            await ready;
+            await reconcileRelease(ensureBindingsReady);
             if (connection.signal.aborted) return;
             if (relay) await reconcileRelease(() => relay.reconcileReleases());
             if (connection.signal.aborted) return;
@@ -375,6 +386,9 @@ export function registerTeamsMessagingRoutes(
         };
         manager.setMessageHandler(async (msg, observe) => {
             const connection = imageConnection;
+            if (connection.signal.aborted) return;
+            if (opts.isOwnMirrorMessage && await opts.isOwnMirrorMessage(msg, manager.getStatus().teamId ?? '', manager.getMirrorAccountKey(), manager.isMirrorSender(msg))) return;
+            if (connection.signal.aborted) return;
             const key = JSON.stringify([msg.channelId, msg.replyToMessageId ?? null,
                 msg.replyToMessageId ? null : msg.senderAadId ?? msg.senderName]);
             const previous = inboundDispatches.get(key);

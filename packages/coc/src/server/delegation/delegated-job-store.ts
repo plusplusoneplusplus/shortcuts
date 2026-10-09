@@ -30,6 +30,7 @@ const jobSchema = z.object({
     title: z.string().min(1).max(80),
     messagingOrigin: z.object({
         connector: z.enum(['whatsapp', 'teams']), chatKey: id, threadId: id.optional(),
+        desktopMirror: z.object({ workspaceId: id, processId: id, requestId: id, bindingId: id }).optional(),
     }).optional(),
     createdAt: z.iso.datetime(),
     terminal: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),

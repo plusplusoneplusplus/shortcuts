@@ -24,6 +24,18 @@ export function findRequestTurn(turns: readonly ConversationTurn[], requestId: s
     return turns.findIndex(turn => turn.role === 'user' && turn.relayRequestId === requestId);
 }
 
+/** Settled request-local failure evidence, bounded by the next user turn. */
+export function findRequestFailureEvidence(
+    turns: readonly ConversationTurn[], userIndex: number,
+): ConversationTurn | undefined {
+    if (userIndex < 0) return;
+    const following = turns.slice(userIndex + 1);
+    const nextUser = following.findIndex(turn => turn.role === 'user');
+    const last = (nextUser >= 0 ? following.slice(0, nextUser) : following)
+        .filter(turn => turn.role === 'assistant' && !turn.streaming && !turn.displayOnly).at(-1);
+    return last && (last.interrupted || last.interruptionReason !== undefined || last.content?.startsWith('Error: ')) ? last : undefined;
+}
+
 /** Safe failure details from this request only; never forward raw exceptions or partial output. */
 export function findRequestFailureText(
     turns: readonly ConversationTurn[], userIndex: number, processError?: string,
@@ -31,8 +43,7 @@ export function findRequestFailureText(
     if (userIndex < 0) return RELAY_ANSWER_TEXT.failed;
     const following = turns.slice(userIndex + 1);
     const nextUser = following.findIndex(turn => turn.role === 'user');
-    const last = (nextUser >= 0 ? following.slice(0, nextUser) : following)
-        .filter(turn => turn.role === 'assistant' && !turn.streaming && !turn.displayOnly).at(-1);
+    const last = findRequestFailureEvidence(turns, userIndex);
     const error = last?.interruptionReason
         ?? (last?.content?.startsWith('Error: ') ? last.content.slice(7) : undefined)
         ?? (nextUser < 0 ? processError : undefined);

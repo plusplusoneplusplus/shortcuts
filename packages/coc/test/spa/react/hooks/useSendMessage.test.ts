@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useSendMessage } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { AttachmentPayload } from '../../../../src/server/spa/client/react/types/attachments';
+import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -149,6 +150,49 @@ describe('useSendMessage', () => {
             expect.objectContaining({ role: 'user', provider: 'codex' }),
             expect.objectContaining({ role: 'assistant', provider: 'codex', streaming: true }),
         ]);
+    });
+
+    it.each([false, true])('qualifies accepted dashboard sends with the owning workspace (busy=%s)', async isActiveGeneration => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ workspaceId: 'workspace-a', isActiveGeneration });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('desktop submission'); });
+        expect(String(fetchMock.mock.calls[0][0])).toContain('workspace=workspace-a');
+    });
+
+    it.each([undefined, 'group-view', 'remote:server-test:workspace-own'])(
+        'uses loaded owner metadata independently of selection routing (%s)', async workspaceId => {
+            const baseUrl = 'https://mirror-clone.example';
+            if (workspaceId?.startsWith('remote:')) registerCloneBaseUrls([{ workspaceId, baseUrl }]);
+            try {
+                fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+                const opts = makeOptions({ workspaceId, owningWorkspaceId: 'workspace-own' });
+                const { result } = renderHook(() => useSendMessage(opts));
+                await act(async () => { await result.current.sendFollowUp('metadata-scoped desktop submission'); });
+                const url = String(fetchMock.mock.calls[0][0]);
+                expect(new URL(url, 'http://localhost').searchParams.get('workspace')).toBe('workspace-own');
+                if (workspaceId?.startsWith('remote:')) expect(url.startsWith(baseUrl)).toBe(true);
+            } finally {
+                registerCloneBaseUrls([]);
+            }
+        },
+    );
+
+    it('does not fall through locally when a remote workspace has ambiguous clone routing', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'workspace-a', serverId: 'server-a', baseUrl: 'https://clone-a.example' },
+            { workspaceId: 'workspace-a', serverId: 'server-b', baseUrl: 'https://clone-b.example' },
+        ]);
+        setActiveCloneForRouting(null);
+        try {
+            const opts = makeOptions({ workspaceId: 'workspace-a' });
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp('do not send locally'); });
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(opts.setError).toHaveBeenCalledWith(expect.stringContaining('owning server is unavailable'));
+        } finally {
+            registerCloneBaseUrls([]);
+        }
     });
 
     it('omits provider when the composer has no confirmed switch', async () => {

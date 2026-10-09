@@ -321,7 +321,11 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 vi.mock('../../../../src/server/spa/client/react/features/chat/QueuedBubble', () => ({
     QueuedBubble: (props: any) => React.createElement('div', { 'data-testid': 'queued-bubble' }, props.msg?.content ?? ''),
     QueuedFollowUps: (props: any) =>
-        React.createElement('div', { 'data-testid': 'queued-followups', 'data-count': props.queue?.length ?? 0 }),
+        React.createElement('div', { 'data-testid': 'queued-followups', 'data-count': props.queue?.length ?? 0 },
+            ...(props.queue ?? []).map((message: any) => React.createElement('button', {
+                key: message.id, 'data-testid': `remove-pending-${message.id}`,
+                onClick: () => props.onCancel?.(message.id),
+            }, 'Remove queued follow-up'))),
 }));
 
 // BackgroundTasksIndicator — stub
@@ -2497,6 +2501,53 @@ describe('ChatDetail', () => {
                 expect(screen.getByText('First message')).toBeTruthy();
                 expect(screen.getByText('Bot reply')).toBeTruthy();
             });
+        });
+
+        it.each([
+            { selection: undefined, owner: 'workspace-own' },
+            { selection: 'workspace-own', owner: 'workspace-own' },
+            { selection: 'group-view', owner: 'workspace-own' },
+            { selection: 'remote:server-test:workspace-own', owner: 'workspace-own', baseUrl: 'https://mirror-clone.example' },
+        ])('qualifies pending removal by owning workspace for $selection', async ({ selection, owner, baseUrl }) => {
+            if (baseUrl) registerCloneBaseUrls([{ workspaceId: selection, baseUrl }]);
+            const process = makeProcess({
+                id: 'queue_pending-scope', status: 'running',
+                metadata: { mode: 'sentinel', sessionId: 'synthetic-session', workspaceId: owner },
+                pendingMessages: [{ id: 'pm-owner', content: 'queued desktop follow-up' }],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_pending-scope': { body: { process } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="queue_pending-scope" workspaceId={selection} /></Wrap>);
+            await waitFor(() => expect(screen.getByTestId('remove-pending-pm-owner')).toBeTruthy());
+            expect((globalThis as any).__useSendMessage_opts.owningWorkspaceId).toBe(owner);
+            fireEvent.click(screen.getByTestId('remove-pending-pm-owner'));
+            await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
+            const [url] = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE')!;
+            expect(new URL(String(url), 'http://localhost').searchParams.get('workspace')).toBe(owner);
+            if (baseUrl) expect(String(url).startsWith(baseUrl)).toBe(true);
+        });
+
+        it('does not issue a local pending DELETE when its remote route becomes unresolved', async () => {
+            const selection = 'remote:server-test:workspace-own';
+            registerCloneBaseUrls([{ workspaceId: selection, baseUrl: 'https://mirror-clone.example' }]);
+            const process = makeProcess({
+                id: 'queue_pending-remote', status: 'running',
+                metadata: { mode: 'sentinel', sessionId: 'synthetic-session', workspaceId: 'workspace-own' },
+                pendingMessages: [{ id: 'pm-remote', content: 'remote queued follow-up' }],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_pending-remote': { body: { process } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="queue_pending-remote" workspaceId={selection} /></Wrap>);
+            await waitFor(() => expect(screen.getByTestId('remove-pending-pm-remote')).toBeTruthy());
+            resetCloneRegistryForTests();
+            fireEvent.click(screen.getByTestId('remove-pending-pm-remote'));
+            expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
         });
 
         // Regression: queued-message-survives-chat-switch.

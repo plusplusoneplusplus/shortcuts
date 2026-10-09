@@ -46,6 +46,7 @@ export class WhatsAppAnswerRelay {
         for (const binding of this.deps.bindings.entries()) {
             if (binding.releaseState !== undefined || binding.taskId !== taskId || binding.status !== 'queued'
                 || binding.groupJid !== this.deps.groupJid() || this.active.has(binding.inboundId)) continue;
+            if (!await this.deps.bindings.reconcileAdmission(binding, id => this.deps.queue.getTask(id), this.deps.store)) continue;
             this.active.add(binding.inboundId);
             try {
                 await this.deliver(binding);
@@ -146,7 +147,7 @@ export function createWhatsAppQuestionTransport(
 
 /** Posts job completion notices to the group and binds them, so a quote-reply continues the job. */
 export function createWhatsAppNoticeTransport(
-    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid'> & { send: (text: string) => Promise<string> },
+    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid'> & { send: (text: string, quotedId?: string) => Promise<string> },
 ): JobNoticeTransport {
     const connected = (chatKey: string) => deps.connected() && deps.groupJid() === chatKey;
     return {
@@ -158,13 +159,14 @@ export function createWhatsAppNoticeTransport(
             const text = notice.body !== undefined ? `${line}\n\n${formatWhatsAppAnswer(notice.body)}`
                 : detail ? `${line}\n${detail}` : line;
             let id: string | undefined;
-            for (const part of chunkWhatsAppText(text)) {
-                if (!connected(chatKey)) {
+            for (const [index, part] of (notice.desktopResult?.chunks ?? chunkWhatsAppText(text)).entries()) {
+                if (!connected(chatKey) || (notice.desktopResult
+                    ? !await notice.desktopResult.beforePart(index) : notice.beforeSend && !await notice.beforeSend())) {
                     if (!id) return undefined;
                     throw new WhatsAppNotConnectedError();
                 }
                 try {
-                    const sent = await deps.send(part);
+                    const sent = notice.desktopResult ? await deps.send(part, notice.threadId) : await deps.send(part);
                     if (!sent) throw new Error('WhatsApp send confirmation missing');
                     id = sent;
                     deps.bindings.recordNotice({ groupJid: chatKey, workspaceId: notice.workspaceId, processId: notice.processId }, sent);

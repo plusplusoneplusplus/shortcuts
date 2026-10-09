@@ -15,7 +15,8 @@ import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatSt
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
+import { getCocClientForWorkspace, lookupCloneBaseUrl, resolveCloneRoute } from '../../repos/cloneRegistry';
+import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { useWorkspaceRemoteUrl } from '../../repos/useWorkspaceRemoteUrl';
 import { getConversationTurns, getRetryProvider } from './conversation/chatConversationUtils';
@@ -386,6 +387,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // While `processDetails` is loading the id stays `undefined` — the documented
     // "not known yet" state — and the origin-scoped effects re-run once it lands.
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
+    const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
     const forEachGeneration = metadataProcess?.metadata?.forEach?.kind === 'generation'
         ? metadataProcess.metadata.forEach as ForEachGenerationMetadata
         : null;
@@ -1559,6 +1561,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // or opted-out server never receives a field it would reject.
         chatStyle: chatStyleSelectorEnabled ? followUpChatStyle : undefined,
         workspaceId,
+        owningWorkspaceId,
         ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
         conversationRetrievalAvailable: canRetrieveConversations,
@@ -2422,17 +2425,26 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
+        const routeScope = workspaceId ?? effectiveWorkspaceId;
+        if (resolveCloneRoute(routeScope).kind === 'unresolved-remote') {
+            setError('The owning server is unavailable. Reconnect it before removing this message.');
+            return;
+        }
+        const wireWorkspaceId = typeof owningWorkspaceId === 'string'
+            ? parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId : undefined;
         let removed: QueuedMessage | undefined;
         setPendingQueue(prev => {
             removed = prev.find(m => m.id === messageId);
             return prev.filter(m => m.id !== messageId);
         });
-        client.processes.deletePendingMessage(processId, messageId).catch(() => {
+        getCocClientForWorkspace(routeScope).processes.deletePendingMessage(
+            processId, messageId, wireWorkspaceId ? { workspace: wireWorkspaceId } : undefined,
+        ).catch(() => {
             if (removed) {
                 setPendingQueue(prev => (prev.some(m => m.id === messageId) ? prev : [...prev, removed!]));
             }
         });
-    }, [client, processId]);
+    }, [processId, workspaceId, effectiveWorkspaceId, owningWorkspaceId]);
 
     const launchInteractiveResume = async () => {
         if (!processId || !resumeSessionId) return;

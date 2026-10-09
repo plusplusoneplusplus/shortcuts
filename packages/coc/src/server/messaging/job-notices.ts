@@ -16,6 +16,7 @@
  */
 
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { toQueueProcessId, toTaskId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { getRepoDataPath } from '../paths';
@@ -23,6 +24,10 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import { onTaskTerminal } from './chat-target';
 import { RELAY_ANSWER_TEXT, findRequestFailureText, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
+import { formatTeamsAnswerChunks } from './teams-answer-format';
+import { formatLabeledWhatsAppChunks, formatWhatsAppAnswer } from './whatsapp-answer-format';
+import { mirrorChunkEchoMatches, mirrorEchoText } from './sentinel-mirror-adapters';
+import type { SentinelMirrorEcho } from './sentinel-mirror-service';
 
 export type MessagingConnector = 'whatsapp' | 'teams';
 
@@ -32,6 +37,15 @@ export interface MessagingJobOrigin {
     chatKey: string;
     /** Original Teams thread root for questions and parent results; child notices remain top-level. */
     threadId?: string;
+    /** Private authority for desktop handoffs; never renderer/process provenance. */
+    desktopMirror?: { workspaceId: string; processId: string; requestId: string; bindingId: string };
+}
+
+export type MessagingOriginAuthority = 'ready' | 'wait' | 'suppress';
+
+export function connectorMessagingOrigin(origin: MessagingJobOrigin): MessagingJobOrigin {
+    return { connector: origin.connector, chatKey: origin.chatKey,
+        ...(origin.threadId ? { threadId: origin.threadId } : {}) };
 }
 
 export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigin {
@@ -39,7 +53,11 @@ export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigi
     return !!origin && typeof origin === 'object'
         && (origin.connector === 'whatsapp' || origin.connector === 'teams')
         && typeof origin.chatKey === 'string' && !!origin.chatKey
-        && (origin.threadId === undefined || (typeof origin.threadId === 'string' && !!origin.threadId));
+        && (origin.threadId === undefined || (typeof origin.threadId === 'string' && !!origin.threadId))
+        && (origin.desktopMirror === undefined || (!!origin.desktopMirror && typeof origin.desktopMirror === 'object'
+            && ['workspaceId', 'processId', 'requestId', 'bindingId'].every(key =>
+                typeof (origin.desktopMirror as Record<string, unknown>)[key] === 'string'
+                && !!(origin.desktopMirror as Record<string, unknown>)[key])));
 }
 
 export interface JobNotice {
@@ -54,6 +72,10 @@ export interface JobNotice {
     status: RelayTerminalStatus;
     /** Safe failure text (fixed, or a recognized usage-limit reset); failed notices only. */
     detail?: string;
+    /** Ephemeral authority recheck before each physical part; never persisted or formatted. */
+    beforeSend?: () => Promise<boolean>;
+    /** Immutable private desktop result parts and durable before-dispatch evidence. */
+    desktopResult?: { chunks: readonly string[]; beforePart: (index: number) => Promise<boolean> };
 }
 
 const STATUS_EMOJI: Record<RelayTerminalStatus, string> = { completed: '✅', failed: '❌', cancelled: '⏹' };
@@ -93,25 +115,32 @@ interface NoticeJob {
     sending?: string;
     noticeIds: string[];
     result?: Pick<JobNotice, 'repo' | 'title' | 'body' | 'status'>;
+    resultChunks?: string[];
+    resultAttemptedPartCount?: number;
 }
 
 const FILE = 'messaging-job-notices.json';
 const MAX_JOBS = 500;
 const MAX_DONE = 50;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
+const resultLabel = (receiptId: string) => createHash('sha256').update(receiptId).digest('hex');
 
 export class MessagingJobNotices {
     private readonly transports = new Map<MessagingConnector, JobNoticeTransport>();
     private readonly jobs = new Map<string, NoticeJob[]>();
-    private readonly active = new Set<NoticeJob>();
+    private readonly active = new Map<NoticeJob, Promise<void>>();
     private readonly rerun = new Set<NoticeJob>();
     private readonly unsubscribe: () => void;
+    private disposed = false;
 
     constructor(private readonly deps: {
         dataDir: string;
         delegatedJobs?: Pick<DelegatedJobStore, 'list'>;
         store: Pick<ProcessStore, 'getProcess' | 'getWorkspaces'>;
         queue: Pick<ScheduleQueueEventBus, 'on' | 'off'> & { getAll?: () => QueuedTask[] };
+        authorizeDesktopOrigin?: (
+            origin: MessagingJobOrigin, parent?: { workspaceId: string; processId: string },
+        ) => Promise<MessagingOriginAuthority>;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
             void this.onTerminal(task).catch(error =>
@@ -124,6 +153,7 @@ export class MessagingJobNotices {
     }
 
     dispose(): void {
+        this.disposed = true;
         this.unsubscribe();
     }
 
@@ -201,11 +231,51 @@ export class MessagingJobNotices {
     }
 
     /** Post pending notices (connector reconnected, or after restore). */
-    async reconcile(platform?: MessagingConnector): Promise<void> {
+    async reconcile(platform?: MessagingConnector, desktopResultsOnly = false): Promise<void> {
         for (const rows of this.jobs.values()) {
             for (const job of rows) {
-                if (job.pending.length && (!platform || job.origin.connector === platform)) await this.drain(job);
+                if (job.pending.length && (!platform || job.origin.connector === platform)
+                    && (!desktopResultsOnly || (job.result && job.origin.desktopMirror))) {
+                    // Source settlement must recheck an earlier in-flight readiness snapshot.
+                    if (desktopResultsOnly) await this.active.get(job);
+                    await this.drain(job);
+                }
             }
+        }
+    }
+
+    async isOwnDesktopResultMessage(message: SentinelMirrorEcho): Promise<boolean> {
+        if (message.isSelf === false) return false;
+        const text = mirrorEchoText(message.connector === 'teams' ? message.text.replace(/<[^>]*>/g, ' ') : message.text);
+        const marker = message.connector === 'whatsapp'
+            ? /^CoC · Desktop result · Receipt ([A-Za-z0-9_-]{1,256}) · Part ([1-9]\d*)\/([1-9]\d*)(?: |$)/.exec(text)
+            : /^CoC · Request ([A-Za-z0-9_-]{1,256}) · Part ([1-9]\d*)\/([1-9]\d*) ?Desktop result(?: |$)/.exec(text);
+        if (!marker) return false;
+        const part = Number(marker[2]);
+        const total = Number(marker[3]);
+        if (!Number.isSafeInteger(part) || !Number.isSafeInteger(total) || part > total) return false;
+        try {
+            for (const workspace of await this.deps.store.getWorkspaces()) {
+                if (message.workspaceId && message.workspaceId !== workspace.id) continue;
+                for (const job of this.load(workspace.id)) {
+                    const pin = job.origin.desktopMirror;
+                    if (!pin || !job.result || !job.taskId
+                        || (message.connector === 'teams' ? resultLabel(job.taskId) : job.taskId) !== marker[1]
+                        || pin.workspaceId !== job.workspaceId || pin.processId !== job.processId
+                        || (message.processId && message.processId !== job.processId)
+                        || job.origin.connector !== message.connector || job.origin.chatKey !== message.chatKey
+                        || job.origin.threadId !== message.threadId
+                        || (message.accountKey && !pin.bindingId.startsWith(`${message.accountKey}:`))
+                        || total !== job.resultChunks?.length || part > (job.resultAttemptedPartCount ?? 0)) continue;
+                    if (!mirrorChunkEchoMatches(message.connector, job.resultChunks[part - 1], message.text)) continue;
+                    if (!message.accountKey || message.isSelf !== true) throw new Error('Result sender is unverified');
+                    return true;
+                }
+            }
+            return false;
+        } catch {
+            console.error('[job-notices] Desktop result echo verification unavailable; admission paused');
+            throw new Error('Desktop result sender verification is unavailable. Message admission is paused.');
         }
     }
 
@@ -221,55 +291,112 @@ export class MessagingJobNotices {
         await this.drain(job);
     }
 
-    private async drain(job: NoticeJob): Promise<void> {
-        if (this.active.has(job)) {
+    private drain(job: NoticeJob): Promise<void> {
+        if (this.disposed) return Promise.resolve();
+        const existing = this.active.get(job);
+        if (existing) {
             this.rerun.add(job);
-            return;
+            return existing;
         }
-        this.active.add(job);
-        try {
-            do {
-                this.rerun.delete(job);
-                while (job.pending.length) {
-                    const transport = this.transports.get(job.origin.connector);
-                    if (!transport?.connected(job.origin.chatKey)) return;
-                    const entry = job.pending[0];
-                    const notice = await this.buildNotice(job, entry.status);
-                    const policy = await this.directNoticePolicy(job, entry.taskId);
-                    if (policy === 'wait') return;
-                    if (policy === 'suppress') {
-                        const done = job.done;
-                        job.pending.shift();
-                        job.done = [...done, entry.taskId].slice(-MAX_DONE);
-                        try { this.save(job.workspaceId); }
-                        catch (error) { job.pending.unshift(entry); job.done = done; throw error; }
-                        continue;
-                    }
+        const work = this.runDrain(job).finally(() => this.active.delete(job));
+        this.active.set(job, work);
+        return work;
+    }
+
+    private async runDrain(job: NoticeJob): Promise<void> {
+        do {
+            this.rerun.delete(job);
+            while (job.pending.length) {
+                const transport = this.transports.get(job.origin.connector);
+                if (!transport?.connected(job.origin.chatKey)) return;
+                const entry = job.pending[0];
+                const notice = await this.buildNotice(job, entry.status);
+                const policy = await this.directNoticePolicy(job, entry.taskId);
+                if (this.disposed || policy === 'wait') return;
+                const authority = policy === 'suppress' ? 'ready' : await this.desktopAuthority(job);
+                if (this.disposed || authority === 'wait') return;
+                if (policy === 'suppress' || authority === 'suppress') {
+                    const done = job.done;
                     job.pending.shift();
-                    job.sending = entry.taskId;
-                    this.save(job.workspaceId);
-                    let messageId: string | undefined;
-                    let unknown = false;
-                    try {
-                        messageId = await transport.post(job.origin.chatKey, notice);
-                    } catch (error) {
-                        unknown = true;
-                        console.error(`[job-notices] ${job.origin.connector} notice outcome unknown; not resending:`,
-                            error instanceof Error ? error.name : 'unknown error');
+                    job.done = [...done, entry.taskId].slice(-MAX_DONE);
+                    try { this.save(job.workspaceId); }
+                    catch (error) { job.pending.unshift(entry); job.done = done; throw error; }
+                    if (authority === 'suppress') {
+                        console.error('[job-notices] Captured desktop destination authority unavailable; notice suppressed');
                     }
-                    job.sending = undefined;
-                    if (!messageId && !unknown) {
-                        job.pending.unshift(entry);
-                        this.save(job.workspaceId);
-                        return;
-                    }
-                    job.done = [...job.done, entry.taskId].slice(-MAX_DONE);
-                    if (messageId) job.noticeIds = [...job.noticeIds, messageId].slice(-MAX_DONE);
-                    this.save(job.workspaceId);
+                    continue;
                 }
-            } while (this.rerun.has(job));
-        } finally {
-            this.active.delete(job);
+                if (job.origin.desktopMirror) {
+                    notice.beforeSend = async () => !this.disposed
+                        && await this.desktopAuthority(job) === 'ready' && !this.disposed;
+                    if (job.result) {
+                        if (!job.resultChunks) {
+                            const { line } = formatJobNotice(notice);
+                            job.resultChunks = job.origin.connector === 'teams'
+                                ? formatTeamsAnswerChunks(notice.body!, resultLabel(entry.taskId),
+                                    `Desktop result · Receipt ${entry.taskId} · ${line}`)
+                                : formatLabeledWhatsAppChunks(`${line}\n\n${formatWhatsAppAnswer(notice.body!)}`,
+                                    (part, total) => `CoC · Desktop result · Receipt ${entry.taskId} · Part ${part}/${total}\n\n`);
+                            try { this.save(job.workspaceId); }
+                            catch { job.resultChunks = undefined; throw new Error('Desktop result preparation storage unavailable'); }
+                        }
+                        notice.desktopResult = {
+                            chunks: [...job.resultChunks],
+                            beforePart: async index => {
+                                if (!Number.isInteger(index) || index < 0 || index >= job.resultChunks!.length
+                                    || !await notice.beforeSend!()) return false;
+                                const previous = job.resultAttemptedPartCount;
+                                job.resultAttemptedPartCount = Math.max(previous ?? 0, index + 1);
+                                try { this.save(job.workspaceId); }
+                                catch {
+                                    job.resultAttemptedPartCount = previous;
+                                    console.error('[job-notices] Desktop result attempt storage unavailable; delivery paused');
+                                    return false;
+                                }
+                                return true;
+                            },
+                        };
+                    }
+                }
+                job.pending.shift();
+                job.sending = entry.taskId;
+                this.save(job.workspaceId);
+                let messageId: string | undefined;
+                let unknown = false;
+                try {
+                    messageId = await transport.post(job.origin.chatKey, notice);
+                } catch (error) {
+                    unknown = true;
+                    console.error(`[job-notices] ${job.origin.connector} notice outcome unknown; not resending:`,
+                        error instanceof Error ? error.name : 'unknown error');
+                }
+                if (this.disposed) return;
+                job.sending = undefined;
+                if (!messageId && !unknown) {
+                    job.pending.unshift(entry);
+                    this.save(job.workspaceId);
+                    return;
+                }
+                job.done = [...job.done, entry.taskId].slice(-MAX_DONE);
+                if (messageId) job.noticeIds = [...job.noticeIds, messageId].slice(-MAX_DONE);
+                this.save(job.workspaceId);
+            }
+        } while (!this.disposed && this.rerun.has(job));
+    }
+
+    private async desktopAuthority(job: NoticeJob): Promise<MessagingOriginAuthority> {
+        const pin = job.origin.desktopMirror;
+        if (!pin) return 'ready';
+        try {
+            if (!job.result && !this.deps.delegatedJobs?.list(pin.workspaceId).some(row =>
+                row.parent.workspaceId === pin.workspaceId && row.parent.processId === pin.processId
+                && row.child.workspaceId === job.workspaceId && row.child.processId === job.processId
+                && !row.child.serverId && JSON.stringify(row.messagingOrigin) === JSON.stringify(job.origin))) return 'suppress';
+            return await this.deps.authorizeDesktopOrigin?.(job.origin,
+                job.result ? { workspaceId: job.workspaceId, processId: job.processId } : undefined) ?? 'wait';
+        } catch {
+            console.error('[job-notices] Captured desktop destination verification unavailable; delivery paused');
+            return 'wait';
         }
     }
 
@@ -333,7 +460,12 @@ export class MessagingJobNotices {
             || !Array.isArray(row.noticeIds) || row.pending.some(entry => !isTerminalStatus(entry?.status))
             || (row.result !== undefined && (!row.taskId || typeof row.result.body !== 'string'
                 || typeof row.result.repo !== 'string' || typeof row.result.title !== 'string' || !isTerminalStatus(row.result.status)))
-            || (row.sending !== undefined && typeof row.sending !== 'string'))) {
+            || (row.sending !== undefined && typeof row.sending !== 'string')
+            || (row.resultChunks !== undefined && (!row.result || !row.origin.desktopMirror
+                || !Array.isArray(row.resultChunks) || !row.resultChunks.length
+                || row.resultChunks.some(chunk => typeof chunk !== 'string')))
+            || (row.resultAttemptedPartCount !== undefined && (!Number.isSafeInteger(row.resultAttemptedPartCount)
+                || row.resultAttemptedPartCount < 0 || row.resultAttemptedPartCount > (row.resultChunks?.length ?? 0))))) {
             throw new Error(`Invalid messaging job notices for workspace ${workspaceId}`);
         }
         this.jobs.set(workspaceId, rows);

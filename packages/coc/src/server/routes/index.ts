@@ -184,6 +184,8 @@ import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
 import { WhatsAppAnswerRelay, createWhatsAppNoticeTransport, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
+import { SentinelMirrorService, type SentinelMirrorEcho } from '../messaging/sentinel-mirror-service';
+import { createTeamsMirrorAdapter, createWhatsAppMirrorAdapter } from '../messaging/sentinel-mirror-adapters';
 import { MessagingJobNotices } from '../messaging/job-notices';
 import { createMessagingHandOff } from '../messaging/job-handoff';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
@@ -484,6 +486,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         globalAutopilotPausedUntil: undefined,
         resumeInProgress: new Set(),
     };
+    let sentinelMirror: SentinelMirrorService | undefined;
+    const getSentinelMirror = () => sentinelMirror;
 
     // Publish the bound enqueue capability so executors (created before routes)
     // can offer the `send_to_conversation` tool. Reuses the exact machinery
@@ -506,7 +510,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
     opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
     const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos, getSentinelTodoLedgerEnabled);
-    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade, delegatedJobs });
+    const jobNotices = new MessagingJobNotices({
+        dataDir, store, queue: queueFacade, delegatedJobs,
+        authorizeDesktopOrigin: (origin, parent) => sentinelMirror?.authorizeCapturedOrigin(origin, parent)
+            ?? Promise.resolve('wait'),
+    });
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
         queueMessagingResult: result => jobNotices.queueResult(result),
@@ -588,7 +596,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         opts.runtimeConfigService?.config ?? opts.resolvedConfig
     )?.features?.canvasHostApis === true;
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker, getSentinelMirror);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     repoTreeService.trackWorkspaces(store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
@@ -665,6 +673,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         validateProvider: validateSendToConversationProvider,
         state: queueGlobalState,
         botManagedConversationsEnabled: () => getLiveFeatureFlags().botManagedConversationsEnabled === true,
+        getSentinelMirror,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
@@ -979,9 +988,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
-    const questionRelay = new AskUserQuestionRelayHub({ store });
+    const isOwnDesktopMessagingPost = async (message: SentinelMirrorEcho) =>
+        await sentinelMirror?.isOwnMirrorMessage(message) || await jobNotices.isOwnDesktopResultMessage(message);
+    const questionRelay = new AskUserQuestionRelayHub({
+        store, capturedOrigin: request => sentinelMirror?.locateCapturedOrigin(request),
+    });
     opts.setAskUserQuestionRelay?.(questionRelay);
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
+        isOwnMirrorMessage: (message, teamId, accountKey, isSelf) => isOwnDesktopMessagingPost({
+            connector: 'teams', chatKey: `${teamId}\0${message.channelId}`,
+            threadId: message.replyToMessageId, text: message.text, accountKey, isSelf,
+        }),
         dataDir,
         questionRelay,
         jobNotices,
@@ -1031,6 +1048,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir, { store, queue: queueFacade });
+    let whatsappBindingRestore: Promise<void> | undefined;
+    const ensureWhatsAppBindingsReady = () => whatsappBindingRestore ??= whatsappBindings.restore(store).catch(error => {
+        whatsappBindingRestore = undefined;
+        throw error;
+    });
     const restoreWhatsAppBindings = async () => {
         try {
             await whatsappBindings.restore(store);
@@ -1039,8 +1061,26 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             console.error('[whatsapp-messaging] Binding release reconciliation failed');
         }
     };
-    void restoreWhatsAppBindings().catch(() =>
+    void ensureWhatsAppBindingsReady().catch(() =>
         console.error('[whatsapp-messaging] Failed to restore binding lifecycle'));
+    sentinelMirror = new SentinelMirrorService({
+        dataDir, store, queue: queueFacade,
+        onSourceSettled: () => jobNotices.reconcile(undefined, true),
+        enabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelDesktopMirror === true,
+        adapters: [createTeamsMirrorAdapter(teamsMessagingManager),
+            createWhatsAppMirrorAdapter(whatsappMessagingManager, whatsappBindings, ensureWhatsAppBindingsReady)],
+    });
+    const unsubscribeMirrorConfig = opts.runtimeConfigService?.onChange(() => sentinelMirror?.wake());
+    const cancelMirrorConnector = async (connector: 'teams' | 'whatsapp'): Promise<void> => {
+        try { await sentinelMirror?.cancelConnector(connector); }
+        catch {
+            console.error('[sentinel-mirror] Could not persist disconnect');
+            throw new Error('Sentinel mirror cancellation could not be recorded; retry disconnect before reconnecting.');
+        }
+    };
+    teamsMessagingManager.setMirrorDisconnectHandler(() => cancelMirrorConnector('teams'));
+    whatsappMessagingManager.setMirrorDisconnectHandler(() => cancelMirrorConnector('whatsapp'));
+    sentinelMirror.start();
     const whatsappRelay = new WhatsAppAnswerRelay({
         bindings: whatsappBindings,
         store,
@@ -1068,12 +1108,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             return status.enabled && status.status === 'connected' && !!status.groupJid;
         },
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
-        send: text => whatsappMessagingManager.send(text),
+        send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
     }));
     // Registered transports can now drain restored notices and recovered result receipts.
     void delegatedResultsRestored.then(() => jobNotices.reconcile()).catch(error =>
         console.error('[job-notices] Could not reconcile notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
+        isOwnMirrorMessage: message => message.fromMe && isOwnDesktopMessagingPost({
+            connector: 'whatsapp', chatKey: message.chatJid, threadId: message.quotedMessageId,
+            text: message.text, accountKey: whatsappMessagingManager.getMirrorAccountKey(), isSelf: message.fromMe,
+        }),
         store,
         dataDir,
         bindings: whatsappBindings,
@@ -1105,8 +1149,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 },
             }, admissionHeld);
         },
-        queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
-            console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
+        queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(() =>
+            console.error('[whatsapp-answer-relay] Could not reconcile queued request')); },
     });
     whatsappMessagingManager.setConnectionResetHandler(() => whatsappRouter.resetPendingImages());
     whatsappMessagingManager.setMessageHandler(async (message, signal) => {
@@ -1118,11 +1162,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         await restoreWhatsAppBindings();
         await whatsappRelay.reconnected();
         await jobNotices.reconcile('whatsapp');
+        sentinelMirror?.wake();
     });
     // Server shutdown: drop both queue subscriptions.
     whatsappMessagingManager.setDisposeHandler(() => {
         whatsappRouter.dispose();
         whatsappRelay.dispose();
+        sentinelMirror?.dispose();
+        unsubscribeMirrorConfig?.();
         jobNotices.dispose();
         delegatedJobResults.dispose();
         delegatedJobReviews.dispose();

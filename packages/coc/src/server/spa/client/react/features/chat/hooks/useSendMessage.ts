@@ -10,7 +10,8 @@ import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload, ChatAttachment } from '../../../types/attachments';
 import { CocApiError, type ChatProviderId, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { getCocClientForWorkspace, resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
 import type { MetaCommand } from '../slash-command-parser';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
@@ -97,6 +98,8 @@ export interface UseSendMessageOptions {
      * Without it the server falls back to the workspaceId stored on the process.
      */
     workspaceId?: string;
+    /** Canonical owner from loaded process metadata; routing still uses the selection workspace. */
+    owningWorkspaceId?: string;
     /** Feature flag state for session-context attachments. Required before sending session pointers. */
     sessionContextAttachmentsEnabled?: boolean;
     /** Conversation retrieval capability for the active workspace/provider mode. */
@@ -159,6 +162,7 @@ export function useSendMessage({
     effortOverride,
     chatStyle,
     workspaceId,
+    owningWorkspaceId: messageOwnerWorkspaceId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
     ralphGrillSetup,
@@ -321,6 +325,14 @@ export function useSendMessage({
             : userText;
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!processId || inputDisabled) return;
+        if (resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
+            setError('The owning server is unavailable. Reconnect it before sending this message.');
+            return;
+        }
+        const owner = messageOwnerWorkspaceId ?? workspaceId;
+        const owningWorkspaceId = typeof owner === 'string'
+            ? parseRemoteCloneKey(owner)?.workspaceId ?? owner : undefined;
+        const ownerQuery = owningWorkspaceId ? { workspace: owningWorkspaceId } : undefined;
         if (sending && !isActiveGeneration) return;
         // Block every send — a second `/compact` or a normal follow-up — while a
         // compaction is still in flight (AC-02). The conversation is not idle
@@ -434,6 +446,7 @@ export function useSendMessage({
             void getCocClientForWorkspace(workspaceId).processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
+                ownerQuery,
             ).catch(() => {});
 
             if (includeComposerContext) {
@@ -466,6 +479,7 @@ export function useSendMessage({
             await getCocClientForWorkspace(workspaceId).processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
+                ownerQuery,
             );
 
             lastFailedMessageRef.current = '';
@@ -490,7 +504,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

@@ -1,4 +1,17 @@
 import { marked, type Token, type Tokens } from 'marked';
+import { chunkWhatsAppText } from '@plusplusoneplusplus/coc-connector/whatsapp';
+
+export function formatLabeledWhatsAppChunks(
+    text: string, header: (part: number, total: number) => string,
+): string[] {
+    let total = 1;
+    for (;;) {
+        const chunks = chunkWhatsAppText(text, 4096 - header(total, total).length);
+        if (!chunks.length) chunks.push('');
+        if (chunks.length === total) return chunks.map((chunk, index) => header(index + 1, total) + chunk);
+        total = chunks.length;
+    }
+}
 
 function childrenOf(token: Token): Token[] {
     return 'tokens' in token && Array.isArray(token.tokens) ? token.tokens : [];

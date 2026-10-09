@@ -941,6 +941,19 @@ describe('ProcessLifecycleRunner — parentProcessId from context.spawnedFromPro
         expect((await store.getProcess(`queue_${bad.id}`))?.metadata?.messagingOrigin).toBeUndefined();
     });
 
+    it('keeps private desktop origin pins out of process-wide metadata', async () => {
+        const route = { connector: 'teams', chatKey: 'captured-channel', threadId: 'captured-thread' };
+        const task = makeTask({
+            payload: { kind: 'chat', prompt: 'Job', workspaceId: 'ws-abc', context: {
+                messagingOrigin: { ...route, desktopMirror: {
+                    workspaceId: 'parent-workspace', processId: 'parent', requestId: 'desktop-request', bindingId: 'opaque-binding',
+                } },
+            } } as any,
+        });
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.messagingOrigin).toEqual(route);
+    });
+
     it('getAllProcesses({ parentProcessId }) returns the spawned child', async () => {
         const task = makeTask({
             payload: {

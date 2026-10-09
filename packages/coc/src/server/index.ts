@@ -117,8 +117,8 @@ interface CloseHandlerDeps {
     triggerManager?: { shutdownAll(): void };
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
-    teamsMessagingManager?: { disconnect(): Promise<void>; dispose?(): void };
-    whatsappMessagingManager?: { disconnect(): Promise<void>; dispose(): void };
+    teamsMessagingManager?: { disconnect(): Promise<void>; disconnectForShutdown?(): Promise<void>; dispose?(): void };
+    whatsappMessagingManager?: { disconnect(): Promise<void>; disconnectForShutdown?(): Promise<void>; dispose(): void };
     syncEngines?: Map<string, SyncEngine>;
     autoPullManager?: { dispose(): void };
     workItemGitHubPullPoller?: { dispose(): void };
@@ -156,9 +156,9 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.triggerManager?.shutdownAll();
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
-        await deps.teamsMessagingManager?.disconnect();
+        await (deps.teamsMessagingManager?.disconnectForShutdown?.() ?? deps.teamsMessagingManager?.disconnect());
         deps.teamsMessagingManager?.dispose?.();
-        await deps.whatsappMessagingManager?.disconnect();
+        await (deps.whatsappMessagingManager?.disconnectForShutdown?.() ?? deps.whatsappMessagingManager?.disconnect());
         deps.whatsappMessagingManager?.dispose();
         deps.syncEngines?.forEach(e => e.stop());
         deps.autoPullManager?.dispose();

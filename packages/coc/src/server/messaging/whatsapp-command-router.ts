@@ -5,7 +5,7 @@ import { ImageDownloadError, isMessagingControlCommand, parseMessagingCommand, t
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { chunkWhatsAppText } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import type { MessagingGitStatusReader } from './git-status';
-import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
+import { WhatsAppBindings, WhatsAppBindingAdmissionError, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import { resolveChatWorkspace } from './chat-target';
 import { handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
@@ -50,6 +50,7 @@ export interface WhatsAppRouterDeps {
     getBotManagedConversationsEnabled?: () => boolean;
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
+    isOwnMirrorMessage?: (message: InboundWAMessage) => boolean | Promise<boolean>;
 }
 
 function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding): task is QueuedTask {
@@ -96,12 +97,15 @@ export class WhatsAppCommandRouter {
     }
 
     async handle(msg: InboundWAMessage, signal?: AbortSignal): Promise<void> {
+        if (this.disposed || signal?.aborted) return;
+        const generation = this.generation;
+        if (this.deps.isOwnMirrorMessage && await this.deps.isOwnMirrorMessage(msg)) return;
+        if (this.disposed || signal?.aborted || generation !== this.generation) return;
         const command = parseMessagingCommand(msg.text);
         if (command.type === 'invalid' || isMessagingControlCommand(command)) {
             await this.handleMessage(msg, signal);
             return;
         }
-        const generation = this.generation;
         const pending = (this.dispatch ?? Promise.resolve()).catch(() => undefined).then(() =>
             generation === this.generation ? this.handleMessage(msg, signal) : undefined);
         this.dispatch = pending;
@@ -305,7 +309,7 @@ export class WhatsAppCommandRouter {
                     checkConnection();
                     await this.deps.handOff!.start(handOff, command.args,
                         { connector: 'whatsapp', chatKey: msg.chatJid }, { taskId, images });
-                })) return;
+                }, this.deps.getTask)) return;
                 admitted = true;
                 await react();
                 return;
@@ -343,7 +347,7 @@ export class WhatsAppCommandRouter {
                     } catch (error) {
                         // taskAdded observers run after durable admission; keep accepted work and its receipt.
                         if (!matchesBinding(this.deps.getTask(taskId), binding)) throw error;
-                        console.error('[whatsapp-messaging] Request admitted but queue notification failed:', error);
+                        console.error('[whatsapp-messaging] Request admitted but queue notification failed');
                         return taskId;
                     }
                 };
@@ -352,13 +356,14 @@ export class WhatsAppCommandRouter {
                 } else {
                     await enqueue();
                 }
-            })) return;
+            }, this.deps.getTask)) return;
             admitted = true;
             if (!keepSelection) this.deps.bindings.selectTopic(workspaceId, processId);
             this.deps.queued?.(binding);
             await react();
         } catch (error) {
-            if (!admitted && images?.imageTempDir) cleanupTempDir(images.imageTempDir);
+            if (!admitted && images?.imageTempDir
+                && !(error instanceof WhatsAppBindingAdmissionError && error.uncertain)) cleanupTempDir(images.imageTempDir);
             const discardedPendingInstruction = hadPendingImages && !!command.args
                 && error instanceof PendingImagesError && (error.code === 'expired' || error.code === 'binding-changed');
             if (discardedPendingInstruction) this.clearImageReferences();
@@ -368,7 +373,11 @@ export class WhatsAppCommandRouter {
                 await reply(error.message);
                 return;
             }
-            console.error('[whatsapp-messaging] Unable to handle inbound message:', error);
+            console.error('[whatsapp-messaging] Unable to handle inbound message');
+            if (error instanceof WhatsAppBindingAdmissionError && error.uncertain) {
+                await reply(error.message);
+                return;
+            }
             await reply(admitted
                 ? 'Request was queued, but its confirmation could not be completed.'
                 : consumedPendingImages ? 'Could not queue the request. Send the images again with instructions.'

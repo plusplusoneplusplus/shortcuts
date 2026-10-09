@@ -722,14 +722,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
      * connector started (located through the ask_user relay's connector
      * receipts) records its origin on chats it hands off, so they post
-     * completion notices back; dashboard turns locate nothing.
+     * completion notices back. Mirrored desktop turns use their captured,
+     * request-scoped origin without changing process-wide metadata.
      */
-    protected sendToConversationRuntimeFor(processId: string, requestId: string | undefined): SendToConversationRuntimeOptions | undefined {
+    protected sendToConversationRuntimeFor(
+        processId: string, requestId: string | undefined, workspaceId?: string,
+    ): SendToConversationRuntimeOptions | undefined {
         const runtime = this.runtime.getSendToConversationRuntime?.();
         if (!runtime || !requestId) return runtime;
         return {
             ...runtime,
-            messagingOrigin: () => this.runtime.getAskUserQuestionRelay?.()?.locateOrigin?.({ processId, requestId }),
+            messagingOrigin: () => this.runtime.getAskUserQuestionRelay?.()?.locateOrigin?.({
+                processId, requestId, ...(workspaceId ? { workspaceId } : {}),
+            }),
         };
     }
 
@@ -933,7 +938,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             enqueueChat: this.runtime.getEnqueueChat?.(),
             launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),
-            sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, payload.relayRequestId ?? task.id),
+            sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, payload.relayRequestId ?? task.id, payload.workspaceId),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),

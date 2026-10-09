@@ -180,7 +180,8 @@ export interface SendToConversationRuntimeOptions {
     /**
      * Per turn: the WhatsApp/Teams origin of the turn invoking the tool.
      * Local create-mode chats record it as `metadata.messagingOrigin` and are
-     * tracked for completion notices; dashboard turns resolve undefined.
+     * tracked for completion notices. Mirrored desktop turns use their captured
+     * request-scoped origin; other dashboard turns resolve undefined.
      */
     messagingOrigin?: () => MessagingJobOrigin | undefined;
     /** Registers a handed-off local chat for completion notices. */

@@ -210,13 +210,52 @@ partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
-`messaging/sentinel-mirror-outbox.ts` provides private, workspace-scoped staged intent
-storage at `repos/<workspaceId>/sentinel-mirror-outbox.json`, independently of runtime
-admission/delivery wiring. Stable workspace/process/request/role identity pins the captured
-binding destination. Admission confirmation gates delivery; immutable chunks, per-attempt
-tokens and outbound IDs preserve multipart progress. Destination heads enforce ledger
-order; interrupted/unknown sends remain ambiguous. Snapshot export/import excludes these
-machine-local receipts; explicit wipe removes them.
+### Desktop Sentinel mirror
+
+`features.sentinelDesktopMirror` is live/default-off in Integrations. The
+`messaging/sentinel-mirror-service.ts` worker captures explicit dashboard
+single/bulk queue, follow-up and pending admissions, including buffered writes.
+Server-owned request IDs persist through queue/pending/user records; restart
+reconciles exact workspace/process/request proof. Connector inputs, reviews,
+queue retries and historical transcripts never create intents.
+
+Binding hydration precedes capture. Active receipts and opaque account pins fix
+the destination; selection and rebinding cannot redirect it. WhatsApp
+`admissionPending` excludes provisional bindings until exact admission proof promotes
+them, retaining accepted work after write/observer failure. Deleted owners cannot
+send; process-less admission requires an exact live request and canonical queued
+initial owner. Dashboard transport routing keeps clone/group selection separate
+from the loaded owning workspace.
+
+`sentinel-mirror-outbox.ts` stores machine-local receipts at
+`repos/<workspaceId>/sentinel-mirror-outbox.json`, excluded from export/import and
+included in wipe. All known owner ledgers recover before admission. Immutable
+chunks, attempt identities, confirmed IDs and attempted prefixes preserve progress.
+Heads serialize physical destinations across current registered workspaces.
+Definite failures use durable exponential backoff/Retry-After; unknown or
+unrecorded sends quarantine. Fixed display-only notices report known-owner failures.
+
+`sentinel-mirror-adapters.ts` reuses Teams/WhatsApp formatting and own-ID guards.
+Every part carries the full logical request ID, Desktop role and part number.
+Inbound guards verify self/account/destination/thread/owner and exact attempted
+content before commands/admission/reactions, including after cancellation/restart.
+Unsupported attachments receive a path-free marker. Final answers are bounded by
+their request; pending drain and stale parent terminal state cannot settle them.
+Empty completions require the exact completed task; taskless failures require local evidence.
+
+The question hub resolves connector origins first, then exact captured desktop
+receipts. Private delegation/notice ledgers retain owner/request/binding pins;
+queued child/process provenance strips them. Reviews use only the existing
+`MessagingJobNotices.queueResult` worker, verifying authority before each part and
+waiting for original user/initial assistant confirmation. Source settlement wakes
+desktop result rows. Immutable result chunks and attempted receipt markers guard
+lost-ID echoes; legacy origins and wording retain their existing policy.
+
+Cancellation is request-scoped; consumed pending removals preserve active replies.
+Release, process cancellation and explicit disconnect suppress future delivery;
+graceful shutdown/reconnect retain receipts. Explicit resumes wait through stale
+parent cancellation without reviving old tombstones. Enablement is described in
+[admin config](admin-config.md).
 
 `messaging/incoming-images.ts` prepares admitted images through `core/attachment-utils.ts`:
 five images, 10 MB decoded total and 30 seconds per batch. SDK files/history use
