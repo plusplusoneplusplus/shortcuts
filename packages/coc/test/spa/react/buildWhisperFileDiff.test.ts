@@ -193,8 +193,57 @@ describe('buildWhisperFileDiff', () => {
         const lines = buildWhisperFileDiff(calls, 'src/created.ts')!.split('\n');
         expect(lines).toContain('new file mode 100644');
         expect(lines).toContain('--- /dev/null');
+        expect(lines).toContain('@@ -0,0 +1,2 @@');
         expect(lines).toContain('+first');
         expect(lines).toContain('+second');
+    });
+
+    it.each([
+        { body: ['+'], header: '@@ -0,0 +1,1 @@' },
+        { body: [], header: undefined },
+        { body: ['+first', '+', '+third'], header: '@@ -0,0 +1,3 @@' },
+    ])('counts added lines for a headerless patch: $body', ({ body, header }) => {
+        const patch = ['*** Begin Patch', '*** Add File: src/new.ts', ...body, '*** End Patch'].join('\r\n');
+        const lines = buildWhisperFileDiff([
+            { toolName: 'apply_patch', args: { patch } },
+        ], 'src\\new.ts')!.split('\n');
+        expect(lines.filter(line => line.startsWith('@@'))).toEqual(header ? [header] : []);
+        expect(lines.slice(header ? 5 : 4)).toEqual(body);
+    });
+
+    it('synthesizes a hunk header for an update with no anchor', () => {
+        const patch = [
+            '*** Begin Patch',
+            '*** Update File: src/a.ts',
+            ' context',
+            '-old',
+            '+new',
+            '+extra',
+            '*** End Patch',
+        ].join('\n');
+        const lines = buildWhisperFileDiff([
+            { toolName: 'apply_patch', args: { patch } },
+        ], 'src/a.ts')!.split('\n');
+        expect(lines).toContain('@@ -1,2 +1,3 @@');
+    });
+
+    it('preserves existing anchors after a headerless patch segment', () => {
+        const patch = [
+            '*** Begin Patch',
+            '*** Update File: src/a.ts',
+            '-old',
+            '+new',
+            '@@ function next()',
+            '-before',
+            '+after',
+            '*** End Patch',
+        ].join('\n');
+        const lines = buildWhisperFileDiff([
+            { toolName: 'apply_patch', args: { patch } },
+        ], 'src/a.ts')!.split('\n');
+        expect(lines.slice(3)).toEqual([
+            '@@ -1,1 +1,1 @@', '-old', '+new', '@@ function next()', '-before', '+after',
+        ]);
     });
 
     it('only captures the targeted file section of a multi-file apply_patch', () => {

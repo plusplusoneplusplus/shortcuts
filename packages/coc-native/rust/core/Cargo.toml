@@ -49,5 +49,8 @@ regress = { version = "0.12", features = ["utf16"] }
 napi = { version = "3", default-features = false, features = ["napi4"], optional = true }
 napi-derive = { version = "3", optional = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
+
 [features]
 napi = ["dep:napi", "dep:napi-derive"]

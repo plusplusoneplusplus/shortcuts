@@ -14,8 +14,8 @@
  *    edits to the same file are clearly separated.
  *  - `edit` (old → new string) and `create` (full file text) produce a
  *    synthesized unified hunk via the shared line-diff.
- *  - `apply_patch` reuses the captured patch body for the file (which already
- *    carries `@@` anchors and +/- lines). Supports both the legacy
+ *  - `apply_patch` reuses captured anchors and +/- lines, synthesizing a hunk
+ *    header for a leading unanchored body. Supports both the legacy
  *    `*** Add/Update/Delete File:` format and unified `diff --git` format.
  *  - Codex-style structured changes (`{ path, kind }` with no line content in
  *    `args.diff`) are not reconstructable here; if a file has only such changes,
@@ -146,7 +146,19 @@ function patchHunkForFile(patchText: string, targetPath: string): FileHunk | nul
     }
 
     if (!capturing) return null;
-    return { header: undefined, body, isCreate };
+    // Add-file patches and unanchored updates need a header so viewers can
+    // distinguish the body from the git preamble.
+    let oldCount = 0;
+    let newCount = 0;
+    for (const line of body) {
+        if (line.startsWith('@@')) break;
+        if (line.startsWith('-') || line.startsWith(' ')) oldCount++;
+        if (line.startsWith('+') || line.startsWith(' ')) newCount++;
+    }
+    const header = oldCount || newCount
+        ? `@@ -${oldCount ? 1 : 0},${oldCount} +${newCount ? 1 : 0},${newCount} @@`
+        : undefined;
+    return { header, body, isCreate };
 }
 
 /**

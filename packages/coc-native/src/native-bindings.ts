@@ -1038,6 +1038,9 @@ export interface RankedFileMatch {
 /** Read one note's text and mtime. Rejects with a 404 when it is missing. */
 export declare function readNote(root: string, path: string, options: NotesContentOptions): Promise<NotesFileContent>
 
+/** Read the UTF-8 blob of one exact Windows generic credential. */
+export declare function readWindowsCredential(target: string): Promise<string | null>
+
 /**
  * Rename or move an entry, carrying its `.comments.json` sidecar and its place
  * in the parent's `.order.json` with it.
