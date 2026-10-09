@@ -4,9 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readCopilotCredential, getDirectCopilotConfigPath, validateCredentialConfig } from '../../src/copilot-http/credentials';
 import { validateTransport } from '../../src/copilot-http/config';
+import { CopilotHttpClient } from '../../src/copilot-http/client';
 import type { CopilotCredentialConfig } from '../../src/copilot-http/types';
 
 const exec = vi.hoisted(() => vi.fn());
+const windowsCredential = vi.hoisted(() => vi.fn());
+vi.mock('@plusplusoneplusplus/coc-native', () => ({ readWindowsCredential: windowsCredential }));
+const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+function platform(value: string) { Object.defineProperty(process, 'platform', { value, configurable: true }); }
 const fileRace = vi.hoisted(() => ({ enabled: false }));
 vi.mock('node:fs/promises', async importOriginal => {
     const actual = await importOriginal<typeof import('node:fs/promises')>();
@@ -27,8 +32,8 @@ vi.mock('node:child_process', () => ({ execFile: exec }));
 const signal = () => new AbortController().signal;
 let dir: string;
 let path: string;
-beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'copilot-credential-')); path = join(dir, 'config.json'); exec.mockReset(); fileRace.enabled = false; });
-afterEach(async () => { vi.unstubAllEnvs(); await rm(dir, { recursive: true, force: true }); });
+beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'copilot-credential-')); path = join(dir, 'config.json'); exec.mockReset(); windowsCredential.mockReset().mockResolvedValue(null); fileRace.enabled = false; });
+afterEach(async () => { Object.defineProperty(process, 'platform', originalPlatform); vi.unstubAllEnvs(); await rm(dir, { recursive: true, force: true }); });
 const config = (): CopilotCredentialConfig => ({ source: 'cli-config', account: 'active-cli-account', configPath: path });
 async function write(data: unknown) { await writeFile(path, JSON.stringify(data)); }
 const stored = () => ({ lastLoggedInUser: { host: 'github.com', login: 'active' }, copilotTokens: { 'github.com:other': 'gho_wrong', 'github.com:active': 'gho_right' } });
@@ -53,6 +58,85 @@ describe('explicit read-only credential acquisition', () => {
     it('uses a pinned account without changing the CLI active account', async () => {
         await write(stored());
         expect(await readCopilotCredential({ source: 'cli-config', configPath: path, account: { host: 'github.com', login: 'other' } }, signal())).toMatchObject({ login: 'other', token: 'gho_wrong' });
+    });
+    it('prefers the config token on Windows without accessing Credential Manager', async () => {
+        platform('win32'); await write(stored()); windowsCredential.mockResolvedValue('gho_vault');
+        expect((await readCopilotCredential(config(), signal())).token).toBe('gho_right');
+        expect(windowsCredential).not.toHaveBeenCalled();
+    });
+    it.each([undefined, null, ''])('reads the exact Windows account when the config token is %j', async token => {
+        platform('win32');
+        await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },
+            copilotTokens: { 'https://github.com:active': token, 'github.com:active': 'gho_wrong' } });
+        windowsCredential.mockResolvedValue('gho_vault');
+        expect(await readCopilotCredential(config(), signal())).toEqual({ host: 'github.com', login: 'active', token: 'gho_vault' });
+        expect(windowsCredential).toHaveBeenCalledExactlyOnceWith('copilot-cli/https://github.com:active');
+        expect(exec).not.toHaveBeenCalled();
+    });
+    it('reads the pinned Windows account without using the active account', async () => {
+        platform('win32'); await write(stored()); windowsCredential.mockResolvedValue('gho_pinned');
+        expect(await readCopilotCredential({ ...config(), account: { host: 'github.com', login: 'pinned' } }, signal()))
+            .toEqual({ host: 'github.com', login: 'pinned', token: 'gho_pinned' });
+        expect(windowsCredential).toHaveBeenCalledExactlyOnceWith('copilot-cli/github.com:pinned');
+    });
+    it('generates a direct HTTP title with Windows-only credentials and no CLI process', async () => {
+        platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        windowsCredential.mockResolvedValue('gho_vault');
+        const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith('/models')
+            ? { data: [{ id: 'gpt-6-luna', supported_endpoints: ['/responses'] }] }
+            : { model: 'gpt-6-luna', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed',
+                content: [{ type: 'output_text', text: 'Software Release Preparation' }] }] })));
+        const client = new CopilotHttpClient({ credential: config(), fetch: fetcher });
+        try {
+            expect(await client.isAvailable('gpt-6-luna')).toEqual({ available: true });
+            const result = await client.complete({ model: 'gpt-6-luna', api: 'responses',
+                messages: [{ role: 'user', content: 'Generate a title for preparing a software release' }] });
+            expect(result.text).toBe('Software Release Preparation');
+            expect(result.effectiveModel).toBe('gpt-6-luna');
+            expect(fetcher).toHaveBeenCalledTimes(2);
+            expect(windowsCredential).toHaveBeenCalledTimes(2);
+            expect(exec).not.toHaveBeenCalled();
+        } finally { client.dispose(); }
+    });
+    it.each(['darwin', 'linux'])('does not access Windows credentials on %s', async os => {
+        platform(os); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue('gho_vault');
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(windowsCredential).not.toHaveBeenCalled(); expect(exec).not.toHaveBeenCalled();
+    });
+    it.each(['ghp_invalid', 'invalid', 123, {}])('does not replace an invalid file token %j with a Windows credential', async token => {
+        platform('win32'); await write({ ...stored(), copilotTokens: { 'github.com:active': token } });
+        windowsCredential.mockResolvedValue('gho_vault');
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(windowsCredential).not.toHaveBeenCalled();
+    });
+    it.each([null, 'ghp_invalid', 'invalid'])('rejects missing or invalid Windows tokens %j', async token => {
+        platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue(token);
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(windowsCredential).toHaveBeenCalledTimes(1); expect(exec).not.toHaveBeenCalled();
+    });
+    it('sanitizes native credential failures without another source', async () => {
+        platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        windowsCredential.mockRejectedValue(new Error('gho_secret'));
+        const error = await readCopilotCredential(config(), signal()).catch(e => e);
+        expect(error).toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE', message: 'Selected Copilot Windows credential could not be read.' });
+        expect(exec).not.toHaveBeenCalled();
+    });
+    it('cancels a pending native credential read without waiting for the worker', async () => {
+        platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        const controller = new AbortController();
+        windowsCredential.mockImplementation(() => { controller.abort(); return new Promise(() => {}); });
+        await expect(readCopilotCredential(config(), controller.signal)).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(windowsCredential).toHaveBeenCalledTimes(1); expect(exec).not.toHaveBeenCalled();
+    });
+    it('does not access Windows credentials for an already aborted request', async () => {
+        platform('win32'); const controller = new AbortController(); controller.abort();
+        await expect(readCopilotCredential(config(), controller.signal)).rejects.toBeDefined();
+        expect(windowsCredential).not.toHaveBeenCalled();
+    });
+    it.each([null, {}, { lastLoggedInUser: { host: 'http://github.com', login: 'active' } }])('does not access Windows credentials for invalid config %#', async data => {
+        platform('win32'); await write(data);
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(windowsCredential).not.toHaveBeenCalled();
     });
     it.each(['active-cli-account', { host: 'https://github.com', login: 'active' }] as const)('reads URL-form CLI host with exact stored key for account %j', async account => {
         await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },

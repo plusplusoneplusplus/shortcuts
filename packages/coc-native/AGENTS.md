@@ -216,6 +216,18 @@ Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI
 
 N-API binaries are ABI-stable, so one binary per platform works under both Node 24 and Electron without an Electron-specific rebuild.
 
+## Windows credentials
+
+`readWindowsCredential(target)` reads one exact generic credential through
+`CredReadW` on a libuv worker. It returns a UTF-8 token or `null` for
+`ERROR_NOT_FOUND`; invalid targets, blobs, platform and OS failures reject with
+sanitized errors. The native allocation is released with `CredFree`. It never
+enumerates accounts, writes credentials or starts a CLI. Copilot's `cli-config`
+reader checks its file token first, then uses this capability on Windows for
+the selected account's exact `copilot-cli/<stored-host>:<login>` target.
+Rust tests create and remove isolated fixture credentials; boundary tests never
+read real accounts.
+
 ## Dangerous command guard
 
 `dangerous_command::match_command` screens one shell command against a hardcoded disallow list, so ask mode can stop and ask a human before `rm -rf /`, `dd`, `curl … | sh` or `shutdown` — commands ask mode otherwise auto-approves. It is the one capability with **no** filesystem access and no `AsyncTask`: a handful of anchored regexes over a command line costs less than marshalling would.

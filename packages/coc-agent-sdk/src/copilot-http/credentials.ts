@@ -2,6 +2,7 @@ import { open } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { readWindowsCredential } from '@plusplusoneplusplus/coc-native';
 import { loadCopilotSdk } from '../sdk-esm-loader';
 import { createSdkClient } from '../sdk-client-factory';
 import { withAbort } from './transport';
@@ -132,7 +133,16 @@ export async function readCopilotCredential(config: CopilotCredentialConfig, sig
                 const account = config.account === 'active-cli-account' ? parsed.lastLoggedInUser : config.account;
                 const host = normalizeCredentialHost(account?.host);
                 if (!account || !host || !accountValid({ host, login: account.login })) throw unavailable('Selected Copilot account is missing.');
-                snapshot = { host, login: account.login, token: parsed.copilotTokens?.[`${account.host}:${account.login}`] };
+                let token = parsed.copilotTokens?.[`${account.host}:${account.login}`];
+                if ((token === undefined || token === null || token === '') && process.platform === 'win32') {
+                    signal.throwIfAborted();
+                    try {
+                        token = await withAbort(readWindowsCredential(`copilot-cli/${account.host}:${account.login}`), signal);
+                    } catch {
+                        throw unavailable('Selected Copilot Windows credential could not be read.');
+                    }
+                }
+                snapshot = { host, login: account.login, token };
                 break;
             }
         }

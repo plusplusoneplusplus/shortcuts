@@ -180,6 +180,7 @@ dependencies = [
  "tree-sitter-c",
  "tree-sitter-cpp",
  "tree-sitter-tags",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

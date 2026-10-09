@@ -16,3 +16,4 @@ pub mod repo_files;
 pub mod repo_index;
 pub mod sqlite;
 pub mod symbol_index;
+pub mod windows_credentials;
