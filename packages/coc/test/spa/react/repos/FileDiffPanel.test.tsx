@@ -8,12 +8,10 @@ import { forwardRef, useImperativeHandle } from 'react';
 
 // --- Module mocks (hoisted by Vitest) ---
 
-const featureFlags = vi.hoisted(() => ({ SHOW_DIFF_FILE_PICKER: false }));
-vi.mock('../../../../src/server/spa/client/react/featureFlags', async importOriginal => ({
-    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/featureFlags')>(),
-    get SHOW_DIFF_FILE_PICKER() { return featureFlags.SHOW_DIFF_FILE_PICKER; },
-}));
-afterEach(() => { featureFlags.SHOW_DIFF_FILE_PICKER = false; });
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+
+const setDiffFilePicker = (enabled: boolean) => applyRuntimeConfigPatch({ diffFilePickerEnabled: enabled });
+afterEach(() => { setDiffFilePicker(true); });
 
 const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
@@ -301,7 +299,7 @@ function makePrSource(overrides: Partial<DiffSource> = {}): DiffSource {
 describe('FileDiffPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        featureFlags.SHOW_DIFF_FILE_PICKER = false;
+        setDiffFilePicker(true);
         mockViewMode = 'unified';
         mockDiffEngine = 'monaco';
         mockMonacoProps = null;
@@ -1072,7 +1070,15 @@ describe('FileDiffPanel', () => {
     describe('changed-file picker', () => {
         const files = ['src/foo.ts', 'assets/image.png', 'src/deleted.ts', 'src/renamed.ts'];
 
-        it('remains disabled by default with a navigable multi-file source', () => {
+        it('is enabled when the admin setting is unset', () => {
+            applyRuntimeConfigPatch({ diffFilePickerEnabled: undefined });
+            render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={makeCommitSource({ files })} onNavigateToFile={vi.fn()} />);
+            fireEvent.click(screen.getByRole('button', { name: `Jump to file: ${files[0]}` }));
+            expect(screen.getByRole('dialog', { name: 'Jump to changed file' })).toBeTruthy();
+        });
+
+        it('keeps a passive path when the admin setting is explicitly off', () => {
+            setDiffFilePicker(false);
             const onNavigateToFile = vi.fn();
             render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={makeCommitSource({ files })} onNavigateToFile={onNavigateToFile} />);
             expect(screen.getByTestId('file-diff-path').tagName).toBe('SPAN');
@@ -1082,7 +1088,7 @@ describe('FileDiffPanel', () => {
         });
 
         it.each(['monaco', 'legacy'] as const)('jumps to the selected file first hunk in %s mode without opening a panel tab', engine => {
-            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            setDiffFilePicker(true);
             mockDiffEngine = engine;
             const onNavigateToFile = vi.fn();
             const source = makeCommitSource({ files });
@@ -1102,7 +1108,7 @@ describe('FileDiffPanel', () => {
         });
 
         it.each(['no callback', 'single file', 'empty list'])('keeps a noninteractive path for %s', fallback => {
-            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            setDiffFilePicker(true);
             const onNavigateToFile = vi.fn();
             render(<FileDiffPanel workspaceId="ws1" filePath={files[0]}
                 source={makeCommitSource({ files: fallback === 'single file' ? files.slice(0, 1) : fallback === 'empty list' ? [] : files })}
@@ -1114,7 +1120,7 @@ describe('FileDiffPanel', () => {
         });
 
         it.each(['ctrlKey', 'metaKey'])('preserves %s+click to open a file tab without opening the picker', key => {
-            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            setDiffFilePicker(true);
             const onNavigateToFile = vi.fn();
             render(
                 <UnifiedPanelHostProvider host={{ workspaceId: 'ws-scope', chatId: 'chat-1' }}>
@@ -1130,7 +1136,7 @@ describe('FileDiffPanel', () => {
         });
 
         it.each(['workspace', 'source'])('discards fetched paths and closes the picker on %s switch', async kind => {
-            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            setDiffFilePicker(true);
             const onNavigateToFile = vi.fn();
             const oldSource = makeCommitSource({ fetchFileList: vi.fn().mockResolvedValue(files) });
             let resolveFiles!: (paths: string[]) => void;
@@ -1154,7 +1160,7 @@ describe('FileDiffPanel', () => {
         });
 
         it('closes the picker and marks the new current file after host navigation', () => {
-            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            setDiffFilePicker(true);
             const source = makeCommitSource({ files });
             const onNavigateToFile = vi.fn();
             const view = render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={source} onNavigateToFile={onNavigateToFile} />);
@@ -1170,7 +1176,7 @@ describe('FileDiffPanel', () => {
         });
 
         it('ignores a file-list response from a previous workspace arriving after the current one', async () => {
-            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            setDiffFilePicker(true);
             let resolveOld!: (paths: string[]) => void;
             const oldSource = makeCommitSource({ fetchFileList: vi.fn().mockReturnValue(new Promise<string[]>(resolve => { resolveOld = resolve; })) });
             const nextSource = makeCommitSource({ fetchFileList: vi.fn().mockResolvedValue([files[0], 'src/current.ts']) });

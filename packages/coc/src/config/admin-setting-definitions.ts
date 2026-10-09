@@ -809,6 +809,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.diffFilePicker', default: true, runtime: 'live', runtimeFlag: 'diffFilePickerEnabled',
+        ui: {
+            group: 'review', order: 25, label: 'Diff header file picker',
+            hint: 'Click the file path in a multi-file diff header to search and jump to another changed file. Enabled by default.',
+            testId: 'toggle-diff-file-picker-enabled',
+        },
+    }),
+    bool({
         key: 'features.sessionContextAttachments', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'sessionContextAttachmentsEnabled',
         ui: {
             tab: 'chat', group: 'review', order: 30, label: 'Session context attachments', badge: 'experimental',

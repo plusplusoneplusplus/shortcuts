@@ -205,7 +205,11 @@ switches. Both engines share the persisted comment shape.
 
 ### Changed-file navigation
 
-`SHOW_DIFF_FILE_PICKER` in `react/featureFlags.ts` defaults off. When enabled,
+Live admin setting `features.diffFilePicker` (Admin -> Configure -> Features ->
+Code Review & Collaboration -> Diff header file picker; runtime flag
+`diffFilePickerEnabled`) defaults on; only an explicit false disables it.
+`DiffFilePicker` reads it through `useDiffFilePickerEnabled`, so toggling applies
+without a reload and disabling dismisses an open picker. When enabled,
 `diff/DiffFilePicker.tsx` makes a navigable multi-file diff's header path a searchable
 changed-file picker. It matches full paths case-insensitively, supports arrow keys and
 Enter, restores trigger focus on selection/Escape, and dismisses on outside interaction,

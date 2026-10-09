@@ -72,6 +72,8 @@ interface DashboardConfig {
     gitCommitLookupEnabled?: boolean;
     /** Whether cross-clone cherry-pick transfer in the Git tab is enabled (feature flag). */
     gitCrossCloneCherryPickEnabled?: boolean;
+    /** Whether diff headers offer searchable changed-file navigation (feature flag, default on). */
+    diffFilePickerEnabled?: boolean;
     /**
      * Whether opt-in Git worktree execution is enabled (feature flag). Doubles
      * as the target-server capability signal exposed via GET /api/config/runtime.
@@ -550,6 +552,11 @@ export function isGitCommitLookupEnabled(): boolean {
 /** Returns true when cross-clone cherry-pick transfer in the Git tab is enabled. */
 export function isGitCrossCloneCherryPickEnabled(): boolean {
     return getConfig().gitCrossCloneCherryPickEnabled === true;
+}
+
+/** Searchable changed-file navigation from diff headers (`features.diffFilePicker`); on unless the server says off. */
+export function isDiffFilePickerEnabled(): boolean {
+    return getConfig().diffFilePickerEnabled !== false;
 }
 
 /**

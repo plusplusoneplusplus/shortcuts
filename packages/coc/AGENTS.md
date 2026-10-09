@@ -505,7 +505,8 @@ references before editing. Paths are package-relative.
 
 ## Monaco Selection Context
 
-- `SHOW_DIFF_FILE_PICKER` defaults off. Diff header pickers use only the current
+- Live admin `features.diffFilePicker` (default on, read via
+  `useDiffFilePickerEnabled`) gates diff header pickers; they use only the current
   comparison's changed files and existing viewer/host navigation, preserving the
   source workspace, review chat and Ctrl/Cmd+click source-file opening. Lazy file
   lists are keyed by workspace and diff source; comparison changes close pickers.

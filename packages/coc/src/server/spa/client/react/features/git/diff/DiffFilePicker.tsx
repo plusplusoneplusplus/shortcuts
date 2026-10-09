@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { SHOW_DIFF_FILE_PICKER } from '../../../featureFlags';
+import { useDiffFilePickerEnabled } from '../../../hooks/feature-flags/useDiffFilePickerEnabled';
 import { splitPath } from './fileBannerModel';
 
 interface DiffFilePickerProps {
@@ -19,7 +19,8 @@ export function DiffFilePicker({
 }: DiffFilePickerProps) {
     const [open, setOpen] = useState(false);
     const trigger = useRef<HTMLButtonElement>(null);
-    const canPick = SHOW_DIFF_FILE_PICKER && files.length > 1 && !!onSelect;
+    const pickerEnabled = useDiffFilePickerEnabled();
+    const canPick = pickerEnabled && files.length > 1 && !!onSelect;
     useEffect(() => { setOpen(false); }, [files, filePath, canPick]);
     if (!canPick) {
         return <span className={className} title={title} onClick={onClick} data-testid={testId}>{children}</span>;

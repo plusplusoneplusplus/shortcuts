@@ -665,6 +665,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.canvasHostApis': 'features',
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
+        'features.diffFilePicker': 'features',
         'features.commitChatLens': 'features',
         'features.commitChatLensDormantMode': 'features',
         'features.nativeCliSessions': 'features',
