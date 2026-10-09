@@ -14,8 +14,8 @@ function deferred<T>() {
     return { promise, resolve };
 }
 
-function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush'> = {
-    recordVisit: vi.fn(async () => true), updateTitle: vi.fn(async () => true), flush: vi.fn(async () => {}),
+function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'> = {
+    clearEngine: vi.fn(async () => true), recordVisit: vi.fn(async () => true), updateTitle: vi.fn(async () => true), flush: vi.fn(async () => {}),
 }) {
     const send = vi.fn();
     const changed = vi.fn();
@@ -101,6 +101,7 @@ describe('browser manager history integration', () => {
 
     it('reports failed history writes without interrupting browsing or title/state events', async () => {
         const history = {
+            clearEngine: vi.fn(async () => true),
             recordVisit: vi.fn(async () => { throw new Error('Disk full'); }),
             updateTitle: vi.fn(async () => { throw new Error('Disk full'); }),
             flush: vi.fn(async () => {}),
@@ -117,6 +118,40 @@ describe('browser manager history integration', () => {
             expect(h.send).toHaveBeenLastCalledWith(1, BROWSER_VIEW_STATE_CHANNEL, expect.objectContaining({ url: 'https://example.test/' }));
             await h.manager.dispose();
         } finally { report.mockRestore(); }
+    });
+
+    it('waits for queued history and engine cleanup, preserving the other engine contributions', async () => {
+        const history = new BrowserHistoryStore(dir);
+        await history.clear();
+        const h = harness('electron', history);
+        await h.manager.open(1, 'a', 'https://example.test/', 'workspace-a');
+        await h.manager.open(2, 'b', 'https://example.test/', 'workspace-b', 'webview2');
+        h.created[0].sink.visited!('https://example.test/', 'Electron');
+        h.created[1].sink.visited!('https://example.test/', 'WebView2');
+        const gate = deferred<void>();
+        vi.mocked(h.hosts.electron.clearData).mockImplementationOnce(() => gate.promise);
+        const clearing = h.manager.clear('electron');
+        await vi.waitFor(() => expect(h.hosts.electron.clearData).toHaveBeenCalledOnce());
+        expect((await history.query()).entries[0].visitCount).toBe(2);
+        gate.resolve();
+        expect(await clearing).toEqual({ ok: true });
+        expect((await history.query()).entries[0]).toMatchObject({ title: 'WebView2', visitCount: 1 });
+        h.created[0].sink.visited!('https://example.test/', 'Closed');
+        h.created[0].sink.titleUpdated!('https://example.test/', 'Closed');
+        expect((await history.query()).entries[0].visitCount).toBe(1);
+        await h.manager.dispose();
+    });
+
+    it('keeps history on profile failure and reports history cleanup failure after profile success', async () => {
+        const h = harness();
+        vi.mocked(h.hosts.electron.clearData).mockRejectedValueOnce(new Error('Profile locked'));
+        expect(await h.manager.clear('electron')).toMatchObject({ ok: false, reason: 'cleanup-failed' });
+        expect(h.history.clearEngine).not.toHaveBeenCalled();
+        vi.mocked(h.history.clearEngine).mockRejectedValueOnce(new Error('History disk full'));
+        expect(await h.manager.clear('electron')).toEqual({ ok: false, reason: 'cleanup-failed', message: 'History disk full' });
+        expect((await h.manager.preferences()).clearing).toEqual([]);
+        expect(await h.manager.clear('electron')).toEqual({ ok: true });
+        await h.manager.dispose();
     });
 
     it('drains history writes on shutdown even when a browser host fails to dispose', async () => {

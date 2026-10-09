@@ -2,14 +2,15 @@ import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electro
 import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
-import { BrowserHistoryStore } from './browser-history';
+import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
-import { installBrowserWebviewGuard, isBrowserEmbedder } from './browser-webview-guard';
-export { registerBrowserEmbedder } from './browser-webview-guard';
+import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import {
+    BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
+    BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
     BROWSER_VIEW_HIDE_CHANNEL, BROWSER_VIEW_NAV_CHANNEL, BROWSER_VIEW_NAVIGATE_CHANNEL,
@@ -21,7 +22,21 @@ import {
 } from './browser-view-policy';
 
 let manager: BrowserHostManager | undefined;
+let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
+
+export function registerBrowserEmbedder(window: BrowserWindow, url: string): void {
+    registerEmbedder(window, url);
+    wireOwner(window);
+}
+
+function broadcastHistory(): void {
+    for (const window of owners.values()) {
+        if (window.isDestroyed() || window.webContents.isDestroyed() || !isBrowserEmbedder(window.webContents)) continue;
+        try { window.webContents.send(BROWSER_HISTORY_CHANGED_CHANNEL); }
+        catch (error) { console.error('[coc-desktop] Browser history notification failed:', error); }
+    }
+}
 
 function ownWindow(sender: WebContents): BrowserWindow | null {
     const window = BrowserWindow.fromWebContents(sender);
@@ -44,8 +59,13 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     if (manager) { return; }
     installBrowserWebviewGuard();
     const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
+    const history = new BrowserHistoryStore(dataDir, Date.now, broadcastHistory);
+    historyMaintenance = setInterval(() => {
+        void history.pruneExpired().catch(error => console.error('[coc-desktop] Browser history maintenance failed:', error));
+    }, 60 * 60 * 1000);
+    historyMaintenance.unref();
     manager = new BrowserHostManager({
-        history: new BrowserHistoryStore(dataDir),
+        history,
         hosts: {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
             webview2,
@@ -64,6 +84,40 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             }
         },
     });
+    // Every history operation requires the exact registered SPA main document.
+    const historyWindow = (event: Electron.IpcMainInvokeEvent) =>
+        event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
+    const historyHandler = (operation: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>) =>
+        async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {
+            if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+            try { return await operation(event, ...args); }
+            catch (error) { return { ok: false, reason: error instanceof TypeError ? 'invalid' : 'storage-failed', message: String(error) }; }
+        };
+    ipcMain.handle(BROWSER_HISTORY_QUERY_CHANNEL, historyHandler(async (_event, search = '', offset = 0, limit = 50) => {
+        if (typeof search !== 'string' || typeof offset !== 'number' || typeof limit !== 'number') throw new TypeError('Invalid history query');
+        return { ok: true, ...await history.query(search, offset, limit) };
+    }));
+    ipcMain.handle(BROWSER_HISTORY_DELETE_CHANNEL, historyHandler(async (_event, url) => {
+        if (!sanitizeHistoryUrl(url)) throw new TypeError('Invalid history URL');
+        await history.delete(url);
+        return { ok: true };
+    }));
+    ipcMain.handle(BROWSER_HISTORY_RECORDING_CHANNEL, historyHandler(async (_event, recording) => {
+        if (typeof recording !== 'boolean') throw new TypeError('Invalid recording setting');
+        await history.setRecording(recording);
+        return { ok: true };
+    }));
+    ipcMain.handle(BROWSER_HISTORY_CLEAR_CHANNEL, historyHandler(async event => {
+        const { response } = await dialog.showMessageBox(historyWindow(event)!, {
+            type: 'warning', title: 'Clear browser history', message: 'Clear all browser history on this machine?',
+            detail: 'This affects every workspace and desktop window. Sign-ins and open tabs are preserved.',
+            buttons: ['Cancel', 'Clear history'], defaultId: 0, cancelId: 0, noLink: true,
+        });
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+        if (response !== 1) return { ok: false, reason: 'cancelled' };
+        await history.clear();
+        return { ok: true };
+    }));
     ipcMain.handle(BROWSER_VIEW_OPEN_CHANNEL, (event, id: unknown, source: unknown, sessionKey: unknown, engine: unknown) => {
         const window = ownWindow(event.sender);
         if (!window || event.senderFrame !== event.sender.mainFrame) { return { ok: false, reason: 'no-window' }; }
@@ -119,7 +173,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_PREFERENCES_SET_CHANNEL, (event, engine: unknown) =>
         ownWindow(event.sender) ? manager!.select(engine) : { ok: false, reason: 'no-window' });
     ipcMain.handle(BROWSER_CLEAR_DATA_CHANNEL, async (event, engine: unknown) => {
-        const window = ownWindow(event.sender);
+        const window = historyWindow(event);
         if (!window) { return { ok: false, reason: 'no-window' }; }
         if (!isBrowserEngine(engine)) { return { ok: false, reason: 'bad-engine' }; }
         const label = engine === 'electron' ? 'Electron' : 'WebView2';
@@ -129,10 +183,13 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             detail: 'This affects every workspace and desktop window. Cookies, cache and site storage will be cleared. The other browser engine and CoC application data are not affected.',
             buttons: ['Cancel', 'Close tabs and clear data'], defaultId: 0, cancelId: 0, noLink: true,
         });
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
         return response === 1 ? manager!.clear(engine) : { ok: false, reason: 'cancelled' };
     });
 }
 
 export async function disposeBrowserViews(): Promise<void> {
+    clearInterval(historyMaintenance);
+    historyMaintenance = undefined;
     await manager?.dispose();
 }

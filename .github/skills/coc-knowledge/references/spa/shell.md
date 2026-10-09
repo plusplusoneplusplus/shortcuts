@@ -124,8 +124,18 @@ navigation IDs and emits explicit `visited`/`title-updated` messages with each
 document's final URL/title through its root tab. Failures, stop and crashes
 invalidate pending visits; late or repeated completions never record.
 `updateTitle` cannot create entries. Recording preferences, deletion and bounded
-URL/title search use the same store. Startup and `pruneExpired` maintain retention;
-manager shutdown calls `flush` to drain queued writes even when host cleanup fails.
+URL/title search use the same store. Startup and main-owned hourly maintenance
+prune expired entries; shutdown stops the timer and drains queued saves even when
+host cleanup fails. Confirmed profile cleanup closes that engine's tabs, clears
+its profile, then removes its history contributions; failures are explicit.
+
+`cocDesktop.browser.history` exposes bounded `query(search, offset, limit)`,
+`delete(url)`, confirmed `clear()`, `setRecording(boolean)` and `onChanged()`.
+IPC requires a registered exact-source SPA main frame. Main broadcasts data-free
+invalidations to all registered SPA windows after committed saves or storage
+failures. Queries return recording state and persistent storage errors; mutations
+return explicit failure results. History-only clear preserves profiles, tabs and
+recording state. The optional history surface supports older-host detection.
 
 ### Browser adapters and lifecycle
 

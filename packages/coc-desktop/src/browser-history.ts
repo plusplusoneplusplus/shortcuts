@@ -100,7 +100,8 @@ export class BrowserHistoryStore {
     private pending: Promise<unknown> = Promise.resolve();
     private error: string | null = null;
 
-    constructor(desktopDataDir: string, private readonly now: () => number = Date.now) {
+    constructor(desktopDataDir: string, private readonly now: () => number = Date.now,
+        private readonly changed: () => void = () => {}) {
         this.filename = path.join(desktopDataDir, 'browser', 'history.json');
         try {
             this.data = readData(JSON.parse(fs.readFileSync(this.filename, 'utf8')));
@@ -204,6 +205,11 @@ export class BrowserHistoryStore {
         if (!isBrowserEngine(engine) || typeof title !== 'string') throw new TypeError('Invalid history visit');
     }
 
+    private notify(): void {
+        // A disconnected renderer must never turn a committed save into a failure.
+        try { this.changed(); } catch (error) { console.error('[coc-desktop] Browser history notification failed:', error); }
+    }
+
     private mutate(change: (data: HistoryData) => boolean): Promise<boolean> {
         const operation = this.pending.then(async () => {
             const next = structuredClone(this.data);
@@ -218,9 +224,11 @@ export class BrowserHistoryStore {
                 await fs.promises.rename(temporary, this.filename);
                 this.data = next;
                 this.error = null;
+                this.notify();
                 return true;
             } catch (error) {
                 this.error = String(error);
+                this.notify();
                 throw error;
             } finally {
                 await fs.promises.rm(temporary, { force: true }).catch(() => {});

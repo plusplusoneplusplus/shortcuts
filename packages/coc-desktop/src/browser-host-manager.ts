@@ -29,7 +29,7 @@ function throwRejected(results: PromiseSettledResult<unknown>[]): void {
 }
 
 export interface BrowserManagerOptions {
-    history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush'>;
+    history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'>;
     hosts: Record<BrowserEngine, BrowserEngineHost>;
     /** Local HTML previews: always Electron, isolated from every engine profile and never cleared with them. */
     fileHost: FilePreviewHost;
@@ -337,6 +337,7 @@ export class BrowserHostManager {
             const results = await Promise.allSettled(entries.map(entry => this.close(entry.ownerId, entry.viewId, true)));
             throwRejected(results);
             await this.options.hosts[engine].clearData();
+            await this.options.history.clearEngine(engine);
             return { ok: true };
         } catch (error) { return this.failure(error, 'cleanup-failed'); }
         finally { this.clearing.delete(engine); this.options.changed(); }

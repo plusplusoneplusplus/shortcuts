@@ -24,6 +24,29 @@ afterEach(() => {
 });
 
 describe('desktop browser history store', () => {
+    it('notifies only committed mutations or visible failures and tolerates broken subscribers', async () => {
+        const dir = directory();
+        const changed = vi.fn(() => {
+            const saved = JSON.parse(fs.readFileSync(path.join(dir, 'browser/history.json'), 'utf8'));
+            expect(saved.entries).toHaveLength(1);
+        });
+        const store = new BrowserHistoryStore(dir, Date.now, changed);
+        await store.recordVisit('electron', 'https://example.test/', 'Page');
+        expect(changed).toHaveBeenCalledOnce();
+        await store.updateTitle('electron', 'https://example.test/', 'Page');
+        expect(changed).toHaveBeenCalledOnce();
+        const rename = vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('Disk full'));
+        await expect(store.setRecording(false)).rejects.toThrow('Disk full');
+        expect(changed).toHaveBeenCalledTimes(2);
+        expect(await store.query()).toMatchObject({ recording: true, storageError: expect.stringContaining('Disk full') });
+        rename.mockRestore();
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        changed.mockImplementationOnce(() => { throw new Error('Window closed'); });
+        await expect(store.setRecording(false)).resolves.toBe(true);
+        expect(await store.query()).toMatchObject({ recording: false, storageError: null });
+        expect(log).toHaveBeenCalledWith('[coc-desktop] Browser history notification failed:', expect.any(Error));
+    });
+
     it('starts enabled and empty without creating files until a mutation', async () => {
         const dir = directory();
         const store = new BrowserHistoryStore(dir);
