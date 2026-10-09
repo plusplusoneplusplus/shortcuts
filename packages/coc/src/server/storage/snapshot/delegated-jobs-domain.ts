@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import { DELEGATED_JOBS_FILE } from '../../delegation/delegated-job-store';
 import { SENTINEL_TODOS_FILE } from '../../sentinel-todos/sentinel-todo-store';
+import { SENTINEL_MIRROR_OUTBOX_FILE } from '../../messaging/sentinel-mirror-outbox';
 import { EMPTY_COLLECT_RESULT, type StorageSnapshotDomain } from './types';
 import { getErrorMessage, listRepoFiles } from './snapshot-fs';
 
@@ -12,6 +13,10 @@ export function createDelegatedJobsDomain(): StorageSnapshotDomain<string[]> {
 /** Sentinel to-do ledgers are keyed by local chat IDs, so they follow the same policy. */
 export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
     return createMachineLocalRepoFileDomain('sentinel-todos', SENTINEL_TODOS_FILE);
+}
+
+export function createSentinelMirrorOutboxDomain(): StorageSnapshotDomain<string[]> {
+    return createMachineLocalRepoFileDomain('sentinel-mirror-outbox', SENTINEL_MIRROR_OUTBOX_FILE);
 }
 
 function createMachineLocalRepoFileDomain(id: string, filename: string): StorageSnapshotDomain<string[]> {

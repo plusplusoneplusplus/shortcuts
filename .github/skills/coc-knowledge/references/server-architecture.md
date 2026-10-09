@@ -210,6 +210,14 @@ partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
+`messaging/sentinel-mirror-outbox.ts` provides private, workspace-scoped staged intent
+storage at `repos/<workspaceId>/sentinel-mirror-outbox.json`, independently of runtime
+admission/delivery wiring. Stable workspace/process/request/role identity pins the captured
+binding destination. Admission confirmation gates delivery; immutable chunks, per-attempt
+tokens and outbound IDs preserve multipart progress. Destination heads enforce ledger
+order; interrupted/unknown sends remain ambiguous. Snapshot export/import excludes these
+machine-local receipts; explicit wipe removes them.
+
 `messaging/incoming-images.ts` prepares admitted images through `core/attachment-utils.ts`:
 five images, 10 MB decoded total and 30 seconds per batch. SDK files/history use
 `getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own cleanup

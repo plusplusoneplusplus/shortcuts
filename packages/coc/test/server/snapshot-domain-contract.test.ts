@@ -24,6 +24,8 @@ import { createImageBlobDomain } from '../../src/server/storage/snapshot/image-b
 import { createPreferencesDomain } from '../../src/server/storage/snapshot/preferences-domain';
 import { createScheduleDomain } from '../../src/server/storage/snapshot/schedule-domain';
 import { createGitOpsDomain } from '../../src/server/storage/snapshot/git-ops-domain';
+import { createSentinelMirrorOutboxDomain } from '../../src/server/storage/snapshot/delegated-jobs-domain';
+import { SENTINEL_MIRROR_OUTBOX_FILE } from '../../src/server/messaging/sentinel-mirror-outbox';
 
 // ============================================================================
 // Helpers
@@ -200,6 +202,25 @@ describe('snapshot domain behavior', () => {
         await domain.executeWipe({ dataDir, store, includeWikis: true }, planResult.plan, result);
         expect(await store.getAllProcesses()).toHaveLength(0);
         expect(fs.existsSync(wikiDir)).toBe(false);
+    });
+
+    it('sentinel-mirror-outbox: receipts stay machine-local and participate in explicit wipe', async () => {
+        const domain = createSentinelMirrorOutboxDomain();
+        const file = path.join(dataDir, 'repos', 'repo-1', SENTINEL_MIRROR_OUTBOX_FILE);
+        writeJSON(file, [{ content: 'Private delivery intent' }]);
+        const ctx = { dataDir, store, includeWikis: false };
+        expect(await domain.collect(ctx)).toEqual({ data: {}, metadata: {}, warnings: [] });
+        const imported = createImportResult();
+        await domain.restoreReplace(emptyPayload(), ctx, imported);
+        await domain.restoreMerge(emptyPayload(), ctx, imported);
+        expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([{ content: 'Private delivery intent' }]);
+        const plan = await domain.planWipe(ctx);
+        expect(plan.plan).toEqual([file]);
+        expect(fs.existsSync(file)).toBe(true);
+        const result = { errors: [] as string[] };
+        await domain.executeWipe(ctx, plan.plan, result);
+        expect(result.errors).toEqual([]);
+        expect(fs.existsSync(file)).toBe(false);
     });
 
     it('queue: counts file + rows and executeWipe deletes the queue file', async () => {

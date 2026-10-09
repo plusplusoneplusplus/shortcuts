@@ -328,6 +328,11 @@ references before editing. Paths are package-relative.
   include recognized UTC/GMT reset times; other failures use fixed text. Never
   relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- `messaging/sentinel-mirror-outbox.ts` is private durable intent storage, not an
+  admission observer or connector sender. Capture owning workspace/process/request
+  and binding destination; confirm canonical admission before delivery. Persist chunk
+  boundaries and attempt identities; quarantine unknown sends. Its machine-local
+  receipts are excluded from snapshot export/import and included in explicit wipe.
 - `src/server/messaging/incoming-images.ts` prepares admitted image batches only
   after local workspace resolution. It reuses chat attachment processing, stores
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
