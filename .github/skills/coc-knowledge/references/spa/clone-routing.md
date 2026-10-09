@@ -257,7 +257,11 @@ pills and duration menus consume the same routed quota. The Admin AI Providers p
 uses the page-origin administration client independently.
 
 The terminal PTY socket (`useTerminalWebSocket`) resolves the clone baseUrl from the
-registry and passes it into `cloneWsUrl`. `TerminalView` owns exited-session restart
+registry and passes it into `cloneWsUrl`. Unified Terminal tabs carry their concrete
+owner route through `TerminalView` and `TerminalPanel` to both REST and PTY calls;
+explicit `null` selects page origin, while raw workspace IDs stay in API payloads.
+Repo-group add requests use the dock target's workspace and owner route.
+`TerminalView` owns exited-session restart
 through the workspace-routed REST client, shared by the manual control and a plain
 Enter keydown focused inside its active, read-only `TerminalPanel`. Restart admission
 uses a synchronous per-tab guard. Transport closure and pasted input do not trigger

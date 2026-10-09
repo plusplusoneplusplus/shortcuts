@@ -293,17 +293,31 @@ export function UnifiedRightPanel({
     // New workspace resources open against the dock's current target, and carry
     // a repo label when that is not the panel's own workspace (a group member or
     // a remote clone) so two same-named tabs stay tellable apart.
+    // Explicit menu intent is ephemeral; restored descriptors never create PTYs.
+    const [terminalOpenRequests, setTerminalOpenRequests] = useState<Record<string, number>>({});
+    useEffect(() => {
+        setTerminalOpenRequests(prev => {
+            const retained = Object.fromEntries(Object.entries(prev).filter(([id]) => state.tabs.some(tab => tab.id === id)));
+            return Object.keys(retained).length === Object.keys(prev).length ? prev : retained;
+        });
+    }, [state.tabs]);
     const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes') => {
         const owner = kind === 'notes' ? workspaceId : target;
-        open({
+        const input: OpenUnifiedTabInput = {
             kind,
             ownerWorkspaceId: owner,
+            ...(kind === 'terminal' ? { ownerRoutingRef: targetRoutingRef } : {}),
             chatId,
             resourceId: kind,
             label: kind === 'terminal' ? 'Terminal' : 'Notes',
             ...(owner === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
-        });
-    }, [open, workspaceId, target, targetLabel, chatId]);
+        };
+        open(input);
+        if (kind === 'terminal') {
+            const id = unifiedTabId(input);
+            setTerminalOpenRequests(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+        }
+    }, [open, workspaceId, target, targetLabel, chatId, targetRoutingRef]);
 
     // ------------------------------------------------------------------
     // The Search/Explorer navigator (AC-01)
@@ -1751,6 +1765,8 @@ export function UnifiedRightPanel({
                                     onErrorChange={handleErrorChange}
                                     onRegisterSave={handleRegisterSave}
                                     onTerminalSessionsChange={handleTerminalSessions}
+                                    terminalOpenRequest={terminalOpenRequests[tab.id]}
+                                    isActive={isOpen && tab.id === activeId}
                                     onOpenFile={openNavigationFile}
                                     onOpenExternal={openNavigationExternal}
                                     onFileNavigationMount={handleFileNavigationMount}

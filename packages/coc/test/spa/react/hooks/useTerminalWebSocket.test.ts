@@ -116,6 +116,28 @@ describe('useTerminalWebSocket', () => {
         );
     });
 
+    it('routes explicit same-id clone owners while sending the raw workspace id', () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'shared', serverId: 'a', baseUrl: 'https://a.example' },
+            { workspaceId: 'shared', serverId: 'b', baseUrl: 'https://b.example' },
+        ]);
+        const { result } = renderHook(() => useTerminalWebSocket({
+            onMessage: vi.fn(), routingRef: 'remote:b:shared',
+        }));
+        act(() => { result.current.connect('shared', 80, 24); MockWebSocket.last._open(); });
+        expect(MockWebSocket.last.url).toBe('wss://b.example/ws/terminal?workspaceId=shared&cols=80&rows=24');
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(JSON.stringify({
+            type: 'terminal-create', workspaceId: 'shared', cols: 80, rows: 24,
+        }));
+    });
+
+    it('pins an explicit local terminal owner to page origin', () => {
+        registerCloneBaseUrls([{ workspaceId: 'shared', baseUrl: 'https://remote.example' }]);
+        const { result } = renderHook(() => useTerminalWebSocket({ onMessage: vi.fn(), routingRef: null }));
+        act(() => { result.current.connect('shared', 80, 24); });
+        expect(MockWebSocket.last.url).toBe('ws://localhost/ws/terminal?workspaceId=shared&cols=80&rows=24');
+    });
+
     it('AC-07: opens a LOCAL clone PTY against the page origin (unchanged)', () => {
         registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:4000' }]);
         const { result } = renderHook(() =>

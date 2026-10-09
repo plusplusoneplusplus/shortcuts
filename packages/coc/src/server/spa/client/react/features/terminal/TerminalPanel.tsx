@@ -27,6 +27,8 @@ export interface TerminalPanelProps {
     serverSessionId?: string;
     connectionMode?: 'create' | 'attach';
     workspaceId: string;
+    routingRef?: string | null;
+    focusRequest?: number;
     isActive: boolean;
     /**
      * Attached to an exited session (AC-05): the replayed scrollback is still
@@ -96,6 +98,8 @@ export function TerminalPanel({
     serverSessionId,
     connectionMode = 'create',
     workspaceId,
+    routingRef,
+    focusRequest = 0,
     isActive,
     readOnly = false,
     onRestart,
@@ -109,6 +113,7 @@ export function TerminalPanel({
     const attachSessionId = connectionMode === 'attach' ? serverSessionId : undefined;
 
     const { connect, disconnect, sendInput, sendResize } = useTerminalWebSocket({
+        routingRef,
         onMessage: (msg) => {
             const term = xtermRef.current;
             if (!term) return;
@@ -289,6 +294,14 @@ export function TerminalPanel({
             return () => clearTimeout(timer);
         }
     }, [isActive, sendResize]);
+
+    useEffect(() => {
+        if (!isActive || !focusRequest) {
+            return;
+        }
+        const timer = setTimeout(() => xtermRef.current?.focus(), 50);
+        return () => clearTimeout(timer);
+    }, [isActive, focusRequest]);
 
     return (
         <>

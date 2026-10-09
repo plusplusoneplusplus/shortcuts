@@ -103,7 +103,14 @@ host — the chat has no canvas column of its own), `note` renders
 restored from its descriptor (a missing path clears after tree validation)
 and a container-width layout,
 `diff` renders the chat's `WhisperDiffPanel`, and `terminal` renders
-`TerminalView`. The file tree is not among them: it is
+`TerminalView`. The add menu activates the target-owned Terminal tab and passes an
+in-memory `openRequest`; descriptors never persist creation intent. `TerminalView`
+waits for successful hydration before creating through its existing WebSocket
+lifecycle if empty, retains pending creates across repeated requests, and requests
+xterm focus only while active. Existing sessions are focused without adding a PTY.
+Failed hydration uses the terminal notice and permits another explicit request to
+retry. REST and PTY calls carry the tab's concrete owner route.
+The file tree is not among them: it is
 the panel's own column (`ExplorerPanel` in sidebar mode), so no tab mounts a
 nested tab strip or a second editor — that is the "one tab row per panel" rule.
 

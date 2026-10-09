@@ -353,6 +353,11 @@ including regex and multiline pieces, with malformed offsets clamped by the
 shared Explorer match-text splitter.
 
 The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs.
+The add-menu Terminal action activates the dock-target-owned tab and passes an
+ephemeral request to `TerminalView`. Successful session hydration precedes empty-tab
+creation through the canonical PTY lifecycle; pending creates coalesce repeated
+requests. Existing sessions receive focus, and passive mounting/restoration only
+hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
 The strip's divider splits tools (workspace tabs plus the chat's canvases, which
 stay chat-owned) from resources (files, diffs, external); tabs never reorder
 across it. It has a searchable `+` menu and one right-edge navigator that switches between

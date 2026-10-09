@@ -23,6 +23,7 @@ vi.mock('@xterm/xterm', function () { return ({
             container.appendChild(document.createElement('textarea'));
         }),
         dispose: vi.fn(),
+        focus: vi.fn(),
         write: vi.fn(),
         onData: vi.fn(function (callback: (data: string) => void) {
             terminalWebSocketMock.onData = callback;
@@ -58,6 +59,7 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/hooks/useTerm
     }); },
 }); });
 
+import { Terminal } from '@xterm/xterm';
 import { TerminalPanel } from '../../../../src/server/spa/client/react/features/terminal/TerminalPanel';
 
 class MockResizeObserver {
@@ -90,6 +92,16 @@ beforeEach(() => {
 });
 
 describe('TerminalPanel Enter restart', () => {
+    it('focuses xterm for an explicit open request only while active', async () => {
+        const view = renderTerminalPanel({ focusRequest: 1, isActive: false });
+        const term = vi.mocked(Terminal).mock.results[0].value;
+        expect(term.focus).not.toHaveBeenCalled();
+        view.rerender(<TerminalPanel sessionId="client-session" workspaceId="ws-123" isActive focusRequest={1} />);
+        await waitFor(() => expect(term.focus).toHaveBeenCalledTimes(1));
+        view.rerender(<TerminalPanel sessionId="client-session" workspaceId="ws-123" isActive focusRequest={2} />);
+        await waitFor(() => expect(term.focus).toHaveBeenCalledTimes(2));
+    });
+
     it('claims focused Enter for an exited terminal without sending shell input', () => {
         const onRestart = vi.fn();
         const { container } = renderTerminalPanel({ readOnly: true, isActive: true, onRestart });

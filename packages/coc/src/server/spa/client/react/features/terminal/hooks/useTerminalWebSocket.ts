@@ -55,6 +55,7 @@ export type TerminalServerMessage =
     | { type: 'pong' };
 
 export interface UseTerminalWebSocketOptions {
+    routingRef?: string | null;
     onMessage: (msg: TerminalServerMessage) => void;
     onConnect?: () => void;
     onDisconnect?: () => void;
@@ -84,6 +85,7 @@ interface ConnectParams {
 }
 
 export function useTerminalWebSocket({
+    routingRef,
     onMessage,
     onConnect,
     onDisconnect,
@@ -141,7 +143,7 @@ export function useTerminalWebSocket({
         // Route the terminal PTY socket to the workspace's clone (AC-07): a remote
         // clone targets its server's baseUrl; a local clone resolves to undefined →
         // the legacy page-origin URL, so local behavior is unchanged.
-        const cloneBaseUrl = lookupCloneBaseUrl(params.workspaceId);
+        const cloneBaseUrl = routingRef === null ? undefined : lookupCloneBaseUrl(routingRef ?? params.workspaceId);
         const wsUrl = cloneWsUrl(
             `${basePath}/terminal?workspaceId=${encodeURIComponent(params.workspaceId)}&cols=${params.cols}&rows=${params.rows}`,
             cloneBaseUrl,
@@ -242,7 +244,7 @@ export function useTerminalWebSocket({
         };
 
         ws.onerror = () => { /* handled by onclose */ };
-    }, [cleanup]);
+    }, [cleanup, routingRef]);
 
     const connect = useCallback((workspaceId: string, cols: number, rows: number, options?: TerminalConnectOptions) => {
         manualCloseRef.current = false;
