@@ -18,6 +18,7 @@ export * from './pull-requests';
 export * from './queue';
 export * from './schedules';
 export * from './seen-state';
+export * from './sentinel-todos';
 export * from './skills';
 export * from './stats';
 export * from './task-groups';

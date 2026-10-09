@@ -201,6 +201,8 @@ Bookkeeping per Sentinel chat in the parent workspace's `sentinel-todos.json` (p
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`); a repeated `idempotencyKey` returns the original (`200`) |
 | PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
 
+`coc-client` exposes these as `client.sentinelTodos.get/create/update` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
+
 ## Task Groups
 
 Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dreams. Always registered (no feature flag).

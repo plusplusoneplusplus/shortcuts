@@ -450,7 +450,11 @@ text in a panel-scope/resource-id memory map. Panel writes release snapshots
 when their last referencing tab closes; inherited draft/chat tabs share them.
 Clearing a panel releases its snapshots. `UnifiedPasteTab` reads its snapshot by
 panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-text
-copy action and no save or dirty-state registration. The full contract lives in
+copy action and no save or dirty-state registration. With
+`features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
+tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
+ledger from the owning server through `client.sentinelTodos`; only the descriptor
+persists. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

@@ -128,6 +128,8 @@ references before editing. Paths are package-relative.
   newer completed attempt supersedes it). Completion never marks Done: only an explicit
   Sentinel/user verdict does. Job execution status is derived on read, separate from item
   status; remote links are always `unavailable`.
+  The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
+  Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

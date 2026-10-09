@@ -65,6 +65,14 @@ export function unifiedTabTooltip(tab: UnifiedPanelTab): string {
 }
 
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
+    todo: (
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="2.5,4.5 3.7,5.7 5.8,3.4" />
+            <polyline points="2.5,10.5 3.7,11.7 5.8,9.4" />
+            <line x1="8" y1="4.6" x2="13.5" y2="4.6" />
+            <line x1="8" y1="10.6" x2="13.5" y2="10.6" />
+        </svg>
+    ),
     terminal: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="3,4 6,8 3,12" />

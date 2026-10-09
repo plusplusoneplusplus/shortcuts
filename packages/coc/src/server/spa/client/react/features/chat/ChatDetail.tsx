@@ -54,6 +54,7 @@ import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-det
 import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
+import { publishSentinelTodoChat, withdrawSentinelTodoChat } from '../repo-detail/unified-right-panel/sentinelTodoChats';
 import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../repo-detail/unified-right-panel/resolveChatFileLink';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
@@ -729,6 +730,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             withdrawUnifiedChatChanges(chatChangesScopeId, taskId);
         };
     }, [chatChangesScopeId, taskId]);
+
+    // A hosted Sentinel publishes its to-do ledger owner — the chat's parent
+    // workspace and process — so the panel can offer and auto-open its To-do
+    // tab. The panel applies the feature flag; withdrawal follows the host.
+    const sentinelTodoOwnerWorkspaceId = resolveLoadedTaskMode(task) === 'sentinel' && processId
+        ? workspaceId ?? unifiedPanelHost?.workspaceId ?? null
+        : null;
+    useEffect(() => {
+        if (chatChangesScopeId === null || sentinelTodoOwnerWorkspaceId === null || !processId) return;
+        publishSentinelTodoChat(chatChangesScopeId, taskId, { ownerWorkspaceId: sentinelTodoOwnerWorkspaceId, processId });
+        return () => withdrawSentinelTodoChat(chatChangesScopeId, taskId);
+    }, [chatChangesScopeId, taskId, sentinelTodoOwnerWorkspaceId, processId]);
 
     // Hosted file links use the workspace panel. Async group/folder resolution
     // belongs to the initiating chat; a later selection must not claim it.

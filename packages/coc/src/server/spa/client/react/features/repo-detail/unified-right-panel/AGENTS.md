@@ -29,13 +29,13 @@ Three different workspace ids, kept apart on purpose:
   scoped to the repo they were fetched from.
 
 Tabs are scoped by kind: `terminal | notes | note | git | html-page | browser` are workspace-owned,
-`file | canvas | diff | external | paste` belong to the selected chat (`scopeForKind`).
+`file | canvas | diff | external | paste | todo` belong to the selected chat (`scopeForKind`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
-`canvas` with the workspace kinds as `tools` and `file | diff | external | paste` in
+`canvas` and `todo` with the workspace kinds as `tools` and `file | diff | external | paste` in
 `resources`. `visibleTabs` shows workspace tabs, then the chat's canvases, then
 its resources, keeping stored order inside each group; the strip draws its
 divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
@@ -90,6 +90,7 @@ from same-id clones never merge into one tab.
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | The one Git tab per panel scope (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu). Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
+| `sentinelTodoPanelModel.ts` + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
@@ -634,6 +635,31 @@ browser tab: `file-path-preview.ts` sends `coc-open-browser-url`
 (`requestPanelBrowserTab`), and the mounted panel claims it with the dock target
 as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
 (Teams, OneNote, …), the web app, and an unclaimed event keep the default.
+
+## Sentinel To-do
+
+Gated by the live `features.sentinelTodoLedger` flag (`sentinelTodoLedgerEnabled`).
+A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
+and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
+withdraws it with the host; the panel applies the flag. The `todo` descriptor is
+one tab per concrete owner and chat: `resourceId` is the parent process id, and
+the owner takes the panel's `routingRef` only when it is the panel scope itself.
+Only the descriptor persists; the ledger is fetched from the owning server
+(`client.sentinelTodos`, routed like the chat) and refreshed by that server's
+`sentinel-todos-changed` events on a workspace-subscribed socket. Flag-off hides
+stored `todo` tabs in `useUnifiedPanelTabs` without deleting them (the flag loads
+asynchronously), and hides the `+` menu's To-do entry.
+
+The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
+shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
+and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` lists
+active items (Needs attention, In progress, To do), then collapsed Done and
+Archived sections. Every write carries the item revision it was based on; a
+conflict reloads the ledger and keeps the typed draft, and the next save is based
+on the newer revision. Creates carry one idempotency key per draft across retries.
+Late loads are dropped by a sequence counter. Job links only navigate; nothing in
+the tab starts, retries, or cancels a job. Tests live in
+`test/server/sentinel-todos/panel.test.tsx` and `panel-model.test.ts`.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
