@@ -15,7 +15,8 @@ export interface WhatsAppMessagingStatus extends WhatsAppMessagingConfig {
     qr: string | null;
 }
 
-type Bot = Pick<WhatsAppBot, 'start' | 'stop' | 'send' | 'react' | 'listGroups' | 'createGroup'>;
+type Bot = Pick<WhatsAppBot, 'start' | 'stop' | 'send' | 'react' | 'listGroups' | 'createGroup'>
+    & Partial<Pick<WhatsAppBot, 'getMirrorAccountKey'>>;
 type BotFactory = (options: BotOptions) => Promise<Bot>;
 
 const defaults: WhatsAppMessagingConfig = {
@@ -46,6 +47,7 @@ export class WhatsAppMessagingManager {
     private reconnectHandler: (() => Promise<void> | void) | null = null;
     private disposeHandler: (() => void) | null = null;
     private connectionResetHandler: (() => void) | null = null;
+    private mirrorDisconnectHandler: (() => void | Promise<void>) | null = null;
     private inboundLifetime = new AbortController();
     private readonly createBot: BotFactory;
     private readonly pendingStarts = new Set<Promise<void>>();
@@ -86,6 +88,10 @@ export class WhatsAppMessagingManager {
     getStatus(): WhatsAppMessagingStatus {
         return { ...this.config, status: this.status, error: this.error, qr: this.qr };
     }
+
+    getMirrorAccountKey(): string | undefined { return this.bot?.getMirrorAccountKey?.(); }
+
+    setMirrorDisconnectHandler(handler: () => void | Promise<void>): void { this.mirrorDisconnectHandler = handler; }
 
     setMessageHandler(handler: (message: InboundWAMessage, signal?: AbortSignal) => Promise<void>): void {
         this.messageHandler = handler;
@@ -136,6 +142,7 @@ export class WhatsAppMessagingManager {
 
     async connect(repair = false): Promise<void> {
         if (!this.config.enabled) throw new Error('WhatsApp integration is disabled');
+        const mirrorStop = repair ? Promise.resolve().then(() => this.mirrorDisconnectHandler?.()) : undefined;
         const generation = ++this.generation;
         this.resetConnection();
         const oldBot = this.bot;
@@ -144,7 +151,7 @@ export class WhatsAppMessagingManager {
         this.error = null;
         this.qr = null;
         try {
-            await oldBot?.stop();
+            await Promise.all([oldBot?.stop(), mirrorStop]);
             await Promise.allSettled([...this.pendingStarts]);
             if (generation !== this.generation || !this.config.enabled) return;
             if (repair) {
@@ -218,14 +225,17 @@ export class WhatsAppMessagingManager {
         }
     }
 
-    async disconnect(): Promise<void> {
+    disconnectForShutdown(): Promise<void> { return this.disconnect(true); }
+
+    async disconnect(preserveMirror = false): Promise<void> {
+        const mirrorStop = !preserveMirror ? Promise.resolve().then(() => this.mirrorDisconnectHandler?.()) : undefined;
         ++this.generation;
         this.resetConnection();
         const bot = this.bot;
         this.bot = null;
         this.status = 'disconnected';
         this.qr = null;
-        await bot?.stop();
+        await Promise.all([bot?.stop(), mirrorStop]);
     }
 
     private connectedBot(): Bot {

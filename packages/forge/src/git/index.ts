@@ -40,6 +40,7 @@ export {
 export {
     ExecGitOptions,
     execGitAsync,
+    runGitViaWsl,
 } from './exec';
 
 export { GitLogService } from './git-log-service';

@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
+import { createPortal } from 'react-dom';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     SplitWorkspacePanel,
@@ -991,6 +993,153 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
             act(() => { fireEvent.click(expandBtn); });
             expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
             expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-peek'))).toBe('0');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    function renderWithFooter(workspaceId: string, onAdmin: () => void) {
+        return render(
+            <SplitWorkspacePanel
+                workspaceId={workspaceId}
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={<div data-testid="git-content">git</div>}
+                detail={<div data-testid="detail-content">detail</div>}
+                footer={<button type="button" aria-label="Admin" data-testid="footer-admin" onClick={onAdmin}>⚙</button>}
+            />,
+        );
+    }
+
+    it('floats the peek beside the rail so its left-edge footer controls stay clickable', () => {
+        // Regression: the peek was anchored at `left-0`, so the `z-40` rail covered
+        // the panel's left 36px — exactly where the footer Admin gear sits. The click
+        // landed on the rail, which the peek's outside-mousedown handler treats as
+        // outside, closing the peek and dropping the Admin click.
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-admin'), '1');
+            const onAdmin = vi.fn();
+            renderWithFooter('ws-admin', onAdmin);
+            const body = screen.getByTestId('split-workspace-left');
+
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(body.className).toContain('left-9');
+            expect(body.className).not.toContain('left-0');
+
+            // Real pointer sequence on the footer gear inside the temporary peek.
+            const gear = screen.getByTestId('footer-admin');
+            act(() => { fireEvent.mouseDown(gear); });
+            act(() => { fireEvent.mouseUp(gear); fireEvent.click(gear); });
+            expect(onAdmin).toHaveBeenCalledTimes(1);
+            expect(body.classList.contains('hidden')).toBe(false);
+            // The temporary peek leaves the persisted collapse untouched.
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-admin'))).toBe('1');
+
+            // A press on the rail still counts as outside and dismisses the peek.
+            act(() => { fireEvent.mouseDown(screen.getByTestId('split-workspace-left-rail')); });
+            expect(body.classList.contains('hidden')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('footer controls work in the permanently expanded column', () => {
+        const onAdmin = vi.fn();
+        renderWithFooter('ws-admin-expanded', onAdmin);
+        const body = screen.getByTestId('split-workspace-left');
+        expect(body.className).not.toContain('absolute');
+        const gear = screen.getByTestId('footer-admin');
+        act(() => { fireEvent.mouseDown(gear); fireEvent.click(gear); });
+        expect(onAdmin).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
+});
+
+describe('SplitWorkspacePanel collapsed rail — shortcut slot', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+        (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        });
+    });
+
+    /** Mirrors RepoDetail: a host div in the rail, filled by a portal from another subtree. */
+    function PortaledShortcutHarness({ onShortcut }: { onShortcut: () => void }) {
+        const [host, setHost] = React.useState<HTMLDivElement | null>(null);
+        return (
+            <>
+                <SplitWorkspacePanel
+                    workspaceId="ws-slot"
+                    chatList={<div data-testid="chat-content">chat</div>}
+                    gitList={<div data-testid="git-content">git</div>}
+                    detail={<div data-testid="detail-content">detail</div>}
+                    onNewChat={() => {}}
+                    runningCount={1}
+                    queuedCount={1}
+                    railShortcuts={<div ref={setHost} className="contents" />}
+                />
+                {host && createPortal(
+                    <button type="button" data-testid="portaled-shortcut" onClick={onShortcut}>S</button>,
+                    host,
+                )}
+            </>
+        );
+    }
+
+    it('places shortcuts below "+ new chat" and keeps the existing rail controls', () => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'), '1');
+        render(<PortaledShortcutHarness onShortcut={() => {}} />);
+        const rail = screen.getByTestId('split-workspace-left-rail');
+        const ids = Array.from(rail.querySelectorAll('[data-testid]')).map(el => el.getAttribute('data-testid'));
+        expect(ids).toEqual([
+            'split-workspace-left-expand',
+            'split-workspace-left-new-chat',
+            'split-workspace-left-shortcuts',
+            'portaled-shortcut',
+            'split-workspace-left-running',
+            'split-workspace-left-queued',
+        ]);
+    });
+
+    it('omits the slot when no shortcuts are provided', () => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'), '1');
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-slot"
+                chatList={<div />}
+                gitList={null}
+                detail={<div />}
+            />,
+        );
+        expect(screen.queryByTestId('split-workspace-left-shortcuts')).toBeNull();
+    });
+
+    it('a portaled shortcut click closes the hover-peek and leaves the column collapsed', () => {
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'), '1');
+            const onShortcut = vi.fn();
+            render(<PortaledShortcutHarness onShortcut={onShortcut} />);
+            const body = screen.getByTestId('split-workspace-left');
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(body.classList.contains('hidden')).toBe(false);
+
+            act(() => { fireEvent.click(screen.getByTestId('portaled-shortcut')); });
+
+            expect(onShortcut).toHaveBeenCalledTimes(1);
+            expect(body.classList.contains('hidden')).toBe(true);
+            expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'))).toBe('1');
         } finally {
             vi.useRealTimers();
         }

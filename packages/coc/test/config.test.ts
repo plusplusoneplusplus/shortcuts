@@ -1175,6 +1175,8 @@ timeout: 300
                 '  teamsAiAnswerRelay: true',
                 '  teamsBridgeObservability: true',
                 '  teamsMessageReaction: true',
+                '  sentinelDesktopMirror: true',
+                '  sentinelTodoLedger: true',
                 '  sessionContextAttachments: true',
                 '  commitChatLens: true',
                 '  commitChatLensDormantMode: pill',
@@ -1228,6 +1230,17 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+        });
+
+        it.each([undefined, false, true])('resolves the desktop mirror flag and its source (%s)', value => {
+            const configPath = path.join(tmpDir, 'desktop-mirror.yaml');
+            fs.writeFileSync(configPath, value === undefined
+                ? 'features: {}\n'
+                : `features:\n  sentinelDesktopMirror: ${value}\n`);
+
+            const result = getResolvedConfigWithSource(configPath);
+            expect(result.resolved.features.sentinelDesktopMirror).toBe(value ?? false);
+            expect(result.sources['features.sentinelDesktopMirror']).toBe(value === undefined ? 'default' : 'file');
         });
 
         it('reads the language-server session limits from the config file', () => {
@@ -1346,6 +1359,7 @@ timeout: 300
                 '  teamsAiAnswerRelay: true',
                 '  teamsBridgeObservability: false',
                 '  teamsMessageReaction: true',
+                '  sentinelTodoLedger: true',
                 'memoryPromotion:',
                 '  batchSize: 10',
                 '  timeoutMs: 70000',
@@ -1488,6 +1502,8 @@ timeout: 300
                     "ralphMultiAgentGrill": false,
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
+                    "sentinelDesktopMirror": false,
+                    "sentinelTodoLedger": true,
                     "sessionContextAttachments": true,
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
@@ -1696,6 +1712,8 @@ timeout: 300
                   "features.ralphMultiAgentGrill": "default",
                   "features.schedulesInScheduledSlide": "default",
                   "features.scopeSwitcher": "default",
+                  "features.sentinelDesktopMirror": "default",
+                  "features.sentinelTodoLedger": "file",
                   "features.sessionContextAttachments": "default",
                   "features.teamsAiAnswerRelay": "file",
                   "features.teamsBridgeObservability": "file",

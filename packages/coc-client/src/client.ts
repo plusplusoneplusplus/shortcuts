@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DecisionsClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DecisionsClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SentinelTodosClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -28,6 +28,7 @@ export class CocClient {
   readonly queue: QueueClient;
   readonly schedules: SchedulesClient;
   readonly seenState: SeenStateClient;
+  readonly sentinelTodos: SentinelTodosClient;
   readonly servers: ServersClient;
   readonly skills: SkillsClient;
   readonly stats: StatsClient;
@@ -75,6 +76,7 @@ export class CocClient {
     this.queue = new QueueClient(this.transport);
     this.schedules = new SchedulesClient(this.transport);
     this.seenState = new SeenStateClient(this.transport);
+    this.sentinelTodos = new SentinelTodosClient(this.transport);
     this.servers = new ServersClient(this.transport);
     this.skills = new SkillsClient(this.transport);
     this.stats = new StatsClient(this.transport);

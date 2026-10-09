@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron';
 import { defaultDataDir } from './server-controller';
-import { browserProfilePath, readBrowserEngine, writeBrowserEngine } from './browser-preferences';
+import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
@@ -12,7 +12,7 @@ import {
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
-    BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
+    BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_PAGE_ZOOM_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
     BROWSER_VIEW_HIDE_CHANNEL, BROWSER_VIEW_NAV_CHANNEL, BROWSER_VIEW_NAVIGATE_CHANNEL,
     BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_ADOPT_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
@@ -73,6 +73,8 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         fileHost: new ElectronFilePreviewHost(),
         getDefault: () => readBrowserEngine(dataDir),
         saveDefault: engine => writeBrowserEngine(dataDir, engine),
+        getPageZoom: () => readBrowserPageZoom(dataDir),
+        savePageZoom: percent => writeBrowserPageZoom(dataDir, percent),
         send: (id, channel, payload) => {
             const window = owners.get(id);
             if (!window || window.isDestroyed() || window.webContents.isDestroyed()) { return; }
@@ -176,6 +178,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.handle(BROWSER_PREFERENCES_SET_CHANNEL, (event, engine: unknown) =>
         ownWindow(event.sender) ? manager!.select(engine) : { ok: false, reason: 'no-window' });
+    ipcMain.handle(BROWSER_PAGE_ZOOM_SET_CHANNEL, (event, percent: unknown) =>
+        event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) && ownWindow(event.sender)
+            ? manager!.setPageZoom(percent) : { ok: false, reason: 'no-window' });
     ipcMain.handle(BROWSER_CLEAR_DATA_CHANNEL, async (event, engine: unknown) => {
         const window = historyWindow(event);
         if (!window) { return { ok: false, reason: 'no-window' }; }

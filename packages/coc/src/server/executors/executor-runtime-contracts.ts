@@ -40,6 +40,7 @@ import type { AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { McpOauthManager } from '../mcp-oauth';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
+import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
@@ -128,6 +129,12 @@ export interface ExecutorRuntimeCapabilities {
     readonly getLaunchRalph?: () => LaunchRalphFn | undefined;
     /** Provider/tier helpers and the local + remote workspace directory for `send_to_conversation` / `list_workspaces`. */
     readonly getSendToConversationRuntime?: () => SendToConversationRuntimeOptions | undefined;
+    /**
+     * Shared Sentinel to-do command service, bound at the route layer. Returns
+     * `undefined` while `features.sentinelTodoLedger` is off, so Sentinel chats
+     * get the `sentinel_todos` tool only when the flag is on.
+     */
+    readonly getSentinelTodos?: () => SentinelTodoService | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
     readonly getDecisionService?: () => DecisionService | undefined;
     /** MCP OAuth manager used to surface an interactive authorization prompt. */
@@ -198,6 +205,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getSendMessage'
     | 'getLaunchRalph'
     | 'getSendToConversationRuntime'
+    | 'getSentinelTodos'
     | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'

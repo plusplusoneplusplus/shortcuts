@@ -42,6 +42,7 @@ export default defineConfig({
             // Subpath alias must precede the core alias: Vite matches aliases in
             // order and treats a bare package name as a prefix of its subpaths.
             '@plusplusoneplusplus/coc-connector/teams': path.resolve(__dirname, 'packages/coc-connector/src/teams/index.ts'),
+            '@plusplusoneplusplus/coc-connector/whatsapp': path.resolve(__dirname, 'packages/coc-connector/src/whatsapp/index.ts'),
             '@plusplusoneplusplus/coc-connector': path.resolve(__dirname, 'packages/coc-connector/src/index.ts'),
         },
     },

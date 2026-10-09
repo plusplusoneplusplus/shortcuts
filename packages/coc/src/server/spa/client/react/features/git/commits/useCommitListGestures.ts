@@ -161,18 +161,31 @@ export function useCommitListGestures(options: {
         setTooltipAnchorRect(null);
     }, []);
 
-    // Dismiss tooltip on touch start (handles hybrid devices that switch from mouse to touch)
+    // Portaled tooltips must close with their peek panel on outside clicks or Escape.
     useEffect(() => {
-        const onTouchStart = () => {
+        const dismiss = () => {
             if (hoverTimerRef.current) {
                 clearTimeout(hoverTimerRef.current);
                 hoverTimerRef.current = null;
             }
+            if (hideTimerRef.current) {
+                clearTimeout(hideTimerRef.current);
+                hideTimerRef.current = null;
+            }
             setHoveredCommit(null);
             setTooltipAnchorRect(null);
         };
-        document.addEventListener('touchstart', onTouchStart, { passive: true });
-        return () => document.removeEventListener('touchstart', onTouchStart);
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') dismiss();
+        };
+        document.addEventListener('touchstart', dismiss, { passive: true });
+        document.addEventListener('mousedown', dismiss);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('touchstart', dismiss);
+            document.removeEventListener('mousedown', dismiss);
+            document.removeEventListener('keydown', onKeyDown);
+        };
     }, []);
 
     // Clean up timers on unmount

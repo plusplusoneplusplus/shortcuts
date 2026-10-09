@@ -18,6 +18,7 @@ const blankImportCheck = process.argv.includes('--blank-cookie-import-check') ||
 const cookieImportCheck = process.argv.includes('--cookie-import-check');
 const focusCheck = process.argv.includes('--focus-check');
 const layoutCheck = process.argv.includes('--layout-check');
+const zoomCheck = process.argv.includes('--zoom-check');
 const execFileAsync = promisify(execFile);
 // The profile (userData/coc/browser/electron) must sit inside Electron's userData:
 // macOS sandboxes the network service to userData and the user temp dir, and a
@@ -135,7 +136,54 @@ app.whenReady().then(async () => {
     const home = await settled(main, 'main', s => s.title === (blankClearCheck ? 'Login' : 'Home'));
     await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
     await waitFor(() => reports.get('main'), 'fixture page report');
-    if (blankImportCheck) {
+    if (zoomCheck) {
+        const ratio = async (key, baseline = 1, expected) => {
+            reports.delete(key);
+            return (await waitFor(() => {
+                command(key, 'report');
+                const report = reports.get(key);
+                return report && (expected === undefined || Math.abs(report.pixelRatio / baseline - expected) < 0.005) ? report : null;
+            }, key + ' zoom report')).pixelRatio / baseline;
+        };
+        const baseline = await ratio('main');
+        const other = await makeWindow();
+        await call(other, 'open', 'other', base + '/?tab=other', 'remote-workspace');
+        await settled(other, 'other', s => s.title === 'Home');
+        await call(other, 'hide', 'other');
+        const otherBaseline = await ratio('other');
+        main.webContents.setZoomFactor(1.25);
+        const update = await call(main, 'setPageZoom', 150);
+        const active = await ratio('main', baseline, 1.5);
+        const inactive = await ratio('other', otherBaseline, 1.5);
+        await call(main, 'setPageZoom', 100);
+        const earlyResetActive = await ratio('main', baseline, 1);
+        const earlyResetInactive = await ratio('other', otherBaseline, 1);
+        await call(main, 'setPageZoom', 150);
+        await call(main, 'open', 'new', base + '/?tab=new', 'workspace-b');
+        await settled(main, 'new', s => s.title === 'Home');
+        await call(main, 'hide', 'main');
+        await call(main, 'setBounds', 'new', { x: 350, y: 70, width: 420, height: 320 });
+        const created = await ratio('new', baseline, 1.5);
+        await call(main, 'navigate', 'main', base.replace('127.0.0.1', 'localhost') + '/second?tab=main');
+        await settled(main, 'main', s => s.title === 'Second');
+        const navigated = await ratio('main', baseline, 1.5);
+        await call(main, 'close', 'new');
+        await call(main, 'open', 'new', base + '/?tab=new', 'workspace-b');
+        await settled(main, 'new', s => s.title === 'Home');
+        const restored = await ratio('new', baseline, 1.5);
+        const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'desktop-browser.json'), 'utf8'));
+        await call(main, 'hide', 'new');
+        await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
+        main.focus();
+        const reset = await call(other, 'setPageZoom', 100);
+        const resetActive = await ratio('main', baseline, 1);
+        const resetInactive = await ratio('other', otherBaseline, 1);
+        const resetNew = await ratio('new', baseline, 1);
+        emit('zoom', {
+            update, active, inactive, created, navigated, restored,
+            saved: saved.pageZoomPercent, reset, earlyResetActive, earlyResetInactive, resetActive, resetInactive, resetNew, shell: main.webContents.getZoomFactor(),
+        });
+    } else if (blankImportCheck) {
         emit('blank-authenticated', { url: home.url, report: reports.get('main'), receivedCookies: importedRequests.get('main') });
     } else if (cookieImportCheck) {
         const original = base.replace('127.0.0.1', 'localhost') + '/cookie-auth?tab=main';

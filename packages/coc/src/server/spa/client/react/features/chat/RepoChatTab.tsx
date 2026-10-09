@@ -18,6 +18,7 @@ import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useMobileWorkspacePane } from '../repo-detail/mobileWorkspacePane';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
+import { SentinelRailShortcut } from './SentinelRailShortcut';
 import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
 import type { ScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
@@ -63,6 +64,11 @@ export interface RepoChatTabProps {
     detailActive?: boolean;
     /** Fired when the user clicks in the chat list, so the parent marks chat last-clicked. */
     onActivateDetail?: () => void;
+    /**
+     * Collapsed-rail host (`SplitWorkspacePanel` `railShortcuts`) for the
+     * latest-Sentinel shortcut. Split layout only; null while the rail is hidden.
+     */
+    railShortcutContainer?: HTMLElement | null;
     /**
      * Pin the shared status/action cluster to the bottom of this tab's own
      * conversation-list column, instead of the app-wide `GlobalStatusDock`
@@ -146,8 +152,8 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, dockStatusFooter }: RepoChatTabProps) {
-    const routeId = workspaceId.startsWith('group-') ? sourceSelectionId ?? workspaceId : workspaceId;
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter }: RepoChatTabProps) {
+    const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     // Per-clone client (AC-07): the Activity tab's conversation LIST + queue +
@@ -729,6 +735,13 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         hoverPeek.close();
     }, [selectTask, hoverPeek]);
 
+    // The collapsed-rail Sentinel shortcut opens through the same selection path
+    // as a list click, leaving the rail collapsed.
+    const handleOpenRailShortcut = useCallback((task: any) => {
+        onActivateDetail?.();
+        selectTask(task.id, task);
+    }, [onActivateDetail, selectTask]);
+
     // Auto-dismiss notification when a deep-linked task is viewed via hash URL
     useEffect(() => {
         if (!selectedTaskId) return;
@@ -1295,6 +1308,17 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 >
                     {listPane}
                 </div>
+                {railShortcutContainer
+                    ? createPortal(
+                        <SentinelRailShortcut
+                            running={mergedRunning}
+                            history={mergedHistory}
+                            selectedTaskId={selectedTaskId}
+                            onOpen={handleOpenRailShortcut}
+                        />,
+                        railShortcutContainer,
+                    )
+                    : null}
                 {detailActive && detailContainer
                     ? createPortal(
                         <div

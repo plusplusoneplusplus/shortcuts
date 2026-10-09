@@ -303,8 +303,13 @@ provider override, and sends only `context.autoProviderRouting.requested` so the
 resolves a concrete provider at scheduling time. With the flag disabled, persisted `auto`
 selections are ignored and the composer falls back to a concrete provider. Concrete
 selections send `payload.provider`. Follow-ups show the pending concrete provider in the
-composer and the active binding everywhere else, never offer Auto, and omit the provider
-field unless the user confirms a different provider.
+composer and the active binding everywhere else. `resolveActiveChatProvider` resolves a valid
+`activeProviderSession.provider` before each surface's original fallback and drives the composer,
+provider badges, and metadata provider display. Model and effort catalogs follow the
+composer provider on the owning server. Follow-ups never offer Auto and omit the provider
+field unless the user confirms a different provider. Optimistic turns carry the requested
+provider or active provider without adding an implicit request override; server streaming
+attribution is covered in [chat-conversation.md](chat-conversation.md).
 
 `repos/modeConfig.ts` owns the central `WORKFLOW_REGISTRY` — labels, icons, tooltips, pill
 dots, accent colors, categories, surfaces, and feature flags for every chat and workflow

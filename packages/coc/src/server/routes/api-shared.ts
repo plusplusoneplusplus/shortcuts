@@ -20,6 +20,7 @@ export interface ApiRouteContext {
     dataDir?: string;
     getWsServer?: () => ProcessWebSocketServer | undefined;
     activeWorkspaceTracker?: ActiveWorkspaceTracker;
+    getSentinelMirror?: () => import('../messaging/sentinel-mirror-service').SentinelMirrorService | undefined;
     gitOpsStore: GitOpsStore;
     db?: NativeDatabase;
     /**

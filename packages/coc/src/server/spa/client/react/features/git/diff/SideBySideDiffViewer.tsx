@@ -90,6 +90,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             onCommentClick,
             matchRangesByLine,
             showFileBanners,
+            onFileNavigate,
             diffSelectionDragSource,
         },
         ref
@@ -233,6 +234,30 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             topRowIndex,
         });
 
+        const pickerFiles = useMemo(() => fileBanners?.map(banner => banner.path) ?? [], [fileBanners]);
+        const pickerScope = JSON.stringify(diffSelectionDragSource);
+        const scrollToFile = (path: string) => {
+            if (virtualized) {
+                const idx = fileHeaderRows.get(path);
+                if (idx !== undefined) rowVirtualizer.scrollToIndex(idx, { align: 'start' });
+                return;
+            }
+            const container = containerRef.current;
+            if (!container) return;
+            const target = Array.from(container.querySelectorAll<HTMLElement>('[data-file-path]'))
+                .find(element => element.getAttribute('data-file-path') === path && !element.closest('[data-testid="diff-file-banner-pinned-wrapper"]'));
+            if (!target) return;
+            const scrollParent = getScrollableAncestor(container);
+            scrollParent.scrollTo({
+                top: scrollParent.scrollTop + target.getBoundingClientRect().top - scrollParent.getBoundingClientRect().top,
+                behavior: 'smooth',
+            });
+        };
+        const selectFile = (path: string) => {
+            scrollToFile(path);
+            onFileNavigate?.(path);
+        };
+
         useImperativeHandle(ref, () => {
             if (virtualized) {
                 const scrollToEdit = (n: number) => rowVirtualizer.scrollToIndex(editStartRows[n], { align: 'center' });
@@ -257,11 +282,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         currentHunkIndexRef.current = index;
                         scrollToEdit(index);
                     },
-                    scrollToFile: (filePath: string) => {
-                        const idx = fileHeaderRows.get(filePath);
-                        if (idx === undefined) return;
-                        rowVirtualizer.scrollToIndex(idx, { align: 'start' });
-                    },
+                    scrollToFile,
                     scrollLineIntoView: (lineIndex: number) => {
                         const rowIdx = rowByLineIndex.get(lineIndex);
                         if (rowIdx === undefined) return;
@@ -317,22 +338,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     behavior: 'smooth',
                 });
             },
-            scrollToFile: (filePath: string) => {
-                const container = containerRef.current;
-                if (!container) return;
-                const els = container.querySelectorAll<HTMLElement>('[data-file-path]');
-                let target: HTMLElement | null = null;
-                for (const el of Array.from(els)) {
-                    if (el.getAttribute('data-file-path') === filePath) { target = el; break; }
-                }
-                if (!target) return;
-                const scrollParent = getScrollableAncestor(container);
-                const parentTop = scrollParent.getBoundingClientRect().top;
-                scrollParent.scrollTo({
-                    top: scrollParent.scrollTop + target.getBoundingClientRect().top - parentTop,
-                    behavior: 'smooth',
-                });
-            },
+            scrollToFile,
             scrollLineIntoView: (lineIndex: number) => {
                 const container = containerRef.current;
                 if (!container) return;
@@ -488,7 +494,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             // File-banner row: spans full width, replaces the git preamble and
             // acts as this file's scroll anchor.
             if (row.fileBanner) {
-                return <FileBannerRow key={rowIdx} banner={row.fileBanner} />;
+                return <FileBannerRow key={`${pickerScope}:${rowIdx}`} banner={row.fileBanner} files={pickerFiles} onSelectFile={selectFile} />;
             }
 
             // Hunk-header row: spans full width, acts as nav anchor
@@ -681,7 +687,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     {dockedBanner && (
                         <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
                             <div className="absolute inset-x-0 top-0">
-                                <FileBannerRow banner={dockedBanner} pinned data-testid="diff-file-banner-pinned" />
+                                <FileBannerRow key={pickerScope} banner={dockedBanner} files={pickerFiles} onSelectFile={selectFile} pinned data-testid="diff-file-banner-pinned" />
                             </div>
                         </div>
                     )}

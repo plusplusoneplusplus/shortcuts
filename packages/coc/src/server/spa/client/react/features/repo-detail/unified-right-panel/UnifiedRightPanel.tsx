@@ -116,6 +116,8 @@ import {
 import { desktopHtmlPageBridge, HTML_PAGE_VIEW_PREFIX, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
+import { useSentinelTodoChat, useSentinelTodoEvents, useSentinelTodoLedgerEnabled } from './sentinelTodoChats';
+import { sentinelTodoTabInput, shouldAutoOpenSentinelTodoTab, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import type {
     EditorNavigationController,
     EditorNavigationReason,
@@ -1582,6 +1584,33 @@ export function UnifiedRightPanel({
         open(input);
     }, [open]);
 
+    // A hosted Sentinel chat's To-do tab. The owner is the chat's parent
+    // workspace; it takes the panel's concrete route only when it is the
+    // panel's own scope, so same-id workspaces on other hosts stay distinct.
+    const todoEnabled = useSentinelTodoLedgerEnabled();
+    const sentinelChat = useSentinelTodoChat(workspaceId, chatId);
+    const todoOwner = useMemo<SentinelTodoOwner | null>(() => {
+        if (!todoEnabled || sentinelChat === null) return null;
+        return {
+            ...sentinelChat,
+            ...(sentinelChat.ownerWorkspaceId === workspaceId && routingRef !== undefined ? { ownerRoutingRef: routingRef } : {}),
+        };
+    }, [todoEnabled, sentinelChat, workspaceId, routingRef]);
+    const todoInput = useMemo(
+        () => (todoOwner !== null && chatId !== null ? sentinelTodoTabInput(todoOwner, chatId) : null),
+        [todoOwner, chatId],
+    );
+    // First tracking use opens To-do only when the chat shows no tab at all, so
+    // it never steals focus or reopens a tab the user closed.
+    const panelStateRef = useRef(state);
+    panelStateRef.current = state;
+    useSentinelTodoEvents(todoOwner, event => {
+        if (todoInput === null || chatId === null) return;
+        if (!shouldAutoOpenSentinelTodoTab(panelStateRef.current, chatId, todoInput, event)) return;
+        open(todoInput);
+        setWorkspaceDockOpen(workspaceId, true);
+    });
+
     // The strip's repo picker. A switch closes the "+" menu: its search results
     // are scoped to the repo that was current when they were fetched, so keeping
     // it open would list files from the repo the user just left.
@@ -1675,6 +1704,7 @@ export function UnifiedRightPanel({
                             targetRoutingRef={targetRoutingRef}
                             targets={targetOptions}
                             onOpenResource={openResource}
+                            todoInput={todoInput}
                             onOpenWorkspaceResource={kind => {
                                 setMenuOpen(false);
                                 // Explorer is a panel mode, not a resource tab.

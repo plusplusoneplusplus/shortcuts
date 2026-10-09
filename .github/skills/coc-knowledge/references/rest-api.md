@@ -191,6 +191,18 @@ Repo-scoped annotations outside conversation history; all routes take `?workspac
 | POST | `/api/processes/:processId/sidenotes/:id/follow-up?workspace=<id>` | Append grounded answer to stored thread; empty → `400`, missing → `404`, cap → `409`, AI failure → `502`/`503` |
 | DELETE | `/api/processes/:processId/sidenotes/:id?workspace=<id>` | Delete one side-note (`204`; `404` when missing) |
 
+## Sentinel To-do Ledger
+
+Bookkeeping per Sentinel chat in the parent workspace's `sentinel-todos.json` (partitioned by parent process ID; wiped with server data, never exported). `features.sentinelTodoLedger` defaults off (`404` off). `:workspaceId` is the parent chat's repo or group on the owning server; non-Sentinel or mismatched owners → `404`. Writes never start, retry, or cancel jobs. Change commits broadcast `sentinel-todos-changed` (`workspaceId`, `processId`, `ledgerRevision`, `itemId`).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId` | Ledger → `{ revision, items }`; each item's `jobs[]` link carries a derived `execution` (remote → `unavailable`) |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`); a repeated `idempotencyKey` returns the original (`200`) |
+| PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
+
+`coc-client` exposes these as `client.sentinelTodos.get/create/update` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
+
 ## Task Groups
 
 Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dreams. Always registered (no feature flag).

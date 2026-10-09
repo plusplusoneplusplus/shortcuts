@@ -1,9 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { BrowserEngine } from '../../../shared/file-path/browser-bridge';
+import type { BrowserEngine, BrowserPreferences, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { nativeViewToolbarButton } from './NativeViewTab';
 
-export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory }: {
+export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, bridge }: {
     open: boolean;
     onOpenChange(open: boolean): void;
     engine?: BrowserEngine;
@@ -11,11 +11,63 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     onOpenExternal(): void;
     onImportCookies?: () => void;
     onHistory?(): void;
+    bridge?: DesktopBrowserBridge;
 }) {
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const id = useId();
     const [position, setPosition] = useState({ top: 0, right: 0 });
+    const [preferences, setPreferences] = useState<BrowserPreferences | null>(null);
+    const [zoomError, setZoomError] = useState<string | null>(null);
+    const [zoomBusy, setZoomBusy] = useState(false);
+    const [zoomUnsupported, setZoomUnsupported] = useState(false);
+    const zoomPending = useRef(false);
+    const zoomRequest = useRef(0);
+
+    useEffect(() => {
+        if (!open || !bridge?.setPageZoom) return;
+        let disposed = false;
+        const refresh = async () => {
+            const request = ++zoomRequest.current;
+            try {
+                const result = await bridge.getPreferences();
+                if (!disposed && request === zoomRequest.current) setPreferences(result);
+            } catch (error) {
+                if (!disposed && request === zoomRequest.current) {
+                    setPreferences(null);
+                    setZoomError(error instanceof Error ? error.message : 'Could not read web page zoom.');
+                }
+            }
+        };
+        void refresh();
+        const off = bridge.onPreferencesChanged(() => { void refresh(); });
+        return () => { disposed = true; ++zoomRequest.current; off(); };
+    }, [open, bridge]);
+
+    const zoom = preferences?.pageZoom;
+    const zoomAvailable = Boolean(!zoomUnsupported && bridge?.setPageZoom && zoom
+        && preferences?.engines.some(item => item.engine === (engine ?? preferences.defaultEngine) && item.available));
+    const changeZoom = async (percent: number) => {
+        if (!bridge?.setPageZoom || !zoomAvailable || zoomPending.current) return;
+        zoomPending.current = true;
+        setZoomBusy(true);
+        setZoomError(null);
+        try {
+            const result = await bridge.setPageZoom(percent);
+            if (!result.ok) {
+                setZoomError(result.message ?? `Could not change web page zoom: ${result.reason}`);
+                if (result.reason === 'unsupported') setZoomUnsupported(true);
+            }
+            const request = ++zoomRequest.current;
+            const next = await bridge.getPreferences();
+            if (request === zoomRequest.current) setPreferences(next);
+        } catch (error) {
+            setZoomError(error instanceof Error ? error.message : 'Could not change web page zoom.');
+        } finally {
+            zoomPending.current = false;
+            setZoomBusy(false);
+        }
+    };
 
     useLayoutEffect(() => {
         if (!open) return;
@@ -96,6 +148,22 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                 {engine && <div role="presentation" className="px-2 py-1 text-[#616161] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">
                     Engine: {engine === 'electron' ? 'Electron' : 'WebView2'}
                 </div>}
+                <div role="group" aria-label="Web page zoom" className="border-b border-[#e5e5e5] px-2 py-1 dark:border-[#333]">
+                    <div className="mb-1 text-[#616161] dark:text-[#9d9d9d]" title="All embedded web pages in every workspace and desktop window. Does not change app zoom.">Web page zoom (all pages)</div>
+                    <div className="flex items-center gap-1">
+                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label="Zoom out all web pages"
+                            disabled={!zoomAvailable || zoomBusy || !zoom || zoom.percent <= zoom.min}
+                            onClick={() => zoom && void changeZoom(zoom.percent - zoom.step)}>-</button>
+                        <span className="min-w-10 text-center" aria-live="polite" data-testid="browser-page-zoom-percent">{zoomAvailable && zoom ? `${zoom.percent}%` : 'Unavailable'}</span>
+                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label="Zoom in all web pages"
+                            disabled={!zoomAvailable || zoomBusy || !zoom || zoom.percent >= zoom.max}
+                            onClick={() => zoom && void changeZoom(zoom.percent + zoom.step)}>+</button>
+                        <button type="button" role="menuitem" className={nativeViewToolbarButton} aria-label="Reset all web pages to 100%"
+                            disabled={!zoomAvailable || zoomBusy || zoom?.percent === 100}
+                            onClick={() => void changeZoom(100)}>Reset</button>
+                    </div>
+                    {zoomError && <div role="alert" className="mt-1 text-[#a1260d] dark:text-[#f48771]">{zoomError}</div>}
+                </div>
                 <button
                     type="button"
                     role="menuitem"

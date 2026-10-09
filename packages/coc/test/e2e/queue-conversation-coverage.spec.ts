@@ -180,11 +180,8 @@ test.describe('Mode Selector', () => {
                 'true',
             );
 
-            // Capture the follow-up POST body
-            let capturedBody: Record<string, unknown> | null = null;
-            await page.route('**/api/processes/**/message', async (route) => {
-                const postData = route.request().postDataJSON() as Record<string, unknown>;
-                capturedBody = postData;
+            const messagePath = `/api/processes/queue_${task.id}/message`;
+            await page.route(url => url.pathname === messagePath, async (route) => {
                 await route.fulfill({
                     status: 200,
                     contentType: 'application/json',
@@ -199,16 +196,14 @@ test.describe('Mode Selector', () => {
                 sessionId: 'sess-mode',
             });
 
-            // Send follow-up
+            const followUpRequest = page.waitForRequest(request =>
+                request.method() === 'POST' && new URL(request.url()).pathname === messagePath);
             await page.fill('[data-testid="activity-chat-input"]', 'Follow-up in ask mode');
             await page.press('[data-testid="activity-chat-input"]', 'Enter');
 
-            // Wait a moment for the request to fire
-            await page.waitForTimeout(1000);
-
-            // Verify mode was sent
-            expect(capturedBody).not.toBeNull();
-            expect(capturedBody!.mode).toBe('ask');
+            const sentRequest = await followUpRequest;
+            expect(sentRequest.postDataJSON().mode).toBe('ask');
+            expect(new URL(sentRequest.url()).searchParams.get('workspace')).toBe(wsId);
         } finally {
             cleanup();
         }
@@ -375,7 +370,7 @@ test.describe('Retry Button', () => {
             await waitForConversation(page, 2);
 
             // Intercept POST /message to return 500
-            await page.route('**/api/processes/**/message', (route) => {
+            await page.route(url => url.pathname === `/api/processes/queue_${task.id}/message`, (route) => {
                 route.fulfill({
                     status: 500,
                     contentType: 'application/json',
@@ -405,10 +400,13 @@ test.describe('Retry Button', () => {
             await waitForConversation(page, 2);
 
             // First intercept: fail
-            let requestCount = 0;
-            await page.route('**/api/processes/**/message', async (route) => {
-                requestCount++;
-                if (requestCount === 1) {
+            const sentMessages: { content: string; workspace: string | null }[] = [];
+            await page.route(url => url.pathname === `/api/processes/queue_${task.id}/message`, async (route) => {
+                sentMessages.push({
+                    content: route.request().postDataJSON().content,
+                    workspace: new URL(route.request().url()).searchParams.get('workspace'),
+                });
+                if (sentMessages.length === 1) {
                     await route.fulfill({
                         status: 500,
                         contentType: 'application/json',
@@ -432,6 +430,11 @@ test.describe('Retry Button', () => {
 
             // Click retry
             await page.click('[data-testid="retry-btn"]');
+
+            await expect.poll(() => sentMessages).toEqual([
+                { content: 'Retried message', workspace: wsId },
+                { content: 'Retried message', workspace: wsId },
+            ]);
 
             // A new user bubble with the same text should appear
             await expect(page.locator('.chat-message.user').last().locator('.chat-message-content'))

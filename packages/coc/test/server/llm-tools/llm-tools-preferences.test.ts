@@ -158,6 +158,28 @@ describe('readEffectiveDisabledLlmTools', () => {
         expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual([]);
     });
 
+    it('uses defaults for an unset tool preference even with enabled memory scopes', () => {
+        writePreferences(tmpDir, { global: { memoryV2: { enabled: true } } });
+        writeRepoPreferences(tmpDir, wsId, { memoryV2: { enabled: true } });
+
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toContain('save_memory');
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toContain('recall_memory');
+        expect(readRepoPreferences(tmpDir, wsId).disabledLlmTools).toBeUndefined();
+    });
+
+    it('isolates explicit tool choices from other workspaces and memory scopes', () => {
+        writePreferences(tmpDir, { global: { memoryV2: { enabled: true } } });
+        writeRepoPreferences(tmpDir, wsId, { disabledLlmTools: ['recall_memory'] });
+        writeRepoPreferences(tmpDir, 'other', {
+            disabledLlmTools: ['save_memory'], memoryV2: { enabled: false },
+        });
+
+        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(['recall_memory']);
+        expect(readEffectiveDisabledLlmTools(tmpDir, 'other')).toEqual(['save_memory']);
+        expect(readEffectiveDisabledLlmTools(tmpDir, 'fresh')).toEqual(getEffectiveDefaultDisabledTools());
+        expect(readRepoPreferences(tmpDir, 'fresh')).toEqual({});
+    });
+
     it('filters stale create_bug from explicit repo preferences', () => {
         fs.mkdirSync(path.join(tmpDir, 'repos', wsId), { recursive: true });
         fs.writeFileSync(

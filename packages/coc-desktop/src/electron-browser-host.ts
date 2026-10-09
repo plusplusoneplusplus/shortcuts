@@ -42,6 +42,7 @@ interface BrowserEntry {
     ownerId: number;
     contents?: WebContents;
     shown: boolean;
+    pageZoom: number;
     authorization?: ReturnType<typeof authorizeBrowserWebview>;
     viewId: string;
     /** Last URL we were asked to load; reload after a failed load retries it. */
@@ -221,11 +222,25 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
 
 function wireView(entry: BrowserEntry): void {
     const wc = entry.contents!;
+    // Hidden web tabs must still process shared zoom and layout changes.
+    wc.setBackgroundThrottling(false);
+    const applyZoom = () => {
+        if (!entry.closed && !wc.isDestroyed()) { wc.setZoomFactor(entry.pageZoom / 100); }
+    };
+    applyZoom();
+    // Chromium's origin-scoped zoom can change on cross-origin navigation.
+    wc.on('dom-ready', applyZoom);
+    wc.on('did-navigate', applyZoom);
+    wc.on('zoom-changed', applyZoom);
     wireNavigation(entry, wc);
     wc.on('before-input-event', (event, input) => {
         // Only the embedded view, never authentication popups, owns this shortcut.
         const key = input.key.toLowerCase();
         const modifier = process.platform === 'darwin' ? input.meta : input.control;
+        if (modifier && !input.alt && ['+', '=', '-', '_', '0'].includes(key)) {
+            event.preventDefault();
+            return;
+        }
         if (entry.closed || !entry.shown || input.type !== 'keyDown'
             || !['w', 't', 'l'].includes(key) || !modifier || input.alt
             || (key !== 'w' && input.shift) || (key === 'l' && !entry.sink.focusAddressRequested)) { return; }
@@ -291,7 +306,7 @@ function openView(sender: WebContents, request: BrowserViewRequest, sink: Browse
     if (!win) {
         throw new BrowserHostError('no-window', 'Browser window is closed.');
     }
-    const entry: BrowserEntry = { win, ownerId: sender.id, shown: false, viewId, requestedUrl: url, popups: new Set(), sink, closed: false };
+    const entry: BrowserEntry = { win, ownerId: sender.id, shown: false, pageZoom: request.pageZoomPercent ?? 100, viewId, requestedUrl: url, popups: new Set(), sink, closed: false };
     entries.add(entry);
     entry.authorization = authorizeBrowserWebview(sender.id, url, profileSession!, guest => {
         entry.contents = guest;
@@ -375,6 +390,10 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
+            setPageZoom: percent => {
+                entry.pageZoom = percent;
+                if (entry.contents && !entry.contents.isDestroyed()) { entry.contents.setZoomFactor(percent / 100); }
+            },
             setBounds: bounds => setBounds(entry, bounds),
             focus: () => entry.contents?.focus(),
             close: () => destroyEntry(entry),

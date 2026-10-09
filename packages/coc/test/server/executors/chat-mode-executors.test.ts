@@ -156,6 +156,26 @@ describe('ChatBaseExecutor provider routing', () => {
         });
     });
 
+    it('announces the initial assistant provider binding before streaming tokens', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'copilot',
+            resolveAiServiceForProvider: () => sdkMocks.service as any,
+        }));
+        sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+            options.onSessionCreated('initial-session');
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('queue_live-provider', {
+                type: 'provider-session', turnIndex: 1,
+                activeProviderSession: expect.objectContaining({
+                    provider: 'copilot', sessionId: 'initial-session', firstTurnIndex: 0,
+                }),
+            });
+            options.onStreamingChunk('partial');
+            return { success: true, response: 'partial', sessionId: 'initial-session', toolCalls: [] };
+        });
+        const result = await executor.execute(makeChatTask('ask', 'live-provider'), 'Hello');
+        expect(result).toMatchObject({ response: 'partial', provider: 'copilot' });
+    });
+
     it('rejects an image turn before OpenCode can execute the caption alone', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             provider: 'opencode',

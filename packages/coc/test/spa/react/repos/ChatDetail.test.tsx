@@ -37,6 +37,7 @@ const { mockState } = vi.hoisted(() => ({
         defaultChatStyle: 'default' as string,
         sessionContextAttachmentsEnabled: false,
         sendFollowUp: vi.fn().mockResolvedValue(undefined),
+        modelLookups: vi.fn(),
         closeFollowUpStream: vi.fn(),
         onSendComplete: vi.fn(),
         stopStreaming: vi.fn(),
@@ -191,7 +192,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 
 // useModels — return empty list so ChatDetail renders without a real API
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
-    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+    useModels: (...args: unknown[]) => {
+        mockState.modelLookups(...args);
+        return { models: [], loading: false, error: null, reload: vi.fn() };
+    },
 }));
 
 // useProviderEffortTiers — return empty tier map so ChatDetail renders without a real API
@@ -317,7 +321,11 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
 vi.mock('../../../../src/server/spa/client/react/features/chat/QueuedBubble', () => ({
     QueuedBubble: (props: any) => React.createElement('div', { 'data-testid': 'queued-bubble' }, props.msg?.content ?? ''),
     QueuedFollowUps: (props: any) =>
-        React.createElement('div', { 'data-testid': 'queued-followups', 'data-count': props.queue?.length ?? 0 }),
+        React.createElement('div', { 'data-testid': 'queued-followups', 'data-count': props.queue?.length ?? 0 },
+            ...(props.queue ?? []).map((message: any) => React.createElement('button', {
+                key: message.id, 'data-testid': `remove-pending-${message.id}`,
+                onClick: () => props.onCancel?.(message.id),
+            }, 'Remove queued follow-up'))),
 }));
 
 // BackgroundTasksIndicator — stub
@@ -495,6 +503,7 @@ beforeEach(() => {
     resetActiveChatAttach();
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
+    mockState.modelLookups.mockReset();
     mockState.closeFollowUpStream.mockReset();
     mockState.onSendComplete.mockReset();
     mockState.stopStreaming.mockReset();
@@ -611,6 +620,36 @@ describe('ChatDetail Sentinel implementation banners', () => {
 });
 
 describe('ChatDetail', () => {
+    it('keeps persisted metadata authoritative over the queue provider when the binding is absent', async () => {
+        setupStandardFetch(
+            makeTask({ provider: 'codex' }),
+            makeProcess({ metadata: { provider: 'copilot', mode: 'autopilot', sessionId: 'saved-session' } }),
+        );
+        render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+    });
+
+    it.each(['completed', 'running'])('shows the active provider for a %s chat with original provider metadata', async status => {
+        const process = makeProcess({
+            status,
+            metadata: { provider: 'codex', mode: 'autopilot', sessionId: 'current-session' },
+            activeProviderSession: {
+                provider: 'copilot', sessionId: 'current-session', segmentId: 'current', firstTurnIndex: 2,
+            },
+        });
+        setupStandardFetch(makeTask({ status, provider: 'codex' }), process);
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        expect(mockState.modelLookups.mock.calls.slice(-2)).toEqual([
+            ['copilot', undefined],
+            ['copilot', undefined],
+        ]);
+        expect((globalThis as any).__useSendMessage_opts.activeProvider).toBe('copilot');
+        expect(process.metadata.provider).toBe('codex');
+    });
+
     it('keeps remote bot presentation on its exact owner despite colliding local process IDs', async () => {
         const baseUrl = 'https://clone.example.test';
         registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl }]);
@@ -974,6 +1013,77 @@ describe('ChatDetail', () => {
             await waitFor(() => {
                 expect(screen.getByText('Archived from store')).toBeTruthy();
             });
+        });
+    });
+
+    describe('conversation pin (header overflow)', () => {
+        function setupPinFetch(proc: any) {
+            const task = makeTask();
+            setupFetch({
+                '/proc-1/pin': { body: { id: 'proc-1', pinnedAt: null } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+        }
+
+        async function openMenu() {
+            await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            return waitFor(() => screen.getByTestId('overflow-item-pin-conversation'));
+        }
+
+        it('shows Unpin for a persisted pinned conversation and unpins on the owning remote clone', async () => {
+            const remote = 'http://remote-pin.example';
+            registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: remote }]);
+            setupPinFetch(makeProcess({ pinnedAt: '2026-06-23T19:01:00.000Z' }));
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="remote-ws" /></Wrap>);
+
+            const item = await openMenu();
+            expect(item.textContent).toBe('Unpin conversation');
+            await act(async () => { fireEvent.click(item); });
+
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url, init]: [string, RequestInit | undefined]) =>
+                    url.startsWith(remote)
+                    && url.includes('/api/processes/proc-1/pin')
+                    && init?.method === 'PATCH'
+                    && JSON.parse(String(init.body)).pinned === false,
+                )).toBe(true);
+            });
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            await waitFor(() => expect(screen.getByTestId('overflow-item-pin-conversation').textContent).toBe('Pin conversation'));
+        });
+
+        it('shows Pin for an unpinned conversation and reverts with an error when the server rejects', async () => {
+            const proc = makeProcess();
+            const task = makeTask();
+            setupFetch({
+                '/proc-1/pin': { status: 500, body: { error: 'pin store unavailable' } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            const item = await openMenu();
+            expect(item.textContent).toBe('Pin conversation');
+            await act(async () => { fireEvent.click(item); });
+
+            await waitFor(() => expect(screen.getByText(/pin store unavailable|Failed to pin conversation/)).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            await waitFor(() => expect(screen.getByTestId('overflow-item-pin-conversation').textContent).toBe('Pin conversation'));
+        });
+
+        it('hides the action for read-only chats', async () => {
+            setupPinFetch(makeProcess());
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" readOnly /></Wrap>);
+            await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            await waitFor(() => expect(screen.getByTestId('overflow-item-copy-html')).toBeTruthy());
+            expect(screen.queryByTestId('overflow-item-pin-conversation')).toBeNull();
         });
     });
 
@@ -2462,6 +2572,53 @@ describe('ChatDetail', () => {
                 expect(screen.getByText('First message')).toBeTruthy();
                 expect(screen.getByText('Bot reply')).toBeTruthy();
             });
+        });
+
+        it.each([
+            { selection: undefined, owner: 'workspace-own' },
+            { selection: 'workspace-own', owner: 'workspace-own' },
+            { selection: 'group-view', owner: 'workspace-own' },
+            { selection: 'remote:server-test:workspace-own', owner: 'workspace-own', baseUrl: 'https://mirror-clone.example' },
+        ])('qualifies pending removal by owning workspace for $selection', async ({ selection, owner, baseUrl }) => {
+            if (baseUrl) registerCloneBaseUrls([{ workspaceId: selection, baseUrl }]);
+            const process = makeProcess({
+                id: 'queue_pending-scope', status: 'running',
+                metadata: { mode: 'sentinel', sessionId: 'synthetic-session', workspaceId: owner },
+                pendingMessages: [{ id: 'pm-owner', content: 'queued desktop follow-up' }],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_pending-scope': { body: { process } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="queue_pending-scope" workspaceId={selection} /></Wrap>);
+            await waitFor(() => expect(screen.getByTestId('remove-pending-pm-owner')).toBeTruthy());
+            expect((globalThis as any).__useSendMessage_opts.owningWorkspaceId).toBe(owner);
+            fireEvent.click(screen.getByTestId('remove-pending-pm-owner'));
+            await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
+            const [url] = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE')!;
+            expect(new URL(String(url), 'http://localhost').searchParams.get('workspace')).toBe(owner);
+            if (baseUrl) expect(String(url).startsWith(baseUrl)).toBe(true);
+        });
+
+        it('does not issue a local pending DELETE when its remote route becomes unresolved', async () => {
+            const selection = 'remote:server-test:workspace-own';
+            registerCloneBaseUrls([{ workspaceId: selection, baseUrl: 'https://mirror-clone.example' }]);
+            const process = makeProcess({
+                id: 'queue_pending-remote', status: 'running',
+                metadata: { mode: 'sentinel', sessionId: 'synthetic-session', workspaceId: 'workspace-own' },
+                pendingMessages: [{ id: 'pm-remote', content: 'remote queued follow-up' }],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/processes/queue_pending-remote': { body: { process } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="queue_pending-remote" workspaceId={selection} /></Wrap>);
+            await waitFor(() => expect(screen.getByTestId('remove-pending-pm-remote')).toBeTruthy());
+            resetCloneRegistryForTests();
+            fireEvent.click(screen.getByTestId('remove-pending-pm-remote'));
+            expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
         });
 
         // Regression: queued-message-survives-chat-switch.

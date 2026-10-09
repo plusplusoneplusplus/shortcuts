@@ -210,6 +210,53 @@ partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
+### Desktop Sentinel mirror
+
+`features.sentinelDesktopMirror` is live/default-off in Integrations. The
+`messaging/sentinel-mirror-service.ts` worker captures explicit dashboard
+single/bulk queue, follow-up and pending admissions, including buffered writes.
+Server-owned request IDs persist through queue/pending/user records; restart
+reconciles exact workspace/process/request proof. Connector inputs, reviews,
+queue retries and historical transcripts never create intents.
+
+Binding hydration precedes capture. Active receipts and opaque account pins fix
+the destination; selection and rebinding cannot redirect it. WhatsApp
+`admissionPending` excludes provisional bindings until exact admission proof promotes
+them, retaining accepted work after write/observer failure. Deleted owners cannot
+send; process-less admission requires an exact live request and canonical queued
+initial owner. Dashboard transport routing keeps clone/group selection separate
+from the loaded owning workspace.
+
+`sentinel-mirror-outbox.ts` stores machine-local receipts at
+`repos/<workspaceId>/sentinel-mirror-outbox.json`, excluded from export/import and
+included in wipe. All known owner ledgers recover before admission. Immutable
+chunks, attempt identities, confirmed IDs and attempted prefixes preserve progress.
+Heads serialize physical destinations across current registered workspaces.
+Definite failures use durable exponential backoff/Retry-After; unknown or
+unrecorded sends quarantine. Fixed display-only notices report known-owner failures.
+
+`sentinel-mirror-adapters.ts` reuses Teams/WhatsApp formatting and own-ID guards.
+Every part carries the full logical request ID, Desktop role and part number.
+Inbound guards verify self/account/destination/thread/owner and exact attempted
+content before commands/admission/reactions, including after cancellation/restart.
+Unsupported attachments receive a path-free marker. Final answers are bounded by
+their request; pending drain and stale parent terminal state cannot settle them.
+Empty completions require the exact completed task; taskless failures require local evidence.
+
+The question hub resolves connector origins first, then exact captured desktop
+receipts. Private delegation/notice ledgers retain owner/request/binding pins;
+queued child/process provenance strips them. Reviews use only the existing
+`MessagingJobNotices.queueResult` worker, verifying authority before each part and
+waiting for original user/initial assistant confirmation. Source settlement wakes
+desktop result rows. Immutable result chunks and attempted receipt markers guard
+lost-ID echoes; legacy origins and wording retain their existing policy.
+
+Cancellation is request-scoped; consumed pending removals preserve active replies.
+Release, process cancellation and explicit disconnect suppress future delivery;
+graceful shutdown/reconnect retain receipts. Explicit resumes wait through stale
+parent cancellation without reviving old tombstones. Enablement is described in
+[admin config](admin-config.md).
+
 `messaging/incoming-images.ts` prepares admitted images through `core/attachment-utils.ts`:
 five images, 10 MB decoded total and 30 seconds per batch. SDK files/history use
 `getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own cleanup
@@ -240,7 +287,7 @@ preserve captured routing and transfer `sourceMessageIds` into durable receipts;
 answer-part ordering stays independent.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
-grammar from `coc-connector` (slash optional, `help`, `quota`,
+grammar from `coc-connector` (slash optional, `help`, `quota`, `git status`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
 command" + generated help, never sent to the AI).
 `formatMessagingHelp` derives grouped help from the command/mode specs. Routers
@@ -248,7 +295,7 @@ use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 `MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own
 command grammar and renders its specs with `formatMessagingHelpCommands` as HTML.
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
-`AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
+`AgentProvidersQuotaCache`), Git status and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. WhatsApp and Teams channel/thread
 quota commands share `formatQuotaReply`: every finite normalized snapshot retains its
 remaining percentage and reset date, with `5h`/`7d` labels and Codex limit-id prefixes;
@@ -290,6 +337,17 @@ Local, remote and Teams-thread topic lists share `formatTopicList` in `remote-br
 (`▶` current marker, status emoji, truncated escaped title, `now`/`Nm`/`Nh`/`Nd` age from
 `lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). `listRecentTopics`
 re-sorts its bounded page by that activity time, so `select topic <n>` picks the listed item.
+
+### Messaging Git status
+
+`messaging/git-status.ts` reads the admitted caller's local workspace registry, expands
+registered groups only within that scope and deduplicates repository roots. Remote and
+other virtual workspaces are excluded. `git status` bypasses pending question answers
+without changing selections or invoking AI. Native branch/change parsers and forge's
+WSL runner serve fixed status argv with optional locks disabled; safe-directory config,
+Git state and network remain untouched. Per-repo errors remain visible alongside
+successful summaries. Replies disclose local-tracking-ref freshness and use lossless
+connector text chunking.
 
 ### Messaging ask_user question relay
 

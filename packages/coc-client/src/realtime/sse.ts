@@ -4,6 +4,7 @@ import { CocSseError } from '../errors';
 
 const PROCESS_STREAM_EVENT_TYPES = [
   'conversation-snapshot',
+  'provider-session',
   'chunk',
   'tool-start',
   'tool-complete',

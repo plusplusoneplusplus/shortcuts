@@ -63,6 +63,7 @@ struct View {
     popup: bool,
     host: Weak<RefCell<Host>>,
     fullscreen_window: Cell<Option<(RECT, isize)>>,
+    page_zoom_percent: Cell<f64>,
 }
 
 impl View {
@@ -587,6 +588,18 @@ fn dispatch(state: &State, command: Command) {
     }
     let result = unsafe {
         match command.op.as_str() {
+            "page-zoom" => {
+                if let Some(percent) = command
+                    .page_zoom_percent
+                    .filter(|percent| protocol::allowed_page_zoom(*percent))
+                {
+                    view.controller
+                        .SetZoomFactor(percent / 100.0)
+                        .map(|_| view.page_zoom_percent.set(percent))
+                } else {
+                    Err(windows::core::Error::from(E_INVALIDARG))
+                }
+            }
             "navigate" => {
                 if let Some(url) = command.url.filter(|url| allowed_url(url, false)) {
                     *view.requested.borrow_mut() = url.clone();
@@ -866,10 +879,25 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             popup: is_popup,
                             host: Rc::downgrade(&callback_state),
                             fullscreen_window: Cell::new(None),
+                            page_zoom_percent: Cell::new(
+                                command.page_zoom_percent.unwrap_or(100.0),
+                            ),
                         });
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
                         view.webview.Settings()?.SetAreDevToolsEnabled(false)?;
+                        if !is_popup {
+                            let percent = view.page_zoom_percent.get();
+                            if !protocol::allowed_page_zoom(percent) {
+                                return Err(windows::core::Error::from(E_INVALIDARG));
+                            }
+                            view.webview.Settings()?.SetIsZoomControlEnabled(false)?;
+                            view.webview
+                                .Settings()?
+                                .cast::<ICoreWebView2Settings5>()?
+                                .SetIsPinchZoomEnabled(false)?;
+                            view.controller.SetZoomFactor(percent / 100.0)?;
+                        }
                         if command.op == "import-profile-cookies" {
                             let imported = import_cookies(
                                 &view,
@@ -1061,6 +1089,9 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 }
                 let mut navigation_id = 0;
                 args.NavigationId(&mut navigation_id)?;
+                if !view.popup {
+                    view.controller.SetZoomFactor(view.page_zoom_percent.get() / 100.0)?;
+                }
                 let mut success = BOOL(0);
                 args.IsSuccess(&mut success)?;
                 let visit = view.history.borrow_mut().completed(navigation_id, success.as_bool());
@@ -1297,6 +1328,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     bounds: None,
                     action: None,
                     cookies: None,
+                    page_zoom_percent: None,
                 };
                 start_controller(
                     &callback_state,

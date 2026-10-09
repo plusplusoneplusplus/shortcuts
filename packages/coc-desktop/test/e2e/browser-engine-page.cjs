@@ -7,6 +7,8 @@ async function report(extra = {}) {
     fetch('/report?tab='+encodeURIComponent(key), {method:'POST', body: JSON.stringify({
         authenticated:window.cookieAuthenticated === true, cookie:document.cookie, storage:localStorage.getItem('fixture'), bridge:typeof window.cocDesktop,
         require:typeof require, title:document.title, focused:document.hasFocus(),
+        pixelRatio:window.devicePixelRatio,
+        viewportWidth:window.innerWidth,
         input:document.getElementById('input').value,
         inputFocused:document.activeElement === document.getElementById('input'), ...extra
     })});

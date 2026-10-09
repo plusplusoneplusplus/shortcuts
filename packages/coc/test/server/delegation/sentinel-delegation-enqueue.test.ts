@@ -74,6 +74,33 @@ describe('Sentinel delegation admission', () => {
         expect(job.terminal).toBeUndefined();
     });
 
+    it.each(['autopilot', 'ralph'] as const)('persists %s desktop origin pins only in the private delegation ledger', async mode => {
+        const origin = {
+            connector: 'teams' as const, chatKey: 'original-chat', threadId: 'original-thread',
+            desktopMirror: {
+                workspaceId: parentWorkspace, processId: parentId, requestId: 'desktop-request', bindingId: 'opaque-binding',
+            },
+        };
+        queue.on('taskAdded', task => {
+            expect(new DelegatedJobStore(dataDir).list(parentWorkspace)[0].messagingOrigin).toEqual(origin);
+            expect(task.payload.context.messagingOrigin).toEqual({
+                connector: origin.connector, chatKey: origin.chatKey, threadId: origin.threadId,
+            });
+        });
+        const { tool } = createSendToConversationTool({
+            store, workspaceId: parentWorkspace, parentProcessId: parentId,
+            enqueueChat: task => admit(task, enqueue),
+            runtime: { messagingOrigin: () => origin, trackMessagingJob: vi.fn() },
+            launchRalph: request => launchRalphSession(request, {
+                dataDir, store, bridge: { enqueue: task => admit(task, enqueue) } as any,
+            }),
+        });
+        const result = await tool.handler({ content: 'Complete helper', workspaceId: childWorkspace, mode });
+        if ('error' in result) throw new Error(result.error);
+        expect(new DelegatedJobStore(dataDir).list(parentWorkspace)[0].messagingOrigin).toEqual(origin);
+        expect((await store.getProcess(parentId))?.metadata).not.toHaveProperty('messagingOrigin');
+    });
+
     it.each(['whatsapp', 'teams'] as const)('persists tool Ralph %s origin and session before cross-workspace execution', async connector => {
         const origin = { connector, chatKey: 'original-chat', ...(connector === 'teams' ? { threadId: 'original-thread' } : {}) };
         const trackMessagingJob = vi.fn();

@@ -18,6 +18,10 @@ import { CronBadge } from './CronBadge';
 import { ProviderBadge, getTaskProviderBadgeProvider } from './ProviderBadge';
 import { isCronEnabled } from '../../utils/config';
 import { BotManagementBadge } from './BotManagementBadge';
+import {
+    CodeIcon, CopyIcon, ExportIcon, FloatIcon, ForkIcon, NewChatIcon, NoteIcon,
+    PinIcon, PopOutIcon, ReferencesIcon, SelectIcon, TerminalIcon, UnpinIcon,
+} from './icons/ChatMenuIcons';
 
 /**
  * Shared icon-button class for the right-side chat header actions.
@@ -123,10 +127,16 @@ export interface ChatHeaderProps {
      * cwd, host, created/updated, stored summary. Omitted for CoC chats.
      */
     metadataExtraRows?: MetaRow[];
+    /** Persisted pin state of the conversation (drives the Pin / Unpin overflow action). */
+    isPinned?: boolean;
+    /** True while a pin/unpin request is in flight. */
+    pinPending?: boolean;
+    /** Toggles the conversation pin; omit to hide the action (no persisted process yet). */
+    onTogglePin?: () => void;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
-function buildOverflowItems(
+export function buildOverflowItems(
     tier: ContainerWidthTier,
     props: {
         task: any;
@@ -164,165 +174,198 @@ function buildOverflowItems(
         forking?: boolean;
         onStartFreshSameContext?: () => Promise<boolean> | boolean | void;
         startingFreshSameContext?: boolean;
+        isPinned?: boolean;
+        pinPending?: boolean;
+        onTogglePin?: () => void;
     },
 ): OverflowMenuItem[] {
-    const items: OverflowMenuItem[] = [];
+    // Rows are grouped (conversation → export → CLI → window); the menu draws a
+    // separator between groups and collects `info` rows into a muted footer.
+    const conversation: OverflowMenuItem[] = [];
+    const exportItems: OverflowMenuItem[] = [];
+    const cli: OverflowMenuItem[] = [];
+    const windowItems: OverflowMenuItem[] = [];
+    const info: OverflowMenuItem[] = [];
 
-    // Copy HTML — always in overflow at < 700px
-    items.push({
+    // Pin / Unpin — every tier; reflects the persisted pin state.
+    if (props.onTogglePin) {
+        conversation.push({
+            key: 'pin-conversation',
+            label: props.isPinned ? 'Unpin conversation' : 'Pin conversation',
+            icon: props.isPinned ? <UnpinIcon /> : <PinIcon />,
+            onClick: props.onTogglePin,
+            disabled: props.pinPending,
+        });
+    }
+
+    // Copy HTML — always in overflow
+    exportItems.push({
         key: 'copy-html',
-        label: props.copiedHtml ? '✓ Copied HTML' : 'Copy as HTML',
-        icon: <span className="text-[10px]">HTML</span>,
+        label: props.copiedHtml ? 'Copied HTML' : 'Copy as HTML',
+        icon: <CodeIcon />,
         onClick: props.onCopyHtml,
     });
 
     // Select turns for partial copy
     if (props.onToggleSelecting && props.turns.length > 0) {
-        items.push({
+        exportItems.push({
             key: 'select-turns',
             label: props.isSelecting ? 'Cancel selection' : 'Select turns',
-            icon: <span className="text-[10px]">☐</span>,
+            icon: <SelectIcon />,
             onClick: props.onToggleSelecting,
         });
     }
 
     // Export as PDF
-    items.push({
+    exportItems.push({
         key: 'export-pdf',
         label: 'Export as PDF',
-        icon: <span className="text-[10px]">PDF</span>,
+        icon: <ExportIcon />,
         onClick: props.onExportPdf,
     });
 
     // Metadata lives inline next to the title (see ChatHeader identity group), not in overflow.
 
-    // At wide tier, only the simplified buttons (HTML / PDF / Select) live in overflow.
+    // At wide tier, only Pin and the simplified buttons (HTML / PDF / Select) live in overflow.
     // All other items (references, resume CLI, context window, etc.) remain inline at wide.
-    if (tier === 'wide') return items;
+    if (tier !== 'wide') {
+        // References
+        const dedupedFiles = deduplicateReferenceFiles(props.planPath, props.createdFiles);
+        const refTotal = (props.planPath ? 1 : 0) + dedupedFiles.length;
+        if (refTotal > 0) {
+            if (props.isMobile && props.onOpenRefs) {
+                // On mobile, open a standalone BottomSheet outside the overflow menu
+                conversation.push({
+                    key: 'references',
+                    label: `References (${refTotal})`,
+                    icon: <ReferencesIcon />,
+                    onClick: props.onOpenRefs,
+                });
+            } else {
+                conversation.push({
+                    key: 'references',
+                    label: `References (${refTotal})`,
+                    onClick: () => { /* handled via render */ },
+                    render: () => (
+                        <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} wsId={props.wsId} />
+                    ),
+                });
+            }
+        }
 
-    // References
-    const dedupedFiles = deduplicateReferenceFiles(props.planPath, props.createdFiles);
-    const refTotal = (props.planPath ? 1 : 0) + dedupedFiles.length;
-    if (refTotal > 0) {
-        if (props.isMobile && props.onOpenRefs) {
-            // On mobile, open a standalone BottomSheet outside the overflow menu
-            items.push({
-                key: 'references',
-                label: `References (${refTotal})`,
-                onClick: props.onOpenRefs,
+        // Open Scratchpad — in overflow at non-wide tiers
+        if (props.showScratchpadButton && props.onOpenScratchpad) {
+            conversation.push({
+                key: 'open-scratchpad',
+                label: 'Open scratchpad',
+                icon: <NoteIcon />,
+                onClick: props.onOpenScratchpad,
             });
-        } else {
-            items.push({
-                key: 'references',
-                label: `References (${refTotal})`,
-                onClick: () => { /* handled via render */ },
+        }
+
+        if (props.onStartFreshSameContext) {
+            conversation.push({
+                key: 'new-chat-same-context',
+                label: 'New chat with same context',
+                icon: <NewChatIcon />,
+                disabled: props.startingFreshSameContext,
+                onClick: props.startingFreshSameContext
+                    ? () => {}
+                    : () => { void props.onStartFreshSameContext?.(); },
+            });
+        }
+
+        // Fork — in overflow at non-wide tiers
+        if (props.onFork) {
+            conversation.push({
+                key: 'fork',
+                label: props.forking ? 'Forking…' : 'Fork conversation',
+                icon: <ForkIcon />,
+                disabled: props.forking,
+                onClick: props.forking ? () => {} : props.onFork,
+            });
+        }
+
+        // Resume In CLI
+        if (!props.isPending && props.resumeSessionId && !props.isMobile) {
+            cli.push({
+                key: 'resume-cli',
+                label: 'Resume in CLI',
+                icon: <TerminalIcon />,
+                onClick: props.onLaunchInteractiveResume,
+            });
+            // Copy Command — bare, paste-ready resume invocation. Shown alongside
+            // Resume In CLI for both local and remote workspaces.
+            if (props.onCopyResumeCommand) {
+                cli.push({
+                    key: 'copy-resume-cli',
+                    label: 'Copy resume command',
+                    icon: <CopyIcon />,
+                    onClick: props.onCopyResumeCommand,
+                });
+            }
+        }
+
+        // Float / Pop-out — only in overflow at narrow (< 500px)
+        if (tier === 'narrow') {
+            if (props.variant !== 'floating' && !props.isPopOut && !props.isMobile && !props.isFloatingChat) {
+                windowItems.push({
+                    key: 'float',
+                    label: 'Float in window',
+                    icon: <FloatIcon />,
+                    onClick: props.onFloat,
+                });
+            }
+            if (!props.isPopOut && !props.isMobile && props.variant !== 'floating') {
+                windowItems.push({
+                    key: 'popout',
+                    label: 'Pop out to new window',
+                    icon: <PopOutIcon />,
+                    onClick: props.onPopOut,
+                });
+            }
+        }
+
+        // Duration — read-only information
+        if (props.task?.duration != null) {
+            info.push({
+                key: 'duration',
+                label: `Duration ${formatDuration(props.task.duration)}`,
+                info: true,
+                onClick: () => {},
+            });
+        }
+
+        // Context window — read-only model/context usage
+        if (props.sessionTokenLimit && props.sessionTokenLimit > 0) {
+            info.push({
+                key: 'context-window',
+                label: 'Context window',
+                info: true,
+                onClick: () => {},
                 render: () => (
-                    <ReferencesDropdown planPath={props.planPath} files={props.createdFiles} wsId={props.wsId} />
+                    <ContextWindowIndicator
+                        tokenLimit={props.sessionTokenLimit}
+                        currentTokens={props.sessionCurrentTokens}
+                        modelName={props.sessionModel}
+                        className="flex w-full"
+                        systemTokens={props.sessionSystemTokens}
+                        toolDefinitionsTokens={props.sessionToolTokens}
+                        conversationTokens={props.sessionConversationTokens}
+                    />
                 ),
             });
         }
     }
 
-    // Resume In CLI
-    if (!props.isPending && props.resumeSessionId && !props.isMobile) {
-        items.push({
-            key: 'resume-cli',
-            label: 'Resume In CLI',
-            icon: <span className="text-xs">▶</span>,
-            onClick: props.onLaunchInteractiveResume,
-        });
-        // Copy Command — bare, paste-ready resume invocation. Shown alongside
-        // Resume In CLI for both local and remote workspaces.
-        if (props.onCopyResumeCommand) {
-            items.push({
-                key: 'copy-resume-cli',
-                label: 'Copy Command',
-                icon: <span className="text-xs">⧉</span>,
-                onClick: props.onCopyResumeCommand,
-            });
-        }
-    }
-
-    // Duration
-    if (props.task?.duration != null) {
-        items.push({
-            key: 'duration',
-            label: `Duration: ${formatDuration(props.task.duration)}`,
-            icon: <span className="text-xs">⏱</span>,
-            onClick: () => {},
-        });
-    }
-
-    // Context window
-    if (props.sessionTokenLimit && props.sessionTokenLimit > 0) {
-        items.push({
-            key: 'context-window',
-            label: 'Context window',
-            onClick: () => {},
-            render: () => (
-                <ContextWindowIndicator
-                    tokenLimit={props.sessionTokenLimit}
-                    currentTokens={props.sessionCurrentTokens}
-                    modelName={props.sessionModel}
-                    className="flex max-w-[240px]"
-                    systemTokens={props.sessionSystemTokens}
-                    toolDefinitionsTokens={props.sessionToolTokens}
-                    conversationTokens={props.sessionConversationTokens}
-                />
-            ),
-        });
-    }
-
-    // Open Scratchpad — in overflow at non-wide tiers
-    if (props.showScratchpadButton && props.onOpenScratchpad) {
-        items.push({
-            key: 'open-scratchpad',
-            label: 'Open scratchpad',
-            icon: <span className="text-[10px]">📄</span>,
-            onClick: props.onOpenScratchpad,
-        });
-    }
-
-    if (props.onStartFreshSameContext) {
-        items.push({
-            key: 'new-chat-same-context',
-            label: 'New chat with same context',
-            icon: <span className="text-[10px]">＋</span>,
-            onClick: props.startingFreshSameContext
-                ? () => {}
-                : () => { void props.onStartFreshSameContext?.(); },
-        });
-    }
-
-    // Fork — in overflow at non-wide tiers
-    if (props.onFork) {
-        items.push({
-            key: 'fork',
-            label: props.forking ? 'Forking…' : 'Fork conversation',
-            icon: <span className="text-[10px]">🍴</span>,
-            onClick: props.forking ? () => {} : props.onFork,
-        });
-    }
-
-    // Float / Pop-out — only in overflow at narrow (< 500px)
-    if (tier === 'narrow') {
-        if (props.variant !== 'floating' && !props.isPopOut && !props.isMobile && !props.isFloatingChat) {
-            items.push({
-                key: 'float',
-                label: 'Float in window',
-                onClick: props.onFloat,
-            });
-        }
-        if (!props.isPopOut && !props.isMobile && props.variant !== 'floating') {
-            items.push({
-                key: 'popout',
-                label: 'Pop out to new window',
-                onClick: props.onPopOut,
-            });
-        }
-    }
-
-    return items;
+    const grouped = (group: string, list: OverflowMenuItem[]) => list.map(item => ({ ...item, group }));
+    return [
+        ...grouped('conversation', conversation),
+        ...grouped('export', exportItems),
+        ...grouped('cli', cli),
+        ...grouped('window', windowItems),
+        ...info,
+    ];
 }
 
 export function ChatHeader({
@@ -371,6 +414,9 @@ export function ChatHeader({
     startingFreshSameContext = false,
     viewToggle,
     metadataExtraRows,
+    isPinned = false,
+    pinPending = false,
+    onTogglePin,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -464,7 +510,10 @@ export function ChatHeader({
         forking,
         onStartFreshSameContext,
         startingFreshSameContext,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
+        isPinned,
+        pinPending,
+        onTogglePin,
+    }), [isPinned, pinPending, onTogglePin, tier, task, loading, turns, isPending, resumeSessionId, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div

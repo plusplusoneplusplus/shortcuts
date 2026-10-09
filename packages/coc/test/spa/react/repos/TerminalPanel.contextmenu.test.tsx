@@ -29,6 +29,7 @@ vi.mock('@xterm/xterm', function () { return ({
             write: vi.fn(),
             onData: vi.fn(function () { return ({ dispose: vi.fn() }); }),
             attachCustomKeyEventHandler: vi.fn(),
+            paste: vi.fn(),
             getSelection: vi.fn(function () { return ''; }),
             selectAll: vi.fn(),
             clear: vi.fn(),
@@ -155,13 +156,14 @@ describe('TerminalPanel context menu', () => {
         expect(terminalWebSocketMock.sendInput).not.toHaveBeenCalled();
     });
 
-    it('pastes clipboard text as terminal input from the Paste item', async () => {
-        renderPanel();
+    it('uses xterm paste from the Paste item', async () => {
+        const { term } = renderPanel();
 
         openMenu();
         fireEvent.click(menuItem('Paste'));
 
-        await waitFor(() => expect(terminalWebSocketMock.sendInput).toHaveBeenCalledWith('pasted-text'));
+        await waitFor(() => expect(term.paste).toHaveBeenCalledExactlyOnceWith('pasted-text'));
+        expect(terminalWebSocketMock.sendInput).not.toHaveBeenCalled();
     });
 
     it('copies the whole scrollback buffer from Copy all output', async () => {

@@ -168,6 +168,10 @@ describe('LLM Tools Config API endpoints', () => {
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
             expect(data.disabledLlmTools).toContain('tavily_web_search');
+            for (const name of ['save_memory', 'recall_memory']) {
+                expect(data.disabledLlmTools).toContain(name);
+                expect(data.tools.find((t: any) => t.name === name)?.enabledByDefault).toBe(false);
+            }
             expect(data.disabledLlmTools).not.toContain('create_update_work_item');
             expect(data.disabledLlmTools).not.toContain('get_work_item');
             expect(data.disabledLlmTools).not.toContain('create_bug');
@@ -456,6 +460,28 @@ describe('LLM Tools Config API endpoints', () => {
 
     describe('repo-group workspaces', () => {
         const groupPrefsPath = () => path.join(tmpDir, 'repos', GROUP_ID, 'preferences.json');
+
+        it('keeps independent memory tool opt-ins for group and member owners', async () => {
+            const repoUrl = `${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`;
+            const groupUrl = `${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`;
+            expect((await request(groupUrl)).json().disabledLlmTools).toContain('save_memory');
+            expect((await request(groupUrl)).json().disabledLlmTools).toContain('recall_memory');
+
+            for (const disabledLlmTools of [['recall_memory'], ['save_memory'], []]) {
+                const put = await request(groupUrl, {
+                    method: 'PUT', body: JSON.stringify({ disabledLlmTools }),
+                });
+                expect(put.status).toBe(200);
+                expect(put.json().disabledLlmTools).toEqual(disabledLlmTools);
+                expect((await request(groupUrl)).json().disabledLlmTools).toEqual(disabledLlmTools);
+                expect((await request(repoUrl)).json().disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
+            }
+            await request(repoUrl, {
+                method: 'PUT', body: JSON.stringify({ disabledLlmTools: ['save_memory', 'recall_memory'] }),
+            });
+            expect((await request(repoUrl)).json().disabledLlmTools).toEqual(['save_memory', 'recall_memory']);
+            expect((await request(groupUrl)).json().disabledLlmTools).toEqual([]);
+        });
 
         it('GET returns the tool registry for a group id', async () => {
             const res = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`);

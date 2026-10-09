@@ -199,6 +199,7 @@ export function UnifiedBrowserTab({
                 open={menuOpen && active && visible}
                 onOpenChange={setMenuOpen}
                 engine={engine}
+                bridge={bridge}
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
                 onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}

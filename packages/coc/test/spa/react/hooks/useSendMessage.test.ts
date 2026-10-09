@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useSendMessage } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { AttachmentPayload } from '../../../../src/server/spa/client/react/types/attachments';
+import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -151,6 +152,109 @@ describe('useSendMessage', () => {
         ]);
     });
 
+    it.each([false, true])('qualifies accepted dashboard sends with the owning workspace (busy=%s)', async isActiveGeneration => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ workspaceId: 'workspace-a', isActiveGeneration });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('desktop submission'); });
+        expect(String(fetchMock.mock.calls[0][0])).toContain('workspace=workspace-a');
+    });
+
+    it.each(['server', 'expired', 'network'] as const)(
+        'handles %s errors on workspace-scoped follow-ups', async failure => {
+            if (failure === 'network') {
+                fetchMock.mockRejectedValueOnce(new Error('Network error'));
+            } else {
+                fetchMock.mockResolvedValueOnce({
+                    ok: false,
+                    status: failure === 'expired' ? 410 : 500,
+                    json: async () => ({ error: 'Server error' }),
+                });
+            }
+            const opts = makeOptions({ workspaceId: 'group-view', owningWorkspaceId: 'workspace-own' });
+            const { result } = renderHook(() => useSendMessage(opts));
+
+            await act(async () => { await result.current.sendFollowUp('Failed follow-up'); });
+
+            const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost');
+            expect(url.pathname).toBe('/api/processes/pid-1/message');
+            expect(url.searchParams.get('workspace')).toBe('workspace-own');
+            expect(opts.setError).toHaveBeenLastCalledWith(
+                failure === 'expired' ? 'Session expired.' : failure === 'network' ? 'Network error' : 'Server error',
+            );
+            expect(opts.setSessionExpired).toHaveBeenCalledTimes(failure === 'expired' ? 1 : 0);
+            expect(opts.lastFailedMessageRef.current).toBe('Failed follow-up');
+            expect(opts.removeStreamingPlaceholder).toHaveBeenCalledOnce();
+            expect(opts.setSending).toHaveBeenLastCalledWith(false);
+            expect(opts.queueDispatch).toHaveBeenLastCalledWith({
+                type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null,
+            });
+        },
+    );
+
+    it('retries the failed message with its owning workspace, mode and provider', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            json: async () => ({ error: 'Server error' }),
+        }).mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            workspaceId: 'group-view',
+            owningWorkspaceId: 'workspace-own',
+            selectedMode: 'autopilot',
+            providerOverride: 'codex',
+        });
+        const { result } = renderHook(() => useSendMessage(opts));
+
+        await act(async () => { await result.current.sendFollowUp('Retry this message'); });
+        await act(async () => { await result.current.sendFollowUp(opts.lastFailedMessageRef.current); });
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        for (const [requestUrl, init] of fetchMock.mock.calls) {
+            expect(new URL(String(requestUrl), 'http://localhost').searchParams.get('workspace')).toBe('workspace-own');
+            expect(JSON.parse(init.body)).toMatchObject({
+                content: 'Retry this message', mode: 'autopilot', provider: 'codex',
+            });
+        }
+        expect(opts.lastFailedMessageRef.current).toBe('');
+        expect(opts.setSending).toHaveBeenLastCalledWith(false);
+    });
+
+    it.each([undefined, 'group-view', 'remote:server-test:workspace-own'])(
+        'uses loaded owner metadata independently of selection routing (%s)', async workspaceId => {
+            const baseUrl = 'https://mirror-clone.example';
+            if (workspaceId?.startsWith('remote:')) registerCloneBaseUrls([{ workspaceId, baseUrl }]);
+            try {
+                fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+                const opts = makeOptions({ workspaceId, owningWorkspaceId: 'workspace-own' });
+                const { result } = renderHook(() => useSendMessage(opts));
+                await act(async () => { await result.current.sendFollowUp('metadata-scoped desktop submission'); });
+                const url = String(fetchMock.mock.calls[0][0]);
+                expect(new URL(url, 'http://localhost').searchParams.get('workspace')).toBe('workspace-own');
+                if (workspaceId?.startsWith('remote:')) expect(url.startsWith(baseUrl)).toBe(true);
+            } finally {
+                registerCloneBaseUrls([]);
+            }
+        },
+    );
+
+    it('does not fall through locally when a remote workspace has ambiguous clone routing', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'workspace-a', serverId: 'server-a', baseUrl: 'https://clone-a.example' },
+            { workspaceId: 'workspace-a', serverId: 'server-b', baseUrl: 'https://clone-b.example' },
+        ]);
+        setActiveCloneForRouting(null);
+        try {
+            const opts = makeOptions({ workspaceId: 'workspace-a' });
+            const { result } = renderHook(() => useSendMessage(opts));
+            await act(async () => { await result.current.sendFollowUp('do not send locally'); });
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(opts.setError).toHaveBeenCalledWith(expect.stringContaining('owning server is unavailable'));
+        } finally {
+            registerCloneBaseUrls([]);
+        }
+    });
+
     it('omits provider when the composer has no confirmed switch', async () => {
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
         const opts = makeOptions();
@@ -160,6 +264,38 @@ describe('useSendMessage', () => {
 
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         expect(body).not.toHaveProperty('provider');
+    });
+
+    it('attributes optimistic turns to the active provider without adding a request override', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const setTurnsAndRef = vi.fn();
+        const opts = makeOptions({ activeProvider: 'copilot', setTurnsAndRef });
+        const { result } = renderHook(() => useSendMessage(opts));
+
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('provider');
+        const historicalTurn = { role: 'assistant', content: 'Earlier reply', provider: 'codex', turnIndex: 1 };
+        const turns = setTurnsAndRef.mock.calls[0][0]([historicalTurn]);
+        expect(turns[0]).toBe(historicalTurn);
+        expect(turns.slice(1)).toEqual([
+            expect.objectContaining({ role: 'user', provider: 'copilot' }),
+            expect.objectContaining({ role: 'assistant', provider: 'copilot', streaming: true }),
+        ]);
+    });
+
+    it('uses a confirmed switch rather than the active provider for optimistic turns', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const setTurnsAndRef = vi.fn();
+        const opts = makeOptions({ activeProvider: 'codex', providerOverride: 'copilot', setTurnsAndRef });
+        const { result } = renderHook(() => useSendMessage(opts));
+
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        expect(setTurnsAndRef.mock.calls[0][0]([])).toEqual([
+            expect.objectContaining({ role: 'user', provider: 'copilot' }),
+            expect.objectContaining({ role: 'assistant', provider: 'copilot' }),
+        ]);
     });
 
     it('lets a retry provider override the current composer provider', async () => {

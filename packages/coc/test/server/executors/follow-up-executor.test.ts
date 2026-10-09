@@ -418,6 +418,63 @@ describe('FollowUpExecutor', () => {
         );
     });
 
+    it.each([false, true])('attributes the live session to the executed provider before tokens (cron=%s)', async cron => {
+        const proc = makeProcess({
+            metadata: { provider: 'codex' },
+            activeProviderSession: { provider: 'copilot', sessionId: 'current-session', segmentId: 'current', firstTurnIndex: 0 },
+        });
+        if (!cron) proc.conversationTurns!.push({
+            role: 'user', content: 'next', timestamp: new Date(), turnIndex: 2, provider: 'copilot', timeline: [],
+        });
+        await store.addProcess(proc);
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            expect(store.emitProcessEvent).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ type: 'provider-session' }));
+            opts.onSessionCreated('current-session');
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-1', {
+                type: 'provider-session', activeProviderSession: proc.activeProviderSession, turnIndex: 3,
+            });
+            opts.onStreamingChunk('partial');
+            return { success: true, response: 'partial', sessionId: 'current-session' };
+        });
+        await makeExecutor(store).executeFollowUp(
+            'proc-1', 'next', undefined, undefined, undefined, undefined, undefined, undefined,
+            cron ? { source: 'cron', cronId: 'scheduled' } : undefined,
+        );
+        expect(store.processes.get('proc-1')?.metadata?.provider).toBe('codex');
+        expect(store.processes.get('proc-1')?.activeProviderSession).toEqual(proc.activeProviderSession);
+        expect(store.processes.get('proc-1')?.conversationTurns?.at(-1)).toMatchObject({ provider: 'copilot', segmentId: 'current' });
+    });
+
+    it('announces a switched provider session for the new assistant without altering original metadata or turns', async () => {
+        const proc = makeProcess({
+            metadata: { provider: 'codex' },
+            activeProviderSession: { provider: 'codex', sessionId: 'old-session', segmentId: 'old', firstTurnIndex: 0 },
+        });
+        proc.conversationTurns!.forEach(turn => { turn.provider = 'codex'; turn.segmentId = 'old'; });
+        proc.conversationTurns!.push({ role: 'user', content: 'switch', timestamp: new Date(), turnIndex: 2, provider: 'copilot', timeline: [] });
+        await store.addProcess(proc);
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            expect(opts.sessionId).toBeUndefined();
+            opts.onSessionCreated('new-session');
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-1', expect.objectContaining({
+                type: 'provider-session', turnIndex: 3,
+                activeProviderSession: expect.objectContaining({ provider: 'copilot', sessionId: 'new-session' }),
+            }));
+            opts.onStreamingChunk('partial');
+            return { success: true, response: 'partial', sessionId: 'new-session' };
+        });
+        await makeExecutor(store).executeFollowUp(
+            'proc-1', 'switch', undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, { requestedProvider: 'copilot', historyCutoffTurnIndex: 2 },
+        );
+        const updated = store.processes.get('proc-1')!;
+        expect(updated.metadata?.provider).toBe('codex');
+        expect(updated.activeProviderSession).toMatchObject({ provider: 'copilot', sessionId: 'new-session' });
+        expect(updated.activeProviderSession?.segmentId).not.toBe('old');
+        expect(updated.conversationTurns![1]).toMatchObject({ provider: 'codex', segmentId: 'old' });
+        expect(updated.conversationTurns!.at(-1)).toMatchObject({ provider: 'copilot', segmentId: updated.activeProviderSession!.segmentId });
+    });
+
     it('uses strict SDK resume and fails without replacing the stopped session id', async () => {
         sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
             opts.onSessionCreated?.('fresh-session');
@@ -440,6 +497,9 @@ describe('FollowUpExecutor', () => {
             undefined,
             'stopped-session',
         )).rejects.toThrow('Provider did not resume the stopped SDK session');
+        expect(store.emitProcessEvent).not.toHaveBeenCalledWith(
+            expect.anything(), expect.objectContaining({ type: 'provider-session' }),
+        );
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.sessionId).toBe('stopped-session');

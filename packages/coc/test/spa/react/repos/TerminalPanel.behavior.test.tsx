@@ -30,6 +30,7 @@ vi.mock('@xterm/xterm', function () { return ({
             return { dispose: () => { terminalWebSocketMock.onData = null; } };
         }),
         attachCustomKeyEventHandler: vi.fn(),
+        paste: vi.fn(),
         getSelection: vi.fn(function () { return ''; }),
         selectAll: vi.fn(),
         clear: vi.fn(),

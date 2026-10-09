@@ -28,6 +28,9 @@ references before editing. Paths are package-relative.
 
 - Support multiple workspaces/servers. Build paths with
   `getRepoDataPath(dataDir, workspaceId, filename)`; do not add top-level per-repo storage.
+- Embedded web-page zoom uses desktop browser preference IPC and broadcasts, not
+  workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
+  HTML previews, editors, terminals and external browser windows keep their own behavior.
 - Separate **storage origin** from **execution workspace**. Work items, plans/versions,
   changes, bindings, PR provider state, classification, and review progress use
   `/api/origins/:originId/...` and `*ForOrigin` methods. Concrete `workspaceId` selects
@@ -39,6 +42,10 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
+- Terminal native paste is captured inside the focused `TerminalPanel`, consumes
+  only `text/plain`, cancels parallel/default insertion, and uses xterm `paste()`.
+  Clipboard shortcuts leave browser/Electron paste enabled without async reads;
+  context-menu reads also use `paste()` for newline/bracketed-paste handling.
 - Exited-terminal Enter uses `TerminalView`'s manual restart lifecycle and synchronous
   per-tab admission guard. Only a plain keydown focused inside the active viewport
   triggers restart; pasted input and transport disconnection are not process exit.
@@ -61,6 +68,9 @@ references before editing. Paths are package-relative.
   Persist state on the source; execute/own PR gates on the target.
 
 ## Runtime, Persistence, and Configuration
+
+- Memory V2 tools `save_memory` and `recall_memory` default off in `LLM_TOOL_REGISTRY`.
+  Honor explicit workspace `disabledLlmTools` lists; keep memory scope gates and prompt context independent.
 
 - Conversation compaction shares process admission and durable queue dependencies.
   Promote buffered turns before the boundary; later arrivals cannot steer across it.
@@ -110,6 +120,23 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+- Sentinel to-do ledgers (`src/server/sentinel-todos/`) are bookkeeping only: REST and AI
+  tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
+  read/write and emits only after the atomic write commits. Item revisions reject stale
+  writers (`409` with the current item); there is no hard delete. Never let ledger edits
+  start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
+  `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
+  `getSentinelTodos` runtime capability (undefined while the flag is off).
+  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived
+  `todoItemId` before launch and links the admitted job afterwards (link failures are
+  reported, never repaired by relaunching). Linked items move to In progress; local
+  terminal results reach the item through `createSentinelTodoDelegationHooks` (first result
+  per link wins; failed/cancelled/capped → Needs attention unless a later user edit or a
+  newer completed attempt supersedes it). Completion never marks Done: only an explicit
+  Sentinel/user verdict does. Job execution status is derived on read, separate from item
+  status; remote links are always `unavailable`.
+  The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
+  Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are
@@ -216,6 +243,8 @@ references before editing. Paths are package-relative.
 - Resume the active provider only. Switches/unbound continuations
   use fresh sessions/bounded handoff via `src/server/executors/continuation-mode.ts`.
   Never pass session IDs across providers.
+  Provider UI resolves `activeProviderSession` before original task metadata;
+  live responses use turn attribution, never a queued or pending composer choice.
   Model: task/turn > repo mode default > repo default > provider/CLI.
 - Stopped chats require `resumeSessionId`/`strictSessionResume: true`; failed resume
   marks `metadata.stoppedChatResume` non-resumable, without replacement/fresh fallback.
@@ -306,6 +335,21 @@ references before editing. Paths are package-relative.
   include recognized UTC/GMT reset times; other failures use fixed text. Never
   relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- `features.sentinelDesktopMirror` is live/default-off under Admin → Configure →
+  Integrations. Stage newly submitted dashboard messages before canonical admission;
+  confirm buffered writes immediately and persist exact workspace/process/request
+  correlation. Hydrate authoritative bindings first; pin their account/destination.
+  Connector inputs, reviews, retries and stored history never create mirror intents.
+  Persist immutable chunks, confirmed IDs and attempted prefixes; serialize current
+  registered destination heads. Retry definite failures with durable backoff/Retry-After;
+  quarantine unknown sends and publish fixed, deduplicated chat notices.
+  Recheck ownership/cancellation before each part; preserve old tombstones during
+  explicit resume. Echo guards verify self/account/scope and exact attempted content.
+  Desktop delegation pins stay in private ledgers, not child/process provenance;
+  results use the existing notice worker after original user/assistant confirmation.
+  Keep legacy origins unchanged. Unsupported attachments use path-free markers;
+  mirror receipts are machine-local, excluded from export/import and included in wipe.
+  See [server architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#desktop-sentinel-mirror).
 - `src/server/messaging/incoming-images.ts` prepares admitted image batches only
   after local workspace resolution. It reuses chat attachment processing, stores
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
@@ -337,10 +381,18 @@ references before editing. Paths are package-relative.
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
   bold or Teams Markdown converted to safe HTML by the manager; unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
-  answers selection, help, quota and `compact [instructions]` for both routers via a
+  answers selection, help, quota, `git status` and `compact [instructions]` for both routers via a
   `MessagingSelection` adapter. Quota replies share `formatQuotaReply` across WhatsApp
   and Teams channel/thread commands, report every finite snapshot with `5h`/`7d` window
   labels and `% left`, and preserve unknown values and limit-id prefixes.
+  `git status` uses `messaging/git-status.ts` to read every accessible registered local
+  repo, expanding groups within the supplied registry and deduplicating roots.
+  Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
+  this command bypasses pending question answers and never changes selection or invokes AI.
+  Git reads reuse native parsers and forge's WSL runner with optional locks disabled,
+  without safe-directory writes or fetch. Replies report changes/conflicts, detached/unborn
+  HEAD, missing upstream and per-repo failures; local tracking refs may be stale.
+  Reuse lossless connector text chunking; never silently drop repositories.
   With no selected repo (or a removed one), plain messages
   and topic commands in both connectors use the built-in Global workspace via
   `resolveChatWorkspace` in `chat-target.ts` (fixed reply if Global is missing; the
@@ -453,6 +505,10 @@ references before editing. Paths are package-relative.
 
 ## Monaco Selection Context
 
+- `SHOW_DIFF_FILE_PICKER` defaults off. Diff header pickers use only the current
+  comparison's changed files and existing viewer/host navigation, preserving the
+  source workspace, review chat and Ctrl/Cmd+click source-file opening. Lazy file
+  lists are keyed by workspace and diff source; comparison changes close pickers.
 - Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
   side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
   builder. Git hosts forward their concrete source clone through the detail pane

@@ -23,6 +23,8 @@
 
 import { useCallback, useMemo, useRef } from 'react';
 import { useUnifiedPanelState } from './unifiedPanelStore';
+import { useSentinelTodoLedgerEnabled } from './sentinelTodoChats';
+import { withoutSentinelTodoTabs } from './sentinelTodoPanelModel';
 import {
     activateTab,
     activeTab,
@@ -99,7 +101,13 @@ export interface UnifiedPanelTabsApi {
  * once: they share one persisted session through the store.
  */
 export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null): UnifiedPanelTabsApi {
-    const [state, setState] = useUnifiedPanelState(workspaceId);
+    const [storedState, setState] = useUnifiedPanelState(workspaceId);
+    // Flag-off hides To-do tabs from every read; writes keep the stored ones.
+    const todoEnabled = useSentinelTodoLedgerEnabled();
+    const state = useMemo(
+        () => (todoEnabled ? storedState : withoutSentinelTodoTabs(storedState)),
+        [storedState, todoEnabled],
+    );
 
     // The latest state and chat, readable from a stable callback without making
     // that callback depend on the render. Only the pure lookups need them; the

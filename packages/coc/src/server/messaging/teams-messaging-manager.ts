@@ -97,23 +97,49 @@ export class TeamsMessagingManager {
     private attemptId: string | null = null;
     private readonly getObservabilityEnabled: () => boolean;
     private answerRelay: TeamsAnswerRelay | null = null;
+    private answerRelayReady?: () => Promise<void>;
     private answerRelayUnsubscribe: (() => void) | null = null;
     private getAnswerRelayEnabled: () => boolean = () => false;
     private imageLifecycle?: { start: () => void; stop: () => void };
+    private mirrorDisconnectHandler?: () => void | Promise<void>;
 
     setImageLifecycle(lifecycle: { start: () => void; stop: () => void }): void {
         this.imageLifecycle?.stop();
         this.imageLifecycle = lifecycle;
     }
 
-    setAnswerRelay(relay: TeamsAnswerRelay, unsubscribe?: () => void, isEnabled?: () => boolean): void {
+    setAnswerRelay(
+        relay: TeamsAnswerRelay, unsubscribe?: () => void, isEnabled?: () => boolean,
+        ready?: () => Promise<void>,
+    ): void {
         this.answerRelay = relay;
         this.answerRelayUnsubscribe = unsubscribe ?? null;
+        this.answerRelayReady = ready;
         this.getAnswerRelayEnabled = isEnabled ?? (() => DEFAULT_CONFIG.features.teamsAiAnswerRelay);
     }
 
+    getSentinelMirrorBindings(workspaceId: string, processId: string) {
+        return this.answerRelay?.sentinelMirrorBindings(workspaceId, processId) ?? [];
+    }
+
+    async waitForSentinelBindings(): Promise<void> { await this.answerRelayReady?.(); }
+
+    getMirrorAccountKey(): string | undefined { return this.bot?.getMirrorAccountKey(); }
+
+    isMirrorSender(message: InboundTeamsMessage): boolean | undefined {
+        return message.botAuthored ? false : this.bot?.isMirrorSender?.(message);
+    }
+
+    setMirrorDisconnectHandler(handler: () => void | Promise<void>): void { this.mirrorDisconnectHandler = handler; }
+
+    recordMirrorOutbound(chatKey: string, rootId: string, messageId: string): void {
+        const [teamId, channelId] = chatKey.split('\0');
+        if (!teamId || !channelId || !this.answerRelay) throw new TeamsMessageNotSentError();
+        this.answerRelay.recordOutbound(teamId, channelId, rootId, messageId);
+    }
+
     dispose(): void {
-        void this.disconnect().catch(() => console.error('[teams-messaging] Disconnect failed during disposal'));
+        void this.disconnectForShutdown().catch(() => console.error('[teams-messaging] Disconnect failed during disposal'));
         this.answerRelayUnsubscribe?.();
         this.answerRelay?.dispose();
     }
@@ -481,7 +507,11 @@ export class TeamsMessagingManager {
         return { teamId, channelId };
     }
 
-    async disconnect(result: TeamsAttemptResult = 'disconnected', category?: TeamsFailureCategory): Promise<void> {
+    disconnectForShutdown(): Promise<void> { return this.disconnect('disconnected', undefined, true); }
+
+    async disconnect(result: TeamsAttemptResult = 'disconnected', category?: TeamsFailureCategory, preserveMirror = false): Promise<void> {
+        const mirrorStop = result === 'disconnected' && !preserveMirror
+            ? Promise.resolve().then(() => this.mirrorDisconnectHandler?.()) : undefined;
         this.imageLifecycle?.stop();
         this.oauthFlow?.cancel();
         this.generation++;
@@ -491,8 +521,11 @@ export class TeamsMessagingManager {
         if (attemptId) this.history?.finish(attemptId, result, category);
         const bot = this.bot;
         this.bot = null;
-        if (bot) await bot.stop();
-        if (generation === this.generation) this._status = 'disconnected';
+        try {
+            await Promise.all([bot?.stop(), mirrorStop]);
+        } finally {
+            if (generation === this.generation) this._status = 'disconnected';
+        }
     }
 
     /** Send a message to the configured channel. Optionally reply to a specific message. */

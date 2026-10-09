@@ -72,6 +72,11 @@ split so that a change to one interaction mode cannot silently alter another:
 - **Anchor.** Every toggle-style transition (Ctrl+click, mobile tap,
   swipe-right) routes through `computeToggleSelection`, so the anchor used by
   Shift ranges cannot drift between desktop and mobile paths.
+- **Tooltip ownership.** `CommitTooltip` portals to `document.body` with
+  viewport coordinates, outside transformed/clipping sidebar containers. React
+  hover events retain panel ownership; tooltip mousedown stops propagation so
+  its controls do not trigger hover-peek outside-click dismissal. Outside
+  mousedown, Escape and touch-start cancel tooltip timers and dismiss the portal.
 
 ## Tests
 

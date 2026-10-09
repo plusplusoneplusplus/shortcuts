@@ -65,6 +65,7 @@ import { buildChatTurnContext } from './chat-turn-context-builder';
 import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -703,17 +704,37 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * evaluated at call time, so the schema stays byte-identical.
      */
     /**
+     * `sentinel_todos` wiring for one turn: Sentinel chats only, and only while
+     * the route layer reports the to-do ledger flag on. The owner is this chat,
+     * so the tool can never write another chat's ledger.
+     */
+    protected buildSentinelTodoDeps(
+        processId: string,
+        workspaceId: string | undefined,
+        mode: ChatMode | undefined,
+    ): SentinelTodosToolDeps | undefined {
+        if (normalizeChatMode(mode) !== 'sentinel' || !workspaceId) return undefined;
+        const service = this.runtime.getSentinelTodos?.();
+        return service ? { service, owner: { workspaceId, processId } } : undefined;
+    }
+
+    /**
      * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
      * connector started (located through the ask_user relay's connector
      * receipts) records its origin on chats it hands off, so they post
-     * completion notices back; dashboard turns locate nothing.
+     * completion notices back. Mirrored desktop turns use their captured,
+     * request-scoped origin without changing process-wide metadata.
      */
-    protected sendToConversationRuntimeFor(processId: string, requestId: string | undefined): SendToConversationRuntimeOptions | undefined {
+    protected sendToConversationRuntimeFor(
+        processId: string, requestId: string | undefined, workspaceId?: string,
+    ): SendToConversationRuntimeOptions | undefined {
         const runtime = this.runtime.getSendToConversationRuntime?.();
         if (!runtime || !requestId) return runtime;
         return {
             ...runtime,
-            messagingOrigin: () => this.runtime.getAskUserQuestionRelay?.()?.locateOrigin?.({ processId, requestId }),
+            messagingOrigin: () => this.runtime.getAskUserQuestionRelay?.()?.locateOrigin?.({
+                processId, requestId, ...(workspaceId ? { workspaceId } : {}),
+            }),
         };
     }
 
@@ -917,12 +938,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             enqueueChat: this.runtime.getEnqueueChat?.(),
             launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),
-            sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, payload.relayRequestId ?? task.id),
+            sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, payload.relayRequestId ?? task.id, payload.workspaceId),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
             // Autopilot-only: ask mode is read-only and never opens PRs.
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
+            // Sentinel runs on the ask path; only it gets the to-do ledger tool.
+            sentinelTodos: isAsk ? this.buildSentinelTodoDeps(processId, payload.workspaceId, payload.mode) : undefined,
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the
@@ -1308,6 +1331,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             turnIndex: 0,
                         }).binding;
                         turnSegmentId = binding.segmentId;
+                        this.store.emitProcessEvent(processId, {
+                            type: 'provider-session',
+                            activeProviderSession: binding,
+                            turnIndex: 1,
+                        });
                         this.store.updateProcess(processId, activeProviderSessionUpdate(binding)).catch(() => {
                             // Non-fatal: store may be a stub
                         });

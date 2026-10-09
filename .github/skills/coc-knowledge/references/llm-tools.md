@@ -19,8 +19,8 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 (`KUSTO_LLM_TOOL_NAMES`), and `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`) out of the settings
 list when their flags are off.
 
-`getEffectiveDefaultDisabledTools()` returns the registry-level defaults (`tavily_web_search`
-off). They do not depend on the UI layout mode.
+`getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`, and
+`recall_memory` by default, independently of UI layout mode.
 
 ### Per-repo overrides
 
@@ -52,6 +52,29 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
 | `create-pull-request-tool.ts` | `create_pull_request` | Opens a GitHub/ADO PR for the chat's own repo via the shared `git/create-pull-request-service.ts` (commits mode in a temp worktree, or current branch) and writes the chat ↔ PR binding. Autopilot/Ralph write turns only — ask mode and Ralph final-check never receive it (the one intentional ask/autopilot tool-block difference). |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
+| `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
+
+### sentinel_todos
+
+Offered only to Sentinel chats (first turn and follow-ups) while `features.sentinelTodoLedger`
+is on: the route layer publishes `getSentinelTodos`, which returns the shared
+`SentinelTodoService` or `undefined` when the flag is off. Not in `LLM_TOOL_REGISTRY`; flag-off
+turns get no tool and no guidance. The owner is the invoking chat (`workspaceId`, `processId`),
+never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
+`list` (active items; `includeArchived` adds archived), `create` (requires `completionCondition`,
+optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
+return `{ code: 'conflict', current }`). `done`/`needs_attention` require a `reason`; `done` stores
+it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archiving is
+user-only. The addon's `<sentinel_todo_ledger>` guidance tells Sentinel to track concrete work
+only, update instead of duplicating, and report untracked work rather than relaunching jobs.
+`list` items carry `jobs[]` links with a derived `execution` (`queued`/`running`/`unknown`,
+terminal outcome plus result-review delivery state, or `unavailable` for remote links).
+
+With the flag on, the Sentinel's `send_to_conversation` gains `todoItemId` (via the optional
+`todoTracking` tool option): create mode rejects a missing, foreign, or archived item with
+`code: 'untracked'` before launching, then links the admitted local, Ralph (one whole-session
+link), or remote job and returns `tracking: { status: 'tracked' | 'failed' }`. Linked parent
+result reviews quote the item and ask Sentinel for an explicit `done`/`needs_attention` verdict.
 
 ### create_pull_request
 

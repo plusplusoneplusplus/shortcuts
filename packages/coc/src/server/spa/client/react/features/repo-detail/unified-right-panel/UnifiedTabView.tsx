@@ -27,6 +27,8 @@
  *  - `note` — the editable `NoteEditor`, wired exactly as the docked source
  *    canvas wires a note link, with the resolution decoded from the descriptor
  *    rather than re-run (`UnifiedNoteTab`).
+ *  - `todo` — a Sentinel chat's ledger on its owning server (`UnifiedTodoTab`);
+ *    `resourceId` is the ledger's parent process id.
  *
  * The fallback state is for a descriptor this build has no view for at all — a
  * kind from a newer version, say — never for a kind listed above.
@@ -52,6 +54,7 @@ import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import { UnifiedPasteTab } from './UnifiedPasteTab';
+import { UnifiedTodoTab } from './UnifiedTodoTab';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 
@@ -275,6 +278,17 @@ export function UnifiedTabView({
                     scopeWorkspaceId={scopeWorkspaceId}
                     chatId={tab.chatId}
                     onClose={close}
+                    onErrorChange={handleError}
+                />
+            );
+        case 'todo':
+            return (
+                <UnifiedTodoTab
+                    owner={{
+                        ownerWorkspaceId: tab.ownerWorkspaceId,
+                        ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
+                        processId: tab.resourceId,
+                    }}
                     onErrorChange={handleError}
                 />
             );

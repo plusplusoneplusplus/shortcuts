@@ -312,6 +312,9 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
+        /** Per-chat Sentinel to-do ledger (REST, AI tools, right-panel tab). Disabled by default. */
+        sentinelTodoLedger?: boolean;
+        sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
         quickAskSidenotes?: boolean;
@@ -692,6 +695,9 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
+        /** Per-chat Sentinel to-do ledger (REST, AI tools, right-panel tab). Disabled by default. */
+        sentinelTodoLedger: boolean;
+        sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
         quickAskSidenotes: boolean;
@@ -997,6 +1003,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
+        sentinelTodoLedger: false,
+        sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,
         arxivPaperIngest: false,

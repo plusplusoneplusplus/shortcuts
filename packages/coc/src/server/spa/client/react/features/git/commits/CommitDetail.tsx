@@ -501,6 +501,7 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
                                 onLinesReady={setDiffLines}
                                 matchRangesByLine={find.matchRangesByLine}
                                 showFileBanners
+                                onFileNavigate={setNavFilePath}
                                 diffSelectionDragSource={diffSelectionDragSource}
                                 data-testid="diff-content"
                             />
@@ -511,6 +512,7 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
                                 onLinesReady={setDiffLines}
                                 matchRangesByLine={find.matchRangesByLine}
                                 showFileBanners
+                                onFileNavigate={setNavFilePath}
                                 diffSelectionDragSource={diffSelectionDragSource}
                                 data-testid="diff-content"
                             />

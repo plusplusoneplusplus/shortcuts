@@ -16,6 +16,7 @@
 
 import { useId, useState, type FocusEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { DiffFilePicker } from './DiffFilePicker';
 import {
     BANNER_ACCENT_CLASSES,
     BANNER_STATUS_CLASSES,
@@ -29,6 +30,8 @@ import {
 export interface FileBannerRowProps {
     banner: FileBanner;
     pinned?: boolean;
+    files?: readonly string[];
+    onSelectFile?: (path: string) => void;
     'data-testid'?: string;
 }
 
@@ -87,7 +90,7 @@ function FileBannerDetails({ details }: { details: string }) {
     );
 }
 
-export function FileBannerRow({ banner, pinned = false, 'data-testid': testId = 'diff-file-banner' }: FileBannerRowProps) {
+export function FileBannerRow({ banner, pinned = false, files = [], onSelectFile, 'data-testid': testId = 'diff-file-banner' }: FileBannerRowProps) {
     const { dir, base } = splitPath(banner.path);
     const details = bannerDetailsText(banner);
 
@@ -104,10 +107,11 @@ export function FileBannerRow({ banner, pinned = false, 'data-testid': testId = 
                 data-testid="diff-file-banner-accent"
             />
             <span className="shrink-0 text-base leading-none text-[#57606a] dark:text-[#8b949e]" aria-hidden="true">▤</span>
-            <span className="min-w-0 leading-tight" title={banner.path} data-testid="diff-file-banner-path">
+            <DiffFilePicker key={banner.path} filePath={banner.path} files={files} onSelect={onSelectFile}
+                className="min-w-0 leading-tight" title={banner.path} data-testid="diff-file-banner-path">
                 {dir && <span className="block truncate text-[10px] text-[#6e7781] dark:text-[#8b949e]">{dir}</span>}
                 <span className="block truncate text-xs font-semibold">{base}</span>
-            </span>
+            </DiffFilePicker>
             <span
                 className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${BANNER_STATUS_CLASSES[banner.status]}`}
                 data-testid="diff-file-banner-status"

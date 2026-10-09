@@ -117,8 +117,8 @@ interface CloseHandlerDeps {
     triggerManager?: { shutdownAll(): void };
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
-    teamsMessagingManager?: { disconnect(): Promise<void>; dispose?(): void };
-    whatsappMessagingManager?: { disconnect(): Promise<void>; dispose(): void };
+    teamsMessagingManager?: { disconnect(): Promise<void>; disconnectForShutdown?(): Promise<void>; dispose?(): void };
+    whatsappMessagingManager?: { disconnect(): Promise<void>; disconnectForShutdown?(): Promise<void>; dispose(): void };
     syncEngines?: Map<string, SyncEngine>;
     autoPullManager?: { dispose(): void };
     workItemGitHubPullPoller?: { dispose(): void };
@@ -156,9 +156,9 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.triggerManager?.shutdownAll();
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
-        await deps.teamsMessagingManager?.disconnect();
+        await (deps.teamsMessagingManager?.disconnectForShutdown?.() ?? deps.teamsMessagingManager?.disconnect());
         deps.teamsMessagingManager?.dispose?.();
-        await deps.whatsappMessagingManager?.disconnect();
+        await (deps.whatsappMessagingManager?.disconnectForShutdown?.() ?? deps.whatsappMessagingManager?.disconnect());
         deps.whatsappMessagingManager?.dispose();
         deps.syncEngines?.forEach(e => e.stop());
         deps.autoPullManager?.dispose();
@@ -313,6 +313,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — the WhatsApp/Teams ask_user question relay, bound at
     // the route layer where the connectors are created.
     let askUserQuestionRelay: import('./messaging/ask-user-relay').AskUserQuestionRelay | undefined;
+    // Forward declaration — the flag-gated Sentinel to-do service getter, bound
+    // at the route layer where the ledger service is created.
+    let getSentinelTodosCapability: (() => import('./sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined) | undefined;
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
@@ -477,6 +480,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => decisionService,
         () => askUserQuestionRelay,
         () => launchRalphCapability,
+        () => getSentinelTodosCapability?.(),
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -826,6 +830,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setSendMessage: (fn) => { sendMessageCapability = fn; },
         setLaunchRalph: (fn) => { launchRalphCapability = fn; },
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
+        setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });

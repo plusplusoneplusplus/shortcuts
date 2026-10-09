@@ -54,6 +54,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
             target={props.target ?? WS}
             targetRoutingRef={props.targetRoutingRef}
             targets={props.targets}
+            todoInput={props.todoInput}
             {...handlers}
         />,
     );
@@ -456,5 +457,23 @@ describe('the chat\'s Changes entry', () => {
         // The only matching row, so the cursor is already on it.
         fireEvent.keyDown(input, { key: 'Enter' });
         expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ label: 'Changes' }));
+    });
+});
+
+describe('UnifiedPanelOpenMenu — Sentinel To-do', () => {
+    const todoInput = {
+        kind: 'todo' as const, ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'queue_sentinel', label: 'To-do',
+    };
+
+    it('is omitted unless the panel hands it a Sentinel To-do tab', () => {
+        renderMenu();
+        expect(screen.queryByTestId('unified-panel-open-todo')).toBeNull();
+    });
+
+    it('opens (or reopens) the chat\'s To-do tab and closes the menu', () => {
+        const { onOpenResource, onClose } = renderMenu({ todoInput });
+        fireEvent.click(screen.getByTestId('unified-panel-open-todo'));
+        expect(onOpenResource).toHaveBeenCalledWith(todoInput);
+        expect(onClose).toHaveBeenCalled();
     });
 });

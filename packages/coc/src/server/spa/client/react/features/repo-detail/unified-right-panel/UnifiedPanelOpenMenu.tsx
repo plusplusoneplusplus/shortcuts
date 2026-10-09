@@ -75,6 +75,8 @@ export interface UnifiedPanelOpenMenuProps {
     targets?: readonly DockTarget[];
     /** Open a concrete resource — a searched file or a chat canvas. */
     onOpenResource: (input: OpenUnifiedTabInput) => void;
+    /** The selected Sentinel chat's To-do tab; null hides the entry. */
+    todoInput?: OpenUnifiedTabInput | null;
     /** Open one of the workspace-owned views against the current target. */
     onOpenWorkspaceResource: (action: 'terminal' | 'explorer' | 'notes') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
@@ -88,6 +90,7 @@ export function UnifiedPanelOpenMenu({
     targetRoutingRef,
     targets,
     onOpenResource,
+    todoInput = null,
     onOpenWorkspaceResource,
     onClose,
 }: UnifiedPanelOpenMenuProps) {
@@ -117,10 +120,11 @@ export function UnifiedPanelOpenMenu({
         targetWorkspaceId: target,
         chatId,
         chatHasChanges: chatChanges !== null,
+        todoAvailable: todoInput !== null,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoInput, targetUnavailable, targetOption?.label]);
 
     const items = useMemo(
         () => buildOpenMenuItems({ actions, files, canvases, query }),
@@ -310,9 +314,14 @@ export function UnifiedPanelOpenMenu({
             onClose();
             return;
         }
+        if (item.action.id === 'todo') {
+            if (todoInput !== null) onOpenResource(todoInput);
+            onClose();
+            return;
+        }
         onOpenWorkspaceResource(item.action.id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, chatChanges, chatId, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, chatChanges, chatId, todoInput, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

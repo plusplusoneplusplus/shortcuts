@@ -11,7 +11,7 @@ import * as path from 'path';
 import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
-    GenericProcessMetadata,
+    GenericProcessMetadata, PendingMessage,
 } from '@plusplusoneplusplus/forge';
 import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
@@ -1229,6 +1229,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             const deliveryInput: FollowUpMessageInput = {
                 content: messageContent,
+                mirrorContent: body.content as string,
                 displayContent,
                 ...(messageContentWithContext ? { contentWithContext: applyStyle(messageContentWithContext) } : {}),
                 ...(attachments ? { attachments } : {}),
@@ -1252,7 +1253,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 provider: fields.requestedProvider ?? sessionProvider,
             };
 
-            const deliveryService = new ProcessMessageDeliveryService({ store, bridge });
+            // An explicit workspace and exact process ID are required for local mirror authority.
+            deliveryInput.origin = wsId && wsId === proc.metadata?.workspaceId && id === decodeURIComponent(match![1])
+                ? 'desktop' : undefined;
+            const deliveryService = new ProcessMessageDeliveryService({ store, bridge, sentinelMirror: ctx.getSentinelMirror?.() });
             let result;
             try {
                 result = await deliveryService.deliver(proc, deliveryInput);
@@ -1388,7 +1392,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return void handleAPIError(res, missingFields(['content']));
             }
 
-            const pendingMsg = {
+            let mirrored = false;
+            const pendingMsg: PendingMessage = {
                 id: crypto.randomUUID(),
                 content: body.content as string,
                 mode: normalizeChatMode(body.mode),
@@ -1396,21 +1401,46 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             };
 
             await processOperationAdmission.runExclusive(proc.id, async () => {
-                const current = await store.getProcess(proc.id) ?? proc;
-                await store.appendPendingMessage(proc.id, pendingMsg);
-                if (bridge?.enqueue && (current.metadata?.compaction?.state === 'queued'
-                    || current.metadata?.compaction?.state === 'running' || bridge.findCompactionTask?.(proc.id))) {
-                    await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, pendingMessageTask(current, pendingMsg));
+                const current = await store.getProcess(proc.id, proc.metadata?.workspaceId) ?? proc;
+                const mirrorService = ctx.getSentinelMirror?.();
+                const mirror = wsId && wsId === current.metadata?.workspaceId && id === current.id
+                    ? await mirrorService?.capture(wsId, current.id, body.content as string) : undefined;
+                if (mirror) {
+                    mirrored = true;
+                    pendingMsg.id = mirror.requestId;
+                    pendingMsg.relayRequestId = mirror.requestId;
+                }
+                try {
+                    const appended = await store.appendPendingMessage(proc.id, pendingMsg);
+                    if (mirror && !appended?.some(message => message.id === mirror.requestId
+                        && message.relayRequestId === mirror.requestId)) {
+                        throw new Error('Pending message was not admitted');
+                    }
+                    if (mirror) mirrorService!.accepted(mirror);
+                    if (bridge?.enqueue && (current.metadata?.compaction?.state === 'queued'
+                        || current.metadata?.compaction?.state === 'running' || bridge.findCompactionTask?.(proc.id))) {
+                        await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, pendingMessageTask(current, pendingMsg));
+                    }
+                } catch (error) {
+                    if (mirror) {
+                        if (!(await mirrorService!.rejected(mirror))) return;
+                        throw new Error('Pending message admission failed. Retry the submission.');
+                    }
+                    throw error;
                 }
             });
 
-            emitPendingMessageAdded(store, id, pendingMsg);
+            try { emitPendingMessageAdded(store, id, pendingMsg); }
+            catch (error) {
+                if (!mirrored) throw error;
+                console.error('[sentinel-mirror] Accepted pending notification could not be published');
+            }
 
             return { message: pendingMsg };
         },
     }));
 
-    // DELETE /api/processes/:id/pending-messages/:msgId — Remove a consumed pending message
+    // DELETE /api/processes/:id/pending-messages/:msgId — Remove a buffered or consumed pending message
     routes.push(createRoute({
         method: 'DELETE',
         pattern: /^\/api\/processes\/([^/]+)\/pending-messages\/([^/]+)$/,
@@ -1424,8 +1454,30 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             await processOperationAdmission.runExclusive(proc.id, async () => {
-                bridge?.cancelQueuedTask?.(`pending-${proc.id}-${msgId}`);
-                await store.removePendingMessage(proc.id, msgId);
+                const current = await store.getProcess(proc.id, proc.metadata?.workspaceId) ?? proc;
+                const pending = current.pendingMessages?.find(message => message.id === msgId);
+                const requestId = pending?.relayRequestId;
+                const consumed = requestId && current.conversationTurns?.some(turn =>
+                    turn.role === 'user' && turn.relayRequestId === requestId);
+                const isRunningRequest = (task: QueuedTask | undefined) => task?.status === 'running'
+                    && task.repoId === current.metadata?.workspaceId && task.processId === current.id
+                    && task.payload.workspaceId === current.metadata?.workspaceId
+                    && task.payload.relayRequestId === requestId;
+                const running = () => isRunningRequest(bridge?.getTask?.(`pending-${proc.id}-${msgId}`))
+                    || (requestId && isRunningRequest(bridge?.getTask?.(requestId)));
+                let mirroredCancellation = false;
+                if (pending && requestId && !consumed && !running() && wsId
+                    && wsId === current.metadata?.workspaceId && id === current.id) {
+                    mirroredCancellation = await ctx.getSentinelMirror?.()?.cancelRequest(wsId, current.id, requestId, () => !running()) ?? false;
+                }
+                try {
+                    if (mirroredCancellation) bridge?.cancelQueuedTask?.(requestId!);
+                    bridge?.cancelQueuedTask?.(`pending-${proc.id}-${msgId}`);
+                    await store.removePendingMessage(proc.id, msgId);
+                } catch (error) {
+                    if (mirroredCancellation) throw new Error('Pending message removal failed. Retry removing the message.');
+                    throw error;
+                }
             });
 
             res.writeHead(204);

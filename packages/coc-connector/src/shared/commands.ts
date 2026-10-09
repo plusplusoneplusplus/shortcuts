@@ -22,7 +22,7 @@
 export type MessagingChatMode = 'ask' | 'autopilot' | 'ralph' | 'sentinel';
 
 export type MessagingCommand =
-    | { type: 'list-repos' | 'list-remotes' | 'create-topic' | 'help' | 'quota'; args: '' }
+    | { type: 'list-repos' | 'list-remotes' | 'create-topic' | 'help' | 'quota' | 'git-status'; args: '' }
     | { type: 'select-repo' | 'select-topic'; args: string }
     /**
      * `args` is an optional remote repo ref (`n.m` or `name@server`); empty lists
@@ -36,7 +36,7 @@ export type MessagingCommand =
     | { type: 'chat-explicit'; chatId: string; args: string; mode?: MessagingChatMode }
     | { type: 'invalid'; args: string };
 
-export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' | 'compact' }>;
+export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'git-status' | 'select-repo' | 'select-topic' | 'compact' }>;
 
 export interface MessagingHelpCommandSpec {
     group: string;
@@ -58,6 +58,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'list-repos', group: 'Repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'Show repos (alias: list agents)' },
     { type: 'select-repo', group: 'Repos', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'Choose a repo; next message starts a new chat', example: 'select repo 2' },
     { type: 'list-remotes', group: 'Repos', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'Show remote servers and repos' },
+    { type: 'git-status', group: 'Repos', pattern: /^git\s+status$/i, usage: 'git status', summary: 'All accessible local repos: changes, conflicts, ahead/behind (local tracking refs; no fetch)' },
     { type: 'list-topics', group: 'Topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics [ref] [-v]', summary: 'Local: all repos, last24hours, top5; -v adds ids. Remote ref: n.m or repo@server (read-only)', example: 'list topics 1.2 -v' },
     { type: 'create-topic', group: 'Topics', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'Next message starts a new chat' },
     { type: 'select-topic', group: 'Topics', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'Continue an existing chat', example: 'select topic 1' },
@@ -76,7 +77,7 @@ export const MESSAGING_MODE_SPECS: readonly { mode: MessagingChatMode; summary: 
 
 const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
 const MODE_PATTERN = new RegExp(`^/(${MESSAGING_MODE_SPECS.map(spec => spec.mode).join('|')})(?:\\s+(.*))?$`, 'is');
-const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|remotes?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$/i;
+const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|remotes?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$|^git\s+status\b/i;
 
 export interface MessagingHelpFormat {
     strong?: (text: string) => string;

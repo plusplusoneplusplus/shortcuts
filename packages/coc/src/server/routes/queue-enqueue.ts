@@ -44,6 +44,20 @@ function sendPrepareTaskError(res: Parameters<Route['handler']>[1], error: unkno
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
+    const enqueueDesktopTask = async (input: CreateTaskInput, content?: string): Promise<string> => {
+        const service = ctx.getSentinelMirror?.();
+        const mirror = await service?.captureTask(input, content);
+        let taskId: string;
+        try {
+            taskId = await enqueueViaBridge(input, bridge, state, globalWorkspaceRootPath, store);
+        } catch (error) {
+            if (!mirror) throw error;
+            if (await service!.rejected(mirror)) throw new Error('Sentinel mirror submission was not accepted.');
+            taskId = input.id!;
+        }
+        if (mirror) service!.accepted(mirror);
+        return taskId;
+    };
 
     /**
      * Note-chat binding store. Lazily resolved because we only need it when an
@@ -143,6 +157,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             return;
         }
 
+        const mirrorContent = (validation.input!.payload as Record<string, unknown>).prompt;
         // For brand-new chat tasks, the SPA sends raw data-URL attachments on
         // payload.attachments. Decode them to temp files now so the executor
         // (which only knows how to read payload.images and SDK-form attachments)
@@ -156,7 +171,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         }
 
         try {
-            const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
+            const taskId = await enqueueDesktopTask(validation.input!, typeof mirrorContent === 'string' ? mirrorContent : undefined);
             const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
             const inp = validation.input!;
             process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
@@ -404,7 +419,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 
                 try {
                     await prepareTaskForEnqueue(validation.input!, ctx);
-                    const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
+                    const taskId = await enqueueDesktopTask(validation.input!);
                     const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
 
                     successResults.push({

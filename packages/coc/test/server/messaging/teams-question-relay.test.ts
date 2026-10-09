@@ -114,6 +114,21 @@ describe('Teams ask_user question relay', () => {
         expect(hub.locateOrigin(request)).toEqual(jobRequest('root').origin);
     });
 
+    it.each(['root', undefined])('keeps Git status out of pending AI question answers (%s)', async threadId => {
+        const { result } = ask(jobRequest(threadId), [{ question: 'Color?', type: 'text' }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const tryAnswer = vi.spyOn(hub, 'tryAnswer');
+        store.getWorkspaces.mockResolvedValueOnce([]);
+        await handle(inbound('git-command', '/git status', threadId));
+        expect(sendMessage).toHaveBeenLastCalledWith(expect.stringContaining('No accessible local repos registered.'), threadId ?? 'git-command');
+        expect(tryAnswer).not.toHaveBeenCalled();
+        expect(hub.pendingCount()).toBe(1);
+        expect(tasks.size).toBe(0);
+        expect(followUps).toEqual([]);
+        await handle(inbound('answer', 'blue', threadId));
+        expect((await result)[0].answer).toBe('blue');
+    });
+
     it.each(['dispatcher-root', undefined])('relays jobs without receipts to their origin root (%s)', async threadId => {
         const { result } = ask(jobRequest(threadId), [{ question: 'Color?', type: 'text' }]);
         await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));

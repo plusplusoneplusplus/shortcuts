@@ -6,7 +6,7 @@
 import type { ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
-import type { QueueGlobalState } from '../routes/queue-shared';
+import type { QueueGlobalState, QueueRouteContext } from '../routes/queue-shared';
 import { registerQueueEnqueueRoutes } from '../routes/queue-enqueue';
 import { registerQueueStatsRoutes } from '../routes/queue-stats';
 import { registerQueueControlRoutes } from '../routes/queue-control';
@@ -32,6 +32,7 @@ export function registerQueueRoutes(
         dataDir?: string;
         validateProvider?: (provider: ChatProvider) => Promise<void>;
         botManagedConversationsEnabled?: () => boolean;
+        getSentinelMirror?: QueueRouteContext['getSentinelMirror'];
         /**
          * Shared global queue state. When supplied (by the route layer), the HTTP
          * enqueue path and any in-process enqueue capability (e.g. the
@@ -60,6 +61,7 @@ export function registerQueueRoutes(
         getEffortTiersForProvider: options.getEffortTiersForProvider,
         validateProvider: options.validateProvider,
         botManagedConversationsEnabled: options.botManagedConversationsEnabled,
+        getSentinelMirror: options.getSentinelMirror,
     };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);

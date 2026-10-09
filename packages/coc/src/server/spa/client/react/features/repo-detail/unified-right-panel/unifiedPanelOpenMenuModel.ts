@@ -31,7 +31,7 @@ import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'browser' | 'canvas' | 'changes';
+export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'browser' | 'canvas' | 'changes' | 'todo';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -59,6 +59,12 @@ export interface OpenMenuActionsInput {
      * would be noise on every read-only conversation.
      */
     chatHasChanges?: boolean;
+    /**
+     * The selected chat is a Sentinel with the to-do ledger enabled. Gates the
+     * To-do entry, which opens (or reopens) that chat's ledger tab; omitted
+     * rather than disabled for every other chat.
+     */
+    todoAvailable?: boolean;
 }
 
 /**
@@ -106,6 +112,9 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     // files — with no chat selected there is nothing to show either.
     if (input.chatId !== null && input.chatHasChanges === true) {
         actions.push({ id: 'changes', label: 'Changes' });
+    }
+    if (input.chatId !== null && input.todoAvailable === true) {
+        actions.push({ id: 'todo', label: 'To-do' });
     }
     return actions;
 }

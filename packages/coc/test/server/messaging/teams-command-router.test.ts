@@ -127,6 +127,70 @@ describe('TeamsCommandRouter', () => {
         expect(reply).toContain('2');
     });
 
+    it('dispatches Git status through the shared path for roots and bound threads without changing targets', async () => {
+        const readGitStatus = vi.fn().mockResolvedValue({
+            branch: { branch: 'main', isDetached: false, dirty: false, ahead: 8, behind: 0, trackingBranch: 'origin/main', unborn: false },
+            entries: [], conflicts: 0, trackingAvailable: true,
+        });
+        const selectThreadTarget = vi.fn(), resolveThreadReply = vi.fn(), recordThreadCommand = vi.fn();
+        router = new TeamsCommandRouter({
+            ...deps, readGitStatus, selectThreadTarget, resolveThreadReply, recordThreadCommand,
+            isAnswerRelayEnabled: () => true, hasThreadCommand: () => false,
+        });
+        await router.handle(makeMsg('git status', { botAuthored: true }));
+        await router.handle(makeMsg('git status', { replyToMessageId: 'root', historicalSelectionReplay: true }));
+        expect(readGitStatus).not.toHaveBeenCalled();
+        await router.handle(makeMsg('select repo 1'));
+        sendReplySpy.mockClear();
+        await router.handle(makeMsg('/GIT STATUS', { messageId: 'root-command' }));
+        await router.handle(makeMsg('git status', { replyToMessageId: 'bound-root' }));
+        expect(readGitStatus).toHaveBeenCalledTimes(6);
+        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectA - main\nclean; 0 conflicts; origin/main: 8 ahead, 0 behind'), 'root-command');
+        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectB - main'), 'bound-root');
+        expect(recordThreadCommand).toHaveBeenCalledTimes(1);
+        expect(selectThreadTarget).not.toHaveBeenCalled();
+        expect(resolveThreadReply).not.toHaveBeenCalled();
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(deps.executeFollowUp).not.toHaveBeenCalled();
+        const state = new TeamsUserStateStore(tmpDir).get('user-aad-1');
+        expect(state.selectedRepo).toBe('ws-1');
+        expect(state.selectedTopic).toBeNull();
+    });
+
+    it('preserves disabled-thread admission for Git status', async () => {
+        const readGitStatus = vi.fn();
+        router = new TeamsCommandRouter({ ...deps, readGitStatus, resolveThreadReply: vi.fn(), isAnswerRelayEnabled: () => false });
+        await router.handle(makeMsg('git status', { replyToMessageId: 'root' }));
+        expect(sendReplySpy).toHaveBeenCalledWith('❌ Teams thread follow-ups are unavailable.', 'root');
+        expect(readGitStatus).not.toHaveBeenCalled();
+    });
+
+    it('sends every repo in ordered phone-sized chunks, preserving escaping and thread routing', async () => {
+        vi.mocked(deps.store.getWorkspaces).mockResolvedValue(Array.from({ length: 90 }, (_, i) => ({
+            id: `repo-${i}`, name: `Repo <${i}>`, rootPath: path.join(tmpDir, `repo-${i}`),
+        })));
+        router = new TeamsCommandRouter({
+            ...deps, isAnswerRelayEnabled: () => true, recordThreadCommand: vi.fn(),
+            readGitStatus: async () => ({
+                branch: { branch: 'feature_*', isDetached: false, dirty: false, ahead: 0, behind: 0, unborn: false },
+                entries: [], conflicts: 0, trackingAvailable: false,
+            }),
+        });
+        await router.handle(makeMsg('git status', { replyToMessageId: 'root' }));
+        expect(sendReplySpy.mock.calls.length).toBeGreaterThan(1);
+        const text = sendReplySpy.mock.calls.map(([part]) => part).join('');
+        for (let i = 0; i < 90; i++) expect(text).toContain(`Repo <${i}> - feature\\_\\*`);
+        const html = sendReplySpy.mock.calls.map(([part]) => formatTeamsOutbound(part)).join('');
+        expect(html).toContain('Repo &lt;0&gt;');
+        expect(html).not.toContain('Repo <0>');
+        for (const [part, root] of sendReplySpy.mock.calls) {
+            expect(part.length).toBeLessThanOrEqual(3000);
+            expect(root).toBe('root');
+        }
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(deps.executeFollowUp).not.toHaveBeenCalled();
+    });
+
     it('lists remote servers and a remote repo\'s topics read-only (shared grammar smoke)', async () => {
         const remotes = {
             list: vi.fn().mockResolvedValue({

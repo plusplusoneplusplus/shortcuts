@@ -75,6 +75,7 @@ export function createQueueInfrastructure(
     getDecisionService?: () => import('../decisions/decision-service').DecisionService | undefined,
     getAskUserQuestionRelay?: () => import('../messaging/ask-user-relay').AskUserQuestionRelay | undefined,
     getLaunchRalph?: () => import('../ralph/ralph-launch-service').LaunchRalphFn | undefined,
+    getSentinelTodos?: () => import('../sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -104,6 +105,7 @@ export function createQueueInfrastructure(
         getSendMessage,
         getLaunchRalph,
         getSendToConversationRuntime,
+        getSentinelTodos,
         getMcpOauthManager,
         getTurnPerformanceStore,
         getDecisionService,

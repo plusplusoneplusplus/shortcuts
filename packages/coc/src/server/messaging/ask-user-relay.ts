@@ -118,6 +118,7 @@ export interface QuestionTarget {
 
 export interface QuestionRelayLocation {
     processId: string;
+    workspaceId?: string;
     /** Connector request id, or the question batch id for a handed-off job. */
     requestId: string;
     /** Durable origin of a handed-off job, independent of the selected dispatcher. */
@@ -153,7 +154,7 @@ export interface AskUserQuestionRelayRequest extends QuestionRelayLocation {
 export interface AskUserQuestionRelay {
     /** Returns true when a connector owns the request and is relaying it. */
     relay(request: AskUserQuestionRelayRequest): boolean;
-    /** The connector and group/channel a turn came from; undefined for dashboard turns. */
+    /** The connector route for a turn, including an explicitly captured desktop mirror origin. */
     locateOrigin?(request: QuestionRelayLocation): MessagingJobOrigin | undefined;
 }
 
@@ -191,7 +192,10 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
     private readonly cleared = new Set<string>();
     private readonly handled = new Set<string>();
 
-    constructor(private readonly deps: { store: Pick<ProcessStore, 'getProcess' | 'updateProcess'> }) {}
+    constructor(private readonly deps: {
+        store: Pick<ProcessStore, 'getProcess' | 'updateProcess'>;
+        capturedOrigin?: (request: QuestionRelayLocation) => MessagingJobOrigin | undefined;
+    }) {}
 
     register(transport: QuestionTransport): void {
         this.transports.push(transport);
@@ -210,7 +214,7 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
         const located = this.locate(request);
         return located ? { connector: located.transport.platform, chatKey: located.target.chatKey,
             ...(located.target.threadId ? { threadId: located.target.threadId } : {}),
-        } : undefined;
+        } : this.deps.capturedOrigin?.(request);
     }
 
     private locate(request: QuestionRelayLocation): { transport: QuestionTransport; target: QuestionTarget } | undefined {

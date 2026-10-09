@@ -86,6 +86,12 @@ export interface SplitWorkspacePanelProps {
      * is omitted. Desktop layout only.
      */
     onNewChat?: () => void;
+    /**
+     * Extra compact controls on the collapsed desktop rail, below "+ new chat".
+     * The repo/group view passes a portal host here so the chat list can mount
+     * its latest-Sentinel shortcut; clicking inside it closes a hover-peek.
+     */
+    railShortcuts?: ReactNode;
     /** Active jobs shown on the collapsed desktop rail. Zero hides the control. */
     runningCount?: number;
     /** Waiting jobs shown on the collapsed desktop rail. Zero hides the control. */
@@ -314,6 +320,7 @@ export function SplitWorkspacePanel({
     gitHeaderExtra,
     footer,
     onNewChat,
+    railShortcuts,
     runningCount = 0,
     queuedCount = 0,
 }: SplitWorkspacePanelProps) {
@@ -390,6 +397,17 @@ export function SplitWorkspacePanel({
         const raf = requestAnimationFrame(() => setPeekVisible(true));
         return () => cancelAnimationFrame(raf);
     }, [hoverPeek.isOpen]);
+    // Rail shortcuts are usually portaled in from another React subtree, so a
+    // React handler here would never see their clicks; listen on the DOM node.
+    const railShortcutsRef = useRef<HTMLDivElement | null>(null);
+    const closePeek = hoverPeek.close;
+    const hasRailShortcuts = railShortcuts != null;
+    useEffect(() => {
+        const node = railShortcutsRef.current;
+        if (!node) return;
+        node.addEventListener('click', closePeek);
+        return () => node.removeEventListener('click', closePeek);
+    }, [isMobile, leftCollapsed, hasRailShortcuts, closePeek]);
 
     // Apply a proportional default chat height (chat = ~2/3, git = ~1/3) only
     // when the user has no persisted divider value for this workspace. The
@@ -567,6 +585,11 @@ export function SplitWorkspacePanel({
                             </svg>
                         </button>
                     )}
+                    {railShortcuts != null && (
+                        <div ref={railShortcutsRef} className="contents" data-testid="split-workspace-left-shortcuts">
+                            {railShortcuts}
+                        </div>
+                    )}
                     <RailJobStatus status="running" count={runningCount} onClick={toggleLeftCollapsed} />
                     <RailJobStatus status="queued" count={queuedCount} onClick={toggleLeftCollapsed} />
                     <span
@@ -587,8 +610,12 @@ export function SplitWorkspacePanel({
                     'flex flex-col min-h-0 overflow-hidden border-r border-[#e5e5e5] dark:border-[#333]',
                     !leftCollapsed && 'flex-shrink-0',
                     leftCollapsed && !peeking && 'hidden',
+                    // The peek floats beside the rail (`left-9`), never under it:
+                    // the `z-40` rail would otherwise swallow clicks on the
+                    // panel's left edge (e.g. the footer Admin gear), and the
+                    // peek's outside-mousedown dismissal would close it.
                     peeking &&
-                        'absolute inset-y-0 left-0 z-30 bg-[#fafafa] dark:bg-[#1e1e1e] shadow-xl transition-transform duration-200 ease-out ' +
+                        'absolute inset-y-0 left-9 z-30 bg-[#fafafa] dark:bg-[#1e1e1e] shadow-xl transition-transform duration-200 ease-out ' +
                             (peekVisible ? 'translate-x-0' : '-translate-x-full'),
                 )}
                 style={{ width: leftColumn.width }}

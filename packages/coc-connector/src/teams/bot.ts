@@ -10,6 +10,7 @@
  */
 
 import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, TeamsTransportMode, TeamsTransport } from './types';
+import { createHash } from 'node:crypto';
 import type { MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { GraphTransport } from './graph/transport-graph';
 import { McpTransport } from './mcp/transport-mcp';
@@ -68,6 +69,8 @@ export class TeamsBot implements MessagingConnector {
     private notificationScheduler?: TeamsNotificationScheduler;
     private trouter?: TrouterClient;
     private lifecycle = 0;
+    private mirrorAccountKey: string | undefined;
+    private mirrorSenderAadId: string | undefined;
     private notificationAccount?: { tenantId: string; objectId: string };
     private transport: TeamsTransport;
     private _status: BotStatus = 'disconnected';
@@ -133,6 +136,14 @@ export class TeamsBot implements MessagingConnector {
 
         try {
             if (lifecycle !== this.lifecycle) return;
+            try {
+                const identity = trouterAccount(token);
+                this.mirrorAccountKey = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+                this.mirrorSenderAadId = identity.objectId;
+            } catch {
+                this.mirrorAccountKey = undefined;
+                this.mirrorSenderAadId = undefined;
+            }
             const account = this.opts.enableTrouter ? trouterAccount(token) : undefined;
             if (this.opts.enableTrouter && !this.opts.teamId && !this._channelId) {
                 throw new Error('Trouter direct messages require an explicit reader chat target');
@@ -225,6 +236,17 @@ export class TeamsBot implements MessagingConnector {
 
     getConnectionId(): string {
         return this.transport.connectionId;
+    }
+
+    /** Opaque account pin for durable outbound routing; unavailable identities fail closed. */
+    getMirrorAccountKey(): string | undefined {
+        return this.mirrorAccountKey;
+    }
+
+    isMirrorSender(message: InboundTeamsMessage): boolean | undefined {
+        if (message.botAuthored) return false;
+        if (!this.mirrorSenderAadId || !message.senderAadId) return undefined;
+        return message.senderAadId.toLowerCase() === this.mirrorSenderAadId.toLowerCase();
     }
 
     /** Explicit destinations avoid interpreting a chat ID as the authenticated user's self-chat. */
@@ -691,6 +713,14 @@ export class TeamsBot implements MessagingConnector {
                         || account.objectId !== this.notificationAccount.objectId) {
                         throw new Error('Teams account changed; reconnect required');
                     }
+                }
+                try {
+                    const identity = trouterAccount(newToken);
+                    this.mirrorAccountKey = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+                    this.mirrorSenderAadId = identity.objectId;
+                } catch {
+                    this.mirrorAccountKey = undefined;
+                    this.mirrorSenderAadId = undefined;
                 }
                 this.transport.setToken(newToken);
                 console.log('[teams-bot] Token refreshed successfully');

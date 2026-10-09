@@ -11,6 +11,9 @@ import { getRepoDataPath } from '../../../src/server/paths';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { SentinelMirrorService } from '../../../src/server/messaging/sentinel-mirror-service';
+import { createWhatsAppMirrorAdapter } from '../../../src/server/messaging/sentinel-mirror-adapters';
+import { WhatsAppMessagingManager } from '../../../src/server/messaging/whatsapp-messaging-manager';
 
 vi.mock('node:fs', async importOriginal => {
     const actual = await importOriginal<typeof import('node:fs')>();
@@ -112,6 +115,153 @@ describe('WhatsApp authoritative binding removal', () => {
         vi.mocked(fs.writeFileSync).mockReset();
         fs.rmSync(dir, { recursive: true, force: true });
     });
+
+    it('reports malformed receipt and selection JSON without exposing stored content', async () => {
+        const file = getRepoDataPath(dir, 'ws-a', 'whatsapp-bindings.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, '{private stored diagnostic');
+        const restored = new WhatsAppBindings(dir);
+        await expect(restored.restore(store)).rejects.toThrow('Invalid WhatsApp binding receipts');
+        const selection = path.join(dir, 'messaging', 'whatsapp', 'state.json');
+        fs.mkdirSync(path.dirname(selection), { recursive: true });
+        fs.writeFileSync(selection, '{private selection diagnostic');
+        expect(() => new WhatsAppBindings(dir)).toThrow('Invalid WhatsApp selection state');
+    });
+
+    it.each(['accepted', 'rejected'] as const)('never authorizes concurrent desktop capture from a provisional first binding (%s)', async outcome => {
+        await register();
+        const proc = (await store.getProcess(processId))!;
+        await store.updateProcess(processId, { metadata: { ...proc.metadata, mode: 'sentinel' } });
+        const manager = new WhatsAppMessagingManager(dir);
+        vi.spyOn(manager, 'getStatus').mockReturnValue({
+            ...manager.getStatus(), enabled: true, status: 'connected', groupJid: 'test-group@g.us',
+        });
+        vi.spyOn(manager, 'getMirrorAccountKey').mockReturnValue('synthetic-account');
+        const mirror = new SentinelMirrorService({
+            dataDir: dir, store, queue: queue.createAggregateQueueFacade(), enabled: () => true,
+            adapters: [createWhatsAppMirrorAdapter(manager, bindings)],
+        });
+        let entered!: () => void;
+        let release!: () => void;
+        const begun = new Promise<void>(resolve => { entered = resolve; });
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const binding = receipt({ taskId: 'first-live-admission', inboundId: 'first-live-inbound',
+            status: 'queued', outboundIds: [], nextPart: 0 });
+        const admission = bindings.admit(binding, async () => {
+            entered();
+            await gate;
+            if (outcome === 'rejected') throw new Error('private connector admission diagnostic');
+            await queue.enqueue({
+                id: binding.taskId, type: 'chat', processId, repoId: 'ws-a', priority: 'normal', config: {},
+                payload: { kind: 'chat', mode: 'sentinel', processId, workspaceId: 'ws-a',
+                    relayRequestId: binding.taskId, prompt: 'connector request' },
+            });
+        }).catch(error => error);
+        try {
+            await begun;
+            expect(binding.admissionPending).toBe(true);
+            expect(bindings.sentinelMirrorBindings('ws-a', processId)).toHaveLength(0);
+            expect(await mirror.capture('ws-a', processId, 'desktop while connector admission waits')).toBeUndefined();
+            await bindings.restore(store);
+            expect(bindings.findMessage(binding.inboundId)).toBe(binding);
+            release();
+            const result = await admission;
+            if (outcome === 'accepted') {
+                expect(result).toBe(true);
+                expect(binding.admissionPending).toBeUndefined();
+                const captured = await mirror.capture('ws-a', processId, 'desktop after connector acceptance');
+                expect(captured).toBeDefined();
+                await mirror.rejected(captured!);
+            } else {
+                expect(result.message).toBe('WhatsApp request was not admitted.');
+                expect(bindings.findMessage(binding.inboundId)).toBeUndefined();
+                expect(await mirror.capture('ws-a', processId, 'desktop after rejected binding')).toBeUndefined();
+            }
+        } finally {
+            release();
+            mirror.dispose();
+            manager.dispose();
+        }
+    });
+
+    it('retains accepted connector work after promotion write failure and promotes from exact durable admission on restart', async () => {
+        const binding = receipt({ admissionPending: true, status: 'queued', outboundIds: [], nextPart: 0 });
+        const write = vi.mocked(fs.writeFileSync).getMockImplementation()!;
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.mocked(fs.writeFileSync).mockImplementation((file, data, options) => {
+            if (String(file).includes('whatsapp-bindings.json')) {
+                const rows: WhatsAppBinding[] = JSON.parse(String(data));
+                if (rows.some(row => row.inboundId === binding.inboundId && !row.admissionPending)) {
+                    throw new Error('private promotion storage diagnostic');
+                }
+            }
+            return write(file, data, options);
+        });
+        expect(await bindings.admit(binding, async () => { await enqueue(); })).toBe(true);
+        expect(queue.getTask('origin')).toBeDefined();
+        expect(binding.admissionPending).toBe(true);
+        expect(bindings.sentinelMirrorBindings('ws-a', processId)).toHaveLength(0);
+        expect(log.mock.calls.flat().join(' ')).not.toContain('private promotion');
+        vi.mocked(fs.writeFileSync).mockImplementation(write);
+        await restart();
+        expect(queue.getTask('origin')).toBeDefined();
+        expect(bindings.findMessage(binding.inboundId)?.admissionPending).toBeUndefined();
+        expect(bindings.sentinelMirrorBindings('ws-a', processId)).toHaveLength(1);
+    });
+
+    it('never rolls back an accepted connector enqueue when its observer throws', async () => {
+        const binding = receipt({ status: 'queued', outboundIds: [], nextPart: 0 });
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        expect(await bindings.admit(binding, async () => {
+            await enqueue();
+            throw new Error('private post-admission notification');
+        })).toBe(true);
+        expect(queue.getTask(binding.taskId)).toBeDefined();
+        expect(binding.admissionPending).toBeUndefined();
+        expect(await bindings.admit(binding, async () => { throw new Error('duplicate must not enqueue'); })).toBe(false);
+        expect(binding.admissionPending).toBeUndefined();
+        expect(log.mock.calls.flat().join(' ')).not.toContain('private post-admission');
+        await restart();
+        expect(bindings.sentinelMirrorBindings('ws-a', processId)).toHaveLength(1);
+    });
+
+    it.each(['queue', 'pending', 'user-turn', 'foreign-workspace', 'foreign-process', 'assistant-turn', 'missing'] as const)(
+        'reconciles pending admission only from exact workspace/process request evidence (%s)', async proof => {
+            const binding = receipt({ admissionPending: true, status: 'queued', outboundIds: [], nextPart: 0 });
+            bindings.add(binding);
+            if (proof === 'queue') await enqueue();
+            if (proof === 'foreign-workspace') await queue.enqueue({
+                id: 'origin', type: 'chat', processId, repoId: 'ws-b', priority: 'normal', config: {},
+                payload: { kind: 'chat', workspaceId: 'ws-b', relayRequestId: 'origin', prompt: 'foreign request' },
+            });
+            if (proof === 'foreign-process') {
+                await store.addProcess({ id: 'queue_foreign', type: 'chat', status: 'completed',
+                    startTime: new Date(), promptPreview: '', metadata: { type: 'chat', workspaceId: 'ws-a' } });
+                await queue.enqueue({
+                    id: 'origin', type: 'chat', processId: 'queue_foreign', repoId: 'ws-a', priority: 'normal', config: {},
+                    payload: { kind: 'chat', processId: 'queue_foreign', workspaceId: 'ws-a',
+                        relayRequestId: 'origin', prompt: 'other process request' },
+                });
+            }
+            if (['pending', 'user-turn', 'assistant-turn'].includes(proof)) {
+                await store.addProcess({
+                    id: processId, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: '',
+                    metadata: { type: 'chat', workspaceId: 'ws-a' },
+                    conversationTurns: proof === 'pending' ? [] : [{
+                        role: proof === 'user-turn' ? 'user' : 'assistant', content: 'request evidence',
+                        turnIndex: 0, timestamp: new Date(), relayRequestId: 'origin', timeline: [],
+                    }],
+                });
+                if (proof === 'pending') await store.appendPendingMessage(processId, {
+                    id: 'origin', relayRequestId: 'origin', content: 'accepted pending', createdAt: new Date().toISOString(),
+                });
+            }
+            await restart();
+            const accepted = ['queue', 'pending', 'user-turn'].includes(proof);
+            expect(bindings.sentinelMirrorBindings('ws-a', processId)).toHaveLength(accepted ? 1 : 0);
+            expect(!!bindings.findMessage(binding.inboundId)).toBe(accepted);
+        },
+    );
 
     it.each([false, true])('releases the last binding and pending/persisted control durably (%s)', async persisted => {
         await enqueue();
@@ -372,6 +522,10 @@ describe('WhatsApp authoritative binding removal', () => {
         await bindings.remove(origin);
         const next = receipt({ inboundId: 'new-admission', taskId: 'new-admission' });
         expect(await bindings.admit(next, async () => {
+            await queue.enqueue({
+                id: next.taskId, type: 'chat', repoId: 'ws-a', processId, priority: 'normal', config: {},
+                payload: { kind: 'chat', processId, workspaceId: 'ws-a', relayRequestId: next.taskId, prompt: 'readmitted request' },
+            });
             const process = (await store.getProcess(processId))!;
             await store.updateProcess(processId, { metadata: {
                 ...process.metadata, botControl: createBotControlMetadata('whatsapp'),
@@ -430,7 +584,7 @@ describe('WhatsApp authoritative binding removal', () => {
             if (!accepted) throw new Error('admission rejected');
         });
         const result = accepted ? expect(admission).resolves.toBe(true)
-            : expect(admission).rejects.toThrow('admission rejected');
+            : expect(admission).rejects.toThrow('WhatsApp request was not admitted.');
         await startedPromise;
         const removal = bindings.remove(origin);
         finish();
@@ -534,6 +688,6 @@ describe('WhatsApp authoritative binding removal', () => {
         const file = getRepoDataPath(dir, 'ws-a', 'whatsapp-bindings.json');
         fs.writeFileSync(file, JSON.stringify([{ ...binding, releaseState: 'invalid' }]));
         const restored = new WhatsAppBindings(dir, { store, queue: queue.createAggregateQueueFacade() });
-        await expect(restored.restore(store)).rejects.toThrow('Invalid WhatsApp bindings');
+        await expect(restored.restore(store)).rejects.toThrow('Invalid WhatsApp binding receipts');
     });
 });

@@ -16,7 +16,7 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const { app, BrowserWindow, session, shell, webContents } = require('electron');
+const { app, BrowserWindow, Menu, session, shell, webContents } = require('electron');
 
 const distDir = path.join(__dirname, '..', '..', 'dist');
 const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
@@ -117,6 +117,9 @@ async function waitFor(fn, timeoutMs = 5000) {
 }
 
 app.whenReady().then(async () => {
+    // Direct input into a hidden guest must not invoke Electron's default
+    // window-close accelerator; hidden guests stay active for shared page zoom.
+    Menu.setApplicationMenu(null);
     registerBrowserViewIpc(path.join(app.getPath('userData'), 'coc'));
     const server = http.createServer(handler);
     const port = await listen(server);
@@ -229,8 +232,12 @@ app.whenReady().then(async () => {
     await spa("window.cocDesktop.browser.hide('b1')");
     await sleep(100);
     await press('W', modifiers);
+    const hiddenPageCloseKeys = await waitFor(async () => {
+        const count = await b1.webContents.executeJavaScript('window.__pageCloseKeys');
+        return count === pageCloseKeys + 1 ? count : null;
+    });
     emit('close-shortcut', {
-        forwarded, beforeClose, beforePage, pageCloseKeys,
+        forwarded, beforeClose, beforePage, pageCloseKeys, hiddenPageCloseKeys,
         afterHidden: await spa('window.__closeRequests.length'),
         windowAlive: !main.isDestroyed(), viewAlive: !b1.webContents.isDestroyed(),
     });

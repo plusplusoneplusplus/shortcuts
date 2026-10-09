@@ -2,11 +2,18 @@
  * Tests for FileDiffPanel — unified single-file diff viewer component.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 
 // --- Module mocks (hoisted by Vitest) ---
+
+const featureFlags = vi.hoisted(() => ({ SHOW_DIFF_FILE_PICKER: false }));
+vi.mock('../../../../src/server/spa/client/react/featureFlags', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/featureFlags')>(),
+    get SHOW_DIFF_FILE_PICKER() { return featureFlags.SHOW_DIFF_FILE_PICKER; },
+}));
+afterEach(() => { featureFlags.SHOW_DIFF_FILE_PICKER = false; });
 
 const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
@@ -294,6 +301,7 @@ function makePrSource(overrides: Partial<DiffSource> = {}): DiffSource {
 describe('FileDiffPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        featureFlags.SHOW_DIFF_FILE_PICKER = false;
         mockViewMode = 'unified';
         mockDiffEngine = 'monaco';
         mockMonacoProps = null;
@@ -1058,6 +1066,122 @@ describe('FileDiffPanel', () => {
             const headerOf = (c: HTMLElement) =>
                 c.querySelector('[data-testid="file-diff-header"]')!.innerHTML;
             expect(headerOf(withProp)).toBe(headerOf(without));
+        });
+    });
+
+    describe('changed-file picker', () => {
+        const files = ['src/foo.ts', 'assets/image.png', 'src/deleted.ts', 'src/renamed.ts'];
+
+        it('remains disabled by default with a navigable multi-file source', () => {
+            const onNavigateToFile = vi.fn();
+            render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={makeCommitSource({ files })} onNavigateToFile={onNavigateToFile} />);
+            expect(screen.getByTestId('file-diff-path').tagName).toBe('SPAN');
+            fireEvent.click(screen.getByTestId('truncated-path'));
+            expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
+            expect(onNavigateToFile).not.toHaveBeenCalled();
+        });
+
+        it.each(['monaco', 'legacy'] as const)('jumps to the selected file first hunk in %s mode without opening a panel tab', engine => {
+            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            mockDiffEngine = engine;
+            const onNavigateToFile = vi.fn();
+            const source = makeCommitSource({ files });
+            render(
+                <UnifiedPanelHostProvider host={{ workspaceId: 'ws1', chatId: 'chat-1' }}>
+                    <FileDiffPanel workspaceId="ws1" filePath={files[0]} source={source} onNavigateToFile={onNavigateToFile} />
+                </UnifiedPanelHostProvider>,
+            );
+            fireEvent.click(screen.getByRole('button', { name: `Jump to file: ${files[0]}` }));
+            expect(screen.getAllByRole('option').map(option => option.getAttribute('title'))).toEqual(files);
+            expect(screen.getAllByRole('option')[0].getAttribute('aria-selected')).toBe('true');
+            fireEvent.change(screen.getByRole('combobox', { name: 'Search changed files' }), { target: { value: 'RENAMED' } });
+            fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+            expect(onNavigateToFile).toHaveBeenCalledExactlyOnceWith('src/renamed.ts', 'first');
+            expect(mockOpenUnifiedPanelTab).not.toHaveBeenCalled();
+            expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
+        });
+
+        it.each(['no callback', 'single file', 'empty list'])('keeps a noninteractive path for %s', fallback => {
+            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            const onNavigateToFile = vi.fn();
+            render(<FileDiffPanel workspaceId="ws1" filePath={files[0]}
+                source={makeCommitSource({ files: fallback === 'single file' ? files.slice(0, 1) : fallback === 'empty list' ? [] : files })}
+                onNavigateToFile={fallback === 'no callback' ? undefined : onNavigateToFile} />);
+            expect(screen.getByTestId('file-diff-path').tagName).toBe('SPAN');
+            fireEvent.click(screen.getByTestId('truncated-path'));
+            expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
+            expect(onNavigateToFile).not.toHaveBeenCalled();
+        });
+
+        it.each(['ctrlKey', 'metaKey'])('preserves %s+click to open a file tab without opening the picker', key => {
+            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            const onNavigateToFile = vi.fn();
+            render(
+                <UnifiedPanelHostProvider host={{ workspaceId: 'ws-scope', chatId: 'chat-1' }}>
+                    <FileDiffPanel workspaceId="ws-member" filePath={files[0]} source={makeCommitSource({ files })} onNavigateToFile={onNavigateToFile} />
+                </UnifiedPanelHostProvider>,
+            );
+            fireEvent.click(screen.getByTestId('truncated-path'), { [key]: true });
+            expect(mockOpenUnifiedPanelTab).toHaveBeenCalledExactlyOnceWith('ws-scope', expect.objectContaining({
+                kind: 'file', ownerWorkspaceId: 'ws-member', chatId: 'chat-1', resourceId: files[0], label: 'foo.ts',
+            }));
+            expect(onNavigateToFile).not.toHaveBeenCalled();
+            expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
+        });
+
+        it.each(['workspace', 'source'])('discards fetched paths and closes the picker on %s switch', async kind => {
+            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            const onNavigateToFile = vi.fn();
+            const oldSource = makeCommitSource({ fetchFileList: vi.fn().mockResolvedValue(files) });
+            let resolveFiles!: (paths: string[]) => void;
+            const nextSource = makeCommitSource({
+                cacheKey: kind === 'source' ? 'commit:next' : oldSource.cacheKey,
+                fetchFileList: vi.fn().mockReturnValue(new Promise<string[]>(resolve => { resolveFiles = resolve; })),
+            });
+            const view = render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={oldSource} onNavigateToFile={onNavigateToFile} />);
+            fireEvent.click(await screen.findByRole('button', { name: `Jump to file: ${files[0]}` }));
+            fireEvent.change(screen.getByRole('combobox'), { target: { value: 'deleted' } });
+            view.rerender(<FileDiffPanel workspaceId={kind === 'workspace' ? 'ws2' : 'ws1'} filePath={files[0]} source={nextSource} onNavigateToFile={onNavigateToFile} />);
+            expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
+            expect(screen.getByTestId('file-diff-path').tagName).toBe('SPAN');
+            expect(mockCrossFileNavOptions?.files).toEqual([]);
+            expect(screen.queryByTestId('file-position-indicator')).toBeNull();
+            await act(async () => resolveFiles([files[0], 'src/next.ts']));
+            fireEvent.click(screen.getByRole('button', { name: `Jump to file: ${files[0]}` }));
+            expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('');
+            expect(screen.getAllByRole('option').map(option => option.getAttribute('title'))).toEqual([files[0], 'src/next.ts']);
+            expect(screen.queryByRole('option', { name: /deleted\.ts/ })).toBeNull();
+        });
+
+        it('closes the picker and marks the new current file after host navigation', () => {
+            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            const source = makeCommitSource({ files });
+            const onNavigateToFile = vi.fn();
+            const view = render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={source} onNavigateToFile={onNavigateToFile} />);
+            fireEvent.click(screen.getByRole('button', { name: `Jump to file: ${files[0]}` }));
+            fireEvent.change(screen.getByRole('combobox'), { target: { value: 'image' } });
+            view.rerender(<FileDiffPanel workspaceId="ws1" filePath={files[1]} source={source} onNavigateToFile={onNavigateToFile} />);
+            expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: `Jump to file: ${files[1]}` }));
+            expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('');
+            expect(screen.getByRole('option', { name: /image\.png/ }).getAttribute('aria-selected')).toBe('true');
+            expect(screen.getByRole('option', { name: /foo\.ts/ }).getAttribute('aria-selected')).toBe('false');
+            expect(screen.getByTestId('file-position-indicator').textContent).toBe('2/4');
+        });
+
+        it('ignores a file-list response from a previous workspace arriving after the current one', async () => {
+            featureFlags.SHOW_DIFF_FILE_PICKER = true;
+            let resolveOld!: (paths: string[]) => void;
+            const oldSource = makeCommitSource({ fetchFileList: vi.fn().mockReturnValue(new Promise<string[]>(resolve => { resolveOld = resolve; })) });
+            const nextSource = makeCommitSource({ fetchFileList: vi.fn().mockResolvedValue([files[0], 'src/current.ts']) });
+            const onNavigateToFile = vi.fn();
+            const view = render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={oldSource} onNavigateToFile={onNavigateToFile} />);
+            view.rerender(<FileDiffPanel workspaceId="ws2" filePath={files[0]} source={nextSource} onNavigateToFile={onNavigateToFile} />);
+            await screen.findByRole('button', { name: `Jump to file: ${files[0]}` });
+            await act(async () => resolveOld(files));
+            fireEvent.click(screen.getByRole('button', { name: `Jump to file: ${files[0]}` }));
+            expect(screen.getAllByRole('option').map(option => option.getAttribute('title'))).toEqual([files[0], 'src/current.ts']);
+            expect(mockCrossFileNavOptions?.files).toEqual([files[0], 'src/current.ts']);
         });
     });
 

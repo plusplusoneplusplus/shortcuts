@@ -15,7 +15,8 @@ import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatSt
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
+import { getCocClientForWorkspace, lookupCloneBaseUrl, resolveCloneRoute } from '../../repos/cloneRegistry';
+import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { useWorkspaceRemoteUrl } from '../../repos/useWorkspaceRemoteUrl';
 import { getConversationTurns, getRetryProvider } from './conversation/chatConversationUtils';
@@ -54,6 +55,7 @@ import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-det
 import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
+import { publishSentinelTodoChat, withdrawSentinelTodoChat } from '../repo-detail/unified-right-panel/sentinelTodoChats';
 import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../repo-detail/unified-right-panel/resolveChatFileLink';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
@@ -112,6 +114,7 @@ import { useCrons } from './hooks/useCrons';
 import { CronManagementPanel } from './CronManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
+import { useConversationPin } from './hooks/useConversationPin';
 import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
 import { InlineTurnEditor } from './conversation/InlineTurnEditor';
 import { useEditTurn } from './hooks/useEditTurn';
@@ -122,7 +125,7 @@ import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { popOutOpened } from '../../utils/popOutWindow';
-import { isConcreteChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
+import { isConcreteChatProvider, resolveActiveChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
 import { RestartWithProviderButton } from './RestartWithProviderButton';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -385,6 +388,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // While `processDetails` is loading the id stays `undefined` — the documented
     // "not known yet" state — and the origin-scoped effects re-run once it lands.
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
+    const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
     const forEachGeneration = metadataProcess?.metadata?.forEach?.kind === 'generation'
         ? metadataProcess.metadata.forEach as ForEachGenerationMetadata
         : null;
@@ -411,26 +415,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         || metadataProcess?.payload?.workingDirectory
         || metadataProcess?.metadata?.workingDirectory
         || undefined;
-    const rawSessionProvider = metadataProcess?.metadata?.provider;
-    // Provider used for the model / reasoning-effort / effort-tier lookups below.
-    // It deliberately does NOT recognize 'opencode' and collapses it onto the
-    // user's configured default; leave it alone unless you also mean to change
-    // which catalog the model dropdown fetches.
+    const rawSessionProvider = resolveActiveChatProvider(metadataProcess, metadataProcess?.metadata?.provider);
+    // Preserve the display fallback for OpenCode; capability and catalog lookups
+    // use the concrete conversation/composer provider.
     const sessionProvider = rawSessionProvider === 'codex' || rawSessionProvider === 'claude' || rawSessionProvider === 'copilot'
         ? rawSessionProvider
         : getDefaultProvider();
-    // The provider this conversation actually ran on, narrowed across all four
-    // ChatProvider values and defaulting to copilot exactly like the backend's
-    // `resolveConversationProvider`. Used for provider-capability decisions
-    // (rewind), never for catalog lookups — `sessionProvider` would report the
-    // user's default (possibly codex) for an opencode chat and wrongly hide the
-    // rewind action.
-    const conversationProvider: ChatProvider = rawSessionProvider === 'codex'
-        || rawSessionProvider === 'claude'
-        || rawSessionProvider === 'opencode'
-        || rawSessionProvider === 'copilot'
-        ? rawSessionProvider
-        : 'copilot';
+    const conversationProvider: ChatProvider = rawSessionProvider ?? 'copilot';
     const activeProviderSegment = metadataProcess?.activeProviderSession as {
         provider: ChatProvider;
         segmentId: string;
@@ -729,6 +720,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             withdrawUnifiedChatChanges(chatChangesScopeId, taskId);
         };
     }, [chatChangesScopeId, taskId]);
+
+    // A hosted Sentinel publishes its to-do ledger owner — the chat's parent
+    // workspace and process — so the panel can offer and auto-open its To-do
+    // tab. The panel applies the feature flag; withdrawal follows the host.
+    const sentinelTodoOwnerWorkspaceId = resolveLoadedTaskMode(task) === 'sentinel' && processId
+        ? workspaceId ?? unifiedPanelHost?.workspaceId ?? null
+        : null;
+    useEffect(() => {
+        if (chatChangesScopeId === null || sentinelTodoOwnerWorkspaceId === null || !processId) return;
+        publishSentinelTodoChat(chatChangesScopeId, taskId, { ownerWorkspaceId: sentinelTodoOwnerWorkspaceId, processId });
+        return () => withdrawSentinelTodoChat(chatChangesScopeId, taskId);
+    }, [chatChangesScopeId, taskId, sentinelTodoOwnerWorkspaceId, processId]);
 
     // Hosted file links use the workspace panel. Async group/folder resolution
     // belongs to the initiating chat; a later selection must not claim it.
@@ -1552,12 +1555,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: effectiveFollowUpModelOverride,
+        activeProvider: conversationProvider,
         providerOverride: pendingProvider ?? undefined,
         effortOverride: effectiveFollowUpEffort,
         // Omitted entirely when the owning server has the flag off, so an older
         // or opted-out server never receives a field it would reject.
         chatStyle: chatStyleSelectorEnabled ? followUpChatStyle : undefined,
         workspaceId,
+        owningWorkspaceId,
         ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
         conversationRetrievalAvailable: canRetrieveConversations,
@@ -2266,6 +2271,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         } catch { /* best-effort: SSE will reflect the actual state */ }
     }, [client, processId]);
 
+    // ── Conversation pin (header overflow) ──
+    // Persisted state comes from the process record; `undefined` until it loads.
+    const conversationPin = useConversationPin({
+        processId: processDetails ? processId : null,
+        workspaceId,
+        persistedPinned: processDetails ? Boolean(processDetails.pinnedAt) : undefined,
+        onError: useCallback((err: unknown, pinned: boolean) => {
+            addToast(getSpaCocClientErrorMessage(err, pinned ? 'Failed to pin conversation.' : 'Failed to unpin conversation.'), 'error');
+        }, [addToast]),
+    });
+
     // ── Per-turn actions: pin, archive ──
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
         if (!processId) return;
@@ -2421,17 +2437,26 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
+        const routeScope = workspaceId ?? effectiveWorkspaceId;
+        if (resolveCloneRoute(routeScope).kind === 'unresolved-remote') {
+            setError('The owning server is unavailable. Reconnect it before removing this message.');
+            return;
+        }
+        const wireWorkspaceId = typeof owningWorkspaceId === 'string'
+            ? parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId : undefined;
         let removed: QueuedMessage | undefined;
         setPendingQueue(prev => {
             removed = prev.find(m => m.id === messageId);
             return prev.filter(m => m.id !== messageId);
         });
-        client.processes.deletePendingMessage(processId, messageId).catch(() => {
+        getCocClientForWorkspace(routeScope).processes.deletePendingMessage(
+            processId, messageId, wireWorkspaceId ? { workspace: wireWorkspaceId } : undefined,
+        ).catch(() => {
             if (removed) {
                 setPendingQueue(prev => (prev.some(m => m.id === messageId) ? prev : [...prev, removed!]));
             }
         });
-    }, [client, processId]);
+    }, [processId, workspaceId, effectiveWorkspaceId, owningWorkspaceId]);
 
     const launchInteractiveResume = async () => {
         if (!processId || !resumeSessionId) return;
@@ -2740,6 +2765,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
                     onStartFreshSameContext={headerMetadata.onStartFreshSameContext}
                     startingFreshSameContext={headerMetadata.startingFreshSameContext}
+                    isPinned={conversationPin.isPinned}
+                    pinPending={conversationPin.pending}
+                    onTogglePin={conversationPin.available && !readOnly ? conversationPin.togglePin : undefined}
                     viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
                         ? (
                             <AgentTreeMenu

@@ -627,6 +627,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-sentinel-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelTodoLedger', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoLedgerEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.5, label: 'Sentinel to-do ledger', badge: 'experimental',
+            hint: 'Give each Sentinel chat a persistent To-do tab for planned work, delegated jobs, and reviewed outcomes. Bookkeeping only; never starts or cancels jobs. Disabled by default.',
+            testId: 'toggle-sentinel-todo-ledger-enabled',
+        },
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         value: { kind: 'number', integer: true, min: 1 },
@@ -867,6 +875,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'integrations', group: 'dashboard', order: 61.75, label: 'Teams message reaction', badge: 'experimental',
             hint: 'Attempt a Like reaction on new channel messages before processing; ordinary replies remain unchanged. Disabled by default.',
             testId: 'toggle-teams-message-reaction-enabled',
+        },
+    }),
+    bool({
+        key: 'features.sentinelDesktopMirror', default: false, runtime: 'live', runtimeFlag: 'sentinelDesktopMirrorEnabled',
+        ui: {
+            tab: 'integrations', group: 'dashboard', order: 61.8, label: 'Sentinel desktop messaging mirror', badge: 'experimental',
+            hint: 'Mirror newly accepted dashboard messages and final answers to their active local Sentinel messaging binding. Delivery failures appear in the chat; uncertain sends require manual reconciliation. Existing history is not replayed.',
+            testId: 'toggle-sentinel-desktop-mirror-enabled',
         },
     }),
     bool({

@@ -62,6 +62,7 @@ const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
 const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
+const BROWSER_PAGE_ZOOM_SET_CHANNEL = 'coc-desktop:browser-page-zoom-set';
 const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
@@ -150,6 +151,7 @@ interface BrowserPreferences {
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
     clearing: BrowserEngine[];
+    pageZoom: { percent: number; min: number; max: number; step: number };
 }
 
 /** Live navigation snapshot of a browser tab (mirrors `BrowserViewState`). */
@@ -256,6 +258,7 @@ const browser = {
     onDownload: (callback: (event: BrowserDownloadEvent) => void) =>
         subscribe(BROWSER_VIEW_DOWNLOAD_CHANNEL, callback),
     getPreferences: (): Promise<BrowserPreferences> => ipcRenderer.invoke(BROWSER_PREFERENCES_GET_CHANNEL),
+    setPageZoom: (percent: number): Promise<BrowserOperationResult> => ipcRenderer.invoke(BROWSER_PAGE_ZOOM_SET_CHANNEL, percent),
     setDefaultEngine: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
         ipcRenderer.invoke(BROWSER_PREFERENCES_SET_CHANNEL, engine),
     clearData: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>

@@ -78,6 +78,33 @@ describe('buildQuestionLayout', () => {
         batchId: 'b', questionId: 'q', question: 'Which database?', type: 'text', turnIndex: 1, index: 0, batchSize: 1, ...patch,
     });
 
+    describe('captured messaging origin fallback', () => {
+        it('keeps connector lookup first and uses the captured resolver only for origin, not question relay', () => {
+            const origin = { connector: 'whatsapp' as const, chatKey: 'captured-group' };
+            const capturedOrigin = vi.fn(() => origin);
+            const hub = new AskUserQuestionRelayHub({ store: {} as never, capturedOrigin });
+            const request = { workspaceId: 'owner-workspace', processId: 'parent', requestId: 'desktop-request' };
+            expect(hub.locateOrigin(request)).toEqual(origin);
+            expect(capturedOrigin).toHaveBeenCalledWith(request);
+            capturedOrigin.mockClear();
+            expect(hub.relay({ ...request, questions: [], control: {} as never })).toBe(false);
+            expect(capturedOrigin).not.toHaveBeenCalled();
+            hub.register({ platform: 'teams', locate: () => ({ chatKey: 'connector-chat', threadId: 'connector-thread' }),
+                post: vi.fn() });
+            expect(hub.locateOrigin(request)).toEqual({
+                connector: 'teams', chatKey: 'connector-chat', threadId: 'connector-thread',
+            });
+            expect(capturedOrigin).not.toHaveBeenCalled();
+        });
+
+        it('does not turn captured receipt lookup failures into origin-less delegation', () => {
+            const hub = new AskUserQuestionRelayHub({ store: {} as never,
+                capturedOrigin: () => { throw new Error('Captured origin unavailable'); } });
+            expect(() => hub.locateOrigin({ processId: 'parent', requestId: 'request', workspaceId: 'owner' }))
+                .toThrow('Captured origin unavailable');
+        });
+    });
+
     it('numbers options one per line with a hint and progress for batches', () => {
         expect(buildQuestionLayout(payload({ ...select, options: [
             { value: 'pg', label: 'Postgres', description: 'server' }, { value: 'lite', label: 'SQLite' },

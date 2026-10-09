@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isQueueProcessId, toTaskId, toQueueProcessId, type CreateTaskInput, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
-import { isMessagingJobOrigin } from '../messaging/job-notices';
+import { connectorMessagingOrigin, isMessagingJobOrigin } from '../messaging/job-notices';
 import { normalizeChatMode } from '../tasks/task-types';
 import { DelegatedJobStore } from './delegated-job-store';
 
@@ -44,6 +44,9 @@ export function createSentinelDelegationEnqueue(deps: {
             ...(isMessagingJobOrigin(context?.messagingOrigin) ? { messagingOrigin: context.messagingOrigin } : {}),
             title: (input.displayName?.trim() || 'Delegated job').slice(0, 80),
         });
+        if (isMessagingJobOrigin(context?.messagingOrigin) && context.messagingOrigin.desktopMirror) {
+            input.payload.context = { ...context, messagingOrigin: connectorMessagingOrigin(context.messagingOrigin) };
+        }
         try {
             return await enqueue(input);
         } catch (error) {

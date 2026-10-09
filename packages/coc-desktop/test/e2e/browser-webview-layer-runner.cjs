@@ -50,6 +50,8 @@ const renderer = buildSync({
         `,
     },
     bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic',
+    // The fixture serves the built SPA stylesheet separately.
+    loader: { '.css': 'empty' },
     define: { 'process.env.NODE_ENV': '"production"' },
 }).outputFiles[0].text;
 

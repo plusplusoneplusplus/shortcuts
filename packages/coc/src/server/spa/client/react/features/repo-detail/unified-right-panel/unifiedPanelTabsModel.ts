@@ -66,15 +66,19 @@ export interface PersistedNotesView {
  * server named as a definition. Its `resourceId` is the opaque capability the
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
+ *
+ * `todo` is a Sentinel chat's to-do ledger: one tab per concrete owner and
+ * chat, whose `resourceId` is the ledger's parent process id. Only the
+ * descriptor persists; the ledger itself lives on the owning server.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste' | 'todo';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste', 'todo',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -112,13 +116,13 @@ export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
 export type UnifiedTabDisplayGroup = 'tools' | 'resources';
 
 /**
- * Display grouping, separate from ownership. Canvases are chat-owned but render
+ * Display grouping, separate from ownership. Canvases and the To-do tab are chat-owned but render
  * with the workspace tools (Terminal, Notes, Git) because they are something
  * the user works in, not a repo file; files, diffs, and external sources form
  * the resource group after the strip's divider.
  */
 export function displayGroupForKind(kind: UnifiedTabKind): UnifiedTabDisplayGroup {
-    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' ? 'tools' : 'resources';
+    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' || kind === 'todo' ? 'tools' : 'resources';
 }
 
 /**

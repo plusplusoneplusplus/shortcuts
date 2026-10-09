@@ -101,7 +101,7 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
+`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
 Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned
@@ -179,6 +179,25 @@ IME suppress automatic suffix selection. Owner/revision checks reject stale
 queries; history invalidations refresh open results.
 
 The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+
+### Shared web-page zoom
+
+`browser.setPageZoom(percent)` validates 50-200% in 25-point steps; reset is 100%.
+`BrowserHostManager` serializes mutations, persists the desired value and updates every
+URL guest, including hidden workspaces/windows and pending startup. New/restored URL
+views inherit it; native navigation retains it. Preference broadcasts refresh toolbar
+readouts in every window of that desktop process. Independent desktop processes
+share disk preferences but have no live cross-process synchronization.
+
+Electron sets the authorized guest's `WebContents.setZoomFactor`, retaining pending
+attachment values and reapplying them after navigation. URL guests disable background
+throttling so hidden tabs process zoom/layout updates; file previews retain their
+existing throttling. WebView2 uses controller
+`SetZoomFactor` through typed helper commands. Per-tab native zoom cannot override the
+shared setting. The toolbar's Web page zoom controls are separate from app zoom and
+show unavailable/disabled states without a supported bridge/engine. Apply failures
+are surfaced; persistence records desired zoom even if a guest fails to apply it.
+The SPA shell, editors, terminals, file previews and system browser are unaffected.
 
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 
@@ -352,9 +371,12 @@ The right-panel maximum reserves that width, both resize handles, and 360px for
 the middle pane; the left-panel maximum reserves the dock minimum and the same
 fixed space. Viewport clamps do not replace either panel's persisted pixel width,
 so the chosen size returns when space becomes available. The collapsed left rail
-receives per-workspace running and queued counts from `RepoDetail`; each nonzero
-state has its own accessible control, and selecting one expands the workspace
-column.
+keeps the new-chat control, per-workspace running and queued controls, and a
+workspace-scoped shortcut to the most recent non-archived Sentinel chat. The
+Sentinel shortcut follows the chat list's recency and title rules, keeps the rail
+collapsed, and routes through the owning local workspace or clone-qualified
+remote workspace/group.
+Running and queued controls expand the workspace column.
 
 On mount and on a panel-scope chat selection change, the panel reconciles its open
 bit with that chat's visible tab view: workspace-owned tabs plus the selected
@@ -431,7 +453,11 @@ text in a panel-scope/resource-id memory map. Panel writes release snapshots
 when their last referencing tab closes; inherited draft/chat tabs share them.
 Clearing a panel releases its snapshots. `UnifiedPasteTab` reads its snapshot by
 panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-text
-copy action and no save or dirty-state registration. The full contract lives in
+copy action and no save or dirty-state registration. With
+`features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
+tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
+ledger from the owning server through `client.sentinelTodos`; only the descriptor
+persists. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

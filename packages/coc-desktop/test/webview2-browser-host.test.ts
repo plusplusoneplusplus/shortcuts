@@ -46,6 +46,27 @@ const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.f
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
 describe('WebView2 native focus handoff', () => {
+    it('initializes, changes and restores page zoom through native controller commands', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test', pageZoomPercent: 150 }, sink);
+        expect(mocks.request).toHaveBeenCalledWith('open', expect.objectContaining({ pageZoomPercent: 150 }));
+        await view.setBounds(null);
+        await view.setPageZoom!(175);
+        expect(mocks.request).toHaveBeenLastCalledWith('page-zoom', { viewId: '7:tab:1', pageZoomPercent: 175 });
+        await view.navigate('https://other.test/');
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+            url: 'https://other.test/', title: '', canGoBack: true, canGoForward: false, loading: false,
+            errorCode: 'runtime-crashed', error: 'Crashed',
+        } });
+        await view.nav('reload');
+        expect(mocks.request).toHaveBeenCalledWith('open', expect.objectContaining({ pageZoomPercent: 175, url: 'https://other.test/' }));
+        mocks.request.mockRejectedValueOnce(new Error('Zoom unsupported'));
+        await expect(view.setPageZoom!(125)).rejects.toThrow('Zoom unsupported');
+        await view.setPageZoom!(100);
+        expect(mocks.request).toHaveBeenLastCalledWith('page-zoom', { viewId: '7:tab:1', pageZoomPercent: 100 });
+        await view.close();
+    });
+
     beforeEach(() => {
         mocks.request.mockReset().mockResolvedValue(undefined);
         mocks.owner.focus.mockClear();

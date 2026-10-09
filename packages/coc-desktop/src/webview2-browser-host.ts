@@ -19,6 +19,7 @@ interface NativeEntry {
     window: BrowserWindow;
     fullscreen: boolean;
     wasFullscreen: boolean;
+    pageZoom: number;
     reposition(): void;
 }
 
@@ -77,7 +78,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         const parent = handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());
         const id = `${request.ownerId}:${request.viewId}:${++this.sequence}`;
         const entry: NativeEntry = {
-            nativeId: id, request, sink, parent, window, bounds: null, fullscreen: false, wasFullscreen: window.isFullScreen(),
+            nativeId: id, request, sink, parent, window, bounds: null, fullscreen: false, wasFullscreen: window.isFullScreen(), pageZoom: request.pageZoomPercent ?? 100,
             state: { viewId: request.viewId, engine: 'webview2', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
             reposition: () => {
                 if (entry.bounds && !window.isDestroyed()) { void this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }).catch(error => this.viewFailure(entry, error)); }
@@ -86,7 +87,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         this.views.set(id, entry);
         window.on('move', entry.reposition);
         window.on('resize', entry.reposition);
-        try { await this.process.request('open', { viewId: id, url: request.url, parent }); }
+        try { await this.process.request('open', { viewId: id, url: request.url, parent, pageZoomPercent: entry.pageZoom }); }
         catch (error) {
             this.remove(id, entry);
             throw error;
@@ -102,9 +103,13 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed') {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
-                    await this.process.request('open', { viewId: id, url: entry.request.url, parent });
+                    await this.process.request('open', { viewId: id, url: entry.request.url, parent, pageZoomPercent: entry.pageZoom });
                     await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
                 } else { await this.process.request('nav', { viewId: id, action }); }
+            },
+            setPageZoom: async percent => {
+                await this.process.request('page-zoom', { viewId: id, pageZoomPercent: percent });
+                entry.pageZoom = percent;
             },
             setBounds: async bounds => {
                 entry.bounds = bounds;

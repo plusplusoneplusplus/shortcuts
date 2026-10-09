@@ -55,13 +55,17 @@ The browser opens `EventSource("GET /api/processes/{processId}/stream")`; the se
 and status for ONE process. It closes when the process completes or the browser navigates away.
 Under HTTP/1.1 each SSE is its own TCP connection; under HTTP/2 they multiplex.
 
-The stream starts with a `conversation-snapshot` event carrying persisted turns. When present
-on the process record the snapshot includes `sessionTokenLimit`, `sessionCurrentTokens`,
-`sessionSystemTokens`, `sessionToolTokens`, and `sessionConversationTokens` so the dashboard
-renders the context-window indicator immediately after reconnect. `handleProcessStream`
-checks a requested workspace against the saved process before headers and after a running
-process flush. With bot identification enabled, snapshots include safe `botControl` or
-explicit null for unattributed control, including processes with empty turns.
+The `conversation-snapshot` carries persisted turns, the authoritative `activeProviderSession`,
+and separate `runningTurn` provider/segment attribution for an in-flight response. Executors
+emit `provider-session` with the reported binding and assistant turn index when the SDK creates
+or resumes a session. `useChatSSE` mirrors bindings into task/process details and attributes
+only that streaming assistant, preserving historical turns. Accepted switches use the running
+user's provider while the outgoing binding remains active; pending choices cannot relabel the response.
+
+Snapshots include available context totals/breakdown for reconnect indicators.
+`handleProcessStream` validates workspace ownership before headers and after the running-process
+flush. With bot identification enabled, snapshots include safe `botControl` or explicit null,
+including processes with empty turns.
 
 **Why per-process?** Selective subscription — a browser receives heavy token data only for the
 chat it is viewing, instead of every tab being flooded with every process's output.

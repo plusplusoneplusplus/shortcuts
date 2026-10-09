@@ -201,13 +201,29 @@ export function TerminalPanel({
         term.attachCustomKeyEventHandler((event) =>
             keyHandlerRef.current(event as TerminalKeyEventLike),
         );
-        term.open(termRef.current);
+        const container = termRef.current;
+        // Capture before xterm's textarea/element handlers. Native keyboard and
+        // Electron Edit menu paste both arrive here; cancel DOM insertion and
+        // all parallel handlers, then let xterm normalize/bracket plain text.
+        const handlePaste = (event: ClipboardEvent) => {
+            if (!container.contains(document.activeElement)) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const text = event.clipboardData?.getData('text/plain');
+            if (text) term.paste(text);
+        };
+        container.addEventListener('paste', handlePaste, true);
+        term.open(container);
         fitAddon.fit();
 
         xtermRef.current = term;
         fitAddonRef.current = fitAddon;
 
-        return () => { term.dispose(); };
+        return () => {
+            container.removeEventListener('paste', handlePaste, true);
+            xtermRef.current = null;
+            term.dispose();
+        };
     }, []);
 
     // Theme sync — MutationObserver on <html> class changes

@@ -31,6 +31,7 @@ import {
 import {
     ChatPreferencesProvider,
     useChatPrefs,
+    useOptionalChatPrefs,
     chatPrefsReducer,
     type ChatPrefsState,
 } from '../../../src/server/spa/client/react/contexts/ChatPreferencesContext';
@@ -387,5 +388,47 @@ describe('ChatPreferencesProvider', () => {
         act(() => { result.current.unarchiveChats(['a1', 'a2']); });
 
         expect(mockUnarchiveProcesses).toHaveBeenCalledWith(['a1', 'a2'], 'ws1');
+    });
+});
+
+describe('setChatPinned / useOptionalChatPrefs', () => {
+    it('useOptionalChatPrefs returns null outside a provider', () => {
+        const { result } = renderHook(() => useOptionalChatPrefs());
+        expect(result.current).toBeNull();
+    });
+
+    it('pins even when the id is not in the loaded state and routes via the provider workspace', async () => {
+        const { result } = renderWithState('remote:srv:ws', [], []);
+        await act(async () => { await result.current.setChatPinned('t1', true); });
+        expect(result.current.pinnedChatIds.has('t1')).toBe(true);
+        expect(mockPinProcess).toHaveBeenCalledWith('t1', 'remote:srv:ws');
+    });
+
+    it('rolls back a failed pin (including auto-unarchive) and rejects', async () => {
+        mockPinProcess.mockRejectedValueOnce(new Error('nope'));
+        const { result } = renderWithState('ws1', [], ['t1']);
+        let caught: unknown;
+        await act(async () => {
+            await result.current.setChatPinned('t1', true).catch((e: unknown) => { caught = e; });
+        });
+        expect((caught as Error).message).toBe('nope');
+        expect(result.current.pinnedChatIds.has('t1')).toBe(false);
+        expect(result.current.archivedChatIds.has('t1')).toBe(true);
+    });
+
+    it('rolls back a failed unpin', async () => {
+        mockUnpinProcess.mockRejectedValueOnce(new Error('nope'));
+        const { result } = renderWithState('ws1', ['t1'], []);
+        await act(async () => {
+            await result.current.setChatPinned('t1', false).catch(() => {});
+        });
+        expect(result.current.pinnedChatIds.has('t1')).toBe(true);
+    });
+
+    it('pinChat swallows failures but still rolls back the list state', async () => {
+        mockPinProcess.mockRejectedValueOnce(new Error('nope'));
+        const { result } = renderWithState('ws1', [], []);
+        await act(async () => { result.current.pinChat('t1'); });
+        expect(result.current.pinnedChatIds.has('t1')).toBe(false);
     });
 });

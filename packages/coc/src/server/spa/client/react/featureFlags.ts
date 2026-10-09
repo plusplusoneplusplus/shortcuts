@@ -9,6 +9,9 @@ export const SHOW_WELCOME_TUTORIAL = true;
 /** Enable the focused-diff classification UI on the PR Files Changed tab. */
 export const SHOW_FOCUSED_DIFF = true;
 
+/** Enable searchable changed-file navigation from diff headers. */
+export const SHOW_DIFF_FILE_PICKER = false;
+
 /** Enable Excalidraw diagram rendering and tools in the chat UI. */
 export const SHOW_EXCALIDRAW_DIAGRAMS = true;
 
@@ -27,4 +30,3 @@ export const SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS = true;
  * Disabled by default — in active development.
  */
 export const RALPH_MULTI_LOOP = false;
-

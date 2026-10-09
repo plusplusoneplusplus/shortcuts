@@ -179,6 +179,27 @@ describe('getProviderDotClasses', () => {
 });
 
 describe('getTaskChatProvider', () => {
+    it.each(['copilot', 'codex', 'claude', 'opencode'])(
+        'prefers the active %s binding over the original provider',
+        provider => {
+            const task = {
+                activeProviderSession: { provider, segmentId: 'current', firstTurnIndex: 2 },
+                provider: 'codex',
+                metadata: { provider: 'codex' },
+                payload: { provider: 'codex' },
+            };
+            expect(getTaskChatProvider(task)).toBe(provider);
+            expect(getTaskProviderBadgeProvider(task)).toBe(provider);
+        },
+    );
+
+    it('preserves the existing fallback for an invalid active binding', () => {
+        expect(getTaskChatProvider({
+            activeProviderSession: { provider: 'unknown' },
+            metadata: { provider: 'claude' },
+        })).toBe('claude');
+    });
+
     it('prefers the top-level task provider', () => {
         expect(getTaskChatProvider({
             provider: 'claude',

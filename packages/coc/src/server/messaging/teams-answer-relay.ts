@@ -166,6 +166,32 @@ export class TeamsAnswerRelay {
     private readonly admittingThreads = new Map<string, Promise<{ taskId: string; duplicate: boolean }>>();
     private readonly ownerAdmission = new ProcessOperationAdmission();
     private readonly active = new Set<string>();
+
+    /** Detached authoritative receipts; a selection alone is not conversation ownership. */
+    sentinelMirrorBindings(workspaceId: string, processId: string): {
+        teamId: string; channelId: string; rootId: string; bindingId: string;
+    }[] {
+        const target = this.deps.target();
+        const destinations = new Map<string, { teamId: string; channelId: string; rootId: string; bindingId: string }>();
+        for (const { value: row } of this.bindings.values()) {
+            if (row.workspaceId !== workspaceId || row.processId !== processId || row.releaseState
+                || row.status === 'admitting' || row.teamId !== target.teamId || row.channelId !== target.channelId) continue;
+            const name = bindingName(row.teamId, row.channelId, row.rootId);
+            const selected = this.threadSelections.get(name)?.value;
+            const root = [...this.bindings.values()].find(entry =>
+                entry.value.teamId === row.teamId && entry.value.channelId === row.channelId
+                && entry.value.messageId === row.rootId)?.value;
+            const selectedWorkspaceId = selected?.workspaceId ?? root?.selectedWorkspaceId ?? root?.workspaceId ?? row.workspaceId;
+            const selectedProcessId = selected ? selected.processId
+                : root?.selectedProcessId !== undefined ? root.selectedProcessId : root?.processId ?? row.processId;
+            if (selectedWorkspaceId !== workspaceId || selectedProcessId !== processId || destinations.has(name)) continue;
+            destinations.set(name, {
+                teamId: row.teamId, channelId: row.channelId, rootId: row.rootId,
+                bindingId: bindingName(row.teamId, row.channelId, row.messageId),
+            });
+        }
+        return [...destinations.values()];
+    }
     private disposed = false;
     private retryTimer: NodeJS.Timeout | undefined;
     private readonly onTerminal = (task: QueuedTask) => {
@@ -1286,10 +1312,11 @@ export class TeamsAnswerRelay {
                 const { line, detail } = formatJobNotice(notice);
                 let id: string | undefined;
                 try {
-                    const bodies = notice.body !== undefined ? formatTeamsAnswerChunks(notice.body, 'result', line)
-                        : [`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`];
-                    for (const body of bodies) {
-                        if (!connected(chatKey)) {
+                    const bodies = notice.desktopResult?.chunks ?? (notice.body !== undefined ? formatTeamsAnswerChunks(notice.body, 'result', line)
+                        : [`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`]);
+                    for (const [index, body] of bodies.entries()) {
+                        if (!connected(chatKey) || (notice.desktopResult
+                            ? !await notice.desktopResult.beforePart(index) : notice.beforeSend && !await notice.beforeSend())) {
                             if (!id) return undefined;
                             throw new Error('Teams route unavailable after partial result delivery');
                         }
