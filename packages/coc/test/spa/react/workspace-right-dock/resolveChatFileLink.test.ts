@@ -52,6 +52,37 @@ describe('chat file link resolution', () => {
         expect(result).toMatchObject({ type: 'tab', input: { ownerRoutingRef: 'remote:server-b:ws-member' } });
     });
 
+    it.each([undefined, 'remote:server-b:group-demo'])(
+        'opens a WSL sibling-member reference with its owner and line range (%s)', async sourceSelectionId => {
+            const path = '\\\\wsl$\\Ubuntu\\home\\user\\3FS\\src\\fuse\\IovTable.cc';
+            request.mockResolvedValue({ type: 'file', path, resolvedWorkspaceId: 'ws-member' });
+            const workspaces = [
+                { id: 'group-demo', rootPath: 'C:\\data\\repos\\group-demo' },
+                { id: 'ws-member', rootPath: '\\\\wsl$\\Ubuntu\\home\\user\\3FS' },
+            ].map(ws => ({
+                ...ws,
+                ...(sourceSelectionId ? { remote: { cloneKey: `remote:server-b:${ws.id}` } } : {}),
+            }));
+            const signal = new AbortController().signal;
+            const result = await resolveChatFileLink({
+                ...args, workspaces, sourceSelectionId: sourceSelectionId ?? 'group-demo',
+                fileRef: { fullPath: '../3FS/src/fuse/IovTable.cc', wsId: 'group-demo', line: 170, endLine: 224 },
+            }, signal);
+            expect(request).toHaveBeenCalledWith('/workspaces/group-demo/files/preview', {
+                query: { path: '../3FS/src/fuse/IovTable.cc', resolve: true }, signal,
+            });
+            expect(result).toMatchObject({
+                type: 'tab',
+                input: {
+                    ownerWorkspaceId: 'ws-member',
+                    ownerRoutingRef: sourceSelectionId ? 'remote:server-b:ws-member' : null,
+                    resourceId: '__workspace_preview__:' + path,
+                    chatId: 'chat-a', line: 170, endLine: 224,
+                },
+            });
+        },
+    );
+
     it('opens a folder in the group panel Explorer with its resolved member', async () => {
         request.mockResolvedValue({ type: 'directory', path: '/repos/member/src', resolvedWorkspaceId: 'ws-member' });
         expect(await resolveChatFileLink({

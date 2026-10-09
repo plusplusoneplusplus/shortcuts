@@ -348,6 +348,40 @@ describe('File Preview API', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/files/preview — Repo-group members', () => {
+        it.each(['&lines=0', '&resolve=true', '&download=true'])(
+            'resolves a sibling-member reference to its actual owner (%s)', async query => {
+                const srv = await startServer();
+                const containerDir = createExternalDir('.file-preview-siblings-');
+                const sourceDir = path.join(containerDir, 'source');
+                const targetDir = path.join(containerDir, '3FS');
+                fs.mkdirSync(sourceDir);
+                fs.mkdirSync(targetDir);
+                const unrelatedDir = createExternalDir('.file-preview-unrelated-');
+                const unrelatedId = await registerWorkspace(srv, unrelatedDir, 'preview-unrelated');
+                const sourceId = await registerWorkspace(srv, sourceDir, 'preview-source');
+                const targetId = await registerWorkspace(srv, targetDir, 'preview-target');
+                const groupId = await createRepoGroup(srv, [unrelatedId, sourceId, targetId]);
+                const targetFile = path.join(targetDir, 'src', 'fuse', 'IovTable.cc');
+                fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+                fs.writeFileSync(targetFile, 'member content\n', 'utf-8');
+
+                const res = await request(
+                    `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent('../3FS/src/fuse/IovTable.cc')}${query}`
+                );
+
+                expect(res.status).toBe(200);
+                if (query === '&download=true') {
+                    expect(res.body).toBe('member content\n');
+                    expect(res.headers['content-disposition']).toContain('IovTable.cc');
+                } else {
+                    expect(JSON.parse(res.body)).toMatchObject({
+                        type: 'file', path: targetFile, resolvedWorkspaceId: targetId,
+                        ...(query === '&lines=0' ? { content: 'member content\n' } : {}),
+                    });
+                }
+            },
+        );
+
         it('allows an absolute path inside a live member workspace', async () => {
             const srv = await startServer();
             const memberDir = createExternalDir('.file-preview-live-member-');
@@ -465,7 +499,7 @@ describe('File Preview API', () => {
             expect(error.indexOf(firstCandidate)).toBeLessThan(error.indexOf(secondCandidate));
         });
 
-        it('does not let a relative group path escape a member root', async () => {
+        it.each(['', '&resolve=true', '&download=true'])('does not let a relative group path escape every member root (%s)', async query => {
             const srv = await startServer();
             const containerDir = createExternalDir('.file-preview-member-container-');
             const memberDir = path.join(containerDir, 'member');
@@ -475,7 +509,7 @@ describe('File Preview API', () => {
             fs.writeFileSync(path.join(containerDir, 'secret.ts'), 'secret\n', 'utf-8');
 
             const res = await request(
-                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(path.join('..', 'secret.ts'))}`
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(path.join('..', 'secret.ts'))}${query}`
             );
 
             expect(res.status).toBe(403);

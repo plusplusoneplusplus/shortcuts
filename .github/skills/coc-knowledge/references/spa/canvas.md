@@ -274,6 +274,10 @@ root wins; if no root matches, the hint remains the fallback. This routes absolu
 paths from repo-group chats to the owning workspace. Relative paths resolve against
 `sourceFilePath`; otherwise ordinary workspace refs anchor at the workspace root while
 repo-group refs stay relative for the preview endpoint's ordered live-member probe.
+Each candidate must land inside a live group member; sibling references such as
+`../other-repo/src/file.ts` report the containing member as owner, with the most
+specific root winning. Candidates outside every live member are excluded. Metadata
+resolution and downloads also validate realpath containment.
 
 WSL workspaces on a Windows host have a `\\wsl$\<distro>\...` root. `react/utils/path-resolution.ts`
 keeps that UNC prefix through relative resolution and tilde expansion, and the resolver
