@@ -94,8 +94,10 @@ describe('Explorer sub-tab Go To All', () => {
                 key: 'p', ctrlKey: !metaKey, metaKey, bubbles: true, cancelable: true,
             })));
             await waitFor(() => screen.getByTestId('quick-open-input'));
-            fireEvent.change(screen.getByTestId('quick-open-input'), { target: { value: query } });
-            await screen.findByTestId('quick-open-item-0');
+            await waitFor(() => {
+                fireEvent.change(screen.getByTestId('quick-open-input'), { target: { value: query } });
+                expect(screen.getByTestId('quick-open-item-0').textContent).toContain('canvas.cpp');
+            });
             await act(async () => fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'Enter' }));
         }
         await pick('canvas.cpp:42');
