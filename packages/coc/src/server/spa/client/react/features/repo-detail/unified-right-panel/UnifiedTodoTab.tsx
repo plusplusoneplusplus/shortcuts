@@ -19,6 +19,7 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
+import { formatRelativeTime } from '../../../utils/format';
 import { useSentinelTodoEvents } from './sentinelTodoChats';
 import {
     SENTINEL_TODO_STATUS_LABELS,
@@ -60,6 +61,22 @@ function StatusBadge({ status }: { status: SentinelTodoStatus }) {
             data-testid={`sentinel-todo-status-${status}`}>
             <span aria-hidden="true">{style.mark}</span>
             {SENTINEL_TODO_STATUS_LABELS[status]}
+        </span>
+    );
+}
+
+/** Ledger timestamp: relative text, exact local date/time on hover and for screen readers. */
+function TodoTime({ label, iso, testId }: { label: string; iso: string; testId: string }) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return null;
+    const exact = date.toLocaleString();
+    return (
+        <span className="whitespace-nowrap" data-testid={testId}>
+            {label}{' '}
+            <time dateTime={iso} title={exact}>
+                <span aria-hidden="true">{formatRelativeTime(iso)}</span>
+                <span className="sr-only">{exact}</span>
+            </time>
         </span>
     );
 }
@@ -341,6 +358,10 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                     </span>
                 )}
             </button>
+            <div className={cn('flex flex-wrap gap-x-2 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-times-${item.id}`}>
+                <TodoTime label="Created" iso={item.createdAt} testId={`sentinel-todo-created-${item.id}`} />
+                <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
+            </div>
             {item.jobs.length > 0 && (
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Jobs for ${item.title}`}>
                     {item.jobs.map(job => {

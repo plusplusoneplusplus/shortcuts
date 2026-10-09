@@ -152,6 +152,43 @@ describe('UnifiedTodoTab', () => {
         expect(screen.getByTestId('sentinel-todo-row-arch')).toBeTruthy();
     });
 
+    it('shows labeled Created and Updated ledger times with exact local date/time', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-10-09T12:00:00.000Z'));
+        try {
+            const createdAt = '2026-10-09T09:00:00.000Z';
+            const updatedAt = '2026-10-09T11:55:00.000Z';
+            get.mockResolvedValue(ledger([item({ createdAt, updatedAt })]));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const created = await screen.findByTestId('sentinel-todo-created-i1');
+            const updated = screen.getByTestId('sentinel-todo-updated-i1');
+            for (const [el, label, iso, relative] of [[created, 'Created', createdAt, '3h ago'], [updated, 'Updated', updatedAt, '5m ago']] as const) {
+                const exact = new Date(iso).toLocaleString();
+                const time = el.querySelector('time')!;
+                expect(el.textContent).toMatch(new RegExp(`^${label} `));
+                expect(time.getAttribute('dateTime')).toBe(iso);
+                expect(time.getAttribute('title')).toBe(exact);
+                expect(within(time).getByText(relative).getAttribute('aria-hidden')).toBe('true');
+                expect(within(time).getByText(exact).className).toContain('sr-only');
+                expect(el.className).toContain('whitespace-nowrap');
+            }
+            // Collapsed rows still show the times, in a muted row that wraps in narrow panes.
+            const row = screen.getByTestId('sentinel-todo-times-i1');
+            expect(row.className).toContain('flex-wrap');
+            expect(row.className).toContain('dark:text-[#9d9d9d]');
+            expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { expanded: false })).toBeTruthy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('omits a timestamp the ledger reports as unparseable', async () => {
+        get.mockResolvedValue(ledger([item({ updatedAt: 'not-a-date' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        expect(await screen.findByTestId('sentinel-todo-created-i1')).toBeTruthy();
+        expect(screen.queryByTestId('sentinel-todo-updated-i1')).toBeNull();
+    });
+
     it('expands a row to show the completion condition, notes, and outcome', async () => {
         get.mockResolvedValue(ledger([item({
             status: 'done', outcome: { summary: 'Verified login test', recordedAt: '2026-10-09T00:00:00.000Z', recordedBy: 'sentinel' },
