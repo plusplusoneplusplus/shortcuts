@@ -20,9 +20,10 @@ describe.each(['pr', 'pr-iteration'] as const)('%s requires native processing', 
     it.each(operations)('%s exposes rebuild diagnostics before authenticated I/O', async (_name, call) => {
         const fetch = vi.fn().mockResolvedValue('');
         const source = { repositoryRoot: '/repo', provider: 'github' as const, remoteRepositoryId: 'owner/repo', pullRequestId: 1 };
+        const context = { workspaceId: 'workspace-a', host: 'provider.example', repository: 'owner/repo' };
         const provider = kind === 'pr'
-            ? createPullRequestDiffProvider({ ...source, kind }, { getDiff: fetch } as unknown as IPullRequestsService)
-            : createPullRequestIterationDiffProvider({ ...source, kind, iterationId: 3, baseIterationId: 1 }, fetch);
+            ? createPullRequestDiffProvider({ ...source, kind }, { getDiff: fetch } as unknown as IPullRequestsService, context)
+            : createPullRequestIterationDiffProvider({ ...source, kind, iterationId: 3, baseIterationId: 1 }, fetch, context);
         await expect(call(provider)).rejects.toThrow('npm run build:native -w packages/coc-native');
         expect(fetch).not.toHaveBeenCalled();
     });

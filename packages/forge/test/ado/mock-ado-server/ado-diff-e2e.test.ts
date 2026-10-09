@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import * as path from 'path';
 import { WebApi, getPersonalAccessTokenHandler } from 'azure-devops-node-api';
 import type { GitPullRequestChange, GitPullRequestIteration } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { AdoPullRequestsAdapter } from '../../../src/ado/ado-pull-requests-adapter';
@@ -178,10 +179,11 @@ describe('Mock ADO server diff integration', () => {
         const adapter = makeAdapter(REAL_REPO);
         const provider = createPullRequestDiffProviderFromParams(
             'ado',
-            'mock-root',
+            path.resolve('mock-root'),
             WORKSPACE_REPO,
             PR_ID,
             adapter,
+            { workspaceId: WORKSPACE_REPO, host: new URL(server.url).host, repository: `${PROJECT}/${REAL_REPO}` },
         );
 
         const files = await provider.listFiles();
@@ -191,6 +193,16 @@ describe('Mock ADO server diff integration', () => {
         expect(content.truncated).toBe(true);
         expect(content.totalLines).toBeGreaterThan(20);
         expect(content.raw.split('\n')).toHaveLength(20);
+        const complete = await provider.getFullDiff();
+        expect(complete.truncated).toBe(false);
+        expect((await provider.prefetchAll()).get('src/large.ts')?.raw).toBe(complete.raw);
+        expect(await provider.getSummary()).toMatchObject({ filesChanged: 1, additions: 2, deletions: 2 });
+        provider.refresh();
+        expect((await provider.getFullDiff()).raw).toBe(complete.raw);
+        const requestCount = server.requests.length;
+        provider.dispose();
+        await expect(provider.getSummary()).rejects.toThrow('patch store: Closed');
+        expect(server.requests).toHaveLength(requestCount);
     });
 
     it('regresses multi-repo routing by failing without a configured remote repo and succeeding with one', async () => {

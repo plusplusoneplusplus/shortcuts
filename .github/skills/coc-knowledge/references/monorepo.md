@@ -89,7 +89,7 @@ manifest.
 
 ### Native build boundary
 
-Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; explicit-distro WSL stores fingerprint freshly transported bytes through single-use continuations. Native remote handles require provider/host/repository/source identity and optional iteration/base-iteration metadata, accept supplied transport only and keep credentials in TypeScript. Refresh/disposal revoke pending results and transport generations. External I/O occupies no Rust worker. Working-tree and supplied remote production adapters use stateless workers. Detailed contracts live in the native instructions.
+Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; explicit-distro WSL stores fingerprint freshly transported bytes through single-use continuations. Native remote handles require provider/host/repository/source identity and optional iteration/base-iteration metadata, accept supplied transport only and keep credentials in TypeScript. Refresh/disposal revoke pending results and transport generations. External I/O occupies no Rust worker. Working-tree and production PR route adapters use stateless workers. Detailed contracts live in the native instructions.
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64
@@ -105,10 +105,15 @@ be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
 `nativePatchToDiff`. PR snapshot fallback metadata uses this async adapter,
 including decoded rename paths and empty-file existence; snapshot content transport
 and its cache remain separate. Forge diff-utils contains wire conversion only;
-patch parsing, summaries and truncation belong to Rust. Supplied PR/iteration providers use `processGitPatch` for all
-five operations, including summaries and per-file truncation. Each operation reads
-current transport data; TypeScript retains source descriptors and holds no parsed
-patch-result cache. ADO patch construction uses Rust `buildRemoteGitPatch` with explicit existence and
+patch parsing, summaries and truncation belong to Rust.
+
+### Supplied remote diff providers
+
+Forge PR/iteration factories require `RemoteDiffContext` (workspaceId, host, provider-qualified repository) separately from transport routing aliases. Each provider lazily opens one Rust remote store and captures a continuation before every authenticated read. Rust fingerprints fresh bytes and retains bounded snapshots; per-file truncation uses native processing. Source/base-iteration descriptors and HTTP shapes remain unchanged. Providers expose refresh/dispose, reject delayed revoked output and retire continuations on transport failure. Explicit WSL roots supply distro/Linux-root identity; unresolved distro identity rejects before I/O.
+
+### Production patch consumers
+
+ADO patch construction uses Rust `buildRemoteGitPatch` with explicit existence and
 supplied content; authenticated Forge transport reads rename bases at their original
 paths and requires successful content reads. Empty existing files stay modified.
 Production PR per-file extraction and list statistics use Rust parsing and summaries;

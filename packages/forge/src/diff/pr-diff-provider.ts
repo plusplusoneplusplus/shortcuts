@@ -8,8 +8,9 @@
  * This keeps the diff module decoupled from provider-specific APIs (ADO, GitHub).
  */
 
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { loadNativeGit, type NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
 import type { IPullRequestsService } from '../providers/interfaces';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import type {
     GetFileDiffOptions,
     IDiffProvider,
@@ -18,18 +19,61 @@ import type {
 } from './types';
 import { nativePatchToDiff } from './diff-utils';
 
+/** Authenticated transport identity, independent of provider routing aliases. */
+export interface RemoteDiffContext {
+    workspaceId: string;
+    host: string;
+    /** Provider-qualified organization/project/repository identity. */
+    repository: string;
+}
+
+export interface RemoteDiffProvider extends IDiffProvider {
+    refresh(): void;
+    dispose(): void;
+}
+
 // ── Core remote provider builder ─────────────────────────────
-function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestIterationDiffSource>(
-    source: S,
+function createRemoteDiffProvider(
+    source: PullRequestDiffSource | PullRequestIterationDiffSource,
     fetchFullDiff: () => Promise<string>,
-): IDiffProvider {
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
+    const identity = { ...context };
+    const descriptor = Object.freeze({ ...source });
+    let store: NativeGitPatchStore | undefined;
+    function getStore() {
+        if (!store) {
+            const addon = loadNativeGit();
+            const execution = resolveWorkspaceExecutionContext(descriptor.repositoryRoot);
+            if (execution.kind === 'wsl' && !execution.distro) {
+                throw new Error('Remote patch processing requires a resolved WSL distro identity');
+            }
+            store = addon.openRemoteGitPatchStore(identity.workspaceId,
+                execution.kind === 'wsl' ? execution.linuxWorkingDirectory : descriptor.repositoryRoot, {
+                    provider: descriptor.provider,
+                    host: identity.host,
+                    repository: identity.repository,
+                    sourceId: String(descriptor.pullRequestId),
+                    iteration: descriptor.kind === 'pr-iteration' ? String(descriptor.iterationId) : undefined,
+                    baseIteration: descriptor.kind === 'pr-iteration' && descriptor.baseIterationId != null
+                        ? String(descriptor.baseIterationId) : undefined,
+                }, execution.kind === 'wsl' ? execution.distro : undefined);
+        }
+        return store;
+    }
     async function load() {
-        const addon = loadNativeGit();
-        return addon.processGitPatch(await fetchFullDiff());
+        const request = getStore().beginTransport();
+        try {
+            return await request.process(await fetchFullDiff());
+        } finally {
+            request.cancel();
+        }
     }
 
     return {
-        source,
+        source: descriptor,
+        refresh() { getStore().refresh(); },
+        dispose() { getStore().dispose(); },
         async listFiles() { return nativePatchToDiff((await load()).files).files; },
         async getFileDiff(filePath: string, options?: GetFileDiffOptions) {
             const raw = (await load()).files.find(file => file.path === filePath)?.raw ?? '';
@@ -55,7 +99,8 @@ function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestI
 export function createPullRequestDiffProvider(
     source: PullRequestDiffSource,
     prService: IPullRequestsService,
-): IDiffProvider {
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
     if (!prService.getDiff) {
         throw new Error(
             `Pull request diff not supported: the ${source.provider} provider does not implement getDiff()`,
@@ -64,10 +109,8 @@ export function createPullRequestDiffProvider(
 
     const getDiff = prService.getDiff.bind(prService);
 
-    return createRemoteDiffProvider(
-        source,
-        () => getDiff(source.remoteRepositoryId, source.pullRequestId),
-    );
+    const { remoteRepositoryId, pullRequestId } = source;
+    return createRemoteDiffProvider(source, () => getDiff(remoteRepositoryId, pullRequestId), context);
 }
 
 /**
@@ -79,7 +122,8 @@ export function createPullRequestDiffProviderFromParams(
     remoteRepositoryId: string,
     pullRequestId: number | string,
     prService: IPullRequestsService,
-): IDiffProvider {
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
     const source: PullRequestDiffSource = {
         kind: 'pr',
         provider,
@@ -87,7 +131,7 @@ export function createPullRequestDiffProviderFromParams(
         remoteRepositoryId,
         pullRequestId,
     };
-    return createPullRequestDiffProvider(source, prService);
+    return createPullRequestDiffProvider(source, prService, context);
 }
 
 // ── PR iteration diff provider ───────────────────────────────
@@ -105,8 +149,9 @@ export function createPullRequestDiffProviderFromParams(
 export function createPullRequestIterationDiffProvider(
     source: PullRequestIterationDiffSource,
     fetchDiff: () => Promise<string>,
-): IDiffProvider {
-    return createRemoteDiffProvider(source, fetchDiff);
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
+    return createRemoteDiffProvider(source, fetchDiff, context);
 }
 
 /**
@@ -119,8 +164,9 @@ export function createPullRequestIterationDiffProviderFromParams(
     pullRequestId: number | string,
     iterationId: number,
     fetchDiff: () => Promise<string>,
+    context: RemoteDiffContext,
     baseIterationId?: number,
-): IDiffProvider {
+): RemoteDiffProvider {
     const source: PullRequestIterationDiffSource = {
         kind: 'pr-iteration',
         provider,
@@ -130,5 +176,5 @@ export function createPullRequestIterationDiffProviderFromParams(
         iterationId,
         baseIterationId,
     };
-    return createPullRequestIterationDiffProvider(source, fetchDiff);
+    return createPullRequestIterationDiffProvider(source, fetchDiff, context);
 }

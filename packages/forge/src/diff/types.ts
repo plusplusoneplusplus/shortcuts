@@ -68,7 +68,7 @@ export interface DiffSummary {
 
 interface DiffSourceBase {
     kind: DiffSourceKind;
-    /** Repository root (absolute path for local, identifier for remote). */
+    /** Owning workspace repository root (absolute host path or WSL path). */
     repositoryRoot: string;
 }
 

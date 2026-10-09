@@ -25,6 +25,7 @@ export {
     createPullRequestIterationDiffProvider,
     createPullRequestIterationDiffProviderFromParams,
 } from './pr-diff-provider';
+export type { RemoteDiffContext, RemoteDiffProvider } from './pr-diff-provider';
 
 export { parseFullDiffAsync } from './diff-utils';
 
