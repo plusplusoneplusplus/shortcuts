@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
+import { BrowserHistoryPanel } from './BrowserHistoryPanel';
+import { BrowserAddressBar } from './BrowserAddressBar';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
@@ -28,6 +30,10 @@ export interface UnifiedBrowserTabProps {
     visible: boolean;
     /** Explicit panel overlays that must cover native engines, never DOM guests. */
     nativeCovered?: boolean;
+    /** Open a history entry through the panel's current concrete dock owner. */
+    onOpenHistoryUrl?: (url: string) => void;
+    /** Dismiss history when the destination workspace or clone changes. */
+    historyOwnerKey?: string;
     /** Record a new URL (and its provisional label) on the tab descriptor. */
     onNavigate: (id: string, url: string) => void;
     /** Follow the live page: its URL after redirects and its title. */
@@ -43,10 +49,9 @@ export interface UnifiedBrowserTabProps {
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState,
+    tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
-    const [address, setAddress] = useState(url ?? '');
     const [error, setError] = useState<string | null>(null);
     const [page, setPage] = useState<BrowserViewState | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -58,19 +63,17 @@ export function UnifiedBrowserTab({
     const [retry, setRetry] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
     const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
+    const [historyScope, setHistoryScope] = useState<string | null>(null);
+    const historyKey = JSON.stringify([sessionKey, viewId, tabId, historyOwnerKey]);
     const addressRef = useRef<HTMLInputElement>(null);
     const latestUrl = useRef(url);
     latestUrl.current = url;
     const onPageStateRef = useRef(onPageState);
     onPageStateRef.current = onPageState;
 
-    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); }, [active, visible, viewId, sessionKey]);
+    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); setHistoryScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
 
-    // The page's own navigation moves the address unless the user is editing.
-    useEffect(() => {
-        setAddress(url ?? '');
-        setError(null);
-    }, [url]);
+    useEffect(() => { setError(null); }, [url]);
 
     useEffect(() => {
         if (!active || !visible) return;
@@ -128,8 +131,7 @@ export function UnifiedBrowserTab({
 
     const failed = Boolean(attachError || startupError || (page?.error && !page?.loading));
 
-    const submit = (event: React.FormEvent) => {
-        event.preventDefault();
+    const navigateAddress = (address: string) => {
         const result = normalizeBrowserUrl(address);
         if (!result.ok) {
             setError(result.reason);
@@ -137,7 +139,6 @@ export function UnifiedBrowserTab({
         }
         setError(null);
         setNotice(null);
-        setAddress(result.url);
         onNavigate(tabId, result.url);
         if (bridge && opened) {
             void bridge.navigate(viewId, result.url).then(reply => {
@@ -146,6 +147,7 @@ export function UnifiedBrowserTab({
         } else if (bridge && hasUrl) {
             setRetry(value => value + 1);
         }
+        return result.url;
     };
 
     const currentUrl = page?.url || url;
@@ -158,9 +160,8 @@ export function UnifiedBrowserTab({
     const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => bridge?.nav(viewId, action);
 
     const toolbar = (
-        <form
+        <div
             className="flex min-w-0 flex-shrink-0 flex-wrap items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
-            onSubmit={submit}
             onKeyDown={event => {
                 const mac = isMacPlatform();
                 if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'
@@ -183,18 +184,15 @@ export function UnifiedBrowserTab({
                     testIdPrefix="browser"
                 />
             )}
-            <input
-                ref={addressRef}
-                type="text"
-                value={address}
-                onChange={event => { setAddress(event.target.value); setError(null); }}
-                placeholder="Enter a URL"
-                aria-label="Address"
-                aria-invalid={error !== null}
-                spellCheck={false}
-                autoFocus={!url}
-                className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
-                data-testid="browser-address"
+            <BrowserAddressBar
+                inputRef={addressRef}
+                url={url}
+                history={bridge?.history}
+                enabled={active && visible}
+                ownerKey={JSON.stringify([sessionKey, viewId, tabId])}
+                invalid={error !== null}
+                onEdit={() => setError(null)}
+                onOpen={navigateAddress}
             />
             <BrowserToolbarMenu
                 key={`${sessionKey}:${viewId}`}
@@ -204,8 +202,9 @@ export function UnifiedBrowserTab({
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
                 onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
+                onHistory={bridge?.history && onOpenHistoryUrl ? () => setHistoryScope(historyKey) : undefined}
             />
-        </form>
+        </div>
     );
 
     return (
@@ -222,6 +221,8 @@ export function UnifiedBrowserTab({
                 initialDomain={(() => { try { return new URL(currentUrl ?? '').hostname; } catch { return ''; } })()}
                 onClose={() => { setCookieDialogOpen(false); addressRef.current?.focus(); }}
                 onImported={domain => { setCookieDialogOpen(false); setNotice(`Cookies imported for ${domain}. Open the original URL to continue.`); addressRef.current?.focus(); }} />}
+            {historyScope === historyKey && active && visible && bridge?.history && onOpenHistoryUrl && <BrowserHistoryPanel
+                key={historyKey} history={bridge.history} onOpen={onOpenHistoryUrl} onClose={() => setHistoryScope(null)} />}
             {error && (
                 <div role="alert" className="px-3 py-1.5 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="browser-address-error">
                     {error}

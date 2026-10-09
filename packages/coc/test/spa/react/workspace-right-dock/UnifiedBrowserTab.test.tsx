@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
 import { useNativeViewPlacement } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useNativeViewPlacement';
-import type { DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import type { BrowserHistoryResult, DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 
 const mocks = vi.hoisted(() => ({ bridge: undefined as DesktopBrowserBridge | undefined }));
 vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge', async importOriginal => ({
@@ -28,11 +28,58 @@ beforeEach(() => {
     };
 });
 afterEach(() => { cleanup(); mocks.bridge = undefined; delete (window as { cocDesktop?: unknown }).cocDesktop; });
-function tab() {
-    return render(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
+function tab(overrides: Partial<React.ComponentProps<typeof UnifiedBrowserTab>> = {}) {
+    return render(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} {...overrides} />);
 }
 
 describe('browser tab engine-neutral controls', () => {
+    it.each(['electron', 'webview2'] as const)('uses ranked history completion in the owning %s tab and preserves Ctrl/Cmd+L', async engine => {
+        open.mockResolvedValue({ ok: true, engine });
+        const target = 'https://example.test/Case?Q=Value#Hash';
+        mocks.bridge!.history = {
+            suggest: vi.fn(async search => ({ ok: true, entries: [{ url: target, title: 'Case page',
+                lastVisited: 1, visitCount: 2, completion: search ? 'example.test/Case?Q=Value#Hash' : null }],
+                total: 1, recording: false, storageError: null })),
+            query: vi.fn(), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        const onNavigate = vi.fn();
+        const props = { tabId: 'tab-a', viewId: 'view-a', sessionKey: 'remote-workspace-a', url: 'https://start.test/',
+            active: true, visible: true, onNavigate, onPageState: vi.fn() };
+        render(<UnifiedBrowserTab {...props} />);
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        await userEvent.click(address);
+        fireEvent.keyDown(address, { key: 'l', ctrlKey: true, metaKey: true });
+        expect([address.selectionStart, address.selectionEnd]).toEqual([0, address.value.length]);
+        await userEvent.keyboard('ex');
+        await waitFor(() => expect(address.value).toBe('example.test/Case?Q=Value#Hash'));
+        expect([address.selectionStart, address.selectionEnd]).toEqual([2, address.value.length]);
+        await userEvent.keyboard('{Enter}');
+        expect(onNavigate).toHaveBeenCalledExactlyOnceWith('tab-a', target);
+        expect(mocks.bridge!.navigate).toHaveBeenCalledExactlyOnceWith('view-a', target);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(address.value).toBe(target);
+        fireEvent.change(address, { target: { value: 'localhost:4000' } });
+        fireEvent.submit(address.form!);
+        expect(address.value).toBe('http://localhost:4000/');
+        expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('normalizes manual address entry without history and keeps invalid text editable', async () => {
+        const onNavigate = vi.fn();
+        render(<UnifiedBrowserTab tabId="blank" viewId="blank-view" sessionKey="workspace-a" active visible
+            onNavigate={onNavigate} onPageState={vi.fn()} />);
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        await userEvent.keyboard('localhost:4000/path{Enter}');
+        expect(onNavigate).toHaveBeenCalledWith('blank', 'http://localhost:4000/path');
+        expect(address.value).toBe('http://localhost:4000/path');
+        await userEvent.clear(address);
+        await userEvent.type(address, 'javascript:alert(1){Enter}');
+        expect(screen.getByRole('alert')).toHaveTextContent('not supported');
+        expect(address.value).toBe('javascript:alert(1)');
+        expect(onNavigate).toHaveBeenCalledTimes(1);
+    });
+
     it.each(['electron', 'webview2'])('selects the complete editable URL on a matching %s request and replaces it on typing/Enter', async engine => {
         const listeners = new Set<(event: { viewId: string }) => void>();
         mocks.bridge!.onFocusAddressRequested = callback => { listeners.add(callback); return () => { listeners.delete(callback); }; };
@@ -208,6 +255,98 @@ describe('browser toolbar overflow', () => {
         view.rerender(<UnifiedBrowserTab {...props} sessionKey="workspace-b" viewId="other-window-view" />);
         expect(screen.queryByRole('menu')).toBeNull();
     });
+    it.each(['older-host', 'web'] as const)('omits history controls on %s', async host => {
+        if (host === 'web') mocks.bridge = undefined;
+        tab();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.queryByRole('menuitem', { name: 'History' })).toBeNull();
+    });
+
+    it('moves keyboard focus between History and the system-browser action', async () => {
+        mocks.bridge!.history = {
+            query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        tab({ onOpenHistoryUrl: vi.fn() });
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        const history = screen.getByRole('menuitem', { name: 'History' });
+        const external = screen.getByRole('menuitem', { name: 'Open in system browser' });
+        expect(history).toHaveFocus();
+        await userEvent.keyboard('{ArrowDown}');
+        expect(external).toHaveFocus();
+        await userEvent.keyboard('{ArrowDown}');
+        expect(history).toHaveFocus();
+        await userEvent.keyboard('{End}');
+        expect(external).toHaveFocus();
+        await userEvent.keyboard('{Home}');
+        expect(history).toHaveFocus();
+    });
+
+    it('keeps History and cookie import accessible together and dismisses both on owner changes', async () => {
+        mocks.bridge!.importCookies = vi.fn(async () => ({ ok: true }));
+        mocks.bridge!.history = {
+            query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        const props = { onOpenHistoryUrl: vi.fn(), historyOwnerKey: 'owner-a' };
+        const view = tab(props);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.getByRole('menuitem', { name: 'History' })).toHaveFocus();
+        await userEvent.keyboard('{End}');
+        expect(screen.getByRole('menuitem', { name: 'Import cookies…' })).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        expect(screen.getByLabelText('Cookies')).toBeInTheDocument();
+        const renderTab = (historyOwnerKey: string) => <UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace"
+            url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} {...props} historyOwnerKey={historyOwnerKey} />;
+        view.rerender(renderTab('owner-b'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'History' }));
+        await screen.findByText('No browser history yet.');
+        view.rerender(renderTab('owner-c'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('offers history on a blank tab and navigates menu actions by keyboard', async () => {
+        mocks.bridge!.history = {
+            query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        const props = { tabId: 'blank', viewId: 'blank-view', sessionKey: 'workspace-a', active: true, visible: true, onNavigate: vi.fn(), onPageState: vi.fn(), onOpenHistoryUrl: vi.fn(), historyOwnerKey: 'owner-a' };
+        const view = render(<UnifiedBrowserTab {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        const historyAction = screen.getByRole('menuitem', { name: 'History' });
+        expect(historyAction).toHaveFocus();
+        await userEvent.keyboard('{ArrowDown}{End}{Home}{Enter}');
+        await screen.findByRole('dialog');
+        expect(screen.queryByRole('menu')).toBeNull();
+        await screen.findByText('No browser history yet.');
+        expect(open).not.toHaveBeenCalled();
+        view.rerender(<UnifiedBrowserTab {...props} historyOwnerKey="owner-b" />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it.each([{ active: false }, { visible: false }, { sessionKey: 'workspace-b' }, { viewId: 'another-view' }])('dismisses history and rejects pending replies after a scope/visibility change %o', async patch => {
+        let resolve!: (value: BrowserHistoryResult) => void;
+        const off = vi.fn();
+        mocks.bridge!.history = {
+            query: vi.fn(() => new Promise(r => { resolve = r; })), suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })), delete: vi.fn(), clear: vi.fn(),
+            setRecording: vi.fn(), onChanged: vi.fn(() => off),
+        };
+        const props = { tabId: 'blank', viewId: 'blank-view', sessionKey: 'workspace-a', active: true, visible: true, onNavigate: vi.fn(), onPageState: vi.fn(), onOpenHistoryUrl: vi.fn() };
+        const view = render(<UnifiedBrowserTab {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'History' }));
+        view.rerender(<UnifiedBrowserTab {...props} {...patch} />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await act(async () => resolve({ ok: true, entries: [{ title: 'Late entry', url: 'https://late.test/', lastVisited: 1, visitCount: 1 }], total: 1, recording: true, storageError: null }));
+        expect(screen.queryByText('Late entry')).toBeNull();
+        expect(props.onOpenHistoryUrl).not.toHaveBeenCalled();
+        expect(off).toHaveBeenCalled();
+    });
+
 });
 
 describe('browser cookie import', () => {

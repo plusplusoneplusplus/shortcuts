@@ -93,7 +93,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual([
             'reject', 'open', 'dom-compositing', 'webview-security', 'close-shortcut', 'navigate', 'history', 'stop-reload', 'failure', 'new-tab', 'popup',
-            'sessions', 'download', 'open-external', 'visibility', 'close', 'owner-reload',
+            'sessions', 'download', 'open-external', 'visibility', 'close', 'owner-reload', 'persistent-history',
         ]);
     });
 
@@ -152,6 +152,23 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         const history = steps.get('history')!;
         expect(history.back).toMatchObject({ title: 'Second', canGoForward: true });
         expect(history.forward).toMatchObject({ title: 'Landed' });
+    });
+
+    it('persists successful final pages, reloads and popup visits across a desktop restart', () => {
+        const entries = steps.get('persistent-history')!.entries;
+        expect(entries, raw).toEqual(expect.any(Array));
+        const byUrl = new Map<string, any>(entries.map((entry: any) => [entry.url, entry]));
+        const nav = steps.get('navigate')!;
+        expect(byUrl.get(nav.landed.url).engines.electron).toMatchObject({ title: 'Landed' });
+        expect(byUrl.get(nav.second.url).engines.electron.visitCount).toBeGreaterThanOrEqual(2);
+        expect(byUrl.get(nav.inPage.url).engines.electron).toMatchObject({ title: 'History hash', visitCount: 1 });
+        expect(byUrl.get(steps.get('open')!.home.url).engines.electron.visitCount).toBeGreaterThanOrEqual(3);
+        expect(entries.some((entry: any) => entry.url.endsWith('/login') && entry.engines.electron.title === 'Login')).toBe(true);
+        // The failed URL succeeds on retry; only that successful retry counts.
+        expect(byUrl.get(steps.get('failure')!.failed.url).engines.electron).toMatchObject({ title: 'Second', visitCount: 1 });
+        expect(entries.some((entry: any) => /\/(redirect|slow|file\.zip)$/.test(entry.url))).toBe(false);
+        expect(entries.every((entry: any) => /^https?:/.test(entry.url))).toBe(true);
+        expect(restart.steps.get('restart')!.retainedHistory).toEqual(entries);
     });
 
     it('stops a slow load and reloads a page', () => {

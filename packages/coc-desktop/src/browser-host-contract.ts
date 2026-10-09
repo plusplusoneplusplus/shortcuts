@@ -19,6 +19,10 @@ export interface FileViewRequest {
 
 export interface BrowserEventSink {
     state(state: BrowserViewState): void;
+    /** Successful main-document load or committed same-document navigation, never state replay. */
+    visited?(url: string, title: string): void;
+    /** Changes metadata only; cannot create a visit. */
+    titleUpdated?(url: string, title: string): void;
     newTab(url: string): void;
     download(event: BrowserDownloadEvent): void;
     closeRequested(): void;

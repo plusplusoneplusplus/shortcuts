@@ -17,6 +17,12 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // IPC channel names are declared as local literals here instead of imported.
 // They must match the exported constants in find-in-page.ts / devtunnel-modal.ts;
 // preload.test.ts asserts they stay in sync.
+const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
+const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
+const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
+const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
+const BROWSER_HISTORY_RECORDING_CHANNEL = 'coc-desktop:browser-history-recording';
+const BROWSER_HISTORY_CHANGED_CHANNEL = 'coc-desktop:browser-history-changed';
 const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
 const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
 const FIND_RESULT_CHANNEL = 'coc-desktop:find-result';
@@ -209,7 +215,22 @@ function subscribe<T>(channel: string, callback: (payload: T) => void): () => vo
  * asks the SPA to open a new-window link as another tab, and `onDownload`
  * reports downloads handed to the system browser.
  */
+interface BrowserHistoryEntry { url: string; title: string; lastVisited: number; visitCount: number }
+type BrowserHistoryFailure = { ok: false; reason: string; message?: string };
+type BrowserHistoryResult = { ok: true } | BrowserHistoryFailure;
+type BrowserHistoryQueryResult = { ok: true; entries: BrowserHistoryEntry[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
+type BrowserHistorySuggestResult = { ok: true; entries: (BrowserHistoryEntry & { completion: string | null })[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
+
 const browser = {
+    history: {
+        suggest: (search = ''): Promise<BrowserHistorySuggestResult> => ipcRenderer.invoke(BROWSER_HISTORY_SUGGEST_CHANNEL, search),
+        query: (search = '', offset = 0, limit = 50): Promise<BrowserHistoryQueryResult> =>
+            ipcRenderer.invoke(BROWSER_HISTORY_QUERY_CHANNEL, search, offset, limit),
+        delete: (url: string): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_DELETE_CHANNEL, url),
+        clear: (): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_CLEAR_CHANNEL),
+        setRecording: (recording: boolean): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_RECORDING_CHANNEL, recording),
+        onChanged: (callback: () => void) => subscribe(BROWSER_HISTORY_CHANGED_CHANNEL, callback),
+    },
     sources: BROWSER_SOURCE_KINDS,
     importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserOperationResult> =>
         ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies, engine),

@@ -99,8 +99,9 @@ describe('Notes Order — Integration', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
-        return server;
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
+        // The server's display URL uses localhost; match requests to the bound address.
+        return { ...server, url: `http://${server.host}:${server.port}` };
     }
 
     async function registerWorkspace(srv: ExecutionServer): Promise<void> {
@@ -152,6 +153,17 @@ describe('Notes Order — Integration', () => {
             return [];
         }
     }
+
+    it('uses the same numeric loopback address for listening and HTTP requests', async () => {
+        const srv = await startServer();
+        expect(srv.host).toBe('127.0.0.1');
+        expect(new URL(srv.url).hostname).toBe('127.0.0.1');
+
+        await registerWorkspace(srv);
+        const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).tree).toEqual(expect.any(Array));
+    });
 
     // ── buildTree respects .order.json ────────────────────────────────
 

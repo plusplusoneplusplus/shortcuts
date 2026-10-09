@@ -102,11 +102,58 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 ### Browser profiles and preferences
 
 `desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
+Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned
 partition is a single-use attachment token, not a new storage partition; existing
 sign-ins and session permission/download hooks remain shared.
 The Windows desktop helper enables OS-account SSO by default at environment creation without an environment flag. Profiles remain separate from Edge. SSO does not guarantee Conditional Access compliance; clearing site data does not disconnect Windows accounts.
+
+### Desktop history persistence
+
+`browser-view-host.ts` creates one `BrowserHistoryStore` from
+`packages/coc-desktop/src/browser-history.ts`, shared by the manager across
+windows/workspaces. Its versioned
+`<desktopDataDir>/browser/history.json` retains credential-free HTTP(S) URLs for
+90 days, capped at 10,000 unique URLs. Per-engine title/time/count contributions
+support independent cleanup. Atomic serialized saves publish only on success;
+queries expose storage errors. Host `visited`/`titleUpdated` callbacks write only
+URL sources; state snapshots, reattachment and file previews never record.
+Both engines emit visits after successful main-document completion and committed
+same-document changes, including popup documents. WebView2's native helper tracks
+navigation IDs and emits explicit `visited`/`title-updated` messages with each
+document's final URL/title through its root tab. Failures, stop and crashes
+invalidate pending visits; late or repeated completions never record.
+`updateTitle` cannot create entries. Recording preferences, deletion and bounded
+URL/title search use the same store. Startup and main-owned hourly maintenance
+prune expired entries; shutdown stops the timer and drains queued saves even when
+host cleanup fails. Confirmed profile cleanup closes that engine's tabs, clears
+its profile, then removes its history contributions; failures are explicit.
+
+`cocDesktop.browser.history` exposes bounded `query(search, offset, limit)`, `suggest(search)`,
+`delete(url)`, confirmed `clear()`, `setRecording(boolean)` and `onChanged()`.
+IPC requires a registered exact-source SPA main frame. Main broadcasts data-free
+invalidations to all registered SPA windows after committed saves or storage
+failures. Queries return recording state and persistent storage errors; mutations
+return explicit failure results. History-only clear preserves profiles, tabs and
+recording state. The optional history surface supports older-host detection.
+
+`BrowserHistoryPanel` opens from the desktop browser toolbar menu. It searches
+URL/title with bounded 50-entry pages, shows latest visit times and calls
+`delete`/native-confirmed `clear`. Main invalidations refresh open panels; failed
+queries/mutations and persistent storage errors stay visible. Pausing retains
+searchable entries. Opening uses the current panel's dock target and concrete
+clone route to mint a fresh default-engine tab. Tab, owner and visibility changes
+dismiss the dialog and invalidate replies. Its modal overlay covers Electron
+guests and hides native WebView2 surfaces.
+
+`query` uses recency pagination for the History panel. `suggest` searches the full
+retained URL/title index case-insensitively and returns at most eight entries:
+URL prefixes (including scheme-omitted prefixes), recency, visit count, then
+stable URL order. Empty input returns recent entries. Suggestions include a
+case-preserving `completion` URL or scheme-omitted URL for prefix matches;
+empty, title/substring and whitespace-padded input has null completion. Both
+APIs await queued saves, filter expiry and return recording/storage-error state.
 
 ### Browser adapters and lifecycle
 
@@ -124,7 +171,14 @@ when stock Electron exposes `getWebContentsId`, and rejects foreign/reused guest
 
 `BrowserWebviewLayer` mounts once beside `App` and retains each guest outside keyed workspace subtrees. Placeholders register in `browserWebviewLayerStore`; fixed hosts track their rectangles and clip to ancestor overflow viewports. Hidden hosts use visibility and pointer-events, never display. Close and `onClosed` remove guests, with identity checks rejecting late open replies.
 
-`BrowserToolbarMenu` portals a dropdown above the live Electron page; the page title belongs in the tab label. Its Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+`BrowserToolbarMenu` and `BrowserAddressBar` portal dropdowns above the live
+Electron page. The address combobox consumes optional `browser.history.suggest`:
+main ranks up to eight URL/title matches and supplies case-preserving prefix
+completions. Local typed text survives Escape; deletion, caret moves, paste and
+IME suppress automatic suffix selection. Owner/revision checks reject stale
+queries; history invalidations refresh open results.
+
+The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 

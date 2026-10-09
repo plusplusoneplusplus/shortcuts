@@ -19,6 +19,7 @@ setInterval(async()=>{
     const action = await (await fetch('/command?tab='+encodeURIComponent(key))).text();
     if (action==='next') location.href='/second?tab='+key;
     if (action==='push') { history.pushState({},'', '/second?tab='+key+'&inpage=1'); report(); }
+    if (action==='title') { document.title='Updated page'; report(); }
     if (action==='seed') { localStorage.setItem('fixture','stored'); document.cookie='fixture=remembered; Path=/; Max-Age=3600'; report(); }
     if (action==='newtab') window.open('/second?tab=child','_blank');
     if (action==='popup') window.open('/login?tab=popup','auth','popup,width=420,height=520');

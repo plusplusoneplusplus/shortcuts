@@ -3,17 +3,17 @@ import { createPortal } from 'react-dom';
 import type { BrowserEngine } from '../../../shared/file-path/browser-bridge';
 import { nativeViewToolbarButton } from './NativeViewTab';
 
-export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies }: {
+export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory }: {
     open: boolean;
     onOpenChange(open: boolean): void;
     engine?: BrowserEngine;
     canOpenExternal: boolean;
     onOpenExternal(): void;
     onImportCookies?: () => void;
+    onHistory?(): void;
 }) {
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const actionRef = useRef<HTMLButtonElement>(null);
     const id = useId();
     const [position, setPosition] = useState({ top: 0, right: 0 });
 
@@ -91,11 +91,12 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                     }
                 }}
             >
+                {onHistory && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
+                    onClick={() => { onOpenChange(false); triggerRef.current?.focus(); onHistory(); }}>History</button>}
                 {engine && <div role="presentation" className="px-2 py-1 text-[#616161] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">
                     Engine: {engine === 'electron' ? 'Electron' : 'WebView2'}
                 </div>}
                 <button
-                    ref={actionRef}
                     type="button"
                     role="menuitem"
                     className={`w-full whitespace-normal text-left ${nativeViewToolbarButton}`}

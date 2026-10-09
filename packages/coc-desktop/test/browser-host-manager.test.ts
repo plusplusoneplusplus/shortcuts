@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
+import { BrowserHistoryStore } from '../src/browser-history';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
 import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
@@ -13,7 +14,9 @@ function deferred<T>() {
     return { promise, resolve };
 }
 
-function harness(defaultEngine: BrowserEngine = 'electron') {
+function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'> = {
+    clearEngine: vi.fn(async () => true), recordVisit: vi.fn(async () => true), updateTitle: vi.fn(async () => true), flush: vi.fn(async () => {}),
+}) {
     const send = vi.fn();
     const changed = vi.fn();
     const created: { request: BrowserViewRequest; sink: BrowserEventSink; view: BrowserHostedView; engine: BrowserEngine }[] = [];
@@ -44,9 +47,126 @@ function harness(defaultEngine: BrowserEngine = 'electron') {
         }),
         dispose: vi.fn(async () => {}),
     };
-    const manager = new BrowserHostManager({ hosts, fileHost, getDefault: () => defaultEngine, saveDefault: engine => { defaultEngine = engine; }, send, changed });
-    return { manager, hosts, fileHost, files, created, send, changed };
+    const manager = new BrowserHostManager({ history, hosts, fileHost, getDefault: () => defaultEngine, saveDefault: engine => { defaultEngine = engine; }, send, changed });
+    return { manager, hosts, fileHost, files, created, send, changed, history };
 }
+
+describe('browser manager history integration', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-manager-history-'));
+    afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('shares persisted visits across workspace sessions and desktop owners without counting replay', async () => {
+        const history = new BrowserHistoryStore(dir);
+        const h = harness('electron', history);
+        await h.manager.open(1, 'a', 'https://start.test/', 'workspace-a');
+        await h.manager.open(2, 'b', 'https://start.test/', 'workspace-b', 'webview2');
+        expect((await history.query()).entries).toEqual([]);
+        h.created[0].sink.visited!('https://user:secret@final.test/Path?q=Case#Part', 'Final page');
+        h.created[1].sink.visited!('https://final.test/Path?q=Case#Part', 'Other engine');
+        h.created[0].sink.titleUpdated!('https://final.test/Path?q=Case#Part', 'Updated title');
+        await h.manager.open(1, 'a', 'https://ignored.test/', 'workspace-a');
+        h.created[0].sink.state(h.created[0].view.snapshot());
+        await h.manager.bounds(1, 'a', null);
+        await h.manager.bounds(1, 'a', { x: 0, y: 0, width: 400, height: 300 });
+        const result = await history.query();
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0]).toMatchObject({ url: 'https://final.test/Path?q=Case#Part', visitCount: 2 });
+        expect((await new BrowserHistoryStore(dir).query()).entries).toEqual(result.entries);
+        const saved = JSON.parse(fs.readFileSync(history.filename, 'utf8'));
+        expect(saved.entries[0].engines.electron).toMatchObject({ title: 'Updated title', visitCount: 1 });
+        expect(saved.entries[0].engines.webview2).toMatchObject({ title: 'Other engine', visitCount: 1 });
+        await history.delete(result.entries[0].url);
+        h.created[0].sink.titleUpdated!(result.entries[0].url, 'Late title');
+        h.created[0].sink.state(h.created[0].view.snapshot());
+        await h.manager.open(2, 'b', 'https://start.test/', 'workspace-b');
+        expect((await history.query()).entries).toEqual([]);
+        await h.manager.dispose();
+    });
+
+    it('ignores history events from file sources and closed owners, even with an HTTP URL', async () => {
+        const h = harness();
+        const filePath = path.join(dir, 'preview.html');
+        fs.writeFileSync(filePath, '<h1>Preview</h1>');
+        await h.manager.openFile(1, 'preview', filePath, 'workspace-a');
+        h.files[0].sink.visited!('https://example.test/', 'File redirected');
+        h.files[0].sink.titleUpdated!('https://example.test/', 'File title');
+        await h.manager.open(2, 'browser', 'https://example.test/', 'workspace-b');
+        await h.manager.closeOwner(2);
+        h.created[0].sink.visited!('https://example.test/', 'Late');
+        h.created[0].sink.titleUpdated!('https://example.test/', 'Late title');
+        expect(h.history.recordVisit).not.toHaveBeenCalled();
+        expect(h.history.updateTitle).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('reports failed history writes without interrupting browsing or title/state events', async () => {
+        const history = {
+            clearEngine: vi.fn(async () => true),
+            recordVisit: vi.fn(async () => { throw new Error('Disk full'); }),
+            updateTitle: vi.fn(async () => { throw new Error('Disk full'); }),
+            flush: vi.fn(async () => {}),
+        };
+        const report = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const h = harness('electron', history);
+            await h.manager.open(1, 'browser', 'https://example.test/', 'workspace-a');
+            h.created[0].sink.visited!('https://example.test/', 'Page');
+            h.created[0].sink.titleUpdated!('https://example.test/', 'New title');
+            await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2));
+            expect(await h.manager.navigate(1, 'browser', 'https://other.test/')).toEqual({ ok: true, engine: 'electron' });
+            h.created[0].sink.state(h.created[0].view.snapshot());
+            expect(h.send).toHaveBeenLastCalledWith(1, BROWSER_VIEW_STATE_CHANNEL, expect.objectContaining({ url: 'https://example.test/' }));
+            await h.manager.dispose();
+        } finally { report.mockRestore(); }
+    });
+
+    it('waits for queued history and engine cleanup, preserving the other engine contributions', async () => {
+        const history = new BrowserHistoryStore(dir);
+        await history.clear();
+        const h = harness('electron', history);
+        await h.manager.open(1, 'a', 'https://example.test/', 'workspace-a');
+        await h.manager.open(2, 'b', 'https://example.test/', 'workspace-b', 'webview2');
+        h.created[0].sink.visited!('https://example.test/', 'Electron');
+        h.created[1].sink.visited!('https://example.test/', 'WebView2');
+        const gate = deferred<void>();
+        vi.mocked(h.hosts.electron.clearData).mockImplementationOnce(() => gate.promise);
+        const clearing = h.manager.clear('electron');
+        await vi.waitFor(() => expect(h.hosts.electron.clearData).toHaveBeenCalledOnce());
+        expect((await history.query()).entries[0].visitCount).toBe(2);
+        gate.resolve();
+        expect(await clearing).toEqual({ ok: true });
+        expect((await history.query()).entries[0]).toMatchObject({ title: 'WebView2', visitCount: 1 });
+        h.created[0].sink.visited!('https://example.test/', 'Closed');
+        h.created[0].sink.titleUpdated!('https://example.test/', 'Closed');
+        expect((await history.query()).entries[0].visitCount).toBe(1);
+        await h.manager.dispose();
+    });
+
+    it('keeps history on profile failure and reports history cleanup failure after profile success', async () => {
+        const h = harness();
+        vi.mocked(h.hosts.electron.clearData).mockRejectedValueOnce(new Error('Profile locked'));
+        expect(await h.manager.clear('electron')).toMatchObject({ ok: false, reason: 'cleanup-failed' });
+        expect(h.history.clearEngine).not.toHaveBeenCalled();
+        vi.mocked(h.history.clearEngine).mockRejectedValueOnce(new Error('History disk full'));
+        expect(await h.manager.clear('electron')).toEqual({ ok: false, reason: 'cleanup-failed', message: 'History disk full' });
+        expect((await h.manager.preferences()).clearing).toEqual([]);
+        expect(await h.manager.clear('electron')).toEqual({ ok: true });
+        await h.manager.dispose();
+    });
+
+    it('drains history writes on shutdown even when a browser host fails to dispose', async () => {
+        const h = harness();
+        const pending = deferred<void>();
+        vi.mocked(h.history.flush).mockReturnValue(pending.promise);
+        vi.mocked(h.hosts.electron.dispose).mockRejectedValue(new Error('Host dispose failed'));
+        let completed = false;
+        const result = h.manager.dispose().catch(error => { completed = true; return error; });
+        await vi.waitFor(() => expect(h.history.flush).toHaveBeenCalledOnce());
+        expect(completed).toBe(false);
+        pending.resolve();
+        expect(await result).toEqual(new Error('Host dispose failed'));
+    });
+});
 
 describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manager contract', engine => {
     it('routes adoption to the exact owner and removes expired host handles', async () => {

@@ -84,7 +84,8 @@ from same-id clones never merge into one tab.
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
-| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns the editable address bar with inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes; pairs use host-only, secure session cookies at `/` with SameSite Lax. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. |
+| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes; pairs use host-only, secure session cookies at `/` with SameSite Lax. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. |
+| `BrowserAddressBar.tsx` | Local address editing and optional desktop history combobox. Main supplies up to eight ranked suggestions and case-preserving prefix completion; the input selects only the appended suffix. Keyboard/mouse activation uses the stored URL, Escape restores typed text, and deletion/paste/caret/IME preserve editing. Owner/revision checks reject late queries; cross-window invalidations refresh results. The fixed body portal uses `data-native-view-overlay` for native placement. |
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
@@ -586,7 +587,7 @@ engine across all installation workspaces; browser tab descriptors stay
 ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
 Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
-with the actual engine and the current-page system-browser action. The menu is
+with the actual engine, desktop History and the current-page system-browser action. The menu is
 a fixed dropdown portalled to the document body above the live Electron page.
 Escape, outside clicks, repeated trigger clicks, and loss of tab visibility or
 ownership dismiss it. Page titles appear in tab labels; load errors and download
@@ -598,6 +599,16 @@ new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
 panels, and removes their webview hosts.
+
+`BrowserHistoryPanel` is a desktop-only dialog opened from the toolbar menu.
+It queries 50-entry pages by URL/title, shows visit times, deletes individual URLs
+and calls main's native-confirmed history clear. Main invalidations refresh all
+open panels; loading, storage and mutation errors are explicit. Paused history
+remains searchable. Queries and mutation replies are ignored after unmount;
+owner, tab and visibility changes dismiss the dialog. Opening an entry mints a
+fresh tab through the panel's current dock target and concrete clone route, with
+no inherited engine override. Electron guests stay attached under the dialog;
+its modal/overlay marker hides WebView2 surfaces.
 
 Electron opens return `embed: 'webview'` with a main-approved `src` and `partition`.
 The app-level `BrowserWebviewLayer` creates each guest once and calls

@@ -7,6 +7,7 @@ import {
 } from './browser-view-policy';
 import { parseBrowserCookies } from './browser-cookie-import';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
+import type { BrowserHistoryStore } from './browser-history';
 
 interface Entry {
     ownerId: number;
@@ -28,6 +29,7 @@ function throwRejected(results: PromiseSettledResult<unknown>[]): void {
 }
 
 export interface BrowserManagerOptions {
+    history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'>;
     hosts: Record<BrowserEngine, BrowserEngineHost>;
     /** Local HTML previews: always Electron, isolated from every engine profile and never cleared with them. */
     fileHost: FilePreviewHost;
@@ -161,6 +163,18 @@ export class BrowserHostManager {
         if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab closed during startup.'); }
         const view = await create({
             state: state => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state)); } },
+            visited: (url, title) => {
+                if (!entry.closed && entry.sourceKind === 'url') {
+                    void this.options.history.recordVisit(entry.engine, url, title)
+                        .catch(error => console.error('[coc-desktop] Browser history save failed:', error));
+                }
+            },
+            titleUpdated: (url, title) => {
+                if (!entry.closed && entry.sourceKind === 'url') {
+                    void this.options.history.updateTitle(entry.engine, url, title)
+                        .catch(error => console.error('[coc-desktop] Browser history title save failed:', error));
+                }
+            },
             newTab: target => {
                 if (!entry.closed && validateBrowserUrl(target).ok) { this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target }); }
             },
@@ -323,6 +337,7 @@ export class BrowserHostManager {
             const results = await Promise.allSettled(entries.map(entry => this.close(entry.ownerId, entry.viewId, true)));
             throwRejected(results);
             await this.options.hosts[engine].clearData();
+            await this.options.history.clearEngine(engine);
             return { ok: true };
         } catch (error) { return this.failure(error, 'cleanup-failed'); }
         finally { this.clearing.delete(engine); this.options.changed(); }
@@ -332,7 +347,8 @@ export class BrowserHostManager {
         this.disposed = true;
         const closed = await Promise.allSettled([...this.owners.keys()].map(id => this.closeOwner(id)));
         const disposed = await Promise.allSettled([...Object.values(this.options.hosts), this.options.fileHost].map(host => host.dispose()));
-        throwRejected([...closed, ...disposed]);
+        const history = await Promise.allSettled([this.options.history.flush()]);
+        throwRejected([...closed, ...disposed, ...history]);
     }
 
     private failure(error: unknown, reason: BrowserFailureReason): { ok: false; reason: BrowserFailureReason; message: string } {

@@ -55,6 +55,8 @@ import {
     toHtmlPageOpenResult,
 } from '../src/html-page-policy';
 import {
+    BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
+    BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_VIEW_OPEN_CHANNEL,
     BROWSER_VIEW_ADOPT_CHANNEL,
     BROWSER_VIEW_NAVIGATE_CHANNEL,
@@ -167,6 +169,34 @@ describe('preload bridge', () => {
         offClosed();
         expect(removeListener).toHaveBeenCalledWith(BROWSER_PREFERENCES_CHANGED_CHANNEL, expect.any(Function));
         expect(removeListener).toHaveBeenCalledWith(BROWSER_VIEW_CLOSED_CHANNEL, expect.any(Function));
+    });
+
+    it('exposes capability-detectable history IPC and invalidation subscriptions', async () => {
+        const history = exposedApi().browser.history;
+        invoke.mockResolvedValue({ ok: true });
+        await history.suggest();
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_SUGGEST_CHANNEL, '');
+        const suggestions = { ok: true, entries: [{ url: 'https://example.test/Path', title: 'Page', lastVisited: 123, visitCount: 1, completion: 'example.test/Path' }], total: 1, recording: false, storageError: null };
+        invoke.mockResolvedValueOnce(suggestions);
+        expect(await history.suggest('EXAMPLE.TEST/p')).toEqual(suggestions);
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_SUGGEST_CHANNEL, 'EXAMPLE.TEST/p');
+        await history.query();
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_QUERY_CHANNEL, '', 0, 50);
+        await history.query('Page', 50, 8);
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_QUERY_CHANNEL, 'Page', 50, 8);
+        await history.delete('https://example.test/');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_DELETE_CHANNEL, 'https://example.test/');
+        await history.clear();
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_CLEAR_CHANNEL);
+        await history.setRecording(false);
+        expect(invoke).toHaveBeenCalledWith(BROWSER_HISTORY_RECORDING_CHANNEL, false);
+        const callback = vi.fn();
+        const off = history.onChanged(callback);
+        const listener = on.mock.calls.find(c => c[0] === BROWSER_HISTORY_CHANGED_CHANNEL)![1];
+        listener({});
+        expect(callback).toHaveBeenCalledOnce();
+        off();
+        expect(removeListener).toHaveBeenCalledWith(BROWSER_HISTORY_CHANGED_CHANNEL, listener);
     });
 
     it('find.query sends on the real find-in-page channel', () => {

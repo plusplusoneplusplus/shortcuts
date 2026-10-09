@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
     attach: undefined as undefined | (() => void),
     expire: undefined as undefined | (() => void),
     revoke: vi.fn(),
-    handlers: new Map<string, (...args: any[]) => void>(),
+    handlers: new Map<string, ((...args: any[]) => void)[]>(),
     owner: { id: 7, focus: vi.fn() },
     profile: {
         getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
         id: 8, on: vi.fn(), once: vi.fn(), setWindowOpenHandler: vi.fn(),
         isDestroyed: () => false, loadURL: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
+        getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
+        navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
 }));
 vi.mock('node:fs', () => ({ mkdirSync: vi.fn() }));
@@ -58,9 +60,15 @@ beforeEach(() => {
     mocks.handlers.clear();
     mocks.deferAttach = false;
     mocks.contents.on.mockImplementation((name: string, handler: (...args: any[]) => void) => {
-        mocks.handlers.set(name, handler);
+        const handlers = mocks.handlers.get(name) ?? [];
+        handlers.push(handler);
+        mocks.handlers.set(name, handlers);
     });
 });
+
+function emit(name: string, ...args: any[]) {
+    for (const handler of mocks.handlers.get(name) ?? []) { handler({}, ...args); }
+}
 
 describe('Electron browser profile cleanup', () => {
     it('waits for all browsing data to clear before flushing the persistent profile', async () => {
@@ -90,13 +98,14 @@ async function view() {
     const sink: BrowserEventSink = {
         state: vi.fn(), newTab: vi.fn(), download: vi.fn(),
         closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(),
+        visited: vi.fn(), titleUpdated: vi.fn(),
     };
     const hosted = await new ElectronBrowserHost('profile').create({
         ownerId: 7, viewId: 'browser', sessionKey: 'remote:workspace', url: 'https://example.test/',
     }, sink);
     const press = (overrides: Record<string, unknown> = {}) => {
         const event = { preventDefault: vi.fn() };
-        mocks.handlers.get('before-input-event')!(event, {
+        mocks.handlers.get('before-input-event')![0](event, {
             type: 'keyDown', key: 't', control: process.platform !== 'darwin',
             meta: process.platform === 'darwin', ...overrides,
         });
@@ -196,4 +205,119 @@ it.each([false, true])('preserves quoted session values and auth-cookie parts in
     expect(mocks.profile.cookies.set.mock.calls.map(([cookie]) => cookie)).toEqual(cookies);
     expect(mocks.profile.cookies.flushStore).toHaveBeenCalledOnce();
     expect(mocks.contents.loadURL).not.toHaveBeenCalled();
+});
+
+describe('Electron successful history events', () => {
+    it('records the final redirect URL once after main-frame completion, without snapshot replay', async () => {
+        const { hosted, sink } = await view();
+        emit('did-start-navigation', 'https://example.test/redirect', false, true);
+        emit('did-redirect-navigation', 'https://example.test/final', false, true);
+        emit('did-navigate', 'https://example.test/final', 200);
+        emit('page-title-updated', 'Loading title');
+        emit('did-frame-finish-load', false);
+        expect(sink.visited).not.toHaveBeenCalled();
+        emit('did-frame-finish-load', true);
+        expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://example.test/final', 'Fixture');
+        expect(sink.titleUpdated).not.toHaveBeenCalled();
+        emit('did-frame-finish-load', true);
+        emit('did-stop-loading');
+        hosted.snapshot();
+        await hosted.adopt!(8);
+        expect(sink.visited).toHaveBeenCalledOnce();
+        emit('page-title-updated', 'Final title');
+        expect(sink.titleUpdated).toHaveBeenCalledExactlyOnceWith('https://example.test/final', 'Final title');
+        await hosted.close();
+    });
+
+    it('counts reload, back/forward and committed main-page changes but ignores embedded frames', async () => {
+        const { hosted, sink } = await view();
+        for (const url of ['https://example.test/', 'https://example.test/', 'https://example.test/second', 'https://example.test/']) {
+            emit('did-start-navigation', url, false, true);
+            emit('did-navigate', url, 200);
+            emit('did-frame-finish-load', true);
+        }
+        emit('did-start-navigation', 'https://frame.test/', false, false);
+        emit('did-navigate-in-page', 'https://frame.test/#hash', false);
+        emit('did-frame-finish-load', false);
+        emit('did-start-navigation', 'https://example.test/#hash', true, true);
+        emit('did-navigate-in-page', 'https://example.test/#hash', true);
+        emit('did-stop-loading');
+        emit('page-title-updated', 'Hash page');
+        expect(sink.visited).toHaveBeenCalledTimes(5);
+        expect(sink.visited).toHaveBeenLastCalledWith('https://example.test/#hash', 'Fixture');
+        expect(sink.titleUpdated).toHaveBeenCalledWith('https://example.test/#hash', 'Hash page');
+        await hosted.close();
+    });
+
+    it('records the final same-document URL once when it changes during the initial load', async () => {
+        const { hosted, sink } = await view();
+        emit('did-navigate', 'https://example.test/', 200);
+        emit('did-navigate-in-page', 'https://example.test/#initial', true);
+        expect(sink.visited).not.toHaveBeenCalled();
+        emit('did-frame-finish-load', true);
+        expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://example.test/#initial', 'Fixture');
+        await hosted.close();
+    });
+
+    it.each(['did-fail-load', 'did-fail-provisional-load'])('excludes failed/cancelled loads reported by %s', async event => {
+        const { hosted, sink } = await view();
+        for (const code of [-105, -3]) {
+            emit('did-start-navigation', 'https://failed.test/', false, true);
+            emit('did-navigate', 'https://failed.test/', 200);
+            emit(event, code, 'Failed', 'https://failed.test/', true);
+            emit('did-frame-finish-load', true);
+            emit('did-stop-loading');
+            emit('page-title-updated', 'Error page');
+            emit('did-navigate-in-page', 'https://failed.test/#error', true);
+        }
+        expect(sink.visited).not.toHaveBeenCalled();
+        expect(sink.titleUpdated).not.toHaveBeenCalled();
+        // A failed embedded resource cannot cancel the successful main page.
+        emit('did-navigate', 'https://example.test/', 200);
+        emit(event, -105, 'Failed', 'https://frame.test/', false);
+        emit('did-frame-finish-load', true);
+        expect(sink.visited).toHaveBeenCalledOnce();
+        await hosted.close();
+    });
+
+    it('ignores error documents, crashes, closed guests and stale aborted navigations', async () => {
+        const { hosted, sink } = await view();
+        for (const url of ['about:blank', 'file:///preview.html', 'https://error.test/']) {
+            emit('did-navigate', url, -1);
+            emit('did-frame-finish-load', true);
+        }
+        emit('did-navigate', 'https://crashed.test/', 200);
+        emit('render-process-gone', { reason: 'crashed' });
+        emit('did-frame-finish-load', true);
+        expect(sink.visited).not.toHaveBeenCalled();
+        emit('did-navigate', 'https://new.test/', 200);
+        emit('did-fail-provisional-load', -3, 'Aborted', 'https://old.test/', true);
+        emit('did-frame-finish-load', true);
+        expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://new.test/', 'Fixture');
+        await hosted.close();
+        emit('did-navigate', 'https://closed.test/', 200);
+        emit('did-frame-finish-load', true);
+        emit('page-title-updated', 'Closed');
+        expect(sink.visited).toHaveBeenCalledOnce();
+        expect(sink.titleUpdated).not.toHaveBeenCalled();
+    });
+
+    it('records popup main pages independently without recording embedded frames or changing the tab state', async () => {
+        const { hosted, sink } = await view();
+        const handlers = new Map<string, (...args: any[]) => void>();
+        const popup = {
+            ...mocks.contents, id: 90, getTitle: () => 'Popup',
+            on: (name: string, handler: (...args: any[]) => void) => handlers.set(name, handler),
+        };
+        mocks.handlers.get('did-create-window')![0]({ webContents: popup, once: vi.fn(), isDestroyed: () => true });
+        vi.mocked(sink.state).mockClear();
+        handlers.get('did-navigate')!({}, 'https://popup.test/final', 200);
+        handlers.get('did-frame-finish-load')!({}, false);
+        handlers.get('did-frame-finish-load')!({}, true);
+        handlers.get('page-title-updated')!({}, 'Popup title');
+        expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup');
+        expect(sink.titleUpdated).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup title');
+        expect(sink.state).not.toHaveBeenCalled();
+        await hosted.close();
+    });
 });
