@@ -235,68 +235,84 @@ impl PatchStore {
         cancellation: Option<&PatchCancellation>,
         compute: impl FnOnce() -> Result<PatchResult, String>,
     ) -> Outcome {
-        let (flight, owner) = {
-            let mut state = self.state.lock();
-            self.check(scope, &state)?;
-            if generation.is_some_and(|generation| generation != state.generation) {
-                return Err(PatchStoreError::Stale);
-            }
-            if let Some(cancellation) = cancellation {
-                cancellation.check()?;
-            }
-            if !key.valid() {
-                return Err(PatchStoreError::InvalidIdentity);
-            }
-            if let Some(index) = state.cache.iter().position(|entry| entry.0 == key) {
-                let entry = state.cache.remove(index).unwrap();
-                let result = entry.1.clone();
-                state.cache.push_back(entry);
-                return Ok(result);
-            }
-            if let Some(flight) = state.pending.get(&key) {
-                (flight.clone(), false)
-            } else {
-                if state.active >= self.max_entries {
-                    return Err(PatchStoreError::Capacity);
+        let mut compute = Some(compute);
+        loop {
+            let (flight, owner) = {
+                let mut state = self.state.lock();
+                self.check(scope, &state)?;
+                if generation.is_some_and(|generation| generation != state.generation) {
+                    return Err(PatchStoreError::Stale);
                 }
-                let flight = Arc::new(Flight::default());
-                state.pending.insert(key.clone(), flight.clone());
-                state.active += 1;
-                (flight, true)
-            }
-        };
-        if owner {
-            // A panic cannot strand waiters or permanently consume capacity.
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(compute))
-                .unwrap_or_else(|_| Err("patch computation panicked".into()))
-                .map(Arc::new)
-                .map_err(PatchStoreError::Compute);
-            let mut state = self.state.lock();
-            state.active -= 1;
-            // Refresh/disposal remove the old flight. Pointer identity is the
-            // generation token: an older completion cannot replace a new one.
-            if state.pending.get(&key).is_some_and(|current| Arc::ptr_eq(current, &flight)) {
-                state.pending.remove(&key);
-                // Abandoned owners cannot retain their output, but independent
-                // waiters still receive the shared computation's actual outcome.
-                if let Some(value) = result.as_ref().ok().filter(|_| {
-                    cancellation.is_none_or(|cancellation| cancellation.check().is_ok())
-                }) {
-                    let bytes = retained_bytes(&key, value);
-                    if !value.content.truncated && bytes <= self.max_bytes {
-                        while state.cache.len() >= self.max_entries
-                            || state.bytes > self.max_bytes - bytes
-                        {
-                            state.bytes -= state.cache.pop_front().unwrap().2;
-                        }
-                        state.bytes += bytes;
-                        state.cache.push_back((key, value.clone(), bytes));
+                if let Some(cancellation) = cancellation {
+                    cancellation.check()?;
+                }
+                if !key.valid() {
+                    return Err(PatchStoreError::InvalidIdentity);
+                }
+                if let Some(index) = state.cache.iter().position(|entry| entry.0 == key) {
+                    let entry = state.cache.remove(index).unwrap();
+                    let result = entry.1.clone();
+                    state.cache.push_back(entry);
+                    return Ok(result);
+                }
+                if let Some(flight) = state.pending.get(&key) {
+                    (flight.clone(), false)
+                } else {
+                    if state.active >= self.max_entries {
+                        return Err(PatchStoreError::Capacity);
                     }
+                    let flight = Arc::new(Flight::default());
+                    state.pending.insert(key.clone(), flight.clone());
+                    state.active += 1;
+                    (flight, true)
                 }
-                flight.finish(result);
+            };
+            if owner {
+                // A panic cannot strand waiters or permanently consume capacity.
+                let mut result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(compute.take().unwrap()))
+                        .unwrap_or_else(|_| Err("patch computation panicked".into()))
+                        .map(Arc::new)
+                        .map_err(PatchStoreError::Compute);
+                if result.is_err()
+                    && cancellation.is_some_and(|cancellation| cancellation.check().is_err())
+                {
+                    result = Err(PatchStoreError::Cancelled);
+                }
+                let mut state = self.state.lock();
+                state.active -= 1;
+                // Refresh/disposal remove the old flight. Pointer identity is the
+                // generation token: an older completion cannot replace a new one.
+                if state.pending.get(&key).is_some_and(|current| Arc::ptr_eq(current, &flight)) {
+                    state.pending.remove(&key);
+                    // Abandoned owners cannot retain their output, but independent
+                    // waiters still receive the shared computation's actual outcome.
+                    if let Some(value) = result.as_ref().ok().filter(|_| {
+                        cancellation.is_none_or(|cancellation| cancellation.check().is_ok())
+                    }) {
+                        let bytes = retained_bytes(&key, value);
+                        if !value.content.truncated && bytes <= self.max_bytes {
+                            while state.cache.len() >= self.max_entries
+                                || state.bytes > self.max_bytes - bytes
+                            {
+                                state.bytes -= state.cache.pop_front().unwrap().2;
+                            }
+                            state.bytes += bytes;
+                            state.cache.push_back((key, value.clone(), bytes));
+                        }
+                    }
+                    flight.finish(result);
+                }
+                return flight.wait(cancellation);
+            } else {
+                match flight.wait(cancellation) {
+                    // A cancelled host owner stops its child, not independent waiters.
+                    // Their unconsumed computation retries in the same generation.
+                    Err(PatchStoreError::Cancelled) => continue,
+                    result => return result,
+                }
             }
         }
-        flight.wait(cancellation)
     }
 
     pub fn scope(&self) -> &PatchScope {
@@ -412,7 +428,7 @@ impl PatchStore {
         }
         self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
         let options = GitCommandOptions {
-            cancellation: Some(ticket.cancellation.clone()),
+            cancellation: vec![ticket.cancellation.clone(), ticket.request_cancellation.0.clone()],
             ..Default::default()
         };
         let outputs = working_tree_patch_outputs(&self.scope.root, scope, path, context, &options);
@@ -445,7 +461,7 @@ impl PatchStore {
         }
         self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
         let options = GitCommandOptions {
-            cancellation: Some(ticket.cancellation.clone()),
+            cancellation: vec![ticket.cancellation.clone(), ticket.request_cancellation.0.clone()],
             ..options.clone()
         };
         let root = &self.scope.root;
@@ -481,14 +497,20 @@ impl PatchStore {
             variant: format!("{mode}\0{path:?}\0{context:?}"),
         };
         let result = self
-            .compute(&self.scope, key, Some(ticket.generation), None, || {
-                run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|e| e.to_string())
-            })
+            .compute(
+                &self.scope,
+                key,
+                Some(ticket.generation),
+                Some(&ticket.request_cancellation),
+                || run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|e| e.to_string()),
+            )
             .map_err(|error| match error {
                 PatchStoreError::Compute(message) => message,
                 other => format!("patch store: {other:?}"),
             })?;
-        Ok(truncate_patch(&result, max_lines))
+        let result = truncate_patch(&result, max_lines);
+        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
+        Ok(result)
     }
 
     pub fn refresh(&self, scope: &PatchScope) -> Result<(), PatchStoreError> {
