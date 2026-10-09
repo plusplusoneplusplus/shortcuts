@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { tmpdir } from 'node:os';
 import { loadNativeGit } from '../src/git';
 
 const api = loadNativeGit();
@@ -108,7 +109,7 @@ it('exposes working-tree batch planning and composition on workers', async () =>
     expect(batch[0]).toContain('--cached');
     expect(batch[1]).not.toContain('--cached');
     batch.forEach(args => expect(args).toEqual(expect.arrayContaining(['--literal-pathspecs', '-U0', '[ab].txt'])));
-    const result = await api.processGitWorkingTreePatch([patch, patch.replace('+++body', '+new\n+extra')], 2);
+    const result = await api.composeGitWorkingTreePatch([patch, patch.replace('+++body', '+new\n+extra')], 2);
     expect(result.files).toHaveLength(1);
     expect(result.summary).toEqual({ filesChanged: 1, additions: 2, deletions: 1 });
     expect(result.files[0].raw).toContain('+++body');
@@ -118,12 +119,37 @@ it('exposes working-tree batch planning and composition on workers', async () =>
 });
 
 it('composes pending headings on a worker without parsing them as file content', async () => {
-    const pending = api.processGitPendingPatch([patch, '']);
+    const pending = api.composeGitWorkingTreePatch([patch, ''], undefined, true);
     expect(typeof pending.then).toBe('function');
     const result = await pending;
     expect(result.content.raw).toBe(`# Staged Changes\n\n${patch}`);
     expect(result.files[0].raw).toBe(patch);
-    expect(result.summary).toEqual((await api.processGitWorkingTreePatch([patch, ''])).summary);
+    expect(result.summary).toEqual((await api.composeGitWorkingTreePatch([patch, ''])).summary);
+});
+
+it('consumes composition tickets once and isolates remote processing from local batches', async () => {
+    const store = api.openGitPatchStore('batch', tmpdir());
+    try {
+        const ticket = store.beginTransport();
+        const result = await ticket.processWorkingTree([patch, ''], 1, true);
+        expect(result.content.truncated).toBe(true);
+        expect(result.content.totalLines).toBe(`# Staged Changes\n\n${patch}`.split('\n').length);
+        expect(() => ticket.processWorkingTree([patch])).toThrow('Closed');
+        const cancelled = store.beginTransport();
+        cancelled.cancel();
+        expect(() => cancelled.processWorkingTree([patch])).toThrow('Closed');
+        const remote = api.openRemoteGitPatchStore('batch', tmpdir(), {
+            provider: 'github', host: 'github.com', repository: 'github:example/repo', sourceId: 'pr:1',
+        });
+        try {
+            await expect(remote.beginTransport().processWorkingTree([patch])).rejects.toThrow('InvalidIdentity');
+            await expect(remote.workingTreePatch('all')).rejects.toThrow('InvalidIdentity');
+        } finally {
+            remote.dispose();
+        }
+    } finally {
+        store.dispose();
+    }
 });
 
 it('plans direct comparisons separately from three-dot branch ranges on a worker', async () => {

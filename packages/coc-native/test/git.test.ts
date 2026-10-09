@@ -64,7 +64,7 @@ const COMPLETE_ADDON =
     "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
     'gitRangeMergeBase: async () => null, ' +
     'gitRangeCountAhead: async () => 0, ' +
-    'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
+    'prepareGitWorkingTreePatch: async () => [], composeGitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
     `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
     `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
     'gitBranchStatus: async () => null, ' +
@@ -453,12 +453,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitComparisonPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'processGitWorkingTreePatch', 'gitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'prepareGitShowPatch', 'prepareGitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale patch/metadata capability missing %s', (name) => {
+it.each(['prepareGitComparisonPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'composeGitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'prepareGitShowPatch', 'prepareGitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale patch/metadata capability missing %s', (name) => {
     useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
-});
-
-it.each(['gitPendingPatch', 'processGitPendingPatch'])('rejects binaries missing %s before pending output can silently lose headings', name => {
-    useAddon(COMPLETE_ADDON.replace(`${name}: async () => ({}), `, ''));
-    expect(() => loadNativeGit()).toThrow('npm run build:native -w packages/coc-native');
 });

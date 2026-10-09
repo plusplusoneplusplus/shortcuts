@@ -61,9 +61,20 @@ async function loadLocalPatch(
     const execution = resolveWorkspaceExecutionContext(root);
     if (execution.kind === 'wsl') {
         if ('scope' in source) {
-            const batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
-            const outputs = await Promise.all(batch.map(args => execGitAsync(args, root)));
-            result = source.headings ? await addon.processGitPendingPatch(outputs) : await addon.processGitWorkingTreePatch(outputs, maxLines);
+            const request = execution.distro
+                ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
+                : undefined;
+            try {
+                if (request && typeof request.processWorkingTree !== 'function') {
+                    throw new NativeAddonLoadError('Native GitPatchRequest lacks working-tree composition; rebuild with `npm run build:native -w packages/coc-native`.');
+                }
+                const batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
+                const outputs = await Promise.all(batch.map(args => execGitAsync(args, root)));
+                result = request ? await request.processWorkingTree(outputs, maxLines, source.headings)
+                    : await addon.composeGitWorkingTreePatch(outputs, maxLines, source.headings);
+            } finally {
+                request?.cancel();
+            }
         } else {
             // Unresolved default distros stay stateless rather than sharing an
             // identity that could silently change to another distro.
@@ -79,8 +90,11 @@ async function loadLocalPatch(
     } else {
         await ensureGitSafeDirectoryAsync(root);
         if ('scope' in source) {
-            result = source.headings ? await addon.gitPendingPatch(root)
-                : await addon.gitWorkingTreePatch(root, source.scope, filePath, context, maxLines);
+            const store = revisionStore(root);
+            if (typeof store.workingTreePatch !== 'function') {
+                throw new NativeAddonLoadError('Native GitPatchStore lacks working-tree composition; rebuild with `npm run build:native -w packages/coc-native`.');
+            }
+            result = await store.workingTreePatch(source.scope, filePath, context, maxLines, source.headings);
         } else {
             result = 'commit' in source
                 ? await revisionStore(root).revisionPatch(source.show ? 'show' : 'commit', source.commit, undefined, filePath, context, maxLines)

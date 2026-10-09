@@ -14,6 +14,7 @@
 
 /** A single-use, handle-bound external transport continuation. */
 export declare class GitPatchRequest {
+  processWorkingTree(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
   process(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
   cancel(): void
 }
@@ -23,6 +24,8 @@ export declare class GitPatchRequest {
  * Work runs on workers; `dispose` rejects later calls.
  */
 export declare class GitPatchStore {
+  /** Fresh Git bytes fingerprint mutable index/disk state before retaining snapshots. */
+  workingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
   /** Capture the generation before external I/O without blocking a worker. */
   beginTransport(): GitPatchRequest
   /** `mode` is `commit` or `show` (no head), or `range` or `comparison`. */
@@ -138,6 +141,8 @@ export declare function buildNotesIndex(root: string, options?: NotesIndexBuildO
 
 /** Construct a batch of remote patches on a worker; authentication stays in transport. */
 export declare function buildRemoteGitPatch(files: Array<RemotePatchInput>): Promise<string>
+
+export declare function composeGitWorkingTreePatch(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
 
 /**
  * Create a notebook, section, or page. `kind` is `notebook`, `section` or
@@ -544,8 +549,6 @@ export interface GitNoIndexDiffInput {
   afterLabel: string
 }
 
-export declare function gitPendingPatch(root: string): Promise<PatchResult>
-
 /** Which ref a range is measured against, and whether that was the ref asked for. */
 export interface GitRangeBaseRef {
   /** Absent when the repository has no default branch to fall back to. */
@@ -731,8 +734,6 @@ export interface GitUpstreamConfig {
  * command peeled and neither does this.
  */
 export declare function gitValidateRef(repoRoot: string, rev: string): Promise<string | null>
-
-export declare function gitWorkingTreePatch(root: string, scope: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
 
 /**
  * Screen one shell command against the built-in disallow list.
@@ -1045,11 +1046,6 @@ export declare function processGitCommitMetadata(nameStatus: string, numstat: st
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
-
-/** Headed staged/index-to-disk display uses the same processing as other consumers. */
-export declare function processGitPendingPatch(outputs: Array<string>): Promise<PatchResult>
-
-export declare function processGitWorkingTreePatch(outputs: Array<string>, maxLines?: number | undefined | null): Promise<PatchResult>
 
 /** A file match with the complete native ordering tuple. */
 export interface RankedFileMatch {

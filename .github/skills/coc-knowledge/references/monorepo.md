@@ -89,7 +89,7 @@ manifest.
 
 ### Native build boundary
 
-Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; explicit-distro WSL stores fingerprint freshly transported bytes through single-use continuations. Native remote handles require provider/host/repository/source identity and optional iteration/base-iteration metadata, accept supplied transport only and keep credentials in TypeScript. Refresh/disposal revoke pending results and transport generations. External I/O occupies no Rust worker. Working-tree adapters use stateless workers. Detailed contracts live in the native instructions.
+Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; host/explicit-distro WSL working-tree stores fingerprint fresh Git output batches, preserving staged/index-to-disk boundaries and optional pending headings. Continuations capture generations before I/O/worker dispatch; refresh/disposal revoke delayed publication. Remote handles require provider/host/repository/source identity and optional iteration/base-iteration metadata, accept supplied transport only and keep credentials in TypeScript. External I/O occupies no Rust worker. Unresolved-distro WSL reads use guarded stateless composition. Detailed contracts live in the native instructions.
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64
