@@ -73,7 +73,9 @@ describe('ComposerPrChip — author label (AC-01)', () => {
         expect(author.textContent).toBe('by Alice Doe');
         // Muted, non-bold — no font-semibold on the author element.
         expect(author.className).not.toContain('font-semibold');
-        expect(author.className).toContain('shrink-0');
+        expect(author.classList.contains('shrink-[10]')).toBe(true);
+        expect(author.classList.contains('min-w-0')).toBe(true);
+        expect(author.classList.contains('truncate')).toBe(true);
         // Full alias in the tooltip.
         expect(author.getAttribute('title')).toBe('Alice Doe');
 

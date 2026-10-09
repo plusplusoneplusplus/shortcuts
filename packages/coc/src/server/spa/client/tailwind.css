@@ -3683,3 +3683,23 @@
     width: 16px; height: 16px; line-height: 14px; font-size: 13px; border-radius: 3px; cursor: pointer;
     color: #fff; background-color: #0078d4;
 }
+
+/* PR banners measure their composer pane, including split panes and pop-outs.
+   rem thresholds compact earlier when the base font is enlarged.
+   Compact labels leave the original keyboard targets and tooltip names intact. */
+.composer-pr-container {
+    container: composer-pr / inline-size;
+}
+@container composer-pr (max-width: 43.6875rem) {
+    .composer-pr-row { gap: 4px; }
+    .composer-pr-label { display: none; }
+    .composer-pr-view { padding-inline: 5px; }
+}
+@container composer-pr (max-width: 31.1875rem) {
+    .composer-pr-author, .composer-pr-secondary { display: none; }
+}
+@container composer-pr (max-width: 23.6875rem) {
+    .composer-pr-row { gap: 3px; padding-inline: 8px; }
+    .composer-pr-decoration { display: none; }
+    .composer-pr-badge { gap: 3px; padding: 2px 4px; }
+}

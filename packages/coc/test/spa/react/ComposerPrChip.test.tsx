@@ -50,6 +50,30 @@ function readyItem(overrides: Partial<PrStatusCardItem> = {}): PrStatusCardItem 
 }
 
 describe('ComposerPrChip', () => {
+    it.each(['loading', 'error', 'ready'] as const)('%s keeps actions fixed and text shrinkable on a single row', state => {
+        const item = readyItem();
+        item.pr = { ...item.pr!, title: 'Long title '.repeat(30), author: { displayName: 'Long author '.repeat(20) } };
+        const { getByTestId } = render(
+            <ComposerPrChip item={{ ...item, state, error: 'Long error '.repeat(30) }}
+                onDismiss={() => {}} onRetry={() => {}} onRefresh={() => {}} />,
+        );
+        const row = getByTestId('composer-pr-chip');
+        expect(row.classList.contains('flex-nowrap')).toBe(true);
+        expect(row.classList.contains('whitespace-nowrap')).toBe(true);
+        expect(row.classList.contains('flex-wrap')).toBe(false);
+        expect(getByTestId(`composer-pr-chip-dismiss-${KEY}`).classList.contains('shrink-0')).toBe(true);
+        if (state !== 'loading') {
+            expect(getByTestId(`composer-pr-chip-view-${KEY}`).getAttribute('aria-label')).toBe('View pull request');
+        }
+        if (state === 'ready') {
+            const title = getByTestId('composer-pr-chip-title');
+            expect(title.classList.contains('flex-auto')).toBe(true);
+            expect(title.classList.contains('truncate')).toBe(true);
+            expect(title.getAttribute('title')).toBe(item.pr.title);
+            expect(getByTestId('composer-pr-chip-author').classList.contains('shrink-0')).toBe(false);
+        }
+    });
+
     it('ready: renders number, title, status, diff, and provider links', () => {
         const { getByTestId, getByText } = render(
             <ComposerPrChip item={readyItem()} onDismiss={() => {}} />,
