@@ -3,12 +3,16 @@
  * in UnifiedDiffViewer and SideBySideDiffViewer.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { act, render } from '@testing-library/react';
+import { createElement, createRef } from 'react';
 import {
     computeDiffLines,
     computeSideBySideLines,
     extractFilePathFromDiffHeader,
+    type UnifiedDiffViewerHandle,
 } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
+import { SideBySideDiffViewer } from '../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
 
 describe('extractFilePathFromDiffHeader', () => {
     it('extracts file path from standard diff header', () => {
@@ -127,7 +131,7 @@ describe('UnifiedDiffViewerHandle: scrollToFile interface', () => {
     });
 });
 
-describe('SideBySideDiffViewer: data-file-path in source', () => {
+describe('SideBySideDiffViewer: file scrolling', () => {
     it('renders data-file-path on hunk header rows', async () => {
         const fs = await import('fs');
         const path = await import('path');
@@ -138,13 +142,28 @@ describe('SideBySideDiffViewer: data-file-path in source', () => {
         expect(source).toContain('data-file-path={row.filePath');
     });
 
-    it('has scrollToFile in imperative handle', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'SideBySideDiffViewer.tsx'),
-            'utf-8'
-        );
-        expect(source).toContain('scrollToFile:');
+    it.each([false, true])('scrolls through its public handle with file banners %s', showFileBanners => {
+        const ref = createRef<UnifiedDiffViewerHandle>();
+        const diff = [
+            'diff --git a/first.ts b/first.ts',
+            '--- a/first.ts', '+++ b/first.ts', '@@ -1 +1 @@', '-old', '+new',
+            'diff --git a/second.ts b/second.ts',
+            '--- a/second.ts', '+++ b/second.ts', '@@ -1 +1 @@', '-before', '+after',
+        ].join('\n');
+        const view = render(createElement('div', { 'data-testid': 'scroller', style: { overflowY: 'scroll' } },
+            createElement(SideBySideDiffViewer, { ref, diff, showFileBanners })));
+        const scroller = view.container.querySelector<HTMLElement>('[data-testid="scroller"]')!;
+        const target = view.container.querySelector<HTMLElement>('[data-file-path="second.ts"]')!;
+        const scrollTo = vi.fn();
+        scroller.scrollTo = scrollTo;
+        scroller.scrollTop = 20;
+        scroller.getBoundingClientRect = () => new DOMRect(0, 100, 800, 600);
+        target.getBoundingClientRect = () => new DOMRect(0, 180, 800, 24);
+
+        expect(ref.current?.scrollToFile).toBeTypeOf('function');
+        act(() => ref.current!.scrollToFile('second.ts'));
+        expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 100, behavior: 'smooth' });
+        act(() => ref.current!.scrollToFile('missing.ts'));
+        expect(scrollTo).toHaveBeenCalledOnce();
     });
 });

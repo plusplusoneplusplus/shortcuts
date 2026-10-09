@@ -916,7 +916,7 @@ test.describe('Queue Task Conversation – Error Handling', () => {
             await waitForConversation(page, 2);
 
             // Intercept POST /message to return 500
-            await page.route('**/api/processes/**/message', (route) => {
+            await page.route(url => url.pathname === `/api/processes/queue_${taskId}/message`, (route) => {
                 route.fulfill({
                     status: 500,
                     contentType: 'application/json',
@@ -947,7 +947,7 @@ test.describe('Queue Task Conversation – Error Handling', () => {
             await waitForConversation(page, 2);
 
             // Intercept POST /message to return 410 (session expired)
-            await page.route('**/api/processes/**/message', (route) => {
+            await page.route(url => url.pathname === `/api/processes/queue_${taskId}/message`, (route) => {
                 route.fulfill({
                     status: 410,
                     contentType: 'application/json',
@@ -986,7 +986,7 @@ test.describe('Queue Task Conversation – Error Handling', () => {
             await waitForConversation(page, 2);
 
             // Intercept POST /message to abort (simulate network error)
-            await page.route('**/api/processes/**/message', (route) => {
+            await page.route(url => url.pathname === `/api/processes/queue_${taskId}/message`, (route) => {
                 route.abort('connectionfailed');
             });
 

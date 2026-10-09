@@ -91,7 +91,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
 
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
-        expect([...steps.keys()]).toEqual([
+        expect([...steps.keys()], raw).toEqual([
             'reject', 'open', 'dom-compositing', 'webview-security', 'close-shortcut', 'navigate', 'history', 'stop-reload', 'failure', 'new-tab', 'popup',
             'sessions', 'download', 'open-external', 'visibility', 'close', 'owner-reload', 'persistent-history',
         ]);
@@ -125,6 +125,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
             afterHidden: 1, windowAlive: true, viewAlive: true,
         });
         expect(shortcut.pageCloseKeys).toBe(shortcut.beforePage);
+        expect(shortcut.hiddenPageCloseKeys).toBe(shortcut.pageCloseKeys + 1);
     });
 
     it('composites and clicks a DOM menu above a live guest without hiding the page', () => {

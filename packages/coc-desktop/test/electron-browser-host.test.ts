@@ -143,6 +143,20 @@ describe('Electron browser add-menu forwarding', () => {
         await hosted.close();
     });
 
+    it('keeps hidden guests active for shared zoom without claiming their close shortcuts', async () => {
+        const { hosted, sink, press } = await view();
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        expect(press({ key: 'w' }).preventDefault).toHaveBeenCalledOnce();
+        expect(sink.closeRequested).toHaveBeenCalledOnce();
+        await hosted.setBounds(null);
+        await hosted.setPageZoom!(150);
+        expect(mocks.contents.setBackgroundThrottling).toHaveBeenCalledExactlyOnceWith(false);
+        expect(mocks.contents.setZoomFactor).toHaveBeenLastCalledWith(1.5);
+        expect(press({ key: 'w' }).preventDefault).not.toHaveBeenCalled();
+        expect(sink.closeRequested).toHaveBeenCalledOnce();
+        await hosted.close();
+    });
+
     it('preserves visibility set on a pending handle before guest attachment and adoption', async () => {
         mocks.deferAttach = true;
         const { hosted, sink, press } = await view();

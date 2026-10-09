@@ -359,7 +359,7 @@ describe('registerAllRoutes', () => {
         expect(routes.length).toBeGreaterThan(30);
     });
 
-    it('subscribes delegated results/reviews, job notices and both messaging answer relays to queue terminal events', () => {
+    it('subscribes delegated results/reviews, job notices, answer relays and desktop mirrors to queue terminal events', () => {
         const queueFacade = makeQueueFacade();
         const opts = makeOpts({ queueFacade });
         registerAllRoutes([], opts);
@@ -369,6 +369,7 @@ describe('registerAllRoutes', () => {
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'ralphSessionComplete',
+            'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
         ]);

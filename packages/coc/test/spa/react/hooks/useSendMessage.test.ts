@@ -160,6 +160,66 @@ describe('useSendMessage', () => {
         expect(String(fetchMock.mock.calls[0][0])).toContain('workspace=workspace-a');
     });
 
+    it.each(['server', 'expired', 'network'] as const)(
+        'handles %s errors on workspace-scoped follow-ups', async failure => {
+            if (failure === 'network') {
+                fetchMock.mockRejectedValueOnce(new Error('Network error'));
+            } else {
+                fetchMock.mockResolvedValueOnce({
+                    ok: false,
+                    status: failure === 'expired' ? 410 : 500,
+                    json: async () => ({ error: 'Server error' }),
+                });
+            }
+            const opts = makeOptions({ workspaceId: 'group-view', owningWorkspaceId: 'workspace-own' });
+            const { result } = renderHook(() => useSendMessage(opts));
+
+            await act(async () => { await result.current.sendFollowUp('Failed follow-up'); });
+
+            const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost');
+            expect(url.pathname).toBe('/api/processes/pid-1/message');
+            expect(url.searchParams.get('workspace')).toBe('workspace-own');
+            expect(opts.setError).toHaveBeenLastCalledWith(
+                failure === 'expired' ? 'Session expired.' : failure === 'network' ? 'Network error' : 'Server error',
+            );
+            expect(opts.setSessionExpired).toHaveBeenCalledTimes(failure === 'expired' ? 1 : 0);
+            expect(opts.lastFailedMessageRef.current).toBe('Failed follow-up');
+            expect(opts.removeStreamingPlaceholder).toHaveBeenCalledOnce();
+            expect(opts.setSending).toHaveBeenLastCalledWith(false);
+            expect(opts.queueDispatch).toHaveBeenLastCalledWith({
+                type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null,
+            });
+        },
+    );
+
+    it('retries the failed message with its owning workspace, mode and provider', async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            json: async () => ({ error: 'Server error' }),
+        }).mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            workspaceId: 'group-view',
+            owningWorkspaceId: 'workspace-own',
+            selectedMode: 'autopilot',
+            providerOverride: 'codex',
+        });
+        const { result } = renderHook(() => useSendMessage(opts));
+
+        await act(async () => { await result.current.sendFollowUp('Retry this message'); });
+        await act(async () => { await result.current.sendFollowUp(opts.lastFailedMessageRef.current); });
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        for (const [requestUrl, init] of fetchMock.mock.calls) {
+            expect(new URL(String(requestUrl), 'http://localhost').searchParams.get('workspace')).toBe('workspace-own');
+            expect(JSON.parse(init.body)).toMatchObject({
+                content: 'Retry this message', mode: 'autopilot', provider: 'codex',
+            });
+        }
+        expect(opts.lastFailedMessageRef.current).toBe('');
+        expect(opts.setSending).toHaveBeenLastCalledWith(false);
+    });
+
     it.each([undefined, 'group-view', 'remote:server-test:workspace-own'])(
         'uses loaded owner metadata independently of selection routing (%s)', async workspaceId => {
             const baseUrl = 'https://mirror-clone.example';
