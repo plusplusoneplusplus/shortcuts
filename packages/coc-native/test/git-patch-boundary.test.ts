@@ -10,6 +10,30 @@ const patch = 'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n' +
     '--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n' +
     '@@ -1 +1 @@\n---body\n+++body\n';
 
+it('exposes revocation before transport submission without consuming independent tickets', async () => {
+    const store = api.openGitPatchStore('transport-check', '/repo', 'Ubuntu');
+    try {
+        const request = store.beginTransport();
+        const other = store.beginTransport();
+        request.checkActive();
+        request.checkActive();
+        request.cancel();
+        expect(() => request.checkActive()).toThrow('Cancelled');
+        other.checkActive();
+        await other.process(patch);
+        expect(() => other.checkActive()).toThrow('Closed');
+        const stale = store.beginTransport();
+        store.refresh();
+        expect(() => stale.checkActive()).toThrow('Stale');
+        store.beginTransport().checkActive();
+        const closed = store.beginTransport();
+        store.dispose();
+        expect(() => closed.checkActive()).toThrow('Closed');
+    } finally {
+        store.dispose();
+    }
+});
+
 it.each([
     ['local', 'process'],
     ['local', 'processWorkingTree'],

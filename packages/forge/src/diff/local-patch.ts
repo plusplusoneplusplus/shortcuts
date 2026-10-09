@@ -60,32 +60,49 @@ async function loadLocalPatch(
     let result;
     const execution = resolveWorkspaceExecutionContext(root);
     if (execution.kind === 'wsl') {
-        if ('scope' in source) {
-            const request = execution.distro
-                ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
-                : undefined;
-            try {
+        // Unresolved default distros remain stateless rather than sharing an
+        // identity that could silently change to another distro.
+        const request = execution.distro
+            ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
+            : undefined;
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setInterval> | undefined;
+        try {
+            if (request) {
+                if (typeof request.checkActive !== 'function') {
+                    throw new NativeAddonLoadError('Native GitPatchRequest lacks transport cancellation; rebuild with `npm run build:native -w packages/coc-native`.');
+                }
+                request.checkActive();
+                timer = setInterval(() => {
+                    try { request.checkActive(); } catch (error) { controller.abort(error); }
+                }, 25);
+                timer.unref();
+            }
+            let batch;
+            if ('scope' in source) {
                 if (request && typeof request.processWorkingTree !== 'function') {
                     throw new NativeAddonLoadError('Native GitPatchRequest lacks working-tree composition; rebuild with `npm run build:native -w packages/coc-native`.');
                 }
-                const batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
-                const outputs = await Promise.all(batch.map(args => execGitAsync(args, root)));
-                result = request ? await request.processWorkingTree(outputs, maxLines, source.headings)
-                    : await addon.composeGitWorkingTreePatch(outputs, maxLines, source.headings);
-            } finally {
-                request?.cancel();
+                batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
+            } else {
+                batch = ['commit' in source
+                    ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
+                    : await (source.direct ? addon.prepareGitComparisonPatch : addon.prepareGitRangePatch)(source.base, source.head, filePath, context)];
             }
-        } else {
-            // Unresolved default distros stay stateless rather than sharing an
-            // identity that could silently change to another distro.
-            const request = execution.distro
-                ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
-                : undefined;
-            const args = 'commit' in source
-                ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
-                : await (source.direct ? addon.prepareGitComparisonPatch : addon.prepareGitRangePatch)(source.base, source.head, filePath, context);
-            const raw = await execGitAsync(args, root, { timeout: 'direct' in source && source.direct ? 10000 : undefined });
-            result = request ? await request.process(raw, maxLines) : await addon.processGitPatch(raw, maxLines);
+            request?.checkActive();
+            const outputs = await Promise.all(batch.map(args => execGitAsync(args, root, {
+                signal: controller.signal, timeout: 'direct' in source && source.direct ? 10000 : undefined,
+            })));
+            clearInterval(timer);
+            request?.checkActive();
+            result = 'scope' in source
+                ? request ? await request.processWorkingTree(outputs, maxLines, source.headings)
+                    : await addon.composeGitWorkingTreePatch(outputs, maxLines, source.headings)
+                : request ? await request.process(outputs[0], maxLines) : await addon.processGitPatch(outputs[0], maxLines);
+        } finally {
+            clearInterval(timer);
+            controller.abort();
+            request?.cancel();
         }
     } else {
         await ensureGitSafeDirectoryAsync(root);

@@ -314,7 +314,7 @@ impl PatchStore {
         })
     }
 
-    fn check_ticket(&self, ticket: &PatchTransport) -> Result<(), PatchStoreError> {
+    pub fn check_ticket(&self, ticket: &PatchTransport) -> Result<(), PatchStoreError> {
         if !Arc::ptr_eq(&self.identity, &ticket.identity) {
             return Err(PatchStoreError::ScopeMismatch);
         }

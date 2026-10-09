@@ -14,6 +14,8 @@
 
 /** A single-use, handle-bound external transport continuation. */
 export declare class GitPatchRequest {
+  /** Validate an unsent continuation so external transport can stop revoked I/O. */
+  checkActive(): void
   processWorkingTree(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
   process(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
   cancel(): void

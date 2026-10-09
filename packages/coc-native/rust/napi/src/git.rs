@@ -1752,6 +1752,14 @@ impl Task for GitPatchRequestTask {
 
 #[napi]
 impl GitPatchRequest {
+    /// Validate an unsent continuation so external transport can stop revoked I/O.
+    #[napi]
+    pub fn check_active(&self) -> Result<()> {
+        self.cancellation.check().map_err(store_error)?;
+        let ticket = self.ticket.as_ref().ok_or_else(|| store_error(PatchStoreError::Closed))?;
+        self.store.check_ticket(ticket).map_err(store_error)
+    }
+
     #[napi(ts_return_type = "Promise<PatchResult>")]
     pub fn process_working_tree(
         &mut self,
