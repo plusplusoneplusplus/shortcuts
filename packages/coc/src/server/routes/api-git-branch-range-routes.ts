@@ -7,13 +7,12 @@ import type { IncomingMessage } from 'http';
 import * as url from 'url';
 import { GitRangeService } from '@plusplusoneplusplus/forge';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/forge';
-import { sendJSON } from '../core/api-handler';
 import { handleAPIError, badRequest, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { loadBranchRangeFileDiffContent } from '../git/ref-file-content';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { truncateDiffIfNeeded } from './api-shared';
+import { createLocalPatchRoute, truncateDiffIfNeeded } from './api-shared';
 import { createRoute } from './route-utils';
 
 export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
@@ -52,12 +51,13 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     }
 
     // GET /api/workspaces/:id/git/branch-range — Detect feature branch commit range
-    routes.push({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range$/,
-        handler: async (req, res, match) => {
+        handler: async ({ req, res, match, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
+            signal.throwIfAborted();
             const id = ws.id;
 
             const parsed = url.parse(req.url || '/', true);
@@ -74,15 +74,17 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
             const cacheKey = `${id}:branch-range:${baseMode}`;
             const cached = gitCache.get(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode });
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode, signal });
                 if (!range) {
                     const branchName = await rangeService.getCurrentBranch(ws.rootPath);
+                    signal.throwIfAborted();
                     const resolved = await rangeService.resolveBaseRef(ws.rootPath, baseMode);
+                    signal.throwIfAborted();
                     const result = {
                         onDefaultBranch: true as const,
                         branchName,
@@ -91,64 +93,68 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                         ...(resolved.baseModeFallback && { baseModeFallback: true as const }),
                     };
                     gitCache.set(cacheKey, result);
-                    return sendJSON(res, 200, result);
+                    return result;
                 }
                 const result = {
                     ...range,
                     ...(range.files && { files: normalizeRangeFiles(range.files) }),
                 };
+                signal.throwIfAborted();
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch {
+                signal.throwIfAborted();
                 const branchName = await getGitRangeService().getCurrentBranch(ws.rootPath).catch(() => 'HEAD');
-                sendJSON(res, 200, { onDefaultBranch: true, branchName });
+                return { onDefaultBranch: true, branchName };
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/branch-range/files — List changed files in branch range
-    routes.push({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files$/,
-        handler: async (req, res, match) => {
+        handler: async ({ req, res, match, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req) });
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req), signal });
                 if (!range) {
-                    return sendJSON(res, 200, { files: [] });
+                    return { files: [] };
                 }
                 const files = normalizeRangeFiles(range.files ?? []);
-                sendJSON(res, 200, { files });
+                return { files };
             } catch {
-                sendJSON(res, 200, { files: [] });
+                signal.throwIfAborted();
+                return { files: [] };
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/branch-range/diff — Full range diff
-    routes.push({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/diff$/,
-        handler: async (req, res, match) => {
+        handler: async ({ req, res, match, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req) });
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req), signal });
                 if (!range) {
-                    return sendJSON(res, 200, { diff: '' });
+                    return { diff: '' };
                 }
-                const diff = await rangeService.getRangeDiff(ws.rootPath, range.baseRef, 'HEAD');
-                sendJSON(res, 200, { diff });
+                const diff = await rangeService.getRangeDiff(ws.rootPath, range.baseRef, 'HEAD', signal);
+                return { diff };
             } catch {
-                sendJSON(res, 200, { diff: '' });
+                signal.throwIfAborted();
+                return { diff: '' };
             }
         },
-    });
+    }));
 
     routes.push(createRoute({
         method: 'GET',
@@ -166,10 +172,10 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     }));
 
     // GET /api/workspaces/:id/git/branch-range/files/*/diff — Per-file diff
-    routes.push({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files\/(.+)\/diff$/,
-        handler: async (req, res, match) => {
+        handler: async ({ req, res, match, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const filePath = decodeURIComponent(match![2]);
@@ -179,16 +185,17 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req) });
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req), signal });
                 if (!range) {
-                    return sendJSON(res, 200, { diff: '', path: filePath });
+                    return { diff: '', path: filePath };
                 }
-                const diff = await rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath);
+                const diff = await rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath, signal);
                 const result = { ...truncateDiffIfNeeded(diff, full), path: filePath };
-                sendJSON(res, 200, result);
+                return result;
             } catch {
-                sendJSON(res, 200, { diff: '', path: filePath });
+                signal.throwIfAborted();
+                return { diff: '', path: filePath };
             }
         },
-    });
+    }));
 }

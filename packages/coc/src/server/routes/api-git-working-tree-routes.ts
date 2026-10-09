@@ -17,7 +17,7 @@ import {
 import type { WorkingTreeContentStage } from '../git/working-tree-file-content';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { DIFF_LINE_LIMIT } from './api-shared';
+import { createLocalPatchRoute, DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute, asBool } from './route-utils';
 
 export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
@@ -203,11 +203,11 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     }));
 
     // GET /api/workspaces/:id/git/changes/files/*/diff — Per-file working-tree diff
-    routes.push(createRoute({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/files\/(.+)\/diff$/,
         parseQuery: (q) => ({ stage: q.stage as string | undefined, full: asBool(q.full) }),
-        handler: async ({ res, match, query }) => {
+        handler: async ({ res, match, query, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const filePath = decodeURIComponent(match[2]);
@@ -217,13 +217,14 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const { content } = await loadWorkingTreePatch(ws.rootPath, staged ? 'staged' : 'unstaged', filePath, {
-                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT,
+                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
                 });
                 return {
                     diff: content.raw, path: filePath,
                     ...(content.truncated ? { truncated: true, totalLines: content.totalLines } : {}),
                 };
             } catch (error) {
+                signal.throwIfAborted();
                 if (error instanceof NativeAddonLoadError) {
                     return void handleAPIError(res, internalError(error.message));
                 }

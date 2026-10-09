@@ -16,7 +16,8 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 
 import { GitRangeService } from '../../src/git/git-range-service';
 
@@ -62,6 +63,69 @@ function makeRepo(): { repo: string; base: string } {
 
 afterAll(() => {
     for (const repo of repos) fs.rmSync(repo, { recursive: true, force: true });
+});
+
+describe('range patch caller cancellation', () => {
+    const reads = [
+        ['files', (service: GitRangeService, root: string, signal: AbortSignal) => service.getChangedFiles(root, 'origin/main', 'HEAD', signal)],
+        ['stats', (service: GitRangeService, root: string, signal: AbortSignal) => service.getDiffStats(root, 'origin/main', 'HEAD', signal)],
+        ['file patch', (service: GitRangeService, root: string, signal: AbortSignal) => service.getFileDiff(root, 'origin/main', 'HEAD', 'README.md', signal)],
+        ['full patch', (service: GitRangeService, root: string, signal: AbortSignal) => service.getRangeDiff(root, 'origin/main', 'HEAD', signal)],
+        ['detection', (service: GitRangeService, root: string, signal: AbortSignal) => service.detectCommitRange(root, { signal })],
+    ] as const;
+
+    it.each(reads)('rejects pre-aborted %s without starting native patch work', async (_name, read) => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const open = vi.spyOn(loadNativeGit(), 'openGitPatchStore');
+        const reason = new Error('abandoned range');
+        try {
+            await expect(read(service, repo, AbortSignal.abort(reason))).rejects.toBe(reason);
+            expect(open).not.toHaveBeenCalled();
+        } finally { open.mockRestore(); service.dispose(); }
+    });
+
+    it.each(reads)('propagates submitted %s cancellation rather than returning an empty fallback', async (_name, read) => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo, repo);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const controller = new AbortController();
+        const reason = new Error('abandoned range');
+        const beginTransport = store.beginTransport.bind(store);
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = beginTransport();
+            const submit = ticket.revisionPatch.bind(ticket);
+            vi.spyOn(ticket, 'revisionPatch').mockImplementation((...args) => {
+                const pending = submit(...args);
+                controller.abort(reason);
+                return pending;
+            });
+            return ticket;
+        });
+        try {
+            await expect(read(service, repo, controller.signal)).rejects.toBe(reason);
+            expect(begin).toHaveBeenCalledTimes(1);
+            begin.mockRestore();
+            expect(await service.getChangedFiles(repo, 'origin/main', 'HEAD')).toHaveLength(2);
+        } finally { open.mockRestore(); store.dispose(); service.dispose(); }
+    });
+
+    it('does not continue metadata orchestration after abandonment', async () => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const controller = new AbortController();
+        const reason = new Error('abandoned metadata');
+        vi.spyOn(service, 'getCurrentBranch').mockImplementation(async () => {
+            controller.abort(reason);
+            return 'main';
+        });
+        const resolve = vi.spyOn(service, 'resolveBaseRef');
+        await expect(service.detectCommitRange(repo, { signal: controller.signal })).rejects.toBe(reason);
+        expect(resolve).not.toHaveBeenCalled();
+        service.dispose();
+    });
 });
 
 describe('detectCommitRange', () => {
