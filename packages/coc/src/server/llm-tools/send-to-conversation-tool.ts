@@ -793,7 +793,9 @@ async function createNewConversation(params: {
 
 const TODO_TRACKING_DESCRIPTION =
     ' This Sentinel chat tracks handoffs: create mode requires `todoItemId` of an existing, unarchived to-do item ' +
-    '(create one with `sentinel_todos` first). The result\'s `tracking` reports whether the job link was saved; ' +
+    '(create one with `sentinel_todos` first). Reuse the same feature/outcome item across grilling, implementation, ' +
+    'and review; tracking an item or completing a phase does not authorize implementation. Do not launch implementation ' +
+    'without user authorization. The result\'s `tracking` reports whether the job link was saved; ' +
     'if it failed, tell the user the job runs but is not tracked, and never relaunch it to repair tracking.';
 
 /** Link an admitted job to its to-do item; launch errors pass through untouched. */

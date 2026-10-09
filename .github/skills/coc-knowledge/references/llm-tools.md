@@ -66,8 +66,15 @@ optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevisi
 return `{ code: 'conflict', current }`). `create`/`update` accept `priority` (`high`/`regular`,
 default `regular`; ledger metadata only, independent of status). `done`/`needs_attention` require a `reason` (also enforced by the store for non-user actors); `done` stores
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archiving is
-user-only. The addon's `<sentinel_todo_ledger>` guidance tells Sentinel to track concrete work
-only, update instead of duplicating, and report untracked work rather than relaunching jobs.
+user-only.
+
+The addon's `<sentinel_todo_ledger>` guidance tracks concrete intended outcomes
+with final-deliverable completion conditions, reuses one item across grilling/implementation/review,
+and records phase milestones/spec links in notes. Successful intermediate phases remain pending
+(`todo` awaiting approval, `in_progress` during authorized work), not Done or failure.
+Successful grilling returns feature work to `todo` awaiting implementation approval;
+explicitly design-only/interview-only requests finish at their agreed artifact.
+Tracking grants no implementation/retry authority; bookkeeping failures are reported, not repaired by relaunch.
 `list` items carry `jobs[]` links with a derived `execution` (`queued`/`running`/`unknown`,
 terminal outcome plus result-review delivery state, or `unavailable` for remote links).
 
@@ -75,7 +82,11 @@ With the flag on, the Sentinel's `send_to_conversation` gains `todoItemId` (via 
 `todoTracking` tool option): create mode rejects a missing, foreign, or archived item with
 `code: 'untracked'` before launching, then links the admitted local, Ralph (one whole-session
 link), or remote job and returns `tracking: { status: 'tracked' | 'failed' }`. Linked parent
-result reviews quote the item and ask Sentinel for an explicit `done`/`needs_attention` verdict.
+result reviews quote the item and select status from the overall outcome: `done` only
+for the satisfied final condition, `todo` for pending steps/approval, `in_progress` for
+continuing authorized work, `needs_attention` for failed/cancelled/blocked/incomplete final work.
+Reviews re-read the item, preserve notes/manual user verdicts, and reconcile optimistic
+revision conflicts. Remote evidence is inspected in its owning chat; routing/ownership stays unchanged.
 
 ### create_pull_request
 

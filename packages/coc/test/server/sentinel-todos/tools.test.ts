@@ -110,6 +110,38 @@ describe('sentinel_todos tool', () => {
         });
     });
 
+    it('keeps a grilled feature todo until its final deliverable is reviewed on the same item', async () => {
+        const item = await createItem({
+            title: 'Add login', completionCondition: 'Login implemented and e2e passes',
+            status: 'in_progress', notes: 'User requested grilling first.',
+        });
+        const specReady = await call({
+            action: 'update', itemId: item.id, expectedRevision: item.revision,
+            status: 'todo', reason: 'Spec ready; awaiting implementation approval',
+            notes: `${item.notes}\nGrilling complete: notes/login-spec.md`,
+        });
+        expect(specReady.item).toMatchObject({
+            id: item.id, status: 'todo', revision: 2,
+            completionCondition: 'Login implemented and e2e passes',
+            statusReason: 'Spec ready; awaiting implementation approval',
+            notes: 'User requested grilling first.\nGrilling complete: notes/login-spec.md',
+        });
+        expect(specReady.item.outcome).toBeUndefined();
+        const implementing = await call({
+            action: 'update', itemId: item.id, expectedRevision: specReady.item.revision,
+            status: 'in_progress', reason: 'User authorized implementation',
+        });
+        const done = await call({
+            action: 'update', itemId: item.id, expectedRevision: implementing.item.revision,
+            status: 'done', reason: 'Login implemented and e2e passes',
+        });
+        expect(done.item).toMatchObject({
+            id: item.id, status: 'done', revision: 4, notes: specReady.item.notes,
+            outcome: { summary: 'Login implemented and e2e passes', recordedBy: 'sentinel' },
+        });
+        expect((await call({ action: 'list' })).items).toHaveLength(1);
+    });
+
     it('keeps an explicit outcome separate from the reason', async () => {
         const item = await createItem();
         const result = await call({
@@ -211,5 +243,38 @@ describe('buildSentinelTodosAddon', () => {
         expect(addon.suffix).toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
         expect(SENTINEL_TODO_LEDGER_GUIDANCE).toContain('Do not track quick questions');
         expect(SENTINEL_TODO_LEDGER_GUIDANCE).toContain('never relaunch a job');
+    });
+
+    it.each([
+        'completion condition covering the final deliverable, not just the next phase',
+        'Reuse the same item across grilling, implementation, and review',
+        'record phase milestones and spec/artifact links in `notes`',
+        'choose status from the overall outcome, not job completion',
+        'Successful intermediate phases are neither `done` nor failures',
+        'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"',
+        'Do not launch implementation without user authorization',
+        'Explicitly design-only/interview-only requests can finish after their agreed artifact',
+        'honor manual user verdicts and latest instructions',
+        '`expectedRevision`, and reconcile conflicts',
+    ])('keeps outcome-scoped system guidance: %s', instruction => {
+        expect(SENTINEL_TODO_LEDGER_GUIDANCE).toContain(instruction);
+        expect(SENTINEL_TODO_LEDGER_GUIDANCE).not.toContain('record `done` or `needs_attention`');
+    });
+
+    it('makes intermediate todo reviews usable in the tool description without changing the schema', () => {
+        const service = { list: vi.fn(), create: vi.fn(), update: vi.fn(), linkJob: vi.fn() };
+        const { tool } = createSentinelTodosTool({ service, owner });
+        expect(tool.description).toContain('final deliverable, not just the next phase');
+        expect(tool.description).toContain('Reuse the same item across grilling, implementation, and review');
+        expect(tool.description).toContain('successful intermediate phases are neither `done` nor failures');
+        expect(tool.description).toContain('Use `todo` for pending next steps/approval');
+        expect(tool.description).toContain('Spec ready; awaiting implementation approval');
+        expect(tool.description).toContain('do not launch implementation without user authorization');
+        expect(tool.description).toContain('explicitly design-only/interview-only request may end at its agreed artifact');
+        expect(tool.description).toContain('honor manual user verdicts and latest instructions');
+        expect(tool.description).toContain('inspect `unavailable` (remote) jobs in their owning chat');
+        expect((tool as any).parameters.properties.status.enum).toEqual(['todo', 'in_progress', 'needs_attention', 'done']);
+        expect((tool as any).parameters.properties.notes.description).toContain('preserve prior notes');
+        expect(Object.keys((tool as any).parameters.properties)).not.toContain('milestones');
     });
 });

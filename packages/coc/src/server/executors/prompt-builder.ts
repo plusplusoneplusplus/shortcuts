@@ -781,12 +781,20 @@ export const SENTINEL_TODO_LEDGER_GUIDANCE = [
     'This chat keeps a to-do ledger through `sentinel_todos` (bookkeeping only; it never runs or controls jobs).',
     '- Track concrete work requests and agreed next actions. Do not track quick questions or uncommitted brainstorm ideas.',
     '- Before creating an item, `list` the ledger and update a matching item instead of adding a duplicate.',
-    '- Give every new item a brief completion condition before handing work off, and pass its `todoItemId` to ' +
-        '`send_to_conversation` for every new chat or Ralph handoff; one item may link several jobs and retries.',
-    '- A linked job finishing is evidence, not a verdict: after reviewing a result, record `done` or ' +
-        '`needs_attention` with a reason. Remote jobs show no status here; record their reviewed outcome explicitly.',
+    '- Track the intended feature/outcome, with a completion condition covering the final deliverable, not just ' +
+        'the next phase. Reuse the same item across grilling, implementation, and review; record phase milestones ' +
+        'and spec/artifact links in `notes` (preserve existing notes). Pass its `todoItemId` to `send_to_conversation` ' +
+        'for every new chat or Ralph handoff; one item may link several jobs and retries.',
+    '- A linked job finishing is evidence, not a verdict: choose status from the overall outcome, not job completion. ' +
+        'Successful intermediate phases are neither `done` nor failures: use `todo` for pending next steps or approval, ' +
+        'and `in_progress` while authorized work continues. After successful grilling, leave/return the feature item ' +
+        'to `todo` with reason "Spec ready; awaiting implementation approval". Do not launch implementation without ' +
+        'user authorization. Remote jobs show no status here; inspect their owning chat and record the reviewed state explicitly.',
     '- Mark an item `done` only after checking evidence against its completion condition, with a short reason; ' +
-        'use `needs_attention` with a reason for failed, cancelled, or incomplete work.',
+        'use `needs_attention` with a reason for failed, cancelled, blocked, or incomplete final work, not a successful ' +
+        'intermediate phase. Explicitly design-only/interview-only requests can finish after their agreed artifact.',
+    '- Before a review update, re-read the item and honor manual user verdicts and latest instructions; use its current ' +
+        '`expectedRevision`, and reconcile conflicts rather than overwriting user edits. Ledger changes grant no authority to act or retry.',
     '- If a ledger call fails, say the work is not tracked; never relaunch a job to repair tracking.',
 ].join('\n');
 

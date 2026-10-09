@@ -134,7 +134,12 @@ references before editing. Paths are package-relative.
   terminal results reach the item through `createSentinelTodoDelegationHooks` (first result
   per link wins; failed/cancelled/capped → Needs attention unless a later user edit or a
   newer completed attempt supersedes it). Completion never marks Done: only an explicit
-  Sentinel/user verdict does. Job execution status is derived on read, separate from item
+  Sentinel/user verdict does. Guidance tracks the intended final outcome on one item across
+  grilling/implementation/review, with milestones/spec links in notes. Successful grilling
+  returns feature work to Todo awaiting implementation approval; only explicitly
+  design-only/interview-only requests finish at their agreed artifact. Parent reviews
+  select overall-outcome status, re-read revisions, honor manual user verdicts, and require
+  user authorization before implementation/retry. Job execution status is derived on read, separate from item
   status; remote links are always `unavailable`.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.

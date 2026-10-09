@@ -289,10 +289,14 @@ describe('Sentinel to-do job links', () => {
         });
 
         it('adds the todoItemId parameter only when tracking is wired', () => {
-            expect(Object.keys((makeTool().tool as any).parameters.properties)).toContain('todoItemId');
+            const tracked = makeTool().tool;
+            expect(Object.keys((tracked as any).parameters.properties)).toContain('todoItemId');
+            expect(tracked.description).toContain('Reuse the same feature/outcome item across grilling, implementation, and review');
+            expect(tracked.description).toContain('Do not launch implementation without user authorization');
             const plain = makeTool({ tracking: false }).tool as any;
             expect(Object.keys(plain.parameters.properties)).not.toContain('todoItemId');
             expect(plain.description).not.toContain('todoItemId');
+            expect(plain.description).not.toContain('Reuse the same feature/outcome item');
         });
 
         it('launches untracked when the addon gets no Sentinel to-do deps (flag off)', async () => {

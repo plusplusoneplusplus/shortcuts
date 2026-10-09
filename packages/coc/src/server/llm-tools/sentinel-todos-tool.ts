@@ -55,14 +55,22 @@ const REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs
 const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
     'cancels jobs). `list` returns active items (add `includeArchived: true` for archived ones). `create` needs ' +
-    '`title` and a brief `completionCondition`; pass a stable `idempotencyKey` so a retried call cannot duplicate ' +
-    'the item. `priority` (`high` or default `regular`) is ledger metadata only, independent of status and job order. ' +
+    '`title` and a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
+    'the next phase (an explicitly design-only/interview-only request may end at its agreed artifact). Reuse the same ' +
+    'item across grilling, implementation, and review; preserve phase milestones and spec/artifact links in `notes`. ' +
+    'Pass a stable `idempotencyKey` so a retried call cannot duplicate the item. ' +
+    '`priority` (`high` or default `regular`) is ledger metadata only, independent of status and job order. ' +
     '`update` needs `itemId` and the item\'s current `revision` as `expectedRevision`; a `conflict` ' +
     'error returns the newer `current` item — re-read it and only reapply your change if it still makes sense. ' +
     'Setting `status` to `done` or `needs_attention` requires a short `reason`; `done` records that reason as the ' +
     'reviewed outcome unless you pass `outcome`. Only mark `done` after checking evidence against the completion ' +
-    'condition. Linked `jobs` show each job\'s `execution` separately: a completed job is evidence to review, not a ' +
-    'verdict, and `unavailable` (remote) jobs only settle when you record a reviewed outcome. ' +
+    'condition. Choose status from the overall outcome, not linked job completion: successful intermediate phases are ' +
+    'neither `done` nor failures. Use `todo` for pending next steps/approval, `in_progress` for continuing authorized ' +
+    'work, and `needs_attention` for failed, cancelled, blocked, or incomplete final work. After successful grilling, ' +
+    'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"; do not launch ' +
+    'implementation without user authorization. Re-read before review updates and honor manual user verdicts and latest instructions. ' +
+    'Linked `jobs` show each job\'s `execution` separately: a completed job is evidence to review, not a ' +
+    'verdict; inspect `unavailable` (remote) jobs in their owning chat and record the reviewed state explicitly. ' +
     'If a call fails, tell the user the item is not tracked.';
 
 /**
@@ -120,9 +128,9 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 title: { type: 'string', description: 'create/update: short item title.' },
                 completionCondition: {
                     type: 'string',
-                    description: 'create/update: how to tell the work is done, checked before marking it done.',
+                    description: 'create/update: intended outcome\'s final deliverable, checked before marking done; not just an intermediate phase.',
                 },
-                notes: { type: 'string', description: 'create/update: free-form notes (replaces existing notes).' },
+                notes: { type: 'string', description: 'create/update: phase milestones and spec/artifact links; replaces existing notes, so preserve prior notes.' },
                 targetRepo: {
                     type: 'object',
                     description: 'create/update: the repo the work runs in.',

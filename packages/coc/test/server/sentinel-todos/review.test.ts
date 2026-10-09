@@ -67,17 +67,17 @@ describe('Sentinel to-do reviewed outcomes', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    async function linkedItem(): Promise<SentinelTodoItem> {
-        const { item } = await service.create(owner, { title: 'Fix login', completionCondition: 'Login e2e passes' }, { actor: 'sentinel' });
+    async function linkedItem(completionCondition = 'Login e2e passes'): Promise<SentinelTodoItem> {
+        const { item } = await service.create(owner, { title: 'Fix login', completionCondition }, { actor: 'sentinel' });
         return (await service.linkJob(owner, item.id, {
             processId: childId, workspaceId: 'ws-child', kind: 'local', openLink: `#/process/${childId}`,
         })).item;
     }
-    function finish(status: 'completed' | 'failed' | 'cancelled', error?: string) {
+    function finish(status: 'completed' | 'failed' | 'cancelled', error?: string, processId = childId, result = 'Implemented the fix') {
         const event = status === 'completed' ? 'taskCompleted' : status === 'failed' ? 'taskFailed' : 'taskCancelled';
         queue.emit(event, {
-            id: 'child', type: 'chat', status, processId: childId, repoId: 'ws-child',
-            payload: { kind: 'chat', workspaceId: 'ws-child' }, result: 'Implemented the fix', ...(error ? { error } : {}),
+            id: processId, type: 'chat', status, processId, repoId: 'ws-child',
+            payload: { kind: 'chat', workspaceId: 'ws-child' }, result, ...(error ? { error } : {}),
         });
     }
     function item(id: string): SentinelTodoItem {
@@ -93,11 +93,78 @@ describe('Sentinel to-do reviewed outcomes', () => {
         const content: string = deliverOnce.mock.calls[0][3].content;
         expect(content).toContain('Receiving this result is not a verdict');
         expect(content).toContain('`sentinel_todos`');
+        expect(content).toContain('intended feature/outcome\'s final completion condition');
+        expect(content).toContain('`done` with a short reason only if the final completion condition is satisfied');
+        expect(content).toContain('`todo` for pending next steps or approval');
+        expect(content).toContain('`in_progress` while authorized work continues');
+        expect(content).toContain('`needs_attention` with a reason for failed, cancelled, blocked, or incomplete final work');
+        expect(content).toContain('Successful intermediate phases are neither `done` nor failures');
+        expect(content).toContain('Spec ready; awaiting implementation approval');
+        expect(content).toContain('Do not launch implementation or a retry without user authorization');
+        expect(content).toContain('honor manual user verdicts and latest instructions');
+        expect(content).toContain('current `expectedRevision`');
+        expect(content).toContain('preserve existing notes and record phase milestones and spec/artifact links');
+        expect(content).toContain('Explicitly design-only/interview-only requests can finish after their agreed artifact');
+        expect(content).not.toContain('otherwise `needs_attention`');
         const data = JSON.parse(content.slice(content.indexOf('{')));
         expect(data.todo).toEqual({
             id: linked.id, revision: linked.revision + 1, title: 'Fix login',
             completionCondition: 'Login e2e passes', status: 'in_progress',
         });
+    });
+
+    it('reviews grilling as intermediate todo and final implementation as done on the same feature item', async () => {
+        const linked = await linkedItem();
+        finish('completed', undefined, childId, 'Spec ready: notes/login-spec.md');
+        await flush();
+        const content: string = deliverOnce.mock.calls[0][3].content;
+        expect(content).toContain('leave/return the feature item to `todo`');
+        const specReady = await service.update(owner, linked.id, item(linked.id).revision, {
+            status: 'todo', statusReason: 'Spec ready; awaiting implementation approval',
+            notes: 'Grilling complete: notes/login-spec.md',
+        }, 'sentinel');
+        expect(specReady.item).toMatchObject({ status: 'todo', completionCondition: 'Login e2e passes' });
+        expect(specReady.item.outcome).toBeUndefined();
+        expect(jobs.list(owner.workspaceId)).toHaveLength(1);
+        expect(deliverOnce).toHaveBeenCalledTimes(1);
+
+        // A later user-authorized implementation serves the same outcome.
+        const implementationId = 'queue_implementation';
+        jobs.register({ id: implementationId, title: 'Implement login', parent: owner,
+            child: { workspaceId: 'ws-child', processId: implementationId } });
+        await service.linkJob(owner, linked.id, {
+            processId: implementationId, workspaceId: 'ws-child', kind: 'local', openLink: `#/process/${implementationId}`,
+        });
+        finish('completed', undefined, implementationId, 'Login e2e passes');
+        await flush();
+        expect(item(linked.id).status).toBe('in_progress');
+        const finalContent: string = deliverOnce.mock.calls[1][3].content;
+        expect(JSON.parse(finalContent.slice(finalContent.indexOf('{'))).todo).toMatchObject({
+            id: linked.id, completionCondition: 'Login e2e passes', status: 'in_progress',
+        });
+        await service.update(owner, linked.id, item(linked.id).revision, {
+            status: 'done', statusReason: 'Login e2e passes', outcome: 'Login implemented and verified',
+        }, 'sentinel');
+        expect(todos.get(owner).items).toHaveLength(1);
+        expect(item(linked.id)).toMatchObject({
+            status: 'done', notes: specReady.item.notes,
+            jobs: [{ result: { outcome: 'completed' } }, { result: { outcome: 'completed' } }],
+            outcome: { summary: 'Login implemented and verified', recordedBy: 'sentinel' },
+        });
+    });
+
+    it.each(['design-only', 'interview-only'])('allows an explicitly %s request to finish at its agreed artifact', async scope => {
+        const condition = `${scope} spec delivered`;
+        const linked = await linkedItem(condition);
+        finish('completed', undefined, childId, condition);
+        await flush();
+        const content: string = deliverOnce.mock.calls[0][3].content;
+        expect(content).toContain('Explicitly design-only/interview-only requests can finish after their agreed artifact');
+        await service.update(owner, linked.id, item(linked.id).revision, {
+            status: 'done', statusReason: condition, outcome: condition,
+        }, 'sentinel');
+        expect(item(linked.id)).toMatchObject({ status: 'done', outcome: { summary: condition } });
+        expect(item(linked.id).jobs).toHaveLength(1);
     });
 
     it('marks done only through an explicit reviewed verdict with a stored outcome', async () => {
