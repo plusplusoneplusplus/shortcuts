@@ -30,6 +30,7 @@ function pageFixture(cookieAuthenticated?: boolean) {
     return {
         reports, events, document, input,
         async focusInput() { command = 'focus-input'; await poll(); },
+        async updateTitle() { command = 'title'; await poll(); },
     };
 }
 
@@ -40,6 +41,14 @@ describe('Live browser page focus reports', () => {
         await page.focusInput();
         page.events.get('focus')!();
         expect(page.reports.at(-1)).toMatchObject({ authenticated: cookieAuthenticated === true, inputFocused: true, focusEvent: true });
+    });
+
+    it('reports history title changes while preserving authentication and input focus', async () => {
+        const page = pageFixture(true);
+        await page.focusInput();
+        await page.updateTitle();
+        expect(page.document.title).toBe('Updated page');
+        expect(page.reports.at(-1)).toMatchObject({ title: 'Updated page', authenticated: true, inputFocused: true });
     });
 
     it('retains actual input focus when a window focus report overwrites the command report', async () => {

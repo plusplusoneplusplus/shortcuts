@@ -283,6 +283,32 @@ describe('browser toolbar overflow', () => {
         expect(history).toHaveFocus();
     });
 
+    it('keeps History and cookie import accessible together and dismisses both on owner changes', async () => {
+        mocks.bridge!.importCookies = vi.fn(async () => ({ ok: true }));
+        mocks.bridge!.history = {
+            query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
+            delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        const props = { onOpenHistoryUrl: vi.fn(), historyOwnerKey: 'owner-a' };
+        const view = tab(props);
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.getByRole('menuitem', { name: 'History' })).toHaveFocus();
+        await userEvent.keyboard('{End}');
+        expect(screen.getByRole('menuitem', { name: 'Import cookies…' })).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        expect(screen.getByLabelText('Cookies')).toBeInTheDocument();
+        const renderTab = (historyOwnerKey: string) => <UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace"
+            url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} {...props} historyOwnerKey={historyOwnerKey} />;
+        view.rerender(renderTab('owner-b'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'History' }));
+        await screen.findByText('No browser history yet.');
+        view.rerender(renderTab('owner-c'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
     it('offers history on a blank tab and navigates menu actions by keyboard', async () => {
         mocks.bridge!.history = {
             query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),

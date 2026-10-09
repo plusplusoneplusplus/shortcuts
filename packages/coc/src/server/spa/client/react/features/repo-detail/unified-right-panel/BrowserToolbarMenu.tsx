@@ -35,7 +35,6 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     useEffect(() => {
         if (!open) return;
         (panelRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? panelRef.current)?.focus();
-        (panelRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? panelRef.current)?.focus();
         const outside = (event: PointerEvent) => {
             const target = event.target as Node;
             if (!triggerRef.current?.contains(target) && !panelRef.current?.contains(target)) onOpenChange(false);
