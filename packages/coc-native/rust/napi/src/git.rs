@@ -13,6 +13,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use coc_native_core::git::branch::{
     branch_status, current_branch_name, list_branches, local_branch_names,
@@ -26,6 +27,9 @@ use coc_native_core::git::commit::{
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
+use coc_native_core::git::patch_store::{
+    PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError,
+};
 use coc_native_core::git::range::{
     count_commits_ahead, default_remote_branch, merge_base, resolve_base_ref, upstream_branch,
     BaseMode, BaseRefResolution, DefaultBranch,
@@ -1495,31 +1499,6 @@ pub fn prepare_git_comparison_patch(
     }))
 }
 
-/// Execute and process a direct PR comparison patch on a worker, with no result cache.
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn git_comparison_patch(
-    root: String,
-    base: String,
-    head: String,
-    path: Option<String>,
-    context_lines: Option<u32>,
-    max_lines: Option<i64>,
-    options: Option<GitExecOptions>,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        coc_native_core::git::patch::comparison_patch(
-            &PathBuf::from(root),
-            &base,
-            &head,
-            path.as_deref(),
-            context_lines,
-            max_lines,
-            &resolve_options(options),
-        )
-        .map_err(to_napi_error)
-    }))
-}
-
 /// Rust-owned branch-range command plan for external execution transports.
 #[napi(ts_return_type = "Promise<string[]>")]
 pub fn prepare_git_range_patch(
@@ -1559,29 +1538,6 @@ pub fn process_git_patch(
     }))
 }
 
-/// Execute and process a branch-range patch on a worker, with no result cache.
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn git_range_patch(
-    root: String,
-    base: String,
-    head: String,
-    path: Option<String>,
-    context_lines: Option<u32>,
-    max_lines: Option<i64>,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        coc_native_core::git::patch::range_patch(
-            &PathBuf::from(root),
-            &base,
-            &head,
-            path.as_deref(),
-            context_lines,
-            max_lines,
-        )
-        .map_err(to_napi_error)
-    }))
-}
-
 /// First-parent/root commit plan shared with external WSL execution.
 #[napi(ts_return_type = "Promise<string[]>")]
 pub fn prepare_git_commit_patch(
@@ -1594,27 +1550,6 @@ pub fn prepare_git_commit_patch(
     }))
 }
 
-/// Execute and process a first-parent/root commit patch on a worker.
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn git_commit_patch(
-    root: String,
-    commit: String,
-    path: Option<String>,
-    context: Option<u32>,
-    max_lines: Option<i64>,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        coc_native_core::git::patch::commit_patch(
-            &PathBuf::from(root),
-            &commit,
-            path.as_deref(),
-            context,
-            max_lines,
-        )
-        .map_err(to_napi_error)
-    }))
-}
-
 /// Git-show route plan shared with external WSL execution.
 #[napi(ts_return_type = "Promise<string[]>")]
 pub fn prepare_git_show_patch(
@@ -1624,27 +1559,6 @@ pub fn prepare_git_show_patch(
 ) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
         Ok(coc_native_core::git::patch::show_patch_args(&commit, path.as_deref(), context))
-    }))
-}
-
-/// Execute and process a git-show route patch on a worker.
-#[napi(ts_return_type = "Promise<PatchResult>")]
-pub fn git_show_patch(
-    root: String,
-    commit: String,
-    path: Option<String>,
-    context: Option<u32>,
-    max_lines: Option<i64>,
-) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        coc_native_core::git::patch::show_patch(
-            &PathBuf::from(root),
-            &commit,
-            path.as_deref(),
-            context,
-            max_lines,
-        )
-        .map_err(to_napi_error)
     }))
 }
 
@@ -1716,4 +1630,73 @@ pub fn git_pending_patch(
         )
         .map_err(to_napi_error)
     }))
+}
+
+/// One workspace root's Rust-owned commit/range patch snapshots, keyed by
+/// resolved object IDs. Work runs on workers; `dispose` rejects later calls.
+#[napi]
+pub struct GitPatchStore {
+    store: Arc<PatchStore>,
+}
+
+/// Open the host revision patch store for an absolute repository root.
+#[napi]
+pub fn open_git_patch_store(workspace_id: String, root: String) -> Result<GitPatchStore> {
+    let scope = PatchScope {
+        workspace_id,
+        root: PathBuf::from(root),
+        execution: PatchExecution::Host,
+        source: PatchSource::Local { kind: "revision".into() },
+    };
+    PatchStore::open(scope, 64, 64 << 20)
+        .map(|store| GitPatchStore { store: Arc::new(store) })
+        .map_err(store_error)
+}
+
+fn store_error(error: PatchStoreError) -> Error {
+    Error::new(Status::InvalidArg, format!("patch store: {error:?}"))
+}
+
+#[napi]
+impl GitPatchStore {
+    /// `mode` is `commit` or `show` (no head), or `range` or `comparison`.
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn revision_patch(
+        &self,
+        mode: String,
+        base: String,
+        head: Option<String>,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        options: Option<GitExecOptions>,
+    ) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+        let store = Arc::clone(&self.store);
+        let options = resolve_options(options);
+        AsyncTask::new(crate::task::Blocking::new(move || {
+            store
+                .revision_patch(
+                    &mode,
+                    &base,
+                    head.as_deref(),
+                    path.as_deref(),
+                    context,
+                    max_lines,
+                    &options,
+                )
+                .map_err(|message| Error::new(Status::GenericFailure, message))
+        }))
+    }
+
+    /// Drop retained snapshots; pending computations cannot publish.
+    #[napi]
+    pub fn refresh(&self) -> Result<()> {
+        self.store.refresh(self.store.scope()).map_err(store_error)
+    }
+
+    #[napi]
+    pub fn dispose(&self) -> Result<()> {
+        self.store.dispose(self.store.scope()).map_err(store_error)
+    }
 }

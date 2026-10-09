@@ -521,7 +521,7 @@ describe('commit-range marshalling', () => {
     });
 
     it('marshals range files and statistics through the shared patch result', async () => {
-        const patch = await gitAddon.gitRangePatch(range, 'origin/main', 'HEAD');
+        const patch = await gitAddon.openGitPatchStore('range', range).revisionPatch('range', 'origin/main', 'HEAD');
         expect(patch.files).toEqual(expect.arrayContaining([
             expect.objectContaining({ path: 'kept.md', status: 'modified', additions: 1, deletions: 0 }),
             expect.objectContaining({ path: 'added.md', status: 'added', additions: 1, deletions: 0 }),
@@ -557,7 +557,7 @@ describe('commit-range marshalling', () => {
             fs.renameSync(path.join(fixture, 'src', 'old.ts'), path.join(fixture, 'src', 'new => literal.ts'));
             git('add', '-A');
             git('commit', '-m', 'rename');
-            const patch = await gitAddon.gitRangePatch(fixture, 'HEAD~1', 'HEAD');
+            const patch = await gitAddon.openGitPatchStore('fixture', fixture).revisionPatch('range', 'HEAD~1', 'HEAD');
             expect(patch.files).toEqual([
                 expect.objectContaining({ path: 'src/new => literal.ts', originalPath: 'src/old.ts', status: 'renamed' }),
             ]);
@@ -567,13 +567,41 @@ describe('commit-range marshalling', () => {
         }
     });
 
+    it('keeps patch stores for same-layout roots independent and closes disposed handles', async () => {
+        const roots = ['one', 'two'].map(text => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-patch-store-'));
+            const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args]);
+            git('init', '--initial-branch=main');
+            git('config', 'user.name', 'Store');
+            git('config', 'user.email', 'store@example.com');
+            git('config', 'commit.gpgsign', 'false');
+            fs.writeFileSync(path.join(root, 'same.txt'), `${text}\n`);
+            git('add', '.');
+            git('commit', '-m', text);
+            return root;
+        });
+        try {
+            const stores = roots.map(root => gitAddon.openGitPatchStore(root, root));
+            const patches = await Promise.all(stores.flatMap(store => [1, 2].map(() => store.revisionPatch('commit', 'HEAD'))));
+            expect(patches.map(patch => patch.content.raw.match(/^\+(one|two)$/m)?.[1])).toEqual(['one', 'one', 'two', 'two']);
+            stores[0].refresh();
+            await expect(stores[0].revisionPatch('show', 'HEAD', null, 'same.txt', 0, 1)).resolves.toMatchObject({ content: { truncated: true } });
+            stores[0].dispose();
+            await expect(stores[0].revisionPatch('commit', 'HEAD')).rejects.toThrow('patch store: Closed');
+            await expect(stores[1].revisionPatch('commit', 'HEAD')).resolves.toMatchObject({ summary: { additions: 1 } });
+            expect(() => gitAddon.openGitPatchStore('relative', 'relative/root')).toThrow('patch store: InvalidIdentity');
+        } finally {
+            roots.forEach(removeDir);
+        }
+    });
+
     it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
         const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-range-empty-'));
         try {
             await expect(gitAddon.gitRangeDefaultBranch(empty)).rejects.toThrow(
                 /^git rev-parse --verify origin\/main failed: /,
             );
-            await expect(gitAddon.gitRangePatch(empty, 'origin/main', 'HEAD')).rejects.toThrow(
+            await expect(gitAddon.openGitPatchStore('empty', empty).revisionPatch('range', 'origin/main', 'HEAD')).rejects.toThrow(
                 /^git --literal-pathspecs diff .* failed: /,
             );
         } finally {

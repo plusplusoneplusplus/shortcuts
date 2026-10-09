@@ -209,6 +209,15 @@ pub fn process_patch(raw: String, max_lines: Option<i64>) -> PatchResult {
     PatchResult { files, content: patch_content(raw, max_lines), summary }
 }
 
+/// Display truncation of a complete retained snapshot.
+pub fn truncate_patch(result: &PatchResult, max_lines: Option<i64>) -> PatchResult {
+    PatchResult {
+        files: result.files.clone(),
+        content: patch_content(result.content.raw.clone(), max_lines),
+        summary: result.summary.clone(),
+    }
+}
+
 fn patch_content(raw: String, max_lines: Option<i64>) -> PatchContent {
     let total_lines = if raw.is_empty() { 0 } else { raw.split('\n').count() as i64 };
     let truncated = max_lines.is_some_and(|limit| limit <= 0 || total_lines > limit);

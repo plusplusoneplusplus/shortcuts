@@ -63,7 +63,7 @@ const COMPLETE_ADDON =
     "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
     'gitRangeMergeBase: async () => null, ' +
     'gitRangeCountAhead: async () => 0, ' +
-    'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+    'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
     `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
     `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
     'gitBranchStatus: async () => null, ' +
@@ -230,7 +230,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}) };',
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}) };',
         );
         expect(() => loadNativeGit()).toThrow('does not export the git capability');
         expect(nativeGitStatus().loaded).toBe(false);
@@ -264,7 +264,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
                 `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
@@ -286,7 +286,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
                 `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
@@ -311,7 +311,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
                 `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
@@ -338,7 +338,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
                 `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
@@ -371,7 +371,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
                 `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
@@ -406,7 +406,7 @@ describe('when the capability is missing', () => {
                 "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
                 'gitRangeMergeBase: async () => null, ' +
                 'gitRangeCountAhead: async () => 0, ' +
-                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], gitShowPatch: async () => ({}), prepareGitCommitPatch: async () => [], gitCommitPatch: async () => ({}), prepareGitComparisonPatch: async () => [], gitComparisonPatch: async () => ({}), prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), gitRangePatch: async () => ({}), ' +
+                'gitPendingPatch: async () => ({}), processGitPendingPatch: async () => ({}), prepareGitWorkingTreePatch: async () => [], processGitWorkingTreePatch: async () => ({}), gitWorkingTreePatch: async () => ({}), prepareGitShowPatch: async () => [], prepareGitCommitPatch: async () => [], prepareGitComparisonPatch: async () => [], prepareGitRangePatch: async () => [], buildRemoteGitPatch: async () => null, processGitPatch: async () => ({}), openGitPatchStore: () => ({}), ' +
                 `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
@@ -452,7 +452,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitComparisonPatch', 'gitComparisonPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'processGitWorkingTreePatch', 'gitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'prepareGitShowPatch', 'gitShowPatch', 'prepareGitCommitPatch', 'gitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'gitRangePatch'])('rejects stale patch/metadata capability missing %s', (name) => {
+it.each(['prepareGitComparisonPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'processGitWorkingTreePatch', 'gitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'prepareGitShowPatch', 'prepareGitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'openGitPatchStore'])('rejects stale patch/metadata capability missing %s', (name) => {
     useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
 });

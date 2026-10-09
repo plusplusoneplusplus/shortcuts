@@ -113,6 +113,8 @@ describe('Rust-owned range provider and production patch service', () => {
         expect(await provider.getFileDiff('shared.txt', { contextLines: 0, maxLines: 2 })).toEqual({
             raw: full.raw.split('\n').slice(0, 2).join('\n'), truncated: true, totalLines: full.totalLines,
         });
+        // Rust retains the complete snapshot; truncation never leaks into a later full read.
+        expect(await provider.getFileDiff('shared.txt', { contextLines: 0 })).toEqual(full);
         expect(await provider.getFileDiff('shared.txt', { maxLines: 0 })).toMatchObject({ raw: '', truncated: true });
         expect((await provider.getFileDiff('shared.txt', { full: true })).raw).toBe((await provider.getFileDiff('shared.txt')).raw);
     });

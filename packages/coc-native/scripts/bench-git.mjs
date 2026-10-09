@@ -570,7 +570,7 @@ export const CASES = [
             const [mergeBase, count, patch] = await Promise.all([
                 git.gitRangeMergeBase(repo.root, 'HEAD', resolved.baseRef),
                 git.gitRangeCountAhead(repo.root, resolved.baseRef, 'HEAD'),
-                git.gitRangePatch(repo.root, resolved.baseRef, 'HEAD'),
+                git.openGitPatchStore(repo.root, repo.root).revisionPatch('range', resolved.baseRef, 'HEAD'),
             ]);
             return { baseRef: resolved.baseRef, mergeBase, commitCount: count, files: patch.files, stats: patch.summary };
         },
