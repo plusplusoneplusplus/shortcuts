@@ -53,7 +53,7 @@ import { authorMatchesPrTeamRosterEntry, filterPullRequestsByPrTeamRoster, getPr
 import { sortPullRequestsByCreatedDesc } from '../spa/client/react/features/pull-requests/pr-utils';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
-import { readProvidersConfig } from '../providers/providers-config';
+import { readProvidersConfig, type ProvidersFileConfig } from '../providers/providers-config';
 import { execGitAsync, loadComparisonPatch, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestAutoMerge, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
@@ -68,6 +68,7 @@ import {
     type PullRequestStorageScope,
 } from './pr-origin-scope';
 import type { RepoInfo } from './types';
+import { loadPullRequestPatch } from './pr-patch';
 import {
     loadPullRequestFileContent,
     PullRequestFileContentError,
@@ -77,12 +78,6 @@ import {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/** Rust decodes Git paths and retains the exact per-file patch bytes. */
-async function extractFileDiffFromCombined(combinedDiff: string, filePath: string): Promise<string | null> {
-    const files = await loadNativeGit().parseGitPatch(combinedDiff);
-    return files.find(file => file.path === filePath)?.raw ?? null;
-}
 
 /** Detect whether an error is an authentication/authorization failure. */
 function isAuthError(err: unknown): boolean {
@@ -374,7 +369,15 @@ async function resolvePullRequestsService(
         throw new PullRequestRouteError(404, `Repo ${repoId} not found`);
     }
 
-    const cfg = await readProvidersConfig(dataDir);
+    return createPullRequestsServiceForRepo(dataDir, repo);
+}
+
+async function createPullRequestsServiceForRepo(
+    dataDir: string,
+    repo: RepoInfo,
+    cfg?: ProvidersFileConfig,
+): Promise<IPullRequestsService> {
+    cfg ??= await readProvidersConfig(dataDir);
     const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
     if (!prSvc || isNoAdoCredentials(prSvc)) {
         if (isNoAdoCredentials(prSvc)) {
@@ -391,13 +394,18 @@ async function refreshPullRequestListCache(
     dataDir: string,
     svc: RepoTreeService,
     repoId: string,
+    workspaceId: string,
     cacheScopeId: string,
     status: string,
     scope: 'mine' | 'all',
 ): Promise<PrCacheEntry> {
-    const prSvc = await resolvePullRequestsService(dataDir, svc, repoId);
+    const repo = await svc.resolveRepo(repoId);
+    if (!repo) throw new PullRequestRouteError(404, `Repo ${repoId} not found`);
+    const cfg = await readProvidersConfig(dataDir);
+    const prSvc = await createPullRequestsServiceForRepo(dataDir, repo, cfg);
     let prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
-    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
+    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc,
+        (prId, fetchDiff) => loadPullRequestPatch(repo, workspaceId, prId, cfg, fetchDiff));
     const fetchedAt = Date.now();
     const entry = { data: prs, fetchedAt, expiresAt: fetchedAt + PR_LIST_TTL_MS };
     prListCache.set(makePrCacheKey(cacheScopeId, status, scope), entry);
@@ -498,11 +506,11 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
     const svc = options.service ?? new RepoTreeService(options.dataDir);
     const repo = await svc.resolveRepo(options.repoId);
     const prStorageScope = await resolvePrStorageScopeForRoute(svc, options.store, options.repoId, options.workspaceId, repo);
-    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, prStorageScope.storageOriginId, 'open', 'mine');
+    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, options.workspaceId, prStorageScope.storageOriginId, 'open', 'mine');
     listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
-        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, prStorageScope.storageOriginId, 'open', 'all');
+        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, options.workspaceId, prStorageScope.storageOriginId, 'open', 'all');
         await triggerTeamAutoClassification({
             dataDir: options.dataDir,
             store: options.store,
@@ -721,6 +729,7 @@ async function enrichPullRequestsWithDiffStats(
     repoId: string,
     prs: any[],
     prSvc: IPullRequestsService,
+    loadPatch: (prId: number | string, fetchDiff: () => Promise<string>) => ReturnType<typeof loadPullRequestPatch>,
 ): Promise<any[]> {
     const getDiff = prSvc.getDiff?.bind(prSvc);
     if (!getDiff) return prs;
@@ -729,8 +738,7 @@ async function enrichPullRequestsWithDiffStats(
         try {
             const prId = getPullRequestProviderId(pr);
             if (prId == null) return pr;
-            const diff = await getDiff(repoId, prId);
-            const { summary } = await loadNativeGit().processGitPatch(diff);
+            const { summary } = await loadPatch(prId, () => getDiff(repoId, prId));
             return { ...pr, diffStats: {
                 additions: summary.additions,
                 deletions: summary.deletions,
@@ -1233,7 +1241,7 @@ export function registerPrRoutes(
         if (cached && cached.expiresAt > Date.now()) {
             entry = cached;
         } else {
-            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, cacheScopeId, status, providerScope);
+            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, options.workspaceId, cacheScopeId, status, providerScope);
         }
 
         let pool = entry.data;
@@ -1321,18 +1329,8 @@ export function registerPrRoutes(
         sendJson(res, pr);
     }
 
-    async function createPullRequestsServiceForRepo(repo: RepoInfo): Promise<IPullRequestsService> {
-        const cfg = await readProvidersConfig(dataDir);
-        const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
-        if (!prSvc || isNoAdoCredentials(prSvc)) {
-            if (isNoAdoCredentials(prSvc)) {
-                throw new PullRequestRouteError(401, 'no-ado-credentials', { error: 'no-ado-credentials' });
-            }
-            const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-            throw new PullRequestRouteError(401, 'unconfigured', { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl });
-        }
-        return prSvc;
-    }
+    const serviceForRepo = (repo: RepoInfo, cfg?: ProvidersFileConfig) =>
+        createPullRequestsServiceForRepo(dataDir, repo, cfg);
 
     function sendProviderBackedPrRouteError(res: Parameters<Route['handler']>[1], err: unknown): void {
         if (sendPullRequestRouteError(res, err)) return;
@@ -1356,7 +1354,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         const threads = await prSvc.getThreads(options.repoId, options.prId);
         const result = { threads };
         prThreadsCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_THREADS_TTL_MS });
@@ -1379,7 +1377,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         const reviewers = await prSvc.getReviewers(options.repoId, options.prId);
         const result = { reviewers };
         prReviewersCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_REVIEWERS_TTL_MS });
@@ -1398,7 +1396,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         if (typeof prSvc.getCommits !== 'function') {
             return sendJson(res, { commits: [] });
         }
@@ -1427,7 +1425,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         if (typeof prSvc.getChecks !== 'function') {
             return sendJson(res, { checks: [] });
         }
@@ -1442,15 +1440,22 @@ export function registerPrRoutes(
     async function sendPullRequestFileDiff(
         req: Parameters<Route['handler']>[0],
         res: Parameters<Route['handler']>[1],
-        options: { repoId: string; prId: string; filePath: string; repo: RepoInfo; cacheScopeId: string },
+        options: { workspaceId: string; repoId: string; prId: string; filePath: string; repo: RepoInfo; cacheScopeId: string },
     ): Promise<void> {
         const query = url.parse(req.url ?? '', true).query;
         const fullContext = query.fullContext === 'true';
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
-        if (typeof prSvc.getDiff !== 'function') {
+        const cfg = await readProvidersConfig(dataDir);
+        const prSvc = await serviceForRepo(options.repo, cfg);
+        const getDiff = prSvc.getDiff?.bind(prSvc);
+        if (!getDiff) {
             return sendJson(res, { diff: '' });
         }
+        const loadFilePatch = async () => {
+            const patch = await loadPullRequestPatch(options.repo, options.workspaceId, options.prId, cfg,
+                () => getDiff(options.repoId, options.prId));
+            return patch.files.find(file => file.path === options.filePath)?.raw ?? '';
+        };
 
         // Full context uses local Git first; supplied hunks are fetched only for fallback.
         if (fullContext) {
@@ -1481,31 +1486,29 @@ export function registerPrRoutes(
 
             // Fallback: no local clone, no PR detail, or local git produced
             // nothing — serve the degraded hunk diff plus the unavailable reason.
-            const fallbackDiff = await extractFileDiffFromCombined(
-                await prSvc.getDiff(options.repoId, options.prId),
-                options.filePath,
-            );
-            return sendJson(res, { diff: fallbackDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
+            return sendJson(res, { diff: await loadFilePatch(), fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
         }
 
-        const combinedDiff = await prSvc.getDiff(options.repoId, options.prId);
-        sendJson(res, { diff: await extractFileDiffFromCombined(combinedDiff, options.filePath) ?? '' });
+        sendJson(res, { diff: await loadFilePatch() });
     }
 
     async function sendPullRequestUnifiedDiff(
         res: Parameters<Route['handler']>[1],
-        options: { repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
+        options: { workspaceId: string; repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
     ): Promise<void> {
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
-        if (typeof prSvc.getDiff !== 'function') {
+        const cfg = await readProvidersConfig(dataDir);
+        const prSvc = await serviceForRepo(options.repo, cfg);
+        const getDiff = prSvc.getDiff?.bind(prSvc);
+        if (!getDiff) {
             res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('');
             return;
         }
 
-        const diff = await prSvc.getDiff(options.repoId, options.prId);
+        const { content } = await loadPullRequestPatch(options.repo, options.workspaceId, options.prId, cfg,
+            () => getDiff(options.repoId, options.prId));
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end(diff);
+        res.end(content.raw);
     }
 
     async function sendPullRequestFileContent(
@@ -1515,7 +1518,7 @@ export function registerPrRoutes(
         if (!options.repo.localPath) {
             throw new PullRequestFileContentError('content-unavailable', 'The selected clone has no local path');
         }
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         if (typeof prSvc.getDiff !== 'function') {
             throw new PullRequestFileContentError('content-unavailable', 'The pull request provider cannot load file content');
         }
@@ -1634,7 +1637,7 @@ export function registerPrRoutes(
                 const top = parseCandidateTop(query.top);
                 const includeRoster = query.includeRoster === 'true';
                 const normalizedQuery = rawSearch.toLowerCase();
-                const prSvc = await createPullRequestsServiceForRepo(repo);
+                const prSvc = await serviceForRepo(repo);
                 const cached = await searchPullRequestCoworkerCandidateCache(
                     repoId,
                     workspaceId,
@@ -2081,7 +2084,7 @@ export function registerPrRoutes(
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
                 const { repoId, repo } = scopeResult.value;
 
-                const prSvc = await createPullRequestsServiceForRepo(repo);
+                const prSvc = await serviceForRepo(repo);
                 if (typeof prSvc.setAutoMerge !== 'function') {
                     return sendJson(res, { error: 'not-supported' }, 501);
                 }
@@ -2139,8 +2142,9 @@ export function registerPrRoutes(
                 const filePath = decodeURIComponent(match![3]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
-                const { repoId, repo, storageScope } = scopeResult.value;
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
                 await sendPullRequestFileDiff(req, res, {
+                    workspaceId,
                     repoId,
                     prId,
                     filePath,
@@ -2163,8 +2167,9 @@ export function registerPrRoutes(
                 const prId = decodeURIComponent(match![2]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
-                const { repoId, repo, storageScope } = scopeResult.value;
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
                 await sendPullRequestUnifiedDiff(res, {
+                    workspaceId,
                     repoId,
                     prId,
                     repo,

@@ -58,7 +58,7 @@ const ORIGIN_ID = 'gh_org_repo';
 const mockRepoInfo = {
     id: REPO_ID,
     name: 'repo',
-    localPath: '/tmp/repo',
+    localPath: path.join(os.tmpdir(), 'pr-route-placeholder'),
     headSha: 'abc1234',
     clonedAt: new Date().toISOString(),
     remoteUrl: REMOTE_URL,
@@ -269,6 +269,39 @@ afterEach(async () => {
 });
 
 // ── GET /api/origins/:originId/pull-requests ─────────────────────────────────────────
+
+describe('production PR Rust scope wiring', () => {
+    it.each([
+        ['', '42'],
+        ['/42/diff', '42'],
+        ['/42/diff/files/foo.ts', '42'],
+        ['/42/diff/files/foo.ts?fullContext=true', '42'],
+    ])('scopes %s by selected workspace, not origin or transport alias', async (route, sourceId) => {
+        const open = vi.spyOn(loadNativeGit(), 'openRemoteGitPatchStore');
+        try {
+            const separator = route.includes('?') ? '&' : '?';
+            const res = await fetch(originPullRequestsUrl(`${route}${separator}workspaceId=selected-workspace`));
+            expect(res.status).toBe(200);
+            expect(open).toHaveBeenCalledWith('selected-workspace', mockRepoInfo.localPath, {
+                provider: 'github', host: 'github.com', repository: 'github:org/repo', sourceId,
+            }, undefined);
+            expect(() => open.mock.results[0].value.beginTransport()).toThrow(/closed/i);
+            expect(mockSvc.getDiff).toHaveBeenCalledWith(REPO_ID, route === '' ? 42 : '42');
+        } finally {
+            open.mockRestore();
+        }
+    });
+
+    it('combined patches surface native errors before authenticated diff transport', async () => {
+        vi.mocked(loadNativeGit).mockImplementationOnce(() => {
+            throw new NativeAddonLoadError('Rebuild with npm run build:native -w packages/coc-native');
+        });
+        const res = await fetch(originPullRequestsUrl('/42/diff'));
+        expect(res.status).toBe(500);
+        expect(await res.text()).toContain('npm run build:native');
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
+    });
+});
 
 describe('GET /api/origins/:originId/pull-requests', () => {
     it('returns pullRequests array on success', async () => {
@@ -1802,7 +1835,7 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
         // Warm the PR detail cache with SHAs
         await fetch(originPullRequestsUrl(`/42`, REPO_ID));
 
-        // The repo.localPath is /tmp/repo which is not a real git repo, so git diff fails
+        // The placeholder path is not a Git repo, so local full-context rendering fails.
         const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID));
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
