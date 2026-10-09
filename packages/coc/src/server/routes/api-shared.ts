@@ -12,6 +12,8 @@ import type { Route } from '../types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
+import type { ParsedUrlQuery } from 'querystring';
+import { createRoute, type CreateRouteOptions, type RouteHandlerContext } from './route-utils';
 
 export interface ApiRouteContext {
     routes: Route[];
@@ -43,6 +45,38 @@ export const GIT_MAX_BUFFER = 50 * 1024 * 1024;
 
 /** Maximum number of diff lines returned before truncation kicks in. */
 export const DIFF_LINE_LIMIT = 100_000;
+
+export function createLocalPatchRoute<TQuery = ParsedUrlQuery, TResult = unknown>(
+    opts: Omit<CreateRouteOptions<TQuery, TResult>, 'handler'> & {
+        handler: (ctx: RouteHandlerContext<TQuery> & { signal: AbortSignal }) => Promise<TResult | void> | TResult | void;
+    },
+): Route {
+    return createRoute({
+        ...opts,
+        handler: async ctx => {
+            const { req, res } = ctx;
+            const controller = new AbortController();
+            const abort = () => controller.abort(new Error('Patch HTTP request abandoned'));
+            const close = () => { if (!res.writableFinished) abort(); };
+            // IncomingMessage.close also fires for a normally completed GET body.
+            req.on('aborted', abort);
+            res.on('close', close);
+            try {
+                if (req.aborted || res.destroyed) abort();
+                controller.signal.throwIfAborted();
+                const result = await opts.handler({ ...ctx, signal: controller.signal });
+                controller.signal.throwIfAborted();
+                return result;
+            } catch (error) {
+                if (!controller.signal.aborted) throw error;
+                // A disconnected response has no recipient for a result or error.
+            } finally {
+                req.off('aborted', abort);
+                res.off('close', close);
+            }
+        },
+    });
+}
 
 /**
  * If the diff exceeds DIFF_LINE_LIMIT lines and `full` is not true,

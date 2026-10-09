@@ -139,7 +139,13 @@ the host/WSL backend; commits compare the first parent or empty tree, Rust compo
 optional staged/unstaged headings, and ordinary Git failures return empty strings.
 Production commit patch
 routes use its git-show plan and native truncation without a route patch cache;
-first-parent provider and combined-merge route semantics stay distinct. Commit metadata
+first-parent provider and combined-merge route semantics stay distinct. CoC
+`createLocalPatchRoute` passes per-request signals through commit, branch-range and
+working-tree patch reads; aborted requests or unfinished response close cancel host/WSL
+work without disposing shared stores. GET-body close is not cancellation. Listeners
+retire on every outcome and abandoned results/errors are not delivered. Range metadata
+orchestration checks cancellation between reads and preserves abort reasons.
+Commit metadata
 uses Forge `loadCommitMetadata` for GitLogService file details and `loadCommitFiles`
 for route rows. Rust plans/joins NUL-delimited metadata and ordered parent output
 for host and WSL, preserves Git ordering and absent binary counts, and reads fresh

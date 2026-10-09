@@ -13,7 +13,7 @@ import { gitCache } from '../git/git-cache';
 import { loadCommitFileDiffContent } from '../git/ref-file-content';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { DIFF_LINE_LIMIT } from './api-shared';
+import { createLocalPatchRoute, DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute, asString, asInt, asBool } from './route-utils';
 
 /**
@@ -229,29 +229,30 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     }));
 
     // GET /api/workspaces/:id/git/commits/:hash/diff — Full diff for a commit
-    routes.push(createRoute({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/diff$/,
-        handler: async ({ res, match }) => {
+        handler: async ({ res, match, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const hash = match[2];
 
             try {
-                const { content } = await loadCommitShowPatch(ws.rootPath, hash);
+                const { content } = await loadCommitShowPatch(ws.rootPath, hash, undefined, { signal });
                 return { diff: content.raw };
             } catch (err: any) {
+                signal.throwIfAborted();
                 return void handleAPIError(res, asLoadFailure(err) ?? badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
             }
         },
     }));
 
     // GET /api/workspaces/:id/git/commits/:hash/files/*/diff — Per-file diff for a commit
-    routes.push(createRoute({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/diff$/,
         parseQuery: (q) => ({ full: asBool(q.full) }),
-        handler: async ({ res, match, query }) => {
+        handler: async ({ res, match, query, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const hash = match[2];
@@ -261,13 +262,14 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const { content } = await loadCommitShowPatch(ws.rootPath, hash, filePath, {
-                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT,
+                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
                 });
                 return {
                     diff: content.raw,
                     ...(content.truncated ? { truncated: true, totalLines: content.totalLines } : {}),
                 };
             } catch (err: any) {
+                signal.throwIfAborted();
                 return void handleAPIError(res, asLoadFailure(err) ?? badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
             }
         },

@@ -142,7 +142,7 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         const data = res.json();
         expect(data.diff).toBe(STAGED_DIFF);
         expect(data.path).toBe('src/foo.ts');
-        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'staged', 'src/foo.ts', { contextLines: 99999, maxLines: 100000 });
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'staged', 'src/foo.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
     it('returns unstaged diff when stage=unstaged', async () => {
@@ -154,7 +154,7 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         expect(res.status).toBe(200);
         const data = res.json();
         expect(data.diff).toBe(UNSTAGED_DIFF);
-        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'unstaged', 'src/foo.ts', { contextLines: 99999, maxLines: 100000 });
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'unstaged', 'src/foo.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
     it('uses unstaged patches when stage param is absent', async () => {
@@ -164,7 +164,7 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff`);
 
         expect(res.status).toBe(200);
-        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'unstaged', 'src/bar.ts', { contextLines: 99999, maxLines: 100000 });
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'unstaged', 'src/bar.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
     it('returns empty diff when service returns empty string', async () => {
@@ -200,7 +200,7 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         expect(res.status).toBe(200);
         const data = res.json();
         expect(data.path).toBe('packages/core/src/utils/helper.ts');
-        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'staged', 'packages/core/src/utils/helper.ts', { contextLines: 99999, maxLines: 100000 });
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'staged', 'packages/core/src/utils/helper.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
     it('returns empty diff gracefully for ordinary Git errors', async () => {

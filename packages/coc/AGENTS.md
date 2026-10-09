@@ -315,9 +315,12 @@ references before editing. Paths are package-relative.
   uses owning-server committed objects, fails before queueing, performs no implicit
   network/branch switch, and removes without force/branch deletion.
   Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
-  Working-tree per-file patch routes use Forge loadWorkingTreePatch for host/WSL
-  planning, Rust processing and truncation; native-load errors return HTTP 500
-  with rebuild instructions. PR combined/per-file hunks and list statistics use
+  Commit, branch-range and working-tree patch routes use `createLocalPatchRoute`
+  to pass request-owned signals to Forge host/WSL patch reads. Request abort or
+  unfinished response close cancels only that read; normal GET-body close does not.
+  Retire listeners on every outcome and suppress abandoned response delivery.
+  Working-tree patches use Rust planning, processing and truncation; native-load
+  errors return HTTP 500 with rebuild instructions. PR combined/per-file hunks and list statistics use
   `repos/pr-patch.ts` request-owned Rust remote stores with explicit workspace/root,
   provider host/repository and PR identity. Capture continuations before patch I/O;
   retire/dispose on success or failure. Remote-only selections without a root use

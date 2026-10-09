@@ -3,8 +3,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as http from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import { registerGitCommitRoutes } from '../../src/server/routes/api-git-commit-routes';
+import { registerGitWorkingTreeRoutes } from '../../src/server/routes/api-git-working-tree-routes';
 import type { ApiRouteContext } from '../../src/server/routes/api-shared';
 import type { Route } from '../../src/server/types';
 import { createRouter } from '../../src/server/shared/router';
@@ -50,6 +52,94 @@ async function serve(workspaces: Array<{ id: string; rootPath: string }>) {
 }
 
 describe('production commit routes with real Rust/Git processing', () => {
+    it.each(['combined', 'file', 'staged', 'unstaged'] as const)('cancels executing %s Git when its HTTP client disconnects', async mode => {
+        const repo = fixture('initial');
+        fs.writeFileSync(path.join(repo.root, '[ab].txt'), 'staged\n');
+        git(repo.root, 'add', '.');
+        fs.writeFileSync(path.join(repo.root, '[ab].txt'), 'disk\n');
+        const started = path.join(repo.root, 'started');
+        const release = path.join(repo.root, 'release');
+        const finished = path.join(repo.root, 'finished');
+        const helper = path.join(repo.root, 'blocking.cjs');
+        fs.writeFileSync(helper, `
+const fs = require('node:fs'), path = require('node:path');
+const root = process.argv[2];
+fs.writeFileSync(path.join(root, 'started'), 'ready');
+const deadline = Date.now() + 10000;
+const timer = setInterval(() => {
+    if (fs.existsSync(path.join(root, 'release')) || Date.now() >= deadline) {
+        clearInterval(timer);
+        fs.writeFileSync(path.join(root, 'finished'), 'done');
+    }
+}, 5);
+`);
+        const quote = (value: string) => `'${value.replaceAll('\\', '/').replaceAll("'", "'\\''")}'`;
+        git(repo.root, 'config', 'diff.block.textconv', `${quote(process.execPath)} ${quote(helper)} ${quote(repo.root)}`);
+        fs.writeFileSync(path.join(repo.root, '.gitattributes'), '*.txt diff=block\n');
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo.root, repo.root);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const originalBegin = store.beginTransport.bind(store);
+        let nativeWork: Promise<unknown> | undefined;
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = originalBegin();
+            const method = mode === 'combined' || mode === 'file' ? 'revisionPatch' : 'workingTreePatch';
+            if (method === 'revisionPatch') {
+                const submit = ticket.revisionPatch.bind(ticket);
+                vi.spyOn(ticket, method).mockImplementation((...args) => {
+                    const pending = submit(...args);
+                    nativeWork = pending;
+                    void nativeWork.catch(() => undefined);
+                    return pending;
+                });
+            } else {
+                const submit = ticket.workingTreePatch.bind(ticket);
+                vi.spyOn(ticket, method).mockImplementation((...args) => {
+                    const pending = submit(...args);
+                    nativeWork = pending;
+                    void nativeWork.catch(() => undefined);
+                    return pending;
+                });
+            }
+            return ticket;
+        });
+        const routes: Route[] = [];
+        const ctx = {
+            routes, store: createMockProcessStore({ initialWorkspaces: [{ id: 'one', name: 'One', rootPath: repo.root }] }),
+        } as ApiRouteContext;
+        registerGitCommitRoutes(ctx);
+        registerGitWorkingTreeRoutes(ctx);
+        const server = http.createServer(createRouter({ routes, spaHtml: '<html></html>' }));
+        servers.push(server);
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const file = encodeURIComponent('[ab].txt');
+        const endpoint = mode === 'combined' ? `commits/${repo.head}/diff`
+            : mode === 'file' ? `commits/${repo.head}/files/${file}/diff`
+                : `changes/files/${file}/diff?stage=${mode}`;
+        const client = http.get(`http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}/api/workspaces/one/git/${endpoint}`);
+        client.on('error', () => undefined);
+        try {
+            await vi.waitFor(() => expect(fs.existsSync(started)).toBe(true), { timeout: 10000 });
+            client.destroy();
+            expect(nativeWork).toBeDefined();
+            await expect(nativeWork).rejects.toThrow('Cancelled');
+            expect(fs.existsSync(release)).toBe(false);
+            expect(fs.existsSync(finished)).toBe(false);
+            begin.mockRestore();
+            fs.writeFileSync(release, 'done');
+            await vi.waitFor(() => expect(fs.existsSync(finished)).toBe(true), { timeout: 10000 });
+            // Cancelling the HTTP request must not dispose its shared native store.
+            expect((await store.revisionPatch('show', repo.head)).files).toHaveLength(2);
+        } finally {
+            client.destroy();
+            fs.writeFileSync(release, 'done');
+            await nativeWork?.catch(() => undefined);
+            begin.mockRestore();
+            open.mockRestore();
+            store.dispose();
+        }
+    });
+
     it('preserves root/ordinary/merge git-show behavior and literal file selection across workspaces', async () => {
         const one = fixture('one'), two = fixture('two');
         expect(git(one.root, 'show', '--format=', '--patch', one.head, '--', '[ab].txt')).toContain('+glob');

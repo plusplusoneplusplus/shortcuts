@@ -23,6 +23,7 @@ import { GitCommitRange, GitCommitRangeFile, GitRangeBaseMode, GitRangeConfig } 
 export interface DetectCommitRangeOptions {
     /** Which ref to diff against. Defaults to `'default-branch'`. */
     baseMode?: GitRangeBaseMode;
+    signal?: AbortSignal;
 }
 
 /**
@@ -228,10 +229,11 @@ export class GitRangeService {
     }
 
     /** Get files changed in a commit range through the shared patch backend. */
-    async getChangedFiles(repoRoot: string, baseRef: string, headRef: string): Promise<GitCommitRangeFile[]> {
+    async getChangedFiles(repoRoot: string, baseRef: string, headRef: string, signal?: AbortSignal): Promise<GitCommitRangeFile[]> {
+        signal?.throwIfAborted();
         loadNativeGit();
         try {
-            return (await loadRangePatch(repoRoot, baseRef, headRef)).files.map(file => ({
+            return (await loadRangePatch(repoRoot, baseRef, headRef, undefined, { signal })).files.map(file => ({
                 path: file.path,
                 status: file.status,
                 additions: file.additions ?? 0,
@@ -240,18 +242,21 @@ export class GitRangeService {
                 repositoryRoot: repoRoot,
             }));
         } catch (error) {
+            signal?.throwIfAborted();
             getLogger().error(LogCategory.GIT, `Failed to get changed files for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return [];
         }
     }
 
     /** Get complete patch statistics, including files beyond the display cap. */
-    async getDiffStats(repoRoot: string, baseRef: string, headRef: string): Promise<{ additions: number; deletions: number }> {
+    async getDiffStats(repoRoot: string, baseRef: string, headRef: string, signal?: AbortSignal): Promise<{ additions: number; deletions: number }> {
+        signal?.throwIfAborted();
         loadNativeGit();
         try {
-            const { additions, deletions } = (await loadRangePatch(repoRoot, baseRef, headRef)).summary;
+            const { additions, deletions } = (await loadRangePatch(repoRoot, baseRef, headRef, undefined, { signal })).summary;
             return { additions, deletions };
         } catch (error) {
+            signal?.throwIfAborted();
             getLogger().error(LogCategory.GIT, `Failed to get diff stats for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return { additions: 0, deletions: 0 };
         }
@@ -313,6 +318,8 @@ export class GitRangeService {
      * @returns GitCommitRange or null if no range detected
      */
     async detectCommitRange(repoRoot: string, options?: DetectCommitRangeOptions): Promise<GitCommitRange | null> {
+        const signal = options?.signal;
+        signal?.throwIfAborted();
         if (!fs.existsSync(repoRoot)) {
             return null;
         }
@@ -323,19 +330,23 @@ export class GitRangeService {
         this.native(repoRoot);
         try {
             const currentBranch = await this.getCurrentBranch(repoRoot);
+            signal?.throwIfAborted();
 
             const resolved = await this.resolveBaseRef(repoRoot, options?.baseMode);
+            signal?.throwIfAborted();
             const baseRef = resolved.baseRef;
             if (!baseRef) {
                 return null;
             }
 
             const mergeBase = await this.getMergeBase(repoRoot, 'HEAD', baseRef);
+            signal?.throwIfAborted();
             if (!mergeBase) {
                 return null;
             }
 
             const commitCount = await this.countCommitsAhead(repoRoot, baseRef, 'HEAD');
+            signal?.throwIfAborted();
 
             // If no commits ahead, don't show the range — except in upstream mode,
             // where "nothing unpushed" is a valid, informative result and hiding
@@ -344,13 +355,13 @@ export class GitRangeService {
                 return null;
             }
 
-            let files = await this.getChangedFiles(repoRoot, baseRef, 'HEAD');
+            let files = await this.getChangedFiles(repoRoot, baseRef, 'HEAD', signal);
 
             if (files.length > this.config.maxFiles) {
                 files = files.slice(0, this.config.maxFiles);
             }
 
-            const { additions, deletions } = await this.getDiffStats(repoRoot, baseRef, 'HEAD');
+            const { additions, deletions } = await this.getDiffStats(repoRoot, baseRef, 'HEAD', signal);
 
             const repoName = path.basename(repoRoot);
 
@@ -369,6 +380,7 @@ export class GitRangeService {
                 ...(resolved.baseModeFallback && { baseModeFallback: true as const })
             };
         } catch (error) {
+            signal?.throwIfAborted();
             getLogger().error(LogCategory.GIT, 'Failed to detect commit range', error instanceof Error ? error : undefined);
             return null;
         }
@@ -377,12 +389,14 @@ export class GitRangeService {
     /**
      * Get the diff content for a specific file in a commit range.
      */
-    async getFileDiff(repoRoot: string, baseRef: string, headRef: string, filePath: string): Promise<string> {
+    async getFileDiff(repoRoot: string, baseRef: string, headRef: string, filePath: string, signal?: AbortSignal): Promise<string> {
+        signal?.throwIfAborted();
         loadNativeGit();
         try {
             const gitPath = filePath.replace(/\\/g, '/');
-            return (await loadRangePatch(repoRoot, baseRef, headRef, gitPath, { contextLines: 99999 })).content.raw;
+            return (await loadRangePatch(repoRoot, baseRef, headRef, gitPath, { contextLines: 99999, signal })).content.raw;
         } catch (error) {
+            signal?.throwIfAborted();
             getLogger().error(LogCategory.GIT, `Failed to get file diff for ${filePath}`, error instanceof Error ? error : undefined);
             return '';
         }
@@ -414,11 +428,13 @@ export class GitRangeService {
     /**
      * Get the full diff for a commit range.
      */
-    async getRangeDiff(repoRoot: string, baseRef: string, headRef: string): Promise<string> {
+    async getRangeDiff(repoRoot: string, baseRef: string, headRef: string, signal?: AbortSignal): Promise<string> {
+        signal?.throwIfAborted();
         loadNativeGit();
         try {
-            return (await loadRangePatch(repoRoot, baseRef, headRef)).content.raw;
+            return (await loadRangePatch(repoRoot, baseRef, headRef, undefined, { signal })).content.raw;
         } catch (error) {
+            signal?.throwIfAborted();
             getLogger().error(LogCategory.GIT, `Failed to get range diff for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return '';
         }
