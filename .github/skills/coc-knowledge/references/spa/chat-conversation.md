@@ -112,6 +112,18 @@ left identity group is `flex-1 min-w-0 overflow-hidden` with an always `min-w-0 
 title, so the title yields width first and never bleeds under the non-shrinking action
 group. The `ConversationMetadataPopover` trigger stays inline at every tier.
 
+`buildOverflowItems` emits grouped rows — conversation (Pin/Unpin, References, scratchpad,
+same-context chat, Fork) → export (HTML, Select turns, PDF) → CLI (Resume, copy command)
+→ window (narrow-tier Float/Pop out) — with `ChatMenuIcons` SVG glyphs. Duration and
+model/context usage are `info` items rendered as a muted, non-actionable footer.
+`ChatHeaderOverflowMenu` is a `role="menu"` portal with separators between groups,
+roving arrow/Home/End focus, Escape/Tab returning focus to the trigger, outside-click
+close, viewport clamping and disabled in-flight rows. Pin/Unpin shows at every tier once
+the process loads (hidden for read-only chats): `useConversationPin` starts from the
+persisted `pinnedAt`, follows list-side pin changes for the same process, and mutates via
+the list provider's `setChatPinned` (or the clone-routed `pinArchiveApi` with the chat's
+workspace when no provider is mounted), rolling back and toasting on failure.
+
 The folder action uses `useUnifiedPanelHostForChat(taskId)` to open the hosted
 workspace right panel in Explorer mode with its navigator tree visible. Its
 pressed state follows the panel's open bit, mode, and tree state. A second click

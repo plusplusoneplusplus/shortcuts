@@ -114,6 +114,7 @@ import { useCrons } from './hooks/useCrons';
 import { CronManagementPanel } from './CronManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
+import { useConversationPin } from './hooks/useConversationPin';
 import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
 import { InlineTurnEditor } from './conversation/InlineTurnEditor';
 import { useEditTurn } from './hooks/useEditTurn';
@@ -2270,6 +2271,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         } catch { /* best-effort: SSE will reflect the actual state */ }
     }, [client, processId]);
 
+    // ── Conversation pin (header overflow) ──
+    // Persisted state comes from the process record; `undefined` until it loads.
+    const conversationPin = useConversationPin({
+        processId: processDetails ? processId : null,
+        workspaceId,
+        persistedPinned: processDetails ? Boolean(processDetails.pinnedAt) : undefined,
+        onError: useCallback((err: unknown, pinned: boolean) => {
+            addToast(getSpaCocClientErrorMessage(err, pinned ? 'Failed to pin conversation.' : 'Failed to unpin conversation.'), 'error');
+        }, [addToast]),
+    });
+
     // ── Per-turn actions: pin, archive ──
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
         if (!processId) return;
@@ -2753,6 +2765,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
                     onStartFreshSameContext={headerMetadata.onStartFreshSameContext}
                     startingFreshSameContext={headerMetadata.startingFreshSameContext}
+                    isPinned={conversationPin.isPinned}
+                    pinPending={conversationPin.pending}
+                    onTogglePin={conversationPin.available && !readOnly ? conversationPin.togglePin : undefined}
                     viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
                         ? (
                             <AgentTreeMenu

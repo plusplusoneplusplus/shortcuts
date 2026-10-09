@@ -438,6 +438,35 @@ describe('ChatHeader', () => {
         });
     });
 
+    describe('pin conversation action', () => {
+        it.each(['wide', 'medium', 'narrow'] as const)('offers "Pin conversation" first at %s tier', (tier) => {
+            setTier(tier);
+            render(<ChatHeader {...defaultProps({ onTogglePin: vi.fn(), isPinned: false })} />);
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')[0]).toBe('pin-conversation');
+            expect(menu.getAttribute('data-labels')?.split('|')).toContain('Pin conversation');
+        });
+
+        it('offers "Unpin conversation" when the conversation is pinned', () => {
+            render(<ChatHeader {...defaultProps({ onTogglePin: vi.fn(), isPinned: true })} />);
+            const labels = screen.getByTestId('overflow-menu').getAttribute('data-labels')?.split('|');
+            expect(labels).toContain('Unpin conversation');
+            expect(labels).not.toContain('Pin conversation');
+        });
+
+        it('calls onTogglePin when the item is clicked', () => {
+            const onTogglePin = vi.fn();
+            render(<ChatHeader {...defaultProps({ onTogglePin })} />);
+            screen.getByTestId('overflow-item-pin-conversation').click();
+            expect(onTogglePin).toHaveBeenCalledTimes(1);
+        });
+
+        it('omits the action when no toggle handler is provided', () => {
+            render(<ChatHeader {...defaultProps()} />);
+            expect(screen.getByTestId('overflow-menu').getAttribute('data-keys')?.split(',')).not.toContain('pin-conversation');
+        });
+    });
+
     describe('overflow menu content', () => {
         it('includes references in overflow at medium tier', () => {
             setTier('medium');
@@ -471,7 +500,7 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             const menu = screen.getByTestId('overflow-menu');
             expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-resume-cli');
-            expect(menu.getAttribute('data-labels')?.split('|')).toContain('Copy Command');
+            expect(menu.getAttribute('data-labels')?.split('|')).toContain('Copy resume command');
         });
 
         it('fires onCopyResumeCommand when the Copy Command overflow item is clicked', () => {

@@ -1016,6 +1016,77 @@ describe('ChatDetail', () => {
         });
     });
 
+    describe('conversation pin (header overflow)', () => {
+        function setupPinFetch(proc: any) {
+            const task = makeTask();
+            setupFetch({
+                '/proc-1/pin': { body: { id: 'proc-1', pinnedAt: null } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+        }
+
+        async function openMenu() {
+            await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            return waitFor(() => screen.getByTestId('overflow-item-pin-conversation'));
+        }
+
+        it('shows Unpin for a persisted pinned conversation and unpins on the owning remote clone', async () => {
+            const remote = 'http://remote-pin.example';
+            registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: remote }]);
+            setupPinFetch(makeProcess({ pinnedAt: '2026-06-23T19:01:00.000Z' }));
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="remote-ws" /></Wrap>);
+
+            const item = await openMenu();
+            expect(item.textContent).toBe('Unpin conversation');
+            await act(async () => { fireEvent.click(item); });
+
+            await waitFor(() => {
+                expect(fetchMock.mock.calls.some(([url, init]: [string, RequestInit | undefined]) =>
+                    url.startsWith(remote)
+                    && url.includes('/api/processes/proc-1/pin')
+                    && init?.method === 'PATCH'
+                    && JSON.parse(String(init.body)).pinned === false,
+                )).toBe(true);
+            });
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            await waitFor(() => expect(screen.getByTestId('overflow-item-pin-conversation').textContent).toBe('Pin conversation'));
+        });
+
+        it('shows Pin for an unpinned conversation and reverts with an error when the server rejects', async () => {
+            const proc = makeProcess();
+            const task = makeTask();
+            setupFetch({
+                '/proc-1/pin': { status: 500, body: { error: 'pin store unavailable' } },
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': { body: { task } },
+                '/processes/': { body: { process: proc, conversation: proc.conversation } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            const item = await openMenu();
+            expect(item.textContent).toBe('Pin conversation');
+            await act(async () => { fireEvent.click(item); });
+
+            await waitFor(() => expect(screen.getByText(/pin store unavailable|Failed to pin conversation/)).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            await waitFor(() => expect(screen.getByTestId('overflow-item-pin-conversation').textContent).toBe('Pin conversation'));
+        });
+
+        it('hides the action for read-only chats', async () => {
+            setupPinFetch(makeProcess());
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" readOnly /></Wrap>);
+            await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            await waitFor(() => expect(screen.getByTestId('overflow-item-copy-html')).toBeTruthy());
+            expect(screen.queryByTestId('overflow-item-pin-conversation')).toBeNull();
+        });
+    });
+
     describe('turn action routing', () => {
         it('routes pin and archive turn actions through the latest remote clone client', async () => {
             const remoteA = 'http://remote-a.example';

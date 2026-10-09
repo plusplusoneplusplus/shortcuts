@@ -312,7 +312,10 @@ that way passes without ever reloading.
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize
 through `ChatPreferencesProvider` / `ChatPrefsSync`. Mutating actions call `pinArchiveApi`
-with the provider's `workspaceId`; `ChatDetail` uses its workspace-routed
+with the provider's `workspaceId`; `setChatPinned` rolls the list state back and rejects
+on failure (row actions swallow the rejection). The context object and consumer hooks live
+in `contexts/chatPrefsConsumer.ts`, so `useOptionalChatPrefs` keeps working where tests
+replace `ChatPreferencesContext`; `ChatDetail` uses its workspace-routed
 `useCocClient(workspaceId)` for reads, refreshes, and per-turn delete/pin/archive, treating
 persisted `pinnedAt`/`archived`/`deletedAt` from the process detail response as the source
 of truth. Chat pop-out URLs carry `cloneBaseUrl` and `PopOutChatShell` seeds the clone

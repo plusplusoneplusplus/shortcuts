@@ -5,23 +5,14 @@
  */
 
 import {
-    createContext,
-    useContext,
     useReducer,
-    useCallback,
     useEffect,
     useRef,
     type ReactNode,
-    type Dispatch,
 } from 'react';
-import {
-    pinProcess as apiPinProcess,
-    unpinProcess as apiUnpinProcess,
-    archiveProcess as apiArchiveProcess,
-    unarchiveProcess as apiUnarchiveProcess,
-    archiveProcesses as apiArchiveProcesses,
-    unarchiveProcesses as apiUnarchiveProcesses,
-} from '../queue/hooks/pinArchiveApi';
+import { ChatPreferencesContext, useChatPrefs } from './chatPrefsConsumer';
+
+export { useChatPrefs, useOptionalChatPrefs, type ChatPrefsAPI } from './chatPrefsConsumer';
 
 const MAX_PINNED = 50;
 const MAX_ARCHIVED = 500;
@@ -106,14 +97,6 @@ export function chatPrefsReducer(
     }
 }
 
-// ── Context ────────────────────────────────────────────────────────────────
-
-const ChatPreferencesContext = createContext<{
-    state: ChatPrefsState;
-    dispatch: Dispatch<ChatPrefsAction>;
-    workspaceId: string;
-} | null>(null);
-
 // ── Provider ───────────────────────────────────────────────────────────────
 
 /**
@@ -143,80 +126,6 @@ export function ChatPreferencesProvider({
             {children}
         </ChatPreferencesContext.Provider>
     );
-}
-
-// ── Consumer hook ──────────────────────────────────────────────────────────
-
-export interface ChatPrefsAPI {
-    pinnedChatIds: Set<string>;
-    archivedChatIds: Set<string>;
-    pinChat: (taskId: string) => void;
-    unpinChat: (taskId: string) => void;
-    archiveChat: (taskId: string) => void;
-    unarchiveChat: (taskId: string) => void;
-    archiveChats: (taskIds: string[]) => void;
-    unarchiveChats: (taskIds: string[]) => void;
-    loaded: boolean;
-    dispatch: Dispatch<ChatPrefsAction>;
-}
-
-export function useChatPrefs(): ChatPrefsAPI {
-    const ctx = useContext(ChatPreferencesContext);
-    if (!ctx) throw new Error('useChatPrefs must be used within ChatPreferencesProvider');
-
-    const { state, dispatch, workspaceId } = ctx;
-
-    const pinChat = useCallback((taskId: string) => {
-        if (state.pinnedIds.includes(taskId)) return;
-        dispatch({ type: 'PIN', taskId });
-        apiPinProcess(taskId, workspaceId).catch(() => {});
-    }, [dispatch, state.pinnedIds, workspaceId]);
-
-    const unpinChat = useCallback((taskId: string) => {
-        if (!state.pinnedIds.includes(taskId)) return;
-        dispatch({ type: 'UNPIN', taskId });
-        apiUnpinProcess(taskId, workspaceId).catch(() => {});
-    }, [dispatch, state.pinnedIds, workspaceId]);
-
-    const archiveChat = useCallback((taskId: string) => {
-        if (state.archivedIds.includes(taskId)) return;
-        dispatch({ type: 'ARCHIVE', taskId });
-        apiArchiveProcess(taskId, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
-
-    const unarchiveChat = useCallback((taskId: string) => {
-        if (!state.archivedIds.includes(taskId)) return;
-        dispatch({ type: 'UNARCHIVE', taskId });
-        apiUnarchiveProcess(taskId, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
-
-    const archiveChats = useCallback((taskIds: string[]) => {
-        const toAdd = taskIds.filter(id => !state.archivedIds.includes(id));
-        if (toAdd.length === 0) return;
-        dispatch({ type: 'ARCHIVE_MANY', taskIds });
-        apiArchiveProcesses(taskIds, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
-
-    const unarchiveChats = useCallback((taskIds: string[]) => {
-        const removing = new Set(taskIds);
-        const filtered = state.archivedIds.filter(id => !removing.has(id));
-        if (filtered.length === state.archivedIds.length) return;
-        dispatch({ type: 'UNARCHIVE_MANY', taskIds });
-        apiUnarchiveProcesses(taskIds, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
-
-    return {
-        pinnedChatIds: new Set(state.pinnedIds),
-        archivedChatIds: new Set(state.archivedIds),
-        pinChat,
-        unpinChat,
-        archiveChat,
-        unarchiveChat,
-        archiveChats,
-        unarchiveChats,
-        loaded: state.loaded,
-        dispatch,
-    };
 }
 
 // ── History sync helper ────────────────────────────────────────────────────
