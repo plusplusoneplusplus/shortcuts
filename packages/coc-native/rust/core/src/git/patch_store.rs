@@ -3,14 +3,14 @@
 
 use super::commit::validate_ref;
 use super::patch::{
-    commit_patch, comparison_patch, process_patch, process_working_tree_patch, range_patch,
-    show_patch, truncate_patch, working_tree_patch_outputs, PatchResult,
+    commit_patch_args, comparison_patch_args, process_patch, process_working_tree_patch,
+    range_patch_args, show_patch_args, truncate_patch, working_tree_patch_outputs, PatchResult,
 };
-use super::{GitCommandOptions, GitError, GitErrorKind};
+use super::{run_git, GitCommandOptions, GitError, GitErrorKind};
 use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatchExecution {
@@ -140,6 +140,7 @@ struct State {
     bytes: usize,
     pending: HashMap<PatchKey, Arc<Flight>>,
     active: usize,
+    cancellation: Arc<AtomicBool>,
 }
 
 /// Each handle owns one exact workspace/root/execution/source scope. Work runs
@@ -158,6 +159,7 @@ pub struct PatchStore {
 pub struct PatchTransport {
     identity: Arc<()>,
     generation: u64,
+    cancellation: Arc<AtomicBool>,
 }
 
 impl PatchStore {
@@ -268,7 +270,23 @@ impl PatchStore {
     pub fn begin_transport(&self, scope: &PatchScope) -> Result<PatchTransport, PatchStoreError> {
         let state = self.state.lock();
         self.check(scope, &state)?;
-        Ok(PatchTransport { identity: self.identity.clone(), generation: state.generation })
+        Ok(PatchTransport {
+            identity: self.identity.clone(),
+            generation: state.generation,
+            cancellation: state.cancellation.clone(),
+        })
+    }
+
+    fn check_ticket(&self, ticket: &PatchTransport) -> Result<(), PatchStoreError> {
+        if !Arc::ptr_eq(&self.identity, &ticket.identity) {
+            return Err(PatchStoreError::ScopeMismatch);
+        }
+        let state = self.state.lock();
+        self.check(&self.scope, &state)?;
+        if ticket.generation != state.generation {
+            return Err(PatchStoreError::Stale);
+        }
+        Ok(())
     }
 
     /// Hash and parse supplied bytes on the worker, using the same bounded
@@ -323,9 +341,7 @@ impl PatchStore {
         max_lines: Option<i64>,
         process: impl FnOnce() -> PatchResult,
     ) -> Result<PatchResult, PatchStoreError> {
-        if !Arc::ptr_eq(&self.identity, &ticket.identity) {
-            return Err(PatchStoreError::ScopeMismatch);
-        }
+        self.check_ticket(&ticket)?;
         let key =
             PatchKey { version: PatchVersion::Fingerprint(fingerprint), variant: variant.into() };
         let result = self.compute(scope, key, Some(ticket.generation), || Ok(process()))?;
@@ -347,8 +363,14 @@ impl PatchStore {
         {
             return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
         }
-        let outputs = working_tree_patch_outputs(&self.scope.root, scope, path, context)
-            .map_err(|error| error.to_string())?;
+        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
+        let options = GitCommandOptions {
+            cancellation: Some(ticket.cancellation.clone()),
+            ..Default::default()
+        };
+        let outputs = working_tree_patch_outputs(&self.scope.root, scope, path, context, &options);
+        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
+        let outputs = outputs.map_err(|error| error.to_string())?;
         self.complete_working_tree_transport(&self.scope, ticket, outputs, max_lines, headings)
             .map_err(|error| format!("patch store: {error:?}"))
     }
@@ -360,6 +382,7 @@ impl PatchStore {
     #[allow(clippy::too_many_arguments)]
     pub fn revision_patch(
         &self,
+        ticket: PatchTransport,
         mode: &str,
         base: &str,
         head: Option<&str>,
@@ -373,30 +396,45 @@ impl PatchStore {
         {
             return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
         }
+        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
+        let options = GitCommandOptions {
+            cancellation: Some(ticket.cancellation.clone()),
+            ..options.clone()
+        };
         let root = &self.scope.root;
-        let run = |base: &str, head: Option<&str>, max_lines| match (mode, head) {
-            ("commit", None) => commit_patch(root, base, path, context, max_lines),
-            ("show", None) => show_patch(root, base, path, context, max_lines),
-            ("range", Some(head)) => range_patch(root, base, head, path, context, max_lines),
-            ("comparison", Some(head)) => {
-                comparison_patch(root, base, head, path, context, max_lines, options)
-            }
-            _ => Err(GitError::from_parts(GitErrorKind::Repository, &[], "invalid patch mode")),
+        let run = |base: &str, head: Option<&str>, max_lines| {
+            let args = match (mode, head) {
+                ("commit", None) => commit_patch_args(base, path, context),
+                ("show", None) => show_patch_args(base, path, context),
+                ("range", Some(head)) => range_patch_args(base, head, path, context),
+                ("comparison", Some(head)) => comparison_patch_args(base, head, path, context),
+                _ => {
+                    return Err(GitError::from_parts(
+                        GitErrorKind::Repository,
+                        &[],
+                        "invalid patch mode",
+                    ))
+                }
+            };
+            run_git(root, &args, &options).map(|raw| process_patch(raw, max_lines))
         };
         let resolve = |rev: &str| validate_ref(root, rev).ok().flatten();
         let resolved = match head {
             None => resolve(base).map(|sha| (sha.clone(), sha)),
             Some(head) => resolve(base).zip(resolve(head)),
         };
+        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
         let Some((base_sha, head_sha)) = resolved else {
-            return run(base, head, max_lines).map_err(|error| error.to_string());
+            let result = run(base, head, max_lines);
+            self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
+            return result.map_err(|error| error.to_string());
         };
         let key = PatchKey {
             version: PatchVersion::Revisions { base: base_sha.clone(), head: head_sha.clone() },
             variant: format!("{mode}\0{path:?}\0{context:?}"),
         };
         let result = self
-            .get_or_compute(&self.scope, key, || {
+            .compute(&self.scope, key, Some(ticket.generation), || {
                 run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|e| e.to_string())
             })
             .map_err(|error| match error {
@@ -424,6 +462,8 @@ impl PatchStore {
     }
 
     fn clear(state: &mut State, error: PatchStoreError) {
+        state.cancellation.store(true, Ordering::Release);
+        state.cancellation = Arc::new(AtomicBool::new(false));
         state.generation += 1;
         state.cache.clear();
         state.bytes = 0;

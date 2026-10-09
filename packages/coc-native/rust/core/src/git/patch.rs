@@ -251,19 +251,6 @@ pub fn comparison_patch_args(
     patch_args("diff", &[base.into(), head.into()], path, context_lines)
 }
 
-pub fn comparison_patch(
-    root: &Path,
-    base: &str,
-    head: &str,
-    path: Option<&str>,
-    context_lines: Option<u32>,
-    max_lines: Option<i64>,
-    options: &GitCommandOptions,
-) -> Result<PatchResult, GitError> {
-    let raw = run_git(root, &comparison_patch_args(base, head, path, context_lines), options)?;
-    Ok(process_patch(raw, max_lines))
-}
-
 fn patch_args(
     command: &str,
     revisions: &[String],
@@ -293,22 +280,6 @@ fn patch_args(
     args
 }
 
-pub fn range_patch(
-    root: &Path,
-    base: &str,
-    head: &str,
-    path: Option<&str>,
-    context_lines: Option<u32>,
-    max_lines: Option<i64>,
-) -> Result<PatchResult, GitError> {
-    let raw = run_git(
-        root,
-        &range_patch_args(base, head, path, context_lines),
-        &GitCommandOptions::default(),
-    )?;
-    Ok(process_patch(raw, max_lines))
-}
-
 /// First-parent provider comparison, including a root commit's empty left side.
 /// diff-tree resolves the parent itself and supports the repository's hash format.
 pub fn commit_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
@@ -320,35 +291,11 @@ pub fn commit_patch_args(commit: &str, path: Option<&str>, context: Option<u32>)
     args
 }
 
-pub fn commit_patch(
-    root: &Path,
-    commit: &str,
-    path: Option<&str>,
-    context: Option<u32>,
-    max_lines: Option<i64>,
-) -> Result<PatchResult, GitError> {
-    let raw =
-        run_git(root, &commit_patch_args(commit, path, context), &GitCommandOptions::default())?;
-    Ok(process_patch(raw, max_lines))
-}
-
 /// Route comparison uses git-show's combined merge behavior, not first parent.
 pub fn show_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
     let mut args = patch_args("show", &[commit.into()], path, context);
     args.splice(2..2, ["--format=", "--patch"].map(String::from));
     args
-}
-
-pub fn show_patch(
-    root: &Path,
-    commit: &str,
-    path: Option<&str>,
-    context: Option<u32>,
-    max_lines: Option<i64>,
-) -> Result<PatchResult, GitError> {
-    let raw =
-        run_git(root, &show_patch_args(commit, path, context), &GitCommandOptions::default())?;
-    Ok(process_patch(raw, max_lines))
 }
 
 /// Staged compares HEAD to index; unstaged compares index to disk, even for all.
@@ -430,29 +377,15 @@ pub fn process_working_tree_patch(
     PatchResult { files, content, summary }
 }
 
-pub fn working_tree_patch(
-    root: &Path,
-    scope: &str,
-    path: Option<&str>,
-    context: Option<u32>,
-    max_lines: Option<i64>,
-    headings: bool,
-) -> Result<PatchResult, GitError> {
-    Ok(process_working_tree_patch(
-        working_tree_patch_outputs(root, scope, path, context)?,
-        max_lines,
-        headings,
-    ))
-}
-
 pub fn working_tree_patch_outputs(
     root: &Path,
     scope: &str,
     path: Option<&str>,
     context: Option<u32>,
+    options: &GitCommandOptions,
 ) -> Result<Vec<String>, GitError> {
     working_tree_patch_args(scope, path, context)?
         .iter()
-        .map(|args| run_git(root, args, &GitCommandOptions::default()))
+        .map(|args| run_git(root, args, options))
         .collect()
 }

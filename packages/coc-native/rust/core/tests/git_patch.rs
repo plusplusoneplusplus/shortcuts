@@ -2,6 +2,41 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::patch::parse_patch;
+use coc_native_core::git::patch_store::{PatchExecution, PatchScope, PatchSource, PatchStore};
+use coc_native_core::git::GitCommandOptions;
+
+#[allow(clippy::too_many_arguments)]
+fn revision_patch(
+    root: &Path,
+    mode: &str,
+    base: &str,
+    head: Option<&str>,
+    path: Option<&str>,
+    context: Option<u32>,
+    max_lines: Option<i64>,
+) -> Result<coc_native_core::git::patch::PatchResult, String> {
+    let store = PatchStore::open(
+        PatchScope {
+            workspace_id: "fixture".into(),
+            root: root.into(),
+            execution: PatchExecution::Host,
+            source: PatchSource::Local { kind: "revision".into() },
+        },
+        8,
+        1 << 20,
+    )
+    .unwrap();
+    store.revision_patch(
+        store.begin_transport(store.scope()).unwrap(),
+        mode,
+        base,
+        head,
+        path,
+        context,
+        max_lines,
+        &GitCommandOptions::default(),
+    )
+}
 
 fn git(root: &Path, args: &[&str]) -> String {
     let output = Command::new("git").arg("-C").arg(root).args(args).output().expect("git on PATH");
@@ -228,7 +263,7 @@ fn range_plan_keeps_context_revision_boundary_and_literal_path() {
 
 #[test]
 fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
-    use coc_native_core::git::patch::{commit_patch, commit_patch_args, show_patch};
+    use coc_native_core::git::patch::commit_patch_args;
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     git(root, &["init", "--initial-branch=main"]);
@@ -240,7 +275,7 @@ fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
     git(root, &["add", "."]);
     git(root, &["commit", "-m", "root"]);
     let initial = git(root, &["rev-parse", "HEAD"]).trim().to_owned();
-    let root_patch = commit_patch(root, &initial, None, None, None).unwrap();
+    let root_patch = revision_patch(root, "commit", &initial, None, None, None, None).unwrap();
     assert_eq!(root_patch.files[0].status, "added");
     assert_eq!(root_patch.summary.additions, 1);
     std::fs::write(root.join("same.txt"), "after\n").unwrap();
@@ -254,13 +289,13 @@ fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
             .trim()
             .to_owned();
     for commit in [&head, &merge] {
-        let result = commit_patch(root, commit, None, None, None).unwrap();
+        let result = revision_patch(root, "commit", commit, None, None, None, None).unwrap();
         let expected = git(root, &["diff", "-M", "-C", &initial, commit]);
         assert_eq!(result.content.raw, expected.trim_end_matches(['\r', '\n']));
         assert_eq!((result.summary.additions, result.summary.deletions), (1, 1));
     }
     for commit in [&initial, &head, &merge] {
-        let result = show_patch(root, commit, None, None, None).unwrap();
+        let result = revision_patch(root, "show", commit, None, None, None, None).unwrap();
         let expected = git(root, &["show", "--format=", "--patch", "-M", "-C", commit]);
         assert_eq!(result.content.raw, expected.trim_end_matches(['\r', '\n']));
     }
@@ -270,7 +305,7 @@ fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
     assert!(args.contains(&"--literal-pathspecs".into()));
     assert!(args.contains(&"-U0".into()));
     assert_eq!(args.last().unwrap(), "[ab].txt");
-    assert!(commit_patch(root, "--output=oops", None, None, None).is_err());
+    assert!(revision_patch(root, "commit", "--output=oops", None, None, None, None).is_err());
     assert!(!root.join("oops").exists());
 }
 
@@ -337,7 +372,6 @@ fn pending_headings_preserve_empty_sections_bytes_and_truncation() {
 
 #[test]
 fn direct_comparison_keeps_literal_paths_summary_and_truncation() {
-    use coc_native_core::git::{patch::comparison_patch, GitCommandOptions};
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     git(root, &["init", "--initial-branch=main"]);
@@ -356,10 +390,16 @@ fn direct_comparison_keeps_literal_paths_summary_and_truncation() {
     }
     git(root, &["add", "."]);
     git(root, &["commit", "-m", "head"]);
-    let options = GitCommandOptions::default();
-    let result =
-        comparison_patch(root, &base, "HEAD", Some("[ab].txt"), Some(99999), Some(2), &options)
-            .unwrap();
+    let result = revision_patch(
+        root,
+        "comparison",
+        &base,
+        Some("HEAD"),
+        Some("[ab].txt"),
+        Some(99999),
+        Some(2),
+    )
+    .unwrap();
     assert_eq!(result.files.len(), 1);
     assert_eq!(result.files[0].path, "[ab].txt");
     assert_eq!((result.summary.additions, result.summary.deletions), (1, 1));
@@ -367,6 +407,7 @@ fn direct_comparison_keeps_literal_paths_summary_and_truncation() {
     let raw =
         git(root, &["--literal-pathspecs", "diff", "-U99999", &base, "HEAD", "--", "[ab].txt"]);
     assert_eq!(result.files[0].raw, raw.trim_end_matches('\n'));
-    assert!(comparison_patch(root, "--output=oops", "HEAD", None, None, None, &options).is_err());
+    assert!(revision_patch(root, "comparison", "--output=oops", Some("HEAD"), None, None, None)
+        .is_err());
     assert!(!root.join("oops").exists());
 }

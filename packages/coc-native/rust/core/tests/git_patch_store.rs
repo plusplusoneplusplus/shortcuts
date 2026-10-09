@@ -3,7 +3,7 @@ use coc_native_core::git::patch_store::{
     PatchExecution, PatchKey, PatchScope, PatchSource, PatchStore, PatchStoreError, PatchVersion,
     RemotePatchSource,
 };
-use std::sync::{mpsc, Arc, Barrier};
+use std::sync::{atomic::AtomicBool, atomic::Ordering, mpsc, Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 
@@ -283,6 +283,7 @@ fn remote_sources_require_complete_identity_and_cannot_execute_local_revisions()
     assert_eq!(
         store
             .revision_patch(
+                store.begin_transport(store.scope()).unwrap(),
                 "commit",
                 "HEAD",
                 None,
@@ -490,6 +491,195 @@ fn git(root: &std::path::Path, args: &[&str]) -> String {
 }
 
 #[test]
+#[ignore = "subprocess fixture invoked by Git"]
+fn blocking_patch_git_helper() {
+    let root = std::env::var_os("PATCH_HELPER_ROOT").expect("isolated fixture root");
+    let root = std::path::PathBuf::from(root);
+    std::fs::write(root.join("started"), "ready").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !root.join("release").exists() && std::time::Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+    std::fs::write(root.join("finished"), "done").unwrap();
+}
+
+struct BlockingGit {
+    root: tempfile::TempDir,
+    command: String,
+}
+
+impl BlockingGit {
+    fn new() -> Self {
+        let root = tempfile::tempdir().unwrap();
+        let exe = std::env::current_exe().unwrap().to_string_lossy().replace('\\', "/");
+        // Git's command shell invokes only this test; appended diff arguments
+        // belong to the shell function, not the Rust test harness.
+        let command = format!(
+            "f() {{ '{}' --ignored --exact blocking_patch_git_helper --nocapture; }}; f",
+            exe.replace('\'', "'\\''")
+        );
+        git(root.path(), &["init", "--initial-branch=main"]);
+        Self { root, command }
+    }
+
+    fn wait_for(&self, name: &str) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !self.root.path().join(name).exists() {
+            assert!(std::time::Instant::now() < deadline, "helper did not reach {name}");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+impl Drop for BlockingGit {
+    fn drop(&mut self) {
+        std::fs::write(self.root.path().join("release"), "").unwrap();
+        if self.root.path().join("started").exists() {
+            self.wait_for("finished");
+        }
+    }
+}
+
+#[test]
+fn runner_cancellation_rejects_before_spawn_and_kills_running_git_without_a_timeout() {
+    use coc_native_core::git::{run_git, GitCommandOptions, GitErrorKind};
+    let fixture = BlockingGit::new();
+    let cancellation = Arc::new(AtomicBool::new(true));
+    let options = GitCommandOptions {
+        cancellation: Some(cancellation.clone()),
+        timeout_ms: 0,
+        env: vec![("PATCH_HELPER_ROOT".into(), fixture.root.path().to_string_lossy().into_owned())],
+        ..Default::default()
+    };
+    let args = vec!["-c".into(), format!("alias.block=!{}", fixture.command), "block".into()];
+    let error = run_git(fixture.root.path(), &args, &options).unwrap_err();
+    assert_eq!(error.kind, GitErrorKind::Cancelled);
+    assert!(!fixture.root.path().join("started").exists());
+    cancellation.store(false, Ordering::Release);
+    let root = fixture.root.path().to_owned();
+    let (tx, rx) = mpsc::channel();
+    let worker = thread::spawn(move || tx.send(run_git(&root, &args, &options)).unwrap());
+    fixture.wait_for("started");
+    cancellation.store(true, Ordering::Release);
+    let error =
+        rx.recv_timeout(Duration::from_secs(2)).expect("Git must be killed promptly").unwrap_err();
+    assert_eq!(error.kind, GitErrorKind::Cancelled);
+    assert_eq!(error.stderr, "patch scope cancelled");
+    worker.join().unwrap();
+}
+
+#[test]
+fn host_patch_revocation_stops_git_and_old_dispatches_cannot_enter_a_new_generation() {
+    use coc_native_core::git::GitCommandOptions;
+    for closed in [false, true] {
+        let fixture = BlockingGit::new();
+        let root = fixture.root.path();
+        for (key, value) in [
+            ("user.name", "Test"),
+            ("user.email", "test@example.com"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+            ("diff.block.textconv", fixture.command.as_str()),
+        ] {
+            git(root, &["config", key, value]);
+        }
+        std::fs::write(root.join(".gitattributes"), "*.txt diff=block\n").unwrap();
+        std::fs::write(root.join("same.txt"), "one\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-qm", "initial"]);
+        let mut identity = scope(root);
+        identity.source = PatchSource::Local { kind: "revision".into() };
+        let store = Arc::new(PatchStore::open(identity.clone(), 8, 1 << 20).unwrap());
+        let ticket = store.begin_transport(&identity).unwrap();
+        let queued = store.begin_transport(&identity).unwrap();
+        let options = GitCommandOptions {
+            timeout_ms: 0,
+            env: vec![("PATCH_HELPER_ROOT".into(), root.to_string_lossy().into_owned())],
+            ..Default::default()
+        };
+        let (tx, rx) = mpsc::channel();
+        let owner = store.clone();
+        let worker = thread::spawn(move || {
+            tx.send(owner.revision_patch(
+                ticket,
+                "show",
+                "HEAD",
+                None,
+                Some("same.txt"),
+                None,
+                None,
+                &options,
+            ))
+            .unwrap();
+        });
+        fixture.wait_for("started");
+        if closed {
+            store.dispose(&identity).unwrap();
+        } else {
+            store.refresh(&identity).unwrap();
+        }
+        let expected = if closed { "patch store: Closed" } else { "patch store: Stale" };
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2)).expect("revoked Git must stop").unwrap_err(),
+            expected
+        );
+        worker.join().unwrap();
+        // Includes invalid-ref fallback, which must not bypass lifecycle checks.
+        assert_eq!(
+            store
+                .revision_patch(
+                    queued,
+                    "show",
+                    "missing",
+                    None,
+                    None,
+                    None,
+                    None,
+                    &GitCommandOptions::default()
+                )
+                .unwrap_err(),
+            expected
+        );
+        if !closed {
+            git(root, &["config", "--unset", "diff.block.textconv"]);
+            let fresh = store
+                .revision_patch(
+                    store.begin_transport(&identity).unwrap(),
+                    "show",
+                    "HEAD",
+                    None,
+                    Some("same.txt"),
+                    None,
+                    None,
+                    &GitCommandOptions::default(),
+                )
+                .unwrap();
+            assert!(fresh.content.raw.contains("+one"));
+        }
+    }
+}
+
+#[test]
+fn working_tree_dispatch_checks_revocation_before_git_for_both_lifecycle_actions() {
+    let root = tempfile::tempdir().unwrap();
+    for closed in [false, true] {
+        let mut identity = scope(root.path());
+        identity.source = PatchSource::Local { kind: "revision".into() };
+        let store = PatchStore::open(identity.clone(), 8, 4096).unwrap();
+        let ticket = store.begin_transport(&identity).unwrap();
+        if closed {
+            store.dispose(&identity).unwrap();
+        } else {
+            store.refresh(&identity).unwrap();
+        }
+        assert_eq!(
+            store.working_tree_patch(ticket, "all", None, None, None, false).unwrap_err(),
+            if closed { "patch store: Closed" } else { "patch store: Stale" }
+        );
+    }
+}
+
+#[test]
 fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors() {
     use coc_native_core::git::GitCommandOptions;
     let dir = tempfile::tempdir().unwrap();
@@ -510,8 +700,18 @@ fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors
     identity.source = PatchSource::Local { kind: "revision".into() };
     let store = PatchStore::open(identity.clone(), 8, 1 << 20).unwrap();
     let options = GitCommandOptions::default();
-    let range =
-        |max| store.revision_patch("range", "HEAD~1", Some("HEAD"), None, None, max, &options);
+    let range = |max| {
+        store.revision_patch(
+            store.begin_transport(&identity).unwrap(),
+            "range",
+            "HEAD~1",
+            Some("HEAD"),
+            None,
+            None,
+            max,
+            &options,
+        )
+    };
 
     // Truncation applies per request; the retained snapshot stays complete.
     let truncated = range(Some(1)).unwrap();
@@ -526,20 +726,111 @@ fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors
     let moved = range(None).unwrap();
     assert!(moved.content.raw.contains("+three") && !moved.content.raw.contains("+two"));
 
-    let added = store.revision_patch("commit", &initial, None, None, None, None, &options).unwrap();
+    let added = store
+        .revision_patch(
+            store.begin_transport(&identity).unwrap(),
+            "commit",
+            &initial,
+            None,
+            None,
+            None,
+            None,
+            &options,
+        )
+        .unwrap();
     assert_eq!(added.files[0].status, "added");
-    let shown = store.revision_patch("show", "HEAD", None, None, Some(0), None, &options).unwrap();
+    let shown = store
+        .revision_patch(
+            store.begin_transport(&identity).unwrap(),
+            "show",
+            "HEAD",
+            None,
+            None,
+            Some(0),
+            None,
+            &options,
+        )
+        .unwrap();
     assert!(shown.content.raw.contains("@@ -2,0 +3 @@"));
-    let error = store.revision_patch("range", "missing", Some("HEAD"), None, None, None, &options);
+    let error = store.revision_patch(
+        store.begin_transport(&identity).unwrap(),
+        "range",
+        "missing",
+        Some("HEAD"),
+        None,
+        None,
+        None,
+        &options,
+    );
     assert!(error.unwrap_err().starts_with("git --literal-pathspecs diff"));
-    assert!(store.revision_patch("range", "HEAD", None, None, None, None, &options).is_err());
+    assert!(store
+        .revision_patch(
+            store.begin_transport(&identity).unwrap(),
+            "range",
+            "HEAD",
+            None,
+            None,
+            None,
+            None,
+            &options
+        )
+        .is_err());
 
+    // All host modes use the same bounded runner, including uncached failures.
+    let limited = PatchStore::open(identity.clone(), 8, 1 << 20).unwrap();
+    let limits = GitCommandOptions { max_buffer_bytes: 1, ..Default::default() };
+    for (mode, base, head) in [
+        ("commit", "HEAD", None),
+        ("show", "HEAD", None),
+        ("range", "HEAD~1", Some("HEAD")),
+        ("comparison", "HEAD~1", Some("HEAD")),
+    ] {
+        assert!(limited
+            .revision_patch(
+                limited.begin_transport(&identity).unwrap(),
+                mode,
+                base,
+                head,
+                None,
+                None,
+                None,
+                &limits
+            )
+            .unwrap_err()
+            .starts_with("git "));
+        assert!(limited
+            .revision_patch(
+                limited.begin_transport(&identity).unwrap(),
+                mode,
+                base,
+                head,
+                None,
+                None,
+                None,
+                &options
+            )
+            .unwrap()
+            .content
+            .raw
+            .contains("+three"));
+    }
+
+    let ticket = store.begin_transport(&identity).unwrap();
     store.dispose(store.scope()).unwrap();
-    let closed = store.revision_patch("commit", "HEAD", None, None, None, None, &options);
+    let closed = store.revision_patch(ticket, "commit", "HEAD", None, None, None, None, &options);
     assert_eq!(closed.unwrap_err(), "patch store: Closed");
     identity.execution = PatchExecution::Wsl { distro: "Ubuntu".into() };
     identity.root = "/home/user/repo".into();
     let wsl = PatchStore::open(identity, 8, 1 << 20).unwrap();
-    let rejected = wsl.revision_patch("commit", "HEAD", None, None, None, None, &options);
+    let rejected = wsl.revision_patch(
+        wsl.begin_transport(wsl.scope()).unwrap(),
+        "commit",
+        "HEAD",
+        None,
+        None,
+        None,
+        None,
+        &options,
+    );
     assert_eq!(rejected.unwrap_err(), "patch store: InvalidIdentity");
 }

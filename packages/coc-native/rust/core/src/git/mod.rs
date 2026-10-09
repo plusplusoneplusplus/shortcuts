@@ -33,7 +33,7 @@ pub mod status;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, mpsc, Arc};
 use std::time::{Duration, Instant};
 
 /// Timeout applied when the caller does not pick one.
@@ -72,6 +72,8 @@ pub struct GitCommandOptions {
     /// exits 1 to say "the files differ", which is its ordinary answer rather
     /// than an error, so `diff::diff_no_index` sets this itself.
     pub success_exit_codes: Vec<i32>,
+    /// Revocation shared by Git invocations in one patch generation.
+    pub cancellation: Option<Arc<AtomicBool>>,
 }
 
 impl Default for GitCommandOptions {
@@ -82,6 +84,7 @@ impl Default for GitCommandOptions {
             cwd: None,
             env: Vec::new(),
             success_exit_codes: Vec::new(),
+            cancellation: None,
         }
     }
 }
@@ -94,6 +97,8 @@ pub enum GitErrorKind {
     Exit(Option<i32>),
     /// The child outlived `timeout_ms` and was killed.
     Timeout,
+    /// The owning patch scope was refreshed or disposed.
+    Cancelled,
     /// Output passed `max_buffer_bytes`.
     MaxBuffer,
     /// The child never started — no `git` on PATH, a `cwd` that is gone, or
@@ -197,38 +202,52 @@ fn drain_with_timeout(
     child: &mut Child,
     rx: mpsc::Receiver<StreamResult>,
     timeout: Option<Duration>,
-) -> (Captured, Captured, bool) {
+    cancellation: Option<&AtomicBool>,
+) -> (Captured, Captured, Option<GitErrorKind>) {
     let deadline = timeout.map(|t| Instant::now() + t);
     let mut stdout = None;
     let mut stderr = None;
-    let mut timed_out = false;
-
-    while stdout.is_none() || stderr.is_none() {
-        let received = match deadline {
-            Some(deadline) => {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                rx.recv_timeout(remaining).map_err(|_| ())
+    let stopped = loop {
+        let stopped = if cancellation.is_some_and(|token| token.load(Ordering::Acquire)) {
+            Some(GitErrorKind::Cancelled)
+        } else if deadline.is_some_and(|d| Instant::now() >= d) {
+            Some(GitErrorKind::Timeout)
+        } else {
+            None
+        };
+        if stopped.is_some() {
+            let _ = child.kill();
+            break stopped;
+        }
+        if stdout.is_some() && stderr.is_some() {
+            // A child can close both pipes before exiting. Cancellable requests
+            // must keep checking revocation rather than block in child.wait().
+            if cancellation.is_none() || !matches!(child.try_wait(), Ok(None)) {
+                break None;
             }
-            None => rx.recv().map_err(|_| ()),
+            std::thread::sleep(Duration::from_millis(10));
+            continue;
+        }
+        let remaining = deadline.map(|d| d.saturating_duration_since(Instant::now()));
+        let wait = if cancellation.is_some() {
+            Some(remaining.unwrap_or(Duration::from_millis(10)).min(Duration::from_millis(10)))
+        } else {
+            remaining
+        };
+        let received = match wait {
+            Some(wait) => rx.recv_timeout(wait),
+            None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
         };
         match received {
             Ok(StreamResult::Stdout(captured)) => stdout = Some(captured),
             Ok(StreamResult::Stderr(captured)) => stderr = Some(captured),
-            Err(()) => {
-                // Either the deadline passed or a reader thread died. Both mean
-                // we stop waiting; killing an already-exited child is a no-op.
-                timed_out = deadline.is_some_and(|d| Instant::now() >= d);
-                break;
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break None,
         }
-    }
-
-    if timed_out {
-        let _ = child.kill();
-    }
+    };
 
     let empty = || Captured { bytes: Vec::new(), overflowed: false };
-    (stdout.unwrap_or_else(empty), stderr.unwrap_or_else(empty), timed_out)
+    (stdout.unwrap_or_else(empty), stderr.unwrap_or_else(empty), stopped)
 }
 
 #[cfg(windows)]
@@ -284,6 +303,9 @@ fn run_command(
     args: &[String],
     options: &GitCommandOptions,
 ) -> Result<String, GitError> {
+    if options.cancellation.as_ref().is_some_and(|token| token.load(Ordering::Acquire)) {
+        return Err(GitError::new(GitErrorKind::Cancelled, args, "patch scope cancelled"));
+    }
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(cwd) = &options.cwd {
         command.current_dir(cwd);
@@ -311,13 +333,16 @@ fn run_command(
     drop(tx);
 
     let timeout = (options.timeout_ms > 0).then(|| Duration::from_millis(options.timeout_ms));
-    let (stdout, stderr, timed_out) = drain_with_timeout(&mut child, rx, timeout);
+    let (stdout, stderr, stopped) =
+        drain_with_timeout(&mut child, rx, timeout, options.cancellation.as_deref());
     let status = child.wait();
 
     let stderr_text = String::from_utf8_lossy(&stderr.bytes).into_owned();
 
-    if timed_out {
-        return Err(GitError::new(GitErrorKind::Timeout, args, stderr_text));
+    if let Some(kind) = stopped {
+        let message =
+            if kind == GitErrorKind::Cancelled { "patch scope cancelled" } else { &stderr_text };
+        return Err(GitError::new(kind, args, message));
     }
     if stdout.overflowed || stderr.overflowed {
         return Err(GitError::new(GitErrorKind::MaxBuffer, args, stderr_text));
