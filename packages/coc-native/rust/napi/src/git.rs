@@ -28,8 +28,8 @@ use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::patch_store::{
-    PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError, PatchTransport,
-    RemotePatchSource,
+    PatchCancellation, PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError,
+    PatchTransport, RemotePatchSource,
 };
 use coc_native_core::git::range::{
     count_commits_ahead, default_remote_branch, merge_base, resolve_base_ref, upstream_branch,
@@ -1674,7 +1674,8 @@ impl GitPatchStore {
     #[napi]
     pub fn begin_transport(&self) -> Result<GitPatchRequest> {
         let ticket = self.store.begin_transport(self.store.scope()).map_err(store_error)?;
-        Ok(GitPatchRequest { store: self.store.clone(), ticket: Some(ticket) })
+        let cancellation = ticket.request_cancellation.clone();
+        Ok(GitPatchRequest { store: self.store.clone(), ticket: Some(ticket), cancellation })
     }
 
     /// `mode` is `commit` or `show` (no head), or `range` or `comparison`.
@@ -1726,6 +1727,27 @@ impl GitPatchStore {
 pub struct GitPatchRequest {
     store: Arc<PatchStore>,
     ticket: Option<PatchTransport>,
+    cancellation: PatchCancellation,
+}
+
+pub struct GitPatchRequestTask {
+    task: crate::task::Blocking<coc_native_core::git::patch::PatchResult>,
+    cancellation: PatchCancellation,
+}
+
+impl Task for GitPatchRequestTask {
+    type Output = coc_native_core::git::patch::PatchResult;
+    type JsValue = Self::Output;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        self.cancellation.check().map_err(store_error)?;
+        self.task.compute()
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        self.cancellation.check().map_err(store_error)?;
+        Ok(output)
+    }
 }
 
 #[napi]
@@ -1736,20 +1758,23 @@ impl GitPatchRequest {
         outputs: Vec<String>,
         max_lines: Option<i64>,
         headings: Option<bool>,
-    ) -> Result<AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>>> {
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
         let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
         let store = self.store.clone();
-        Ok(AsyncTask::new(crate::task::Blocking::new(move || {
-            store
-                .complete_working_tree_transport(
-                    store.scope(),
-                    ticket,
-                    outputs,
-                    max_lines,
-                    headings.unwrap_or(false),
-                )
-                .map_err(store_error)
-        })))
+        Ok(AsyncTask::new(GitPatchRequestTask {
+            cancellation: self.cancellation.clone(),
+            task: crate::task::Blocking::new(move || {
+                store
+                    .complete_working_tree_transport(
+                        store.scope(),
+                        ticket,
+                        outputs,
+                        max_lines,
+                        headings.unwrap_or(false),
+                    )
+                    .map_err(store_error)
+            }),
+        }))
     }
 
     #[napi(ts_return_type = "Promise<PatchResult>")]
@@ -1757,16 +1782,20 @@ impl GitPatchRequest {
         &mut self,
         raw: String,
         max_lines: Option<i64>,
-    ) -> Result<AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>>> {
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
         let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
         let store = self.store.clone();
-        Ok(AsyncTask::new(crate::task::Blocking::new(move || {
-            store.complete_transport(store.scope(), ticket, raw, max_lines).map_err(store_error)
-        })))
+        Ok(AsyncTask::new(GitPatchRequestTask {
+            cancellation: self.cancellation.clone(),
+            task: crate::task::Blocking::new(move || {
+                store.complete_transport(store.scope(), ticket, raw, max_lines).map_err(store_error)
+            }),
+        }))
     }
 
     #[napi]
     pub fn cancel(&mut self) {
+        self.cancellation.cancel();
         self.ticket = None;
     }
 }
