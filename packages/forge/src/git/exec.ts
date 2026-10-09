@@ -25,6 +25,8 @@ export interface ExecGitOptions {
     timeout?: number;
     /** Working directory override (rarely needed; `-C` is preferred). */
     cwd?: string;
+    /** Cancellation for TypeScript WSL transport; unsupported for host execution. */
+    signal?: AbortSignal;
 }
 
 const DEFAULT_MAX_BUFFER = 50 * 1024 * 1024; // 50 MB
@@ -64,6 +66,7 @@ export interface WslGitOptions {
      * sub-command the caller asked for instead, which is what the UI shows.
      */
     errorArgs?: string[];
+    signal?: AbortSignal;
 }
 
 /**
@@ -92,11 +95,13 @@ export async function runGitViaWsl(
                 maxBuffer: options.maxBuffer,
                 cwd: options.cwd,
                 windowsHide: true,
+                signal: options.signal,
                 ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
             },
         );
         return stdout.replace(/\r?\n$/, '');
     } catch (err: unknown) {
+        if (options.signal?.aborted) throw options.signal.reason;
         throw createGitExecError(options.errorArgs ?? args, err);
     }
 }
@@ -178,7 +183,7 @@ export async function execGitAsync(
         return runGitViaWsl(
             executionContext,
             ['-C', execRepoRoot, ...args],
-            { maxBuffer, timeout, cwd: options?.cwd, errorArgs: args },
+            { maxBuffer, timeout, cwd: options?.cwd, errorArgs: args, signal: options?.signal },
         );
     }
 
@@ -186,6 +191,7 @@ export async function execGitAsync(
     // NativeAddonLoadError naming the fix, and dressing it up as a failed git
     // command would hide that.
     const native = loadNativeGit();
+    if (options?.signal) throw new Error('AbortSignal is supported only for WSL Git transport');
     return native.execGit(args, repoRoot, {
         maxBuffer: toUint32(maxBuffer, DEFAULT_MAX_BUFFER),
         timeout: toUint32(timeout, DEFAULT_TIMEOUT),
