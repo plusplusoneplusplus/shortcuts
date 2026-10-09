@@ -123,6 +123,9 @@ export type NativeGitNoIndexDiffInput = Bindings.GitNoIndexDiffInput;
 /** Parsed supplied patch metadata and raw per-file content. */
 export type NativeGitPatchFile = Bindings.PatchFile;
 
+/** One root's Rust-owned commit/range patch snapshots. */
+export type NativeGitPatchStore = Bindings.GitPatchStore;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
     gitPendingPatch: typeof Bindings.gitPendingPatch;
@@ -131,16 +134,13 @@ export interface NativeGitAddon {
     processGitWorkingTreePatch: typeof Bindings.processGitWorkingTreePatch;
     gitWorkingTreePatch: typeof Bindings.gitWorkingTreePatch;
     prepareGitShowPatch: typeof Bindings.prepareGitShowPatch;
-    gitShowPatch: typeof Bindings.gitShowPatch;
     prepareGitCommitPatch: typeof Bindings.prepareGitCommitPatch;
-    gitCommitPatch: typeof Bindings.gitCommitPatch;
     prepareGitComparisonPatch: typeof Bindings.prepareGitComparisonPatch;
-    gitComparisonPatch: typeof Bindings.gitComparisonPatch;
     prepareGitRangePatch: typeof Bindings.prepareGitRangePatch;
     buildRemoteGitPatch: typeof Bindings.buildRemoteGitPatch;
     processGitPatch: typeof Bindings.processGitPatch;
-    gitRangePatch: typeof Bindings.gitRangePatch;
     parseGitPatch: typeof Bindings.parseGitPatch;
+    openGitPatchStore: typeof Bindings.openGitPatchStore;
     execGit: typeof Bindings.execGit;
     gitStatusEntries: typeof Bindings.gitStatusEntries;
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
@@ -189,16 +189,13 @@ const GIT_EXPORTS = [
     'processGitWorkingTreePatch',
     'gitWorkingTreePatch',
     'prepareGitShowPatch',
-    'gitShowPatch',
     'prepareGitCommitPatch',
-    'gitCommitPatch',
     'prepareGitComparisonPatch',
-    'gitComparisonPatch',
     'prepareGitRangePatch',
     'buildRemoteGitPatch',
     'processGitPatch',
-    'gitRangePatch',
     'parseGitPatch',
+    'openGitPatchStore',
     'execGit',
     'gitStatusEntries',
     'parseGitStatusPorcelain',

@@ -274,3 +274,64 @@ fn refresh_does_not_release_running_work_capacity_and_failures_allow_retry() {
     );
     store.get_or_compute(&identity, key("v1"), || Ok(patch("retry"))).unwrap();
 }
+
+fn git(root: &std::path::Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git").arg("-C").arg(root).args(args).output().unwrap();
+    assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors() {
+    use coc_native_core::git::GitCommandOptions;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "--initial-branch=main"]);
+    for (key, value) in [("user.name", "T"), ("user.email", "t@e.x"), ("commit.gpgsign", "false")] {
+        git(root, &["config", key, value]);
+    }
+    let commit = |text: &str| {
+        std::fs::write(root.join("a.txt"), text).unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-qm", text]);
+        git(root, &["rev-parse", "HEAD"])
+    };
+    let initial = commit("one\n");
+    commit("one\ntwo\n");
+    let mut identity = scope(root);
+    identity.source = PatchSource::Local { kind: "revision".into() };
+    let store = PatchStore::open(identity.clone(), 8, 1 << 20).unwrap();
+    let options = GitCommandOptions::default();
+    let range =
+        |max| store.revision_patch("range", "HEAD~1", Some("HEAD"), None, None, max, &options);
+
+    // Truncation applies per request; the retained snapshot stays complete.
+    let truncated = range(Some(1)).unwrap();
+    assert!(truncated.content.truncated);
+    assert_eq!(truncated.content.raw, "diff --git a/a.txt b/a.txt");
+    let full = range(None).unwrap();
+    assert!(!full.content.truncated && full.content.raw.contains("+two"));
+    assert_eq!(full.content.total_lines, truncated.content.total_lines);
+
+    // A moved ref resolves to a new version rather than reusing the old one.
+    commit("one\ntwo\nthree\n");
+    let moved = range(None).unwrap();
+    assert!(moved.content.raw.contains("+three") && !moved.content.raw.contains("+two"));
+
+    let added = store.revision_patch("commit", &initial, None, None, None, None, &options).unwrap();
+    assert_eq!(added.files[0].status, "added");
+    let shown = store.revision_patch("show", "HEAD", None, None, Some(0), None, &options).unwrap();
+    assert!(shown.content.raw.contains("@@ -2,0 +3 @@"));
+    let error = store.revision_patch("range", "missing", Some("HEAD"), None, None, None, &options);
+    assert!(error.unwrap_err().starts_with("git --literal-pathspecs diff"));
+    assert!(store.revision_patch("range", "HEAD", None, None, None, None, &options).is_err());
+
+    store.dispose(store.scope()).unwrap();
+    let closed = store.revision_patch("commit", "HEAD", None, None, None, None, &options);
+    assert_eq!(closed.unwrap_err(), "patch store: Closed");
+    identity.execution = PatchExecution::Wsl { distro: "Ubuntu".into() };
+    identity.root = "/home/user/repo".into();
+    let wsl = PatchStore::open(identity, 8, 1 << 20).unwrap();
+    let rejected = wsl.revision_patch("commit", "HEAD", None, None, None, None, &options);
+    assert_eq!(rejected.unwrap_err(), "patch store: InvalidIdentity");
+}

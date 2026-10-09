@@ -12,6 +12,18 @@
  * binary the loader resolves.
  */
 
+/**
+ * One workspace root's Rust-owned commit/range patch snapshots, keyed by
+ * resolved object IDs. Work runs on workers; `dispose` rejects later calls.
+ */
+export declare class GitPatchStore {
+  /** `mode` is `commit` or `show` (no head), or `range` or `comparison`. */
+  revisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
+  /** Drop retained snapshots; pending computations cannot publish. */
+  refresh(): void
+  dispose(): void
+}
+
 export declare class NativeDatabaseHandle {
   constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
   exec(sql: string): void
@@ -286,12 +298,6 @@ export interface GitCommitFiles {
   parentHash: string
   files: Array<GitCommitFile>
 }
-
-/** Execute and process a first-parent/root commit patch on a worker. */
-export declare function gitCommitPatch(root: string, commit: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
-
-/** Execute and process a direct PR comparison patch on a worker, with no result cache. */
-export declare function gitComparisonPatch(root: string, base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
 
 /**
  * The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
@@ -582,9 +588,6 @@ export interface GitRangeDefaultBranch {
  */
 export declare function gitRangeMergeBase(repoRoot: string, one: string, two: string): Promise<string | null>
 
-/** Execute and process a branch-range patch on a worker, with no result cache. */
-export declare function gitRangePatch(root: string, base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
-
 /**
  * Resolve the ref a range should be measured against.
  *
@@ -658,9 +661,6 @@ export interface GitRepositoryStatus {
  * repository.
  */
 export declare function gitResolvedGitDir(path: string): Promise<string | null>
-
-/** Execute and process a git-show route patch on a worker. */
-export declare function gitShowPatch(root: string, commit: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
 
 /**
  * Read the full working-tree change list for a repository.
@@ -971,6 +971,9 @@ export interface NotesWriteResult {
   /** The content on disk, on `conflict`, so the SPA can offer a merge. */
   currentContent?: string
 }
+
+/** Open the host revision patch store for an absolute repository root. */
+export declare function openGitPatchStore(workspaceId: string, root: string): GitPatchStore
 
 /**
  * Open the backend for an already-resolved repository root. Indexes older

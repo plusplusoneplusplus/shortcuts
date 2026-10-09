@@ -1,7 +1,11 @@
 //! Scoped, bounded patch snapshots. Callers resolve refs or fingerprint supplied
 //! bytes before requesting a version; mutable names alone are never cache keys.
 
-use super::patch::PatchResult;
+use super::commit::validate_ref;
+use super::patch::{
+    commit_patch, comparison_patch, range_patch, show_patch, truncate_patch, PatchResult,
+};
+use super::{GitCommandOptions, GitError, GitErrorKind};
 use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -219,6 +223,61 @@ impl PatchStore {
             }
         }
         flight.wait()
+    }
+
+    pub fn scope(&self) -> &PatchScope {
+        &self.scope
+    }
+
+    /// Host commit (`commit`/`show`) or two-revision (`range`/`comparison`)
+    /// patches. Refs resolve to object IDs and Git runs on those IDs, so a
+    /// moving ref cannot publish into another version. Names that do not
+    /// resolve run uncached to keep Git's own error text.
+    #[allow(clippy::too_many_arguments)]
+    pub fn revision_patch(
+        &self,
+        mode: &str,
+        base: &str,
+        head: Option<&str>,
+        path: Option<&str>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        options: &GitCommandOptions,
+    ) -> Result<PatchResult, String> {
+        if self.scope.execution != PatchExecution::Host {
+            return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
+        }
+        let root = &self.scope.root;
+        let run = |base: &str, head: Option<&str>, max_lines| match (mode, head) {
+            ("commit", None) => commit_patch(root, base, path, context, max_lines),
+            ("show", None) => show_patch(root, base, path, context, max_lines),
+            ("range", Some(head)) => range_patch(root, base, head, path, context, max_lines),
+            ("comparison", Some(head)) => {
+                comparison_patch(root, base, head, path, context, max_lines, options)
+            }
+            _ => Err(GitError::from_parts(GitErrorKind::Repository, &[], "invalid patch mode")),
+        };
+        let resolve = |rev: &str| validate_ref(root, rev).ok().flatten();
+        let resolved = match head {
+            None => resolve(base).map(|sha| (sha.clone(), sha)),
+            Some(head) => resolve(base).zip(resolve(head)),
+        };
+        let Some((base_sha, head_sha)) = resolved else {
+            return run(base, head, max_lines).map_err(|error| error.to_string());
+        };
+        let key = PatchKey {
+            version: PatchVersion::Revisions { base: base_sha.clone(), head: head_sha.clone() },
+            variant: format!("{mode}\0{path:?}\0{context:?}"),
+        };
+        let result = self
+            .get_or_compute(&self.scope, key, || {
+                run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|e| e.to_string())
+            })
+            .map_err(|error| match error {
+                PatchStoreError::Compute(message) => message,
+                other => format!("patch store: {other:?}"),
+            })?;
+        Ok(truncate_patch(&result, max_lines))
     }
 
     pub fn refresh(&self, scope: &PatchScope) -> Result<(), PatchStoreError> {

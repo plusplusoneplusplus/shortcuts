@@ -1,5 +1,6 @@
 /** Local patch boundary: workspace/WSL transport and public shape conversion. */
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import * as path from 'path';
+import { loadNativeGit, type NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
 import { execGitAsync } from '../git/exec';
 import { ensureGitSafeDirectoryAsync } from '../git/safe-directory';
 import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
@@ -32,6 +33,19 @@ export function loadPendingPatch(root: string) {
     return loadLocalPatch(root, { scope: 'all', headings: true });
 }
 
+const revisionStores = new Map<string, NativeGitPatchStore>();
+
+/** Rust owns each host root's bounded snapshots; this map only keeps recent handles. */
+function revisionStore(root: string) {
+    const key = path.resolve(root);
+    const store = revisionStores.get(key) ?? loadNativeGit().openGitPatchStore(key, key);
+    revisionStores.delete(key);
+    revisionStores.set(key, store);
+    // Evicted handles are released by GC; in-flight work keeps its own reference.
+    if (revisionStores.size > 16) revisionStores.delete(revisionStores.keys().next().value!);
+    return store;
+}
+
 async function loadLocalPatch(
     root: string, source: { commit: string; show?: boolean } | { base: string; head: string; direct?: boolean } | { scope: string; headings?: boolean },
     filePath?: string, options?: GetFileDiffOptions,
@@ -58,9 +72,9 @@ async function loadLocalPatch(
                 : await addon.gitWorkingTreePatch(root, source.scope, filePath, context, maxLines);
         } else {
             result = 'commit' in source
-                ? await (source.show ? addon.gitShowPatch : addon.gitCommitPatch)(root, source.commit, filePath, context, maxLines)
-                : source.direct ? await addon.gitComparisonPatch(root, source.base, source.head, filePath, context, maxLines, { timeout: 10000 })
-                    : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
+                ? await revisionStore(root).revisionPatch(source.show ? 'show' : 'commit', source.commit, undefined, filePath, context, maxLines)
+                : await revisionStore(root).revisionPatch(source.direct ? 'comparison' : 'range', source.base, source.head, filePath, context, maxLines,
+                    source.direct ? { timeout: 10000 } : undefined);
         }
     }
     return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
