@@ -18,7 +18,7 @@ import { isQueueProcessId, toTaskId, toQueueProcessId, type ProcessStore, type A
 import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
-import { ImageDownloadError, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
+import { ImageDownloadError, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { MessagingCompactor, MessagingQuotaSource } from './messaging-commands';
 import type { MessagingRemoteDirectory } from './remote-browse';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
@@ -350,6 +350,7 @@ export function registerTeamsMessagingRoutes(
                 });
             }
             if (relay && opts.questionRelay && getAnswerRelayEnabled() && msg.text.trim()
+                && parseMessagingCommand(msg.text).type !== 'git-status'
                 && !router.hasPendingImageInstructions(msg)
                 && !msg.images?.length && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
                 const teamId = manager.getStatus().teamId ?? '';

@@ -240,7 +240,7 @@ preserve captured routing and transfer `sourceMessageIds` into durable receipts;
 answer-part ordering stays independent.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
-grammar from `coc-connector` (slash optional, `help`, `quota`,
+grammar from `coc-connector` (slash optional, `help`, `quota`, `git status`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
 command" + generated help, never sent to the AI).
 `formatMessagingHelp` derives grouped help from the command/mode specs. Routers
@@ -248,7 +248,7 @@ use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 `MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own
 command grammar and renders its specs with `formatMessagingHelpCommands` as HTML.
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
-`AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
+`AgentProvidersQuotaCache`), Git status and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. WhatsApp and Teams channel/thread
 quota commands share `formatQuotaReply`: every finite normalized snapshot retains its
 remaining percentage and reset date, with `5h`/`7d` labels and Codex limit-id prefixes;
@@ -290,6 +290,17 @@ Local, remote and Teams-thread topic lists share `formatTopicList` in `remote-br
 (`▶` current marker, status emoji, truncated escaped title, `now`/`Nm`/`Nh`/`Nd` age from
 `lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). `listRecentTopics`
 re-sorts its bounded page by that activity time, so `select topic <n>` picks the listed item.
+
+### Messaging Git status
+
+`messaging/git-status.ts` reads the admitted caller's local workspace registry, expands
+registered groups only within that scope and deduplicates repository roots. Remote and
+other virtual workspaces are excluded. `git status` bypasses pending question answers
+without changing selections or invoking AI. Native branch/change parsers and forge's
+WSL runner serve fixed status argv with optional locks disabled; safe-directory config,
+Git state and network remain untouched. Per-repo errors remain visible alongside
+successful summaries. Replies disclose local-tracking-ref freshness and use lossless
+connector text chunking.
 
 ### Messaging ask_user question relay
 

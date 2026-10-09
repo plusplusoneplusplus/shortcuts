@@ -9,6 +9,8 @@
 
 import { isQueueProcessId, toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
+import { chunkWhatsAppText } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import type { MessagingGitStatusReader } from './git-status';
 import {
     ImageDownloadError, formatMessagingHelp, isMessagingControlCommand, parseMessagingCommand,
     type MessagingChatMode, type MessagingCommand, type MessagingControlCommand,
@@ -79,6 +81,7 @@ export interface TeamsCommandRouterDeps {
     executeFollowUp: (processId: string, message: string, mode?: MessagingChatMode) => Promise<void>;
     /** Provider quota for the `quota` command. */
     getQuota?: MessagingQuotaSource;
+    readGitStatus?: MessagingGitStatusReader;
     /** Compacts a chat's provider context for the `compact` command. */
     compact?: MessagingCompactor;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
@@ -396,7 +399,8 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
-                await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
+                await this.sendControlReply(command,
+                    await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
             }
             if (consumedRoots && !msg.replyToMessageId) {
                 const state = this.userState.get(userKey);
@@ -440,6 +444,8 @@ export class TeamsCommandRouter {
         };
         return handleMessagingCommand(command, {
             store: this.deps.store,
+            dataDir: this.deps.dataDir,
+            readGitStatus: this.deps.readGitStatus,
             getQuota: this.deps.getQuota,
             ...TEAMS_FORMAT,
             helpFormat: TEAMS_FORMAT,
@@ -465,17 +471,24 @@ export class TeamsCommandRouter {
         });
     }
 
+    private async sendControlReply(command: MessagingControlCommand, text: string, replyToId: string): Promise<void> {
+        // The connector's lossless text splitter also fits Teams' Markdown command replies.
+        for (const part of command.type === 'git-status' ? chunkWhatsAppText(text, 3000) : [text]) {
+            await this.deps.sendReply(part, replyToId);
+        }
+    }
+
     private async handleThreadCommand(msg: InboundTeamsMessage, command: MessagingControlCommand, silent = false): Promise<void> {
         const root = msg.replyToMessageId!;
         if (silent && (command.type === 'list-repos' || command.type === 'list-topics' || command.type === 'list-remotes'
-            || command.type === 'help' || command.type === 'quota')) return;
+            || command.type === 'help' || command.type === 'quota' || command.type === 'git-status')) return;
         // Remote browsing is read-only and never touches the thread's selection.
         const remoteBrowse = command.type === 'list-remotes' || (command.type === 'list-topics' && !!command.args);
-        if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota' || remoteBrowse) {
+        if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota' || command.type === 'git-status' || remoteBrowse) {
             this.deps.recordThreadCommand?.(msg);
-            await this.deps.sendReply(command.type === 'help' ? formatMessagingHelp(TEAMS_FORMAT)
+            await this.sendControlReply(command, command.type === 'help' ? formatMessagingHelp(TEAMS_FORMAT)
                 : command.type === 'quota' ? await readQuotaReply(this.deps.getQuota)
-                    : await this.handleControlCommand('', command, `${msg.channelId}\0${root}`), root);
+                    : await this.handleControlCommand('', command, `${msg.channelId}\0${root}`, msg), root);
             return;
         }
         if (command.type === 'compact') {

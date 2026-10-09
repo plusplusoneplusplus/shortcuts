@@ -17,6 +17,7 @@ import type { CompactProcessOutcome } from '../processes/compact-process';
 import { resolveChatWorkspace, resolveWorkspace } from './chat-target';
 import { listRemotesReply, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
 import { localTopicsReply, resolveLocalTopic, type LocalTopicSlot } from './local-topics';
+import { localGitStatusReply, type MessagingGitStatusReader } from './git-status';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
 /** Compacts a chat's provider session; throws `APIError` on guard failures. */
@@ -40,6 +41,8 @@ export interface MessagingSelection {
 }
 
 export interface MessagingCommandContext {
+    dataDir?: string;
+    readGitStatus?: MessagingGitStatusReader;
     helpFormat?: MessagingHelpFormat;
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
     selection: MessagingSelection;
@@ -165,6 +168,7 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
     }
 
     const workspaces = await ctx.store.getWorkspaces();
+    if (command.type === 'git-status') return localGitStatusReply(workspaces, ctx.dataDir, ctx.readGitStatus, ctx.escape);
     if (command.type === 'compact') {
         let target = await ctx.compactTarget?.();
         if (!target) {

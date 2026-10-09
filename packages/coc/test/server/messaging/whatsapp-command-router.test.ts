@@ -100,6 +100,59 @@ describe('WhatsApp workspace command routing', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
+    it('admits git status only from the paired account in the configured group and preserves bindings', async () => {
+        const readGitStatus = vi.fn().mockResolvedValue({
+            branch: { branch: 'main', isDetached: false, dirty: false, ahead: 8, behind: 0, trackingBranch: 'origin/main', unborn: false },
+            entries: [], conflicts: 0, trackingAvailable: true,
+        });
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'ws-a', name: 'Alpha', rootPath: path.join(dir, 'alpha') },
+            { id: 'ws-b', name: 'Beta', rootPath: path.join(dir, 'beta') },
+        ]);
+        bindings.selectRepo('ws-a');
+        bindings.selectTopic('ws-a', 'topic-a');
+        const questions = { tryAnswer: vi.fn().mockResolvedValue(true) };
+        router = new WhatsAppCommandRouter({ store, bindings, dataDir: dir, groupJid: () => 'group@g.us', enqueue, send, react, readGitStatus, questions });
+        await router.handle(inbound('git status', 'other', { fromMe: false }));
+        await router.handle(inbound('git status', 'wrong-group', { chatJid: 'elsewhere@g.us' }));
+        expect(readGitStatus).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+        await router.handle(inbound('/GIT STATUS', 'status'));
+        await router.handle(inbound('/GIT STATUS', 'status'));
+        expect(readGitStatus).toHaveBeenCalledTimes(2);
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Alpha - main\nclean; 0 conflicts; origin/main: 8 ahead, 0 behind'), 'status');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Beta - main'), 'status');
+        expect(bindings.selectedRepo).toBe('ws-a');
+        expect(bindings.topic('ws-a')).toBe('topic-a');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(questions.tryAnswer).not.toHaveBeenCalled();
+    });
+
+    it('chunks all Git repo summaries losslessly and records every outbound part', async () => {
+        const workspaces = Array.from({ length: 90 }, (_, i) => ({
+            id: `repo-${i}`, name: `Repo ${i}`, rootPath: path.join(dir, `repo-${i}`),
+        }));
+        vi.mocked(store.getWorkspaces).mockResolvedValue(workspaces);
+        send.mockImplementation(async (_text: string, quoted: string) => `${quoted}-${send.mock.calls.length}`);
+        router = new WhatsAppCommandRouter({
+            store, bindings, groupJid: () => 'group@g.us', enqueue, send, react,
+            readGitStatus: async () => ({
+                branch: { branch: 'main', isDetached: false, dirty: false, ahead: 0, behind: 0, unborn: false },
+                entries: [], conflicts: 0, trackingAvailable: false,
+            }),
+        });
+        await router.handle(inbound('git status', 'many'));
+        expect(send.mock.calls.length).toBeGreaterThan(1);
+        const text = send.mock.calls.map(([part]) => part).join('');
+        for (const ws of workspaces) expect(text).toContain(`${ws.name} - main\nclean; 0 conflicts; no upstream`);
+        send.mock.calls.forEach(([part, quoted], i) => {
+            expect(part.length).toBeLessThanOrEqual(4096);
+            expect(quoted).toBe('many');
+            expect(bindings.isKnownMessage(`many-${i + 1}`)).toBe(true);
+        });
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('selects topics across accessible workspaces and creates a fresh topic on demand', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));

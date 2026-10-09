@@ -359,10 +359,18 @@ references before editing. Paths are package-relative.
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
   bold or Teams Markdown converted to safe HTML by the manager; unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
-  answers selection, help, quota and `compact [instructions]` for both routers via a
+  answers selection, help, quota, `git status` and `compact [instructions]` for both routers via a
   `MessagingSelection` adapter. Quota replies share `formatQuotaReply` across WhatsApp
   and Teams channel/thread commands, report every finite snapshot with `5h`/`7d` window
   labels and `% left`, and preserve unknown values and limit-id prefixes.
+  `git status` uses `messaging/git-status.ts` to read every accessible registered local
+  repo, expanding groups within the supplied registry and deduplicating roots.
+  Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
+  this command bypasses pending question answers and never changes selection or invokes AI.
+  Git reads reuse native parsers and forge's WSL runner with optional locks disabled,
+  without safe-directory writes or fetch. Replies report changes/conflicts, detached/unborn
+  HEAD, missing upstream and per-repo failures; local tracking refs may be stale.
+  Reuse lossless connector text chunking; never silently drop repositories.
   With no selected repo (or a removed one), plain messages
   and topic commands in both connectors use the built-in Global workspace via
   `resolveChatWorkspace` in `chat-target.ts` (fixed reply if Global is missing; the

@@ -3,6 +3,8 @@ import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@pluspluso
 import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
 import { ImageDownloadError, isMessagingControlCommand, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { chunkWhatsAppText } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import type { MessagingGitStatusReader } from './git-status';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import { resolveChatWorkspace } from './chat-target';
@@ -39,6 +41,7 @@ export interface WhatsAppRouterDeps {
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;
     getQuota?: MessagingQuotaSource;
+    readGitStatus?: MessagingGitStatusReader;
     compact?: MessagingCompactor;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
     remotes?: MessagingRemoteDirectory;
@@ -148,7 +151,7 @@ export class WhatsAppCommandRouter {
         let images: PreparedIncomingImages | undefined;
         let sourceMessageIds: string[] | undefined;
         try {
-            if (!hasImages && !hadPendingImages && await this.deps.questions?.tryAnswer('whatsapp', {
+            if (command.type !== 'git-status' && !hasImages && !hadPendingImages && await this.deps.questions?.tryAnswer('whatsapp', {
                 chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
                 reply: async text => { await reply(text); }, acknowledge: () => this.deps.react(msg.messageId),
             })) return;
@@ -163,8 +166,10 @@ export class WhatsAppCommandRouter {
                 if (bindings.isKnownMessage(msg.messageId)) return;
                 bindings.recordOutbound(msg.messageId);
                 await react();
-                await reply(await handleMessagingCommand(command, {
+                const text = await handleMessagingCommand(command, {
                     store: this.deps.store,
+                    dataDir: this.deps.dataDir,
+                    readGitStatus: this.deps.readGitStatus,
                     helpFormat: WHATSAPP_HELP_FORMAT,
                     getQuota: this.deps.getQuota,
                     compact: this.deps.compact,
@@ -192,7 +197,8 @@ export class WhatsAppCommandRouter {
                             bindings.selectTopic(id, processId);
                         },
                     },
-                }));
+                });
+                for (const part of command.type === 'git-status' ? chunkWhatsAppText(text) : [text]) await reply(part);
                 return;
             }
             const workspaces = await this.deps.store.getWorkspaces();
