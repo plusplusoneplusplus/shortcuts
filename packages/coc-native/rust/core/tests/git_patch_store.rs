@@ -35,6 +35,57 @@ fn patch(text: &str) -> PatchResult {
 }
 
 #[test]
+fn cancelled_transports_cannot_read_cached_bytes_or_reserve_capacity() {
+    let root = tempfile::tempdir().unwrap();
+    let identity = scope(root.path());
+    let store = PatchStore::open(identity.clone(), 1, 4096).unwrap();
+    let raw = patch("cached").content.raw;
+    store
+        .complete_transport(&identity, store.begin_transport(&identity).unwrap(), raw.clone(), None)
+        .unwrap();
+    for bytes in [raw.clone(), patch("uncached").content.raw] {
+        let ticket = store.begin_transport(&identity).unwrap();
+        ticket.request_cancellation.cancel();
+        ticket.request_cancellation.cancel();
+        assert_eq!(
+            store.complete_transport(&identity, ticket, bytes, None),
+            Err(PatchStoreError::Cancelled)
+        );
+    }
+    assert_eq!(
+        store
+            .complete_transport(
+                &identity,
+                store.begin_transport(&identity).unwrap(),
+                raw.clone(),
+                None
+            )
+            .unwrap()
+            .content
+            .raw,
+        raw
+    );
+    let mut local = identity;
+    local.source = PatchSource::Local { kind: "revision".into() };
+    let store = PatchStore::open(local.clone(), 1, 4096).unwrap();
+    let ticket = store.begin_transport(&local).unwrap();
+    ticket.request_cancellation.cancel();
+    assert_eq!(
+        store.complete_working_tree_transport(&local, ticket, vec![raw], None, false),
+        Err(PatchStoreError::Cancelled)
+    );
+    store
+        .complete_working_tree_transport(
+            &local,
+            store.begin_transport(&local).unwrap(),
+            vec![],
+            None,
+            false,
+        )
+        .unwrap();
+}
+
+#[test]
 fn working_tree_snapshots_retain_composition_and_reject_revoked_transports() {
     let root = tempfile::tempdir().unwrap();
     let mut identity = scope(root.path());

@@ -10,6 +10,37 @@ const patch = 'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n' +
     '--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n' +
     '@@ -1 +1 @@\n---body\n+++body\n';
 
+it.each([
+    ['local', 'process'],
+    ['local', 'processWorkingTree'],
+    ['remote', 'process'],
+] as const)('cancels submitted %s %s without revoking independent requests', async (source, method) => {
+    const store = source === 'local' ? api.openGitPatchStore('request-cancellation', tmpdir()) :
+        api.openRemoteGitPatchStore('request-cancellation', tmpdir(), {
+            provider: 'github', host: 'github.com', repository: 'github:example/repo', sourceId: 'pr:1',
+        });
+    try {
+        // Include a cache hit: cancellation also guards event-loop delivery
+        // after the worker has already finished.
+        await store.beginTransport().process(patch);
+        if (source === 'local') await store.beginTransport().processWorkingTree([patch, '']);
+        for (const raw of [patch, patch.replace('+++body', '+fresh')]) {
+            const request = store.beginTransport();
+            const independent = store.beginTransport();
+            const pending = method === 'process' ? request.process(raw) : request.processWorkingTree([raw, '']);
+            const other = method === 'process' ? independent.process(raw) : independent.processWorkingTree([raw, '']);
+            request.cancel();
+            request.cancel();
+            await expect(pending).rejects.toThrow('Cancelled');
+            expect((await other).files[0].raw).toBe(raw);
+            expect(() => request.process(raw)).toThrow('Closed');
+            expect((await store.beginTransport().process(raw)).content.raw).toBe(raw);
+        }
+    } finally {
+        store.dispose();
+    }
+});
+
 it.each(['refresh', 'dispose'] as const)('stops running host patches on %s without blocking Node', async action => {
     for (const workingTree of [false, true]) {
         const root = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'patch-cancel-')));

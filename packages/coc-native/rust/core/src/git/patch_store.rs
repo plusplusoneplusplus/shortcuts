@@ -102,11 +102,29 @@ pub enum PatchStoreError {
     ScopeMismatch,
     Closed,
     Stale,
+    Cancelled,
     Capacity,
     Compute(String),
 }
 
 type Outcome = Result<Arc<PatchResult>, PatchStoreError>;
+
+#[derive(Clone, Default)]
+pub struct PatchCancellation(Arc<AtomicBool>);
+
+impl PatchCancellation {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn check(&self) -> Result<(), PatchStoreError> {
+        if self.0.load(Ordering::Acquire) {
+            Err(PatchStoreError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
 
 #[derive(Default)]
 struct Flight {
@@ -123,12 +141,21 @@ impl Flight {
         }
     }
 
-    fn wait(&self) -> Outcome {
+    fn wait(&self, cancellation: Option<&PatchCancellation>) -> Outcome {
         let mut slot = self.result.lock();
-        while slot.is_none() {
-            self.ready.wait(&mut slot);
+        loop {
+            if let Some(cancellation) = cancellation {
+                cancellation.check()?;
+            }
+            if let Some(result) = slot.as_ref() {
+                return result.clone();
+            }
+            if cancellation.is_some() {
+                self.ready.wait_for(&mut slot, std::time::Duration::from_millis(10));
+            } else {
+                self.ready.wait(&mut slot);
+            }
         }
-        slot.as_ref().unwrap().clone()
     }
 }
 
@@ -160,6 +187,7 @@ pub struct PatchTransport {
     identity: Arc<()>,
     generation: u64,
     cancellation: Arc<AtomicBool>,
+    pub request_cancellation: PatchCancellation,
 }
 
 impl PatchStore {
@@ -196,7 +224,7 @@ impl PatchStore {
         key: PatchKey,
         compute: impl FnOnce() -> Result<PatchResult, String>,
     ) -> Outcome {
-        self.compute(scope, key, None, compute)
+        self.compute(scope, key, None, None, compute)
     }
 
     fn compute(
@@ -204,6 +232,7 @@ impl PatchStore {
         scope: &PatchScope,
         key: PatchKey,
         generation: Option<u64>,
+        cancellation: Option<&PatchCancellation>,
         compute: impl FnOnce() -> Result<PatchResult, String>,
     ) -> Outcome {
         let (flight, owner) = {
@@ -211,6 +240,9 @@ impl PatchStore {
             self.check(scope, &state)?;
             if generation.is_some_and(|generation| generation != state.generation) {
                 return Err(PatchStoreError::Stale);
+            }
+            if let Some(cancellation) = cancellation {
+                cancellation.check()?;
             }
             if !key.valid() {
                 return Err(PatchStoreError::InvalidIdentity);
@@ -245,7 +277,11 @@ impl PatchStore {
             // generation token: an older completion cannot replace a new one.
             if state.pending.get(&key).is_some_and(|current| Arc::ptr_eq(current, &flight)) {
                 state.pending.remove(&key);
-                if let Ok(value) = &result {
+                // Abandoned owners cannot retain their output, but independent
+                // waiters still receive the shared computation's actual outcome.
+                if let Some(value) = result.as_ref().ok().filter(|_| {
+                    cancellation.is_none_or(|cancellation| cancellation.check().is_ok())
+                }) {
                     let bytes = retained_bytes(&key, value);
                     if !value.content.truncated && bytes <= self.max_bytes {
                         while state.cache.len() >= self.max_entries
@@ -260,7 +296,7 @@ impl PatchStore {
                 flight.finish(result);
             }
         }
-        flight.wait()
+        flight.wait(cancellation)
     }
 
     pub fn scope(&self) -> &PatchScope {
@@ -274,6 +310,7 @@ impl PatchStore {
             identity: self.identity.clone(),
             generation: state.generation,
             cancellation: state.cancellation.clone(),
+            request_cancellation: PatchCancellation::default(),
         })
     }
 
@@ -286,7 +323,7 @@ impl PatchStore {
         if ticket.generation != state.generation {
             return Err(PatchStoreError::Stale);
         }
-        Ok(())
+        ticket.request_cancellation.check()
     }
 
     /// Hash and parse supplied bytes on the worker, using the same bounded
@@ -298,6 +335,7 @@ impl PatchStore {
         raw: String,
         max_lines: Option<i64>,
     ) -> Result<PatchResult, PatchStoreError> {
+        self.check_ticket(&ticket)?;
         let fingerprint = blake3::hash(raw.as_bytes()).to_hex().to_string();
         self.complete_snapshot(scope, ticket, fingerprint, "supplied", max_lines, || {
             process_patch(raw, None)
@@ -312,6 +350,7 @@ impl PatchStore {
         max_lines: Option<i64>,
         headings: bool,
     ) -> Result<PatchResult, PatchStoreError> {
+        self.check_ticket(&ticket)?;
         if !matches!(scope.source, PatchSource::Local { .. }) {
             return Err(PatchStoreError::InvalidIdentity);
         }
@@ -344,8 +383,16 @@ impl PatchStore {
         self.check_ticket(&ticket)?;
         let key =
             PatchKey { version: PatchVersion::Fingerprint(fingerprint), variant: variant.into() };
-        let result = self.compute(scope, key, Some(ticket.generation), || Ok(process()))?;
-        Ok(truncate_patch(&result, max_lines))
+        let result = self.compute(
+            scope,
+            key,
+            Some(ticket.generation),
+            Some(&ticket.request_cancellation),
+            || Ok(process()),
+        )?;
+        let result = truncate_patch(&result, max_lines);
+        self.check_ticket(&ticket)?;
+        Ok(result)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -434,7 +481,7 @@ impl PatchStore {
             variant: format!("{mode}\0{path:?}\0{context:?}"),
         };
         let result = self
-            .compute(&self.scope, key, Some(ticket.generation), || {
+            .compute(&self.scope, key, Some(ticket.generation), None, || {
                 run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|e| e.to_string())
             })
             .map_err(|error| match error {
@@ -495,3 +542,7 @@ fn retained_bytes(key: &PatchKey, value: &PatchResult) -> usize {
             })
             .sum::<usize>()
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/patch_cancellation.rs"]
+mod cancellation_tests;
