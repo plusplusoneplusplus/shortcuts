@@ -129,7 +129,7 @@ describe('phone threads start chats in sentinel mode', () => {
         }
     });
 
-    it('Teams routes first, pending and active follow-up images through real server callbacks', { timeout: 20_000 }, async () => {
+    it.each([false, true])('Teams routes first, pending and active follow-up images through real server callbacks (reverse snapshot=%s)', { timeout: 20_000 }, async reverseSnapshot => {
         await start(false);
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const { TeamsMessagingManager } = await import('../../../src/server/messaging/teams-messaging-manager');
@@ -162,10 +162,14 @@ describe('phone threads start chats in sentinel mode', () => {
             await handle(inbound('teams-active', `/autopilot [${initial.processId}] inspect again`));
             const tasks = deps.relayQueue.getAll();
             expect(tasks).toHaveLength(3);
-            for (const [index, task] of tasks.entries()) {
+            if (reverseSnapshot) tasks.reverse();
+            for (const [index, prompt] of ['describe this', 'compare this', 'inspect again'].entries()) {
+                const matches = tasks.filter((task: { payload: { prompt: string } }) => task.payload.prompt === prompt);
+                expect(matches).toHaveLength(1);
+                const [task] = matches;
                 expect(task.repoId).toBe(GLOBAL);
                 expect(task.payload.mode).toBe(index === 0 ? 'ask' : 'autopilot');
-                expect(task.payload.prompt).toBe(['describe this', 'compare this', 'inspect again'][index]);
+                expect(task.payload.prompt).toBe(prompt);
                 expect(task.payload.processId).toBe(index === 0 ? undefined : initial.processId);
                 expect(task.payload.attachments).toHaveLength(1);
                 expect(fs.readFileSync(task.payload.attachments[0].path)).toEqual(bytes);
