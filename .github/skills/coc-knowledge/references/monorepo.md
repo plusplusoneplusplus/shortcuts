@@ -89,7 +89,7 @@ manifest.
 
 ### Native build boundary
 
-Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; explicit-distro WSL stores fingerprint freshly transported bytes through single-use continuations. Native remote handles require provider/host/repository/source identity and optional iteration/base-iteration metadata, accept supplied transport only and keep credentials in TypeScript. Refresh/disposal revoke pending results and transport generations. External I/O occupies no Rust worker. Working-tree and production PR route adapters use stateless workers. Detailed contracts live in the native instructions.
+Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; explicit-distro WSL stores fingerprint freshly transported bytes through single-use continuations. Native remote handles require provider/host/repository/source identity and optional iteration/base-iteration metadata, accept supplied transport only and keep credentials in TypeScript. Refresh/disposal revoke pending results and transport generations. External I/O occupies no Rust worker. Working-tree adapters use stateless workers. Detailed contracts live in the native instructions.
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64
@@ -116,9 +116,14 @@ Forge PR/iteration factories require `RemoteDiffContext` (workspaceId, host, pro
 ADO patch construction uses Rust `buildRemoteGitPatch` with explicit existence and
 supplied content; authenticated Forge transport reads rename bases at their original
 paths and requires successful content reads. Empty existing files stay modified.
-Production PR per-file extraction and list statistics use Rust parsing and summaries;
-quoted Git paths and exact chunk bytes survive the HTTP adapter. Native-load failures
-are visible. PR full-context patches use Forge `loadComparisonPatch` and Rust direct base/head
+CoC `repos/pr-patch.ts` supplies combined/per-file hunks and list statistics through
+request-owned Rust remote stores, capturing continuations before authenticated patch
+I/O and retiring/disposal on every outcome. Scope includes selected workspace/root,
+provider host/repository and PR; ADO uses the effective configured organization.
+Transport and scope share one config snapshot. Rootless selections use stateless
+Rust processing without inventing a checkout. Quoted paths and exact bytes survive
+the HTTP adapter; native-load failures are visible. PR full-context patches use Forge
+`loadComparisonPatch` and Rust direct base/head
 planning/processing for host and WSL; TypeScript retains missing-commit fetch/retry
 and provider-hunk fallback. PR list refreshes fetch current provider bytes and convert Rust
 summaries directly to diffStats; enriched rows live only in the existing list-response

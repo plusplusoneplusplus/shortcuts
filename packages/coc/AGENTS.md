@@ -317,14 +317,19 @@ references before editing. Paths are package-relative.
   Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
   Working-tree per-file patch routes use Forge loadWorkingTreePatch for host/WSL
   planning, Rust processing and truncation; native-load errors return HTTP 500
-  with rebuild instructions. PR supplied per-file chunks and list statistics use
-  Rust parsing/summaries, preserving quoted paths and raw bytes; required-native
+  with rebuild instructions. PR combined/per-file hunks and list statistics use
+  `repos/pr-patch.ts` request-owned Rust remote stores with explicit workspace/root,
+  provider host/repository and PR identity. Capture continuations before patch I/O;
+  retire/dispose on success or failure. Remote-only selections without a root use
+  stateless Rust processing, preserving their hunk fallback. Required-native
   failures remain visible. PR full-context patches use Forge loadComparisonPatch with
   direct base/head Rust planning and host/WSL execution; TypeScript orchestrates commit
   fetch/retry and provider-hunk fallback. List refreshes fetch current provider bytes
   and map Rust summaries directly to diffStats; only the list response cache retains
-  enriched rows. Combined and per-file hunk routes fetch current provider bytes through
-  the selected clone; full-context fallback uses that same transport. PR snapshot
+  enriched rows. Patch transport and source identity use the same provider config;
+  ADO identity includes its effective configured organization. Combined and per-file
+  hunk routes fetch current bytes through the selected clone; full-context fallback
+  uses that same transport. PR snapshot
   fallback metadata uses Forge parseFullDiffAsync
   for decoded paths and file existence; full-text loading and its cache remain separate.
 
