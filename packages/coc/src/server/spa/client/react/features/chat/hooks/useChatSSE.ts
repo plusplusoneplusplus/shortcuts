@@ -3,6 +3,7 @@ import { cloneApiBase } from '../../../repos/cloneRegistry';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { QueuedMessage } from '../../../utils/chatUtils';
 import { readBotControl } from '../../../utils/botControl';
+import type { ConversationSnapshotPayload, ProviderSessionPayload } from '@plusplusoneplusplus/coc-client';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
@@ -210,26 +211,50 @@ export function useChatSSE({
         eventSourceRef.current = es;
         setIsStreaming(true);
         const sseStartTime = Date.now();
+        let runningTurn: ConversationSnapshotPayload['runningTurn'];
 
-        const ensureAssistantTurn = (prev: ClientConversationTurn[]): ClientConversationTurn[] => {
+        const applyBinding = (binding: ProviderSessionPayload['activeProviderSession'] | undefined) => {
+            if (!binding) return;
+            setTask(prev => prev ? { ...prev, activeProviderSession: binding } : prev);
+            setProcessDetails?.(prev => prev ? { ...prev, activeProviderSession: binding } : prev);
+        };
+
+        const attributeStreamingTurn = (turn: ClientConversationTurn): ClientConversationTurn =>
+            runningTurn && turn.role === 'assistant' && turn.streaming && turn.turnIndex === runningTurn.turnIndex
+                ? { ...turn, provider: runningTurn.provider, segmentId: runningTurn.segmentId }
+                : turn;
+
+        const findAssistantIndex = (turns: ClientConversationTurn[]): number =>
+            runningTurn
+                ? turns.findIndex(turn => turn.role === 'assistant' && turn.turnIndex === runningTurn.turnIndex)
+                : turns.at(-1)?.role === 'assistant' ? turns.length - 1 : -1;
+
+        const ensureAssistantTurn = (prev: ClientConversationTurn[]): { turns: ClientConversationTurn[]; assistantIndex: number } => {
+            const assistantIndex = findAssistantIndex(prev);
+            if (assistantIndex !== -1) {
+                const turns = [...prev];
+                turns[assistantIndex] = attributeStreamingTurn(turns[assistantIndex]);
+                return { turns, assistantIndex };
+            }
             const last = prev[prev.length - 1];
-            if (last && last.role === 'assistant') return prev;
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
-            return [...prev, {
+            return { assistantIndex: prev.length, turns: [...prev, {
                 role: 'assistant',
                 content: '',
                 streaming: true,
                 timeline: [],
-                turnIndex: nextIdx,
-                provider: last?.provider,
-                segmentId: last?.segmentId,
-            }];
+                turnIndex: runningTurn?.turnIndex ?? nextIdx,
+                provider: runningTurn?.provider ?? last?.provider,
+                segmentId: runningTurn ? runningTurn.segmentId : last?.segmentId,
+            }] };
         };
 
         es.addEventListener('conversation-snapshot', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
-                if (data.turns) setTurnsAndRef(data.turns);
+                runningTurn = data.runningTurn;
+                applyBinding(data.activeProviderSession);
+                if (data.turns) setTurnsAndRef(data.turns.map(attributeStreamingTurn));
                 if (Object.prototype.hasOwnProperty.call(data, 'botControl')) {
                     const botControl = readBotControl(data.botControl);
                     setTask(prev => prev ? { ...prev, botControl } : prev);
@@ -243,14 +268,28 @@ export function useChatSSE({
             } catch { /* ignore */ }
         });
 
+        es.addEventListener('provider-session', (event: Event) => {
+            try {
+                const data: ProviderSessionPayload = JSON.parse((event as MessageEvent).data);
+                if (!data.activeProviderSession || !Number.isInteger(data.turnIndex)) return;
+                runningTurn = {
+                    turnIndex: data.turnIndex,
+                    provider: data.activeProviderSession.provider,
+                    segmentId: data.activeProviderSession.segmentId,
+                };
+                applyBinding(data.activeProviderSession);
+                setTurnsAndRef(prev => prev.map(attributeStreamingTurn));
+            } catch { /* ignore */ }
+        });
+
         es.addEventListener('chunk', (event: Event) => {
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 const chunk = data.content || '';
                 setTurnsAndRef((prev) => {
-                    const turns = ensureAssistantTurn(prev);
-                    const last = turns[turns.length - 1];
-                    turns[turns.length - 1] = {
+                    const { turns, assistantIndex } = ensureAssistantTurn(prev);
+                    const last = turns[assistantIndex];
+                    turns[assistantIndex] = {
                         ...last,
                         content: (last.content || '') + chunk,
                         streaming: true,
@@ -272,8 +311,8 @@ export function useChatSSE({
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 setTurnsAndRef((prev) => {
-                    const turns = ensureAssistantTurn(prev);
-                    const last = turns[turns.length - 1];
+                    const { turns, assistantIndex } = ensureAssistantTurn(prev);
+                    const last = turns[assistantIndex];
                     const toolCall: any = {
                         id: data.toolCallId,
                         toolName: data.toolName || 'unknown',
@@ -284,7 +323,7 @@ export function useChatSSE({
                         ...(data.parentToolCallId ? { parentToolCallId: data.parentToolCallId } : {}),
                         ...(data.approvalOutcome ? { approvalOutcome: data.approvalOutcome } : {}),
                     };
-                    turns[turns.length - 1] = {
+                    turns[assistantIndex] = {
                         ...last,
                         streaming: true,
                         timeline: [...(last.timeline || []), { type: eventType, timestamp: new Date().toISOString(), toolCall }],
@@ -304,8 +343,9 @@ export function useChatSSE({
                 const progressMessage = typeof data.progressMessage === 'string' ? data.progressMessage.trim() : '';
                 if (!data.toolCallId || !progressMessage) return;
                 setTurnsAndRef((prev) => {
-                    const last = prev[prev.length - 1];
-                    if (!last || last.role !== 'assistant') return prev;
+                    const assistantIndex = findAssistantIndex(prev);
+                    if (assistantIndex === -1) return prev;
+                    const last = prev[assistantIndex];
                     const timeline = last.timeline || [];
                     let index = -1;
                     for (let i = timeline.length - 1; i >= 0; i--) {
@@ -316,7 +356,7 @@ export function useChatSSE({
                     const nextTimeline = [...timeline];
                     nextTimeline[index] = { ...item, toolCall: { ...item.toolCall, progressMessage } };
                     const turns = [...prev];
-                    turns[turns.length - 1] = { ...last, timeline: nextTimeline };
+                    turns[assistantIndex] = { ...last, timeline: nextTimeline };
                     return turns;
                 });
             } catch { /* ignore */ }

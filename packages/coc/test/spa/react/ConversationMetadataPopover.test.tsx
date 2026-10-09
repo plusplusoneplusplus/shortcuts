@@ -823,6 +823,23 @@ describe('buildRows – model default fallback', () => {
 });
 
 describe('buildRows – agent name', () => {
+    it('preserves explicit agent names when the active binding is invalid', () => {
+        const process = {
+            activeProviderSession: { provider: 'unknown' },
+            metadata: { agentName: 'custom-agent', provider: 'codex' },
+        };
+        expect(buildRows(process).find(row => row.label === 'Agent Provider')?.value).toBe('custom-agent');
+    });
+
+    it('uses the active provider after switching without rewriting source metadata', () => {
+        const process = {
+            ...BASE_PROCESS,
+            activeProviderSession: { provider: 'copilot', segmentId: 'current', firstTurnIndex: 2 },
+        };
+        expect(buildRows(process).find(row => row.label === 'Agent Provider')?.value).toBe('copilot');
+        expect(process.metadata.provider).toBe('codex');
+    });
+
     it('shows provider attribution as Agent Provider when present in metadata', () => {
         const rows = buildRows({ id: 'p-agent-1', metadata: { provider: 'copilot' } });
         const agentRow = rows.find(r => r.label === 'Agent Provider');

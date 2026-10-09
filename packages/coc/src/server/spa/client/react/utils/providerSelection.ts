@@ -40,6 +40,15 @@ export function isConcreteChatProvider(value: unknown): value is ConcreteChatPro
     return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode';
 }
 
+export function resolveActiveChatProvider(
+    process: { activeProviderSession?: { provider?: unknown } } | null | undefined,
+    fallback?: unknown,
+): ConcreteChatProvider | undefined {
+    const active = process?.activeProviderSession?.provider;
+    if (isConcreteChatProvider(active)) return active;
+    return isConcreteChatProvider(fallback) ? fallback : undefined;
+}
+
 export function isChatProvider(value: unknown): value is ChatProvider {
     return isConcreteChatProvider(value) || value === 'auto';
 }

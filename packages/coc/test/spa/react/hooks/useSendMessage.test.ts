@@ -162,6 +162,38 @@ describe('useSendMessage', () => {
         expect(body).not.toHaveProperty('provider');
     });
 
+    it('attributes optimistic turns to the active provider without adding a request override', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const setTurnsAndRef = vi.fn();
+        const opts = makeOptions({ activeProvider: 'copilot', setTurnsAndRef });
+        const { result } = renderHook(() => useSendMessage(opts));
+
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('provider');
+        const historicalTurn = { role: 'assistant', content: 'Earlier reply', provider: 'codex', turnIndex: 1 };
+        const turns = setTurnsAndRef.mock.calls[0][0]([historicalTurn]);
+        expect(turns[0]).toBe(historicalTurn);
+        expect(turns.slice(1)).toEqual([
+            expect.objectContaining({ role: 'user', provider: 'copilot' }),
+            expect.objectContaining({ role: 'assistant', provider: 'copilot', streaming: true }),
+        ]);
+    });
+
+    it('uses a confirmed switch rather than the active provider for optimistic turns', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const setTurnsAndRef = vi.fn();
+        const opts = makeOptions({ activeProvider: 'codex', providerOverride: 'copilot', setTurnsAndRef });
+        const { result } = renderHook(() => useSendMessage(opts));
+
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        expect(setTurnsAndRef.mock.calls[0][0]([])).toEqual([
+            expect.objectContaining({ role: 'user', provider: 'copilot' }),
+            expect.objectContaining({ role: 'assistant', provider: 'copilot' }),
+        ]);
+    });
+
     it('lets a retry provider override the current composer provider', async () => {
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
         const setTurnsAndRef = vi.fn();

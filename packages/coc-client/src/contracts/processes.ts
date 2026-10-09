@@ -23,6 +23,8 @@ export interface ConversationTurn {
 
 export interface ConversationSnapshotPayload {
   turns: ConversationTurn[];
+  activeProviderSession?: ActiveProviderSession;
+  runningTurn?: { turnIndex: number; provider: ChatProviderId; segmentId?: string };
   /** Null explicitly clears control; omitted when identification is disabled. */
   botControl?: BotControlPresentation | null;
   sessionTokenLimit?: number;
@@ -30,6 +32,19 @@ export interface ConversationSnapshotPayload {
   sessionSystemTokens?: number;
   sessionToolTokens?: number;
   sessionConversationTokens?: number;
+}
+
+export interface ActiveProviderSession {
+  provider: ChatProviderId;
+  sessionId?: string;
+  segmentId: string;
+  firstTurnIndex: number;
+  boundAt?: string;
+}
+
+export interface ProviderSessionPayload {
+  activeProviderSession: ActiveProviderSession;
+  turnIndex: number;
 }
 
 export interface AIProcess {
@@ -44,6 +59,7 @@ export interface AIProcess {
   result?: string;
   metadata?: JsonObject;
   botControl?: BotControlPresentation;
+  activeProviderSession?: ActiveProviderSession;
   conversationTurns?: ConversationTurn[];
   title?: string;
   customTitle?: string;

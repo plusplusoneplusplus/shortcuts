@@ -431,6 +431,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // segment until the target provider reports a session, at which point
         // `onSessionCreated` fills this in before the response is appended.
         let turnSegmentId = canResumeSession ? activeBinding.segmentId : undefined;
+        let runningAssistantTurnIndex = (process.conversationTurns ?? []).reduce((max, turn) => Math.max(max, turn.turnIndex), -1) + 1;
 
         // A reconstructed continuation starts on a session that has never seen
         // this conversation, so it gets the bounded handoff built from CoC's
@@ -478,7 +479,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // Exception: cron/wakeup-triggered follow-ups have no POST /message
             // route — the user turn must be created here.
             if (turnSource && !options?.userTurnPersisted) {
-                await this.store.appendConversationTurn(
+                const userTurn = await this.store.appendConversationTurn(
                     processId,
                     (idx) => ({
                         role: 'user' as const,
@@ -502,6 +503,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     }),
                     { additionalUpdates: { status: 'running' } },
                 );
+                if (userTurn) runningAssistantTurnIndex = userTurn.turn.turnIndex + 1;
             }
 
             const cronDeps = this.buildCronToolDeps(processId);
@@ -737,6 +739,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             turnIndex: process.conversationTurns?.length ?? 0,
                         });
                         turnSegmentId = next.binding.segmentId;
+                        this.store.emitProcessEvent(processId, {
+                            type: 'provider-session',
+                            activeProviderSession: next.binding,
+                            turnIndex: runningAssistantTurnIndex,
+                        });
                         if (continuation.providerChanged) {
                             recordProviderSwitchServerTelemetry({
                                 action: 'session-created',

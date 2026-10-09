@@ -115,6 +115,109 @@ describe('useChatSSE', () => {
         vi.restoreAllMocks();
     });
 
+    it('repairs only the running snapshot assistant and mirrors the authoritative binding', () => {
+        const binding = { provider: 'copilot', sessionId: 'new-session', segmentId: 'new', firstTurnIndex: 2 };
+        let turns: ClientConversationTurn[] = [];
+        const setTask = vi.fn();
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({
+            setTask, setProcessDetails,
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        const history = { role: 'assistant', content: 'old', turnIndex: 1, provider: 'codex', segmentId: 'old' };
+        act(() => MockEventSource.last._emit('conversation-snapshot', {
+            turns: [history, { role: 'user', content: 'switch', turnIndex: 2, provider: 'copilot' },
+                { role: 'assistant', content: 'partial', turnIndex: 3, streaming: true }],
+            activeProviderSession: binding,
+            runningTurn: { turnIndex: 3, provider: 'copilot', segmentId: 'new' },
+        }));
+        expect(turns[0]).toEqual(history);
+        expect(turns[2]).toMatchObject({ provider: 'copilot', segmentId: 'new', content: 'partial' });
+        const saved = { metadata: { provider: 'codex' } };
+        expect(setTask.mock.calls[0][0](saved)).toEqual({ ...saved, activeProviderSession: binding });
+        expect(setProcessDetails.mock.calls[0][0](saved)).toEqual({ ...saved, activeProviderSession: binding });
+        expect(setProcessDetails.mock.calls[0][0](null)).toBeNull();
+        act(() => MockEventSource.last._emit('chunk', { content: ' more' }));
+        expect(turns[2]).toMatchObject({ provider: 'copilot', content: 'partial more' });
+    });
+
+    it('uses running turn attribution before a switch replaces the outgoing binding', () => {
+        let turns: ClientConversationTurn[] = [];
+        renderHook(() => useChatSSE(makeOptions({
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        act(() => MockEventSource.last._emit('conversation-snapshot', {
+            turns: [{ role: 'user', content: 'switch', turnIndex: 2, provider: 'copilot' }],
+            activeProviderSession: { provider: 'codex', segmentId: 'old', firstTurnIndex: 0 },
+            runningTurn: { turnIndex: 3, provider: 'copilot' },
+        }));
+        act(() => MockEventSource.last._emit('tool-start', { toolCallId: 'tool-1', toolName: 'read' }));
+        expect(turns[1]).toMatchObject({ turnIndex: 3, provider: 'copilot', streaming: true });
+        expect(turns[1].segmentId).toBeUndefined();
+    });
+
+    it('corrects a live placeholder from the provider session without relabelling history or pending choices', () => {
+        const history: ClientConversationTurn = { role: 'assistant', content: 'old', turnIndex: 1, provider: 'codex' };
+        let turns: ClientConversationTurn[] = [history,
+            { role: 'assistant', content: 'partial', turnIndex: 3, provider: 'codex', streaming: true }];
+        const setTask = vi.fn();
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({
+            setTask, setProcessDetails,
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        const binding = { provider: 'copilot', segmentId: 'new', sessionId: 'new-session', firstTurnIndex: 2 };
+        act(() => MockEventSource.last._emit('provider-session', { activeProviderSession: binding, turnIndex: 3 }));
+        act(() => MockEventSource.last._emit('pending-message-added', { pendingMessage: { id: 'pending', provider: 'claude', content: 'later' } }));
+        act(() => MockEventSource.last._emit('message-queued', { provider: 'claude', turnIndex: 4 }));
+        act(() => MockEventSource.last._emit('chunk', { content: ' more' }));
+        expect(turns[0]).toBe(history);
+        expect(turns[1]).toMatchObject({ provider: 'copilot', segmentId: 'new', content: 'partial more' });
+        expect(setTask.mock.calls[0][0]({})).toEqual({ activeProviderSession: binding });
+        expect(setProcessDetails.mock.calls[0][0]({})).toEqual({ activeProviderSession: binding });
+    });
+
+    it('starts a new externally sent response without changing the preceding completed assistant', () => {
+        const history: ClientConversationTurn = { role: 'assistant', content: 'old', turnIndex: 1, provider: 'codex' };
+        let turns = [history];
+        renderHook(() => useChatSSE(makeOptions({
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        act(() => MockEventSource.last._emit('provider-session', {
+            activeProviderSession: { provider: 'copilot', segmentId: 'new', firstTurnIndex: 2 },
+            turnIndex: 3,
+        }));
+        expect(turns).toEqual([history]);
+        act(() => MockEventSource.last._emit('chunk', { content: 'new response' }));
+        expect(turns[0]).toBe(history);
+        expect(turns[1]).toMatchObject({ provider: 'copilot', segmentId: 'new', turnIndex: 3, content: 'new response' });
+    });
+
+    it('keeps chunks and tool events on the running assistant after an optimistic steering message', () => {
+        const steering: ClientConversationTurn = { role: 'user', content: 'Steer the response', turnIndex: 4, timeline: [] };
+        let turns: ClientConversationTurn[] = [
+            { role: 'assistant', content: 'partial', turnIndex: 3, provider: 'codex', streaming: true, timeline: [] },
+            steering,
+        ];
+        renderHook(() => useChatSSE(makeOptions({
+            setTurnsAndRef: next => { turns = typeof next === 'function' ? next(turns) : next; },
+        })));
+        act(() => MockEventSource.last._emit('provider-session', {
+            activeProviderSession: { provider: 'copilot', segmentId: 'new', firstTurnIndex: 2 },
+            turnIndex: 3,
+        }));
+        act(() => MockEventSource.last._emit('chunk', { content: ' more' }));
+        act(() => MockEventSource.last._emit('tool-start', { toolCallId: 'tool-1', toolName: 'read' }));
+        act(() => MockEventSource.last._emit('tool-progress', { toolCallId: 'tool-1', progressMessage: 'Reading' }));
+        expect(turns[0].timeline?.at(-1)?.toolCall?.progressMessage).toBe('Reading');
+        act(() => MockEventSource.last._emit('tool-complete', { toolCallId: 'tool-1', toolName: 'read', result: 'done' }));
+
+        expect(turns).toHaveLength(2);
+        expect(turns[0]).toMatchObject({ provider: 'copilot', turnIndex: 3, content: 'partial more' });
+        expect(turns[0].timeline?.at(-1)?.toolCall?.status).toBe('completed');
+        expect(turns[1]).toBe(steering);
+    });
+
     it('opens EventSource at correct URL when processId is provided', () => {
         renderHook(() => useChatSSE(makeOptions({ processId: 'pid-1' })));
         expect(MockEventSource.instances).toHaveLength(1);

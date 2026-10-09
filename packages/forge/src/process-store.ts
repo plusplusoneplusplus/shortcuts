@@ -4,7 +4,7 @@
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
-import type { BotControlMetadata, PendingMessage, ProcessCompactionState } from './ai/process-interfaces';
+import type { ActiveProviderSession, BotControlMetadata, PendingMessage, ProcessCompactionState } from './ai/process-interfaces';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
@@ -79,7 +79,9 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'tool-progress' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user' | 'mcp-oauth-required' | 'mcp-oauth-completed';
+    type: 'chunk' | 'complete' | 'provider-session' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'tool-progress' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user' | 'mcp-oauth-required' | 'mcp-oauth-completed';
+    /** Binding reported by the provider executing the assistant turn at turnIndex. */
+    activeProviderSession?: ActiveProviderSession;
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */

@@ -78,6 +78,8 @@ export interface UseSendMessageOptions {
      * active conversation provider and the request shape used by older servers.
      */
     providerOverride?: ChatProviderId;
+    /** Active provider used to attribute optimistic turns, not to route the request. */
+    activeProvider?: ChatProviderId;
     /**
      * Optional per-turn reasoning-effort override to include in the POST body.
      * `null` (or omitted) means no override — the executor falls back to the
@@ -153,6 +155,7 @@ export function useSendMessage({
     clearAttachedContext,
     modelOverride,
     providerOverride,
+    activeProvider,
     effortOverride,
     chatStyle,
     workspaceId,
@@ -449,7 +452,8 @@ export function useSendMessage({
         const pasteExternalized = rawContent.length > CLIENT_PASTE_THRESHOLD || undefined;
         setTurnsAndRef(prev => {
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
-            const providerAttribution = requestedProvider ? { provider: requestedProvider } : {};
+            const provider = requestedProvider ?? activeProvider;
+            const providerAttribution = provider ? { provider } : {};
             return [
                 ...prev,
                 { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized, ...providerAttribution, ...(modelOverride ? { model: modelOverride } : {}) },
@@ -486,7 +490,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

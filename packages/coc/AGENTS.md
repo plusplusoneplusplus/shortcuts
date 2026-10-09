@@ -236,6 +236,8 @@ references before editing. Paths are package-relative.
 - Resume the active provider only. Switches/unbound continuations
   use fresh sessions/bounded handoff via `src/server/executors/continuation-mode.ts`.
   Never pass session IDs across providers.
+  Provider UI resolves `activeProviderSession` before original task metadata;
+  live responses use turn attribution, never a queued or pending composer choice.
   Model: task/turn > repo mode default > repo default > provider/CLI.
 - Stopped chats require `resumeSessionId`/`strictSessionResume: true`; failed resume
   marks `metadata.stoppedChatResume` non-resumable, without replacement/fresh fallback.

@@ -68,6 +68,63 @@ describe('SSE replay', () => {
         store = createMockProcessStore();
     });
 
+    it('replays the current binding and running attribution without rewriting persisted history', async () => {
+        const binding = { provider: 'copilot', sessionId: 'new-session', segmentId: 'new', firstTurnIndex: 2 };
+        const history = { ...makeTurn('assistant', 'old', 1), provider: 'codex', segmentId: 'old' };
+        const proc = createProcessFixture({
+            id: 'switched', status: 'running', metadata: { provider: 'codex' },
+            activeProviderSession: binding,
+            conversationTurns: [history, { ...makeTurn('user', 'switch', 2), provider: 'copilot' },
+                makeTurn('assistant', 'partial', 3, true)],
+            pendingMessages: [{ id: 'later', content: 'later', provider: 'claude', createdAt: new Date().toISOString() }],
+        });
+        store.processes.set(proc.id, proc);
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, proc.id, store);
+        const snapshot = parseSSEFrames(res._chunks)[0].data as any;
+        expect(snapshot.activeProviderSession).toEqual(binding);
+        expect(snapshot.runningTurn).toEqual({ provider: 'copilot', segmentId: 'new', turnIndex: 3 });
+        expect(snapshot.turns[0]).toMatchObject({ provider: 'codex', segmentId: 'old' });
+        expect(snapshot.turns[2].provider).toBeUndefined();
+        expect(proc.conversationTurns![2].provider).toBeUndefined();
+        req.emit('close');
+    });
+
+    it('does not attribute a pending switch to the outgoing session before session creation', async () => {
+        const proc = createProcessFixture({
+            id: 'switching', status: 'running', metadata: { provider: 'codex' },
+            activeProviderSession: { provider: 'codex', sessionId: 'outgoing', segmentId: 'old', firstTurnIndex: 0 },
+            conversationTurns: [{ ...makeTurn('user', 'switch', 2), provider: 'copilot' }],
+        });
+        store.processes.set(proc.id, proc);
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, proc.id, store);
+        const snapshot = parseSSEFrames(res._chunks)[0].data as any;
+        expect(snapshot.activeProviderSession.provider).toBe('codex');
+        expect(snapshot.runningTurn).toEqual({ provider: 'copilot', turnIndex: 3 });
+        req.emit('close');
+    });
+
+    it('relays provider sessions without consulting the store on token events', async () => {
+        let output: ((event: ProcessOutputEvent) => void) | undefined;
+        store.onProcessOutput = vi.fn((_id, callback) => { output = callback; return vi.fn(); });
+        const proc = createProcessFixture({ id: 'live-binding', status: 'running', conversationTurns: [makeTurn('user', 'next', 2)] });
+        store.processes.set(proc.id, proc);
+        const req = createMockReq();
+        const res = createMockRes();
+        await handleProcessStream(req, res, proc.id, store);
+        const reads = store.getProcess.mock.calls.length;
+        const binding = { provider: 'copilot', segmentId: 'new', firstTurnIndex: 2, sessionId: 'new-session' };
+        output!({ type: 'provider-session', activeProviderSession: binding, turnIndex: 3 });
+        output!({ type: 'chunk', content: 'response' });
+        expect(parseSSEFrames(res._chunks).find(frame => frame.event === 'provider-session')?.data)
+            .toEqual({ activeProviderSession: binding, turnIndex: 3 });
+        expect(store.getProcess).toHaveBeenCalledTimes(reads);
+        req.emit('close');
+    });
+
     // Test 1: Replay full conversation as snapshot for completed process
     it('replays conversation as a snapshot for a completed process', async () => {
         const turns = [

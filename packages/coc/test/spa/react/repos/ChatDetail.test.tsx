@@ -37,6 +37,7 @@ const { mockState } = vi.hoisted(() => ({
         defaultChatStyle: 'default' as string,
         sessionContextAttachmentsEnabled: false,
         sendFollowUp: vi.fn().mockResolvedValue(undefined),
+        modelLookups: vi.fn(),
         closeFollowUpStream: vi.fn(),
         onSendComplete: vi.fn(),
         stopStreaming: vi.fn(),
@@ -191,7 +192,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 
 // useModels — return empty list so ChatDetail renders without a real API
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
-    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+    useModels: (...args: unknown[]) => {
+        mockState.modelLookups(...args);
+        return { models: [], loading: false, error: null, reload: vi.fn() };
+    },
 }));
 
 // useProviderEffortTiers — return empty tier map so ChatDetail renders without a real API
@@ -495,6 +499,7 @@ beforeEach(() => {
     resetActiveChatAttach();
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
+    mockState.modelLookups.mockReset();
     mockState.closeFollowUpStream.mockReset();
     mockState.onSendComplete.mockReset();
     mockState.stopStreaming.mockReset();
@@ -611,6 +616,36 @@ describe('ChatDetail Sentinel implementation banners', () => {
 });
 
 describe('ChatDetail', () => {
+    it('keeps persisted metadata authoritative over the queue provider when the binding is absent', async () => {
+        setupStandardFetch(
+            makeTask({ provider: 'codex' }),
+            makeProcess({ metadata: { provider: 'copilot', mode: 'autopilot', sessionId: 'saved-session' } }),
+        );
+        render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+    });
+
+    it.each(['completed', 'running'])('shows the active provider for a %s chat with original provider metadata', async status => {
+        const process = makeProcess({
+            status,
+            metadata: { provider: 'codex', mode: 'autopilot', sessionId: 'current-session' },
+            activeProviderSession: {
+                provider: 'copilot', sessionId: 'current-session', segmentId: 'current', firstTurnIndex: 2,
+            },
+        });
+        setupStandardFetch(makeTask({ status, provider: 'codex' }), process);
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        expect(mockState.modelLookups.mock.calls.slice(-2)).toEqual([
+            ['copilot', undefined],
+            ['copilot', undefined],
+        ]);
+        expect((globalThis as any).__useSendMessage_opts.activeProvider).toBe('copilot');
+        expect(process.metadata.provider).toBe('codex');
+    });
+
     it('keeps remote bot presentation on its exact owner despite colliding local process IDs', async () => {
         const baseUrl = 'https://clone.example.test';
         registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl }]);

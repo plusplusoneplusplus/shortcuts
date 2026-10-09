@@ -136,7 +136,8 @@ export function emitWarmStatus(store: ProcessStore, processId: string, status: W
  * Handle SSE streaming for a single process.
  *
  * Protocol:
- *   event: conversation-snapshot → { turns: ConversationTurn[], botControl?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
+ *   event: conversation-snapshot → { turns: ConversationTurn[], activeProviderSession, runningTurn?, botControl?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
+ *   event: provider-session     → { activeProviderSession, turnIndex }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result, approvalOutcome? }
@@ -268,7 +269,12 @@ export async function handleProcessStream(
         const eventType = (event as { type: string }).type;
         const ralphGrillPlanning = (event as { ralphGrillPlanning?: RalphGrillPlanningProgress }).ralphGrillPlanning;
         eventCount++;
-        if (event.type === 'chunk') {
+        if (event.type === 'provider-session') {
+            writeNamedEvent(res, 'provider-session', {
+                activeProviderSession: event.activeProviderSession,
+                turnIndex: event.turnIndex,
+            });
+        } else if (event.type === 'chunk') {
             writeNamedEvent(res, 'chunk', { content: event.content });
         } else if (event.type === 'tool-start') {
             writeNamedEvent(res, 'tool-start', {
@@ -524,8 +530,25 @@ function replayConversationTurns(res: ServerResponse, process: AIProcess, botMan
     const turns = process.conversationTurns ?? [];
     if (turns.length === 0 && !botManagedConversationsEnabled) { return; }
 
+    const activeProviderSession = readActiveProviderSession(process);
+    const last = turns[turns.length - 1];
+    const user = [...turns].reverse().find(turn => turn.role === 'user');
+    const running = process.status === 'running' && (last?.streaming || last?.role === 'user');
+    const provider = last?.role === 'assistant' && last.provider
+        ? last.provider : user?.provider ?? activeProviderSession.provider;
+    const segmentId = last?.role === 'assistant' && last.segmentId
+        ? last.segmentId
+        : provider === activeProviderSession.provider ? activeProviderSession.segmentId : user?.segmentId;
     writeNamedEvent(res, 'conversation-snapshot', {
         turns,
+        activeProviderSession,
+        ...(running ? {
+            runningTurn: {
+                turnIndex: last?.role === 'assistant' ? last.turnIndex : turns.reduce((max, turn) => Math.max(max, turn.turnIndex), -1) + 1,
+                provider,
+                ...(segmentId ? { segmentId } : {}),
+            },
+        } : {}),
         ...(botManagedConversationsEnabled
             ? { botControl: projectBotControl(process.metadata?.botControl, true) ?? null }
             : {}),

@@ -123,7 +123,7 @@ import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { popOutOpened } from '../../utils/popOutWindow';
-import { isConcreteChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
+import { isConcreteChatProvider, resolveActiveChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
 import { RestartWithProviderButton } from './RestartWithProviderButton';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -412,26 +412,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         || metadataProcess?.payload?.workingDirectory
         || metadataProcess?.metadata?.workingDirectory
         || undefined;
-    const rawSessionProvider = metadataProcess?.metadata?.provider;
-    // Provider used for the model / reasoning-effort / effort-tier lookups below.
-    // It deliberately does NOT recognize 'opencode' and collapses it onto the
-    // user's configured default; leave it alone unless you also mean to change
-    // which catalog the model dropdown fetches.
+    const rawSessionProvider = resolveActiveChatProvider(metadataProcess, metadataProcess?.metadata?.provider);
+    // Preserve the display fallback for OpenCode; capability and catalog lookups
+    // use the concrete conversation/composer provider.
     const sessionProvider = rawSessionProvider === 'codex' || rawSessionProvider === 'claude' || rawSessionProvider === 'copilot'
         ? rawSessionProvider
         : getDefaultProvider();
-    // The provider this conversation actually ran on, narrowed across all four
-    // ChatProvider values and defaulting to copilot exactly like the backend's
-    // `resolveConversationProvider`. Used for provider-capability decisions
-    // (rewind), never for catalog lookups — `sessionProvider` would report the
-    // user's default (possibly codex) for an opencode chat and wrongly hide the
-    // rewind action.
-    const conversationProvider: ChatProvider = rawSessionProvider === 'codex'
-        || rawSessionProvider === 'claude'
-        || rawSessionProvider === 'opencode'
-        || rawSessionProvider === 'copilot'
-        ? rawSessionProvider
-        : 'copilot';
+    const conversationProvider: ChatProvider = rawSessionProvider ?? 'copilot';
     const activeProviderSegment = metadataProcess?.activeProviderSession as {
         provider: ChatProvider;
         segmentId: string;
@@ -1565,6 +1552,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: effectiveFollowUpModelOverride,
+        activeProvider: conversationProvider,
         providerOverride: pendingProvider ?? undefined,
         effortOverride: effectiveFollowUpEffort,
         // Omitted entirely when the owning server has the flag off, so an older

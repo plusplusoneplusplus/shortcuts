@@ -10,6 +10,7 @@ import { useSessionTurnPerformance } from '../hooks/useSessionTurnPerformance';
 import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
 import { botControlSourceLabel, readBotControl } from '../../../utils/botControl';
+import { resolveActiveChatProvider } from '../../../utils/providerSelection';
 
 const RALPH_FIELD_TRUNCATE = 200;
 
@@ -249,7 +250,8 @@ export function getSessionIdFromProcess(process: any): string | null {
 }
 
 function getAgentNameFromProcess(process: any): string | null {
-    return toStringValue(process?.metadata?.agentName)
+    return resolveActiveChatProvider(process)
+        || toStringValue(process?.metadata?.agentName)
         || toStringValue(process?.metadata?.agent)
         || toStringValue(process?.metadata?.provider)
         || toStringValue(process?.agentName)

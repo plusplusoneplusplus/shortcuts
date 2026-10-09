@@ -1326,6 +1326,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             turnIndex: 0,
                         }).binding;
                         turnSegmentId = binding.segmentId;
+                        this.store.emitProcessEvent(processId, {
+                            type: 'provider-session',
+                            activeProviderSession: binding,
+                            turnIndex: 1,
+                        });
                         this.store.updateProcess(processId, activeProviderSessionUpdate(binding)).catch(() => {
                             // Non-fatal: store may be a stub
                         });

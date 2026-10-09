@@ -18,6 +18,7 @@
  */
 
 import { cn } from '../../ui/cn';
+import { resolveActiveChatProvider } from '../../utils/providerSelection';
 
 export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ProviderBadgeProvider = ChatProvider | 'auto-pending';
@@ -73,9 +74,7 @@ export function getTaskChatProvider(task: any): ChatProvider | undefined {
         ?? task?.metadata?.provider
         ?? task?.metadata?.autoProviderRouting?.provider
         ?? task?.payload?.provider;
-    return provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode'
-        ? provider
-        : undefined;
+    return resolveActiveChatProvider(task, provider);
 }
 
 export function isTaskAutoProviderPending(task: any): boolean {
