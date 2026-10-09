@@ -13,6 +13,14 @@ crate-type = ["cdylib"]
 coc-native-core = { path = "../core", features = ["napi"] }
 napi = { version = "3", default-features = false, features = ["napi4"] }
 napi-derive = "3"
+teams-sdk = { path = "../teams-sdk" }
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+reqwest = { version = "0.12", default-features = false }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
 
 [build-dependencies]
 napi-build = "2"

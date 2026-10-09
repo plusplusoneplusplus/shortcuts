@@ -17,6 +17,7 @@ import {
     installRust,
     listRustSources,
     resolveCargo,
+    RUST_DIR,
     rustupTarget,
 } from '../scripts/ensure-native.mjs';
 
@@ -111,6 +112,33 @@ describe('checkStaleness', () => {
 
         expect(result.stale).toBe(false);
     });
+
+    it.each(['teams-sdk/src/session.rs', 'teams-sdk/Cargo.toml', 'Cargo.lock'])(
+        'rebuilds when the native workspace input %s changes',
+        (relative) => {
+            const source = path.join(RUST, relative);
+            const visited: string[] = [];
+            const result = checkStaleness(BINARY, RUST, {
+                exists: () => true,
+                mtimeOf: (p: string) => p === source ? 900 : 500,
+                listSources: (dir: string) => {
+                    visited.push(dir);
+                    return [source];
+                },
+            });
+
+            expect(result.stale).toBe(true);
+            expect(visited).toEqual([RUST]);
+        },
+    );
+
+    it('keeps the addon fresh when nested workspace sources are older', () => {
+        expect(checkStaleness(BINARY, RUST, {
+            exists: () => true,
+            mtimeOf: (p: string) => p === BINARY ? 900 : 100,
+            listSources: (dir: string) => [path.join(dir, 'Cargo.toml'), path.join(dir, 'teams-sdk', 'src', 'session.rs')],
+        }).stale).toBe(false);
+    });
 });
 
 describe('builtBinaryPaths', () => {
@@ -146,6 +174,23 @@ describe('listRustSources', () => {
         });
 
         expect(found).toEqual([]);
+    });
+
+    it('walks the nested Teams SDK from the single native Rust root', () => {
+        const sdk = path.join(RUST, 'teams-sdk');
+        const tree: Record<string, Array<{ name: string; isDirectory: () => boolean }>> = {
+            [RUST]: [entry('Cargo.lock'), entry('teams-sdk', true), entry('target', true)],
+            [sdk]: [entry('Cargo.toml'), entry('src', true)],
+            [path.join(sdk, 'src')]: [entry('session.rs')],
+            [path.join(RUST, 'target')]: [entry('generated.rs')],
+        };
+        const found = listRustSources(RUST, { readdir: (dir: string) => tree[dir] ?? [] });
+
+        expect(found.sort()).toEqual([
+            path.join(RUST, 'Cargo.lock'),
+            path.join(sdk, 'Cargo.toml'),
+            path.join(sdk, 'src', 'session.rs'),
+        ].sort());
     });
 });
 
@@ -358,6 +403,22 @@ describe('ensureNative', () => {
 
         expect(ensureNative(h.options)).toBe(0);
         expect(h.builds).toEqual([]);
+    });
+
+    it('includes the Teams SDK in the default rebuild inputs', () => {
+        let root = '';
+        const h = harness({
+            rustDir: undefined,
+            checkStale: (_binary: string, dir: string) => {
+                root = dir;
+                return fresh();
+            },
+        });
+
+        expect(ensureNative(h.options)).toBe(0);
+        expect(root).toBe(RUST_DIR);
+        expect(path.basename(root)).toBe('rust');
+        expect(listRustSources(root)).toContain(path.join(root, 'teams-sdk', 'src', 'session.rs'));
     });
 
     it('does not even look for cargo when the addon is fresh', () => {

@@ -1,0 +1,26 @@
+[package]
+name = "teams-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Read-only Teams chat CLI with account-pinned credentials"
+
+[[bin]]
+name = "teams-cli"
+path = "src/main.rs"
+
+[features]
+default = ["graph"]
+graph = ["teams-sdk/graph"]
+
+[dependencies]
+async-trait = "0.1"
+clap = "4"
+serde_json = "1"
+teams-sdk = { path = "../teams-sdk", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+uuid = "1"
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false }

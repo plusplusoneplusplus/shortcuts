@@ -123,6 +123,7 @@ export function listRustSources(dir, deps = {}) {
  *
  * Accepts one path or several; with several the oldest wins, since a rebuild
  * regenerates all of them anyway and the youngest would hide a laggard.
+ * Source roots are walked recursively, including nested workspace crates.
  */
 export function checkStaleness(binaryPath, rustDir, deps = {}) {
     const exists = deps.exists ?? ((p) => fs.existsSync(p));

@@ -212,15 +212,28 @@ jobs:
       - name: Check formatting
         run: cargo fmt --manifest-path packages/coc-native/rust/Cargo.toml --all -- --check
 
-      # The addon crate links against Node's symbols, so only the pure-Rust core
-      # crate can be linted and tested with --all-targets.
+      # The addon links against Node's symbols; --all-targets is for pure-Rust crates.
       - name: Lint
         run: |
           cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core --all-targets -- -D warnings
           cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native -- -D warnings
+          cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk --all-targets --all-features -- -D warnings
+          cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --all-targets --all-features -- -D warnings
 
       - name: Run Rust unit tests
         run: cargo test --no-fail-fast --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+
+      - name: Test Teams SDK backend feature sets
+        run: |
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk --no-default-features
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk --all-features
+
+      - name: Test Teams CLI backend feature sets
+        run: |
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --no-default-features
+          cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --no-default-features --features graph
 
       - name: Install dependencies
         run: npm ci
