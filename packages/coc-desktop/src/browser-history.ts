@@ -34,6 +34,15 @@ export interface BrowserHistoryPage {
     storageError: string | null;
 }
 
+export interface BrowserHistorySuggestion extends BrowserHistoryEntry {
+    /** Full URL, or scheme-omitted URL, whose suffix may be selected inline. Null for title/substring matches and empty input. */
+    completion: string | null;
+}
+
+export interface BrowserHistorySuggestions extends BrowserHistoryPage {
+    entries: BrowserHistorySuggestion[];
+}
+
 /** Apply the browser URL policy and remove embedded credentials before indexing. */
 export function sanitizeHistoryUrl(value: unknown): string | null {
     const checked = validateBrowserUrl(value);
@@ -54,6 +63,13 @@ function publicEntry(entry: StoredEntry): BrowserHistoryEntry {
 
 function recentFirst(a: BrowserHistoryEntry, b: BrowserHistoryEntry): number {
     return b.lastVisited - a.lastVisited || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0);
+}
+
+function prefixCompletion(url: string, needle: string): string | null {
+    if (!needle) return null;
+    if (url.toLowerCase().startsWith(needle)) return url;
+    const withoutScheme = url.replace(/^https?:\/\//, '');
+    return withoutScheme.toLowerCase().startsWith(needle) ? withoutScheme : null;
 }
 
 function prune(data: HistoryData, now: number): void {
@@ -117,13 +133,35 @@ export class BrowserHistoryStore {
         if (typeof search !== 'string' || search.length > 8192 || !Number.isSafeInteger(offset) || offset < 0
             || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new TypeError('Invalid history query');
         await this.pending;
-        const needle = search.trim().toLowerCase();
-        const entries = this.data.entries.map(publicEntry)
-            .filter(entry => entry.lastVisited > this.now() - BROWSER_HISTORY_RETENTION_MS)
-            .filter(entry => entry.url.toLowerCase().includes(needle) || entry.title.toLowerCase().includes(needle))
-            .sort(recentFirst).slice(0, BROWSER_HISTORY_MAX_ENTRIES);
+        const entries = this.matchingEntries(search).sort(recentFirst);
         return { entries: entries.slice(offset, offset + limit), total: entries.length,
             recording: this.data.recording, storageError: this.error };
+    }
+
+    /** Fixed eight-result address suggestions; rank before limiting, across all retained entries. */
+    async suggest(search = ''): Promise<BrowserHistorySuggestions> {
+        await this.pending;
+        const entries = this.matchingEntries(search);
+        const needle = search.trim().toLowerCase();
+        const ranked = entries.map(entry => ({ ...entry, completion: prefixCompletion(entry.url, needle) }))
+            .sort((a, b) => needle
+                ? Number(b.completion !== null) - Number(a.completion !== null)
+                    || b.lastVisited - a.lastVisited || b.visitCount - a.visitCount
+                    || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
+                : recentFirst(a, b));
+        // Whitespace is useful for searching, but must not cause an inline replacement.
+        return { entries: ranked.slice(0, 8).map(entry => ({ ...entry,
+            completion: search === search.trim() ? entry.completion : null })), total: entries.length,
+            recording: this.data.recording, storageError: this.error };
+    }
+
+    private matchingEntries(search: string): BrowserHistoryEntry[] {
+        if (typeof search !== 'string' || search.length > 8192) throw new TypeError('Invalid history query');
+        const needle = search.trim().toLowerCase();
+        const cutoff = this.now() - BROWSER_HISTORY_RETENTION_MS;
+        return this.data.entries.map(publicEntry)
+            .filter(entry => entry.lastVisited > cutoff)
+            .filter(entry => entry.url.toLowerCase().includes(needle) || entry.title.toLowerCase().includes(needle));
     }
 
     /** Drain queued saves before desktop shutdown. Failures stay visible through storageError. */

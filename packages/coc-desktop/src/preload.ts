@@ -18,6 +18,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // They must match the exported constants in find-in-page.ts / devtunnel-modal.ts;
 // preload.test.ts asserts they stay in sync.
 const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
+const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
 const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
 const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
 const BROWSER_HISTORY_RECORDING_CHANNEL = 'coc-desktop:browser-history-recording';
@@ -218,9 +219,11 @@ interface BrowserHistoryEntry { url: string; title: string; lastVisited: number;
 type BrowserHistoryFailure = { ok: false; reason: string; message?: string };
 type BrowserHistoryResult = { ok: true } | BrowserHistoryFailure;
 type BrowserHistoryQueryResult = { ok: true; entries: BrowserHistoryEntry[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
+type BrowserHistorySuggestResult = { ok: true; entries: (BrowserHistoryEntry & { completion: string | null })[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
 
 const browser = {
     history: {
+        suggest: (search = ''): Promise<BrowserHistorySuggestResult> => ipcRenderer.invoke(BROWSER_HISTORY_SUGGEST_CHANNEL, search),
         query: (search = '', offset = 0, limit = 50): Promise<BrowserHistoryQueryResult> =>
             ipcRenderer.invoke(BROWSER_HISTORY_QUERY_CHANNEL, search, offset, limit),
         delete: (url: string): Promise<BrowserHistoryResult> => ipcRenderer.invoke(BROWSER_HISTORY_DELETE_CHANNEL, url),

@@ -24,6 +24,90 @@ afterEach(() => {
 });
 
 describe('desktop browser history store', () => {
+    it('ranks prefixes before URL/title matches, then recency, frequency and stable URL order', async () => {
+        const dir = directory();
+        const frequent = entry('https://match.test/Frequent?q=Case#Part', 200);
+        frequent.engines.electron.visitCount = 5;
+        seed(dir, [
+            entry('https://title.test/', 500, 'MATCH.TEST useful page'),
+            entry('https://substring.test/path/match.test', 400),
+            entry('https://match.test/Older', 100),
+            entry('https://match.test/B', 200),
+            entry('https://match.test/A', 200), frequent,
+            entry('http://match.test/New', 300),
+        ]);
+        const store = new BrowserHistoryStore(dir, () => 500);
+        const result = await store.suggest('MaTcH.TeSt');
+        expect(result.entries.map(item => item.url)).toEqual([
+            'http://match.test/New', 'https://match.test/Frequent?q=Case#Part',
+            'https://match.test/A', 'https://match.test/B', 'https://match.test/Older',
+            'https://title.test/', 'https://substring.test/path/match.test',
+        ]);
+        expect(result.entries[1].completion).toBe('match.test/Frequent?q=Case#Part');
+        expect(result.entries.slice(-2).map(item => item.completion)).toEqual([null, null]);
+        // Panel pagination remains purely recent-first.
+        expect((await store.query('match.test', 0, 2)).entries.map(item => item.url)).toEqual([
+            'https://title.test/', 'https://substring.test/path/match.test',
+        ]);
+        expect((await store.suggest('HTTPS://MATCH.TEST/f')).entries[0].completion).toBe('https://match.test/Frequent?q=Case#Part');
+        expect((await store.suggest(' match.test ')).entries.every(item => item.completion === null)).toBe(true);
+        expect((await store.suggest('useful')).entries).toMatchObject([{ url: 'https://title.test/', completion: null }]);
+        expect((await store.suggest('no match')).entries).toEqual([]);
+    });
+
+    it('limits after ranking the full retained history and shows eight recent pages for empty input', async () => {
+        const dir = directory();
+        seed(dir, [
+            ...Array.from({ length: 120 }, (_, i) => entry(`https://title.test/${i}`, 1000 + i, 'target.test')),
+            entry('https://target.test/Path', 1),
+        ]);
+        const store = new BrowserHistoryStore(dir, () => 2000);
+        const result = await store.suggest('target.test');
+        expect(result.total).toBe(121);
+        expect(result.entries).toHaveLength(8);
+        expect(result.entries[0]).toMatchObject({ url: 'https://target.test/Path', completion: 'target.test/Path' });
+        for (const search of ['', '   ']) {
+            const recent = await store.suggest(search);
+            expect(recent.entries.map(item => item.url)).toEqual(Array.from({ length: 8 }, (_, i) => `https://title.test/${119 - i}`));
+            expect(recent.entries.every(item => item.completion === null)).toBe(true);
+        }
+    });
+
+    it('suggests committed sanitized entries while paused and reflects deletion, expiry and write failures', async () => {
+        let now = 100;
+        const store = new BrowserHistoryStore(directory(), () => now);
+        // Suggestion queries drain pending writes from every window.
+        const visit = store.recordVisit('electron', 'https://user:secret@localhost:4000/Path?q=Case#Part', 'Local page');
+        const result = await store.suggest('LOCALHOST:4000/p');
+        await visit;
+        expect(result.entries).toMatchObject([{ url: 'https://localhost:4000/Path?q=Case#Part', completion: 'localhost:4000/Path?q=Case#Part' }]);
+        expect((await store.suggest('secret')).total).toBe(0);
+        await store.setRecording(false);
+        expect(await store.suggest('local page')).toMatchObject({ recording: false, total: 1 });
+        const rename = vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('disk full'));
+        await expect(store.delete(result.entries[0].url)).rejects.toThrow('disk full');
+        expect(await store.suggest('localhost')).toMatchObject({ total: 1, storageError: expect.stringContaining('disk full') });
+        rename.mockRestore();
+        await store.delete(result.entries[0].url);
+        await store.updateTitle('electron', result.entries[0].url, 'Late title');
+        expect(await store.suggest('localhost')).toMatchObject({ total: 0, storageError: null });
+        await store.setRecording(true);
+        await store.recordVisit('webview2', result.entries[0].url, 'New visit');
+        now += BROWSER_HISTORY_RETENTION_MS;
+        expect((await store.suggest('localhost')).total).toBe(0);
+    });
+
+    it('validates suggestion input and surfaces corrupt storage without blocking empty results', async () => {
+        const dir = directory();
+        seed(dir, []);
+        fs.writeFileSync(path.join(dir, 'browser', 'history.json'), 'corrupt');
+        const store = new BrowserHistoryStore(dir);
+        expect(await store.suggest()).toMatchObject({ entries: [], total: 0, recording: true, storageError: expect.any(String) });
+        for (const search of [null, {}, 123, 'x'.repeat(8193)]) {
+            await expect(store.suggest(search as any)).rejects.toThrow('Invalid history query');
+        }
+    });
+
     it('notifies only committed mutations or visible failures and tolerates broken subscribers', async () => {
         const dir = directory();
         const changed = vi.fn(() => {

@@ -9,7 +9,7 @@ import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder 
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import {
-    BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
+    BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
@@ -96,6 +96,10 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_HISTORY_QUERY_CHANNEL, historyHandler(async (_event, search = '', offset = 0, limit = 50) => {
         if (typeof search !== 'string' || typeof offset !== 'number' || typeof limit !== 'number') throw new TypeError('Invalid history query');
         return { ok: true, ...await history.query(search, offset, limit) };
+    }));
+    ipcMain.handle(BROWSER_HISTORY_SUGGEST_CHANNEL, historyHandler(async (_event, search = '') => {
+        if (typeof search !== 'string') throw new TypeError('Invalid history query');
+        return { ok: true, ...await history.suggest(search) };
     }));
     ipcMain.handle(BROWSER_HISTORY_DELETE_CHANNEL, historyHandler(async (_event, url) => {
         if (!sanitizeHistoryUrl(url)) throw new TypeError('Invalid history URL');

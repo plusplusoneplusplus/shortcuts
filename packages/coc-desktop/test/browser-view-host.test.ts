@@ -70,7 +70,7 @@ describe('desktop history IPC', () => {
         const unregistered = { id: 4, mainFrame: {}, getURL: () => 'http://localhost:4000/' };
         mocks.windows.set(unregistered, { webContents: unregistered, isDestroyed: () => false });
         for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} }, { sender: guest, senderFrame: guest.mainFrame }, { sender: unregistered, senderFrame: unregistered.mainFrame }]) {
-            for (const channel of [policy.BROWSER_HISTORY_QUERY_CHANNEL, policy.BROWSER_HISTORY_DELETE_CHANNEL, policy.BROWSER_HISTORY_CLEAR_CHANNEL, policy.BROWSER_HISTORY_RECORDING_CHANNEL, policy.BROWSER_CLEAR_DATA_CHANNEL]) {
+            for (const channel of [policy.BROWSER_HISTORY_QUERY_CHANNEL, policy.BROWSER_HISTORY_SUGGEST_CHANNEL, policy.BROWSER_HISTORY_DELETE_CHANNEL, policy.BROWSER_HISTORY_CLEAR_CHANNEL, policy.BROWSER_HISTORY_RECORDING_CHANNEL, policy.BROWSER_CLEAR_DATA_CHANNEL]) {
                 expect(await invoke(channel, event, 'https://example.test/')).toEqual({ ok: false, reason: 'no-window' });
             }
         }
@@ -103,6 +103,28 @@ describe('desktop history IPC', () => {
         expect(await invoke(policy.BROWSER_HISTORY_DELETE_CHANNEL, a.event, 'file:///secret')).toMatchObject({ ok: false, reason: 'invalid' });
         expect(await invoke(policy.BROWSER_HISTORY_RECORDING_CHANNEL, a.event, 'false')).toMatchObject({ ok: false, reason: 'invalid' });
         expect((await query(a.event)).recording).toBe(true);
+        for (const search of [{}, null, 123, 'x'.repeat(8193)]) {
+            expect(await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, a.event, search)).toMatchObject({ ok: false, reason: 'invalid' });
+        }
+    });
+
+    it('serves ranked bounded suggestions from another workspace without changing its tabs', async () => {
+        const a = owner(1), b = owner(2);
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, a.event, 'a', 'https://example.test/', 'workspace-a');
+        for (let i = 0; i < 10; i++) mocks.sinks[0].visited(`https://other.test/${i}`, 'example.test title');
+        mocks.sinks[0].visited('https://user:secret@example.test/Path?q=Case#Part', 'Prefix');
+        const result = await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event, 'EXAMPLE.TEST/p');
+        expect(result).toMatchObject({ ok: true, total: 1, storageError: null });
+        expect(result.entries[0]).toMatchObject({ url: 'https://example.test/Path?q=Case#Part', completion: 'example.test/Path?q=Case#Part' });
+        await invoke(policy.BROWSER_HISTORY_RECORDING_CHANNEL, a.event, false);
+        const ranked = await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event, 'example.test');
+        expect(ranked).toMatchObject({ ok: true, total: 11, recording: false });
+        expect(ranked.entries).toHaveLength(8);
+        expect(ranked.entries[0].title).toBe('Prefix');
+        expect((await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event)).entries).toHaveLength(8);
+        expect(mocks.sinks).toHaveLength(1);
+        await invoke(policy.BROWSER_HISTORY_DELETE_CHANNEL, b.event, result.entries[0].url);
+        expect((await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, a.event, 'EXAMPLE.TEST/p')).entries).toEqual([]);
     });
 
     it('persists pause/resume while queries remain available, and confirms clear without changing tabs or sign-ins', async () => {
@@ -137,6 +159,7 @@ describe('desktop history IPC', () => {
         const rename = vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('disk full'));
         expect(await invoke(policy.BROWSER_HISTORY_RECORDING_CHANNEL, a.event, false)).toMatchObject({ ok: false, reason: 'storage-failed', message: expect.stringContaining('disk full') });
         expect(await query(b.event)).toMatchObject({ recording: true, storageError: expect.stringContaining('disk full') });
+        expect(await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event)).toMatchObject({ ok: true, recording: true, storageError: expect.stringContaining('disk full') });
         expect(b.contents.send).toHaveBeenCalledWith(policy.BROWSER_HISTORY_CHANGED_CHANNEL);
         rename.mockRestore();
         expect(await invoke(policy.BROWSER_HISTORY_RECORDING_CHANNEL, a.event, false)).toEqual({ ok: true });

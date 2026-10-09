@@ -296,6 +296,7 @@ export function isValidBrowserViewId(viewId: unknown): viewId is string {
 
 /** Desktop-local history; only registered SPA main frames may use these channels. */
 export const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
+export const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
 export const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
 export const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
 export const BROWSER_HISTORY_RECORDING_CHANNEL = 'coc-desktop:browser-history-recording';

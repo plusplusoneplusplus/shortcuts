@@ -129,13 +129,21 @@ prune expired entries; shutdown stops the timer and drains queued saves even whe
 host cleanup fails. Confirmed profile cleanup closes that engine's tabs, clears
 its profile, then removes its history contributions; failures are explicit.
 
-`cocDesktop.browser.history` exposes bounded `query(search, offset, limit)`,
+`cocDesktop.browser.history` exposes bounded `query(search, offset, limit)`, `suggest(search)`,
 `delete(url)`, confirmed `clear()`, `setRecording(boolean)` and `onChanged()`.
 IPC requires a registered exact-source SPA main frame. Main broadcasts data-free
 invalidations to all registered SPA windows after committed saves or storage
 failures. Queries return recording state and persistent storage errors; mutations
 return explicit failure results. History-only clear preserves profiles, tabs and
 recording state. The optional history surface supports older-host detection.
+
+`query` uses recency pagination for the History panel. `suggest` searches the full
+retained URL/title index case-insensitively and returns at most eight entries:
+URL prefixes (including scheme-omitted prefixes), recency, visit count, then
+stable URL order. Empty input returns recent entries. Suggestions include a
+case-preserving `completion` URL or scheme-omitted URL for prefix matches;
+empty, title/substring and whitespace-padded input has null completion. Both
+APIs await queued saves, filter expiry and return recording/storage-error state.
 
 ### Browser adapters and lifecycle
 
