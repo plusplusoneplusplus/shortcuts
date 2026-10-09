@@ -103,6 +103,37 @@ describe('SentinelTodoStore', () => {
         expect(reopened.item.targetRepo).toBeUndefined();
     });
 
+    it('lets a person mark Done without a reason and drops the earlier reason and outcome', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        store.update(owner, item.id, 1, { status: 'done', statusReason: 'Old review', outcome: 'Old outcome' }, 'sentinel');
+        store.update(owner, item.id, 2, { status: 'needs_attention', statusReason: 'Regressed' }, 'sentinel');
+        const done = store.update(owner, item.id, 3, { status: 'done', statusReason: null }, 'user');
+        expect(done.item).toMatchObject({ status: 'done', revision: 4, updatedBy: 'user' });
+        expect(done.item.statusReason).toBeUndefined();
+        expect(done.item.outcome).toBeUndefined();
+        expect(done.item.userEditedAt).toBe(done.item.updatedAt);
+        // A supplied reason and outcome still record with the person's provenance.
+        const { item: other } = store.create(owner, { title: 'U' }, { actor: 'user' });
+        const reviewed = store.update(owner, other.id, 1, { status: 'done', statusReason: 'Checked', outcome: 'Checked' }, 'user');
+        expect(reviewed.item).toMatchObject({ statusReason: 'Checked', outcome: { summary: 'Checked', recordedBy: 'user' } });
+        // Edits that do not newly mark Done keep the recorded outcome.
+        const archived = store.update(owner, other.id, 2, { archived: true }, 'user');
+        expect(archived.item.outcome).toMatchObject({ summary: 'Checked' });
+    });
+
+    it('requires a reason when an automated actor sets Done or Needs attention', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        expectTodoError(() => store.update(owner, item.id, 1, { status: 'done' }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.update(owner, item.id, 1, { status: 'done', statusReason: null }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.update(owner, item.id, 1, { status: 'needs_attention' }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.create(owner, { title: 'x', status: 'done' }, { actor: 'sentinel' }), 'invalid');
+        expect(store.get(owner).items).toHaveLength(1);
+        expect(store.get(owner).items[0].revision).toBe(1);
+        expect(store.update(owner, item.id, 1, { status: 'in_progress' }, 'sentinel').item.status).toBe('in_progress');
+    });
+
     it('validates input and reports unknown items', () => {
         const store = new SentinelTodoStore(dataDir);
         expectTodoError(() => store.create(owner, { title: '  ' }, { actor: 'user' }), 'invalid');

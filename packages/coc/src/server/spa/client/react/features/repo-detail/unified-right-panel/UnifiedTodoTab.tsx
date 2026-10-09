@@ -28,7 +28,7 @@ import {
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
     sentinelTodoSections,
-    sentinelTodoStatusNeedsReason,
+    sentinelTodoStatusReason,
     type SentinelTodoOwner,
 } from './sentinelTodoPanelModel';
 
@@ -333,11 +333,13 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
     };
 
-    const applyStatus = (status: SentinelTodoStatus, reason: string) => {
-        if (sentinelTodoStatusNeedsReason(status) && !reason.trim()) {
+    const applyStatus = (status: SentinelTodoStatus, reason: string, confirmed = false) => {
+        const rule = sentinelTodoStatusReason(status);
+        if (rule && !confirmed && !reason.trim()) {
             setStatusDraft({ status, reason });
             return;
         }
+        if (rule === 'required' && !reason.trim()) return;
         void run(() => onSave(item, {
             status,
             statusReason: reason.trim() ? reason.trim() : null,
@@ -411,15 +413,16 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                     )}
                     {statusDraft && (
                         <form className="flex flex-col gap-1" data-testid={`sentinel-todo-reason-form-${item.id}`}
-                            onSubmit={event => { event.preventDefault(); applyStatus(statusDraft.status, statusDraft.reason); }}>
+                            onSubmit={event => { event.preventDefault(); applyStatus(statusDraft.status, statusDraft.reason, true); }}>
                             <label className="text-[11px] font-medium" htmlFor={`sentinel-todo-${item.id}-reason`}>
                                 Reason for {SENTINEL_TODO_STATUS_LABELS[statusDraft.status]}
+                                {sentinelTodoStatusReason(statusDraft.status) === 'optional' && <span className={MUTED}> (optional)</span>}
                             </label>
                             <input id={`sentinel-todo-${item.id}-reason`} className={INPUT} value={statusDraft.reason} maxLength={2000} autoFocus
                                 onChange={event => setStatusDraft({ ...statusDraft, reason: event.target.value })} />
                             <div className="flex justify-end gap-1">
                                 <Button size="sm" variant="secondary" onClick={() => setStatusDraft(null)}>Cancel</Button>
-                                <Button size="sm" type="submit" disabled={!statusDraft.reason.trim()} loading={busy}>Set status</Button>
+                                <Button size="sm" type="submit" disabled={sentinelTodoStatusReason(statusDraft.status) === 'required' && !statusDraft.reason.trim()} loading={busy}>Set status</Button>
                             </div>
                         </form>
                     )}

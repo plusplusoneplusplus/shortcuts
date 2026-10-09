@@ -169,7 +169,7 @@ describe('Sentinel to-do job links', () => {
     it('leaves done and archived items unchanged by late failures', async () => {
         const done = await createItem();
         const { item: linked } = await link(done.id, 'queue_a');
-        await service.update(owner, done.id, linked.revision, { status: 'done', outcome: 'Verified' }, 'sentinel');
+        await service.update(owner, done.id, linked.revision, { status: 'done', statusReason: 'Verified', outcome: 'Verified' }, 'sentinel');
         expect(service.recordJobResult(terminalJob('queue_a', 'failed'))?.status).toBe('done');
     });
 

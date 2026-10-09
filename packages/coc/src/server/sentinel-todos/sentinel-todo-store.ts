@@ -95,6 +95,11 @@ export const todoPatchSchema = z.object({
     archived: z.boolean().optional(),
 }).strict();
 export type SentinelTodoCreate = z.infer<typeof todoCreateSchema>;
+/**
+ * Statuses an automated actor may only set with a reviewed reason. A person
+ * (`user`, only ever assigned by the REST route) may mark Done without one.
+ */
+const REVIEW_REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs_attention']);
 export type SentinelTodoPatch = z.infer<typeof todoPatchSchema>;
 
 export class SentinelTodoError extends Error {
@@ -142,6 +147,7 @@ export class SentinelTodoStore {
         }
         const now = new Date().toISOString();
         const fields = parse(todoCreateSchema, input);
+        assertReviewReason(opts.actor, fields.status, fields.statusReason);
         const item = parse(itemSchema, {
             id: randomUUID(),
             title: fields.title,
@@ -174,6 +180,7 @@ export class SentinelTodoStore {
         actor: SentinelTodoActor,
     ): { item: SentinelTodoItem; ledgerRevision: number } {
         const fields = parse(todoPatchSchema, patch);
+        assertReviewReason(actor, fields.status, fields.statusReason);
         const data = this.read(owner.workspaceId);
         const ledger = data.ledgers[owner.processId];
         const index = ledger?.items.findIndex(item => item.id === itemId) ?? -1;
@@ -194,6 +201,10 @@ export class SentinelTodoStore {
         // A status change without a fresh reason must not keep the old one.
         if (fields.status !== undefined && fields.status !== current.status && fields.statusReason === undefined) {
             delete next.statusReason;
+        }
+        // A new Done without a fresh outcome must not show an earlier review as this one's.
+        if (fields.status === 'done' && current.status !== 'done' && fields.outcome === undefined) {
+            delete next.outcome;
         }
         if (fields.outcome === null) delete next.outcome;
         else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
@@ -301,6 +312,12 @@ export class SentinelTodoStore {
 
     private file(workspaceId: string): string {
         return getRepoDataPath(this.dataDir, workspaceId, SENTINEL_TODOS_FILE);
+    }
+}
+
+function assertReviewReason(actor: SentinelTodoActor, status: SentinelTodoStatus | undefined, reason: string | null | undefined): void {
+    if (actor !== 'user' && status && REVIEW_REASON_REQUIRED.has(status) && !reason?.trim()) {
+        throw new SentinelTodoError('invalid', `status ${status} requires a short reason`);
     }
 }
 

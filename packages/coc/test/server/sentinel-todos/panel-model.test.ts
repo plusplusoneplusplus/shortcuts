@@ -12,6 +12,7 @@ import {
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
     sentinelTodoSections,
+    sentinelTodoStatusReason,
     sentinelTodoTabInput,
     shouldAutoOpenSentinelTodoTab,
     withoutSentinelTodoTabs,
@@ -170,6 +171,15 @@ describe('isSentinelTodoChangeFor', () => {
         expect(isSentinelTodoChangeFor({ ...base, processId: 'queue_other' }, OWNER)).toBe(false);
         expect(isSentinelTodoChangeFor({ ...base, type: 'git-changed' }, OWNER)).toBe(false);
         expect(isSentinelTodoChangeFor(null, OWNER)).toBe(false);
+    });
+});
+
+describe('sentinelTodoStatusReason', () => {
+    it('makes a person\'s Done reason optional and keeps Needs attention required', () => {
+        expect(sentinelTodoStatusReason('done')).toBe('optional');
+        expect(sentinelTodoStatusReason('needs_attention')).toBe('required');
+        expect(sentinelTodoStatusReason('todo')).toBeNull();
+        expect(sentinelTodoStatusReason('in_progress')).toBeNull();
     });
 });
 

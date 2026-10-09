@@ -222,17 +222,52 @@ describe('UnifiedTodoTab', () => {
         expect(update.mock.calls[1][3]).toMatchObject({ expectedRevision: 3, notes: 'My new notes' });
     });
 
-    it('requires a reason for Done and records it as the outcome', async () => {
+    it('records an optional Done reason as the outcome', async () => {
         get.mockResolvedValue(ledger([item({ status: 'in_progress', revision: 4 })]));
         update.mockResolvedValue({ item: item(), ledgerRevision: 6 });
         render(<UnifiedTodoTab owner={OWNER} />);
         fireEvent.click(await screen.findByRole('button', { expanded: false }));
         fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'done' } });
         expect(update).not.toHaveBeenCalled();
-        fireEvent.change(screen.getByLabelText('Reason for Done'), { target: { value: 'Login test green' } });
+        fireEvent.change(screen.getByLabelText('Reason for Done (optional)'), { target: { value: 'Login test green' } });
         fireEvent.click(screen.getByRole('button', { name: 'Set status' }));
         await waitFor(() => expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', {
             expectedRevision: 4, status: 'done', statusReason: 'Login test green', outcome: 'Login test green',
+        }));
+    });
+
+    it.each([['empty', ''], ['whitespace-only', '   ']])('marks Done with an %s reason and records no reason or outcome', async (_label, reason) => {
+        get.mockResolvedValue(ledger([item({ status: 'in_progress', revision: 4 })]));
+        update.mockResolvedValue({ item: item(), ledgerRevision: 6 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(await screen.findByRole('button', { expanded: false }));
+        fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'done' } });
+        expect(update).not.toHaveBeenCalled();
+        fireEvent.change(screen.getByLabelText('Reason for Done (optional)'), { target: { value: reason } });
+        const submit = screen.getByRole('button', { name: 'Set status' }) as HTMLButtonElement;
+        expect(submit.disabled).toBe(false);
+        fireEvent.click(submit);
+        await waitFor(() => expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 4, status: 'done', statusReason: null,
+        }));
+    });
+
+    it('still requires a reason for Needs attention', async () => {
+        get.mockResolvedValue(ledger([item({ status: 'in_progress', revision: 4 })]));
+        update.mockResolvedValue({ item: item(), ledgerRevision: 6 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(await screen.findByRole('button', { expanded: false }));
+        fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'needs_attention' } });
+        const input = screen.getByLabelText('Reason for Needs attention');
+        fireEvent.change(input, { target: { value: '  ' } });
+        const submit = screen.getByRole('button', { name: 'Set status' }) as HTMLButtonElement;
+        expect(submit.disabled).toBe(true);
+        fireEvent.submit(screen.getByTestId('sentinel-todo-reason-form-i1'));
+        expect(update).not.toHaveBeenCalled();
+        fireEvent.change(input, { target: { value: 'Blocked on creds' } });
+        fireEvent.click(submit);
+        await waitFor(() => expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 4, status: 'needs_attention', statusReason: 'Blocked on creds',
         }));
     });
 

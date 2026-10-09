@@ -73,9 +73,14 @@ export function sentinelTodoSections(items: readonly SentinelTodoItem[]): Sentin
     };
 }
 
-/** Done and Needs attention require a short reason, matching Sentinel's rule. */
-export function sentinelTodoStatusNeedsReason(status: SentinelTodoStatus): boolean {
-    return status === 'done' || status === 'needs_attention';
+/**
+ * Whether choosing a status asks for a reason first. Needs attention requires
+ * one; a person marking Done may give one or leave it blank (Sentinel's own
+ * Done reviews still require a reason server-side).
+ */
+export function sentinelTodoStatusReason(status: SentinelTodoStatus): 'required' | 'optional' | null {
+    if (status === 'needs_attention') return 'required';
+    return status === 'done' ? 'optional' : null;
 }
 
 /**

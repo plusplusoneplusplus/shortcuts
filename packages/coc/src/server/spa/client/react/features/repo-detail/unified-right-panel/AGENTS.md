@@ -658,7 +658,9 @@ active items (Needs attention, In progress, To do), then collapsed Done and
 Archived sections. Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
-Late loads are dropped by a sequence counter. Job links only navigate; nothing in
+Late loads are dropped by a sequence counter. Choosing Needs attention requires a
+reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
+Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Job links only navigate; nothing in
 the tab starts, retries, or cancels a job. Tests live in
 `test/server/sentinel-todos/panel.test.tsx` and `panel-model.test.ts`.
 
