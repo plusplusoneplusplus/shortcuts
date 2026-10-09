@@ -2495,3 +2495,174 @@ describe('RepoChatTab — pinned reorder', () => {
         expect(pinnedAtOf('h-a')).toBe(OLD_A);
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// COLLAPSED-RAIL LATEST SENTINEL SHORTCUT
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
+    let hosts: HTMLElement[] = [];
+    function makeHost(): HTMLElement {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        hosts.push(host);
+        return host;
+    }
+    afterEach(() => {
+        for (const host of hosts) host.remove();
+        hosts = [];
+    });
+
+    const sentinel = (id: string, overrides: any = {}) => ({ payload: { mode: 'sentinel' }, ...overrides, id });
+
+    async function renderWithRail(opts: {
+        workspaceId?: string;
+        sourceSelectionId?: string;
+        dispatchRef?: { current: ((queue: any) => void) | null };
+        onActivateDetail?: () => void;
+    } = {}) {
+        const { workspaceId = 'ws-1', sourceSelectionId, dispatchRef, onActivateDetail } = opts;
+        const rail = makeHost();
+        await act(async () => {
+            renderWithProviders(
+                React.createElement(React.Fragment, null,
+                    React.createElement(RepoChatTab, {
+                        workspaceId,
+                        sourceSelectionId,
+                        layout: 'split-workspace',
+                        detailContainer: makeHost(),
+                        detailActive: true,
+                        onActivateDetail,
+                        railShortcutContainer: rail,
+                    }),
+                    dispatchRef ? React.createElement(WsSimulator, { dispatchRef }) : null,
+                ),
+            );
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument();
+        });
+        return rail;
+    }
+
+    const shortcutIn = (rail: HTMLElement) =>
+        rail.querySelector<HTMLButtonElement>('[data-testid="split-workspace-left-sentinel"]');
+
+    it('targets the most recent Sentinel chat, not the most recent chat', async () => {
+        setupFetchMock({
+            running: [makeRunningTask('auto-new', { startedAt: '2026-03-05T00:00:00Z' })],
+            history: [
+                makeHistoryTask('sn-old', sentinel('sn-old', { displayName: 'Old', completedAt: '2026-03-01T00:00:00Z' })),
+                makeHistoryTask('sn-new', sentinel('sn-new', { customTitle: 'Nightly watch', completedAt: '2026-03-03T00:00:00Z' })),
+            ],
+        });
+        const rail = await renderWithRail();
+        const button = shortcutIn(rail);
+        expect(button?.getAttribute('data-sentinel-task-id')).toBe('sn-new');
+        expect(button?.getAttribute('aria-label')).toBe('Open latest Sentinel chat: Nightly watch');
+        expect(button?.getAttribute('title')).toContain('Nightly watch');
+    });
+
+    it('shows a completed Sentinel chat and a running one wins when it is newer', async () => {
+        setupFetchMock({
+            running: [makeRunningTask('sn-run', sentinel('sn-run', { startedAt: '2026-03-04T00:00:00Z' }))],
+            history: [makeHistoryTask('sn-done', sentinel('sn-done', { completedAt: '2026-03-02T00:00:00Z' }))],
+        });
+        const rail = await renderWithRail();
+        expect(shortcutIn(rail)?.getAttribute('data-sentinel-task-id')).toBe('sn-run');
+    });
+
+    it('renders nothing when the list has no Sentinel chat', async () => {
+        setupFetchMock({ history: [makeHistoryTask('h1')] });
+        const rail = await renderWithRail();
+        expect(shortcutIn(rail)).toBeNull();
+        expect(rail.childElementCount).toBe(0);
+    });
+
+    it('opens the chat through the list selection path without expanding anything', async () => {
+        setupFetchMock({ history: [makeHistoryTask('sn-1', sentinel('sn-1'))] });
+        const onActivateDetail = vi.fn();
+        const rail = await renderWithRail({ onActivateDetail });
+
+        await act(async () => { fireEvent.click(shortcutIn(rail)!); });
+
+        expect(onActivateDetail).toHaveBeenCalled();
+        const processId = toQueueProcessId('sn-1');
+        expect(location.hash).toBe(`#repos/ws-1/activity/${encodeURIComponent(processId)}`);
+        await waitFor(() => {
+            expect(mockDetailPane.mock.calls.at(-1)?.[0]?.selectedTaskId).toBe(processId);
+        });
+        await waitFor(() => {
+            expect(shortcutIn(rail)?.getAttribute('aria-current')).toBe('true');
+        });
+    });
+
+    it('keeps a remote group owner in the route', async () => {
+        const selectionId = buildRemoteCloneKey('box-b', 'group-xstore');
+        setupFetchMock({ history: [makeHistoryTask('sn-r', sentinel('sn-r', { processId: 'proc-sn-r' }))] });
+        const rail = await renderWithRail({ workspaceId: 'group-xstore', sourceSelectionId: selectionId });
+
+        await act(async () => { fireEvent.click(shortcutIn(rail)!); });
+
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/activity/proc-sn-r`);
+    });
+
+    it('follows queue updates: a newer Sentinel retargets, removal hides it', async () => {
+        setupFetchMock();
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+        const rail = await renderWithRail({ dispatchRef });
+        expect(shortcutIn(rail)).toBeNull();
+
+        await act(async () => {
+            dispatchRef.current?.({
+                running: [makeRunningTask('sn-a', sentinel('sn-a', { startedAt: '2026-03-01T00:00:00Z' }))],
+                queued: [],
+                stats: { isPaused: false },
+            });
+        });
+        await waitFor(() => expect(shortcutIn(rail)?.getAttribute('data-sentinel-task-id')).toBe('sn-a'));
+
+        await act(async () => {
+            dispatchRef.current?.({
+                running: [
+                    makeRunningTask('sn-a', sentinel('sn-a', { startedAt: '2026-03-01T00:00:00Z' })),
+                    makeRunningTask('sn-b', sentinel('sn-b', { startedAt: '2026-03-02T00:00:00Z' })),
+                ],
+                queued: [],
+                stats: { isPaused: false },
+            });
+        });
+        await waitFor(() => expect(shortcutIn(rail)?.getAttribute('data-sentinel-task-id')).toBe('sn-b'));
+
+        await act(async () => {
+            dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: false } });
+        });
+        await waitFor(() => expect(shortcutIn(rail)).toBeNull());
+    });
+
+    it('ignores another workspace\'s Sentinel chats', async () => {
+        setupFetchMock();
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+        // WsSimulator pushes to ws-1; the tab under test is ws-2.
+        const rail = await renderWithRail({ workspaceId: 'ws-2', dispatchRef });
+        await act(async () => {
+            dispatchRef.current?.({
+                running: [makeRunningTask('sn-x', sentinel('sn-x'))],
+                queued: [],
+                stats: { isPaused: false },
+            });
+        });
+        expect(shortcutIn(rail)).toBeNull();
+    });
+
+    it('does not mount without a rail container', async () => {
+        setupFetchMock({ history: [makeHistoryTask('sn-1', sentinel('sn-1'))] });
+        await act(async () => {
+            renderWithProviders(React.createElement(RepoChatTab, {
+                workspaceId: 'ws-1', layout: 'split-workspace', detailContainer: makeHost(), detailActive: true,
+            }));
+        });
+        await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
+        expect(document.querySelector('[data-testid="split-workspace-left-sentinel"]')).toBeNull();
+    });
+});

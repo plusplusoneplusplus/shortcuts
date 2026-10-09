@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
+import { createPortal } from 'react-dom';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     SplitWorkspacePanel,
@@ -1051,5 +1053,95 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
         act(() => { fireEvent.mouseDown(gear); fireEvent.click(gear); });
         expect(onAdmin).toHaveBeenCalledTimes(1);
         expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
+});
+
+describe('SplitWorkspacePanel collapsed rail — shortcut slot', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = false;
+        (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        });
+    });
+
+    /** Mirrors RepoDetail: a host div in the rail, filled by a portal from another subtree. */
+    function PortaledShortcutHarness({ onShortcut }: { onShortcut: () => void }) {
+        const [host, setHost] = React.useState<HTMLDivElement | null>(null);
+        return (
+            <>
+                <SplitWorkspacePanel
+                    workspaceId="ws-slot"
+                    chatList={<div data-testid="chat-content">chat</div>}
+                    gitList={<div data-testid="git-content">git</div>}
+                    detail={<div data-testid="detail-content">detail</div>}
+                    onNewChat={() => {}}
+                    runningCount={1}
+                    queuedCount={1}
+                    railShortcuts={<div ref={setHost} className="contents" />}
+                />
+                {host && createPortal(
+                    <button type="button" data-testid="portaled-shortcut" onClick={onShortcut}>S</button>,
+                    host,
+                )}
+            </>
+        );
+    }
+
+    it('places shortcuts below "+ new chat" and keeps the existing rail controls', () => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'), '1');
+        render(<PortaledShortcutHarness onShortcut={() => {}} />);
+        const rail = screen.getByTestId('split-workspace-left-rail');
+        const ids = Array.from(rail.querySelectorAll('[data-testid]')).map(el => el.getAttribute('data-testid'));
+        expect(ids).toEqual([
+            'split-workspace-left-expand',
+            'split-workspace-left-new-chat',
+            'split-workspace-left-shortcuts',
+            'portaled-shortcut',
+            'split-workspace-left-running',
+            'split-workspace-left-queued',
+        ]);
+    });
+
+    it('omits the slot when no shortcuts are provided', () => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'), '1');
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-slot"
+                chatList={<div />}
+                gitList={null}
+                detail={<div />}
+            />,
+        );
+        expect(screen.queryByTestId('split-workspace-left-shortcuts')).toBeNull();
+    });
+
+    it('a portaled shortcut click closes the hover-peek and leaves the column collapsed', () => {
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'), '1');
+            const onShortcut = vi.fn();
+            render(<PortaledShortcutHarness onShortcut={onShortcut} />);
+            const body = screen.getByTestId('split-workspace-left');
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(body.classList.contains('hidden')).toBe(false);
+
+            act(() => { fireEvent.click(screen.getByTestId('portaled-shortcut')); });
+
+            expect(onShortcut).toHaveBeenCalledTimes(1);
+            expect(body.classList.contains('hidden')).toBe(true);
+            expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-slot'))).toBe('1');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

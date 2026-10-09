@@ -191,6 +191,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // RepoDetail's split wiring.
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
     const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
+    const [splitRailShortcutNode, setSplitRailShortcutNode] = useState<HTMLDivElement | null>(null);
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     const handleSplitNewChat = useCallback(() => {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
@@ -254,6 +255,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                 workspaceId={workspaceId}
                                 footer={headerInTopBar ? <StatusActions variant="sidebar" /> : undefined}
                                 onNewChat={handleSplitNewChat}
+                                railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
                                 runningCount={queueRunningCount}
                                 queuedCount={queueQueuedCount}
                                 chatHeaderExtra={
@@ -272,6 +274,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         sourceSelectionId={groupRoutingRef ?? undefined}
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
+                                        railShortcutContainer={splitRailShortcutNode}
                                         detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                     />

@@ -86,6 +86,12 @@ export interface SplitWorkspacePanelProps {
      * is omitted. Desktop layout only.
      */
     onNewChat?: () => void;
+    /**
+     * Extra compact controls on the collapsed desktop rail, below "+ new chat".
+     * The repo/group view passes a portal host here so the chat list can mount
+     * its latest-Sentinel shortcut; clicking inside it closes a hover-peek.
+     */
+    railShortcuts?: ReactNode;
     /** Active jobs shown on the collapsed desktop rail. Zero hides the control. */
     runningCount?: number;
     /** Waiting jobs shown on the collapsed desktop rail. Zero hides the control. */
@@ -314,6 +320,7 @@ export function SplitWorkspacePanel({
     gitHeaderExtra,
     footer,
     onNewChat,
+    railShortcuts,
     runningCount = 0,
     queuedCount = 0,
 }: SplitWorkspacePanelProps) {
@@ -390,6 +397,17 @@ export function SplitWorkspacePanel({
         const raf = requestAnimationFrame(() => setPeekVisible(true));
         return () => cancelAnimationFrame(raf);
     }, [hoverPeek.isOpen]);
+    // Rail shortcuts are usually portaled in from another React subtree, so a
+    // React handler here would never see their clicks; listen on the DOM node.
+    const railShortcutsRef = useRef<HTMLDivElement | null>(null);
+    const closePeek = hoverPeek.close;
+    const hasRailShortcuts = railShortcuts != null;
+    useEffect(() => {
+        const node = railShortcutsRef.current;
+        if (!node) return;
+        node.addEventListener('click', closePeek);
+        return () => node.removeEventListener('click', closePeek);
+    }, [isMobile, leftCollapsed, hasRailShortcuts, closePeek]);
 
     // Apply a proportional default chat height (chat = ~2/3, git = ~1/3) only
     // when the user has no persisted divider value for this workspace. The
@@ -566,6 +584,11 @@ export function SplitWorkspacePanel({
                                 <path d="M7 2v10M2 7h10" />
                             </svg>
                         </button>
+                    )}
+                    {railShortcuts != null && (
+                        <div ref={railShortcutsRef} className="contents" data-testid="split-workspace-left-shortcuts">
+                            {railShortcuts}
+                        </div>
                     )}
                     <RailJobStatus status="running" count={runningCount} onClick={toggleLeftCollapsed} />
                     <RailJobStatus status="queued" count={queuedCount} onClick={toggleLeftCollapsed} />

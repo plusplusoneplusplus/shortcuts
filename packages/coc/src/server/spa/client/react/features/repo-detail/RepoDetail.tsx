@@ -152,6 +152,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // AC-04 (single shared detail pane, last-selection-wins).
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
     const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
+    const [splitRailShortcutNode, setSplitRailShortcutNode] = useState<HTMLDivElement | null>(null);
     // Start a new chat from the collapsed sidebar rail. Mirrors RepoChatTab's
     // `handleNewChat` core (clear the selected task + navigate to the chat
     // surface); the split chat list reconciles its empty compose state from the
@@ -769,6 +770,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     workspaceId={ws.id}
                                     footer={chromeless ? <StatusActions variant="sidebar" /> : undefined}
                                     onNewChat={handleSplitNewChat}
+                                    railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
                                     runningCount={queueRunningCount}
                                     queuedCount={queueQueuedCount}
                                     chatList={
@@ -778,6 +780,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             sourceSelectionId={sourceSelectionId}
                                             layout="split-workspace"
                                             detailContainer={splitDetailNode}
+                                            railShortcutContainer={splitRailShortcutNode}
                                             detailActive={dockAvailable || splitLastClicked === 'chat'}
                                             onActivateDetail={() => setSplitLastClicked('chat')}
                                         />
