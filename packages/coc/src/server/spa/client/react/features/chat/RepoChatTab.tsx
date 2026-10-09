@@ -153,7 +153,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
 }
 
 export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter }: RepoChatTabProps) {
-    const routeId = workspaceId.startsWith('group-') ? sourceSelectionId ?? workspaceId : workspaceId;
+    const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     // Per-clone client (AC-07): the Activity tab's conversation LIST + queue +

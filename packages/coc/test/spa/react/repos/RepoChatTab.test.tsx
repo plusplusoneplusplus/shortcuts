@@ -2607,6 +2607,16 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/activity/proc-sn-r`);
     });
 
+    it('keeps a remote workspace owner in the route', async () => {
+        const selectionId = buildRemoteCloneKey('box-b', 'ws-remote');
+        setupFetchMock({ history: [makeHistoryTask('sn-r', sentinel('sn-r', { processId: 'proc-sn-r' }))] });
+        const rail = await renderWithRail({ workspaceId: 'ws-remote', sourceSelectionId: selectionId });
+
+        await act(async () => { fireEvent.click(shortcutIn(rail)!); });
+
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/activity/proc-sn-r`);
+    });
+
     it('follows queue updates: a newer Sentinel retargets, removal hides it', async () => {
         setupFetchMock();
         const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
