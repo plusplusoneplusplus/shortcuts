@@ -52,6 +52,21 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
 | `create-pull-request-tool.ts` | `create_pull_request` | Opens a GitHub/ADO PR for the chat's own repo via the shared `git/create-pull-request-service.ts` (commits mode in a temp worktree, or current branch) and writes the chat ↔ PR binding. Autopilot/Ralph write turns only — ask mode and Ralph final-check never receive it (the one intentional ask/autopilot tool-block difference). |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
+| `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
+
+### sentinel_todos
+
+Offered only to Sentinel chats (first turn and follow-ups) while `features.sentinelTodoLedger`
+is on: the route layer publishes `getSentinelTodos`, which returns the shared
+`SentinelTodoService` or `undefined` when the flag is off. Not in `LLM_TOOL_REGISTRY`; flag-off
+turns get no tool and no guidance. The owner is the invoking chat (`workspaceId`, `processId`),
+never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
+`list` (active items; `includeArchived` adds archived), `create` (requires `completionCondition`,
+optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
+return `{ code: 'conflict', current }`). `done`/`needs_attention` require a `reason`; `done` stores
+it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archiving is
+user-only. The addon's `<sentinel_todo_ledger>` guidance tells Sentinel to track concrete work
+only, update instead of duplicating, and report untracked work rather than relaunching jobs.
 
 ### create_pull_request
 

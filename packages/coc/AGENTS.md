@@ -117,7 +117,9 @@ references before editing. Paths are package-relative.
   tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
   read/write and emits only after the atomic write commits. Item revisions reject stale
   writers (`409` with the current item); there is no hard delete. Never let ledger edits
-  start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`.
+  start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
+  `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
+  `getSentinelTodos` runtime capability (undefined while the flag is off).
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

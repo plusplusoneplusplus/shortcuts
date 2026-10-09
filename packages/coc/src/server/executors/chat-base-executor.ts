@@ -65,6 +65,7 @@ import { buildChatTurnContext } from './chat-turn-context-builder';
 import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -703,6 +704,21 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * evaluated at call time, so the schema stays byte-identical.
      */
     /**
+     * `sentinel_todos` wiring for one turn: Sentinel chats only, and only while
+     * the route layer reports the to-do ledger flag on. The owner is this chat,
+     * so the tool can never write another chat's ledger.
+     */
+    protected buildSentinelTodoDeps(
+        processId: string,
+        workspaceId: string | undefined,
+        mode: ChatMode | undefined,
+    ): SentinelTodosToolDeps | undefined {
+        if (normalizeChatMode(mode) !== 'sentinel' || !workspaceId) return undefined;
+        const service = this.runtime.getSentinelTodos?.();
+        return service ? { service, owner: { workspaceId, processId } } : undefined;
+    }
+
+    /**
      * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
      * connector started (located through the ask_user relay's connector
      * receipts) records its origin on chats it hands off, so they post
@@ -923,6 +939,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
             // Autopilot-only: ask mode is read-only and never opens PRs.
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
+            // Sentinel runs on the ask path; only it gets the to-do ledger tool.
+            sentinelTodos: isAsk ? this.buildSentinelTodoDeps(processId, payload.workspaceId, payload.mode) : undefined,
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the

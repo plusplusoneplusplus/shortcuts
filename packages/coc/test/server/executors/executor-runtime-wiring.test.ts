@@ -49,6 +49,7 @@ function makeSentinelRuntime() {
         getSendMessage: vi.fn(() => undefined),
         getLaunchRalph: vi.fn(() => undefined),
         getSendToConversationRuntime: vi.fn(() => undefined),
+        getSentinelTodos: vi.fn(() => undefined),
         getMcpOauthManager: vi.fn(() => undefined),
         getTurnPerformanceStore: vi.fn(() => undefined),
         getGlobalSystemPrompt: vi.fn(() => undefined),

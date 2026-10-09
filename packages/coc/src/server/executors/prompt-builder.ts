@@ -30,6 +30,7 @@ import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
+import { createSentinelTodosTool, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
 import { createWorkspaceDirectory } from '../servers/workspace-directory';
@@ -753,6 +754,36 @@ export function buildCreatePullRequestAddon(
     // No prose suffix — the tool description carries its own guidance.
     return { tools: [tool], suffix: '' };
 }
+
+// ============================================================================
+// Sentinel To-do Ledger
+// ============================================================================
+
+/**
+ * Builds the `sentinel_todos` bookkeeping tool plus its dispatcher guidance.
+ * Callers pass deps only for a Sentinel chat with `features.sentinelTodoLedger`
+ * on; absent → no tool and no guidance, so flag-off turns are unchanged.
+ */
+export function buildSentinelTodosAddon(
+    deps: SentinelTodosToolDeps | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!deps) {
+        return { tools: [], suffix: '' };
+    }
+    const { tool } = createSentinelTodosTool(deps);
+    const suffix = tagGuidanceSuffix('sentinel_todo_ledger', SENTINEL_TODO_LEDGER_GUIDANCE);
+    return { tools: [tool], suffix };
+}
+
+export const SENTINEL_TODO_LEDGER_GUIDANCE = [
+    'This chat keeps a to-do ledger through `sentinel_todos` (bookkeeping only; it never runs or controls jobs).',
+    '- Track concrete work requests and agreed next actions. Do not track quick questions or uncommitted brainstorm ideas.',
+    '- Before creating an item, `list` the ledger and update a matching item instead of adding a duplicate.',
+    '- Give every new item a brief completion condition before handing work off.',
+    '- Mark an item `done` only after checking evidence against its completion condition, with a short reason; ' +
+        'use `needs_attention` with a reason for failed, cancelled, or incomplete work.',
+    '- If a ledger call fails, say the work is not tracked; never relaunch a job to repair tracking.',
+].join('\n');
 
 // ============================================================================
 // LLM Tool Preferences

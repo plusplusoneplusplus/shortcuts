@@ -300,6 +300,8 @@ export interface RegisterRoutesOptions {
      * mode "ralph".
      */
     setLaunchRalph?: (fn: LaunchRalphFn) => void;
+    /** Publish the flag-gated Sentinel to-do service getter to the executor runtime. */
+    setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
@@ -522,6 +524,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }),
     });
     registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
+    opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
         // Recovery must finish before a new registration can look like an interrupted launch.
         await delegatedResultsRestored;

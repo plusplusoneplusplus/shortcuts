@@ -5,6 +5,7 @@ import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
+import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
@@ -20,6 +21,7 @@ import {
     buildFollowUpSuggestionsAddon,
     buildCronToolsAddon,
     buildCreatePullRequestAddon,
+    buildSentinelTodosAddon,
     buildScheduleWakeupAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
@@ -77,6 +79,11 @@ export interface ChatToolBundleOptions {
      * Ralph) turns — absent → the tool is not offered (ask mode).
      */
     createPullRequest?: CreatePullRequestToolDeps;
+    /**
+     * `sentinel_todos` wiring. Pass it only for a Sentinel chat with the
+     * to-do ledger flag on — absent → no tool and no guidance.
+     */
+    sentinelTodos?: SentinelTodosToolDeps;
     excludeTools?: string[];
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
     onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
@@ -185,6 +192,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.createPullRequest) {
         addons.push(buildCreatePullRequestAddon(options.createPullRequest));
+    }
+
+    if (options.sentinelTodos) {
+        addons.push(buildSentinelTodosAddon(options.sentinelTodos));
     }
 
     if (options.memoryV2) {

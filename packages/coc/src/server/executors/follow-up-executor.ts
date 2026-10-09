@@ -523,6 +523,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 createPullRequest: currentMode === 'autopilot' || currentMode === 'ralph'
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
                     : undefined,
+                sentinelTodos: this.buildSentinelTodoDeps(processId, wsId, currentMode),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered

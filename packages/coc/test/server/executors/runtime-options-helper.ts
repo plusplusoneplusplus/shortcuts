@@ -16,6 +16,7 @@ export const RUNTIME_CAPABILITY_KEYS = [
     'getEnqueueChat',
     'getSendMessage',
     'getSendToConversationRuntime',
+    'getSentinelTodos',
     'getMcpOauthManager',
     'getTurnPerformanceStore',
     'getGlobalSystemPrompt',
