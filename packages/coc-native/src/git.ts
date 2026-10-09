@@ -123,8 +123,9 @@ export type NativeGitNoIndexDiffInput = Bindings.GitNoIndexDiffInput;
 /** Parsed supplied patch metadata and raw per-file content. */
 export type NativeGitPatchFile = Bindings.PatchFile;
 
-/** One root's Rust-owned commit/range patch snapshots. */
+/** One workspace/execution/source scope's Rust-owned patch snapshots. */
 export type NativeGitPatchStore = Bindings.GitPatchStore;
+export type NativeGitRemotePatchSource = Bindings.RemotePatchSource;
 
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
@@ -141,6 +142,7 @@ export interface NativeGitAddon {
     processGitPatch: typeof Bindings.processGitPatch;
     parseGitPatch: typeof Bindings.parseGitPatch;
     openGitPatchStore: typeof Bindings.openGitPatchStore;
+    openRemoteGitPatchStore: typeof Bindings.openRemoteGitPatchStore;
     execGit: typeof Bindings.execGit;
     gitStatusEntries: typeof Bindings.gitStatusEntries;
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
@@ -196,6 +198,7 @@ const GIT_EXPORTS = [
     'processGitPatch',
     'parseGitPatch',
     'openGitPatchStore',
+    'openRemoteGitPatchStore',
     'execGit',
     'gitStatusEntries',
     'parseGitStatusPorcelain',

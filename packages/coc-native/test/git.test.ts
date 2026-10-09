@@ -49,6 +49,7 @@ const REPOSITORY_STATUS = {
 /** A stand-in exporting the whole git capability. */
 const COMPLETE_ADDON =
     "module.exports = { parseGitPatch: async () => [], execGit: async () => 'main', gitStatusEntries: async () => [], " +
+    'openRemoteGitPatchStore: () => ({}), ' +
     'parseGitStatusPorcelain: async () => [], ' +
     'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
     'gitLogCommit: async () => null, ' +
@@ -452,7 +453,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitComparisonPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'processGitWorkingTreePatch', 'gitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'prepareGitShowPatch', 'prepareGitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'openGitPatchStore'])('rejects stale patch/metadata capability missing %s', (name) => {
+it.each(['prepareGitComparisonPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'processGitWorkingTreePatch', 'gitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'prepareGitShowPatch', 'prepareGitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale patch/metadata capability missing %s', (name) => {
     useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
 });

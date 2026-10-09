@@ -19,8 +19,8 @@ export declare class GitPatchRequest {
 }
 
 /**
- * One workspace root's Rust-owned commit/range patch snapshots, keyed by
- * resolved object IDs. Work runs on workers; `dispose` rejects later calls.
+ * Scoped Rust-owned patch snapshots keyed by object IDs or supplied bytes.
+ * Work runs on workers; `dispose` rejects later calls.
  */
 export declare class GitPatchStore {
   /** Capture the generation before external I/O without blocking a worker. */
@@ -987,6 +987,12 @@ export interface NotesWriteResult {
 export declare function openGitPatchStore(workspaceId: string, root: string, distro?: string | undefined | null): GitPatchStore
 
 /**
+ * Open an authenticated-transport patch scope. Source metadata contains no
+ * credentials; beginTransport fingerprints supplied bytes, never mutable refs.
+ */
+export declare function openRemoteGitPatchStore(workspaceId: string, root: string, source: RemotePatchSource, distro?: string | undefined | null): GitPatchStore
+
+/**
  * Open the backend for an already-resolved repository root. Indexes older
  * than `ttlMs` (default 10 s) are re-walked in the background on next use.
  */
@@ -1223,6 +1229,17 @@ export interface RemotePatchInput {
   beforeMode?: string
   afterMode?: string
   isBinary?: boolean
+}
+
+export interface RemotePatchSource {
+  provider: string
+  host: string
+  /** Provider-qualified organization/project/repository identity. */
+  repository: string
+  /** Pull request or supplied snapshot source identity, without credentials. */
+  sourceId: string
+  iteration?: string
+  baseIteration?: string
 }
 
 /** File content as the blob route returns it. */

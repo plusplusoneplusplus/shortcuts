@@ -19,17 +19,22 @@ pub enum PatchExecution {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object))]
+pub struct RemotePatchSource {
+    pub provider: String,
+    pub host: String,
+    /// Provider-qualified organization/project/repository identity.
+    pub repository: String,
+    /// Pull request or supplied snapshot source identity, without credentials.
+    pub source_id: String,
+    pub iteration: Option<String>,
+    pub base_iteration: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatchSource {
-    Local {
-        kind: String,
-    },
-    Remote {
-        provider: String,
-        host: String,
-        repository: String,
-        iteration: Option<String>,
-        base_iteration: Option<String>,
-    },
+    Local { kind: String },
+    Remote(RemotePatchSource),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,12 +57,14 @@ impl PatchScope {
             }
             && match &self.source {
                 PatchSource::Local { kind } => !kind.trim().is_empty(),
-                PatchSource::Remote { provider, host, repository, iteration, base_iteration } => {
-                    [provider, host, repository].iter().all(|v| !v.trim().is_empty())
-                        && [iteration, base_iteration]
+                PatchSource::Remote(source) => {
+                    [&source.provider, &source.host, &source.repository, &source.source_id]
+                        .iter()
+                        .all(|v| !v.trim().is_empty())
+                        && [&source.iteration, &source.base_iteration]
                             .iter()
                             .all(|v| v.as_ref().is_none_or(|v| !v.trim().is_empty()))
-                        && (base_iteration.is_none() || iteration.is_some())
+                        && (source.base_iteration.is_none() || source.iteration.is_some())
                 }
             }
     }
@@ -300,7 +307,9 @@ impl PatchStore {
         max_lines: Option<i64>,
         options: &GitCommandOptions,
     ) -> Result<PatchResult, String> {
-        if self.scope.execution != PatchExecution::Host {
+        if self.scope.execution != PatchExecution::Host
+            || !matches!(self.scope.source, PatchSource::Local { .. })
+        {
             return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
         }
         let root = &self.scope.root;
