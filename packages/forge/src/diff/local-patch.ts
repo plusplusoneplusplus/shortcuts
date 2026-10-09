@@ -1,6 +1,6 @@
 /** Local patch boundary: workspace/WSL transport and public shape conversion. */
 import * as path from 'path';
-import { loadNativeGit, type NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
+import { loadNativeGit, NativeAddonLoadError, type NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
 import { execGitAsync } from '../git/exec';
 import { ensureGitSafeDirectoryAsync } from '../git/safe-directory';
 import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
@@ -35,10 +35,14 @@ export function loadPendingPatch(root: string) {
 
 const revisionStores = new Map<string, NativeGitPatchStore>();
 
-/** Rust owns each host root's bounded snapshots; this map only keeps recent handles. */
-function revisionStore(root: string) {
-    const key = path.resolve(root);
-    const store = revisionStores.get(key) ?? loadNativeGit().openGitPatchStore(key, key);
+/** Rust owns scoped snapshots; this map only keeps recent handles. */
+function revisionStore(root: string, distro?: string, linuxRoot?: string) {
+    const workspace = distro ? root : path.resolve(root);
+    const key = JSON.stringify([workspace, distro, linuxRoot]);
+    const store = revisionStores.get(key) ?? loadNativeGit().openGitPatchStore(workspace, linuxRoot ?? workspace, distro);
+    if (distro && typeof store.beginTransport !== 'function') {
+        throw new NativeAddonLoadError('Native GitPatchStore lacks transport continuations; rebuild with `npm run build:native -w packages/coc-native`.');
+    }
     revisionStores.delete(key);
     revisionStores.set(key, store);
     // Evicted handles are released by GC; in-flight work keeps its own reference.
@@ -54,16 +58,23 @@ async function loadLocalPatch(
     const context = options?.contextLines == null ? undefined : Math.max(0, Math.floor(options.contextLines));
     const maxLines = options?.maxLines == null ? undefined : Math.floor(options.maxLines);
     let result;
-    if (resolveWorkspaceExecutionContext(root).kind === 'wsl') {
+    const execution = resolveWorkspaceExecutionContext(root);
+    if (execution.kind === 'wsl') {
         if ('scope' in source) {
             const batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
             const outputs = await Promise.all(batch.map(args => execGitAsync(args, root)));
             result = source.headings ? await addon.processGitPendingPatch(outputs) : await addon.processGitWorkingTreePatch(outputs, maxLines);
         } else {
+            // Unresolved default distros stay stateless rather than sharing an
+            // identity that could silently change to another distro.
+            const request = execution.distro
+                ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
+                : undefined;
             const args = 'commit' in source
                 ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
                 : await (source.direct ? addon.prepareGitComparisonPatch : addon.prepareGitRangePatch)(source.base, source.head, filePath, context);
-            result = await addon.processGitPatch(await execGitAsync(args, root, { timeout: 'direct' in source && source.direct ? 10000 : undefined }), maxLines);
+            const raw = await execGitAsync(args, root, { timeout: 'direct' in source && source.direct ? 10000 : undefined });
+            result = request ? await request.process(raw, maxLines) : await addon.processGitPatch(raw, maxLines);
         }
     } else {
         await ensureGitSafeDirectoryAsync(root);

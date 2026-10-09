@@ -89,7 +89,7 @@ manifest.
 
 ### Native build boundary
 
-Core `git::patch_store` provides exact workspace/root/execution/source scopes, versioned bounded LRU snapshots and shared in-flight computations. Refresh/disposal revoke pending results and prevent late publication; running computations retain their capacity slot through completion. Its Rust tests cover isolation, bounds, retries and lifecycle races. Production patch adapters use the stateless worker APIs below.
+Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revision stores key resolved object IDs; explicit-distro WSL revision stores fingerprint freshly transported bytes through single-use continuations. Refresh/disposal revoke pending results and transport generations. External I/O occupies no Rust worker. Working-tree and supplied remote production adapters use stateless workers. Detailed contracts live in the native instructions.
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64

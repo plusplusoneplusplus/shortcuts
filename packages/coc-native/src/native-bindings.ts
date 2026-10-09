@@ -12,11 +12,19 @@
  * binary the loader resolves.
  */
 
+/** A single-use, handle-bound external transport continuation. */
+export declare class GitPatchRequest {
+  process(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
+  cancel(): void
+}
+
 /**
  * One workspace root's Rust-owned commit/range patch snapshots, keyed by
  * resolved object IDs. Work runs on workers; `dispose` rejects later calls.
  */
 export declare class GitPatchStore {
+  /** Capture the generation before external I/O without blocking a worker. */
+  beginTransport(): GitPatchRequest
   /** `mode` is `commit` or `show` (no head), or `range` or `comparison`. */
   revisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
   /** Drop retained snapshots; pending computations cannot publish. */
@@ -972,8 +980,11 @@ export interface NotesWriteResult {
   currentContent?: string
 }
 
-/** Open the host revision patch store for an absolute repository root. */
-export declare function openGitPatchStore(workspaceId: string, root: string): GitPatchStore
+/**
+ * Open a patch store. A WSL scope requires its distro and absolute Linux root;
+ * only host scopes execute Git inside Rust.
+ */
+export declare function openGitPatchStore(workspaceId: string, root: string, distro?: string | undefined | null): GitPatchStore
 
 /**
  * Open the backend for an already-resolved repository root. Indexes older
