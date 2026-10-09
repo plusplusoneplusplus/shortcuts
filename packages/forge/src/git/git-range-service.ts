@@ -230,35 +230,36 @@ export class GitRangeService {
 
     /** Get files changed in a commit range through the shared patch backend. */
     async getChangedFiles(repoRoot: string, baseRef: string, headRef: string, signal?: AbortSignal): Promise<GitCommitRangeFile[]> {
-        signal?.throwIfAborted();
-        loadNativeGit();
-        try {
-            return (await loadRangePatch(repoRoot, baseRef, headRef, undefined, { signal })).files.map(file => ({
-                path: file.path,
-                status: file.status,
-                additions: file.additions ?? 0,
-                deletions: file.deletions ?? 0,
-                oldPath: file.originalPath,
-                repositoryRoot: repoRoot,
-            }));
-        } catch (error) {
-            signal?.throwIfAborted();
-            getLogger().error(LogCategory.GIT, `Failed to get changed files for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
-            return [];
-        }
+        return (await this.getRangeMetadata(repoRoot, baseRef, headRef, signal)).files;
     }
 
     /** Get complete patch statistics, including files beyond the display cap. */
     async getDiffStats(repoRoot: string, baseRef: string, headRef: string, signal?: AbortSignal): Promise<{ additions: number; deletions: number }> {
+        const { additions, deletions } = await this.getRangeMetadata(repoRoot, baseRef, headRef, signal);
+        return { additions, deletions };
+    }
+
+    private async getRangeMetadata(repoRoot: string, baseRef: string, headRef: string, signal?: AbortSignal) {
         signal?.throwIfAborted();
         loadNativeGit();
         try {
-            const { additions, deletions } = (await loadRangePatch(repoRoot, baseRef, headRef, undefined, { signal })).summary;
-            return { additions, deletions };
+            const { files, summary } = await loadRangePatch(repoRoot, baseRef, headRef, undefined, { signal });
+            return {
+                files: files.map(file => ({
+                    path: file.path,
+                    status: file.status,
+                    additions: file.additions ?? 0,
+                    deletions: file.deletions ?? 0,
+                    oldPath: file.originalPath,
+                    repositoryRoot: repoRoot,
+                })),
+                additions: summary.additions,
+                deletions: summary.deletions,
+            };
         } catch (error) {
             signal?.throwIfAborted();
-            getLogger().error(LogCategory.GIT, `Failed to get diff stats for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
-            return { additions: 0, deletions: 0 };
+            getLogger().error(LogCategory.GIT, `Failed to get range metadata for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
+            return { files: [], additions: 0, deletions: 0 };
         }
     }
 
@@ -355,27 +356,19 @@ export class GitRangeService {
                 return null;
             }
 
-            let files = await this.getChangedFiles(repoRoot, baseRef, 'HEAD', signal);
-
-            if (files.length > this.config.maxFiles) {
-                files = files.slice(0, this.config.maxFiles);
-            }
-
-            const { additions, deletions } = await this.getDiffStats(repoRoot, baseRef, 'HEAD', signal);
-
-            const repoName = path.basename(repoRoot);
+            const { files, additions, deletions } = await this.getRangeMetadata(repoRoot, baseRef, 'HEAD', signal);
 
             return {
                 baseRef,
                 headRef: 'HEAD',
                 commitCount,
-                files,
+                files: files.length > this.config.maxFiles ? files.slice(0, this.config.maxFiles) : files,
                 additions,
                 deletions,
                 mergeBase,
                 branchName: currentBranch !== 'HEAD' ? currentBranch : undefined,
                 repositoryRoot: repoRoot,
-                repositoryName: repoName,
+                repositoryName: path.basename(repoRoot),
                 baseMode: resolved.baseMode,
                 ...(resolved.baseModeFallback && { baseModeFallback: true as const })
             };

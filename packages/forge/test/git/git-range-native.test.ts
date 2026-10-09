@@ -204,9 +204,77 @@ describe('detectCommitRange', () => {
 
         const range = await service.detectCommitRange(repo);
         expect(range!.files).toHaveLength(1);
-        // The count itself is not capped — only the list the view renders is.
+        expect(range!.files[0].path).toBe('docs.md');
+        expect(range!.files[0].additions).toBe(1);
+        // Totals include files outside the display cap.
+        expect(range!.additions).toBe(2);
+        expect(range!.deletions).toBe(0);
         expect(range!.commitCount).toBe(1);
         service.dispose();
+    });
+
+    it('keeps file rows and totals in one snapshot when the base ref changes after patch delivery', async () => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo, repo);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const beginTransport = store.beginTransport.bind(store);
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = beginTransport();
+            const submit = ticket.revisionPatch.bind(ticket);
+            vi.spyOn(ticket, 'revisionPatch').mockImplementation(async (...args) => {
+                const result = await submit(...args);
+                git(repo, 'update-ref', 'refs/remotes/origin/main', git(repo, 'rev-parse', 'HEAD'));
+                return result;
+            });
+            return ticket;
+        });
+        try {
+            const range = await service.detectCommitRange(repo);
+            expect(range!.files.map(file => file.path)).toEqual(['docs.md', 'README.md']);
+            expect(range!.additions).toBe(2);
+            expect(range!.deletions).toBe(0);
+            expect(begin).toHaveBeenCalledTimes(1);
+            expect(await service.detectCommitRange(repo)).toBeNull();
+        } finally { begin.mockRestore(); open.mockRestore(); store.dispose(); service.dispose(); }
+    });
+
+    it('preserves an empty range response after an ordinary patch failure without retrying statistics', async () => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo, repo);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const beginTransport = store.beginTransport.bind(store);
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = beginTransport();
+            vi.spyOn(ticket, 'revisionPatch').mockRejectedValue(new Error('git patch failed'));
+            return ticket;
+        });
+        try {
+            expect(await service.detectCommitRange(repo)).toMatchObject({
+                baseRef: 'origin/main', headRef: 'HEAD', commitCount: 1,
+                files: [], additions: 0, deletions: 0,
+            });
+            expect(begin).toHaveBeenCalledTimes(1);
+        } finally { begin.mockRestore(); open.mockRestore(); store.dispose(); service.dispose(); }
+    });
+
+    it('isolates simultaneous range detection in workspaces with identical paths', async () => {
+        const one = makeRepo(), two = makeRepo();
+        write(two.repo, 'README.md', 'replacement\n');
+        commit(two.repo, 'replace contents');
+        const service = new GitRangeService();
+        try {
+            const ranges = await Promise.all([one, two].map(({ repo }) => service.detectCommitRange(repo)));
+            expect(ranges[0]).toMatchObject({ additions: 2, deletions: 0, repositoryRoot: one.repo });
+            expect(ranges[1]).toMatchObject({ additions: 2, deletions: 1, repositoryRoot: two.repo });
+            for (const [index, range] of ranges.entries()) {
+                expect(range!.files.map(file => file.path)).toEqual(['docs.md', 'README.md']);
+                expect(range!.files.every(file => file.repositoryRoot === [one, two][index].repo)).toBe(true);
+            }
+        } finally { service.dispose(); }
     });
 });
 
