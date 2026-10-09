@@ -121,7 +121,7 @@ fn resolve_options(options: Option<GitExecOptions>) -> GitCommandOptions {
             // Not a JavaScript option: which exit codes mean success belongs to
             // the command, so the one command that needs it sets it itself.
             success_exit_codes: Vec::new(),
-            cancellation: None,
+            cancellation: Vec::new(),
         },
         None => defaults,
     }
@@ -1653,21 +1653,8 @@ impl GitPatchStore {
         context: Option<u32>,
         max_lines: Option<i64>,
         headings: Option<bool>,
-    ) -> Result<AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>>> {
-        let ticket = self.store.begin_transport(self.store.scope()).map_err(store_error)?;
-        let store = self.store.clone();
-        Ok(AsyncTask::new(crate::task::Blocking::new(move || {
-            store
-                .working_tree_patch(
-                    ticket,
-                    &scope,
-                    path.as_deref(),
-                    context,
-                    max_lines,
-                    headings.unwrap_or(false),
-                )
-                .map_err(|message| Error::new(Status::GenericFailure, message))
-        })))
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.begin_transport()?.working_tree_patch(scope, path, context, max_lines, headings)
     }
 
     /// Capture the generation before external I/O without blocking a worker.
@@ -1690,24 +1677,16 @@ impl GitPatchStore {
         context: Option<u32>,
         max_lines: Option<i64>,
         options: Option<GitExecOptions>,
-    ) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
-        let ticket = self.store.begin_transport(self.store.scope());
-        let store = Arc::clone(&self.store);
-        let options = resolve_options(options);
-        AsyncTask::new(crate::task::Blocking::new(move || {
-            store
-                .revision_patch(
-                    ticket.map_err(store_error)?,
-                    &mode,
-                    &base,
-                    head.as_deref(),
-                    path.as_deref(),
-                    context,
-                    max_lines,
-                    &options,
-                )
-                .map_err(|message| Error::new(Status::GenericFailure, message))
-        }))
+    ) -> AsyncTask<GitPatchRequestTask> {
+        match self.begin_transport().and_then(|mut request| {
+            request.revision_patch(mode, base, head, path, context, max_lines, options)
+        }) {
+            Ok(task) => task,
+            Err(error) => AsyncTask::new(GitPatchRequestTask {
+                cancellation: PatchCancellation::default(),
+                task: crate::task::Blocking::new(move || Err(error)),
+            }),
+        }
     }
 
     /// Drop retained snapshots; pending computations cannot publish.
@@ -1722,7 +1701,7 @@ impl GitPatchStore {
     }
 }
 
-/// A single-use, handle-bound external transport continuation.
+/// A single-use, handle-bound patch request for host execution or external transport.
 #[napi]
 pub struct GitPatchRequest {
     store: Arc<PatchStore>,
@@ -1752,6 +1731,58 @@ impl Task for GitPatchRequestTask {
 
 #[napi]
 impl GitPatchRequest {
+    /// Execute a host patch with cancellation retained after worker submission.
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn revision_patch(
+        &mut self,
+        mode: String,
+        base: String,
+        head: Option<String>,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        options: Option<GitExecOptions>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.submit(move |store, ticket| {
+            store
+                .revision_patch(
+                    ticket,
+                    &mode,
+                    &base,
+                    head.as_deref(),
+                    path.as_deref(),
+                    context,
+                    max_lines,
+                    &resolve_options(options),
+                )
+                .map_err(|message| Error::new(Status::GenericFailure, message))
+        })
+    }
+
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn working_tree_patch(
+        &mut self,
+        scope: String,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        headings: Option<bool>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.submit(move |store, ticket| {
+            store
+                .working_tree_patch(
+                    ticket,
+                    &scope,
+                    path.as_deref(),
+                    context,
+                    max_lines,
+                    headings.unwrap_or(false),
+                )
+                .map_err(|message| Error::new(Status::GenericFailure, message))
+        })
+    }
+
     /// Validate an unsent continuation so external transport can stop revoked I/O.
     #[napi]
     pub fn check_active(&self) -> Result<()> {
@@ -1767,22 +1798,17 @@ impl GitPatchRequest {
         max_lines: Option<i64>,
         headings: Option<bool>,
     ) -> Result<AsyncTask<GitPatchRequestTask>> {
-        let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
-        let store = self.store.clone();
-        Ok(AsyncTask::new(GitPatchRequestTask {
-            cancellation: self.cancellation.clone(),
-            task: crate::task::Blocking::new(move || {
-                store
-                    .complete_working_tree_transport(
-                        store.scope(),
-                        ticket,
-                        outputs,
-                        max_lines,
-                        headings.unwrap_or(false),
-                    )
-                    .map_err(store_error)
-            }),
-        }))
+        self.submit(move |store, ticket| {
+            store
+                .complete_working_tree_transport(
+                    store.scope(),
+                    ticket,
+                    outputs,
+                    max_lines,
+                    headings.unwrap_or(false),
+                )
+                .map_err(store_error)
+        })
     }
 
     #[napi(ts_return_type = "Promise<PatchResult>")]
@@ -1791,19 +1817,30 @@ impl GitPatchRequest {
         raw: String,
         max_lines: Option<i64>,
     ) -> Result<AsyncTask<GitPatchRequestTask>> {
-        let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
-        let store = self.store.clone();
-        Ok(AsyncTask::new(GitPatchRequestTask {
-            cancellation: self.cancellation.clone(),
-            task: crate::task::Blocking::new(move || {
-                store.complete_transport(store.scope(), ticket, raw, max_lines).map_err(store_error)
-            }),
-        }))
+        self.submit(move |store, ticket| {
+            store.complete_transport(store.scope(), ticket, raw, max_lines).map_err(store_error)
+        })
     }
 
     #[napi]
     pub fn cancel(&mut self) {
         self.cancellation.cancel();
         self.ticket = None;
+    }
+}
+
+impl GitPatchRequest {
+    fn submit(
+        &mut self,
+        run: impl FnOnce(&PatchStore, PatchTransport) -> Result<coc_native_core::git::patch::PatchResult>
+            + Send
+            + 'static,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
+        let store = self.store.clone();
+        Ok(AsyncTask::new(GitPatchRequestTask {
+            cancellation: self.cancellation.clone(),
+            task: crate::task::Blocking::new(move || run(&store, ticket)),
+        }))
     }
 }

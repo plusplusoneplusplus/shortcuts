@@ -12,8 +12,11 @@
  * binary the loader resolves.
  */
 
-/** A single-use, handle-bound external transport continuation. */
+/** A single-use, handle-bound patch request for host execution or external transport. */
 export declare class GitPatchRequest {
+  /** Execute a host patch with cancellation retained after worker submission. */
+  revisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
+  workingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
   /** Validate an unsent continuation so external transport can stop revoked I/O. */
   checkActive(): void
   processWorkingTree(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>

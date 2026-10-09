@@ -72,8 +72,8 @@ pub struct GitCommandOptions {
     /// exits 1 to say "the files differ", which is its ordinary answer rather
     /// than an error, so `diff::diff_no_index` sets this itself.
     pub success_exit_codes: Vec<i32>,
-    /// Revocation shared by Git invocations in one patch generation.
-    pub cancellation: Option<Arc<AtomicBool>>,
+    /// Generation and individual request revocation; either stops the child.
+    pub cancellation: Vec<Arc<AtomicBool>>,
 }
 
 impl Default for GitCommandOptions {
@@ -84,7 +84,7 @@ impl Default for GitCommandOptions {
             cwd: None,
             env: Vec::new(),
             success_exit_codes: Vec::new(),
-            cancellation: None,
+            cancellation: Vec::new(),
         }
     }
 }
@@ -97,7 +97,7 @@ pub enum GitErrorKind {
     Exit(Option<i32>),
     /// The child outlived `timeout_ms` and was killed.
     Timeout,
-    /// The owning patch scope was refreshed or disposed.
+    /// The owning patch scope or individual request was revoked.
     Cancelled,
     /// Output passed `max_buffer_bytes`.
     MaxBuffer,
@@ -202,13 +202,13 @@ fn drain_with_timeout(
     child: &mut Child,
     rx: mpsc::Receiver<StreamResult>,
     timeout: Option<Duration>,
-    cancellation: Option<&AtomicBool>,
+    cancellation: &[Arc<AtomicBool>],
 ) -> (Captured, Captured, Option<GitErrorKind>) {
     let deadline = timeout.map(|t| Instant::now() + t);
     let mut stdout = None;
     let mut stderr = None;
     let stopped = loop {
-        let stopped = if cancellation.is_some_and(|token| token.load(Ordering::Acquire)) {
+        let stopped = if cancellation.iter().any(|token| token.load(Ordering::Acquire)) {
             Some(GitErrorKind::Cancelled)
         } else if deadline.is_some_and(|d| Instant::now() >= d) {
             Some(GitErrorKind::Timeout)
@@ -222,14 +222,14 @@ fn drain_with_timeout(
         if stdout.is_some() && stderr.is_some() {
             // A child can close both pipes before exiting. Cancellable requests
             // must keep checking revocation rather than block in child.wait().
-            if cancellation.is_none() || !matches!(child.try_wait(), Ok(None)) {
+            if cancellation.is_empty() || !matches!(child.try_wait(), Ok(None)) {
                 break None;
             }
             std::thread::sleep(Duration::from_millis(10));
             continue;
         }
         let remaining = deadline.map(|d| d.saturating_duration_since(Instant::now()));
-        let wait = if cancellation.is_some() {
+        let wait = if !cancellation.is_empty() {
             Some(remaining.unwrap_or(Duration::from_millis(10)).min(Duration::from_millis(10)))
         } else {
             remaining
@@ -303,7 +303,7 @@ fn run_command(
     args: &[String],
     options: &GitCommandOptions,
 ) -> Result<String, GitError> {
-    if options.cancellation.as_ref().is_some_and(|token| token.load(Ordering::Acquire)) {
+    if options.cancellation.iter().any(|token| token.load(Ordering::Acquire)) {
         return Err(GitError::new(GitErrorKind::Cancelled, args, "patch scope cancelled"));
     }
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -334,7 +334,7 @@ fn run_command(
 
     let timeout = (options.timeout_ms > 0).then(|| Duration::from_millis(options.timeout_ms));
     let (stdout, stderr, stopped) =
-        drain_with_timeout(&mut child, rx, timeout, options.cancellation.as_deref());
+        drain_with_timeout(&mut child, rx, timeout, &options.cancellation);
     let status = child.wait();
 
     let stderr_text = String::from_utf8_lossy(&stderr.bytes).into_owned();

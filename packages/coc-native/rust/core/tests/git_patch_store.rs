@@ -597,7 +597,7 @@ fn runner_cancellation_rejects_before_spawn_and_kills_running_git_without_a_time
     let fixture = BlockingGit::new();
     let cancellation = Arc::new(AtomicBool::new(true));
     let options = GitCommandOptions {
-        cancellation: Some(cancellation.clone()),
+        cancellation: vec![Arc::new(AtomicBool::new(false)), cancellation.clone()],
         timeout_ms: 0,
         env: vec![("PATCH_HELPER_ROOT".into(), fixture.root.path().to_string_lossy().into_owned())],
         ..Default::default()
@@ -622,7 +622,7 @@ fn runner_cancellation_rejects_before_spawn_and_kills_running_git_without_a_time
 #[test]
 fn host_patch_revocation_stops_git_and_old_dispatches_cannot_enter_a_new_generation() {
     use coc_native_core::git::GitCommandOptions;
-    for closed in [false, true] {
+    for action in ["cancel", "refresh", "dispose"] {
         let fixture = BlockingGit::new();
         let root = fixture.root.path();
         for (key, value) in [
@@ -642,6 +642,7 @@ fn host_patch_revocation_stops_git_and_old_dispatches_cannot_enter_a_new_generat
         identity.source = PatchSource::Local { kind: "revision".into() };
         let store = Arc::new(PatchStore::open(identity.clone(), 8, 1 << 20).unwrap());
         let ticket = store.begin_transport(&identity).unwrap();
+        let cancellation = ticket.request_cancellation.clone();
         let queued = store.begin_transport(&identity).unwrap();
         let options = GitCommandOptions {
             timeout_ms: 0,
@@ -664,12 +665,19 @@ fn host_patch_revocation_stops_git_and_old_dispatches_cannot_enter_a_new_generat
             .unwrap();
         });
         fixture.wait_for("started");
-        if closed {
-            store.dispose(&identity).unwrap();
-        } else {
-            store.refresh(&identity).unwrap();
+        match action {
+            "cancel" => {
+                cancellation.cancel();
+                queued.request_cancellation.cancel();
+            }
+            "dispose" => store.dispose(&identity).unwrap(),
+            _ => store.refresh(&identity).unwrap(),
         }
-        let expected = if closed { "patch store: Closed" } else { "patch store: Stale" };
+        let expected = match action {
+            "cancel" => "patch store: Cancelled",
+            "dispose" => "patch store: Closed",
+            _ => "patch store: Stale",
+        };
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(2)).expect("revoked Git must stop").unwrap_err(),
             expected
@@ -691,7 +699,7 @@ fn host_patch_revocation_stops_git_and_old_dispatches_cannot_enter_a_new_generat
                 .unwrap_err(),
             expected
         );
-        if !closed {
+        if action != "dispose" {
             git(root, &["config", "--unset", "diff.block.textconv"]);
             let fresh = store
                 .revision_patch(

@@ -34,6 +34,20 @@ it('exposes revocation before transport submission without consuming independent
     }
 });
 
+it.each(['wsl', 'remote'] as const)('rejects host request execution for %s scopes', async source => {
+    const store = source === 'wsl' ? api.openGitPatchStore('host-rejection', '/repo', 'Ubuntu')
+        : api.openRemoteGitPatchStore('host-rejection', tmpdir(), {
+            provider: 'github', host: 'github.com', repository: 'github:example/repo', sourceId: 'pr:1',
+        });
+    try {
+        await expect(store.beginTransport().revisionPatch('show', 'HEAD')).rejects.toThrow('InvalidIdentity');
+        await expect(store.beginTransport().workingTreePatch('all')).rejects.toThrow('InvalidIdentity');
+        expect((await store.beginTransport().process(patch)).files).toHaveLength(1);
+    } finally {
+        store.dispose();
+    }
+});
+
 it.each([
     ['local', 'process'],
     ['local', 'processWorkingTree'],
@@ -65,7 +79,7 @@ it.each([
     }
 });
 
-it.each(['refresh', 'dispose'] as const)('stops running host patches on %s without blocking Node', async action => {
+it.each(['cancel', 'refresh', 'dispose'] as const)('stops running host patches on %s without blocking Node', async action => {
     for (const workingTree of [false, true]) {
         const root = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'patch-cancel-')));
         const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
@@ -100,10 +114,13 @@ const timer = setInterval(() => {
         const independent = api.openGitPatchStore('other', root);
         let pending: Promise<unknown> | undefined;
         try {
-            pending = workingTree ? store.workingTreePatch('all') : store.revisionPatch('show', 'HEAD', null, 'same.txt', null, null, { timeout: 0 });
-            const rejection = expect(pending).rejects.toThrow(action === 'refresh' ? 'Stale' : 'Closed');
+            const ticket = store.beginTransport();
+            const request = action === 'cancel' ? ticket : store;
+            pending = workingTree ? request.workingTreePatch('all') : request.revisionPatch('show', 'HEAD', null, 'same.txt', null, null, { timeout: 0 });
+            const rejection = expect(pending).rejects.toThrow(action === 'cancel' ? 'Cancelled' : action === 'refresh' ? 'Stale' : 'Closed');
             await expect.poll(() => fs.existsSync(started)).toBe(true);
-            store[action]();
+            if (action === 'cancel') ticket.cancel();
+            else store[action]();
             // The blocked helper is released only in finally; completion proves
             // revocation stops Git rather than waiting for its normal output.
             let timer: ReturnType<typeof setTimeout> | undefined;
@@ -116,7 +133,7 @@ const timer = setInterval(() => {
             }
             expect((await independent.revisionPatch('commit', 'HEAD')).files.find(file => file.path === 'same.txt'))
                 .toMatchObject({ additions: 1 });
-            if (action === 'refresh') {
+            if (action !== 'dispose') {
                 git('config', '--unset', 'diff.block.textconv');
                 await expect(store.revisionPatch('show', 'HEAD', null, 'same.txt')).resolves.toMatchObject({ summary: { additions: 1 } });
             } else {
@@ -132,6 +149,50 @@ const timer = setInterval(() => {
         }
     }
 });
+
+it.each(['commit', 'show', 'range', 'comparison', 'working-tree'] as const)(
+    'cancels queued and cached host %s results without closing same-store requests', async mode => {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'patch-request-')));
+        const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+        git('init', '--initial-branch=main');
+        for (const [key, value] of [
+            ['user.name', 'Test'], ['user.email', 'test@example.com'],
+            ['commit.gpgsign', 'false'], ['core.autocrlf', 'false'],
+        ]) git('config', key, value);
+        fs.writeFileSync(path.join(root, 'same.txt'), 'one\n');
+        git('add', '.');
+        git('commit', '-qm', 'initial');
+        const base = git('rev-parse', 'HEAD').trim();
+        fs.writeFileSync(path.join(root, 'same.txt'), 'two\n');
+        git('add', '.');
+        git('commit', '-qm', 'changed');
+        fs.writeFileSync(path.join(root, 'same.txt'), 'disk\n');
+        const store = api.openGitPatchStore('host-request', root);
+        const read = (request: ReturnType<typeof store.beginTransport>) => mode === 'working-tree'
+            ? request.workingTreePatch('all')
+            : request.revisionPatch(mode, mode === 'range' || mode === 'comparison' ? base : 'HEAD',
+                mode === 'range' || mode === 'comparison' ? 'HEAD' : undefined);
+        try {
+            for (let pass = 0; pass < 2; pass++) {
+                const request = store.beginTransport();
+                const pending = read(request);
+                request.cancel();
+                request.cancel();
+                await expect(pending).rejects.toThrow('Cancelled');
+                expect(() => read(request)).toThrow('Closed');
+                const result = await read(store.beginTransport());
+                expect(result.files[0].path).toBe('same.txt');
+                expect(result.content.raw).toContain(mode === 'working-tree' ? '+disk' : '+two');
+            }
+            const unsent = store.beginTransport();
+            unsent.cancel();
+            expect(() => read(unsent)).toThrow('Closed');
+        } finally {
+            store.dispose();
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    },
+);
 
 describe('parseGitPatch worker boundary', () => {
     it('exposes the Rust root/first-parent commit plan on a worker', async () => {
