@@ -344,7 +344,7 @@ fn remote_sources_require_complete_identity_and_cannot_execute_local_revisions()
                 &coc_native_core::git::GitCommandOptions::default(),
             )
             .unwrap_err(),
-        "patch store: InvalidIdentity"
+        PatchStoreError::InvalidIdentity
     );
 }
 
@@ -674,9 +674,9 @@ fn host_patch_revocation_stops_git_and_old_dispatches_cannot_enter_a_new_generat
             _ => store.refresh(&identity).unwrap(),
         }
         let expected = match action {
-            "cancel" => "patch store: Cancelled",
-            "dispose" => "patch store: Closed",
-            _ => "patch store: Stale",
+            "cancel" => PatchStoreError::Cancelled,
+            "dispose" => PatchStoreError::Closed,
+            _ => PatchStoreError::Stale,
         };
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(2)).expect("revoked Git must stop").unwrap_err(),
@@ -733,7 +733,7 @@ fn working_tree_dispatch_checks_revocation_before_git_for_both_lifecycle_actions
         }
         assert_eq!(
             store.working_tree_patch(ticket, "all", None, None, None, false).unwrap_err(),
-            if closed { "patch store: Closed" } else { "patch store: Stale" }
+            if closed { PatchStoreError::Closed } else { PatchStoreError::Stale }
         );
     }
 }
@@ -821,7 +821,7 @@ fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors
         None,
         &options,
     );
-    assert!(error.unwrap_err().starts_with("git --literal-pathspecs diff"));
+    assert!(error.unwrap_err().to_string().starts_with("git --literal-pathspecs diff"));
     assert!(store
         .revision_patch(
             store.begin_transport(&identity).unwrap(),
@@ -856,6 +856,7 @@ fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors
                 &limits
             )
             .unwrap_err()
+            .to_string()
             .starts_with("git "));
         assert!(limited
             .revision_patch(
@@ -877,7 +878,7 @@ fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors
     let ticket = store.begin_transport(&identity).unwrap();
     store.dispose(store.scope()).unwrap();
     let closed = store.revision_patch(ticket, "commit", "HEAD", None, None, None, None, &options);
-    assert_eq!(closed.unwrap_err(), "patch store: Closed");
+    assert_eq!(closed.unwrap_err(), PatchStoreError::Closed);
     identity.execution = PatchExecution::Wsl { distro: "Ubuntu".into() };
     identity.root = "/home/user/repo".into();
     let wsl = PatchStore::open(identity, 8, 1 << 20).unwrap();
@@ -891,5 +892,5 @@ fn revision_patches_pin_moved_refs_retain_complete_snapshots_and_keep_git_errors
         None,
         &options,
     );
-    assert_eq!(rejected.unwrap_err(), "patch store: InvalidIdentity");
+    assert_eq!(rejected.unwrap_err(), PatchStoreError::InvalidIdentity);
 }

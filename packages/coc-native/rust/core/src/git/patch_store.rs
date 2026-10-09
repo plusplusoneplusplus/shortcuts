@@ -107,6 +107,21 @@ pub enum PatchStoreError {
     Compute(String),
 }
 
+impl std::fmt::Display for PatchStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Compute(message) => f.write_str(message),
+            other => write!(f, "patch store: {other:?}"),
+        }
+    }
+}
+
+impl From<GitError> for PatchStoreError {
+    fn from(error: GitError) -> Self {
+        Self::Compute(error.to_string())
+    }
+}
+
 type Outcome = Result<Arc<PatchResult>, PatchStoreError>;
 
 #[derive(Clone, Default)]
@@ -352,10 +367,11 @@ impl PatchStore {
         max_lines: Option<i64>,
     ) -> Result<PatchResult, PatchStoreError> {
         self.check_ticket(&ticket)?;
-        let fingerprint = blake3::hash(raw.as_bytes()).to_hex().to_string();
-        self.complete_snapshot(scope, ticket, fingerprint, "supplied", max_lines, || {
-            process_patch(raw, None)
-        })
+        let key = PatchKey {
+            version: PatchVersion::Fingerprint(blake3::hash(raw.as_bytes()).to_hex().to_string()),
+            variant: "supplied".into(),
+        };
+        self.read_snapshot(scope, ticket, key, max_lines, || Ok(process_patch(raw, None)))
     }
 
     pub fn complete_working_tree_transport(
@@ -376,39 +392,54 @@ impl PatchStore {
             hash.update(&(raw.len() as u64).to_le_bytes());
             hash.update(raw.as_bytes());
         }
-        self.complete_snapshot(
+        self.read_snapshot(
             scope,
             ticket,
-            hash.finalize().to_hex().to_string(),
-            if headings { "pending" } else { "working-tree" },
+            PatchKey {
+                version: PatchVersion::Fingerprint(hash.finalize().to_hex().to_string()),
+                variant: if headings { "pending" } else { "working-tree" }.into(),
+            },
             max_lines,
-            || process_working_tree_patch(outputs, None, headings),
+            || Ok(process_working_tree_patch(outputs, None, headings)),
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn complete_snapshot(
+    fn read_snapshot(
         &self,
         scope: &PatchScope,
         ticket: PatchTransport,
-        fingerprint: String,
-        variant: &str,
+        key: PatchKey,
         max_lines: Option<i64>,
-        process: impl FnOnce() -> PatchResult,
+        compute: impl FnOnce() -> Result<PatchResult, String>,
     ) -> Result<PatchResult, PatchStoreError> {
         self.check_ticket(&ticket)?;
-        let key =
-            PatchKey { version: PatchVersion::Fingerprint(fingerprint), variant: variant.into() };
         let result = self.compute(
             scope,
             key,
             Some(ticket.generation),
             Some(&ticket.request_cancellation),
-            || Ok(process()),
+            compute,
         )?;
         let result = truncate_patch(&result, max_lines);
         self.check_ticket(&ticket)?;
         Ok(result)
+    }
+
+    fn host_options(
+        &self,
+        ticket: &PatchTransport,
+        options: &GitCommandOptions,
+    ) -> Result<GitCommandOptions, PatchStoreError> {
+        if self.scope.execution != PatchExecution::Host
+            || !matches!(self.scope.source, PatchSource::Local { .. })
+        {
+            return Err(PatchStoreError::InvalidIdentity);
+        }
+        self.check_ticket(ticket)?;
+        Ok(GitCommandOptions {
+            cancellation: vec![ticket.cancellation.clone(), ticket.request_cancellation.0.clone()],
+            ..options.clone()
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -420,22 +451,11 @@ impl PatchStore {
         context: Option<u32>,
         max_lines: Option<i64>,
         headings: bool,
-    ) -> Result<PatchResult, String> {
-        if self.scope.execution != PatchExecution::Host
-            || !matches!(self.scope.source, PatchSource::Local { .. })
-        {
-            return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
-        }
-        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
-        let options = GitCommandOptions {
-            cancellation: vec![ticket.cancellation.clone(), ticket.request_cancellation.0.clone()],
-            ..Default::default()
-        };
+    ) -> Result<PatchResult, PatchStoreError> {
+        let options = self.host_options(&ticket, &GitCommandOptions::default())?;
         let outputs = working_tree_patch_outputs(&self.scope.root, scope, path, context, &options);
-        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
-        let outputs = outputs.map_err(|error| error.to_string())?;
-        self.complete_working_tree_transport(&self.scope, ticket, outputs, max_lines, headings)
-            .map_err(|error| format!("patch store: {error:?}"))
+        self.check_ticket(&ticket)?;
+        self.complete_working_tree_transport(&self.scope, ticket, outputs?, max_lines, headings)
     }
 
     /// Host commit (`commit`/`show`) or two-revision (`range`/`comparison`)
@@ -453,17 +473,8 @@ impl PatchStore {
         context: Option<u32>,
         max_lines: Option<i64>,
         options: &GitCommandOptions,
-    ) -> Result<PatchResult, String> {
-        if self.scope.execution != PatchExecution::Host
-            || !matches!(self.scope.source, PatchSource::Local { .. })
-        {
-            return Err(format!("patch store: {:?}", PatchStoreError::InvalidIdentity));
-        }
-        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
-        let options = GitCommandOptions {
-            cancellation: vec![ticket.cancellation.clone(), ticket.request_cancellation.0.clone()],
-            ..options.clone()
-        };
+    ) -> Result<PatchResult, PatchStoreError> {
+        let options = self.host_options(&ticket, options)?;
         let root = &self.scope.root;
         let run = |base: &str, head: Option<&str>, max_lines| {
             let args = match (mode, head) {
@@ -486,31 +497,19 @@ impl PatchStore {
             None => resolve(base).map(|sha| (sha.clone(), sha)),
             Some(head) => resolve(base).zip(resolve(head)),
         };
-        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
+        self.check_ticket(&ticket)?;
         let Some((base_sha, head_sha)) = resolved else {
             let result = run(base, head, max_lines);
-            self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
-            return result.map_err(|error| error.to_string());
+            self.check_ticket(&ticket)?;
+            return result.map_err(Into::into);
         };
         let key = PatchKey {
             version: PatchVersion::Revisions { base: base_sha.clone(), head: head_sha.clone() },
             variant: format!("{mode}\0{path:?}\0{context:?}"),
         };
-        let result = self
-            .compute(
-                &self.scope,
-                key,
-                Some(ticket.generation),
-                Some(&ticket.request_cancellation),
-                || run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|e| e.to_string()),
-            )
-            .map_err(|error| match error {
-                PatchStoreError::Compute(message) => message,
-                other => format!("patch store: {other:?}"),
-            })?;
-        let result = truncate_patch(&result, max_lines);
-        self.check_ticket(&ticket).map_err(|error| format!("patch store: {error:?}"))?;
-        Ok(result)
+        self.read_snapshot(&self.scope, ticket, key, max_lines, || {
+            run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|error| error.to_string())
+        })
     }
 
     pub fn refresh(&self, scope: &PatchScope) -> Result<(), PatchStoreError> {

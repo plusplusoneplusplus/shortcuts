@@ -2,7 +2,9 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::patch::parse_patch;
-use coc_native_core::git::patch_store::{PatchExecution, PatchScope, PatchSource, PatchStore};
+use coc_native_core::git::patch_store::{
+    PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError,
+};
 use coc_native_core::git::GitCommandOptions;
 
 #[allow(clippy::too_many_arguments)]
@@ -14,7 +16,7 @@ fn revision_patch(
     path: Option<&str>,
     context: Option<u32>,
     max_lines: Option<i64>,
-) -> Result<coc_native_core::git::patch::PatchResult, String> {
+) -> Result<coc_native_core::git::patch::PatchResult, PatchStoreError> {
     let store = PatchStore::open(
         PatchScope {
             workspace_id: "fixture".into(),

@@ -1694,7 +1694,7 @@ impl GitPatchRequest {
                     max_lines,
                     &resolve_options(options),
                 )
-                .map_err(|message| Error::new(Status::GenericFailure, message))
+                .map_err(|error| Error::new(Status::GenericFailure, error.to_string()))
         })
     }
 
@@ -1717,7 +1717,7 @@ impl GitPatchRequest {
                     max_lines,
                     headings.unwrap_or(false),
                 )
-                .map_err(|message| Error::new(Status::GenericFailure, message))
+                .map_err(|error| Error::new(Status::GenericFailure, error.to_string()))
         })
     }
 

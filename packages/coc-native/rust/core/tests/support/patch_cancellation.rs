@@ -2,6 +2,108 @@ use super::*;
 use std::{sync::mpsc, thread, time::Duration};
 
 #[test]
+fn host_admission_preserves_options_and_binds_only_the_current_request_flags() {
+    let root = tempfile::tempdir().unwrap();
+    let scope = PatchScope {
+        workspace_id: "fixture".into(),
+        root: root.path().into(),
+        execution: PatchExecution::Host,
+        source: PatchSource::Local { kind: "revision".into() },
+    };
+    let store = PatchStore::open(scope.clone(), 1, 4096).unwrap();
+    let other = PatchStore::open(scope.clone(), 1, 4096).unwrap();
+    let options = GitCommandOptions {
+        timeout_ms: 0,
+        max_buffer_bytes: 17,
+        cwd: Some(root.path().into()),
+        env: vec![("PATCH_FIXTURE".into(), "value".into())],
+        success_exit_codes: vec![1],
+        cancellation: vec![Arc::new(AtomicBool::new(true))],
+    };
+    let ticket = store.begin_transport(&scope).unwrap();
+    let bound = store.host_options(&ticket, &options).unwrap();
+    assert_eq!(bound.timeout_ms, options.timeout_ms);
+    assert_eq!(bound.max_buffer_bytes, options.max_buffer_bytes);
+    assert_eq!(bound.cwd, options.cwd);
+    assert_eq!(bound.env, options.env);
+    assert_eq!(bound.success_exit_codes, options.success_exit_codes);
+    assert_eq!(bound.cancellation.len(), 2);
+    assert!(Arc::ptr_eq(&bound.cancellation[0], &ticket.cancellation));
+    assert!(Arc::ptr_eq(&bound.cancellation[1], &ticket.request_cancellation.0));
+    assert!(bound.cancellation.iter().all(|flag| !flag.load(Ordering::Acquire)));
+    assert!(matches!(other.host_options(&ticket, &options), Err(PatchStoreError::ScopeMismatch)));
+    ticket.request_cancellation.cancel();
+    assert!(matches!(store.host_options(&ticket, &options), Err(PatchStoreError::Cancelled)));
+    assert!(!ticket.cancellation.load(Ordering::Acquire));
+    let fresh = store.begin_transport(&scope).unwrap();
+    store.refresh(&scope).unwrap();
+    assert!(matches!(store.host_options(&fresh, &options), Err(PatchStoreError::Stale)));
+    assert!(bound.cancellation[0].load(Ordering::Acquire));
+}
+
+#[test]
+fn snapshot_finalization_preserves_errors_and_rejects_revocation_during_computation() {
+    let root = tempfile::tempdir().unwrap();
+    let scope = PatchScope {
+        workspace_id: "fixture".into(),
+        root: root.path().into(),
+        execution: PatchExecution::Host,
+        source: PatchSource::Local { kind: "revision".into() },
+    };
+    for version in [
+        PatchVersion::Fingerprint("supplied".into()),
+        PatchVersion::Revisions { base: "a".repeat(40), head: "b".repeat(40) },
+    ] {
+        for action in ["cancel", "refresh", "dispose", "error", "success"] {
+            let store = PatchStore::open(scope.clone(), 1, 4096).unwrap();
+            let ticket = store.begin_transport(&scope).unwrap();
+            let cancellation = ticket.request_cancellation.clone();
+            let key = PatchKey { version: version.clone(), variant: "fixture".into() };
+            let result = store.read_snapshot(&scope, ticket, key.clone(), Some(1), || {
+                match action {
+                    "cancel" => cancellation.cancel(),
+                    "refresh" => store.refresh(&scope).unwrap(),
+                    "dispose" => store.dispose(&scope).unwrap(),
+                    "error" => return Err("git fixture: diagnostic".into()),
+                    _ => {}
+                }
+                Ok(process_patch("one\ntwo".into(), None))
+            });
+            match action {
+                "cancel" => assert_eq!(result, Err(PatchStoreError::Cancelled)),
+                "refresh" => assert_eq!(result, Err(PatchStoreError::Stale)),
+                "dispose" => assert_eq!(result, Err(PatchStoreError::Closed)),
+                "error" => {
+                    let error = result.unwrap_err();
+                    assert_eq!(error, PatchStoreError::Compute("git fixture: diagnostic".into()));
+                    assert_eq!(error.to_string(), "git fixture: diagnostic");
+                }
+                _ => {
+                    let limited = result.unwrap();
+                    assert!(limited.content.truncated);
+                    assert_eq!(limited.content.raw, "one");
+                    let complete = store
+                        .read_snapshot(
+                            &scope,
+                            store.begin_transport(&scope).unwrap(),
+                            key,
+                            None,
+                            || panic!("display truncation must retain the complete snapshot"),
+                        )
+                        .unwrap();
+                    assert_eq!(complete.content.raw, "one\ntwo");
+                    assert!(!complete.content.truncated);
+                }
+            }
+            assert_eq!(store.state.lock().active, 0);
+            if action != "success" {
+                assert!(store.state.lock().cache.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
 fn cancelled_owner_releases_capacity_without_retention_or_poisoning_waiters() {
     let root = tempfile::tempdir().unwrap();
     let scope = PatchScope {
