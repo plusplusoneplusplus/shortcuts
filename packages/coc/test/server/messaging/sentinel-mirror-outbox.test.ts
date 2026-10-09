@@ -49,6 +49,9 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.list('workspace-a')[0].destination.chatKey).toBe('conversation');
         const captured = intent({ destination: row.destination });
         expect(outbox.stage(captured).eventId).toBe(row.eventId);
+        expect(outbox.stage({
+            ...captured, destination: { bindingId: 'binding', threadId: 'root', chatKey: 'conversation', connector },
+        }).eventId).toBe(row.eventId);
         expect(() => outbox.stage(input)).toThrow('conflicts');
         expect(() => outbox.stage({ ...captured, content: 'Changed' })).toThrow('conflicts');
         const answer = outbox.stage({ ...captured, role: 'assistant', content: 'Answer' });
@@ -94,6 +97,29 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.heads('workspace-a').map(row => row.eventId)).toEqual([next, other, thread]);
     });
 
+    it('orders shared destinations across workspaces even within one clock tick or after clock regression', () => {
+        const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T00:00:00.000Z'));
+        const first = admitted(intent({ workspaceId: 'workspace-b' }));
+        const second = admitted();
+        expect(outbox.headsAcrossWorkspaces(['workspace-a', 'workspace-b', 'workspace-b'])
+            .map(row => row.eventId)).toEqual([first]);
+        expect(outbox.beginPart('workspace-a', second)).toBeUndefined();
+        now.mockReturnValue(Date.parse('2025-12-31T23:59:59.000Z'));
+        outbox = new SentinelMirrorOutbox(dataDir);
+        outbox.recover('workspace-a');
+        outbox.recover('workspace-b');
+        const third = admitted(intent({ workspaceId: 'workspace-c' }));
+        const rows = ['workspace-a', 'workspace-b', 'workspace-c'].flatMap(workspaceId => outbox.list(workspaceId));
+        expect(rows.find(row => row.eventId === third)!.createdAt)
+            .toBe('2026-01-01T00:00:00.002Z');
+        expect(outbox.beginPart('workspace-c', third)).toBeUndefined();
+        const attempt = begin(first, 'workspace-b');
+        outbox.acknowledgePart('workspace-b', first, attempt, 'one');
+        outbox.acknowledgePart('workspace-b', first, begin(first, 'workspace-b'), 'two');
+        expect(outbox.headsAcrossWorkspaces(['workspace-c', 'workspace-b', 'workspace-a'])
+            .map(row => row.eventId)).toEqual([second]);
+    });
+
     it('recovers acknowledged progress and retries only remaining unsent parts', () => {
         const identity = admitted();
         const first = begin(identity);
@@ -123,6 +149,25 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.acknowledgePart('workspace-a', identity, retry, 'one')).toBe(true);
     });
 
+    it('persists retry backoff and honors the provider cooldown across restart', () => {
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T00:00:00.000Z'));
+        const identity = admitted();
+        outbox.failPart('workspace-a', identity, begin(identity), 'rejected', 10_000);
+        outbox = new SentinelMirrorOutbox(dataDir);
+        outbox.recover('workspace-a');
+        expect(outbox.list('workspace-a')[0]).toMatchObject({
+            state: 'retryable', retryCount: 1, nextAttemptAt: '2026-01-01T00:00:10.000Z',
+        });
+        expect(outbox.beginPart('workspace-a', identity)).toBeUndefined();
+        clock.mockReturnValue(Date.parse('2026-01-01T00:00:10.000Z'));
+        outbox.failPart('workspace-a', identity, begin(identity), 'not-attempted', 0);
+        expect(outbox.list('workspace-a')[0]).toMatchObject({
+            retryCount: 2, nextAttemptAt: '2026-01-01T00:00:12.000Z',
+        });
+        clock.mockReturnValue(Date.parse('2026-01-01T00:00:12.000Z'));
+        expect(outbox.beginPart('workspace-a', identity)).toBeTypeOf('string');
+    });
+
     it.each(['restart', 'failure'] as const)('quarantines unknown %s outcomes and blocks later sends', mode => {
         const identity = admitted();
         const next = admitted(intent({ requestId: 'later' }));
@@ -148,6 +193,39 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.beginPart('workspace-a', other)).toBeTypeOf('string');
     });
 
+    it('rejects an empty unbind identity rather than treating it as a process-wide cancellation', () => {
+        admitted();
+        expect(() => outbox.cancel('workspace-a', 'sentinel', 'unbound', '')).toThrow();
+        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'pending', cancelRequested: false });
+    });
+
+    it('cancels one request and its answer without cancelling another request on the same binding', () => {
+        admitted();
+        admitted(intent({ requestId: 'later' }));
+        admitted(intent({ role: 'assistant', content: 'Matching answer' }));
+        outbox.cancel('workspace-a', 'sentinel', 'cancelled', 'binding', 'accepted-request');
+        const rows = outbox.list('workspace-a');
+        expect(rows.filter(row => row.requestId === 'accepted-request').map(row => row.state))
+            .toEqual(['cancelled', 'cancelled']);
+        expect(rows.find(row => row.requestId === 'later')?.state).toBe('pending');
+        expect(() => outbox.cancel('workspace-a', 'sentinel', 'cancelled', 'binding', '')).toThrow();
+    });
+
+    it('orders WhatsApp replies by group conversation regardless of their quoted message IDs', () => {
+        const first = admitted(intent({ destination: { connector: 'whatsapp', chatKey: 'group', threadId: 'first-quote', bindingId: 'first' } }));
+        const later = admitted(intent({ workspaceId: 'workspace-b', destination: { connector: 'whatsapp', chatKey: 'group', threadId: 'second-quote', bindingId: 'second' } }));
+        expect(outbox.headsAcrossWorkspaces(['workspace-b', 'workspace-a']).map(row => row.eventId)).toEqual([first]);
+        expect(outbox.beginPart('workspace-b', later)).toBeUndefined();
+    });
+
+    it('uses the owning worker registration scope instead of retaining removed workspaces forever', () => {
+        admitted();
+        const later = admitted(intent({ workspaceId: 'workspace-b' }));
+        expect(outbox.beginPart('workspace-b', later)).toBeUndefined();
+        expect(() => outbox.beginPart('workspace-b', later, ['workspace-a'])).toThrow('active workspace scope');
+        expect(outbox.beginPart('workspace-b', later, ['workspace-b'])).toBeTypeOf('string');
+    });
+
     it('does not advance persisted state after a failed atomic write', () => {
         const row = outbox.stage(intent());
         vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
@@ -156,6 +234,62 @@ describe('SentinelMirrorOutbox', () => {
         expect(fs.readdirSync(path.dirname(getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE))))
             .toEqual([SENTINEL_MIRROR_OUTBOX_FILE]);
         expect(outbox.accept('workspace-a', row.eventId)).toBe(true);
+    });
+
+    it('retains a durable sending intent when acknowledgement persistence fails', () => {
+        const identity = admitted();
+        const attempt = begin(identity);
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        expect(() => outbox.acknowledgePart('workspace-a', identity, attempt, 'posted')).toThrow('disk failure');
+        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'sending', nextPart: 0, attemptId: attempt });
+        outbox = new SentinelMirrorOutbox(dataDir);
+        outbox.recover('workspace-a');
+        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'ambiguous', failure: 'unknown', outboundIds: [] });
+        expect(outbox.beginPart('workspace-a', identity)).toBeUndefined();
+    });
+
+    it('does not authorize a network attempt or cancellation after persistence failure', () => {
+        const identity = admitted();
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        expect(() => outbox.beginPart('workspace-a', identity)).toThrow('disk failure');
+        expect(outbox.list('workspace-a')[0].state).toBe('pending');
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        expect(() => outbox.cancel('workspace-a', 'sentinel', 'unbound')).toThrow('disk failure');
+        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'pending', cancelRequested: false });
+    });
+
+    it('records an unknown outcome even if cancellation raced the send', () => {
+        const identity = admitted();
+        const attempt = begin(identity);
+        outbox.cancel('workspace-a', 'sentinel', 'cancelled');
+        outbox.failPart('workspace-a', identity, attempt, 'unknown');
+        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'ambiguous', cancelRequested: true, failure: 'unknown' });
+        expect(outbox.beginPart('workspace-a', identity)).toBeUndefined();
+    });
+
+    it('retains durable attempt evidence after unknown sends and later unbind cancellation', () => {
+        const identity = admitted();
+        expect(outbox.list('workspace-a')[0].attemptedPartCount).toBe(0);
+        const attempt = begin(identity);
+        expect(outbox.list('workspace-a')[0].attemptedPartCount).toBe(1);
+        outbox.failPart('workspace-a', identity, attempt, 'unknown');
+        outbox.cancel('workspace-a', 'sentinel', 'unbound');
+        outbox = new SentinelMirrorOutbox(dataDir);
+        outbox.recover('workspace-a');
+        expect(outbox.list('workspace-a')[0]).toMatchObject({
+            state: 'cancelled', attemptedPartCount: 1, failure: 'unknown',
+        });
+    });
+
+    it('tracks the attempted chunk prefix rather than counting retries of the same chunk', () => {
+        const identity = admitted();
+        for (let retry = 0; retry < 3; retry++) {
+            outbox.failPart('workspace-a', identity, begin(identity), 'not-attempted');
+        }
+        expect(outbox.list('workspace-a')[0].attemptedPartCount).toBe(1);
+        outbox.acknowledgePart('workspace-a', identity, begin(identity), 'first');
+        begin(identity);
+        expect(outbox.list('workspace-a')[0].attemptedPartCount).toBe(2);
     });
 
     it.each(['wrong-owner', 'duplicate', 'invalid-progress', 'extra-routing'] as const)('rejects %s persisted data without exposing content', corruption => {
@@ -175,5 +309,11 @@ describe('SentinelMirrorOutbox', () => {
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')).toEqual([]);
         expect(fs.readdirSync(dataDir)).toEqual([]);
+    });
+
+    it('sanitizes malformed JSON errors rather than exposing stored message fragments', () => {
+        admitted();
+        fs.writeFileSync(getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE), 'private message fragment');
+        expect(() => outbox.list('workspace-a')).toThrow(/^Invalid Sentinel mirror outbox$/);
     });
 });

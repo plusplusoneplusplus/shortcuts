@@ -31,9 +31,13 @@ const entrySchema = intentSchema.extend({
     attemptId: id.optional(),
     cancelRequested: z.boolean(),
     failure: z.enum(['not-attempted', 'rejected', 'unknown', 'cancelled', 'unbound', 'admission-rejected']).optional(),
+    retryCount: z.number().int().nonnegative().optional(),
+    nextAttemptAt: z.iso.datetime().optional(),
+    attemptedPartCount: z.number().int().nonnegative().optional(),
 }).strict().refine(row =>
     row.nextPart === row.outboundIds.length
     && row.nextPart <= row.chunks.length
+    && (row.attemptedPartCount === undefined || row.attemptedPartCount <= row.chunks.length)
     && (row.state === 'sending') === (row.attemptId !== undefined)
     && (row.state !== 'sending' || row.nextPart < row.chunks.length)
     && (row.state !== 'delivered' || (row.chunks.length > 0 && row.nextPart === row.chunks.length)),
@@ -50,7 +54,10 @@ function eventId(intent: SentinelMirrorIntent): string {
 }
 
 function conversationKey(destination: SentinelMirrorDestination): string {
-    return JSON.stringify([destination.connector, destination.chatKey, destination.threadId ?? null]);
+    return JSON.stringify([
+        destination.connector, destination.chatKey,
+        destination.connector === 'teams' ? destination.threadId ?? null : null,
+    ]);
 }
 
 /**
@@ -59,9 +66,13 @@ function conversationKey(destination: SentinelMirrorDestination): string {
  * Network attempts without a durable acknowledgement are quarantined, not blindly replayed.
  */
 export class SentinelMirrorOutbox {
+    private lastCreatedAt = 0;
+    private readonly workspaceIds = new Set<string>();
+
     constructor(private readonly dataDir: string) {}
 
     list(workspaceId: string): SentinelMirrorEntry[] {
+        this.workspaceIds.add(workspaceId);
         const file = getRepoDataPath(this.dataDir, workspaceId, SENTINEL_MIRROR_OUTBOX_FILE);
         let raw: string;
         try {
@@ -70,13 +81,21 @@ export class SentinelMirrorOutbox {
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
             throw error;
         }
-        const parsed = z.array(entrySchema).safeParse(JSON.parse(raw));
+        let decoded: unknown;
+        try {
+            decoded = JSON.parse(raw);
+        } catch (error) {
+            if (error instanceof SyntaxError) throw new Error('Invalid Sentinel mirror outbox');
+            throw error;
+        }
+        const parsed = z.array(entrySchema).safeParse(decoded);
         if (!parsed.success) throw new Error('Invalid Sentinel mirror outbox');
         const rows = parsed.data;
         if (rows.some(row => row.workspaceId !== workspaceId || row.eventId !== eventId(row))
             || new Set(rows.map(row => row.eventId)).size !== rows.length) {
             throw new Error('Invalid Sentinel mirror ownership or duplicate event identity');
         }
+        for (const row of rows) this.lastCreatedAt = Math.max(this.lastCreatedAt, Date.parse(row.createdAt));
         return rows;
     }
 
@@ -93,12 +112,17 @@ export class SentinelMirrorOutbox {
             }
             return existing;
         }
+        // One owning-server outbox observes restored ledgers before admission. Monotonic
+        // timestamps preserve destination order across workspace files and clock changes.
+        const createdAt = Math.max(Date.now(), this.lastCreatedAt + 1);
         const entry: SentinelMirrorEntry = {
-            ...intent, eventId: identity, createdAt: new Date().toISOString(),
+            ...intent, eventId: identity, createdAt: new Date(createdAt).toISOString(),
             state: 'admitting', chunks: [], outboundIds: [], nextPart: 0, cancelRequested: false,
+            attemptedPartCount: 0,
         };
         rows.push(entry);
         this.save(intent.workspaceId, rows);
+        this.lastCreatedAt = createdAt;
         return entry;
     }
 
@@ -138,25 +162,37 @@ export class SentinelMirrorOutbox {
 
     /** One unresolved head per destination; ambiguous/admitting heads block later sends. */
     heads(workspaceId: string): SentinelMirrorEntry[] {
-        const seen = new Set<string>();
-        return this.list(workspaceId).filter(row => {
-            if (row.state === 'delivered' || row.state === 'cancelled') return false;
-            const key = conversationKey(row.destination);
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
+        return this.headsAcrossWorkspaces([workspaceId]);
     }
 
-    beginPart(workspaceId: string, identity: string): string | undefined {
+    /** A physical messaging conversation can have intents in multiple workspace ledgers. */
+    headsAcrossWorkspaces(workspaceIds: readonly string[]): SentinelMirrorEntry[] {
+        const seen = new Set<string>();
+        return [...new Set(workspaceIds)].flatMap(workspaceId => this.list(workspaceId))
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+            .filter(row => {
+                if (row.state === 'delivered' || row.state === 'cancelled') return false;
+                const key = conversationKey(row.destination);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+    }
+
+    beginPart(workspaceId: string, identity: string, activeWorkspaceIds?: readonly string[]): string | undefined {
+        const scopes = activeWorkspaceIds ?? [...this.workspaceIds];
+        if (!scopes.includes(workspaceId)) throw new Error('Sentinel mirror owner is outside the active workspace scope');
         const attempt = randomUUID();
         const changed = this.change(workspaceId, identity, row => {
-            if (!this.heads(workspaceId).some(head => head.eventId === identity)
+            if (!this.headsAcrossWorkspaces(scopes).some(head => head.eventId === identity)
                 || (row.state !== 'pending' && row.state !== 'retryable')
+                || (row.nextAttemptAt && Date.parse(row.nextAttemptAt) > Date.now())
                 || row.chunks.length === 0) return false;
             row.state = 'sending';
             row.attemptId = attempt;
+            row.attemptedPartCount = Math.max(row.attemptedPartCount ?? 0, row.nextPart + 1);
             row.failure = undefined;
+            row.nextAttemptAt = undefined;
             return true;
         });
         return changed ? attempt : undefined;
@@ -177,28 +213,39 @@ export class SentinelMirrorOutbox {
 
     failPart(
         workspaceId: string, identity: string, attempt: string,
-        outcome: 'not-attempted' | 'rejected' | 'unknown',
+        outcome: 'not-attempted' | 'rejected' | 'unknown', retryAfterMs?: number,
     ): boolean {
         return this.change(workspaceId, identity, row => {
             if (row.state !== 'sending' || row.attemptId !== attempt) return false;
             row.attemptId = undefined;
             row.failure = outcome;
             row.state = outcome === 'unknown' ? 'ambiguous' : row.cancelRequested ? 'cancelled' : 'retryable';
+            if (row.state === 'retryable' && retryAfterMs !== undefined) {
+                if (!Number.isFinite(retryAfterMs) || retryAfterMs < 0) throw new Error('Invalid Sentinel mirror retry delay');
+                row.retryCount = (row.retryCount ?? 0) + 1;
+                const delay = Math.max(Math.min(retryAfterMs, 2_147_483_647),
+                    Math.min(60_000, 1_000 * 2 ** Math.min(row.retryCount - 1, 6)));
+                row.nextAttemptAt = new Date(Date.now() + delay).toISOString();
+            }
             return true;
         });
     }
 
     cancel(
         workspaceId: string, processId: string,
-        reason: 'cancelled' | 'unbound', bindingId?: string,
+        reason: 'cancelled' | 'unbound', bindingId?: string, requestId?: string,
     ): void {
+        id.parse(processId);
+        if (bindingId !== undefined) id.parse(bindingId);
+        if (requestId !== undefined) id.parse(requestId);
         const rows = this.list(workspaceId);
         let changed = false;
         for (const row of rows) {
-            if (row.processId !== processId || (bindingId && row.destination.bindingId !== bindingId)
+            if (row.processId !== processId || (bindingId !== undefined && row.destination.bindingId !== bindingId)
+                || (requestId !== undefined && row.requestId !== requestId)
                 || row.state === 'delivered' || row.state === 'cancelled') continue;
             row.cancelRequested = true;
-            row.failure = reason;
+            if (row.failure !== 'unknown') row.failure = reason;
             // An in-flight operation cannot be unsent; retain its acknowledgement authority.
             if (row.state !== 'sending') row.state = 'cancelled';
             changed = true;
