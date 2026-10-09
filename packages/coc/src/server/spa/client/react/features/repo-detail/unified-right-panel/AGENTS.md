@@ -660,7 +660,11 @@ conflict reloads the ledger and keeps the typed draft, and the next save is base
 on the newer revision. Creates carry one idempotency key per draft across retries.
 Late loads are dropped by a sequence counter. Choosing Needs attention requires a
 reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
-Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Job links only navigate; nothing in
+Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Add and Edit forms carry a Priority select
+(Regular default, High); a High row draws an `aria-hidden` red leading band over the card's
+reserved `pl-1` gutter (every row reserves it, so priority changes never shift content) plus a
+visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
+missing value (older owning server) as Regular. Priority never reorders sections. Job links only navigate; nothing in
 the tab starts, retries, or cancels a job. Tests live in
 `test/server/sentinel-todos/panel.test.tsx` and `panel-model.test.ts`.
 

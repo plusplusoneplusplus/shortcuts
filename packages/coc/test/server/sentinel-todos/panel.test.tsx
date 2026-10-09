@@ -58,7 +58,7 @@ function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return {
         id: 'i1', title: 'Fix login', completionCondition: 'Login test passes', notes: 'Check SSO too', status: 'todo',
         archived: false, revision: 1, createdAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:00:00.000Z',
-        createdBy: 'sentinel', updatedBy: 'sentinel', jobs: [], ...overrides,
+        createdBy: 'sentinel', updatedBy: 'sentinel', jobs: [], priority: 'regular', ...overrides,
     };
 }
 
@@ -220,6 +220,105 @@ describe('UnifiedTodoTab', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
         expect(update.mock.calls[1][3]).toMatchObject({ expectedRevision: 3, notes: 'My new notes' });
+    });
+
+    it('adds an item as Regular by default and as High when chosen', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        create.mockResolvedValue({ item: item(), ledgerRevision: 2, created: true });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(await screen.findByTestId('sentinel-todo-add'));
+        const priority = screen.getByLabelText('Priority') as HTMLSelectElement;
+        expect(priority.value).toBe('regular');
+        expect([...priority.options].map(o => o.textContent)).toEqual(['Regular', 'High']);
+        fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plain' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+        await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+        expect(create.mock.calls[0][2]).toMatchObject({ title: 'Plain', priority: 'regular' });
+
+        fireEvent.click(await screen.findByTestId('sentinel-todo-add'));
+        expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('regular');
+        fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Urgent' } });
+        fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'high' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+        await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+        expect(create.mock.calls[1][2]).toMatchObject({ title: 'Urgent', priority: 'high' });
+    });
+
+    it('changes only priority from the edit form, leaving status and outcome alone', async () => {
+        const done = item({ status: 'needs_attention', statusReason: 'Blocked', outcome: { summary: 'Earlier review', recordedAt: '2026-10-09T00:00:00.000Z', recordedBy: 'sentinel' } });
+        get.mockResolvedValueOnce(ledger([done])).mockResolvedValue(ledger([{ ...done, priority: 'high', revision: 2 }]));
+        update.mockResolvedValue({ item: { ...done, priority: 'high', revision: 2 }, ledgerRevision: 2 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(await screen.findByRole('button', { expanded: false }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('regular');
+        fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'high' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await screen.findByTestId('sentinel-todo-priority-high-i1');
+        const patch = update.mock.calls[0][3];
+        expect(patch).toMatchObject({ expectedRevision: 1, priority: 'high', title: 'Fix login' });
+        expect(patch).not.toHaveProperty('status');
+        expect(patch).not.toHaveProperty('statusReason');
+        expect(patch).not.toHaveProperty('outcome');
+        expect(screen.getByTestId('sentinel-todo-status-needs_attention')).toBeTruthy();
+    });
+
+    it('marks High rows with a red leading band and a High label, collapsed or expanded, and Regular rows with neither', async () => {
+        get.mockResolvedValue(ledger([
+            item({ id: 'hi', title: 'Urgent', priority: 'high', status: 'in_progress' }),
+            item({ id: 'reg', title: 'Plain' }),
+            { ...item({ id: 'old', title: 'Legacy' }), priority: undefined } as unknown as SentinelTodoItem,
+        ]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const high = await screen.findByTestId('sentinel-todo-row-hi');
+        const band = within(high).getByTestId('sentinel-todo-priority-band-hi');
+        expect(band.getAttribute('aria-hidden')).toBe('true');
+        expect(band.className).toMatch(/absolute/);
+        expect(band.className).toMatch(/inset-y-0/);
+        expect(band.className).toMatch(/left-0/);
+        expect(band.className).toMatch(/bg-\[#e51400\]/);
+        expect(band.className).toMatch(/dark:bg-\[#f14c4c\]/);
+        const label = within(high).getByTestId('sentinel-todo-priority-high-hi');
+        expect(label.textContent).toContain('High');
+        expect(label.className).toMatch(/shrink-0/);
+        // The accessible name of the row toggle says High priority, so color is not the only signal.
+        expect(within(high).getByRole('button', { expanded: false }).textContent).toContain('High priority');
+        // Priority is independent of status.
+        expect(within(high).getByTestId('sentinel-todo-status-in_progress')).toBeTruthy();
+
+        for (const id of ['reg', 'old']) {
+            const row = screen.getByTestId(`sentinel-todo-row-${id}`);
+            expect(row.getAttribute('data-priority')).toBe('regular');
+            expect(within(row).queryByTestId(`sentinel-todo-priority-band-${id}`)).toBeNull();
+            expect(within(row).queryByTestId(`sentinel-todo-priority-high-${id}`)).toBeNull();
+            expect(row.textContent).not.toMatch(/High/);
+            // Every row reserves the same gutter, so toggling priority never shifts content.
+            expect(row.className).toBe(high.className);
+        }
+
+        fireEvent.click(within(high).getByRole('button', { expanded: false }));
+        expect(within(high).getByTestId('sentinel-todo-priority-band-hi')).toBeTruthy();
+        expect(within(high).getByTestId('sentinel-todo-priority-high-hi')).toBeTruthy();
+        // The band spans the whole card, including the expanded details.
+        expect(band.parentElement).toBe(high);
+    });
+
+    it('keeps the High label and title on one wrapping row in a narrow pane', async () => {
+        get.mockResolvedValue(ledger([item({
+            id: 'hi', priority: 'high', title: 'A very long title that has to wrap inside a narrow right panel column',
+            targetRepo: { workspaceId: 'ws-2', label: 'web' },
+        })]));
+        const { container } = render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const row = await screen.findByTestId('sentinel-todo-row-hi');
+        expect(container.contains(row)).toBe(true);
+        const toggle = within(row).getByRole('button', { expanded: false });
+        const title = within(row).getByText(/A very long title/);
+        expect(title.className).toMatch(/min-w-0/);
+        expect(title.className).toMatch(/break-words/);
+        const [status, priority] = [...toggle.children];
+        expect(status.getAttribute('data-testid')).toBe('sentinel-todo-status-todo');
+        expect(priority.getAttribute('data-testid')).toBe('sentinel-todo-priority-high-hi');
+        expect(row.className).toMatch(/\bpl-1\b/);
     });
 
     it('records an optional Done reason as the outcome', async () => {

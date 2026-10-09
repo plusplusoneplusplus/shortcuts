@@ -121,6 +121,23 @@ describe('sentinel_todos tool', () => {
         });
     });
 
+    it('sets priority on create and update independently of status, and rejects unknown values', async () => {
+        const { tool } = createSentinelTodosTool({ service, owner });
+        expect((tool as any).parameters.properties.priority.enum).toEqual(['high', 'regular']);
+        expect((await createItem()).priority).toBe('regular');
+        const item = await createItem({ title: 'Urgent', priority: 'high', idempotencyKey: 'k-high' });
+        expect(item).toMatchObject({ priority: 'high', status: 'todo' });
+
+        await call({ action: 'update', itemId: item.id, expectedRevision: 1, status: 'needs_attention', reason: 'Blocked' });
+        const lowered = await call({ action: 'update', itemId: item.id, expectedRevision: 2, priority: 'regular' });
+        expect(lowered.item).toMatchObject({ priority: 'regular', status: 'needs_attention', statusReason: 'Blocked', revision: 3, updatedBy: 'sentinel' });
+
+        expect(await call({ action: 'create', title: 'x', completionCondition: 'c', priority: 'urgent' })).toMatchObject({ code: 'invalid' });
+        expect(await call({ action: 'update', itemId: item.id, expectedRevision: 3, priority: 'low' })).toMatchObject({ code: 'invalid' });
+        expect(todos.get(owner).items).toHaveLength(2);
+        expect(todos.get(owner).items[1]).toMatchObject({ priority: 'regular', revision: 3 });
+    });
+
     it('reports a stale write as a conflict with the current item and leaves it unchanged', async () => {
         const item = await createItem();
         todos.update(owner, item.id, 1, { notes: 'user edit' }, 'user');

@@ -22,6 +22,15 @@ describe('SentinelTodosClient', () => {
     });
   });
 
+  it('sends priority on create and priority-only update', async () => {
+    const adapter = createMockAdapter({ item: { id: 'i1' }, ledgerRevision: 1 });
+    const client = new SentinelTodosClient(adapter);
+    await client.create('ws', 'p', { title: 'Ship', priority: 'high' });
+    await client.update('ws', 'p', 'i1', { expectedRevision: 1, priority: 'regular' });
+    expect(adapter.calls[0].options).toMatchObject({ method: 'POST', body: { title: 'Ship', priority: 'high' } });
+    expect(adapter.calls[1].options).toEqual(expect.objectContaining({ method: 'PATCH', body: { expectedRevision: 1, priority: 'regular' } }));
+  });
+
   it('is exposed on CocClient', () => {
     expect(new CocClient({ baseUrl: 'http://localhost:4000' }).sentinelTodos).toBeInstanceOf(SentinelTodosClient);
   });

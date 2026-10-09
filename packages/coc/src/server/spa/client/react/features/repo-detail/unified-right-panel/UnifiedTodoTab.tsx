@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import type {
     SentinelTodoItem,
     SentinelTodoLedgerResponse,
+    SentinelTodoPriority,
     SentinelTodoStatus,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
@@ -22,9 +23,12 @@ import { cn } from '../../../ui/cn';
 import { formatRelativeTime } from '../../../utils/format';
 import { useSentinelTodoEvents } from './sentinelTodoChats';
 import {
+    SENTINEL_TODO_PRIORITIES,
+    SENTINEL_TODO_PRIORITY_LABELS,
     SENTINEL_TODO_STATUS_LABELS,
     SENTINEL_TODO_STATUSES,
     sentinelTodoJobStateLabel,
+    sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
     sentinelTodoSections,
@@ -37,8 +41,8 @@ export interface UnifiedTodoTabProps {
     onErrorChange?: (hasError: boolean) => void;
 }
 
-type Draft = { title: string; completionCondition: string; notes: string };
-const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '' };
+type Draft = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
+const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', priority: 'regular' };
 
 const STATUS_STYLES: Readonly<Record<SentinelTodoStatus, { dot: string; badge: string; mark: string }>> = {
     todo: { dot: 'border border-current', badge: 'bg-[#848484]/15 text-[#616161] dark:text-[#bbbbbb]', mark: '○' },
@@ -52,6 +56,17 @@ const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 
 function newIdempotencyKey(): string {
     return globalThis.crypto?.randomUUID?.() ?? `todo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Visible High label beside the status badge, so the red band is never the only signal. */
+function HighPriorityBadge({ itemId }: { itemId: string }) {
+    return (
+        <span className="inline-flex shrink-0 items-center rounded bg-[#f14c4c]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#c72e2e] dark:text-[#f48771]"
+            data-testid={`sentinel-todo-priority-high-${itemId}`}>
+            <span aria-hidden="true">High</span>
+            <span className="sr-only">High priority</span>
+        </span>
+    );
 }
 
 function StatusBadge({ status }: { status: SentinelTodoStatus }) {
@@ -104,6 +119,13 @@ function DraftFields({ draft, onChange, idPrefix }: { draft: Draft; onChange: (d
             <label className="block text-[11px] font-medium" htmlFor={`${idPrefix}-notes`}>Notes</label>
             <textarea id={`${idPrefix}-notes`} className={cn(INPUT, 'min-h-[48px]')} value={draft.notes} maxLength={8000}
                 onChange={event => onChange({ ...draft, notes: event.target.value })} />
+            <label className="block text-[11px] font-medium" htmlFor={`${idPrefix}-priority`}>Priority</label>
+            <select id={`${idPrefix}-priority`} className={cn(INPUT, 'w-auto self-start')} value={draft.priority}
+                onChange={event => onChange({ ...draft, priority: event.target.value as SentinelTodoPriority })}>
+                {SENTINEL_TODO_PRIORITIES.map(priority => (
+                    <option key={priority} value={priority}>{SENTINEL_TODO_PRIORITY_LABELS[priority]}</option>
+                ))}
+            </select>
         </>
     );
 }
@@ -164,6 +186,7 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
                 title: addDraft.title.trim(),
                 completionCondition: addDraft.completionCondition.trim(),
                 notes: addDraft.notes,
+                priority: addDraft.priority,
                 idempotencyKey: addKeyRef.current,
             });
             addKeyRef.current = null;
@@ -328,6 +351,7 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
             title: draft.title.trim(),
             completionCondition: draft.completionCondition.trim(),
             notes: draft.notes,
+            priority: draft.priority,
         }, draft.baseRevision), () => setEditing(null),
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
@@ -348,11 +372,19 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
     };
 
     const titleId = `sentinel-todo-${item.id}-title`;
+    const high = sentinelTodoPriority(item) === 'high';
+    // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
-        <li className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid={`sentinel-todo-row-${item.id}`}>
+        <li className="relative rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]" data-testid={`sentinel-todo-row-${item.id}`}
+            data-priority={high ? 'high' : 'regular'}>
+            {high && (
+                <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
+                    className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />
+            )}
             <button type="button" aria-expanded={expanded} aria-controls={`sentinel-todo-${item.id}-details`} onClick={onToggle}
                 className="flex w-full items-start gap-2 px-2 py-1.5 text-left hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
                 <StatusBadge status={item.status} />
+                {high && <HighPriorityBadge itemId={item.id} />}
                 <span id={titleId} className={cn('min-w-0 flex-1 break-words', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 {item.targetRepo && (
                     <span className={cn('shrink-0 truncate', MUTED)} title={item.targetRepo.workspaceId}>
@@ -438,7 +470,8 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                                         ))}
                                     </select>
                                     <Button size="sm" variant="secondary" disabled={busy} onClick={() => setEditing({
-                                        title: item.title, completionCondition: item.completionCondition, notes: item.notes, baseRevision: item.revision,
+                                        title: item.title, completionCondition: item.completionCondition, notes: item.notes,
+                                        priority: sentinelTodoPriority(item), baseRevision: item.revision,
                                     })}>Edit</Button>
                                     {item.status === 'done' && (
                                         <Button size="sm" variant="secondary" disabled={busy} onClick={() => applyStatus('todo', '')}>Reopen</Button>

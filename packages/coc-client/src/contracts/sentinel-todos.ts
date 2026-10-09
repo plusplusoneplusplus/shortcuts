@@ -7,6 +7,8 @@
  */
 
 export type SentinelTodoStatus = 'todo' | 'in_progress' | 'needs_attention' | 'done';
+/** Ledger metadata only, independent of status and of job queue priority. */
+export type SentinelTodoPriority = 'high' | 'regular';
 export type SentinelTodoActor = 'user' | 'sentinel' | 'system';
 
 export interface SentinelTodoTargetRepo {
@@ -50,6 +52,8 @@ export interface SentinelTodoItem {
   targetRepo?: SentinelTodoTargetRepo;
   status: SentinelTodoStatus;
   statusReason?: string;
+  /** Items stored before priorities existed read as `regular`. */
+  priority: SentinelTodoPriority;
   outcome?: SentinelTodoOutcome;
   archived: boolean;
   revision: number;
@@ -72,6 +76,8 @@ export interface CreateSentinelTodoRequest {
   targetRepo?: SentinelTodoTargetRepo;
   status?: SentinelTodoStatus;
   statusReason?: string;
+  /** Defaults to `regular`. */
+  priority?: SentinelTodoPriority;
   /** Makes a retried create return the first item instead of a duplicate. */
   idempotencyKey?: string;
 }
@@ -85,6 +91,7 @@ export interface UpdateSentinelTodoRequest {
   targetRepo?: SentinelTodoTargetRepo | null;
   status?: SentinelTodoStatus;
   statusReason?: string | null;
+  priority?: SentinelTodoPriority;
   outcome?: string | null;
   archived?: boolean;
 }

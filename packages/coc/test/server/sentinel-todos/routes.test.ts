@@ -142,6 +142,26 @@ describe('Sentinel to-do routes', () => {
         expect(reviewed.body.item).toMatchObject({ statusReason: 'Verified', outcome: { summary: 'Verified', recordedBy: 'user' } });
     });
 
+    it('round-trips priority through create, priority-only edit, and reload, and rejects unknown values', async () => {
+        const s = await track(await startServer());
+        const plain = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'Plain' });
+        expect(plain.body.item.priority).toBe('regular');
+        const high = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'Urgent', priority: 'high' });
+        expect(high.body.item).toMatchObject({ priority: 'high', createdBy: 'user' });
+        const itemUrl = `${ledger}/items/${high.body.item.id}`;
+        await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 1, status: 'needs_attention', statusReason: 'Blocked' });
+        const lowered = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 2, priority: 'regular' });
+        expect(lowered.status).toBe(200);
+        expect(lowered.body.item).toMatchObject({ priority: 'regular', status: 'needs_attention', statusReason: 'Blocked', revision: 3 });
+        expect((await req(s.baseUrl, 'GET', ledger)).body.items.map((i: { priority: string }) => i.priority)).toEqual(['regular', 'regular']);
+
+        const badCreate = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'x', priority: 'urgent' });
+        expect(badCreate).toMatchObject({ status: 400, body: { code: 'invalid' } });
+        const badEdit = await req(s.baseUrl, 'PATCH', itemUrl, { expectedRevision: 3, priority: 'HIGH' });
+        expect(badEdit).toMatchObject({ status: 400, body: { code: 'invalid' } });
+        expect((await req(s.baseUrl, 'GET', ledger)).body.items).toHaveLength(2);
+    });
+
     it('validates bodies', async () => {
         const s = await track(await startServer());
         expect((await req(s.baseUrl, 'POST', `${ledger}/items`, { title: '' })).body).toMatchObject({ code: 'invalid' });

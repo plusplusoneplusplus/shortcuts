@@ -11,6 +11,7 @@
 import type {
     SentinelTodoItem,
     SentinelTodoJobLink,
+    SentinelTodoPriority,
     SentinelTodoStatus,
 } from '@plusplusoneplusplus/coc-client';
 import {
@@ -40,6 +41,22 @@ export const SENTINEL_TODO_STATUS_LABELS: Readonly<Record<SentinelTodoStatus, st
 
 /** Statuses a user can pick, in the order the select lists them. */
 export const SENTINEL_TODO_STATUSES: readonly SentinelTodoStatus[] = ['todo', 'in_progress', 'needs_attention', 'done'];
+
+export const SENTINEL_TODO_PRIORITY_LABELS: Readonly<Record<SentinelTodoPriority, string>> = {
+    high: 'High',
+    regular: 'Regular',
+};
+
+/** Priorities a user can pick, in the order the select lists them. */
+export const SENTINEL_TODO_PRIORITIES: readonly SentinelTodoPriority[] = ['regular', 'high'];
+
+/**
+ * An item's priority. An older owning server omits the field, which reads as
+ * Regular like any item stored before priorities existed.
+ */
+export function sentinelTodoPriority(item: Pick<SentinelTodoItem, 'priority'>): SentinelTodoPriority {
+    return item.priority === 'high' ? 'high' : 'regular';
+}
 
 /** Active items needing a person first, then work in flight, then queued work. */
 const ACTIVE_ORDER: Readonly<Record<SentinelTodoStatus, number>> = {
