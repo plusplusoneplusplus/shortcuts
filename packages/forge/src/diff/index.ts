@@ -30,3 +30,4 @@ export type { RemoteDiffContext, RemoteDiffProvider } from './pr-diff-provider';
 export { parseFullDiffAsync } from './diff-utils';
 
 export { loadComparisonPatch, loadCommitShowPatch, loadCommitFiles, loadWorkingTreePatch } from './local-patch';
+export type { LocalPatchOptions } from './local-patch';

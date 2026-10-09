@@ -7,30 +7,35 @@ import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import { nativePatchToDiff } from './diff-utils';
 import type { GetFileDiffOptions } from './types';
 
+export interface LocalPatchOptions extends GetFileDiffOptions {
+    /** Cancels this read without revoking other requests sharing its Rust store. */
+    signal?: AbortSignal;
+}
+
 export function loadRangePatch(
-    root: string, base: string, head: string, filePath?: string, options?: GetFileDiffOptions,
+    root: string, base: string, head: string, filePath?: string, options?: LocalPatchOptions,
 ) {
     return loadLocalPatch(root, { base, head }, filePath, options);
 }
 
-export function loadComparisonPatch(root: string, base: string, head: string, filePath?: string, options?: GetFileDiffOptions) {
+export function loadComparisonPatch(root: string, base: string, head: string, filePath?: string, options?: LocalPatchOptions) {
     return loadLocalPatch(root, { base, head, direct: true }, filePath, options);
 }
 
-export function loadCommitPatch(root: string, commit: string, filePath?: string, options?: GetFileDiffOptions) {
+export function loadCommitPatch(root: string, commit: string, filePath?: string, options?: LocalPatchOptions) {
     return loadLocalPatch(root, { commit }, filePath, options);
 }
 
-export function loadCommitShowPatch(root: string, commit: string, filePath?: string, options?: GetFileDiffOptions) {
+export function loadCommitShowPatch(root: string, commit: string, filePath?: string, options?: LocalPatchOptions) {
     return loadLocalPatch(root, { commit, show: true }, filePath, options);
 }
 
-export function loadWorkingTreePatch(root: string, scope: 'all' | 'staged' | 'unstaged', filePath?: string, options?: GetFileDiffOptions) {
+export function loadWorkingTreePatch(root: string, scope: 'all' | 'staged' | 'unstaged', filePath?: string, options?: LocalPatchOptions) {
     return loadLocalPatch(root, { scope }, filePath, options);
 }
 
-export function loadPendingPatch(root: string) {
-    return loadLocalPatch(root, { scope: 'all', headings: true });
+export function loadPendingPatch(root: string, options?: LocalPatchOptions) {
+    return loadLocalPatch(root, { scope: 'all', headings: true }, undefined, options);
 }
 
 const revisionStores = new Map<string, NativeGitPatchStore>();
@@ -40,7 +45,7 @@ function revisionStore(root: string, distro?: string, linuxRoot?: string) {
     const workspace = distro ? root : path.resolve(root);
     const key = JSON.stringify([workspace, distro, linuxRoot]);
     const store = revisionStores.get(key) ?? loadNativeGit().openGitPatchStore(workspace, linuxRoot ?? workspace, distro);
-    if (distro && typeof store.beginTransport !== 'function') {
+    if (typeof store.beginTransport !== 'function') {
         throw new NativeAddonLoadError('Native GitPatchStore lacks transport continuations; rebuild with `npm run build:native -w packages/coc-native`.');
     }
     revisionStores.delete(key);
@@ -52,22 +57,30 @@ function revisionStore(root: string, distro?: string, linuxRoot?: string) {
 
 async function loadLocalPatch(
     root: string, source: { commit: string; show?: boolean } | { base: string; head: string; direct?: boolean } | { scope: string; headings?: boolean },
-    filePath?: string, options?: GetFileDiffOptions,
+    filePath?: string, options?: LocalPatchOptions,
 ) {
+    const signal = options?.signal;
+    signal?.throwIfAborted();
     const addon = loadNativeGit();
     const context = options?.contextLines == null ? undefined : Math.max(0, Math.floor(options.contextLines));
     const maxLines = options?.maxLines == null ? undefined : Math.floor(options.maxLines);
     let result;
     const execution = resolveWorkspaceExecutionContext(root);
-    if (execution.kind === 'wsl') {
-        // Unresolved default distros remain stateless rather than sharing an
-        // identity that could silently change to another distro.
-        const request = execution.distro
-            ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
+    // Unresolved default distros remain stateless rather than sharing an identity
+    // that could silently change to another distro.
+    const request = execution.kind !== 'wsl' ? revisionStore(root).beginTransport()
+        : execution.distro ? revisionStore(root, execution.distro, execution.linuxWorkingDirectory).beginTransport()
             : undefined;
-        const controller = new AbortController();
-        let timer: ReturnType<typeof setInterval> | undefined;
-        try {
+    const controller = new AbortController();
+    const abort = () => {
+        request?.cancel();
+        controller.abort(signal?.reason);
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+        signal?.throwIfAborted();
+        if (execution.kind === 'wsl') {
             if (request) {
                 if (typeof request.checkActive !== 'function') {
                     throw new NativeAddonLoadError('Native GitPatchRequest lacks transport cancellation; rebuild with `npm run build:native -w packages/coc-native`.');
@@ -89,37 +102,42 @@ async function loadLocalPatch(
                     ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
                     : await (source.direct ? addon.prepareGitComparisonPatch : addon.prepareGitRangePatch)(source.base, source.head, filePath, context)];
             }
+            signal?.throwIfAborted();
             request?.checkActive();
             const outputs = await Promise.all(batch.map(args => execGitAsync(args, root, {
                 signal: controller.signal, timeout: 'direct' in source && source.direct ? 10000 : undefined,
             })));
             clearInterval(timer);
+            signal?.throwIfAborted();
             request?.checkActive();
             result = 'scope' in source
                 ? request ? await request.processWorkingTree(outputs, maxLines, source.headings)
                     : await addon.composeGitWorkingTreePatch(outputs, maxLines, source.headings)
                 : request ? await request.process(outputs[0], maxLines) : await addon.processGitPatch(outputs[0], maxLines);
-        } finally {
-            clearInterval(timer);
-            controller.abort();
-            request?.cancel();
-        }
-    } else {
-        await ensureGitSafeDirectoryAsync(root);
-        if ('scope' in source) {
-            const store = revisionStore(root);
-            if (typeof store.workingTreePatch !== 'function') {
-                throw new NativeAddonLoadError('Native GitPatchStore lacks working-tree composition; rebuild with `npm run build:native -w packages/coc-native`.');
-            }
-            result = await store.workingTreePatch(source.scope, filePath, context, maxLines, source.headings);
         } else {
-            result = 'commit' in source
-                ? await revisionStore(root).revisionPatch(source.show ? 'show' : 'commit', source.commit, undefined, filePath, context, maxLines)
-                : await revisionStore(root).revisionPatch(source.direct ? 'comparison' : 'range', source.base, source.head, filePath, context, maxLines,
-                    source.direct ? { timeout: 10000 } : undefined);
+            if (!request || typeof request.revisionPatch !== 'function' || typeof request.workingTreePatch !== 'function') {
+                throw new NativeAddonLoadError('Native GitPatchRequest lacks host cancellation; rebuild with `npm run build:native -w packages/coc-native`.');
+            }
+            await ensureGitSafeDirectoryAsync(root);
+            signal?.throwIfAborted();
+            result = 'scope' in source
+                ? await request.workingTreePatch(source.scope, filePath, context, maxLines, source.headings)
+                : 'commit' in source
+                    ? await request.revisionPatch(source.show ? 'show' : 'commit', source.commit, undefined, filePath, context, maxLines)
+                    : await request.revisionPatch(source.direct ? 'comparison' : 'range', source.base, source.head, filePath, context, maxLines,
+                        source.direct ? { timeout: 10000 } : undefined);
         }
+        signal?.throwIfAborted();
+        return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
+    } catch (error) {
+        signal?.throwIfAborted();
+        throw error;
+    } finally {
+        signal?.removeEventListener('abort', abort);
+        clearInterval(timer);
+        controller.abort();
+        request?.cancel();
     }
-    return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
 }
 
 /** Commit metadata retains Git ordering and absent binary counts. */
