@@ -118,9 +118,7 @@ Editor toolbars share `DiffWordWrapToggle` and `useDiffWordWrap`, backed by the
 global `diffWordWrap` preference (default false). `MonacoFileDiffViewer` observes
 the shared state and updates `wordWrap` and `diffWordWrap` on mounted editors;
 both split panes and the visible inline editor follow the choice across workspaces.
-The `FileDiffPanel` header path keeps the filename visible (the directory clips first);
-Ctrl/Cmd+click on it opens the file in its own unified-panel file tab when a
-`UnifiedPanelHostProvider` hosts the diff. In Editor mode, `FileDiffPanel` loads the
+In Editor mode, `FileDiffPanel` loads the
 paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes
 the source cache key and the response's resolved base/head refs so the same path at different commits, ranges, or PR heads cannot
 share a model. Branch-range sources opt into working-copy language support only
@@ -195,6 +193,27 @@ focuses, never submits), never the source's review chat; it is disabled when no 
 hosts the diff or the shown chat is not mounted. Anchor relocation
 matches source rows, excluding patch headers and no-newline annotations during engine
 switches. Both engines share the persisted comment shape.
+
+### Changed-file navigation
+
+`SHOW_DIFF_FILE_PICKER` in `react/featureFlags.ts` defaults off. When enabled,
+`diff/DiffFilePicker.tsx` makes a navigable multi-file diff's header path a searchable
+changed-file picker. It matches full paths case-insensitively, supports arrow keys and
+Enter, restores trigger focus on selection/Escape, and dismisses on outside interaction,
+host scrolling, resize, or comparison changes. Its portal stays outside clipped and
+virtualized rows; single-file and non-navigable paths keep their passive presentation.
+
+`FileBannerRow` shares the picker across Unified and Split viewers, including their
+docked copies. Their parsed banner paths include off-screen and non-text files;
+selection reuses `scrollToFile` and reports `onFileNavigate` to the host.
+`CommitDetail` updates its navigation path without replacing the comparison or chat.
+Non-virtualized navigation targets the in-flow banner, not its docked overlay.
+
+`FileDiffPanel` uses `DiffSource.files` or its workspace/source-keyed lazy file list,
+then calls `onNavigateToFile(path, 'first')`. Stale file-list responses cannot supply
+another comparison's paths. Its header keeps the filename visible while directories
+clip first; Ctrl/Cmd+click opens the source file in a unified-panel file tab when
+`UnifiedPanelHostProvider` hosts the diff, independently of picker availability.
 
 ### Cherry-pick
 

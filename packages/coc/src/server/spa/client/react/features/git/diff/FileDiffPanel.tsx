@@ -47,6 +47,7 @@ import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifi
 import { useCurrentChatInsertDraft } from '../../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
+import { DiffFilePicker } from './DiffFilePicker';
 
 export interface FileDiffPanelProps {
     workspaceId: string;
@@ -238,21 +239,22 @@ export function FileDiffPanel({
     } = useDiffComments(workspaceId, diffContext);
 
     // ── Cross-file navigation ──
-    const [fetchedFiles, setFetchedFiles] = useState<string[]>([]);
+    const [fetchedFiles, setFetchedFiles] = useState<{ key: string; files: string[] } | null>(null);
+    const fileListKey = `${workspaceId}\u0000${source.cacheKey}`;
     const sourceFiles = source.files;
 
     useEffect(() => {
         if (sourceFiles.length > 0 || !source.fetchFileList) return;
         let cancelled = false;
         source.fetchFileList()
-            .then(files => { if (!cancelled) setFetchedFiles(files); })
-            .catch(() => { if (!cancelled) setFetchedFiles([]); });
+            .then(files => { if (!cancelled) setFetchedFiles({ key: fileListKey, files }); })
+            .catch(() => { if (!cancelled) setFetchedFiles(null); });
         return () => { cancelled = true; };
-    }, [sourceFiles, source]);
+    }, [sourceFiles, source, fileListKey]);
 
     const allFiles = useMemo(
-        () => sourceFiles.length > 0 ? sourceFiles : fetchedFiles,
-        [sourceFiles, fetchedFiles],
+        () => sourceFiles.length > 0 ? sourceFiles : fetchedFiles?.key === fileListKey ? fetchedFiles.files : [],
+        [sourceFiles, fetchedFiles, fileListKey],
     );
     const hunkNavRef: RefObject<HunkNavigationHandle | null> = showEditor ? monacoViewerRef : viewerRef;
     const { handleNext, handlePrev } = useCrossFileNav({
@@ -461,13 +463,15 @@ export function FileDiffPanel({
                             ← {backLabel}
                         </button>
                     )}
-                    <span className="flex min-w-0" onClick={handlePathClick} data-testid="file-diff-path">
+                    <DiffFilePicker key={`${fileListKey}\u0000${filePath}`} filePath={filePath} files={allFiles}
+                        onSelect={onNavigateToFile ? path => onNavigateToFile(path, 'first') : undefined}
+                        className="flex min-w-0" onClick={handlePathClick} data-testid="file-diff-path">
                         <TruncatedPath
                             path={filePath}
                             title={panelHost ? `${filePath}\nCtrl+click to open file` : undefined}
                             className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate"
                         />
-                    </span>
+                    </DiffFilePicker>
                     {allFiles.length > 1 && (
                         <span
                             className="text-[10px] text-[#848484] flex-shrink-0"

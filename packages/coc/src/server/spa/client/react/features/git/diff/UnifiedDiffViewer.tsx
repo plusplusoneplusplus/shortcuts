@@ -47,6 +47,8 @@ export interface UnifiedDiffViewerProps {
      * file name in their own chrome, keep their current rendering.
      */
     showFileBanners?: boolean;
+    /** Reports picker navigation without replacing the current diff source. */
+    onFileNavigate?: (path: string) => void;
     onLinesReady?: (lines: DiffLine[]) => void;
     comments?: DiffComment[];
     onAddComment?: (
@@ -921,7 +923,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, showFileBanners, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine, diffSelectionDragSource }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, showFileBanners, onFileNavigate, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine, diffSelectionDragSource }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -1110,12 +1112,41 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         if (virtualized) rowVirtualizer.measure();
     }, [isBlankRow, virtualized]);
 
+    const pickerFiles = useMemo(() => fileBanners.map(banner => banner.path), [fileBanners]);
+    const fileHeaders = useMemo(
+        () => fileBanners.length > 0
+            ? new Map(fileBanners.map(banner => [banner.path, banner.startIdx]))
+            : fileHeaderIndexMap(diffLines),
+        [fileBanners, diffLines],
+    );
+    const pickerScope = JSON.stringify(diffSelectionDragSource);
+    const scrollToFile = (path: string) => {
+        if (virtualized) {
+            const idx = fileHeaders.get(path);
+            if (idx !== undefined) rowVirtualizer.scrollToIndex(idx, { align: 'start' });
+            return;
+        }
+        const container = containerRef.current;
+        if (!container) return;
+        const target = Array.from(container.querySelectorAll<HTMLElement>('[data-file-path]'))
+            .find(element => element.getAttribute('data-file-path') === path && !element.closest('[data-testid="diff-file-banner-pinned-wrapper"]'));
+        if (!target) return;
+        const scrollParent = getScrollableAncestor(container);
+        scrollParent.scrollTo({
+            top: scrollParent.scrollTop + target.getBoundingClientRect().top - scrollParent.getBoundingClientRect().top,
+            behavior: 'smooth',
+        });
+    };
+    const selectFile = (path: string) => {
+        scrollToFile(path);
+        onFileNavigate?.(path);
+    };
+
     useImperativeHandle(ref, () => {
         // Windowed path: off-screen rows aren't in the DOM, so drive navigation
         // from diffLines geometry via the virtualizer's index→offset API.
         if (virtualized) {
             const editList = editStartIndexList(editStarts);
-            const fileHeaders = fileHeaderIndexMap(diffLines);
             const scrollToEdit = (n: number) => {
                 rowVirtualizer.scrollToIndex(editList[n], { align: 'center' });
             };
@@ -1140,11 +1171,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     currentHunkIndexRef.current = index;
                     scrollToEdit(index);
                 },
-                scrollToFile: (filePath: string) => {
-                    const idx = fileHeaders.get(filePath);
-                    if (idx === undefined) return;
-                    rowVirtualizer.scrollToIndex(idx, { align: 'start' });
-                },
+                scrollToFile,
                 scrollLineIntoView: (lineIndex: number) => {
                     if (lineIndex < 0 || lineIndex >= lines.length) return;
                     rowVirtualizer.scrollToIndex(lineIndex, { align: 'center' });
@@ -1202,22 +1229,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 behavior: 'smooth',
             });
         },
-        scrollToFile: (filePath: string) => {
-            const container = containerRef.current;
-            if (!container) return;
-            const els = container.querySelectorAll<HTMLElement>('[data-file-path]');
-            let target: HTMLElement | null = null;
-            for (const el of Array.from(els)) {
-                if (el.getAttribute('data-file-path') === filePath) { target = el; break; }
-            }
-            if (!target) return;
-            const scrollParent = getScrollableAncestor(container);
-            const parentTop = scrollParent.getBoundingClientRect().top;
-            scrollParent.scrollTo({
-                top: scrollParent.scrollTop + target.getBoundingClientRect().top - parentTop,
-                behavior: 'smooth',
-            });
-        },
+        scrollToFile,
         scrollLineIntoView: (lineIndex: number) => {
             const container = containerRef.current;
             if (!container) return;
@@ -1366,7 +1378,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             {dockedBanner && (
                 <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
                     <div className="absolute inset-x-0 top-0">
-                        <FileBannerRow banner={dockedBanner} pinned data-testid="diff-file-banner-pinned" />
+                        <FileBannerRow key={pickerScope} banner={dockedBanner} files={pickerFiles} onSelectFile={selectFile} pinned data-testid="diff-file-banner-pinned" />
                     </div>
                 </div>
             )}
@@ -1434,7 +1446,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     const banner = bannerByStart.get(i);
                     // The `diff --git` row becomes the banner; the rest of the
                     // preamble (index / mode / ---/+++ / rename …) is dropped.
-                    if (banner) return <FileBannerRow key={i} banner={banner} />;
+                    if (banner) return <FileBannerRow key={`${pickerScope}:${i}`} banner={banner} files={pickerFiles} onSelectFile={selectFile} />;
                     if (suppressedPreamble.has(i)) return null;
                 }
                 if (hiddenPreamble.has(i)) return null;
