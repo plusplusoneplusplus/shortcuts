@@ -28,7 +28,7 @@ use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::patch_store::{
-    PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError,
+    PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError, PatchTransport,
 };
 use coc_native_core::git::range::{
     count_commits_ahead, default_remote_branch, merge_base, resolve_base_ref, upstream_branch,
@@ -1639,13 +1639,18 @@ pub struct GitPatchStore {
     store: Arc<PatchStore>,
 }
 
-/// Open the host revision patch store for an absolute repository root.
+/// Open a patch store. A WSL scope requires its distro and absolute Linux root;
+/// only host scopes execute Git inside Rust.
 #[napi]
-pub fn open_git_patch_store(workspace_id: String, root: String) -> Result<GitPatchStore> {
+pub fn open_git_patch_store(
+    workspace_id: String,
+    root: String,
+    distro: Option<String>,
+) -> Result<GitPatchStore> {
     let scope = PatchScope {
         workspace_id,
         root: PathBuf::from(root),
-        execution: PatchExecution::Host,
+        execution: distro.map_or(PatchExecution::Host, |distro| PatchExecution::Wsl { distro }),
         source: PatchSource::Local { kind: "revision".into() },
     };
     PatchStore::open(scope, 64, 64 << 20)
@@ -1659,6 +1664,13 @@ fn store_error(error: PatchStoreError) -> Error {
 
 #[napi]
 impl GitPatchStore {
+    /// Capture the generation before external I/O without blocking a worker.
+    #[napi]
+    pub fn begin_transport(&self) -> Result<GitPatchRequest> {
+        let ticket = self.store.begin_transport(self.store.scope()).map_err(store_error)?;
+        Ok(GitPatchRequest { store: self.store.clone(), ticket: Some(ticket) })
+    }
+
     /// `mode` is `commit` or `show` (no head), or `range` or `comparison`.
     #[napi(ts_return_type = "Promise<PatchResult>")]
     #[allow(clippy::too_many_arguments)]
@@ -1698,5 +1710,33 @@ impl GitPatchStore {
     #[napi]
     pub fn dispose(&self) -> Result<()> {
         self.store.dispose(self.store.scope()).map_err(store_error)
+    }
+}
+
+/// A single-use, handle-bound external transport continuation.
+#[napi]
+pub struct GitPatchRequest {
+    store: Arc<PatchStore>,
+    ticket: Option<PatchTransport>,
+}
+
+#[napi]
+impl GitPatchRequest {
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn process(
+        &mut self,
+        raw: String,
+        max_lines: Option<i64>,
+    ) -> Result<AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>>> {
+        let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
+        let store = self.store.clone();
+        Ok(AsyncTask::new(crate::task::Blocking::new(move || {
+            store.complete_transport(store.scope(), ticket, raw, max_lines).map_err(store_error)
+        })))
+    }
+
+    #[napi]
+    pub fn cancel(&mut self) {
+        self.ticket = None;
     }
 }

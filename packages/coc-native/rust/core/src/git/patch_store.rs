@@ -3,7 +3,8 @@
 
 use super::commit::validate_ref;
 use super::patch::{
-    commit_patch, comparison_patch, range_patch, show_patch, truncate_patch, PatchResult,
+    commit_patch, comparison_patch, process_patch, range_patch, show_patch, truncate_patch,
+    PatchResult,
 };
 use super::{GitCommandOptions, GitError, GitErrorKind};
 use parking_lot::{Condvar, Mutex};
@@ -126,6 +127,7 @@ impl Flight {
 
 #[derive(Default)]
 struct State {
+    generation: u64,
     closed: bool,
     cache: VecDeque<(PatchKey, Arc<PatchResult>, usize)>,
     bytes: usize,
@@ -137,10 +139,18 @@ struct State {
 /// outside the state lock; concurrent identical requests share one completion.
 /// Running computations and retained snapshot allocations are bounded independently.
 pub struct PatchStore {
+    identity: Arc<()>,
     scope: PatchScope,
     max_entries: usize,
     max_bytes: usize,
     state: Mutex<State>,
+}
+
+/// Captured before external I/O, consumed once when its bytes arrive. It holds
+/// no worker or cache capacity while TypeScript performs authenticated/WSL I/O.
+pub struct PatchTransport {
+    identity: Arc<()>,
+    generation: u64,
 }
 
 impl PatchStore {
@@ -152,7 +162,13 @@ impl PatchStore {
         if !scope.valid() || max_entries == 0 {
             return Err(PatchStoreError::InvalidIdentity);
         }
-        Ok(Self { scope, max_entries, max_bytes, state: Mutex::new(State::default()) })
+        Ok(Self {
+            identity: Arc::new(()),
+            scope,
+            max_entries,
+            max_bytes,
+            state: Mutex::new(State::default()),
+        })
     }
 
     fn check(&self, scope: &PatchScope, state: &State) -> Result<(), PatchStoreError> {
@@ -171,9 +187,22 @@ impl PatchStore {
         key: PatchKey,
         compute: impl FnOnce() -> Result<PatchResult, String>,
     ) -> Outcome {
+        self.compute(scope, key, None, compute)
+    }
+
+    fn compute(
+        &self,
+        scope: &PatchScope,
+        key: PatchKey,
+        generation: Option<u64>,
+        compute: impl FnOnce() -> Result<PatchResult, String>,
+    ) -> Outcome {
         let (flight, owner) = {
             let mut state = self.state.lock();
             self.check(scope, &state)?;
+            if generation.is_some_and(|generation| generation != state.generation) {
+                return Err(PatchStoreError::Stale);
+            }
             if !key.valid() {
                 return Err(PatchStoreError::InvalidIdentity);
             }
@@ -227,6 +256,33 @@ impl PatchStore {
 
     pub fn scope(&self) -> &PatchScope {
         &self.scope
+    }
+
+    pub fn begin_transport(&self, scope: &PatchScope) -> Result<PatchTransport, PatchStoreError> {
+        let state = self.state.lock();
+        self.check(scope, &state)?;
+        Ok(PatchTransport { identity: self.identity.clone(), generation: state.generation })
+    }
+
+    /// Hash and parse supplied bytes on the worker, using the same bounded
+    /// snapshot store as host revisions. Never trust mutable transport ref names.
+    pub fn complete_transport(
+        &self,
+        scope: &PatchScope,
+        ticket: PatchTransport,
+        raw: String,
+        max_lines: Option<i64>,
+    ) -> Result<PatchResult, PatchStoreError> {
+        if !Arc::ptr_eq(&self.identity, &ticket.identity) {
+            return Err(PatchStoreError::ScopeMismatch);
+        }
+        let key = PatchKey {
+            version: PatchVersion::Fingerprint(blake3::hash(raw.as_bytes()).to_hex().to_string()),
+            variant: "supplied".into(),
+        };
+        let result =
+            self.compute(scope, key, Some(ticket.generation), || Ok(process_patch(raw, None)))?;
+        Ok(truncate_patch(&result, max_lines))
     }
 
     /// Host commit (`commit`/`show`) or two-revision (`range`/`comparison`)
@@ -298,6 +354,7 @@ impl PatchStore {
     }
 
     fn clear(state: &mut State, error: PatchStoreError) {
+        state.generation += 1;
         state.cache.clear();
         state.bytes = 0;
         for (_, flight) in state.pending.drain() {

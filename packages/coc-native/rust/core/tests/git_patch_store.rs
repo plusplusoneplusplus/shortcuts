@@ -33,6 +33,94 @@ fn patch(text: &str) -> PatchResult {
 }
 
 #[test]
+fn transport_tickets_bind_exact_handles_scopes_and_generations() {
+    let root = tempfile::tempdir().unwrap();
+    let mut identity = scope(root.path());
+    identity.execution = PatchExecution::Wsl { distro: "Ubuntu".into() };
+    identity.root = "/repo".into();
+    let store = PatchStore::open(identity.clone(), 4, 4096).unwrap();
+    let other = PatchStore::open(identity.clone(), 4, 4096).unwrap();
+    let raw = patch("transport").content.raw;
+    let ticket = store.begin_transport(&identity).unwrap();
+    assert_eq!(
+        other.complete_transport(&identity, ticket, raw.clone(), None),
+        Err(PatchStoreError::ScopeMismatch)
+    );
+    let mut wrong = identity.clone();
+    wrong.workspace_id = "other".into();
+    assert!(matches!(store.begin_transport(&wrong), Err(PatchStoreError::ScopeMismatch)));
+    let ticket = store.begin_transport(&identity).unwrap();
+    assert_eq!(
+        store.complete_transport(&wrong, ticket, raw.clone(), None),
+        Err(PatchStoreError::ScopeMismatch)
+    );
+    let ticket = store.begin_transport(&identity).unwrap();
+    store.refresh(&identity).unwrap();
+    assert_eq!(
+        store.complete_transport(&identity, ticket, raw.clone(), None),
+        Err(PatchStoreError::Stale)
+    );
+    let ticket = store.begin_transport(&identity).unwrap();
+    store.dispose(&identity).unwrap();
+    assert_eq!(
+        store.complete_transport(&identity, ticket, raw, None),
+        Err(PatchStoreError::Closed)
+    );
+    assert!(matches!(store.begin_transport(&identity), Err(PatchStoreError::Closed)));
+}
+
+#[test]
+fn supplied_bytes_share_complete_snapshots_and_fingerprint_changes_stay_fresh() {
+    let root = tempfile::tempdir().unwrap();
+    let identity = scope(root.path());
+    let store = PatchStore::open(identity.clone(), 1, 4096).unwrap();
+    let raw = patch("first").content.raw;
+    let first = store
+        .complete_transport(
+            &identity,
+            store.begin_transport(&identity).unwrap(),
+            raw.clone(),
+            Some(1),
+        )
+        .unwrap();
+    assert!(first.content.truncated);
+    let fingerprint = |raw: &str| PatchKey {
+        version: PatchVersion::Fingerprint(blake3::hash(raw.as_bytes()).to_hex().to_string()),
+        variant: "supplied".into(),
+    };
+    let retained = store
+        .get_or_compute(&identity, fingerprint(&raw), || {
+            panic!("complete snapshot must be retained")
+        })
+        .unwrap();
+    assert_eq!(retained.content.raw, raw);
+    assert!(!retained.content.truncated);
+    let changed = patch("changed").content.raw;
+    let result = store
+        .complete_transport(
+            &identity,
+            store.begin_transport(&identity).unwrap(),
+            changed.clone(),
+            None,
+        )
+        .unwrap();
+    assert_eq!(result.content.raw, changed);
+    let recomputed =
+        store.get_or_compute(&identity, fingerprint(&raw), || Ok(patch("evicted"))).unwrap();
+    assert!(recomputed.content.raw.contains("+evicted"));
+    // Dropping a request never reserves a worker or a bounded computation slot.
+    drop(store.begin_transport(&identity).unwrap());
+    store
+        .complete_transport(
+            &identity,
+            store.begin_transport(&identity).unwrap(),
+            String::new(),
+            None,
+        )
+        .unwrap();
+}
+
+#[test]
 fn validates_identity_and_rejects_every_cross_scope_dimension() {
     let root = tempfile::tempdir().unwrap();
     let identity = scope(root.path());

@@ -595,6 +595,32 @@ describe('commit-range marshalling', () => {
         }
     });
 
+    it('processes single-use WSL continuations without host Git or stale publication', async () => {
+        const stores = ['Ubuntu', 'Debian'].map(distro => gitAddon.openGitPatchStore('workspace', '/repo', distro));
+        const raw = 'diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new\n';
+        const request = stores[0].beginTransport();
+        const truncated = await request.process(raw, 1);
+        expect(truncated.content.truncated).toBe(true);
+        expect(() => request.process(raw)).toThrow('patch store: Closed');
+        expect((await stores[0].beginTransport().process(raw)).content.raw).toBe(raw);
+        expect((await stores[1].beginTransport().process(raw.replace('+new', '+other'))).content.raw).toContain('+other');
+        const stale = stores[0].beginTransport();
+        stores[0].refresh();
+        await expect(stale.process(raw)).rejects.toThrow('patch store: Stale');
+        const cancelled = stores[0].beginTransport();
+        cancelled.cancel();
+        expect(() => cancelled.process(raw)).toThrow('patch store: Closed');
+        const closed = stores[0].beginTransport();
+        stores[0].dispose();
+        await expect(closed.process(raw)).rejects.toThrow('patch store: Closed');
+        expect(() => stores[0].beginTransport()).toThrow('patch store: Closed');
+        await expect(stores[1].beginTransport().process(raw)).resolves.toMatchObject({ summary: { filesChanged: 1 } });
+        await expect(stores[1].revisionPatch('commit', 'HEAD')).rejects.toThrow('patch store: InvalidIdentity');
+        expect(() => gitAddon.openGitPatchStore('workspace', 'relative', 'Ubuntu')).toThrow('patch store: InvalidIdentity');
+        expect(() => gitAddon.openGitPatchStore('workspace', '/repo', '')).toThrow('patch store: InvalidIdentity');
+        stores[1].dispose();
+    });
+
     it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
         const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-range-empty-'));
         try {

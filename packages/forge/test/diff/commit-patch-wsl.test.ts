@@ -4,7 +4,7 @@ import { createCommitDiffProvider, createWorkingTreeDiffProvider } from '../../s
 import { GitLogService } from '../../src/git/git-log-service';
 import { WorkingTreeService } from '../../src/git/working-tree-service';
 import { execFileAsync } from '../../src/utils/exec-utils';
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 
 vi.mock('../../src/utils/workspace-execution', async (importOriginal) => ({
     ...await importOriginal<typeof import('../../src/utils/workspace-execution')>(),
@@ -135,6 +135,66 @@ describe('commit WSL transport using Rust planning and processing', () => {
     it('propagates transport errors' , async () => {
         vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'WSL failed' });
         await expect(createCommitDiffProvider('\\\\wsl$\\Ubuntu\\home\\repo', 'HEAD').listFiles()).rejects.toThrow('WSL failed');
+    });
+
+    it('uses native scoped continuations and fingerprints fresh WSL bytes before truncation', async () => {
+        vi.mocked(execFileAsync).mockClear();
+        let current = raw;
+        vi.mocked(execFileAsync).mockImplementation(async () => ({ stdout: current, stderr: '' }));
+        const root = '\\\\wsl$\\Ubuntu\\repo\\transport-store';
+        const provider = createCommitDiffProvider(root, 'HEAD');
+        const stateless = vi.spyOn(loadNativeGit(), 'processGitPatch');
+        try {
+            expect((await provider.getFullDiff()).raw).toBe(raw.slice(0, -1));
+            expect((await provider.getFileDiff('café.txt', { maxLines: 1 })).truncated).toBe(true);
+            expect((await provider.getFullDiff()).raw).toBe(raw.slice(0, -1));
+            current = raw.replace('+new', '+moved');
+            expect((await provider.getFullDiff()).raw).toContain('+moved');
+            expect(stateless).not.toHaveBeenCalled();
+            expect(vi.mocked(execFileAsync)).toHaveBeenCalledTimes(4);
+            vi.mocked(execFileAsync).mockRejectedValueOnce({ stderr: 'failed read' });
+            await expect(provider.getFullDiff()).rejects.toThrow('failed read');
+            expect((await provider.getFullDiff()).raw).toContain('+moved');
+        } finally {
+            stateless.mockRestore();
+        }
+    });
+
+    it('rejects a delayed transport completion after its native scope refreshes', async () => {
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore('delayed', '/repo/delayed', 'Ubuntu');
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        let release!: (output: { stdout: string; stderr: string }) => void;
+        vi.mocked(execFileAsync).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const provider = createCommitDiffProvider('\\\\wsl$\\Ubuntu\\repo\\delayed', 'HEAD');
+        try {
+            const pending = provider.getFullDiff();
+            await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+            store.refresh();
+            release({ stdout: raw, stderr: '' });
+            await expect(pending).rejects.toThrow('patch store: Stale');
+            vi.mocked(execFileAsync).mockResolvedValue({ stdout: raw.replace('+new', '+current'), stderr: '' });
+            expect((await provider.getFullDiff()).raw).toContain('+current');
+        } finally {
+            open.mockRestore();
+        }
+    });
+
+    it('reports stale native transport capabilities before executing WSL', async () => {
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore('stale', '/repo/stale', 'Ubuntu');
+        Object.defineProperty(store, 'beginTransport', { value: undefined });
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        vi.mocked(execFileAsync).mockClear();
+        try {
+            const provider = createCommitDiffProvider('\\\\wsl$\\Ubuntu\\repo\\stale', 'HEAD');
+            await expect(provider.getFullDiff()).rejects.toBeInstanceOf(NativeAddonLoadError);
+            await expect(provider.getFullDiff()).rejects.toThrow('build:native');
+            expect(execFileAsync).not.toHaveBeenCalled();
+        } finally {
+            open.mockRestore();
+            store.dispose();
+        }
     });
 });
 
