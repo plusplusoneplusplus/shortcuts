@@ -63,7 +63,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'commit' || view?.type === 'commit-file') {
         const hash = view.type === 'commit' ? view.commit.hash : view.hash;
         return <CommitReviewDetail
-            key={`${workspaceId}:${hash}`}
+            key={`${attachmentDestinationId ?? workspaceId}:${hash}`}
             workspaceId={workspaceId}
             attachmentDestinationId={attachmentDestinationId}
             hash={hash}
@@ -209,6 +209,6 @@ function CommitReviewDetail({ workspaceId, attachmentDestinationId, hash, commit
                 hash={hash} commit={commit} reviewChat={chat} onClassified={onCommitClassified}
             />}
         </div>
-        <CommitReviewChat workspaceId={workspaceId} hash={hash} commitMessage={commit?.subject} chat={chat} />
+        <CommitReviewChat workspaceId={workspaceId} sourceSelectionId={attachmentDestinationId} hash={hash} commitMessage={commit?.subject} chat={chat} />
     </div>;
 }

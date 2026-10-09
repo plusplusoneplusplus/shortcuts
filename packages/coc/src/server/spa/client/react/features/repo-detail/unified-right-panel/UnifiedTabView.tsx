@@ -80,6 +80,8 @@ export interface UnifiedTabViewProps {
      * Live-session state for a terminal tab (AC-05). The panel owns the close
      * confirmation because the ✕ is in the strip, not in the terminal view.
      */
+    terminalOpenRequest?: number;
+    isActive?: boolean;
     onTerminalSessionsChange?: (tabId: string, sessions: readonly TerminalSessionSummary[]) => void;
     /**
      * Where a language-server jump out of a file tab goes. `origin` carries the
@@ -120,7 +122,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
-    onRegisterSave, onTerminalSessionsChange, onOpenFile, onOpenExternal, definitionPreviewOwners,
+    onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation,
     onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
@@ -190,7 +192,8 @@ export function UnifiedTabView({
         case 'paste':
             return <UnifiedPasteTab scopeWorkspaceId={scopeWorkspaceId} resourceId={tab.resourceId} />;
         case 'terminal':
-            return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
+            return <TerminalView workspaceId={tab.ownerWorkspaceId} routingRef={tab.ownerRoutingRef}
+                openRequest={terminalOpenRequest} isActive={isActive} onSessionsChange={handleTerminalSessions} />;
         case 'notes':
             return (
                 <NotesView

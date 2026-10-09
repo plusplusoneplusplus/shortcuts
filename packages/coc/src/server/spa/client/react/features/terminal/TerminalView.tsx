@@ -15,6 +15,10 @@ import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
 
 export interface TerminalViewProps {
     workspaceId: string;
+    routingRef?: string | null;
+    /** Explicit add-menu intent; omitted on passive mount/restoration. */
+    openRequest?: number;
+    isActive?: boolean;
     /**
      * When set, the toolbar (terminal picker + new-terminal action) renders into
      * this element via a portal instead of inline. The workspace dock uses it to
@@ -54,10 +58,10 @@ interface TerminalTab {
 }
 
 
-export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChange }: TerminalViewProps) {
+export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChange, routingRef, openRequest = 0, isActive = true }: TerminalViewProps) {
     // Route terminal REST (list/restart/delete) to the workspace's clone. The PTY
     // socket itself is routed inside useTerminalWebSocket via the same registry.
-    const client = useCocClient(workspaceId);
+    const client = useCocClient(routingRef === null ? undefined : routingRef ?? workspaceId);
     const [terminals, setTerminals] = useState<TerminalTab[]>([]);
     const [activeId, setActiveId] = useState<string>('');
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -71,6 +75,13 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
     const editInputRef = useRef<HTMLInputElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const counterRef = useRef(0);
+    const consumedOpenRequest = useRef(0);
+    const [focusRequest, setFocusRequest] = useState(0);
+    const [hydration, setHydration] = useState<{
+        client: typeof client; workspaceId: string; failed: boolean;
+    } | null>(null);
+
+    const hydratedScope = useRef<{ client: typeof client; workspaceId: string } | null>(null);
 
     const createTerminal = useCallback(() => {
         counterRef.current += 1;
@@ -81,6 +92,12 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
     }, [workspaceId]);
 
     useEffect(() => {
+        // Further menu requests reuse the authoritative list and pending local
+        // tabs. A failed initial load can be retried by another explicit request.
+        if (hydratedScope.current?.client === client && hydratedScope.current.workspaceId === workspaceId) {
+            return;
+        }
+        setHydration(null);
         let cancelled = false;
 
         // AC-05/AC-06: list *every* session for the workspace, live and exited.
@@ -121,16 +138,39 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
                 );
                 return next;
             });
+            hydratedScope.current = { client, workspaceId };
+            setHydration({ client, workspaceId, failed: false });
         }
 
         hydrateTerminals().catch(err => {
+            if (cancelled) {
+                return;
+            }
             console.error('Failed to hydrate terminal sessions:', err);
+            setTerminalNotice('Failed to load terminal sessions.');
+            setHydration({ client, workspaceId, failed: true });
         });
 
         return () => {
             cancelled = true;
         };
-    }, [workspaceId, client]);
+    }, [workspaceId, client, openRequest]);
+
+    useEffect(() => {
+        if (!openRequest || consumedOpenRequest.current === openRequest
+            || hydration?.client !== client || hydration.workspaceId !== workspaceId
+            || hydration.failed) {
+            return;
+        }
+        consumedOpenRequest.current = openRequest;
+        setTerminalNotice(null);
+        // Hydration retains pending create-mode tabs, so further clicks cannot
+        // create a second session while the canonical WebSocket create is pending.
+        if (terminals.length === 0) {
+            createTerminal();
+        }
+        setFocusRequest(request => request + 1);
+    }, [openRequest, hydration, client, workspaceId, terminals.length, createTerminal]);
 
     // The tab's ✕ is the explicit kill (AC-02): panel unmount only detaches now,
     // so the server session has to be ended here or the PTY would outlive its tab.
@@ -491,7 +531,9 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
                             serverSessionId={tab.serverSessionId}
                             connectionMode={tab.connectionMode}
                             workspaceId={workspaceId}
-                            isActive={tab.id === activeId}
+                            routingRef={routingRef}
+                            focusRequest={focusRequest}
+                            isActive={isActive && tab.id === activeId}
                             readOnly={tab.status === 'exited'}
                             onRestart={() => { void restartTerminal(tab.id); }}
                             onExit={(code) => handleExit(tab.id, code)}

@@ -233,8 +233,10 @@ local panes). Right-panel tabs forward their persisted owner route through
 `PreviewPane`. The editor passes this destination separately from the payload
 to the pill; payloads retain the plain server workspace id.
 `shared/monaco/MonacoSelectionAttachPill` observes cursor
-selection, layout, scroll and blur, reads the live model, and routes file-selection
-payloads through `activeChatAttach`. `ChatDetail` passes its `sourceSelectionId`
+selection, layout, scroll, blur and focus, reads the live model, and routes
+file-selection payloads through `activeChatAttach`. Refocus restores retained
+selections; attached selections stay dismissed until selection or model changes.
+`ChatDetail` passes its `sourceSelectionId`
 as `attachmentDestinationId` to both follow-up layouts. `FollowUpInputArea`
 subscribes by that owner identity, falling back to its workspace id when omitted;
 validation keeps the raw workspace id. Owner changes replace the subscription.
@@ -258,8 +260,10 @@ into seed consumption with `newChatSeedDestinationId` set to its
 `sourceSelectionId` or local workspace id. Pop-out commit/PR adapters pass their
 diff panel's owner through review panels and placement frames to both the
 initial seed consumer and active `ChatDetail`. Closed or hidden review composers
-preserve buffered selections until opened. Notes and inline review adapters
-leave seed consumption unset. `ChatListPane` pushes with its Activity routing target.
+preserve buffered selections until opened. Inline commit hosts pass
+`attachmentDestinationId` through `CommitReviewChat` as `sourceSelectionId`
+for lens, pinned and classic panels. Notes and inline review adapters leave
+seed consumption unset. `ChatListPane` pushes with its Activity routing target.
 Visible, feature-enabled consumers retain the destination while capability
 resolution is pending and discard stale-owner items. File and diff seeds focus
 the input after validation, including duplicate feedback. Consumers retry on

@@ -38,7 +38,8 @@ let reportTerminalSessions: (sessions: readonly {
     status: 'running' | 'exited';
 }[]) => void = () => {};
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
-    TerminalView: ({ onSessionsChange }: {
+    TerminalView: ({ onSessionsChange, openRequest, workspaceId, routingRef, isActive }: {
+        openRequest?: number; workspaceId: string; routingRef?: string | null; isActive?: boolean;
         onSessionsChange?: (sessions: readonly {
             id: string;
             serverSessionId?: string;
@@ -46,7 +47,7 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
         }[]) => void;
     }) => {
         reportTerminalSessions = sessions => onSessionsChange?.(sessions);
-        return <div data-testid="mock-terminal" />;
+        return <div data-testid="mock-terminal" data-request={openRequest} data-owner={workspaceId} data-route={routingRef} data-active={String(isActive)} />;
     },
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
@@ -161,6 +162,39 @@ afterEach(() => {
 });
 
 describe('UnifiedRightPanel collapses when its last tab closes', () => {
+    it('requests terminal creation and activates the tab from the add menu', async () => {
+        renderPanel();
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByText('New Terminal'));
+        const terminal = await screen.findByTestId('mock-terminal');
+        expect(terminal.dataset.request).toBe('1');
+        expect(terminal.dataset.owner).toBe(WS);
+        expect(terminal.dataset.active).toBe('true');
+    });
+
+    it('opens the selected group member on the group owning server', async () => {
+        render(<UnifiedRightPanel workspaceId="group-team" routingRef="remote:owner:group-team"
+            dock={dockStub({ target: 'member-a', targets: [{ workspaceId: 'member-a', label: 'Member A' }] })} />);
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByText('New Terminal'));
+        const terminal = await screen.findByTestId('mock-terminal');
+        expect(terminal.dataset.owner).toBe('member-a');
+        expect(terminal.dataset.route).toBe('remote:owner:member-a');
+        expect(terminal.dataset.request).toBe('1');
+    });
+
+    it('requests creation in an existing empty terminal tab without adding another tab', async () => {
+        openUnifiedPanelTab(WS, { kind: 'terminal', ownerWorkspaceId: WS, ownerRoutingRef: null,
+            resourceId: 'terminal', label: 'Terminal' });
+        renderPanel();
+        const terminal = await screen.findByTestId('mock-terminal');
+        expect(terminal.dataset.request).toBeUndefined();
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByText('New Terminal'));
+        expect(terminal.dataset.request).toBe('1');
+        expect(screen.getAllByTestId('mock-terminal')).toHaveLength(1);
+    });
+
     it('collapses after the strip ✕ closes the last tab', async () => {
         const tabId = openFile('src/a.ts');
         renderPanel();

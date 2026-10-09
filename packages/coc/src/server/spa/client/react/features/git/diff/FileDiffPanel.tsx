@@ -728,6 +728,7 @@ export function FileDiffPanel({
 
                 {!reviewChat && source.chat && <CommitReviewChat
                     workspaceId={source.chat.workspaceId}
+                    sourceSelectionId={attachmentDestinationId}
                     hash={source.chat.commitHash}
                     commitMessage={source.chat.commitMessage}
                     chat={chat}

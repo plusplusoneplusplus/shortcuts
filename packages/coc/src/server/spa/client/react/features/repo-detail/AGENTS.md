@@ -311,7 +311,13 @@ The page-level Ctrl/Cmd+Shift+F overlay is a separate tracked-file surface under
 plus concrete clone route. It persists only query/modes/globs/untracked controls;
 result payloads remain in memory, so close/reopen and same-page scope changes can
 restore them while a reload restores controls without searching. The overlay
-keeps query/modes and filters above a two-pane results/preview view. Below 800px
+seeds a literal query from the focused Git Monaco diff buffer through
+`shared/monaco/focusedSelection`; both sides register with the shared viewer.
+Only text focus qualifies, never stale selections or find-widget focus. No
+selection preserves controls; seeding disables regex and retains other filters.
+The multiline query field submits only on Enter, using the page's existing owner
+route. Git popouts have no content-search host.
+The overlay keeps query/modes and filters above a two-pane results/preview view. Below 800px
 it switches between Results and Preview with the list still mounted, preserving
 scroll position and selection. Results group by clone-qualified repository and
 file. Files with more than ten matches initially show ten rows and offer an

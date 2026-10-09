@@ -42,6 +42,7 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId =
         };
         const listeners = [
             editor.onDidChangeCursorSelection(() => { dismissed = false; update(); }),
+            editor.onDidFocusEditorWidget(update),
             editor.onDidScrollChange(update),
             editor.onDidLayoutChange(update),
             editor.onDidChangeModel(() => { dismissed = false; update(); }),

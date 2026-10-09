@@ -867,13 +867,13 @@ describe('RepoGitTab', () => {
             expect(source).toContain('filePath={view.filePath}');
         });
 
-        it('keys the review host by workspace and commit, preserving file navigation', () => {
-            expect(source).toContain('key={`${workspaceId}:${hash}`}');
+        it('keys the review host by clone owner and commit, preserving file navigation', () => {
+            expect(source).toContain('key={`${attachmentDestinationId ?? workspaceId}:${hash}`}');
             expect(source).not.toContain('key={`${view.hash}-${view.filePath}`}');
         });
 
         it('replaces the whole review host on commit change', () => {
-            expect(source).toContain('key={`${workspaceId}:${hash}`}');
+            expect(source).toContain('key={`${attachmentDestinationId ?? workspaceId}:${hash}`}');
         });
 
         it('passes branchRangeData to BranchChanges', () => {

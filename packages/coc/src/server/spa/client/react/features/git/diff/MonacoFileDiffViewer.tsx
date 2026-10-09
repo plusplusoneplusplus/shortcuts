@@ -54,6 +54,7 @@ import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import { MonacoDiffSelectionAttachPill } from './MonacoDiffSelectionAttachPill';
 import type { DiffSelectionDragSource } from './diffSelectionContext';
+import { registerSelectionEditor } from '../../../shared/monaco/focusedSelection';
 
 export type MonacoFileDiffViewerHandle = Pick<
     UnifiedDiffViewerHandle,
@@ -228,6 +229,14 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         }, [models, identical]);
 
         useEffect(() => { controllerRef.current?.setOptions(options); }, [options, identical]);
+
+        useEffect(() => {
+            if (!editor?.getSelectionEditor) return;
+            const getSelectionEditor = editor.getSelectionEditor.bind(editor);
+            const unregister = (['original', 'modified'] as const)
+                .map(side => registerSelectionEditor(getSelectionEditor(side)));
+            return () => { for (const cleanup of unregister) cleanup(); };
+        }, [editor]);
 
         // Edits and Ctrl/Cmd+S on the modified side, only while it is editable.
         useEffect(() => {

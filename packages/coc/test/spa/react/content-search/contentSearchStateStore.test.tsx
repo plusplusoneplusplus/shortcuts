@@ -75,7 +75,7 @@ describe('tracked content-search scope state', () => {
         fireEvent.keyDown(screen.getByTestId('content-search-overlay'), { key: 'Escape' });
         pressShortcut();
 
-        expect((screen.getByTestId('content-search-overlay-query') as HTMLInputElement).value)
+        expect((screen.getByTestId('content-search-overlay-query') as HTMLTextAreaElement).value)
             .toBe('needle');
         expect(screen.getByTestId('content-search-overlay-mode-caseSensitive')
             .getAttribute('aria-pressed')).toBe('true');
@@ -99,19 +99,19 @@ describe('tracked content-search scope state', () => {
         await screen.findByText('src/clone-a.ts');
 
         rerender(<ContentSearchOverlayHost workspaceId="shared" routingRef="clone-b" />);
-        expect((screen.getByTestId('content-search-overlay-query') as HTMLInputElement).value)
+        expect((screen.getByTestId('content-search-overlay-query') as HTMLTextAreaElement).value)
             .toBe('');
         expect(screen.queryByText('src/clone-a.ts')).toBeNull();
         setQuery('beta');
         await waitFor(() => expect(
-            (screen.getByTestId('content-search-overlay-query') as HTMLInputElement).value,
+            (screen.getByTestId('content-search-overlay-query') as HTMLTextAreaElement).value,
         ).toBe('beta'));
         submit();
         await screen.findByText('src/clone-b.ts');
 
         rerender(<ContentSearchOverlayHost workspaceId="shared" routingRef="clone-a" />);
         await waitFor(() => expect(
-            (screen.getByTestId('content-search-overlay-query') as HTMLInputElement).value,
+            (screen.getByTestId('content-search-overlay-query') as HTMLTextAreaElement).value,
         ).toBe('alpha'));
         expect(screen.getByText('src/clone-a.ts')).toBeTruthy();
         expect(screen.queryByText('src/clone-b.ts')).toBeNull();
@@ -143,7 +143,7 @@ describe('tracked content-search scope state', () => {
         render(<ContentSearchOverlayHost workspaceId="repo" routingRef="clone-a" />);
         pressShortcut();
 
-        expect((screen.getByTestId('content-search-overlay-query') as HTMLInputElement).value)
+        expect((screen.getByTestId('content-search-overlay-query') as HTMLTextAreaElement).value)
             .toBe('remember me');
         expect((screen.getByTestId('content-search-overlay-untracked') as HTMLInputElement).checked)
             .toBe(true);

@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { useEffect } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useEffect, useState } from 'react';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 import type { RepoGitDetailPaneProps } from '../../../../src/server/spa/client/react/features/git/repoGitTab/RepoGitDetailPane';
 import type { UseCommitChatPresentationReturn } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitChatPresentation';
+
+import { attachSelectionToChat, resetActiveChatAttach, subscribeActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
+import { createFileSelectionContextPayload } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { resetNewChatSeedContext } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
 
 const mounts = vi.fn();
 const unmounts = vi.fn();
@@ -18,16 +22,24 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({ width: 360, handleMouseDown: vi.fn(), handleTouchStart: vi.fn() }),
 }));
-function Chat({ workspaceId, commitHash }: { workspaceId: string; commitHash: string }) {
+function Chat({ workspaceId, commitHash, sourceSelectionId }: { workspaceId: string; commitHash: string; sourceSelectionId?: string }) {
+    const [snippet, setSnippet] = useState('');
+    useEffect(() => {
+        const subscription = subscribeActiveChatAttach(sourceSelectionId ?? workspaceId, payload => {
+            if (payload.kind !== 'coc.file-selection-context' || payload.sourceWorkspaceId !== workspaceId) return false;
+            setSnippet(payload.snippet); return true;
+        });
+        return subscription.unsubscribe;
+    }, [sourceSelectionId, workspaceId]);
     useEffect(() => {
         mounts(workspaceId, commitHash);
         return () => { unmounts(workspaceId, commitHash); };
     }, []);
-    return <div data-testid="conversation"><input aria-label="Chat draft" defaultValue="" /></div>;
+    return <div data-testid="conversation"><input aria-label="Chat draft" defaultValue="" /><span data-testid="attached-snippet">{snippet}</span></div>;
 }
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({ CommitChatPanel: Chat }));
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPlacementFrame', () => ({
-    CommitChatPlacementFrame: (props: { workspaceId: string; commitHash: string; onPin?: () => void; onUnpin?: () => void }) => <>
+    CommitChatPlacementFrame: (props: { workspaceId: string; commitHash: string; sourceSelectionId?: string; onPin?: () => void; onUnpin?: () => void }) => <>
         {props.onPin && <button onClick={props.onPin}>Pin chat</button>}
         {props.onUnpin && <button onClick={props.onUnpin}>Unpin chat</button>}
         <Chat {...props} />
@@ -60,6 +72,8 @@ const file = (path: string): RepoGitDetailPaneProps['view'] => ({ type: 'commit-
 
 beforeEach(() => {
     localStorage.clear();
+    resetActiveChatAttach();
+    resetNewChatSeedContext();
     vi.clearAllMocks();
     lensEnabled = true;
 });
@@ -109,5 +123,32 @@ describe('commit review lifetime', () => {
         fireEvent.click(screen.getByText('Toggle chat'));
         expect(screen.getByLabelText('Chat draft')).toHaveValue('');
         expect(mounts).toHaveBeenLastCalledWith(next.workspaceId, scope === 'commit' ? 'def456' : commit.hash);
+    });
+});
+
+describe('inline commit attachment owner', () => {
+    it.each(['lens', 'pinned', 'legacy'] as const)('%s routes clone selections and resets a colliding server owner', placement => {
+        lensEnabled = placement !== 'legacy';
+        const first = { ...props(file('src/a.ts')), attachmentDestinationId: 'remote:one:ws-a' };
+        const view = render(<RepoGitDetailPane {...first} />);
+        const open = () => {
+            fireEvent.click(screen.getByText('Toggle chat'));
+            if (placement === 'pinned') fireEvent.click(screen.getByText('Pin chat'));
+        };
+        open();
+        const payload = createFileSelectionContextPayload({ sourceWorkspaceId: 'ws-a', filePath: 'src/a.ts',
+            range: { start: 1, end: 1 }, snippet: 'first server' })!;
+        act(() => { expect(attachSelectionToChat('remote:two:ws-a', payload)).toBe('new-chat'); });
+        expect(screen.getByTestId('attached-snippet')).toHaveTextContent('');
+        act(() => { expect(attachSelectionToChat(first.attachmentDestinationId, payload)).toBe('active-chat'); });
+        expect(screen.getByTestId('attached-snippet')).toHaveTextContent('first server');
+        fireEvent.change(screen.getByLabelText('Chat draft'), { target: { value: 'Private draft' } });
+        const previousConversation = screen.getByTestId('conversation');
+        view.rerender(<RepoGitDetailPane {...first} attachmentDestinationId="remote:two:ws-a" />);
+        expect(screen.getByTestId('conversation')).not.toBe(previousConversation);
+        expect(screen.getByLabelText('Chat draft')).toHaveValue('');
+        act(() => { expect(attachSelectionToChat(first.attachmentDestinationId, payload)).toBe('new-chat'); });
+        act(() => { expect(attachSelectionToChat('remote:two:ws-a', { ...payload, snippet: 'second server' })).toBe('active-chat'); });
+        expect(screen.getByTestId('attached-snippet')).toHaveTextContent('second server');
     });
 });

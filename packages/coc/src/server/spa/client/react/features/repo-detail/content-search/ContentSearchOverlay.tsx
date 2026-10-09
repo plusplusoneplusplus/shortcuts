@@ -168,7 +168,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
         focusToken = 0,
     } = props;
     const portalContainer = usePortalContainer(open);
-    const queryRef = useRef<HTMLInputElement | null>(null);
+    const queryRef = useRef<HTMLTextAreaElement | null>(null);
     const backRef = useRef<HTMLButtonElement | null>(null);
     const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [selection, setSelection] = useState({ index: QUERY_SELECTION, matches });
@@ -245,7 +245,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
             }
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 if (mobileView === 'preview' && window.innerWidth < 800) return;
-                if (event.target instanceof HTMLInputElement && event.target !== queryRef.current) return;
+                if (event.target instanceof HTMLInputElement) return;
             }
             if (event.key === 'ArrowDown') {
                 if (rows.length === 0) return;
@@ -279,7 +279,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                 if (target instanceof HTMLElement
                     && target.closest('[data-content-search-action]') !== null) return;
                 event.preventDefault();
-                const match = target instanceof HTMLInputElement || (
+                const match = target instanceof HTMLInputElement || target === queryRef.current || (
                     target instanceof HTMLButtonElement && !target.matches('[role="treeitem"]')
                 ) ? undefined : selected >= 0 ? rows[selected] : undefined;
                 if (match) onOpenMatch(match);
@@ -314,13 +314,13 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                 onKeyDown={onKeyDown}
             >
                 <div className="flex flex-wrap items-center gap-2 p-3">
-                    <input
+                    <textarea
                         ref={queryRef}
-                        type="text"
+                        rows={Math.min(3, query.split('\n').length)}
                         aria-label="Search query"
                         data-testid="content-search-overlay-query"
                         placeholder="Search tracked files"
-                        className="flex-1 min-w-[12rem] px-2 py-1 text-sm bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
+                        className="flex-1 min-w-[12rem] resize-none px-2 py-1 text-sm bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
                         value={query}
                         onChange={(event) => onQueryChange(event.target.value)}
                     />

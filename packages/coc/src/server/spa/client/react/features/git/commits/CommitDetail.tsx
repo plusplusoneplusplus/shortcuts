@@ -557,7 +557,7 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
                     />
                 )}
 
-                {!reviewChat && <CommitReviewChat workspaceId={workspaceId} hash={hash} commitMessage={commit?.subject} chat={chat} />}
+                {!reviewChat && <CommitReviewChat workspaceId={workspaceId} sourceSelectionId={attachmentDestinationId} hash={hash} commitMessage={commit?.subject} chat={chat} />}
 
             </div>
         </div>

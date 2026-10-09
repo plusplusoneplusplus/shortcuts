@@ -66,12 +66,19 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
     const openPendingRef = useRef(false);
     const openAbortRef = useRef<AbortController | null>(null);
 
-    const handleOpen = useCallback(() => {
+    const handleOpen = useCallback((initialQuery?: string) => {
         const active = document.activeElement;
         invokerRef.current = active instanceof HTMLElement ? active : null;
+        if (initialQuery !== undefined) {
+            setControls(current => ({
+                ...current,
+                query: initialQuery,
+                modes: { ...current.modes, regex: false },
+            }));
+        }
         setFocusToken((token) => token + 1);
         setOpen(true);
-    }, []);
+    }, [setControls]);
 
     const handleFocusExisting = useCallback(() => {
         setFocusToken((token) => token + 1);
