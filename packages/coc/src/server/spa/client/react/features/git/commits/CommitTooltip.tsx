@@ -3,10 +3,11 @@
  *
  * Shows full commit subject, author, date, hash, parents, body, and a
  * Copy Hash button. For fixup commits, also shows the fixup type and
- * target commit info. Positioned absolutely relative to the hovered row.
+ * target commit info. Portaled to the body and positioned beside the hovered row.
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../../../ui';
 import { copyToClipboard } from '../../../utils/format';
 import type { GitCommitItem } from './CommitList';
@@ -63,7 +64,7 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave, 
         try { return new Date(commit.date).toLocaleString(); } catch { return commit.date; }
     })();
 
-    return (
+    return createPortal(
         <div
             ref={tooltipRef}
             className="fixed z-[10003] w-[480px] max-w-[calc(100vw-32px)] max-h-[300px] overflow-y-auto bg-white dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#555] rounded-lg shadow-lg p-3 select-text cursor-text"
@@ -71,6 +72,9 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave, 
             data-testid="commit-tooltip"
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
+            // A portal is outside the peek panel's DOM; keep its controls from
+            // triggering the panel's document-level outside-click dismissal.
+            onMouseDown={(e) => e.stopPropagation()}
         >
             {/* Full subject */}
             <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-2 break-words" data-testid="tooltip-subject">
@@ -120,6 +124,7 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave, 
                     <pre className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0 max-h-[120px] overflow-y-auto">{commit.body}</pre>
                 </div>
             )}
-        </div>
+        </div>,
+        document.body,
     );
 }

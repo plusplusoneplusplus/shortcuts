@@ -58,6 +58,15 @@ compact mode the working-tree header shows `+staged ~modified ?untracked` (or
 `✓ clean`) via `CompactWorkingTreeSummary` with no total file badge, and each
 commit row leads with its short hash before the subject.
 
+### Commit tooltips
+
+`CommitTooltip` renders through a portal to `document.body` with fixed,
+viewport-relative positioning. The tooltip stays outside the hover-peek
+sidebar's transformed, overflow-clipping container. React hover events retain
+sidebar ownership, and tooltip mousedown stops propagation to keep its controls
+from triggering the peek's document-level outside-click dismissal. Outside
+mousedown, Escape and touch-start cancel tooltip timers and dismiss the portal.
+
 ### Stale working-tree recovery
 
 `git-changed` broadcasts come only from server-initiated git operations, so a file
