@@ -121,6 +121,7 @@ fn resolve_options(options: Option<GitExecOptions>) -> GitCommandOptions {
             // Not a JavaScript option: which exit codes mean success belongs to
             // the command, so the one command that needs it sets it itself.
             success_exit_codes: Vec::new(),
+            cancellation: None,
         },
         None => defaults,
     }
@@ -1689,11 +1690,13 @@ impl GitPatchStore {
         max_lines: Option<i64>,
         options: Option<GitExecOptions>,
     ) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+        let ticket = self.store.begin_transport(self.store.scope());
         let store = Arc::clone(&self.store);
         let options = resolve_options(options);
         AsyncTask::new(crate::task::Blocking::new(move || {
             store
                 .revision_patch(
+                    ticket.map_err(store_error)?,
                     &mode,
                     &base,
                     head.as_deref(),

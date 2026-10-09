@@ -1,11 +1,82 @@
 import { describe, expect, it } from 'vitest';
 import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { loadNativeGit } from '../src/git';
 
 const api = loadNativeGit();
 const patch = 'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n' +
     '--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n' +
     '@@ -1 +1 @@\n---body\n+++body\n';
+
+it.each(['refresh', 'dispose'] as const)('stops running host patches on %s without blocking Node', async action => {
+    for (const workingTree of [false, true]) {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'patch-cancel-')));
+        const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+        const started = path.join(root, 'started'), release = path.join(root, 'release');
+        const finished = path.join(root, 'finished');
+        const quote = (value: string) => `'${value.replaceAll('\\', '/').replaceAll("'", "'\\''")}'`;
+        const helper = path.join(root, 'blocking.cjs');
+        fs.writeFileSync(helper, `
+const fs = require('node:fs'), path = require('node:path');
+const root = process.argv[2];
+fs.writeFileSync(path.join(root, 'started'), 'ready');
+const deadline = Date.now() + 10000;
+const timer = setInterval(() => {
+    if (fs.existsSync(path.join(root, 'release')) || Date.now() >= deadline) {
+        clearInterval(timer);
+        fs.writeFileSync(path.join(root, 'finished'), 'done');
+    }
+}, 5);
+`);
+        git('init', '--initial-branch=main');
+        for (const [key, value] of [
+            ['user.name', 'Test'], ['user.email', 'test@example.com'],
+            ['commit.gpgsign', 'false'], ['core.autocrlf', 'false'],
+            ['diff.block.textconv', `${quote(process.execPath)} ${quote(helper)} ${quote(root)}`],
+        ]) git('config', key, value);
+        fs.writeFileSync(path.join(root, '.gitattributes'), '*.txt diff=block\n');
+        fs.writeFileSync(path.join(root, 'same.txt'), 'one\n');
+        git('add', '.');
+        git('commit', '-qm', 'fixture');
+        fs.writeFileSync(path.join(root, 'same.txt'), 'two\n');
+        const store = api.openGitPatchStore('cancel', root);
+        const independent = api.openGitPatchStore('other', root);
+        let pending: Promise<unknown> | undefined;
+        try {
+            pending = workingTree ? store.workingTreePatch('all') : store.revisionPatch('show', 'HEAD', null, 'same.txt', null, null, { timeout: 0 });
+            const rejection = expect(pending).rejects.toThrow(action === 'refresh' ? 'Stale' : 'Closed');
+            await expect.poll(() => fs.existsSync(started)).toBe(true);
+            store[action]();
+            // The blocked helper is released only in finally; completion proves
+            // revocation stops Git rather than waiting for its normal output.
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                await Promise.race([rejection, new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('revoked Git did not stop')), 2000);
+                })]);
+            } finally {
+                clearTimeout(timer);
+            }
+            expect((await independent.revisionPatch('commit', 'HEAD')).files.find(file => file.path === 'same.txt'))
+                .toMatchObject({ additions: 1 });
+            if (action === 'refresh') {
+                git('config', '--unset', 'diff.block.textconv');
+                await expect(store.revisionPatch('show', 'HEAD', null, 'same.txt')).resolves.toMatchObject({ summary: { additions: 1 } });
+            } else {
+                await expect(store.revisionPatch('show', 'missing')).rejects.toThrow('Closed');
+            }
+        } finally {
+            store.dispose();
+            independent.dispose();
+            fs.writeFileSync(release, '');
+            await pending?.catch(() => undefined);
+            if (fs.existsSync(started)) await expect.poll(() => fs.existsSync(finished)).toBe(true);
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    }
+});
 
 describe('parseGitPatch worker boundary', () => {
     it('exposes the Rust root/first-parent commit plan on a worker', async () => {
