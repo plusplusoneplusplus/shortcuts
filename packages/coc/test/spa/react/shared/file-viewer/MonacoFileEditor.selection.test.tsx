@@ -27,6 +27,7 @@ vi.mock('@monaco-editor/react', () => ({ default: ({ onMount }: any) => {
             onDidLayoutChange: (cb: () => void) => listen('layout', cb),
             onDidChangeModel: (cb: () => void) => listen('model', cb),
             onDidBlurEditorWidget: (cb: () => void) => listen('blur', cb),
+            onDidFocusEditorWidget: (cb: () => void) => listen('focus', cb),
             addAction: () => ({ dispose: vi.fn() }), layout: vi.fn(),
         }, { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } }));
     }
@@ -61,6 +62,14 @@ describe.each([['shared', MonacoFileEditor], ['explorer shim', ExplorerEditor]] 
         expect(stub.route).toHaveBeenLastCalledWith(nextDestinationId, expect.objectContaining({ sourceWorkspaceId: 'repo-A' }));
         expect(stub.route).toHaveBeenCalledTimes(2);
     });
+    it('restores a retained selection on refocus without a selection event', async () => {
+        await mount(Component, context); select();
+        await act(async () => { stub.focused = false; stub.events.blur(); await Promise.resolve(); });
+        expect(screen.queryByRole('button')).toBeNull();
+        act(() => { stub.focused = true; stub.events.focus(); });
+        fireEvent.click(screen.getByRole('button', { name: 'Attach as context' }));
+        expect(stub.route).toHaveBeenCalledWith('repo-A', expect.objectContaining({ snippet: stub.snippet }));
+    });
     it('shows below selection, preserves selection, attaches live text and stays dismissed on scroll', async () => {
         await mount(Component, context);
         expect(screen.queryByRole('button')).toBeNull(); select();
@@ -70,6 +79,9 @@ describe.each([['shared', MonacoFileEditor], ['explorer shim', ExplorerEditor]] 
         expect(stub.route).toHaveBeenCalledWith('repo-A', expect.objectContaining({ sourceWorkspaceId: 'repo-A',
             filePath: 'src/status.rs', range: { start: 24, end: 35 }, snippet: 'unsaved text\nmore' }));
         expect(screen.queryByRole('button')).toBeNull(); act(() => stub.events.scroll());
+        expect(screen.queryByRole('button')).toBeNull();
+        await act(async () => { stub.focused = false; stub.events.blur(); await Promise.resolve(); });
+        act(() => { stub.focused = true; stub.events.focus(); });
         expect(screen.queryByRole('button')).toBeNull(); select(); expect(screen.getByRole('button')).toBeTruthy();
     });
 });
@@ -102,5 +114,6 @@ it.each(['/tmp/local.rs', 'C:/local.rs'])('rejects invalid repo paths: %s', asyn
 });
 it('rejects whitespace-only text and cleans up listeners', async () => {
     const view = await mount(MonacoFileEditor, context); stub.snippet = '  \n'; select(); expect(screen.queryByRole('button')).toBeNull();
-    view.unmount(); expect(stub.disposals.every(dispose => dispose.mock.calls.length > 0)).toBe(true);
+    expect(stub.events.focus).toEqual(expect.any(Function));
+    view.unmount(); expect(stub.disposals.every(dispose => dispose.mock.calls.length === 1)).toBe(true);
 });

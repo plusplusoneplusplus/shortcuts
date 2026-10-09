@@ -4,8 +4,9 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import type { UseCommitChatPresentationReturn } from '../hooks/useCommitChatPresentation';
 
 /** Shared chat placement; the caller determines the lifetime of the commit host. */
-export function CommitReviewChat({ workspaceId, hash, commitMessage, chat }: {
+export function CommitReviewChat({ workspaceId, sourceSelectionId, hash, commitMessage, chat }: {
     workspaceId: string;
+    sourceSelectionId?: string;
     hash?: string;
     commitMessage?: string;
     chat: UseCommitChatPresentationReturn;
@@ -20,6 +21,7 @@ export function CommitReviewChat({ workspaceId, hash, commitMessage, chat }: {
     if (chat.presentation === 'lens') {
         return <CommitChatPlacementFrame
             workspaceId={workspaceId}
+            sourceSelectionId={sourceSelectionId}
             commitHash={hash}
             commitMessage={commitMessage}
             presentation="lens"
@@ -42,6 +44,7 @@ export function CommitReviewChat({ workspaceId, hash, commitMessage, chat }: {
             {chat.lensEnabled && chat.isPinned ? (
                 <CommitChatPlacementFrame
                     workspaceId={workspaceId}
+                    sourceSelectionId={sourceSelectionId}
                     commitHash={hash}
                     commitMessage={commitMessage}
                     presentation="side-panel"
@@ -51,6 +54,7 @@ export function CommitReviewChat({ workspaceId, hash, commitMessage, chat }: {
             ) : (
                 <CommitChatPanel
                     workspaceId={workspaceId}
+                    sourceSelectionId={sourceSelectionId}
                     commitHash={hash}
                     commitMessage={commitMessage}
                     onClose={chat.toggleChat}

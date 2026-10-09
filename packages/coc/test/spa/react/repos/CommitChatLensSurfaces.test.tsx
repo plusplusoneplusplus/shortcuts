@@ -186,6 +186,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
         <div
             data-testid="commit-chat-panel"
             data-workspace-id={props.workspaceId}
+            data-source-selection={props.sourceSelectionId}
             data-commit-hash={props.commitHash}
             data-commit-message={props.commitMessage ?? ''}
             data-hide-empty-header={props.hideEmptyHeader ? 'true' : 'false'}
@@ -245,6 +246,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
         const { unmount } = render(
             <CommitDetail
                 workspaceId="ws1"
+                attachmentDestinationId="remote:one:ws1"
                 hash="abc123"
                 commit={makeCommit('fix: lens') as any}
             />,
@@ -255,6 +257,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
         expect(screen.getByTestId('commit-chat-lens')).toBeTruthy();
         expect(screen.queryByTestId('commit-chat-side-panel')).toBeNull();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-hash')).toBe('abc123');
+        expect(screen.getByTestId('commit-chat-panel')).toHaveAttribute('data-source-selection', 'remote:one:ws1');
         expect(screen.getByTestId('diff-section').className).toContain('overflow-auto');
 
         fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
@@ -262,6 +265,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
         const storageKey = getReviewChatPlacementStorageKey({ type: 'commit', workspaceId: 'ws1', commitHash: 'abc123' });
         expect(localStorage.getItem(storageKey)).toBe('side-panel');
         expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
+        expect(screen.getByTestId('commit-chat-panel')).toHaveAttribute('data-source-selection', 'remote:one:ws1');
         expect(screen.queryByTestId('commit-chat-lens')).toBeNull();
 
         fireEvent.click(screen.getByTestId('commit-chat-frame-close-btn'));
@@ -290,6 +294,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
         render(
             <FileDiffPanel
                 workspaceId="ws1"
+                attachmentDestinationId="remote:two:ws1"
                 filePath="src/example.ts"
                 source={makeCommitSource()}
             />,
@@ -301,12 +306,14 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
         expect(screen.queryByTestId('commit-chat-side-panel')).toBeNull();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-hash')).toBe('abc123');
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-message')).toBe('fix: lens');
+        expect(screen.getByTestId('commit-chat-panel')).toHaveAttribute('data-source-selection', 'remote:two:ws1');
         expect(screen.getByTestId('file-diff-section').className).toContain('overflow-auto');
 
         fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
 
         expect(localStorage.getItem(getReviewChatPlacementStorageKey({ type: 'commit', workspaceId: 'ws1', commitHash: 'abc123' }))).toBe('side-panel');
         expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
+        expect(screen.getByTestId('commit-chat-panel')).toHaveAttribute('data-source-selection', 'remote:two:ws1');
     });
 
 });

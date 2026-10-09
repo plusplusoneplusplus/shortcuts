@@ -19,18 +19,20 @@ the page origin. Omitted owners retain workspace-based lookup.
 
 ## Commit review lifetime
 
-`RepoGitDetailPane` owns one review host per `(workspaceId, hash)`. It passes
+`RepoGitDetailPane` owns one review host per `(attachmentDestinationId ?? workspaceId, hash)`. It passes
 `reviewChat` presentation controls into `CommitDetail` and `FileDiffPanel`, and
 renders `CommitReviewChat` beside their content. Same-commit overview/file
 navigation preserves the conversation, draft and scroll. File-to-file navigation
 reuses the file panel and Monaco editor while loading fresh models; hidden prior
-models cannot receive selections. Workspace or commit changes replace the host.
+models cannot receive selections. Clone owner or commit changes replace the host.
 Standalone surfaces own their chat locally through the same shared renderer.
 
 ## Review composer ownership
 
 `CommitChatPanel`, `PrChatPanel` and `CommitChatPlacementFrame` forward
 `sourceSelectionId` to active `ChatDetail` and empty `InitialChatComposer`.
+Inline `CommitReviewChat` receives that owner from `attachmentDestinationId`
+for lens, pinned and classic placements.
 Buffered selection seeds require explicit `newChatSeedDestinationId` opt-in.
 Pop-out review adapters supply the same owner as their diff panels for both side
 and lens placements. Inline review hosts leave seed consumption unset, so they

@@ -20,7 +20,7 @@ refresh, and the two layouts. Everything else lives here.
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
 | `useDirtyDetailGuard.tsx` | Save / Don't Save / Cancel prompt before a user selection replaces an edited working-tree diff. `RepoGitTab` wraps the selection's select/navigate functions with `guard`; data-driven `setView` stays unguarded. |
 | `RepoGitListPane.tsx`, `RepoGitOverlays.tsx` | Presentation only; everything arrives as props. |
-| `RepoGitDetailPane.tsx` | Detail routing and a workspace/commit-keyed review host; shared chat survives overview/file navigation and file panels survive same-commit file changes. |
+| `RepoGitDetailPane.tsx` | Detail routing and a clone-owner/commit-keyed review host; shared chat survives overview/file navigation and file panels survive same-commit file changes. |
 
 ## Invariants
 
@@ -50,7 +50,8 @@ refresh, and the two layouts. Everything else lives here.
 - **Selection attachment ownership.** `RepoGitTab.sourceSelectionId` identifies
   the concrete source clone. The detail pane forwards it as
   `attachmentDestinationId` to file-diff, working-tree, commit and branch-range
-  viewers; their payloads retain the raw workspace id. Git review openers serialize
+  viewers; their payloads retain the raw workspace id. Inline review chats forward
+  that owner as `sourceSelectionId` through every placement. Git review openers serialize
   that identity as `sourceSelectionId` and resolve the endpoint from the explicit
   owner. Explicit local owners never inherit an active remote endpoint. Repo-group
   hosts derive the member clone key from their server-qualified group selection.
