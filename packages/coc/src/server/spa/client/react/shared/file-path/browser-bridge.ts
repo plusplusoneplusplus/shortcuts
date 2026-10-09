@@ -9,6 +9,24 @@ export interface BrowserPreferences {
     clearing: BrowserEngine[];
 }
 export type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
+export interface BrowserHistoryEntry {
+    url: string;
+    title: string;
+    lastVisited: number;
+    visitCount: number;
+}
+export interface BrowserHistorySuggestion extends BrowserHistoryEntry { completion: string | null }
+export type BrowserHistoryResult<T = BrowserHistoryEntry> = {
+    ok: true; entries: T[]; total: number; recording: boolean; storageError: string | null;
+} | { ok: false; reason: string; message?: string };
+export interface DesktopBrowserHistory {
+    query(search?: string, offset?: number, limit?: number): Promise<BrowserHistoryResult>;
+    suggest(search?: string): Promise<BrowserHistoryResult<BrowserHistorySuggestion>>;
+    delete(url: string): Promise<BrowserOperationResult>;
+    clear(): Promise<BrowserOperationResult>;
+    setRecording(recording: boolean): Promise<BrowserOperationResult>;
+    onChanged(callback: () => void): () => void;
+}
 export const WEBVIEW2_INSTALL_URL = 'https://developer.microsoft.com/microsoft-edge/webview2/#download-section';
 export const DESKTOP_BROWSER_PREFERENCES_HASH = '#admin/settings/appearance';
 
@@ -43,6 +61,8 @@ export interface BrowserDownloadEvent {
 
 /** The desktop preload's browser tab API (see coc-desktop browser-view-host.ts). */
 export interface DesktopBrowserBridge {
+    /** Installation-wide history; absent on older desktop hosts. */
+    history?: DesktopBrowserHistory;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
     importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserOperationResult>;

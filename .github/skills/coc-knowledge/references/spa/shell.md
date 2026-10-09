@@ -161,7 +161,14 @@ when stock Electron exposes `getWebContentsId`, and rejects foreign/reused guest
 
 `BrowserWebviewLayer` mounts once beside `App` and retains each guest outside keyed workspace subtrees. Placeholders register in `browserWebviewLayerStore`; fixed hosts track their rectangles and clip to ancestor overflow viewports. Hidden hosts use visibility and pointer-events, never display. Close and `onClosed` remove guests, with identity checks rejecting late open replies.
 
-`BrowserToolbarMenu` portals a dropdown above the live Electron page; the page title belongs in the tab label. Its Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+`BrowserToolbarMenu` and `BrowserAddressBar` portal dropdowns above the live
+Electron page. The address combobox consumes optional `browser.history.suggest`:
+main ranks up to eight URL/title matches and supplies case-preserving prefix
+completions. Local typed text survives Escape; deletion, caret moves, paste and
+IME suppress automatic suffix selection. Owner/revision checks reject stale
+queries; history invalidations refresh open results.
+
+The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 

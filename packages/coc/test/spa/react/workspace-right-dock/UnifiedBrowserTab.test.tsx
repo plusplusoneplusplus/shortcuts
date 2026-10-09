@@ -33,6 +33,53 @@ function tab() {
 }
 
 describe('browser tab engine-neutral controls', () => {
+    it.each(['electron', 'webview2'] as const)('uses ranked history completion in the owning %s tab and preserves Ctrl/Cmd+L', async engine => {
+        open.mockResolvedValue({ ok: true, engine });
+        const target = 'https://example.test/Case?Q=Value#Hash';
+        mocks.bridge!.history = {
+            suggest: vi.fn(async search => ({ ok: true, entries: [{ url: target, title: 'Case page',
+                lastVisited: 1, visitCount: 2, completion: search ? 'example.test/Case?Q=Value#Hash' : null }],
+                total: 1, recording: false, storageError: null })),
+            query: vi.fn(), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+        };
+        const onNavigate = vi.fn();
+        const props = { tabId: 'tab-a', viewId: 'view-a', sessionKey: 'remote-workspace-a', url: 'https://start.test/',
+            active: true, visible: true, onNavigate, onPageState: vi.fn() };
+        render(<UnifiedBrowserTab {...props} />);
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        await userEvent.click(address);
+        fireEvent.keyDown(address, { key: 'l', ctrlKey: true, metaKey: true });
+        expect([address.selectionStart, address.selectionEnd]).toEqual([0, address.value.length]);
+        await userEvent.keyboard('ex');
+        await waitFor(() => expect(address.value).toBe('example.test/Case?Q=Value#Hash'));
+        expect([address.selectionStart, address.selectionEnd]).toEqual([2, address.value.length]);
+        await userEvent.keyboard('{Enter}');
+        expect(onNavigate).toHaveBeenCalledExactlyOnceWith('tab-a', target);
+        expect(mocks.bridge!.navigate).toHaveBeenCalledExactlyOnceWith('view-a', target);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(address.value).toBe(target);
+        fireEvent.change(address, { target: { value: 'localhost:4000' } });
+        fireEvent.submit(address.form!);
+        expect(address.value).toBe('http://localhost:4000/');
+        expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('normalizes manual address entry without history and keeps invalid text editable', async () => {
+        const onNavigate = vi.fn();
+        render(<UnifiedBrowserTab tabId="blank" viewId="blank-view" sessionKey="workspace-a" active visible
+            onNavigate={onNavigate} onPageState={vi.fn()} />);
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        await userEvent.keyboard('localhost:4000/path{Enter}');
+        expect(onNavigate).toHaveBeenCalledWith('blank', 'http://localhost:4000/path');
+        expect(address.value).toBe('http://localhost:4000/path');
+        await userEvent.clear(address);
+        await userEvent.type(address, 'javascript:alert(1){Enter}');
+        expect(screen.getByRole('alert')).toHaveTextContent('not supported');
+        expect(address.value).toBe('javascript:alert(1)');
+        expect(onNavigate).toHaveBeenCalledTimes(1);
+    });
+
     it.each(['electron', 'webview2'])('selects the complete editable URL on a matching %s request and replaces it on typing/Enter', async engine => {
         const listeners = new Set<(event: { viewId: string }) => void>();
         mocks.bridge!.onFocusAddressRequested = callback => { listeners.add(callback); return () => { listeners.delete(callback); }; };

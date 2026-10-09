@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { createRef } from 'react';
+import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useNativeViewPlacement } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useNativeViewPlacement';
+import { BrowserAddressBar } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/BrowserAddressBar';
 
 interface Box { left: number; top: number; width: number; height: number }
 
@@ -58,6 +61,21 @@ afterEach(() => {
 });
 
 describe('useNativeViewPlacement', () => {
+    it('hides WebView2 for the actual address dropdown and restores bounds after Escape', async () => {
+        mount();
+        render(<BrowserAddressBar inputRef={createRef()} enabled ownerKey="workspace:view" invalid={false}
+            onEdit={vi.fn()} onOpen={vi.fn()} history={{
+                suggest: vi.fn(async () => ({ ok: true, entries: [{ url: 'https://recent.test/', title: 'Recent',
+                    lastVisited: 1, visitCount: 1, completion: null }], total: 1, recording: true, storageError: null })),
+                query: vi.fn(), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
+            }} />);
+        await screen.findByRole('listbox');
+        await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+        placement.setBounds.mockClear();
+        await userEvent.keyboard('{Escape}');
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalledWith({ x: 500, y: 100, width: 400, height: 400 }));
+    });
+
     it('places the view over an uncovered placeholder', () => {
         mount();
         expect(placement.setBounds).toHaveBeenLastCalledWith({ x: 500, y: 100, width: 400, height: 400 });

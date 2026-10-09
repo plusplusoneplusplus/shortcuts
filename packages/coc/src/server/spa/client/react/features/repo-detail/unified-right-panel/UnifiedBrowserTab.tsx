@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
+import { BrowserAddressBar } from './BrowserAddressBar';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
@@ -46,7 +47,6 @@ export function UnifiedBrowserTab({
     tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
-    const [address, setAddress] = useState(url ?? '');
     const [error, setError] = useState<string | null>(null);
     const [page, setPage] = useState<BrowserViewState | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -66,11 +66,7 @@ export function UnifiedBrowserTab({
 
     useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); }, [active, visible, viewId, sessionKey]);
 
-    // The page's own navigation moves the address unless the user is editing.
-    useEffect(() => {
-        setAddress(url ?? '');
-        setError(null);
-    }, [url]);
+    useEffect(() => { setError(null); }, [url]);
 
     useEffect(() => {
         if (!active || !visible) return;
@@ -128,8 +124,7 @@ export function UnifiedBrowserTab({
 
     const failed = Boolean(attachError || startupError || (page?.error && !page?.loading));
 
-    const submit = (event: React.FormEvent) => {
-        event.preventDefault();
+    const navigateAddress = (address: string) => {
         const result = normalizeBrowserUrl(address);
         if (!result.ok) {
             setError(result.reason);
@@ -137,7 +132,6 @@ export function UnifiedBrowserTab({
         }
         setError(null);
         setNotice(null);
-        setAddress(result.url);
         onNavigate(tabId, result.url);
         if (bridge && opened) {
             void bridge.navigate(viewId, result.url).then(reply => {
@@ -146,6 +140,7 @@ export function UnifiedBrowserTab({
         } else if (bridge && hasUrl) {
             setRetry(value => value + 1);
         }
+        return result.url;
     };
 
     const currentUrl = page?.url || url;
@@ -158,9 +153,8 @@ export function UnifiedBrowserTab({
     const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => bridge?.nav(viewId, action);
 
     const toolbar = (
-        <form
+        <div
             className="flex min-w-0 flex-shrink-0 flex-wrap items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
-            onSubmit={submit}
             onKeyDown={event => {
                 const mac = isMacPlatform();
                 if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'
@@ -183,18 +177,15 @@ export function UnifiedBrowserTab({
                     testIdPrefix="browser"
                 />
             )}
-            <input
-                ref={addressRef}
-                type="text"
-                value={address}
-                onChange={event => { setAddress(event.target.value); setError(null); }}
-                placeholder="Enter a URL"
-                aria-label="Address"
-                aria-invalid={error !== null}
-                spellCheck={false}
-                autoFocus={!url}
-                className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
-                data-testid="browser-address"
+            <BrowserAddressBar
+                inputRef={addressRef}
+                url={url}
+                history={bridge?.history}
+                enabled={active && visible}
+                ownerKey={JSON.stringify([sessionKey, viewId, tabId])}
+                invalid={error !== null}
+                onEdit={() => setError(null)}
+                onOpen={navigateAddress}
             />
             <BrowserToolbarMenu
                 key={`${sessionKey}:${viewId}`}
@@ -205,7 +196,7 @@ export function UnifiedBrowserTab({
                 onOpenExternal={openExternal}
                 onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
             />
-        </form>
+        </div>
     );
 
     return (
