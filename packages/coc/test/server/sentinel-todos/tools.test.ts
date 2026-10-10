@@ -186,10 +186,94 @@ describe('sentinel_todos tool', () => {
         expect((await call({ action: 'remove', itemId: item.id })).code).toBe('invalid');
     });
 
-    it('ignores archive requests: archiving stays a user action', async () => {
+    it('rejects archive requests without applying accompanying edits: archiving stays a user action', async () => {
         const item = await createItem();
         const result = await call({ action: 'update', itemId: item.id, expectedRevision: 1, notes: 'n', archived: true });
-        expect(result.item).toMatchObject({ archived: false, notes: 'n' });
+        expect(result).toMatchObject({ code: 'invalid', error: 'Archive/restore remain user-only.' });
+        expect(todos.get(owner).items[0]).toMatchObject({ archived: false, notes: '', revision: 1 });
+    });
+
+    it('creates a title-only manual item, safely retries, edits details, and records reasoned Done', async () => {
+        const args: SentinelTodosArgs = { action: 'create', type: 'manual', title: 'Check release notes', idempotencyKey: 'manual-1' };
+        const first = await call(args);
+        expect(first.item).toMatchObject({
+            type: 'manual', title: args.title, status: 'todo', priority: 'regular',
+            completionCondition: '', notes: '', jobs: [], createdBy: 'sentinel',
+        });
+        expect(await call(args)).toMatchObject({ created: false, item: { id: first.item.id, type: 'manual' } });
+        const edited = await call({
+            action: 'update', itemId: first.item.id, expectedRevision: 1, title: 'Read release notes',
+            notes: 'Check breaking changes', completionCondition: 'Breaking changes understood', priority: 'high',
+            status: 'in_progress',
+        });
+        expect(edited.item).toMatchObject({
+            type: 'manual', title: 'Read release notes', notes: 'Check breaking changes',
+            completionCondition: 'Breaking changes understood', priority: 'high', status: 'in_progress', revision: 2,
+        });
+        onChange.mockClear();
+        for (const reason of [undefined, '', '  ']) {
+            expect(await call({
+                action: 'update', itemId: first.item.id, expectedRevision: 2, status: 'done', reason,
+            })).toMatchObject({ code: 'invalid' });
+        }
+        expect(await call({ action: 'create', type: 'manual', title: 'Unexplained', status: 'done' })).toMatchObject({ code: 'invalid' });
+        expect(onChange).not.toHaveBeenCalled();
+        const done = await call({
+            action: 'update', itemId: first.item.id, expectedRevision: 2, status: 'done',
+            reason: 'Release notes list no breaking changes; checked the compatibility section.',
+        });
+        expect(done.item).toMatchObject({
+            type: 'manual', status: 'done', revision: 3, jobs: [],
+            outcome: { summary: done.item.statusReason, recordedBy: 'sentinel' },
+        });
+        expect((await call({ action: 'list' })).items).toEqual([done.item]);
+    });
+
+    it('completes a manual item against title/notes without Done when and can reopen it', async () => {
+        const created = await call({ action: 'create', type: 'manual', title: 'Read the checklist', notes: 'Review every entry' });
+        const done = await call({
+            action: 'update', itemId: created.item.id, expectedRevision: 1,
+            status: 'done', reason: 'Read all checklist entries and recorded the review in the chat.',
+        });
+        expect(done.item).toMatchObject({ completionCondition: '', status: 'done', type: 'manual' });
+        const reopened = await call({ action: 'update', itemId: created.item.id, expectedRevision: 2, status: 'todo' });
+        expect(reopened.item).toMatchObject({ status: 'todo', revision: 3, type: 'manual', jobs: [] });
+    });
+
+    it('rejects manual archive/restore and conversion requests without edits or change events', async () => {
+        const created = await call({ action: 'create', type: 'manual', title: 'Check rollout' });
+        onChange.mockClear();
+        for (const archived of [true, false]) {
+            expect(await call({
+                action: 'update', itemId: created.item.id, expectedRevision: 1, notes: 'forged', archived,
+            })).toMatchObject({ code: 'invalid' });
+        }
+        expect(await call({
+            action: 'update', itemId: created.item.id, expectedRevision: 1, type: 'normal', notes: 'converted',
+        })).toMatchObject({ code: 'invalid' });
+        expect(todos.get(owner).items).toEqual([created.item]);
+        expect(onChange).not.toHaveBeenCalled();
+        const archived = await service.update(owner, created.item.id, 1, { archived: true }, 'user');
+        expect(await call({
+            action: 'update', itemId: created.item.id, expectedRevision: archived.item.revision, archived: false,
+        })).toMatchObject({ code: 'invalid' });
+        expect((await call({ action: 'list', includeArchived: true })).items[0].archived).toBe(true);
+        const restored = await service.update(owner, created.item.id, archived.item.revision, { archived: false }, 'user');
+        expect(restored.item).toMatchObject({ type: 'manual', archived: false, revision: 3 });
+    });
+
+    it('exposes immutable creation type and the manual clarification/no-bypass boundary in all AI guidance', () => {
+        const { tool } = createSentinelTodosTool({ service, owner });
+        expect((tool as any).parameters.properties.type.enum).toEqual(['normal', 'manual']);
+        for (const guidance of [tool.description, SENTINEL_TODO_LEDGER_GUIDANCE]) {
+            for (const instruction of [
+                'never execute or delegate', 'automatically review job results',
+                'require clarification from the user', 'before any execution',
+                'Never bypass this by creating a normal-item copy',
+                'conversion and handoff are not supported', 'Archive/restore remain user-only',
+                'available evidence', 'title/notes when Done when is omitted',
+            ]) expect(guidance).toContain(instruction);
+        }
     });
 
     it('lists archived items only on request', async () => {

@@ -61,12 +61,13 @@ is on: the route layer publishes `getSentinelTodos`, which returns the shared
 `SentinelTodoService` or `undefined` when the flag is off. Not in `LLM_TOOL_REGISTRY`; flag-off
 turns get no tool and no guidance. The owner is the invoking chat (`workspaceId`, `processId`),
 never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
-`list` (active items; `includeArchived` adds archived), `create` (requires `completionCondition`,
+`list` (active items; `includeArchived` adds archived), `create` (normal items require `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
-return `{ code: 'conflict', current }`). `create`/`update` accept `priority` (`high`/`regular`,
+return `{ code: 'conflict', current }`). Creation accepts immutable `type: normal | manual` (default normal);
+manual items require only a title, with optional Notes/Done when. `create`/`update` accept `priority` (`high`/`regular`,
 default `regular`; ledger metadata only, independent of status). `done`/`needs_attention` require a `reason` (also enforced by the store for non-user actors); `done` stores
-it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archiving is
-user-only.
+it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
+arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
 The addon's `<sentinel_todo_ledger>` guidance tracks concrete intended outcomes
 with final-deliverable completion conditions, reuses one item across grilling/implementation/review,
@@ -75,13 +76,17 @@ and records phase milestones/spec links in notes. Successful intermediate phases
 Successful grilling returns feature work to `todo` awaiting implementation approval;
 explicitly design-only/interview-only requests finish at their agreed artifact.
 Tracking grants no implementation/retry authority; bookkeeping failures are reported, not repaired by relaunch.
+Manual guidance requires clarification before execution and prohibits delegation, job links,
+automatic result reviews, normal-item copies, conversion and handoff. AI may maintain manual
+items; Done reasons explain available evidence against Done when, or title/notes if omitted.
 `list` items carry `jobs[]` links with a derived `execution` (`queued`/`running`/`unknown`,
 terminal outcome plus result-review delivery state, or `unavailable` for remote links).
 
 With the flag on, the Sentinel's `send_to_conversation` gains `todoItemId` (via the optional
-`todoTracking` tool option): create mode rejects a missing, foreign, or archived item with
+`todoTracking` tool option): create mode rejects a missing, foreign, archived, or manual item with
 `code: 'untracked'` before launching, then links the admitted local, Ralph (one whole-session
-link), or remote job and returns `tracking: { status: 'tracked' | 'failed' }`. Linked parent
+link), or remote job and returns `tracking: { status: 'tracked' | 'failed' }`. The store also
+rejects direct manual job links; result recording and review lookup select normal items only. Linked parent
 result reviews quote the item and select status from the overall outcome: `done` only
 for the satisfied final condition, `todo` for pending steps/approval, `in_progress` for
 continuing authorized work, `needs_attention` for failed/cancelled/blocked/incomplete final work.

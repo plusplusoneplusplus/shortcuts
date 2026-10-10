@@ -218,6 +218,48 @@ describe('SentinelTodoStore item type', () => {
             }
         }
     });
+
+    it.each(['sentinel', 'system'] as const)('rejects manual archive/restore by %s at the shared store boundary', actor => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor });
+        const before = store.get(owner);
+        for (const archived of [true, false]) {
+            expectTodoError(() => store.update(owner, item.id, 1, { archived, notes: 'forged' }, actor), 'invalid');
+            expect(store.get(owner)).toEqual(before);
+        }
+        const archived = store.update(owner, item.id, 1, { archived: true }, 'user');
+        expectTodoError(() => store.update(owner, item.id, archived.item.revision, { archived: false }, actor), 'invalid');
+        expect(store.get(owner).items[0]).toEqual(archived.item);
+        expect(store.update(owner, item.id, archived.item.revision, { archived: false }, 'user').item)
+            .toMatchObject({ type: 'manual', archived: false, revision: 3 });
+    });
+
+    it.each(['sentinel', 'system'] as const)('requires manual Done evidence from %s even without the AI tool', actor => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { type: 'manual', title: 'Review checklist' }, { actor });
+        for (const statusReason of [undefined, null, '  ']) {
+            expectTodoError(() => store.update(owner, item.id, 1, { status: 'done', statusReason }, actor), 'invalid');
+        }
+        expectTodoError(() => store.create(owner, { type: 'manual', title: 'Unreviewed', status: 'done' }, { actor }), 'invalid');
+        expect(store.get(owner)).toMatchObject({ revision: 1, items: [{ revision: 1, status: 'todo' }] });
+        expect(store.update(owner, item.id, 1, { status: 'done', statusReason: 'Read every checklist entry' }, actor).item)
+            .toMatchObject({ status: 'done', statusReason: 'Read every checklist entry' });
+    });
+
+    it.each(['local', 'remote', 'ralph'] as const)('rejects direct %s job links on manual items without writes', kind => {
+        const write = vi.fn(atomicWriteJsonUnique);
+        const store = new SentinelTodoStore(dataDir, write);
+        const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor: 'user' });
+        const before = store.get(owner);
+        write.mockClear();
+        expectTodoError(() => store.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-child', kind, openLink: '#/process/queue_child',
+            ...(kind === 'remote' ? { serverId: 'srv-a' } : {}),
+            ...(kind === 'ralph' ? { sessionId: 'ralph-a' } : {}),
+        }), 'invalid');
+        expect(store.get(owner)).toEqual(before);
+        expect(write).not.toHaveBeenCalled();
+    });
 });
 
 describe('SentinelTodoStore priority', () => {

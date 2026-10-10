@@ -126,14 +126,19 @@ references before editing. Paths are package-relative.
   read/write and emits only after the atomic write commits. Item revisions reject stale
   writers (`409` with the current item). Item `type` is immutable (`normal` or `manual`):
   creation defaults to normal, and untyped stored items read as normal without rewriting.
-  Type patches are invalid; items have no hard delete. Never let ledger edits
+  Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
+  including evidence-based Done with a reason; Notes and Done when are optional.
+  Archive/restore are user-only, enforced for manual items in the shared store.
+  Manual items never authorize execution, delegation, job links, or automatic result
+  reviews. Execution requests require clarification; never create a normal-item copy,
+  convert, or hand off a manual item. Never let ledger edits
   start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability (undefined while the flag is off).
-  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived
-  `todoItemId` before launch and links the admitted job afterwards (link failures are
+  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived normal
+  `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local
-  terminal results reach the item through `createSentinelTodoDelegationHooks` (first result
+  terminal results reach normal items through `createSentinelTodoDelegationHooks` (first result
   per link wins; failed/cancelled/capped → Needs attention unless a later user edit or a
   newer completed attempt supersedes it). Completion never marks Done: only an explicit
   Sentinel/user verdict does. Guidance tracks the intended final outcome on one item across

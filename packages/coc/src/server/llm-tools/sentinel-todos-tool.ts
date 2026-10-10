@@ -14,11 +14,20 @@ import {
     type SentinelTodoPatch,
     type SentinelTodoPriority,
     type SentinelTodoStatus,
+    type SentinelTodoType,
 } from '../sentinel-todos/sentinel-todo-store';
 import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
+
+export const MANUAL_TRACKING_GUIDANCE =
+    'Manual items (`type: manual`) are tracking only: never execute or delegate them, link jobs, or automatically ' +
+    'review job results for them. Requests to execute a manual item require clarification from the user before any ' +
+    'execution. Never bypass this by creating a normal-item copy; conversion and handoff are not supported. ' +
+    'You may create/edit manual items and change their status; Done requires an explained reason based on available ' +
+    'evidence against Done when (`completionCondition`), or the title/notes when Done when is omitted. ' +
+    'Archive/restore remain user-only.';
 
 export interface SentinelTodosToolDeps {
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob'>;
@@ -30,6 +39,7 @@ interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string
 
 export interface SentinelTodosArgs {
     action: 'list' | 'create' | 'update';
+    type?: SentinelTodoType;
     includeArchived?: boolean;
     itemId?: string;
     expectedRevision?: number;
@@ -55,7 +65,7 @@ const REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs
 const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
     'cancels jobs). `list` returns active items (add `includeArchived: true` for archived ones). `create` needs ' +
-    '`title` and a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
+    '`title`; normal items also need a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
     'the next phase (an explicitly design-only/interview-only request may end at its agreed artifact). Reuse the same ' +
     'item across grilling, implementation, and review; preserve phase milestones and spec/artifact links in `notes`. ' +
     'Pass a stable `idempotencyKey` so a retried call cannot duplicate the item. ' +
@@ -71,7 +81,8 @@ const DESCRIPTION =
     'implementation without user authorization. Re-read before review updates and honor manual user verdicts and latest instructions. ' +
     'Linked `jobs` show each job\'s `execution` separately: a completed job is evidence to review, not a ' +
     'verdict; inspect `unavailable` (remote) jobs in their owning chat and record the reviewed state explicitly. ' +
-    'If a call fails, tell the user the item is not tracked.';
+    MANUAL_TRACKING_GUIDANCE + ' Create manual items with `type: manual`; Notes and Done when are optional. ' +
+    'Item type is immutable; existing items remain normal. If a call fails, tell the user the item is not tracked.';
 
 /**
  * Binds `send_to_conversation` create mode to the invoking Sentinel's ledger:
@@ -89,6 +100,7 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
             try {
                 const item = (await service.list(owner)).items.find(candidate => candidate.id === itemId);
                 if (!item) return `To-do item ${itemId} not found in this chat's ledger. Nothing was launched.`;
+                if (item.type === 'manual') return `${MANUAL_TRACKING_GUIDANCE} Nothing was launched.`;
                 if (item.archived) return `To-do item ${itemId} is archived; ask the user to restore it first. Nothing was launched.`;
                 return undefined;
             } catch (err) {
@@ -122,13 +134,14 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
             type: 'object',
             properties: {
                 action: { type: 'string', enum: ['list', 'create', 'update'] },
+                type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
                 itemId: { type: 'string', description: 'update: the item to change.' },
                 expectedRevision: { type: 'number', description: 'update: the item revision you last read.' },
                 title: { type: 'string', description: 'create/update: short item title.' },
                 completionCondition: {
                     type: 'string',
-                    description: 'create/update: intended outcome\'s final deliverable, checked before marking done; not just an intermediate phase.',
+                    description: 'create/update: Done when; optional for manual items. Intended outcome\'s final deliverable, checked before marking done; not just an intermediate phase.',
                 },
                 notes: { type: 'string', description: 'create/update: phase milestones and spec/artifact links; replaces existing notes, so preserve prior notes.' },
                 targetRepo: {
@@ -155,6 +168,12 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
         },
         handler: async (args: SentinelTodosArgs): Promise<SentinelTodosResult> => {
             try {
+                if (args && 'archived' in args) {
+                    return { error: 'Archive/restore remain user-only.', code: 'invalid' };
+                }
+                if (args?.action === 'update' && args.type !== undefined) {
+                    return { error: 'Item type is immutable; conversion and handoff are not supported.', code: 'invalid' };
+                }
                 switch (args?.action) {
                     case 'list': {
                         const ledger = await service.list(owner);
@@ -166,7 +185,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         };
                     }
                     case 'create': {
-                        if (!args.completionCondition?.trim()) {
+                        if (args.type !== 'manual' && !args.completionCondition?.trim()) {
                             return { error: 'create requires a brief completionCondition.', code: 'invalid' };
                         }
                         const status = args.status ?? 'todo';
@@ -175,8 +194,9 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             return { error: `status ${status} requires a short reason.`, code: 'invalid' };
                         }
                         const { item, created } = await service.create(owner, {
+                            ...(args.type !== undefined ? { type: args.type } : {}),
                             title: args.title ?? '',
-                            completionCondition: args.completionCondition.trim(),
+                            ...(args.completionCondition !== undefined ? { completionCondition: args.completionCondition.trim() } : {}),
                             ...(args.notes !== undefined ? { notes: args.notes } : {}),
                             ...(args.targetRepo ? { targetRepo: args.targetRepo } : {}),
                             status,

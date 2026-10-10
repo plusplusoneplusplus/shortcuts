@@ -11,6 +11,8 @@ import {
     createSendToConversationTool, type SendToConversationSuccess,
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import { buildSendToConversationAddon } from '../../../src/server/executors/prompt-builder';
+import { atomicWriteJsonUnique } from '../../../src/server/shared/fs-utils';
+import { getRepoDataPath } from '../../../src/server/paths';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_other' };
@@ -102,6 +104,36 @@ describe('Sentinel to-do job links', () => {
             processId: 'queue_x', workspaceId: 'ws-child', kind: 'local', openLink: '#',
         })).rejects.toMatchObject({ code: 'not_found' });
         expect(current(item.id).jobs).toEqual([]);
+    });
+
+    it('rejects manual links through the service without publishing changes', async () => {
+        const { item } = await service.create(owner, { type: 'manual', title: 'Read checklist' }, { actor: 'sentinel' });
+        onChange.mockClear();
+        await expect(link(item.id, 'queue_child')).rejects.toMatchObject({ code: 'invalid' });
+        expect(current(item.id)).toEqual(item);
+        expect(onChange).not.toHaveBeenCalled();
+        for (const archived of [true, false]) {
+            await expect(service.update(owner, item.id, 1, { archived, notes: 'forged' }, 'sentinel'))
+                .rejects.toMatchObject({ code: 'invalid' });
+        }
+        expect(current(item.id)).toEqual(item);
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('excludes manual items from result recording and review lookup even with an invalid stored job link', async () => {
+        const { item } = await service.create(owner, { type: 'manual', title: 'Read checklist' }, { actor: 'sentinel' });
+        const seeded = { ...item, jobs: [{
+            processId: 'queue_a', workspaceId: 'ws-child', kind: 'local', openLink: '#/process/queue_a', linkedAt: item.createdAt,
+        }] };
+        atomicWriteJsonUnique(getRepoDataPath(dataDir, owner.workspaceId, 'sentinel-todos.json'), {
+            version: 1, ledgers: { [owner.processId]: { revision: 1, items: [seeded] } },
+        });
+        onChange.mockClear();
+        const job = terminalJob('queue_a', 'failed', 'Unrelated failure');
+        expect(service.recordJobResult(job)).toBeUndefined();
+        expect(service.findLinkedItem(job)).toBeUndefined();
+        expect(current(item.id)).toEqual(seeded);
+        expect(onChange).not.toHaveBeenCalled();
     });
 
     it('never marks an item done when a linked job completes', async () => {
@@ -227,6 +259,29 @@ describe('Sentinel to-do job links', () => {
             expect(current(foreign.id, other).jobs).toEqual([]);
         });
 
+        it.each([
+            { mode: 'ask', workspaceId: 'ws-child' },
+            { mode: 'autopilot', workspaceId: 'ws-child' },
+            { mode: 'ralph', workspaceId: 'ws-child' },
+            { mode: 'ask', workspaceId: 'remote:srv-1:w-api' },
+            { mode: 'autopilot', workspaceId: 'remote:srv-1:w-api' },
+            { mode: 'ralph', workspaceId: 'remote:srv-1:w-api' },
+        ])('rejects manual $mode delegation to $workspaceId before any launch', async target => {
+            const { item } = await service.create(owner, { type: 'manual', title: 'Check release' }, { actor: 'sentinel' });
+            const { call, enqueueChat, launchRalph, startRemoteChat } = makeTool();
+            onChange.mockClear();
+            const result = await call({ content: 'Execute this manual item', todoItemId: item.id, ...target });
+            expect(result).toMatchObject({ code: 'untracked' });
+            expect(result.error).toContain('require clarification from the user');
+            expect(result.error).toContain('Never bypass this by creating a normal-item copy');
+            expect(result.error).toContain('Nothing was launched');
+            expect(enqueueChat).not.toHaveBeenCalled();
+            expect(launchRalph).not.toHaveBeenCalled();
+            expect(startRemoteChat).not.toHaveBeenCalled();
+            expect(todos.get(owner).items).toEqual([item]);
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
         it('links an admitted local job and reports it as tracked', async () => {
             const item = await createItem();
             const { call, enqueueChat } = makeTool();
@@ -293,6 +348,8 @@ describe('Sentinel to-do job links', () => {
             expect(Object.keys((tracked as any).parameters.properties)).toContain('todoItemId');
             expect(tracked.description).toContain('Reuse the same feature/outcome item across grilling, implementation, and review');
             expect(tracked.description).toContain('Do not launch implementation without user authorization');
+            expect(tracked.description).toContain('Requests to execute a manual item require clarification from the user');
+            expect(tracked.description).toContain('never bypass this by creating a normal-item copy');
             const plain = makeTool({ tracking: false }).tool as any;
             expect(Object.keys(plain.parameters.properties)).not.toContain('todoItemId');
             expect(plain.description).not.toContain('todoItemId');

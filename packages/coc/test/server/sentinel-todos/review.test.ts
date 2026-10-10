@@ -113,6 +113,26 @@ describe('Sentinel to-do reviewed outcomes', () => {
         });
     });
 
+    it('never associates automatic job results or reviews with manual tracking', async () => {
+        const manual = (await service.create(owner, {
+            type: 'manual', title: 'Read the release checklist', notes: 'Tracking only',
+        }, { actor: 'sentinel' })).item;
+        await expect(service.linkJob(owner, manual.id, {
+            processId: childId, workspaceId: 'ws-child', kind: 'local', openLink: `#/process/${childId}`,
+        })).rejects.toMatchObject({ code: 'invalid' });
+        const linked = await linkedItem();
+        finish('completed');
+        await flush();
+        expect(item(manual.id)).toEqual(manual);
+        expect(item(manual.id).jobs).toEqual([]);
+        expect(deliverOnce).toHaveBeenCalledTimes(1);
+        const content: string = deliverOnce.mock.calls[0][3].content;
+        expect(content).not.toContain(manual.title);
+        expect(JSON.parse(content.slice(content.indexOf('{'))).todo.id).toBe(linked.id);
+        const hooks = createSentinelTodoDelegationHooks(service, () => enabled);
+        expect(hooks.findTodo(jobs.list(owner.workspaceId)[0])?.id).toBe(linked.id);
+    });
+
     it('reviews grilling as intermediate todo and final implementation as done on the same feature item', async () => {
         const linked = await linkedItem();
         finish('completed', undefined, childId, 'Spec ready: notes/login-spec.md');

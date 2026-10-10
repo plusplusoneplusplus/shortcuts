@@ -105,7 +105,7 @@ export class SentinelTodoService {
     /** The item linking a local delegated job, for its parent review prompt. */
     findLinkedItem(job: DelegatedJob): SentinelTodoItem | undefined {
         return this.deps.todos.get(job.parent).items
-            .find(item => item.jobs.some(link => link.processId === job.id && !link.serverId));
+            .find(item => item.type === 'normal' && item.jobs.some(link => link.processId === job.id && !link.serverId));
     }
 
     private execution(link: SentinelTodoJobLink, owner: SentinelTodoOwner, delegated: DelegatedJob[]): SentinelTodoJobExecution {

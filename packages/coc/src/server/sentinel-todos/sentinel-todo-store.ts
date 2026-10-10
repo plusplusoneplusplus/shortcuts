@@ -203,6 +203,9 @@ export class SentinelTodoStore {
         if (current.revision !== expectedRevision) {
             throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
         }
+        if (current.type === 'manual' && actor !== 'user' && fields.archived !== undefined) {
+            throw new SentinelTodoError('invalid', 'Only the user may archive or restore manual items');
+        }
         const now = new Date().toISOString();
         const next: Record<string, unknown> = { ...current };
         for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
@@ -243,6 +246,9 @@ export class SentinelTodoStore {
         const index = ledger?.items.findIndex(item => item.id === itemId) ?? -1;
         if (!ledger || index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
         const current = ledger.items[index];
+        if (current.type === 'manual') {
+            throw new SentinelTodoError('invalid', 'Manual items cannot link jobs or authorize execution; ask the user for clarification');
+        }
         if (current.jobs.some(job => job.processId === input.processId && job.serverId === input.serverId)) {
             return { item: current, ledgerRevision: ledger.revision, changed: false };
         }
@@ -273,7 +279,7 @@ export class SentinelTodoStore {
         const data = this.read(owner.workspaceId);
         const ledger = data.ledgers[owner.processId];
         const index = ledger?.items.findIndex(item =>
-            item.jobs.some(job => job.processId === processId && !job.serverId)) ?? -1;
+            item.type === 'normal' && item.jobs.some(job => job.processId === processId && !job.serverId)) ?? -1;
         if (!ledger || index < 0) return undefined;
         const current = ledger.items[index];
         const link = current.jobs.find(job => job.processId === processId && !job.serverId)!;
