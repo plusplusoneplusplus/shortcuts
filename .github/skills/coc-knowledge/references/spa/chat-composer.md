@@ -169,6 +169,19 @@ breakdown when `useChatSSE` receives all three persisted snapshot values
 (`sessionSystemTokens`, `sessionToolTokens`, `sessionConversationTokens`) or the same fields
 from live `token-usage`; otherwise it falls back to a single-colour bar.
 
+The gauge and `ContextWindowIndicator` share `ui/ContextUsagePopover.tsx`: the
+breakdown table + model footer, and `useContextUsagePopover` (hover previews, click/Enter
+pins, focus inside keeps it open, Escape closes and refocuses the trigger button, outside
+press unpins). Sentinel chats pass `autoCompact` from `useSentinelAutoCompact`
+(`features/chat/AutoCompactPanel.tsx`, owned by `ChatDetail` so drafts survive closing
+the popover): a threshold marker, a status badge (`enabled | queued | running | paused`),
+and an "Auto-compact · this Sentinel chat" section (switch, 50–95% slider + number input
+with the token equivalent, Save/Discard for a dirty draft, separate `role="status"` lines
+for settings saves and runtime outcomes, Cancel while the automatic task is queued,
+Resume when paused). Saves go through the clone-routed `processes.updateAutoCompact`
+with the owning workspace; live state arrives as `autoCompact` on `process-updated`
+summaries via `useBotControlUpdates`.
+
 `WarmIndicatorDot` reflects this conversation process's backend warm-client state, with
 display and side effect split (`features/chat/hooks/`):
 

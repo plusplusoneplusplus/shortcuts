@@ -12,6 +12,7 @@ import { pendingMessageTask } from '../processes/queued-pending-message';
 import { readActiveProviderSession } from '../processes/active-provider-session';
 import { EventEmitter } from 'events';
 import { processOperationAdmission } from '../processes/process-operation-admission';
+import { autoCompactCancelledMetadata } from '../processes/auto-compact';
 import * as path from 'path';
 import {
     RepoQueueRegistry,
@@ -110,9 +111,12 @@ export class MultiRepoQueueRouter extends EventEmitter {
                     const proc = await this.store.getProcess(task.processId!);
                     if (task.payload.kind === 'compact' && proc?.metadata?.compaction?.taskId === task.id
                         && proc.metadata.compaction.state === 'queued') {
-                        await this.store.updateProcess(proc.id, { metadata: { ...proc.metadata, compaction: {
+                        await this.store.updateProcess(proc.id, { metadata: { ...autoCompactCancelledMetadata(proc.metadata, task.id), compaction: {
                             ...proc.metadata.compaction, state: 'cancelled', completedAt: new Date().toISOString(),
                         } } });
+                    } else if (task.payload.kind === 'compact' && proc?.metadata) {
+                        const metadata = autoCompactCancelledMetadata(proc.metadata, task.id);
+                        if (metadata !== proc.metadata) await this.store.updateProcess(proc.id, { metadata });
                     }
                 }).catch(error => console.error('[Queue] Could not settle cancelled operation:', error));
             }

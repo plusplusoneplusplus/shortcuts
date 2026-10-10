@@ -418,6 +418,56 @@ export interface CompactResult {
   summaryContent?: string;
 }
 
+/** Sentinel auto-compact threshold bounds, in percent of the model context limit. */
+export const AUTO_COMPACT_THRESHOLD_MIN = 50;
+export const AUTO_COMPACT_THRESHOLD_MAX = 95;
+export const AUTO_COMPACT_THRESHOLD_STEP = 5;
+export const AUTO_COMPACT_THRESHOLD_DEFAULT = 80;
+/** Consecutive failed or insufficient automatic compactions before auto-compact pauses. */
+export const AUTO_COMPACT_MAX_CONSECUTIVE_FAILURES = 2;
+
+/** Settled outcome of the latest automatic compaction attempt. */
+export type AutoCompactOutcome = 'succeeded' | 'insufficient' | 'failed' | 'unsupported' | 'cancelled';
+
+/**
+ * Per-conversation Sentinel auto-compact state, persisted at
+ * `AIProcess.metadata.autoCompact`. Settings are written only through
+ * `PUT /processes/:id/auto-compact`; the server owns the runtime fields.
+ */
+export interface ProcessAutoCompactState {
+  enabled: boolean;
+  /** Compact once total context usage strictly exceeds this percent of the limit. */
+  thresholdPercent: number;
+  updatedAt?: string;
+  /** Latest assistant turn already evaluated; one automatic attempt per response. */
+  lastEvaluatedTurnIndex?: number;
+  /** Durable queue task of the in-flight automatic compaction. */
+  taskId?: string;
+  consecutiveFailures?: number;
+  /** Set while auto-compact waits for an explicit resume. */
+  paused?: { reason: 'failures' | 'unsupported'; at: string };
+  lastResult?: {
+    outcome: AutoCompactOutcome;
+    at: string;
+    turnIndex?: number;
+    tokensBefore?: number;
+    tokensAfter?: number;
+    tokenLimit?: number;
+    error?: string;
+  };
+}
+
+/** Body of `PUT /processes/:id/auto-compact`. */
+export interface AutoCompactSettingsRequest {
+  enabled: boolean;
+  thresholdPercent: number;
+}
+
+/** Response from the auto-compact settings and resume endpoints. */
+export interface AutoCompactSettingsResponse {
+  autoCompact: ProcessAutoCompactState;
+}
+
 /**
  * Response from `POST /processes/:id/prewarm`.
  *

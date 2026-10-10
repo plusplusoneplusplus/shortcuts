@@ -50,6 +50,7 @@ import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetr
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import { cancelQueuedCompaction, compactProcess } from '../processes/compact-process';
+import { isSentinelProcess, parseAutoCompactSettings, resumeAutoCompact, saveAutoCompactSettings } from '../processes/auto-compact';
 import { cancelConversation } from '../processes/cancel-conversation';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
 
@@ -508,6 +509,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if ('botControl' in parsed.set || parsed.unset.includes('botControl')) {
                     return void handleAPIError(res, badRequest('Bot control is managed by integration bindings'));
                 }
+                if ('autoCompact' in parsed.set || parsed.unset.includes('autoCompact')) {
+                    return void handleAPIError(res, badRequest('Auto-compact is managed by its own endpoint'));
+                }
                 const nextMetadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
                 for (const [key, value] of Object.entries(parsed.set)) {
                     nextMetadata[key] = value;
@@ -528,6 +532,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     workspaceId: existing.metadata.workspaceId,
                     botControl: existing.metadata.botControl,
                 };
+            }
+            // Full metadata replacement keeps the server-owned auto-compact state.
+            if (updates.metadata !== undefined && body.metadataPatch === undefined && isRecord(updates.metadata)) {
+                const { autoCompact: _ignored, ...rest } = updates.metadata as Record<string, unknown>;
+                updates.metadata = (existing.metadata?.autoCompact !== undefined
+                    ? { ...rest, autoCompact: existing.metadata.autoCompact } : rest) as AIProcess['metadata'];
             }
             if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
@@ -681,6 +691,46 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return void handleAPIError(res, new APIError(409, 'Compaction is no longer queued.', 'COMPACTION_NOT_QUEUED'));
             }
             return { cancelled: true };
+        },
+    }));
+
+    // PUT /api/processes/:id/auto-compact — Save a Sentinel chat's auto-compact
+    // setting ({ enabled, thresholdPercent }). Sentinel conversations only; the
+    // workspace query scopes the write to the owning workspace. Saving never
+    // compacts — the server checks usage after each persisted response.
+    routes.push(createRoute({
+        method: 'PUT', pattern: /^\/api\/processes\/([^/]+)\/auto-compact$/,
+        handler: async ({ req, res, match }) => {
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await resolveProcess(store, decodeURIComponent(match[1]), wsId);
+            if (!proc) return void handleAPIError(res, notFound('Process'));
+            if (!isSentinelProcess(proc)) {
+                return void handleAPIError(res, new APIError(422, 'Auto-compact is available only for Sentinel chats.', 'AUTO_COMPACT_SENTINEL_ONLY'));
+            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const settings = parseAutoCompactSettings(body);
+            if (typeof settings === 'string') return void handleAPIError(res, badRequest(settings));
+            const autoCompact = await saveAutoCompactSettings(store, proc.id, proc.metadata?.workspaceId, settings);
+            if (!autoCompact) return void handleAPIError(res, notFound('Process'));
+            return { autoCompact };
+        },
+    }));
+
+    // POST /api/processes/:id/auto-compact/resume — Clear a paused auto-compact
+    // state. The next persisted response re-evaluates; nothing compacts now.
+    routes.push(createRoute({
+        method: 'POST', pattern: /^\/api\/processes\/([^/]+)\/auto-compact\/resume$/,
+        handler: async ({ req, res, match }) => {
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await resolveProcess(store, decodeURIComponent(match[1]), wsId);
+            if (!proc) return void handleAPIError(res, notFound('Process'));
+            if (!isSentinelProcess(proc)) {
+                return void handleAPIError(res, new APIError(422, 'Auto-compact is available only for Sentinel chats.', 'AUTO_COMPACT_SENTINEL_ONLY'));
+            }
+            const autoCompact = await resumeAutoCompact(store, proc.id, proc.metadata?.workspaceId);
+            if (!autoCompact) return void handleAPIError(res, new APIError(409, 'Auto-compact is not configured for this chat.', 'AUTO_COMPACT_NOT_CONFIGURED'));
+            return { autoCompact };
         },
     }));
 

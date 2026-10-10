@@ -320,6 +320,20 @@ provider cleanup settles, including cancellation and timeout. Compaction uses a 
 queue task with provider-owned timeout and queued-only cancellation. Queued compactions
 recover on restart; interrupted running compactions settle as failed without replay.
 
+Sentinel auto-compact (`processes/auto-compact.ts`, state at `metadata.autoCompact`, default
+off) runs from the lifecycle runner's `onResponseCompleted` hook after a completed,
+persisted response and pending-message drain. Under process admission it claims the
+latest non-display-only assistant turn (`lastEvaluatedTurnIndex`, one attempt per
+response) when usage strictly exceeds `thresholdPercent` of `tokenLimit`; unknown usage,
+pauses and pending manual or automatic compactions skip. It admits the ordinary durable
+compaction task with `payload.trigger: 'auto'`, always queued, so ordering, restart and
+queued-only cancellation match `/compact`; running compactions keep the provider's own
+lifecycle (Codex 120s timeout, no CoC deadline for Copilot/Claude). The compact executor
+settles the attempt: still above threshold → `insufficient`; failures and insufficient
+results pause after two in a row; `COMPACT_UNSUPPORTED` pauses at once; queued
+cancellation is recorded without counting. A stale recorded task (for example, interrupted
+by restart) settles from its compaction record on the next check.
+
 ## Process Lifecycle
 
 States: `queued → running → completed | failed | cancelled`.

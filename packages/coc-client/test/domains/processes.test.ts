@@ -13,6 +13,19 @@ describe('ProcessesClient', () => {
       options: { method: 'DELETE', query: { workspace: 'remote/workspace' } } });
   });
 
+  it('scopes auto-compact settings and resume to the owning workspace', async () => {
+    const autoCompact = { enabled: true, thresholdPercent: 85 };
+    const adapter = createMockAdapter({ autoCompact });
+    const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
+    await expect(client.updateAutoCompact('proc/1', { enabled: true, thresholdPercent: 85 }, { workspace: 'remote/ws' }))
+      .resolves.toEqual({ autoCompact });
+    await client.resumeAutoCompact('proc/1', { workspace: 'remote/ws' });
+    expect(adapter.calls[0]).toMatchObject({ path: '/processes/proc%2F1/auto-compact',
+      options: { method: 'PUT', query: { workspace: 'remote/ws' }, body: { enabled: true, thresholdPercent: 85 } } });
+    expect(adapter.calls[1]).toMatchObject({ path: '/processes/proc%2F1/auto-compact/resume',
+      options: { method: 'POST', query: { workspace: 'remote/ws' } } });
+  });
+
   it('serializes list filters and gets process details', async () => {
     const adapter = createMockAdapter({ processes: [] });
     const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);

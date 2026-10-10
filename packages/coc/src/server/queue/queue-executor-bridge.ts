@@ -6,6 +6,8 @@ import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { compactProcess } from '../processes/compact-process';
+import { maybeAutoCompactAfterResponse, settleAutoCompaction } from '../processes/auto-compact';
+import { APIError } from '../errors';
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import type { PendingMessage } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
@@ -614,11 +616,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     }
                     return current;
                 });
+                const auto = task.payload.trigger === 'auto';
                 try {
                     // Later admitted messages are deferred queue tasks, not part of this operation's idle guard.
                     const outcome = await compactProcess(this.store, { ...proc, status: proc.status === 'queued' ? 'completed' : proc.status, pendingMessages: [] }, task.payload.customInstructions as string | undefined);
+                    if (auto) await settleAutoCompaction(this.store, proc.id, task.id, { tokensBefore: outcome.tokensBefore });
                     return { success: true, result: outcome.result, durationMs: 0 };
                 } catch (error) {
+                    if (auto) {
+                        await settleAutoCompaction(this.store, proc.id, task.id, {
+                            unsupported: error instanceof APIError && error.code === 'COMPACT_UNSUPPORTED',
+                            error: error instanceof Error ? error.message : String(error),
+                        }).catch(settleError => getLogger().warn(LogCategory.AI, `[AutoCompact] Failed to record outcome for ${proc.id}: ${settleError instanceof Error ? settleError.message : String(settleError)}`));
+                    }
                     const current = await this.store.getProcess(proc.id);
                     if (current?.metadata?.compaction?.state !== 'failed') {
                         await this.store.updateProcess(proc.id, { metadata: { ...current?.metadata!, compaction: {
@@ -673,6 +683,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 resolveDefaultProvider: this.resolveDefaultProvider,
                 getEffortTiersForProvider: this.getEffortTiersForProvider,
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
+                onResponseCompleted: (processId) => this.checkAutoCompact(processId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
                 onCronTickComplete: (cronId, success) => {
                     const infra = this.runtime.getCronInfra?.();
@@ -1017,6 +1028,29 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * markCompleted. Using requeueForFollowUp would hit applyFollowUpToTask →
      * requeueFromHistory which fails for running tasks.
      */
+    /** Sentinel auto-compact check after a completed response; never fails the turn. */
+    private async checkAutoCompact(processId: string): Promise<void> {
+        try {
+            const queue = this.queueManager;
+            if (!queue) return;
+            // The conversation's own queue: per-process serialization keeps the
+            // compaction behind the finished turn and already admitted messages.
+            const active = (pid: string, compact: boolean) => queue.getAll().find(task =>
+                (task.processId ?? task.payload.processId ?? toQueueProcessId(task.id)) === pid && (task.payload.kind === 'compact') === compact
+                && (task.status === 'queued' || task.status === 'running'));
+            const enqueue = async (input: Parameters<TaskQueueManager['enqueue']>[0]) => queue.enqueue(input);
+            await maybeAutoCompactAfterResponse(this.store, {
+                enqueue, enqueueAdmitted: enqueue,
+                getTask: id => queue.getTask(id),
+                cancelQueuedTask: id => queue.getTask(id)?.status === 'queued' && queue.cancelTask(id),
+                findCompactionTask: pid => active(pid, true),
+                findTaskByProcessId: pid => active(pid, false),
+            }, processId);
+        } catch (error) {
+            getLogger().warn(LogCategory.AI, `[AutoCompact] Check failed for ${processId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
     private async drainPendingMessages(processId: string, _taskId: string): Promise<void> {
         await processOperationAdmission.runExclusive(processId, () => this.drainPendingMessageAdmitted(processId));
     }

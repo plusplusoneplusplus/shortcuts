@@ -214,6 +214,8 @@ export interface LifecycleRunnerOptions {
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
+    /** Called after a completed assistant response is persisted (and pending messages drained). */
+    onResponseCompleted?: (processId: string) => Promise<void>;
     /**
      * Called after a ralph-mode task completes successfully.
      * The bridge uses this to parse RALPH_NEXT/RALPH_COMPLETE and enqueue the
@@ -585,6 +587,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 }
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
+                // Follow-up execution persists failures without throwing; only a
+                // completed response is eligible for the post-response hook.
+                const responded = !!opts.onResponseCompleted && !opts.cancelledTasks.has(task.id)
+                    && (await this.store.getProcess(followUpPayload.processId!))?.status === 'completed';
                 // Drain pending messages after follow-up completion
                 if (opts.onDrainPendingMessages) {
                     try {
@@ -593,6 +599,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${followUpPayload.processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 }
+                if (responded) await opts.onResponseCompleted!(followUpPayload.processId!);
                 // A Ralph final-check format-repair turn runs as a follow-up on
                 // the checker's own conversation so its findings stay in context.
                 // Ralph routing normally fires only on the new-process path, so
@@ -1065,6 +1072,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     } catch (err) {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
                     }
+                }
+                if (finalStatus === 'completed' && opts.onResponseCompleted) {
+                    await opts.onResponseCompleted(processId);
                 }
 
                 // Trigger Ralph auto-loop for ralph-mode tasks

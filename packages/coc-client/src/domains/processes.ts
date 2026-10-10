@@ -10,6 +10,8 @@ import type {
   UpdateChatFolderRequest,
   AskUserResponseRequest,
   AskUserResponseResponse,
+  AutoCompactSettingsRequest,
+  AutoCompactSettingsResponse,
   CompactResult,
   CreateProcessRequest,
   ProcessDetailResponse,
@@ -349,6 +351,31 @@ export class ProcessesClient {
 
   cancelCompaction(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<{ cancelled: boolean }> {
     return this.transport.request(`/processes/${encodePathSegment(processId)}/compact`, { method: 'DELETE', query });
+  }
+
+  /**
+   * Save a Sentinel conversation's auto-compact setting. Saving never compacts
+   * immediately; the owning server checks usage after each persisted response.
+   */
+  updateAutoCompact(
+    processId: string,
+    settings: AutoCompactSettingsRequest,
+    query?: Pick<ProcessListQuery, 'workspace'>,
+  ): Promise<AutoCompactSettingsResponse> {
+    return this.transport.request<AutoCompactSettingsResponse>(`/processes/${encodePathSegment(processId)}/auto-compact`, {
+      method: 'PUT',
+      query,
+      body: settings,
+    });
+  }
+
+  /** Clear a paused auto-compact state. Does not compact immediately. */
+  resumeAutoCompact(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<AutoCompactSettingsResponse> {
+    return this.transport.request<AutoCompactSettingsResponse>(`/processes/${encodePathSegment(processId)}/auto-compact/resume`, {
+      method: 'POST',
+      query,
+      body: {},
+    });
   }
 
   /**

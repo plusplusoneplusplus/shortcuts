@@ -14,11 +14,16 @@
  * A breakdown popover appears on hover (desktop) or tap (mobile) when breakdown data
  * is present, listing each category's token count and percentage of the limit.
  *
- * Hidden when tokenLimit is not yet known.
+ * Hidden when tokenLimit is not yet known. Sentinel chats pass `autoCompact`,
+ * which adds a threshold marker, a status badge and the auto-compact section.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { cn } from './cn';
+import {
+    CONTEXT_POPOVER_CLASS, CONTEXT_TRIGGER_CLASS, ContextAutoCompactBadge, ContextThresholdMarker, ContextUsageBreakdown,
+    formatTokenCount, useContextUsagePopover, type ContextAutoCompact,
+} from './ContextUsagePopover';
 
 export interface ContextWindowIndicatorProps {
     /** Total context window size in tokens */
@@ -34,12 +39,8 @@ export interface ContextWindowIndicatorProps {
     toolDefinitionsTokens?: number;
     /** Conversation-history token count when the provider reports a breakdown */
     conversationTokens?: number;
-}
-
-function formatTokenCount(n: number): string {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-    return String(n);
+    /** Sentinel auto-compact state and popover section. */
+    autoCompact?: ContextAutoCompact;
 }
 
 export function ContextWindowIndicator({
@@ -50,8 +51,9 @@ export function ContextWindowIndicator({
     systemTokens,
     toolDefinitionsTokens,
     conversationTokens,
+    autoCompact,
 }: ContextWindowIndicatorProps) {
-    const [popoverOpen, setPopoverOpen] = useState(false);
+    const popover = useContextUsagePopover();
 
     if (!tokenLimit || tokenLimit <= 0) return null;
 
@@ -77,7 +79,7 @@ export function ContextWindowIndicator({
         : 0;
     const otherPct  = hasBreakdown ? Math.max(0, pct - knownPct) : 0;
 
-    const ariaLabel = `Context window: ${formatTokenCount(used)} / ${formatTokenCount(tokenLimit)} tokens (${pct.toFixed(1)}%)`;
+    const ariaLabel = `Context window: ${formatTokenCount(used)} / ${formatTokenCount(tokenLimit)} tokens (${pct.toFixed(1)}%)${autoCompact ? ` · ${autoCompact.label}` : ''}`;
 
     const breakdownRows = hasBreakdown ? [
         { label: 'System prompt',    tokens: systemTokens!,          dotClass: 'bg-purple-500 dark:bg-purple-400' },
@@ -91,10 +93,9 @@ export function ContextWindowIndicator({
             className={cn('flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 relative', className)}
             aria-label={ariaLabel}
             data-testid="context-window-indicator"
-            onMouseEnter={() => setPopoverOpen(true)}
-            onMouseLeave={() => setPopoverOpen(false)}
-            onClick={() => setPopoverOpen(v => !v)}
+            {...popover.containerProps}
         >
+            <button {...popover.triggerProps} aria-label={ariaLabel} className={cn(CONTEXT_TRIGGER_CLASS, 'flex-1 gap-2 min-w-0')}>
             {modelName && <span className="shrink-0 whitespace-nowrap">{modelName}</span>}
             <span className="shrink-0 whitespace-nowrap">ctx</span>
 
@@ -138,63 +139,26 @@ export function ContextWindowIndicator({
                         data-testid="context-window-bar"
                     />
                 )}
+                <ContextThresholdMarker autoCompact={autoCompact} testId="ctx-threshold-marker" />
             </div>
 
             <span className="shrink-0 whitespace-nowrap tabular-nums" data-testid="context-window-label">
                 {formatTokenCount(used)}/{formatTokenCount(tokenLimit)}
             </span>
+            <ContextAutoCompactBadge autoCompact={autoCompact} testId="ctx-autocompact-badge" />
+            </button>
 
-            {/* Breakdown popover — shown on hover/tap; full breakdown when available, simple total otherwise */}
-            {popoverOpen && (
+            {/* Breakdown popover — hover previews, click/Enter pins; full breakdown when available, simple total otherwise */}
+            {popover.open && (
                 <div
-                    className="absolute bottom-full right-0 mb-2 z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto"
+                    className={cn(CONTEXT_POPOVER_CLASS, autoCompact && 'w-[300px] max-w-[calc(100vw-1rem)]')}
                     data-testid="ctx-breakdown-popover"
-                    onMouseEnter={() => setPopoverOpen(true)}
-                    onMouseLeave={() => setPopoverOpen(false)}
-                    onClick={(e) => e.stopPropagation()}
+                    role={autoCompact ? 'dialog' : undefined}
+                    aria-label={autoCompact ? 'Context usage' : undefined}
+                    {...popover.popoverProps}
                 >
-                    <table className="w-full border-collapse">
-                        {hasBreakdown && (
-                            <thead>
-                                <tr className="text-[#848484] dark:text-[#999999]">
-                                    <th className="text-left font-medium pb-1.5 pr-3">Category</th>
-                                    <th className="text-right font-medium pb-1.5 pr-2">Tokens</th>
-                                    <th className="text-right font-medium pb-1.5">% of limit</th>
-                                </tr>
-                            </thead>
-                        )}
-                        {hasBreakdown && (
-                            <tbody>
-                                {breakdownRows.map(row => (
-                                    <tr key={row.label}>
-                                        <td className="py-0.5 pr-3">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={cn('inline-block w-2 h-2 rounded-sm flex-shrink-0', row.dotClass)} />
-                                                <span className="text-[#1e1e1e] dark:text-[#cccccc]">{row.label}</span>
-                                            </div>
-                                        </td>
-                                        <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] py-0.5 pr-2">
-                                            {formatTokenCount(row.tokens)}
-                                        </td>
-                                        <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] py-0.5">
-                                            {((row.tokens / tokenLimit) * 100).toFixed(1)}%
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        )}
-                        <tfoot>
-                            <tr className={cn('font-medium', hasBreakdown && 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]')}>
-                                <td className="pt-1.5 text-[#1e1e1e] dark:text-[#cccccc]">Total</td>
-                                <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] pt-1.5 pr-2">
-                                    {formatTokenCount(used)}&nbsp;/&nbsp;{formatTokenCount(tokenLimit)}
-                                </td>
-                                <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] pt-1.5">
-                                    {pct.toFixed(1)}%
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                    <ContextUsageBreakdown used={used} limit={tokenLimit} pct={pct} rows={breakdownRows} />
+                    {autoCompact?.panel}
                 </div>
             )}
         </div>

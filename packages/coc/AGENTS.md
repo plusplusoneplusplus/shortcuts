@@ -77,6 +77,9 @@ references before editing. Paths are package-relative.
   Promote buffered turns before the boundary; later arrivals cannot steer across it.
   Cancel removes queued compaction only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
+  Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
+  checked after a persisted response, one attempt per response, always queued; it adds no
+  deadline or abort to running compactions. Only its own endpoints write `metadata.autoCompact`.
 
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
