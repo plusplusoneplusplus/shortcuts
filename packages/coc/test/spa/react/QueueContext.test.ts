@@ -114,6 +114,44 @@ describe('QueueContext reducer', () => {
 
     // ── REPO_QUEUE_STATS_UPDATED ───────────────────────────────────
     describe('REPO_QUEUE_STATS_UPDATED', () => {
+        it('does not mark stats-only placeholders as loaded task data', () => {
+            const result = queueReducer(makeState(), {
+                type: 'REPO_QUEUE_STATS_UPDATED',
+                repoId: 'ws-one',
+                stats: { queued: 0, running: 0 },
+            });
+            expect(result.repoQueueMap['ws-one'].taskDataLoaded).toBeUndefined();
+        });
+
+        it('preserves a loaded empty queue across stats and partial updates', () => {
+            let state = queueReducer(makeState(), {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'ws-one',
+                source: 'server-one',
+                queue: { queued: [], running: [] },
+            });
+            expect(state.repoQueueMap['ws-one'].taskDataLoaded).toBe(true);
+            expect(state.repoQueueMap['ws-one'].taskDataSource).toBe('server-one');
+            state = queueReducer(state, {
+                type: 'REPO_QUEUE_STATS_UPDATED',
+                repoId: 'ws-one',
+                stats: { isPaused: true },
+            });
+            state = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'ws-one',
+                queue: { stats: { isPaused: false } },
+            });
+            expect(state.repoQueueMap['ws-one'].taskDataLoaded).toBe(true);
+            expect(state.repoQueueMap['ws-one'].taskDataSource).toBe('server-one');
+            state = queueReducer(state, {
+                type: 'REPO_QUEUE_UPDATED',
+                repoId: 'ws-one',
+                queue: { queued: [], running: [] },
+            });
+            expect(state.repoQueueMap['ws-one'].taskDataSource).toBeUndefined();
+        });
+
         it('updates only stats for an existing repo queue entry', () => {
             const state = makeState({
                 repoQueueMap: {

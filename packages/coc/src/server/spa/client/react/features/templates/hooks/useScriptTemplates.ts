@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../../../api/repoPreferences';
 
 export interface ScriptTemplate {
     id: string;
@@ -33,9 +34,9 @@ export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
         let cancelled = false;
         (async () => {
             try {
-                const client = getSpaCocClient();
+                const client = getCocClientForWorkspace(wsId);
                 const prefs = wsId
-                    ? await client.preferences.getRepo(wsId)
+                    ? await getRepoPreferences(client, wsId)
                     : await client.preferences.getGlobal();
                 if (!cancelled && Array.isArray(prefs.scriptTemplates)) {
                     setTemplates((prefs.scriptTemplates as any[]).filter((t: any) => t && t.id));
@@ -50,10 +51,10 @@ export function useScriptTemplates(wsId?: string): UseScriptTemplatesResult {
     }, [wsId]);
 
     const persist = useCallback((updated: ScriptTemplate[]) => {
-        const client = getSpaCocClient();
+        const client = getCocClientForWorkspace(wsId);
         const patchData = { scriptTemplates: updated } as any;
         (wsId
-            ? client.preferences.patchRepo(wsId, patchData)
+            ? patchRepoPreferences(client, wsId, patchData)
             : client.preferences.patchGlobal(patchData)
         ).catch(() => {});
     }, [wsId]);

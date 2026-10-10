@@ -128,6 +128,13 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+  SPA Git-info and queue readers share concurrent requests through
+  `api/workspaceReads.ts`, keyed by routed client and workspace. Queue task
+  hydration is distinct from stats-only placeholders; loaded empty queues are valid
+  only for their recorded server/API source.
+  SPA repo preferences use `api/repoPreferences.ts` for shared reads and writes,
+  with a 30-second server/API-prefix/workspace cache. Successful preference and
+  skill/tool mutations invalidate it; superseded reads cannot repopulate the cache.
 - Sentinel to-do ledgers (`src/server/sentinel-todos/`) are bookkeeping only: REST and AI
   tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
   read/write and emits only after the atomic write commits. Item revisions reject stale

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../../ui';
 import { useRecentSkills } from '../../features/skills/hooks/useRecentSkills';
 import { useCocClient } from '../../repos/cloneRouting';
+import { invalidateRepoPreferences } from '../../api/repoPreferences';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -118,7 +119,8 @@ export function WorkItemExecuteDialog({
             // Track skill usage (fire-and-forget)
             for (const name of skillNames) {
                 trackUsage(name);
-                cloneClient.preferences.recordSkillUsage(workspaceId, name).catch(() => {});
+                cloneClient.preferences.recordSkillUsage(workspaceId, name)
+                    .then(() => invalidateRepoPreferences(cloneClient, workspaceId)).catch(() => {});
             }
 
             onExecuted();

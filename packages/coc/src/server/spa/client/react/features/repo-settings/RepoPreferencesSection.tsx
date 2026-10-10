@@ -11,6 +11,8 @@ import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
 import { getSpaCocClient } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 
 interface RepoPreferencesSectionProps {
     workspaceId: string;
@@ -71,7 +73,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     // Fetch linked repo IDs from preferences
     useEffect(() => {
         setLinkedRepoLoading(true);
-        getSpaCocClient().preferences.getRepo(workspaceId)
+        getRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId)
             .then(data => {
                 setLinkedRepoIds(data?.linkedRepoIds ?? []);
                 setDefaultModelState(typeof data?.defaultModel === 'string' ? data.defaultModel : '');
@@ -120,7 +122,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         const prevIds = linkedRepoIds;
         setLinkedRepoIds(nextIds);
         try {
-            await getSpaCocClient().preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
+            await patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
@@ -133,7 +135,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         setLinkedRepoIds(nextIds);
         setShowAddRepo(false);
         try {
-            await getSpaCocClient().preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
+            await patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
@@ -144,7 +146,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const handleDefaultModelChange = useCallback((value: string) => {
         const v = value === 'default' ? '' : value;
         setDefaultModelState(v);
-        getSpaCocClient().preferences.patchRepo(workspaceId, { defaultModel: v }).catch(() => {});
+        patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { defaultModel: v }).catch(() => {});
     }, [workspaceId]);
 
     const handleDefaultModelModeChange = useCallback((mode: string, value: string) => {
@@ -158,7 +160,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
             }
             return next;
         });
-        getSpaCocClient().preferences.patchRepo(workspaceId, { defaultModels: { [mode]: v } }).catch(() => {});
+        patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { defaultModels: { [mode]: v } }).catch(() => {});
     }, [workspaceId]);
 
     // Available repos for linked repo picker (exclude self and already-linked)

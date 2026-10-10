@@ -36,7 +36,7 @@ export interface QueueContextState {
     running: any[];
     history: any[];
     stats: QueueStats;
-    repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats }>;
+    repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats; taskDataLoaded?: boolean; taskDataSource?: string }>;
     /**
      * Per-workspace history cache so revisiting a repo can render the sidebar
      * instantly from the last known snapshot while the freshness fetch runs in
@@ -148,7 +148,7 @@ const initialState: QueueContextState = {
 
 export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; stats: any } }
-    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any } }
+    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any }; source?: string }
     | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
     | { type: 'REPO_HISTORY_UPDATED'; repoId: string; items: any[]; hasMore: boolean }
     | { type: 'SET_HISTORY'; history: any[] }
@@ -190,10 +190,14 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
         }
         case 'REPO_QUEUE_UPDATED': {
             const existingRepo = state.repoQueueMap[action.repoId];
+            const hasTaskData = action.queue.queued !== undefined && action.queue.running !== undefined;
             const repoData = {
                 queued: action.queue.queued ?? existingRepo?.queued ?? [],
                 running: action.queue.running ?? existingRepo?.running ?? [],
                 stats: mergeQueueStats(action.queue.stats, existingRepo?.stats),
+                taskDataLoaded: existingRepo?.taskDataLoaded
+                    || hasTaskData,
+                taskDataSource: hasTaskData ? action.source : existingRepo?.taskDataSource,
             };
             return {
                 ...state,
@@ -206,6 +210,8 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 queued: existingRepo?.queued ?? [],
                 running: existingRepo?.running ?? [],
                 stats: mergeQueueStats(action.stats, existingRepo?.stats),
+                taskDataLoaded: existingRepo?.taskDataLoaded,
+                taskDataSource: existingRepo?.taskDataSource,
             };
             return {
                 ...state,

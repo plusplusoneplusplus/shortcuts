@@ -6,6 +6,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import type { ReconcileReport, ResolutionStrategy, SyncResolutionReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
 
@@ -44,7 +46,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
     useEffect(() => {
         mountedRef.current = true;
         // Load per-workspace sync preferences
-        getSpaCocClient().preferences.getRepo(workspaceId)
+        getRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId)
             .then(prefs => {
                 if (!mountedRef.current) return;
                 const sync = (prefs as Record<string, unknown>)?.sync as { gitRemote?: string; intervalMinutes?: number } | undefined;
@@ -73,7 +75,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
         }
         setSaving(true);
         try {
-            await getSpaCocClient().preferences.patchRepo(workspaceId, {
+            await patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, {
                 sync: {
                     gitRemote,
                     intervalMinutes: interval || 5,

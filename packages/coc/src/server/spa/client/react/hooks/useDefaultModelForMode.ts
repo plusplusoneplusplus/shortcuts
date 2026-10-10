@@ -13,8 +13,8 @@
  * the task preference key.
  */
 
-import { useState, useEffect } from 'react';
-import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
+import { getCocClientFor } from '../api/cocClient';
+import { useRepoPreferences } from './preferences/useRepoPreferences';
 import { getActiveProvider } from '../utils/config';
 import type { ChatMode } from '../repos/modeConfig';
 
@@ -46,51 +46,13 @@ export function useDefaultModelForMode(
      */
     baseUrl?: string,
 ): UseDefaultModelForModeResult {
-    const [defaultModel, setDefaultModel] = useState<string | undefined>();
-    const [defaultModels, setDefaultModels] = useState<Record<string, string | undefined>>({});
-    const [providerModels, setProviderModels] = useState<Record<string, string | undefined>>({});
+    const prefs = useRepoPreferences(workspaceId, baseUrl ? getCocClientFor(baseUrl) : undefined);
     const provider = providerOverride ?? getActiveProvider();
-
-    useEffect(() => {
-        setDefaultModel(undefined);
-        setDefaultModels({});
-        setProviderModels({});
-        if (!workspaceId) return;
-        let cancelled = false;
-        (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()).preferences.getRepo(workspaceId)
-            .then((prefs: any) => {
-                if (cancelled) return;
-
-                // Provider-scoped defaults: defaultModelsByProvider.<provider>.<mode>
-                const byProvider = prefs.defaultModelsByProvider;
-                if (typeof byProvider === 'object' && byProvider !== null) {
-                    const providerPrefs = byProvider[provider];
-                    if (typeof providerPrefs === 'object' && providerPrefs !== null) {
-                        const cleaned: Record<string, string> = {};
-                        for (const [k, v] of Object.entries(providerPrefs)) {
-                            if (typeof v === 'string' && v) cleaned[k] = v;
-                        }
-                        setProviderModels(cleaned);
-                    } else if (typeof providerPrefs === 'string' && providerPrefs) {
-                        setProviderModels({ '*': providerPrefs });
-                    }
-                }
-
-                // Legacy fields (used as Copilot migration fallback)
-                if (typeof prefs.defaultModel === 'string' && prefs.defaultModel) {
-                    setDefaultModel(prefs.defaultModel);
-                }
-                if (typeof prefs.defaultModels === 'object' && prefs.defaultModels !== null) {
-                    const cleaned: Record<string, string> = {};
-                    for (const [k, v] of Object.entries(prefs.defaultModels)) {
-                        if (typeof v === 'string' && v) cleaned[k] = v;
-                    }
-                    setDefaultModels(cleaned);
-                }
-            })
-            .catch(() => { /* preferences are optional */ });
-        return () => { cancelled = true; };
-    }, [workspaceId, provider, baseUrl]);
+    const byProvider = prefs?.defaultModelsByProvider;
+    const providerPrefs = typeof byProvider === 'object' && byProvider !== null
+        ? (byProvider as Record<string, unknown>)[provider]
+        : undefined;
+    const nonemptyString = (value: unknown): string | undefined => typeof value === 'string' && value ? value : undefined;
 
     const prefKey = toPreferenceMode(chatMode);
     const isCopilot = provider === 'copilot';
@@ -101,10 +63,10 @@ export function useDefaultModelForMode(
     // 3. Legacy repo-wide default (Copilot migration only)
     // 4. undefined
     const effectiveModel =
-        providerModels[prefKey] ||
-        providerModels['*'] ||
-        (isCopilot ? defaultModels[prefKey] : undefined) ||
-        (isCopilot ? defaultModel : undefined) ||
+        nonemptyString(typeof providerPrefs === 'object' && providerPrefs !== null
+            ? (providerPrefs as Record<string, unknown>)[prefKey] : providerPrefs) ||
+        (isCopilot ? nonemptyString(prefs?.defaultModels?.[prefKey]) : undefined) ||
+        (isCopilot ? nonemptyString(prefs?.defaultModel) : undefined) ||
         undefined;
 
     const matched = effectiveModel

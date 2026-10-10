@@ -8,7 +8,9 @@
  * state into each dialog.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getCocClientForWorkspace } from '../repos/cloneRegistry';
+import { useCocClient } from '../repos/cloneRouting';
+import { useRepoPreferences } from '../hooks/preferences/useRepoPreferences';
+import { patchRepoPreferences } from '../api/repoPreferences';
 import { useAgentProviders } from '../hooks/useAgentProviders';
 import { useDefaultModelForMode } from '../hooks/useDefaultModelForMode';
 import type { ChatModeForModel } from '../hooks/useDefaultModelForMode';
@@ -137,6 +139,10 @@ export function useModalJobAiSelection({
     externalAgentProviders,
     externalEffortTierMap,
 }: UseModalJobAiSelectionOptions): UseModalJobAiSelectionResult {
+    const cloneClient = useCocClient(workspaceId);
+    const repoPreferences = useRepoPreferences(workspaceId, cloneClient);
+    const pickedProviderRef = useRef<{ client: typeof cloneClient; workspaceId: string; provider: ChatProvider } | null>(null);
+    useEffect(() => { pickedProviderRef.current = null; }, [workspaceId, cloneClient]);
     const [provider, setProviderState] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverrideState] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
@@ -238,7 +244,6 @@ export function useModalJobAiSelection({
 
     useEffect(() => {
         const fallbackProvider = getSelectableComposerDefaultProvider(agentProviders);
-        let cancelled = false;
         if (initialProvider) {
             return;
         }
@@ -246,23 +251,12 @@ export function useModalJobAiSelection({
             setProviderState(fallbackProvider);
             return;
         }
-        getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)
-            .then((prefs: unknown) => {
-                if (cancelled) {
-                    return;
-                }
-                const last = typeof prefs === 'object' && prefs !== null
-                    ? (prefs as { lastChatProvider?: unknown }).lastChatProvider
-                    : undefined;
-                setProviderState(isChatProvider(last) && isSelectableProvider(last, agentProviders) ? last : fallbackProvider);
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setProviderState(fallbackProvider);
-                }
-            });
-        return () => { cancelled = true; };
-    }, [workspaceId, agentProviders, initialProvider]);
+        const picked = pickedProviderRef.current;
+        const last = picked?.client === cloneClient && picked.workspaceId === workspaceId
+            ? picked.provider
+            : repoPreferences?.lastChatProvider;
+        setProviderState(isChatProvider(last) && isSelectableProvider(last, agentProviders) ? last : fallbackProvider);
+    }, [workspaceId, agentProviders, initialProvider, repoPreferences, cloneClient]);
 
     useEffect(() => {
         if (!isSelectableProvider(provider, agentProviders)) {
@@ -319,7 +313,8 @@ export function useModalJobAiSelection({
         setDirty(true);
         setProviderState(nextProvider);
         if (workspaceId) {
-            getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId, { lastChatProvider: nextProvider })
+            pickedProviderRef.current = { client: cloneClient, workspaceId, provider: nextProvider };
+            patchRepoPreferences(cloneClient, workspaceId, { lastChatProvider: nextProvider })
                 .catch(() => { /* non-fatal */ });
         }
     };

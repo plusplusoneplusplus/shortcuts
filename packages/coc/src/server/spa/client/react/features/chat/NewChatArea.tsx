@@ -23,6 +23,8 @@ import { useDesktopScreenshotAttach } from './hooks/useDesktopScreenshotAttach';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
 import { useDefaultModelForMode } from '../../hooks/useDefaultModelForMode';
+import { useRepoPreferences } from '../../hooks/preferences/useRepoPreferences';
+import { patchRepoPreferences } from '../../api/repoPreferences';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
@@ -377,6 +379,9 @@ export function InitialChatComposer({
     // threaded into the provider/model/effort hooks so their reads AND their
     // server-scoped config-cache entries route to the clone, never the local origin.
     const cloneBaseUrl = useResolveCloneBaseUrl()(workspaceId);
+    const repoPreferences = useRepoPreferences(workspaceId, cloneClient);
+    const pickedProviderRef = useRef<{ client: typeof cloneClient; workspaceId: string; provider: ChatProvider } | null>(null);
+    useEffect(() => { pickedProviderRef.current = null; }, [workspaceId, cloneClient]);
 
     // Resolve the Style flag against the server that owns the selected clone, so
     // one server's flag never leaks into a clone owned by another.
@@ -645,27 +650,12 @@ export function InitialChatComposer({
     // Falls back to the configured default provider when unset, disabled, or unavailable.
     useEffect(() => {
         const fallbackProvider = getSelectableDefaultProvider();
-        let cancelled = false;
-        if (!workspaceId) {
-            setSelectedProvider(fallbackProvider);
-            return;
-        }
-        cloneClient.preferences.getRepo(workspaceId)
-            .then((prefs: any) => {
-                if (cancelled) return;
-                const last = prefs?.lastChatProvider;
-                if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
-                    setSelectedProvider(last);
-                    return;
-                }
-                setSelectedProvider(fallbackProvider);
-            })
-            .catch(() => {
-                if (cancelled) return;
-                setSelectedProvider(fallbackProvider);
-            });
-        return () => { cancelled = true; };
-    }, [workspaceId, agentProviders, cloneClient]);
+        const picked = pickedProviderRef.current;
+        const last = picked?.client === cloneClient && picked.workspaceId === workspaceId
+            ? picked.provider
+            : repoPreferences?.lastChatProvider;
+        setSelectedProvider(isChatProvider(last) && isSelectableProvider(last, agentProviders) ? last : fallbackProvider);
+    }, [workspaceId, agentProviders, cloneClient, repoPreferences]);
 
     // When agentProviders load and selected provider becomes unavailable, fall back to the default provider.
     useEffect(() => {
@@ -747,7 +737,8 @@ export function InitialChatComposer({
     function handleProviderChange(provider: ChatProvider) {
         setSelectedProvider(provider);
         if (workspaceId) {
-            cloneClient.preferences.patchRepo(workspaceId, { lastChatProvider: provider })
+            pickedProviderRef.current = { client: cloneClient, workspaceId, provider };
+            patchRepoPreferences(cloneClient, workspaceId, { lastChatProvider: provider })
                 .catch(() => { /* non-fatal */ });
         }
     }

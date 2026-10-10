@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CocClient, SkillFileResponse, SkillInfo, WorkspaceSkillsPathResponse } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 import type { RepoData } from '../../repos/repoGrouping';
 import {
     findLinkedRepoForFolder,
@@ -113,7 +114,7 @@ export function useWorkspaceSkillsController({
             client.skills.listWorkspace(workspaceId),
             client.skills.getWorkspaceConfig(workspaceId),
         ];
-        if (loadLinkedRepoPreferences) {requests.push(client.preferences.getRepo(workspaceId));}
+        if (loadLinkedRepoPreferences) {requests.push(getRepoPreferences(client, workspaceId));}
         const [skillsResult, configResult, preferencesResult] = await Promise.allSettled(requests);
 
         if (requestGeneration !== loadGeneration.current || requestScope !== scopeGeneration.current) {return;}
@@ -318,7 +319,7 @@ export function useWorkspaceSkillsController({
                     disabledSkills: disabledSkillsRef.current,
                     extraSkillFolders: nextFolders,
                 }),
-                client.preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds }),
+                patchRepoPreferences(client, workspaceId, { linkedRepoIds: nextIds }),
             ]);
             if (requestGeneration === linkedGeneration.current && requestScope === scopeGeneration.current) {
                 await refresh();
@@ -364,7 +365,7 @@ export function useWorkspaceSkillsController({
                         disabledSkills: disabledSkillsRef.current,
                         extraSkillFolders: nextFolders,
                     }),
-                    client.preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds }),
+                    patchRepoPreferences(client, workspaceId, { linkedRepoIds: nextIds }),
                 ]);
                 if (requestGeneration === linkedGeneration.current && requestScope === scopeGeneration.current) {
                     await refresh();

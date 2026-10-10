@@ -288,7 +288,9 @@ endpoint; the wins are client caching, re-keying, deferral, and cache headers.
 - `peekConfig(key)` — synchronous seed, so a warm reopen paints with no loading flash.
 - `invalidateConfig(key)` — drops one key.
 - `configCacheKey` — `.models` / `.reasoningEfforts` / `.effortTiers(provider)` per
-  **provider**, `.llmToolsConfig(workspaceId)` per **workspace**.
+  **provider**, `.llmToolsConfig(workspaceId)` and `.repoPreferences(workspaceId, owner)` per
+  **workspace**. Invalidation revokes pending cache publication without cancelling
+  existing callers.
 
 Readers: `hooks/useModels.ts`, `useProviderModels.ts`, `useProviderReasoningEfforts.ts`,
 `useProviderEffortTiers.ts`, `features/repo-settings/LlmToolsPanel.tsx` `loadConfig`, and
@@ -302,6 +304,21 @@ Each mutation drops only its own key: `setEnabledModels` → `models:<provider>`
 after a successful `updateLlmToolsConfig`.
 
 ### Workspace-scoped data is not refetched per conversation
+
+`api/workspaceReads.ts` shares concurrent Git-info and queue reads by routed
+client and workspace, releasing requests on success or failure. It retains no
+settled snapshots. Explicit queue refreshes supersede pending snapshots; older
+readers receive the replacement result. `RepoDetail` seeds queue task data only when it is absent;
+`QueueContext.repoQueueMap.taskDataLoaded` distinguishes loaded empty queues
+from stats-only placeholders, and `taskDataSource` records the server/API owner.
+`RepoChatTab` refreshes queue data on each mount.
+
+`api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
+server origin, API prefix and workspace. `useRepoPreferences` supplies the same
+response to provider and model selection; provider availability and choice
+changes derive locally without refetching. All SPA preference writes and
+skill/tool mutations invalidate the affected owner/workspace after success.
+Failed reads are not cached, and invalidated reads cannot overwrite newer data.
 
 `features/chat/hooks/useCrons.ts` keys `crons.list` on `[workspaceId, cloneClient]` only —
 processId is not a fetch dep; the per-process view is a `useMemo([allCrons, processId])`.

@@ -20,6 +20,8 @@ import type {
     MemoryV2ExportData,
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { patchRepoPreferences } from '../../api/repoPreferences';
 
 export type {
     ListFactsOptions,
@@ -63,13 +65,13 @@ export const memoryV2Api = {
 
     async enableWorkspaceScope(wsId: string): Promise<void> {
         await runMemoryV2Request(() =>
-            getSpaCocClient().preferences.patchRepo(wsId, { memoryV2: { enabled: true } } as any)
+            patchRepoPreferences(getCocClientForWorkspace(wsId), wsId, { memoryV2: { enabled: true } } as any)
         );
     },
 
     async disableWorkspaceScope(wsId: string): Promise<void> {
         await runMemoryV2Request(() =>
-            getSpaCocClient().preferences.patchRepo(wsId, { memoryV2: { enabled: false } } as any)
+            patchRepoPreferences(getCocClientForWorkspace(wsId), wsId, { memoryV2: { enabled: false } } as any)
         );
     },
 

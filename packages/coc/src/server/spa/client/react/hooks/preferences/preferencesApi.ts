@@ -1,6 +1,8 @@
 import { CocApiError, type PerRepoPreferences } from '@plusplusoneplusplus/coc-client';
 import type { NotesGitConfig } from '../../../../notes-git-types';
-import { getSpaCocClient, translateSpaCocClientError } from '../../api/cocClient';
+import { translateSpaCocClientError } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 
 /**
  * Client-side subset of PerRepoPreferences (server: preferences-handler.ts).
@@ -32,7 +34,7 @@ export interface PerRepoPrefsClient extends PerRepoPreferences {
  */
 export async function getWorkspacePreferences(wsId: string): Promise<PerRepoPrefsClient> {
   try {
-    return await getSpaCocClient().preferences.getRepo(wsId) as PerRepoPrefsClient;
+    return await getRepoPreferences(getCocClientForWorkspace(wsId), wsId) as PerRepoPrefsClient;
   } catch (error) {
     if (error instanceof CocApiError) {
       throw new Error(`Failed to load preferences: ${error.status} ${error.statusText}`);
@@ -51,7 +53,7 @@ export async function patchWorkspacePreferences(
   partial: Partial<PerRepoPrefsClient>
 ): Promise<void> {
   try {
-    await getSpaCocClient().preferences.patchRepo(wsId, partial);
+    await patchRepoPreferences(getCocClientForWorkspace(wsId), wsId, partial);
   } catch (error) {
     if (error instanceof CocApiError) {
       throw new Error(`Failed to patch preferences: ${error.status} ${error.statusText}`);

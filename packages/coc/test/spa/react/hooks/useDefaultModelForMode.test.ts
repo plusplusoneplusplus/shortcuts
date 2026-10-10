@@ -308,6 +308,7 @@ describe('useDefaultModelForMode', () => {
         await waitFor(() => {
             expect(result.current.effectiveModel).toBe('claude-opus-4.7');
         });
+        expect(mockGetRepo).toHaveBeenCalledTimes(1);
     });
 
     it('supports a string provider default as an all-mode fallback', async () => {

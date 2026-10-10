@@ -35,7 +35,9 @@ import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { TasksPanel } from '../../tasks/TasksPanel';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
+import { readWorkspaceQueue, workspaceReadSource } from '../../api/workspaceReads';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { useCocClient } from '../../repos/cloneRouting';
 import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
@@ -107,6 +109,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     }>({ open: false, minimized: false, targetFolder: undefined });
     const ws = repo.workspace;
     const sourceSelectionId = getRepoSelectionId(repo);
+    const queueClient = useCocClient(sourceSelectionId);
     const explorerRoutingRef = parseRemoteCloneKey(sourceSelectionId) ? sourceSelectionId : null;
     const tasksNavStateKey = `${ws.id}::tasks`;
     const color = ws.color || '#848484';
@@ -431,13 +434,17 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // needs per-clone queue WebSocket fan-in.
     useEffect(() => {
         const existing = queueState.repoQueueMap[ws.id];
-        if (existing && (existing.running.length > 0 || existing.queued.length > 0)) return;
-        getCocClientForWorkspace(ws.id).queue.list({ repoId: ws.id })
+        const source = workspaceReadSource(queueClient);
+        if (existing?.taskDataLoaded && existing.taskDataSource === source) return;
+        if (existing && !existing.taskDataLoaded && (existing.running.length > 0 || existing.queued.length > 0)) return;
+        let cancelled = false;
+        readWorkspaceQueue(queueClient, ws.id)
             .then(data => {
-                if (data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data });
+                if (!cancelled && data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data, source });
             })
             .catch(() => {});
-    }, [ws.id]);
+        return () => { cancelled = true; };
+    }, [ws.id, queueClient]);
 
     const switchSubTab = (tab: RepoSubTab) => {
         if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });

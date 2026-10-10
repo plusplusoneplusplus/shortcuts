@@ -32,6 +32,9 @@ refresh, and the two layouts. Everything else lives here.
   a route that resolves after first paint reloads every hook against the right
   server; do not rely on hook dependency lists to pick up a new client.
   `repoGitTab-lateRoute.test.tsx` is the fence.
+- **Shared preference reads.** Auto-pull, file-view settings and skill MRU data
+  use `api/repoPreferences.ts`; preference writes and recorded skill usage
+  invalidate the same server/API-prefix/workspace entry after success.
 - **Auto-pull runs on the server.** The timer, the dirty and in-progress
   (rebase/merge/cherry-pick) pre-checks, the pull and the persisted run state all
   live in `src/server/git/auto-pull-*.ts`, so a repo pulls whether or not a tab is

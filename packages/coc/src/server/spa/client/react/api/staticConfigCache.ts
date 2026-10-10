@@ -82,6 +82,7 @@ export const configCacheKey = {
     reasoningEfforts: (provider: string, serverId?: string): string => `${serverScope(serverId)}reasoning-efforts:${provider}`,
     effortTiers: (provider: string, serverId?: string): string => `${serverScope(serverId)}effort-tiers:${provider}`,
     llmToolsConfig: (workspaceId: string, serverId?: string): string => `${serverScope(serverId)}llm-tools-config:${workspaceId}`,
+    repoPreferences: (workspaceId: string, serverId: string): string => `${serverScope(serverId)}repo-preferences:${encodeURIComponent(workspaceId)}`,
 } as const;
 
 const cache = new Map<string, ConfigCacheEntry>();
@@ -114,13 +115,15 @@ export function getOrFetchConfig<T>(
 
     const promise = fetcher().then(
         (value) => {
-            cache.set(key, { value, cachedAt: Date.now() });
-            inflight.delete(key);
+            if (inflight.get(key) === promise) {
+                cache.set(key, { value, cachedAt: Date.now() });
+                inflight.delete(key);
+            }
             return value;
         },
         (err) => {
             // Do not cache failures — drop the in-flight entry so the next read retries.
-            inflight.delete(key);
+            if (inflight.get(key) === promise) inflight.delete(key);
             throw err;
         },
     );

@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { readWorkspaceGitInfo } from '../../../api/workspaceReads';
 
 export interface GitInfo {
     branch: string | null;
@@ -35,7 +36,7 @@ export function useGitInfo(workspaceId: string): GitInfo {
     useEffect(() => {
         let cancelled = false;
         setState(prev => ({ ...prev, loading: true, error: false }));
-        client.workspaces.gitInfo(workspaceId)
+        readWorkspaceGitInfo(client, workspaceId)
             .then((data: any) => {
                 if (cancelled) return;
                 setState({

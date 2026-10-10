@@ -12,8 +12,11 @@
  * misses the registry and falls back to the local-origin singleton — unchanged.
  */
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { useCocClient } from '../../../../src/server/spa/client/react/repos/cloneRouting';
+import { readWorkspaceQueue } from '../../../../src/server/spa/client/react/api/workspaceReads';
 import {
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
@@ -133,7 +136,15 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 // Heavy sub-tabs are irrelevant here.
-vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({ RepoChatTab: () => null }));
+let seedAlongsideChat = false;
+function ChatQueueReader({ workspaceId }: { workspaceId: string }) {
+    const client = useCocClient(workspaceId);
+    useEffect(() => { void readWorkspaceQueue(client, workspaceId); }, [client, workspaceId]);
+    return null;
+}
+vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
+    RepoChatTab: (props: { workspaceId: string }) => seedAlongsideChat ? <ChatQueueReader {...props} /> : null,
+}));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
@@ -177,11 +188,13 @@ function renderDetail(wsId: string, serverId?: string) {
         gitInfoLoading: false,
         taskCount: 0,
     } as any;
-    return render(
+    const detail = (key?: string) => (
         <QueueProvider>
-            <RepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} />
-        </QueueProvider>,
+            <RepoDetail key={key} repo={repo} repos={[repo]} onRefresh={vi.fn()} />
+        </QueueProvider>
     );
+    const view = render(detail());
+    return { ...view, remount: () => view.rerender(detail('revisit')) };
 }
 
 describe('RepoDetail queue — remote-clone request routing', () => {
@@ -190,6 +203,7 @@ describe('RepoDetail queue — remote-clone request routing', () => {
     beforeEach(() => {
         urls = [];
         activeSubTab = 'chats';
+        seedAlongsideChat = false;
         resetCloneRegistryForTests();
         mockDispatch.mockClear();
         vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
@@ -199,6 +213,7 @@ describe('RepoDetail queue — remote-clone request routing', () => {
     });
 
     afterEach(() => {
+        cleanup();
         resetCloneRegistryForTests();
         vi.unstubAllGlobals();
     });
@@ -247,6 +262,37 @@ describe('RepoDetail queue — remote-clone request routing', () => {
             expect(u.startsWith(REMOTE_BASE)).toBe(false);
             expect(u.startsWith('http')).toBe(false);
         }
+    });
+
+    it('does not reseed a loaded empty queue when the detail remounts', async () => {
+        const view = renderDetail(LOCAL_WS);
+        await screen.findByTestId('repo-header-resume-btn');
+        expect(queueSeedUrls(urls, LOCAL_WS)).toHaveLength(1);
+
+        view.remount();
+        expect(await screen.findByTestId('repo-header-resume-btn')).toBeInTheDocument();
+        expect(queueSeedUrls(urls, LOCAL_WS)).toHaveLength(1);
+    });
+
+    it.each([LOCAL_WS, REMOTE_WS])('shares the queue seed with the chat reader for %s', async wsId => {
+        seedAlongsideChat = true;
+        registerCloneBaseUrls([{ workspaceId: REMOTE_WS, baseUrl: REMOTE_BASE }]);
+        renderDetail(wsId);
+        await screen.findByTestId('repo-header-resume-btn');
+        expect(queueSeedUrls(urls, wsId)).toHaveLength(1);
+    });
+
+    it('does not reuse an empty queue from a different owner of the same workspace id', async () => {
+        const view = renderDetail(REMOTE_WS);
+        await screen.findByTestId('repo-header-resume-btn');
+        expect(queueSeedUrls(urls, REMOTE_WS)).toHaveLength(1);
+
+        registerCloneBaseUrls([{ workspaceId: REMOTE_WS, baseUrl: REMOTE_BASE }]);
+        await waitFor(() => expect(queueSeedUrls(urls, REMOTE_WS)).toHaveLength(2));
+        view.remount();
+        await screen.findByTestId('repo-header-resume-btn');
+        expect(queueSeedUrls(urls, REMOTE_WS)).toHaveLength(2);
+        expect(queueSeedUrls(urls, REMOTE_WS)[1]).toMatch(new RegExp(`^${REMOTE_BASE}`));
     });
 
     it('regression: Resume Queue resumes on the remote clone server, never the local one', async () => {

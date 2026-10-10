@@ -5,6 +5,8 @@
 import { useState, useEffect } from 'react';
 import type { RepoData } from '../../repos/repoGrouping';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getRepoPreferences } from '../../api/repoPreferences';
 import { formatRelativeTime } from '../../utils/format';
 
 interface RepoInfoTabProps {
@@ -99,7 +101,7 @@ export function RepoInfoTab({ repo }: RepoInfoTabProps) {
     useEffect(() => {
         setLoadingPreferences(true);
         setPreferencesError(null);
-        getSpaCocClient().preferences.getRepo(ws.id)
+        getRepoPreferences(getCocClientForWorkspace(ws.id), ws.id)
             .then(res => setPreferences(res ?? {}))
             .catch((err: unknown) => setPreferencesError(getSpaCocClientErrorMessage(err, 'Failed to load preferences')))
             .finally(() => setLoadingPreferences(false));
