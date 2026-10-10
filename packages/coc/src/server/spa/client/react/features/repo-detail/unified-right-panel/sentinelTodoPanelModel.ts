@@ -31,6 +31,11 @@ export interface SentinelTodoOwner {
     processId: string;
 }
 
+/** One string per concrete ledger owner, so same-id workspaces on other hosts stay apart. */
+export function sentinelTodoOwnerKey(owner: SentinelTodoOwner): string {
+    return `${owner.ownerRoutingRef ?? ''}\n${owner.ownerWorkspaceId}\n${owner.processId}`;
+}
+
 export * from './sentinelTodoStatusModel';
 
 /** Statuses a user can pick, in the order the select lists them. */

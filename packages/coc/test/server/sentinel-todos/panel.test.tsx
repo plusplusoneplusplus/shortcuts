@@ -50,6 +50,7 @@ import {
     useSentinelTodoChat,
     withdrawSentinelTodoChat,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
+import { clearSentinelTodoExcursion } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
@@ -88,6 +89,8 @@ beforeEach(() => {
     update.mockReset();
     connect.mockReset().mockReturnValue({ close: vi.fn() });
     clientRefs.length = 0;
+    // Remembered views are per owner, and every case here shares OWNER.
+    clearSentinelTodoExcursion();
 });
 
 afterEach(() => {
@@ -971,7 +974,8 @@ describe('UnifiedTodoTab Manual tracking', () => {
         render(<UnifiedTodoTab owner={OWNER} />);
         const done = await screen.findByTestId('sentinel-todo-manual-done-section');
         fireEvent.click(within(done).getByRole('button', { name: 'Done (1)' }));
-        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-m1')).getByRole('button', { expanded: false }));
+        // The remount restores the row expanded from the owner's remembered view.
+        expect(within(screen.getByTestId('sentinel-todo-row-m1')).getByRole('button', { expanded: true })).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Reopen' }));
         await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 4, status: 'todo', statusReason: null }));
         await waitFor(() => expect(screen.queryByTestId('sentinel-todo-manual-done-section')).toBeNull());

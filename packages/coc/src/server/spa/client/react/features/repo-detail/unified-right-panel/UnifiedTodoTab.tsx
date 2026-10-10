@@ -10,7 +10,7 @@
  * normal Done and Archived sections.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import type {
     SentinelTodoItem,
     SentinelTodoLedgerResponse,
@@ -24,7 +24,15 @@ import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
 import { formatRelativeTime } from '../../../utils/format';
-import { useSentinelTodoEvents } from './sentinelTodoChats';
+import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
+import {
+    endSentinelTodoExcursion,
+    isPinnedSentinelTodo,
+    recallSentinelTodoView,
+    rememberSentinelTodoView,
+    startSentinelTodoExcursion,
+    useSentinelTodoExcursion,
+} from './sentinelTodoExcursion';
 import {
     SENTINEL_TODO_PRIORITIES,
     SENTINEL_TODO_PRIORITY_LABELS,
@@ -34,6 +42,7 @@ import {
     sentinelTodoDisplayStatus,
     sentinelTodoFoldNotes,
     sentinelTodoLineCount,
+    sentinelTodoOwnerKey,
     sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
@@ -46,8 +55,16 @@ import {
 
 export interface UnifiedTodoTabProps {
     owner: SentinelTodoOwner;
+    /**
+     * The panel scope and chat the tab is filed under (a pinned tab names the
+     * visited chat). Without both, links only navigate.
+     */
+    scopeWorkspaceId?: string;
+    chatId?: string | null;
     onErrorChange?: (hasError: boolean) => void;
 }
+
+type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string) => void;
 
 type Draft = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', priority: 'regular' };
@@ -199,11 +216,13 @@ function AddItemForm({ form, testIdPrefix, label, manual = false }: {
     );
 }
 
-export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
+export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: UnifiedTodoTabProps) {
     const client = useCocClient(owner.ownerRoutingRef === null ? undefined : owner.ownerRoutingRef ?? owner.ownerWorkspaceId);
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+    // The owner's remembered view: the origin tab and its pinned copy share it.
+    const [restored] = useState(() => recallSentinelTodoView(owner));
+    const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(restored.expandedIds));
     const [showDone, setShowDone] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
     const [showManual, setShowManual] = useState(true);
@@ -214,7 +233,7 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
     // A response that lands after the tab's owner changed — or after a newer
     // load started — is discarded rather than painted over the current ledger.
     const loadSeq = useRef(0);
-    const ownerKey = `${owner.ownerRoutingRef ?? ''}\n${owner.ownerWorkspaceId}\n${owner.processId}`;
+    const ownerKey = sentinelTodoOwnerKey(owner);
     const load = useCallback(async () => {
         const seq = ++loadSeq.current;
         try {
@@ -280,6 +299,48 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, ownerKey, load]);
 
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const scrollTop = useRef(restored.scrollTop ?? 0);
+    const expandedRef = useRef(expanded);
+    expandedRef.current = expanded;
+    useEffect(() => () => {
+        rememberSentinelTodoView(owner, { scrollTop: scrollTop.current, expandedIds: [...expandedRef.current] });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ownerKey]);
+    // Once the list has content: restore its scroll, and focus the link Back returned from.
+    const viewRestored = useRef(false);
+    useLayoutEffect(() => {
+        const root = scrollRef.current;
+        if (ledger === null || root === null || viewRestored.current) return;
+        viewRestored.current = true;
+        root.scrollTop = scrollTop.current;
+        const focusLinkKey = recallSentinelTodoView(owner).focusLinkKey;
+        if (focusLinkKey === undefined) return;
+        rememberSentinelTodoView(owner, { focusLinkKey: undefined });
+        [...root.querySelectorAll<HTMLElement>('[data-todo-link]')]
+            .find(link => link.dataset.todoLink === focusLinkKey)?.focus({ preventScroll: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ledger]);
+
+    const excursion = useSentinelTodoExcursion();
+    const pinned = isPinnedSentinelTodo(excursion, owner, chatId);
+    const originTitle = excursion?.origin.title ?? 'Sentinel';
+    // A plain click on an in-app chat link leaves for that chat with a way back.
+    const followLink = useCallback<FollowLink>((event, linkKey) => {
+        const href = event.currentTarget.getAttribute('href') ?? '';
+        if (chatId === null || scopeWorkspaceId === undefined || !href.startsWith('#') || event.button !== 0
+            || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        startSentinelTodoExcursion({
+            owner,
+            scopeWorkspaceId,
+            chatId,
+            title: getSentinelTodoChat(scopeWorkspaceId, chatId)?.title ?? null,
+            href: window.location.hash,
+            linkKey,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ownerKey, scopeWorkspaceId, chatId]);
+
     const toggle = useCallback((id: string) => {
         setExpanded(prev => {
             const next = new Set(prev);
@@ -292,13 +353,25 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
         <ul className="flex flex-col gap-1" role="list">
             {items.map(item => (
                 <TodoRow key={item.id} item={item} expanded={expanded.has(item.id)}
-                    onToggle={() => toggle(item.id)} onSave={saveItem} />
+                    onToggle={() => toggle(item.id)} onSave={saveItem} onFollowLink={followLink} />
             ))}
         </ul>
     );
 
     return (
-        <div className="flex h-full flex-col gap-2 overflow-auto p-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]" data-testid="sentinel-todo-tab">
+        <div ref={scrollRef} onScroll={event => { scrollTop.current = event.currentTarget.scrollTop; }}
+            className="flex h-full flex-col gap-2 overflow-auto p-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]" data-testid="sentinel-todo-tab">
+            {pinned && (
+                <div role="note" data-testid="sentinel-todo-pinned-banner"
+                    className="flex items-start gap-2 rounded bg-[#8764b8]/10 px-2 py-1.5 text-[#5c3d99] dark:text-[#c5a5ed]">
+                    <span className="min-w-0 flex-1">
+                        <span aria-hidden="true">📌 </span>Pinned from <strong>{originTitle}</strong> while you view linked chats.
+                        This is that Sentinel&apos;s list, not this chat&apos;s.
+                    </span>
+                    <Button size="sm" variant="secondary" onClick={endSentinelTodoExcursion} data-testid="sentinel-todo-unpin"
+                        aria-label={`Unpin ${originTitle} To-do`}>Unpin</Button>
+                </div>
+            )}
             <div className="flex items-center gap-2">
                 <span className="font-semibold">To-do</span>
                 {ledger && sections.active.length > 0 && (
@@ -417,8 +490,8 @@ type SaveItem = (
     expectedRevision?: number,
 ) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
 
-function TodoRow({ item, expanded, onToggle, onSave }: {
-    item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem;
+function TodoRow({ item, expanded, onToggle, onSave, onFollowLink }: {
+    item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem; onFollowLink: FollowLink;
 }) {
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(null);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(null);
@@ -478,6 +551,8 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
     const shownJobs = expanded ? item.jobs : item.jobs.slice(-1);
     const hiddenJobs = item.jobs.length - shownJobs.length;
     const foldNotes = sentinelTodoFoldNotes(item.notes);
+    // Identifies a followed link within the list, so Back can focus it again.
+    const linkKey = (link: string) => `${item.id}|${link}`;
     // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
         <li className="relative rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]" data-testid={`sentinel-todo-row-${item.id}`}
@@ -513,9 +588,11 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                     {shownJobs.map(job => {
                         const review = sentinelTodoReviewLabel(job);
                         const external = /^https?:\/\//i.test(job.openLink);
+                        const jobLink = linkKey(`job:${job.serverId ?? ''}:${job.processId}`);
                         return (
                             <li key={`${job.serverId ?? ''}:${job.processId}`} className="flex flex-wrap items-center gap-1">
                                 <a href={job.openLink} className="text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]"
+                                    data-todo-link={jobLink} onClick={event => onFollowLink(event, jobLink)}
                                     {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
                                     {job.title ?? job.processId}
                                 </a>
@@ -545,6 +622,7 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                         <li key={ref.processId} className="flex min-w-0 items-center gap-1" data-testid={`sentinel-todo-reference-${item.id}-${ref.processId}`}>
                             <span className="shrink-0 rounded bg-black/[0.06] px-1 text-[10px] font-medium uppercase tracking-wide text-[#616161] dark:bg-white/[0.08] dark:text-[#a0a0a0]">Ref</span>
                             <a href={ref.openLink} title={ref.title ?? ref.processId}
+                                data-todo-link={linkKey(`ref:${ref.processId}`)} onClick={event => onFollowLink(event, linkKey(`ref:${ref.processId}`))}
                                 className="min-w-0 truncate text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
                                 {ref.title ?? ref.processId}
                             </a>

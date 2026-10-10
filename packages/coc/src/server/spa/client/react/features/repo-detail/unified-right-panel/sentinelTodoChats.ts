@@ -14,8 +14,8 @@ import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 import { isSentinelTodoChangeFor, type SentinelTodoChangeEvent, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
-/** What a hosted Sentinel chat publishes: its ledger owner, without a route. */
-export type SentinelTodoChat = Omit<SentinelTodoOwner, 'ownerRoutingRef'>;
+/** What a hosted Sentinel chat publishes: its ledger owner, without a route, and its title. */
+export type SentinelTodoChat = Omit<SentinelTodoOwner, 'ownerRoutingRef'> & { title?: string };
 
 const entries = new Map<string, SentinelTodoChat>();
 const listeners = new Map<string, Set<() => void>>();
@@ -31,8 +31,13 @@ function notify(key: string): void {
 export function publishSentinelTodoChat(scopeWorkspaceId: string, chatId: string, chat: SentinelTodoChat): void {
     const key = entryKey(scopeWorkspaceId, chatId);
     const current = entries.get(key);
-    if (current && current.ownerWorkspaceId === chat.ownerWorkspaceId && current.processId === chat.processId) return;
-    entries.set(key, { ownerWorkspaceId: chat.ownerWorkspaceId, processId: chat.processId });
+    if (current && current.ownerWorkspaceId === chat.ownerWorkspaceId && current.processId === chat.processId
+        && current.title === chat.title) return;
+    entries.set(key, {
+        ownerWorkspaceId: chat.ownerWorkspaceId,
+        processId: chat.processId,
+        ...(chat.title === undefined ? {} : { title: chat.title }),
+    });
     notify(key);
 }
 

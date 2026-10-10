@@ -92,6 +92,7 @@ from same-id clones never merge into one tab.
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu; `unifiedGitTabId` takes the chat id). Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
 | `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
+| `sentinelTodoExcursion.ts` + `SentinelTodoOriginBar.tsx` | The way back from a chat opened through a To-do link (see "To-do excursions"). |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
@@ -691,7 +692,28 @@ never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual trackin
 (`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
 below jobs, with no execution or review label. Job links only navigate; nothing in
 the tab starts, retries, or cancels a job. Tests live in
-`test/server/sentinel-todos/panel.test.tsx` and `panel-model.test.ts`.
+`test/server/sentinel-todos/panel.test.tsx`, `panel-model.test.ts` and `excursion.test.tsx`.
+
+### To-do excursions
+
+A plain primary click on an in-app (`#…`) Job or Ref link starts one in-memory
+excursion per window (`sentinelTodoExcursion.ts`): the origin's panel scope, chat,
+ledger owner, published title and route, the followed link, and up to five
+hosted chats visited since. Hosted `ChatDetail`s mount `SentinelTodoOriginBar`,
+which records each selection as a visit (keyed by panel scope + chat) and, on the
+path, shows Back to Sentinel, a foldable breadcrumb and a close button. Arriving
+at the origin after leaving, Back, close, Unpin and closing the pinned tab end it;
+a link in the pinned list keeps the path and only updates the link to refocus.
+Modified clicks, external links and reloads never start or keep one.
+
+On the path, `useUnifiedPanelTabs` layers the origin's To-do over the read state
+(`withPinnedSentinelTodo`, labelled `To-do · <Sentinel>`); it is never stored, its
+selection is kept with `rememberActiveTab` (the codec drops it), and the shell
+reopens the dock and activates it when `pinnedId` changes. The pinned copy reads
+the origin's ledger owner and shows an owner banner with Unpin. Each owner's view
+(scroll, expanded rows) is remembered in memory across remounts; Back additionally
+focuses the followed link once. Excursions never write ledger, status, review or
+chat state and never send messages.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
