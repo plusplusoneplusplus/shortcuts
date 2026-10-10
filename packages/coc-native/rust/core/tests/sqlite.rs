@@ -35,10 +35,8 @@ fn diagnostic_reads_count_and_reset_real_statement_work() {
     assert!(steps > 0);
     assert_eq!(scans, 0);
     assert_eq!(seek.all_with_stats(&parameters).unwrap(), (rows, steps, scans));
-    let (_, _, scans) = database
-        .prepare("SELECT id FROM work")
-        .all_with_stats(&Parameters::None)
-        .unwrap();
+    let (_, _, scans) =
+        database.prepare("SELECT id FROM work").all_with_stats(&Parameters::None).unwrap();
     assert_eq!(scans, 2);
 }
 
