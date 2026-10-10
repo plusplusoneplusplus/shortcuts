@@ -27,6 +27,11 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - If baseline fails, only address failures that are required for the requested change.
 
 4. **Implement the change (minimal, surgical edits)**
+   - Before implementing, briefly sanity-check the API design.
+   - Prefer simple, idiomatic, minimal interfaces that are easy to use correctly.
+   - Design from the caller’s perspective; avoid leaking implementation details.
+   - Match existing repo conventions and avoid unnecessary abstraction/configuration.
+   - If the obvious implementation leads to an awkward API, improve the API first.
    - Make the smallest possible code changes to achieve the requested behavior.
    - Prefer existing patterns and utilities already used in the repo.
 
@@ -47,13 +52,14 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 
 7. **Update `AGENTS.md` files**
    - For each folder you changed, check the nearest relevant `AGENTS.md`.
-   - If behavior, architecture, workflows, commands, or constraints changed, patch `AGENTS.md` to match the new state.
-   - Keep updates concise, compact and current-state only. Do not add history text like "after this change..." or "it used to...".
+   - If behavior, architecture, workflows, commands, or constraints changed, update `AGENTS.md` to match the new state.
+   - **Documentation rule for steps 7 and 8:** Read the relevant document before editing. Integrate changes into the existing section; do not append an update or addendum. Replace stale guidance, merge overlapping rules, and remove repetition. Add a section only for a distinct topic with no existing home.
+   - Preserve accurate guidance and keep unrelated content intact, but rewrite affected sections into one concise description of the current state. Do not add history text like "after this change..." or "it used to...".
+   - Review the final document for consistency and unnecessary growth. Each addition must provide necessary, non-duplicated guidance.
 
 8. **Update `coc-knowledge` skill if needed**
    - If the change touches any CoC subsystem covered by a reference file under `.github/skills/coc-knowledge/references/` (server, memory system, LLM tools, SDK wrapper, process store, workflow engine, deep-wiki, dashboard SPA, admin config, MCP settings, REST API, etc.), update the relevant reference file(s) to reflect the new behavior.
-   - Make targeted edits only — do not rewrite sections that are still accurate.
-   - Keep updates current-state only; no history text.
+   - Apply the documentation rule in step 7: reconcile affected sections rather than accumulating new notes.
 
 9. **If a plan file exists, keep it updated**
    - If a plan markdown file is provided with task checkboxes, mark tasks complete as you finish them.
