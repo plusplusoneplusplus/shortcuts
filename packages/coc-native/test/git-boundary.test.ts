@@ -624,6 +624,7 @@ describe('commit-range marshalling', () => {
     it('retains nested rename destinations and literal arrows in a real range', async () => {
         const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-range-rename-'));
         try {
+            const destination = process.platform === 'win32' ? 'new = literal.ts' : 'new => literal.ts';
             const git = (...args: string[]) => execFileSync('git', ['-C', fixture, ...args]);
             git('init', '--initial-branch=main');
             git('config', 'user.name', 'Range');
@@ -633,12 +634,12 @@ describe('commit-range marshalling', () => {
             fs.writeFileSync(path.join(fixture, 'src', 'old.ts'), 'unchanged contents\n');
             git('add', '.');
             git('commit', '-m', 'base');
-            fs.renameSync(path.join(fixture, 'src', 'old.ts'), path.join(fixture, 'src', 'new => literal.ts'));
+            fs.renameSync(path.join(fixture, 'src', 'old.ts'), path.join(fixture, 'src', destination));
             git('add', '-A');
             git('commit', '-m', 'rename');
             const patch = await gitAddon.openGitPatchStore('fixture', fixture).revisionPatch('range', 'HEAD~1', 'HEAD');
             expect(patch.files).toEqual([
-                expect.objectContaining({ path: 'src/new => literal.ts', originalPath: 'src/old.ts', status: 'renamed' }),
+                expect.objectContaining({ path: `src/${destination}`, originalPath: 'src/old.ts', status: 'renamed' }),
             ]);
             expect(patch.summary).toEqual({ filesChanged: 1, additions: 0, deletions: 0 });
         } finally {
