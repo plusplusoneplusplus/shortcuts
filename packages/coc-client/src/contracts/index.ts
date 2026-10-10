@@ -13,6 +13,7 @@ export * from './memory';
 export * from './native-copilot-sessions';
 export * from './notes';
 export * from './preferences';
+export * from './repo-groups';
 export * from './processes';
 export * from './pull-requests';
 export * from './queue';

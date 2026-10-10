@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import type { RepoGroupAccessResponse, RepoGroupWriterConflict } from '@plusplusoneplusplus/coc-client';
 import { APIError } from '../errors';
 import { repoGroupRootsOverlap } from './repo-group-access-policy';
 import { isRepoGroupWorkspaceId, readRepoGroup, type RepoGroupFile } from './repo-group-workspace';
@@ -23,13 +24,13 @@ export async function withRepoGroupMutation<T>(dataDir: string, operation: () =>
     }
 }
 
-export interface RepoGroupWriterConflict {
-    workspaceId: string;
-    writerWorkspaceId?: string;
-    writerGroupId: string;
-    writerGroupName: string;
-    writerGroupLink: string;
-    reason: 'writer-exists' | 'unresolved-membership';
+export type { RepoGroupWriterConflict } from '@plusplusoneplusplus/coc-client';
+
+interface MembershipMatch {
+    workspace: WorkspaceInfo;
+    writerWorkspaceId: string | undefined;
+    writable: boolean;
+    unresolved: boolean;
 }
 
 function canonicalRoot(workspace: WorkspaceInfo | undefined): string | undefined {
@@ -42,6 +43,71 @@ function canonicalRoot(workspace: WorkspaceInfo | undefined): string | undefined
         }
         throw error;
     }
+}
+
+async function membershipSnapshot(dataDir: string, store: ProcessStore) {
+    const registry = await store.getWorkspaces();
+    const workspaces = new Map(registry.map(workspace => [workspace.id, workspace]));
+    const roots = new Map<string, string | undefined>();
+    const root = (id: string) => {
+        if (!roots.has(id)) roots.set(id, canonicalRoot(workspaces.get(id)));
+        return roots.get(id);
+    };
+    const groups = registry
+        .filter(workspace => isRepoGroupWorkspaceId(workspace.id))
+        .map(workspace => ({ workspace, file: readRepoGroup(dataDir, workspace.id, { strictMembers: true }) }));
+    const matches = (workspaceId: string, excludeGroupId?: string) => {
+        const candidateRoot = root(workspaceId);
+        return groups.filter(({ workspace }) => workspace.id !== excludeGroupId).flatMap<MembershipMatch>(({ workspace, file }) => {
+            if (!file) return [{ workspace, writerWorkspaceId: undefined, writable: true, unresolved: true }];
+            return file.members.flatMap(otherId => {
+                const otherRoot = root(otherId);
+                const sameId = workspaceId === otherId;
+                const unresolved = !candidateRoot || !otherRoot;
+                if (!sameId && candidateRoot && otherRoot && !repoGroupRootsOverlap(candidateRoot, otherRoot)) return [];
+                return [{
+                    workspace,
+                    writerWorkspaceId: otherId,
+                    writable: !file.readOnlyMembers?.includes(otherId),
+                    unresolved,
+                }];
+            });
+        });
+    };
+    return { registry, root, matches };
+}
+
+function writerConflict(workspaceId: string, match: MembershipMatch): RepoGroupWriterConflict {
+    return {
+        workspaceId,
+        writerWorkspaceId: match.writerWorkspaceId,
+        writerGroupId: match.workspace.id,
+        writerGroupName: match.workspace.name,
+        writerGroupLink: `#repos/${encodeURIComponent(match.workspace.id)}/settings`,
+        reason: match.unresolved ? 'unresolved-membership' : 'writer-exists',
+    };
+}
+
+/** Advisory snapshot only; admission remains authoritative at save time. */
+export async function getRepoGroupAccess(
+    dataDir: string, store: ProcessStore, enabled: boolean, groupId?: string,
+): Promise<RepoGroupAccessResponse> {
+    if (!enabled) return { enabled: false, members: [] };
+    const snapshot = await membershipSnapshot(dataDir, store);
+    const ids = new Set(snapshot.registry.filter(ws => !ws.virtual).map(ws => ws.id));
+    if (groupId) readRepoGroup(dataDir, groupId)?.members.forEach(id => ids.add(id));
+    return {
+        enabled: true,
+        members: [...ids].map(workspaceId => {
+            const matches = snapshot.matches(workspaceId);
+            return {
+                workspaceId,
+                shared: matches.some(match => match.workspace.id !== groupId),
+                unresolved: !snapshot.root(workspaceId) || matches.some(match => match.unresolved),
+                writers: matches.filter(match => match.writable).map(match => writerConflict(workspaceId, match)),
+            };
+        }),
+    };
 }
 
 /**
@@ -57,16 +123,7 @@ export async function admitRepoGroupWriters(
     groupId?: string,
     current?: RepoGroupFile,
 ): Promise<string[]> {
-    const registry = await store.getWorkspaces();
-    const workspaces = new Map(registry.map(workspace => [workspace.id, workspace]));
-    const roots = new Map<string, string | undefined>();
-    const root = (id: string) => {
-        if (!roots.has(id)) roots.set(id, canonicalRoot(workspaces.get(id)));
-        return roots.get(id);
-    };
-    const groups = registry
-        .filter(workspace => isRepoGroupWorkspaceId(workspace.id) && workspace.id !== groupId)
-        .map(workspace => ({ workspace, file: readRepoGroup(dataDir, workspace.id, { strictMembers: true }) }));
+    const { root, matches: matchingMemberships } = await membershipSnapshot(dataDir, store);
     const protectedIds = new Set(readOnlyMembers);
     const conflicts: RepoGroupWriterConflict[] = [];
 
@@ -76,39 +133,13 @@ export async function admitRepoGroupWriters(
         // Preserve saved policies, including stale members, without reassigning a writer.
         if (protectedIds.has(workspaceId) || (existed && !current?.readOnlyMembers?.includes(workspaceId))) continue;
         const candidateRoot = root(workspaceId);
-        const matches = groups.flatMap<{
-            workspace: WorkspaceInfo;
-            writerWorkspaceId: string | undefined;
-            writable: boolean;
-            unresolved: boolean;
-        }>(({ workspace, file }) => {
-            if (!file) return [{ workspace, writerWorkspaceId: undefined, writable: true, unresolved: true }];
-            return file.members.flatMap(otherId => {
-                const otherRoot = root(otherId);
-                const sameId = workspaceId === otherId;
-                const unresolved = !sameId && (!candidateRoot || !otherRoot);
-                if (!sameId && candidateRoot && otherRoot && !repoGroupRootsOverlap(candidateRoot, otherRoot)) return [];
-                return [{
-                    workspace,
-                    writerWorkspaceId: otherId,
-                    writable: !file.readOnlyMembers?.includes(otherId),
-                    unresolved,
-                }];
-            });
-        });
+        const matches = matchingMemberships(workspaceId, groupId);
         if (newMember && explicit?.[workspaceId] === undefined && matches.length > 0) {
             protectedIds.add(workspaceId);
             continue;
         }
         for (const match of matches.filter(match => match.writable)) {
-            conflicts.push({
-                workspaceId,
-                writerWorkspaceId: match.writerWorkspaceId,
-                writerGroupId: match.workspace.id,
-                writerGroupName: match.workspace.name,
-                writerGroupLink: `#repos/${encodeURIComponent(match.workspace.id)}/settings`,
-                reason: match.unresolved ? 'unresolved-membership' : 'writer-exists',
-            });
+            conflicts.push(writerConflict(workspaceId, match));
         }
         // A first writer also needs a resolvable root, even with no other groups.
         if (!candidateRoot && !conflicts.some(conflict => conflict.workspaceId === workspaceId)) {

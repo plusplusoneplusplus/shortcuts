@@ -40,6 +40,7 @@ import {
     updateRepoGroup,
     RepoGroupValidationError,
 } from './repo-group-workspace';
+import { getRepoGroupAccess, withRepoGroupMutation } from './repo-group-exclusive-writer';
 
 /** Minimal broadcast surface of the process WebSocket server. */
 interface TopologyBroadcaster {
@@ -209,6 +210,24 @@ export function registerRepoGroupRoutes(
     dataDir: string,
     deps: RepoGroupRouteDeps = {},
 ): void {
+
+    routes.push({
+        method: 'GET',
+        pattern: '/api/repo-groups/access',
+        handler: async (req, res) => {
+            try {
+                const groupId = new URL(req.url ?? '', 'http://localhost').searchParams.get('groupId') ?? undefined;
+                if (groupId && !readRepoGroup(dataDir, groupId)) {
+                    return handleAPIError(res, notFound('Repo group'));
+                }
+                const access = await withRepoGroupMutation(dataDir, () =>
+                    getRepoGroupAccess(dataDir, store, deps.getExclusiveWriterEnabled?.() === true, groupId));
+                sendJSON(res, 200, access);
+            } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
 
     function broadcast(workspaceId: string, action: 'added' | 'updated' | 'removed'): void {
         deps.getWsServer?.()?.broadcastProcessEvent({

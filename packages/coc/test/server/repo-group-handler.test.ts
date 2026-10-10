@@ -125,6 +125,23 @@ describe('Repo Group Handler', () => {
         return JSON.parse(res.body) as { workspace: WorkspaceInfo; members: any[] };
     }
 
+    it('serves owning-server diagnostics before the generic group route and honors the live flag', async () => {
+        const group = await createGroup('Writer', [repoA.id]);
+        let response = await request(`${baseUrl}/api/repo-groups/access`);
+        expect(response.status).toBe(200);
+        expect(JSON.parse(response.body)).toEqual({ enabled: false, members: [] });
+        exclusiveWriterEnabled = true;
+        response = await request(`${baseUrl}/api/repo-groups/access?groupId=${group.workspace.id}`);
+        expect(response.status).toBe(200);
+        expect(JSON.parse(response.body).members.find((member: any) => member.workspaceId === repoA.id))
+            .toMatchObject({ shared: false, writers: [{ writerGroupId: group.workspace.id, writerGroupName: 'Writer' }] });
+        const events = broadcastEvents.length;
+        response = await request(`${baseUrl}/api/repo-groups/access`);
+        expect(JSON.parse(response.body).members.find((member: any) => member.workspaceId === repoA.id).shared).toBe(true);
+        expect(broadcastEvents).toHaveLength(events);
+        expect((await request(`${baseUrl}/api/repo-groups/access?groupId=group-missing`)).status).toBe(404);
+    });
+
     it('enforces live exclusive-writer policy on POST/PATCH without mutating rejected drafts', async () => {
         exclusiveWriterEnabled = true;
         const first = await createGroup('First', [repoA.id]);

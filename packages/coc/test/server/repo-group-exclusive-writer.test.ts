@@ -5,6 +5,7 @@ import * as path from 'path';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import { createRepoGroup, readRepoGroup, updateRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
 import { APIError } from '../../src/server/errors';
+import { getRepoGroupAccess } from '../../src/server/workspaces/repo-group-exclusive-writer';
 
 describe('repo-group exclusive writer admission', () => {
     let dataDir: string;
@@ -25,6 +26,42 @@ describe('repo-group exclusive writer admission', () => {
         createRepoGroup(dataDir, store, { name, members, readOnly }, enabled);
     const update = (id: string, readOnly: Record<string, boolean>) =>
         updateRepoGroup(dataDir, store, id, { readOnly }, enabled);
+
+    it('diagnoses every saved writer, including unchanged conflicts and canonical aliases, without mutation', async () => {
+        const first = await create('First');
+        const second = await createRepoGroup(dataDir, store, { name: 'Second', members: ['repo'] });
+        const nested = path.join(root, 'nested');
+        fs.mkdirSync(nested);
+        await store.registerWorkspace({ id: 'nested', name: 'Nested', rootPath: nested });
+        const clone = path.join(dataDir, 'clone');
+        fs.mkdirSync(clone);
+        await store.registerWorkspace({ id: 'clone', name: 'Clone', rootPath: clone });
+        const before = readRepoGroup(dataDir, second.id);
+        const access = await getRepoGroupAccess(dataDir, store, true, second.id);
+        const member = access.members.find(member => member.workspaceId === 'repo')!;
+        expect(member.shared).toBe(true);
+        expect(member.unresolved).toBe(false);
+        expect(member.writers.map(writer => writer.writerGroupId)).toEqual([first.id, second.id]);
+        expect(access.members.find(member => member.workspaceId === 'nested')?.writers).toHaveLength(2);
+        expect(access.members.find(member => member.workspaceId === 'clone')).toMatchObject({ shared: false, writers: [] });
+        expect(readRepoGroup(dataDir, second.id)).toEqual(before);
+        await update(first.id, { repo: true });
+        expect((await getRepoGroupAccess(dataDir, store, true, second.id)).members[0].writers).toHaveLength(1);
+        expect(await getRepoGroupAccess(dataDir, store, false)).toEqual({ enabled: false, members: [] });
+    });
+
+    it('reports shared all-read-only identities and stale possible writers explicitly', async () => {
+        const first = await create('First', { repo: true });
+        expect((await getRepoGroupAccess(dataDir, store, true)).members[0]).toMatchObject({ shared: true, writers: [] });
+        expect((await getRepoGroupAccess(dataDir, store, true, first.id)).members[0].shared).toBe(false);
+        await update(first.id, { repo: false });
+        await store.removeWorkspace('repo');
+        const diagnostic = await getRepoGroupAccess(dataDir, store, true, first.id);
+        expect(diagnostic.members[0]).toMatchObject({
+            workspaceId: 'repo', unresolved: true,
+            writers: [{ writerGroupId: first.id, reason: 'unresolved-membership' }],
+        });
+    });
 
     it('defaults only new shared memberships read-only, even if the other group is read-only', async () => {
         const first = await create('First');
@@ -189,6 +226,8 @@ describe('repo-group exclusive writer admission', () => {
             fs.writeFileSync(path.join(first.rootPath, 'group.json'), contents);
             const second = await create('Second');
             expect(readRepoGroup(dataDir, second.id)?.readOnlyMembers).toEqual(['repo']);
+            expect((await getRepoGroupAccess(dataDir, store, true, second.id)).members[0])
+                .toMatchObject({ shared: true, unresolved: true, writers: [{ writerGroupId: first.id, reason: 'unresolved-membership' }] });
             await expect(create('Third', { repo: false })).rejects.toMatchObject({ statusCode: 409 });
             await create('Safe', { repo: true });
         },
@@ -204,6 +243,9 @@ describe('repo-group exclusive writer admission', () => {
         await updateRepoGroup(dataDir, store, second.id, { name: 'Renamed' }, enabled);
         expect(readRepoGroup(dataDir, first.id)?.readOnlyMembers).toBeUndefined();
         expect(readRepoGroup(dataDir, second.id)?.readOnlyMembers).toBeUndefined();
+        const access = await getRepoGroupAccess(dataDir, store, true, second.id);
+        expect(access.members.find(member => member.workspaceId === 'clone')?.writers.map(writer => writer.writerGroupId))
+            .toEqual([first.id, second.id]);
         await expect(create('Third', { repo: false })).rejects.toMatchObject({ statusCode: 409 });
     });
 
