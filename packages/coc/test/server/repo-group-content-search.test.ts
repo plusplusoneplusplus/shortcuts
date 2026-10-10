@@ -25,6 +25,7 @@ import type { Route } from '../../src/server/types';
 import type { ContentMatch } from '../../src/server/repos/types';
 import type { RepoGroupMember } from '../../src/server/workspaces/repo-group-workspace';
 import { FileProcessStore, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { safeRmSync } from '../helpers/safe-rm';
 
 const GIT = (() => {
     try {
@@ -368,7 +369,7 @@ suiteIfGit('GET /api/repo-groups/:id/search/content', () => {
 
     afterEach(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        safeRmSync(dataDir);
         vi.restoreAllMocks();
     });
 
