@@ -90,7 +90,9 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json`, selects the configured account, and checks its exact `host:login` key in `copilotTokens`. On Windows, an absent or empty token triggers a native Credential Manager read of `copilot-cli/<stored-host>:<login>`. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames. Invalid file tokens, config errors and vault failures are terminal. Other accounts, ambient tokens and CLI processes are never fallback sources.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json`, selects the configured account, and checks its exact `host:login` key in `copilotTokens`. An absent or empty token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+
+Invalid file tokens, config errors and vault failures are terminal. Other accounts, ambient tokens and CLI processes are never fallback sources. Credential subprocess failures expose sanitized errors without password output.
 
 Typed embedding credentials support explicit environment, pinned config account, gh, resolver and `copilot-cli` sources. Explicit `copilot-cli` acquisition starts a short-lived pinned CLI client, reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup; its client creates no agent session and stops on completion or cancellation. Explicit keychain acquisition returns an unverified-platform error.
 
