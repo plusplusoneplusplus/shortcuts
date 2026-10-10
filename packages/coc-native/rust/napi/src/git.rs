@@ -13,6 +13,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use coc_native_core::git::branch::{
     branch_status, current_branch_name, list_branches, local_branch_names,
@@ -21,15 +22,20 @@ use coc_native_core::git::branch::{
 };
 use coc_native_core::git::commit::{
     commit_diff, commit_files, file_bytes_at_commit, file_content_at_commit, file_exists_at_commit,
-    validate_ref, CommitFile, CommitFiles,
+    validate_ref, CommitFiles,
 };
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
-use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
+use coc_native_core::git::log::{
+    get_commit, get_commits, history_args, parse_history, read_history, Commit, CommitPage,
+};
+use coc_native_core::git::patch_store::{
+    PatchCancellation, PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError,
+    PatchTransport, RemotePatchSource,
+};
 use coc_native_core::git::range::{
-    changed_files, count_commits_ahead, default_remote_branch, diff_stats, merge_base,
-    parse_changed_files, parse_diff_shortstat, resolve_base_ref, upstream_branch, BaseMode,
-    BaseRefResolution, DefaultBranch, DiffStats, RangeFile,
+    count_commits_ahead, default_remote_branch, merge_base, resolve_base_ref, upstream_branch,
+    BaseMode, BaseRefResolution, DefaultBranch,
 };
 use coc_native_core::git::remote::{detect_remote_url, remote_url};
 use coc_native_core::git::repo::{discover_workdir, resolved_git_dir};
@@ -117,6 +123,7 @@ fn resolve_options(options: Option<GitExecOptions>) -> GitCommandOptions {
             // Not a JavaScript option: which exit codes mean success belongs to
             // the command, so the one command that needs it sets it itself.
             success_exit_codes: Vec::new(),
+            cancellation: Vec::new(),
         },
         None => defaults,
     }
@@ -278,6 +285,8 @@ pub struct GitLogOptions {
     pub skip: u32,
     /// Case-insensitive substring the commit message must contain.
     pub search: Option<String>,
+    /// Include relative dates and ref decoration in CLI history reads.
+    pub include_details: Option<bool>,
 }
 
 /// Seconds since the epoch, for rendering `%ar`.
@@ -357,124 +366,99 @@ pub fn git_log_commit(repo_root: String, rev: String) -> AsyncTask<GitLogCommitT
     AsyncTask::new(GitLogCommitTask { repo_root: PathBuf::from(repo_root), rev })
 }
 
+#[napi]
+pub fn prepare_git_history(
+    options: GitLogOptions,
+    rev: Option<String>,
+    fixed_search: Option<bool>,
+) -> Vec<String> {
+    history_args(
+        options.max_count,
+        options.skip,
+        options.search.as_deref(),
+        rev.as_deref(),
+        fixed_search.unwrap_or(false),
+        options.include_details.unwrap_or(false),
+    )
+}
+
+fn history_task(
+    read: impl FnOnce() -> Result<Vec<Commit>> + Send + 'static,
+) -> AsyncTask<crate::task::Blocking<Vec<GitLogCommit>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(read()?.into_iter().map(GitLogCommit::from).collect())
+    }))
+}
+
+#[napi(ts_return_type = "Promise<GitLogCommit[]>")]
+pub fn git_history(
+    repo_root: String,
+    args: Vec<String>,
+) -> AsyncTask<crate::task::Blocking<Vec<GitLogCommit>>> {
+    history_task(move || read_history(&PathBuf::from(repo_root), &args).map_err(to_napi_error))
+}
+
+#[napi(ts_return_type = "Promise<GitLogCommit[]>")]
+pub fn process_git_history(output: String) -> AsyncTask<crate::task::Blocking<Vec<GitLogCommit>>> {
+    history_task(move || Ok(parse_history(&output)))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Commit detail
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// One file a commit touched.
-///
-/// `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
-/// they are absent on a status entry and a range file: they are the caller's
-/// own values, and the caller attaches them.
-#[napi(object)]
-pub struct GitCommitFile {
-    pub path: String,
-    /// Source path of a rename or copy; absent otherwise.
-    pub original_path: Option<String>,
-    /// A `GitChangeStatus` string union member.
-    pub status: String,
-    /// Absent rather than zero when `--numstat` had nothing to say — a binary
-    /// file, above all. The UI renders a blank column there rather than a
-    /// misleading `0`.
-    pub additions: Option<u32>,
-    pub deletions: Option<u32>,
-}
-
-impl From<CommitFile> for GitCommitFile {
-    fn from(file: CommitFile) -> Self {
-        Self {
-            path: file.path,
-            original_path: file.original_path,
-            status: file.status.as_str().to_string(),
-            additions: file.additions,
-            deletions: file.deletions,
-        }
-    }
-}
-
-/// A commit's file list, and the parent the list was computed against.
-#[napi(object)]
-pub struct GitCommitFiles {
-    /// The commit's first parent, or git's empty tree for a root commit.
-    pub parent_hash: String,
-    pub files: Vec<GitCommitFile>,
-}
-
-pub struct GitCommitFilesTask {
-    repo_root: PathBuf,
-    commit: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitCommitFilesTask {
-    type Output = CommitFiles;
-    type JsValue = GitCommitFiles;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        commit_files(&self.repo_root, &self.commit, &self.options).map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(GitCommitFiles {
-            parent_hash: output.parent_hash,
-            files: output.files.into_iter().map(GitCommitFile::from).collect(),
-        })
-    }
-}
-
 /// Read the files a commit touched, with their line counts and its parent.
 ///
-/// Three children become one crossing: the parent comes from `gix`, and the
-/// two `diff-tree` runs are joined in Rust rather than crossing as text. A root
-/// commit has no file list at all — `diff-tree` compares against parents — but
-/// still reports the empty tree as its parent.
+/// Three children share one crossing: Git supplies the parent list and the
+/// two NUL-delimited `diff-tree` runs are joined in Rust. Root commits compare
+/// against the empty tree; merges compare against the first parent.
 #[napi(ts_return_type = "Promise<GitCommitFiles>")]
 pub fn git_commit_files(
     repo_root: String,
     commit: String,
     options: Option<GitExecOptions>,
-) -> AsyncTask<GitCommitFilesTask> {
-    AsyncTask::new(GitCommitFilesTask {
-        repo_root: PathBuf::from(repo_root),
-        commit,
-        options: resolve_options(options),
-    })
+) -> AsyncTask<crate::task::Blocking<CommitFiles>> {
+    let options = resolve_options(options);
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        commit_files(&PathBuf::from(repo_root), &commit, &options).map_err(to_napi_error)
+    }))
 }
 
-pub struct GitCommitDiffTask {
-    repo_root: PathBuf,
+/// Metadata batch for WSL, sharing the host plan.
+#[napi(ts_return_type = "Promise<string[][]>")]
+pub fn prepare_git_commit_files(
     commit: String,
-    options: GitCommandOptions,
+) -> AsyncTask<crate::task::Blocking<Vec<Vec<String>>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::commit::commit_files_args(&commit))
+    }))
 }
 
-impl Task for GitCommitDiffTask {
-    type Output = String;
-    type JsValue = String;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        commit_diff(&self.repo_root, &self.commit, &self.options).map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
+/// Join transported NUL metadata and resolve its comparison parent on a worker.
+#[napi(ts_return_type = "Promise<GitCommitFiles>")]
+pub fn process_git_commit_metadata(
+    name_status: String,
+    numstat: String,
+    parents: String,
+) -> AsyncTask<crate::task::Blocking<CommitFiles>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::commit::process_commit_metadata(&name_status, &numstat, &parents))
+    }))
 }
 
 /// Read a commit's diff against its parent.
 ///
-/// The parent resolution is `gix`, so the two children this used to cost are
-/// down to the one `git diff` that still does the real work.
+/// Git renders the shared first-parent/root patch plan on a worker.
 #[napi(ts_return_type = "Promise<string>")]
 pub fn git_commit_diff(
     repo_root: String,
     commit: String,
     options: Option<GitExecOptions>,
-) -> AsyncTask<GitCommitDiffTask> {
-    AsyncTask::new(GitCommitDiffTask {
-        repo_root: PathBuf::from(repo_root),
-        commit,
-        options: resolve_options(options),
-    })
+) -> AsyncTask<crate::task::Blocking<String>> {
+    let options = resolve_options(options);
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        commit_diff(&PathBuf::from(repo_root), &commit, &options).map_err(to_napi_error)
+    }))
 }
 
 pub struct GitFileContentAtCommitTask {
@@ -636,43 +620,6 @@ pub struct GitRangeBaseRef {
     pub base_mode: String,
     /// True when `upstream` was asked for but the branch has no upstream.
     pub base_mode_fallback: bool,
-}
-
-/// One file in a commit range, minus the `repositoryRoot` the caller owns.
-#[napi(object)]
-pub struct GitRangeFile {
-    pub path: String,
-    /// A `GitChangeStatus` string union member.
-    pub status: String,
-    pub additions: u32,
-    pub deletions: u32,
-    /// Source path of a rename or copy; absent otherwise.
-    pub old_path: Option<String>,
-}
-
-impl From<RangeFile> for GitRangeFile {
-    fn from(file: RangeFile) -> Self {
-        Self {
-            path: file.path,
-            status: file.status.as_str().to_string(),
-            additions: file.additions,
-            deletions: file.deletions,
-            old_path: file.old_path,
-        }
-    }
-}
-
-/// Added and removed line totals across a range.
-#[napi(object)]
-pub struct GitRangeDiffStats {
-    pub additions: u32,
-    pub deletions: u32,
-}
-
-impl From<DiffStats> for GitRangeDiffStats {
-    fn from(stats: DiffStats) -> Self {
-        Self { additions: stats.additions, deletions: stats.deletions }
-    }
 }
 
 pub struct GitRangeDefaultBranchTask {
@@ -838,142 +785,6 @@ pub fn git_range_count_ahead(
         base_ref,
         head_ref,
     })
-}
-
-pub struct GitRangeChangedFilesTask {
-    repo_root: PathBuf,
-    base_ref: String,
-    head_ref: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitRangeChangedFilesTask {
-    type Output = Vec<RangeFile>;
-    type JsValue = Vec<GitRangeFile>;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        changed_files(&self.repo_root, &self.base_ref, &self.head_ref, &self.options)
-            .map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into_iter().map(GitRangeFile::from).collect())
-    }
-}
-
-/// Read the files changed between two refs, in git's own order.
-///
-/// Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
-/// range and joins them, so neither output crosses the boundary as text. The
-/// list is not sorted: the caller orders it with `localeCompare`, which is not
-/// a byte comparison and is what the range view already shows.
-#[napi(ts_return_type = "Promise<GitRangeFile[]>")]
-pub fn git_range_changed_files(
-    repo_root: String,
-    base_ref: String,
-    head_ref: String,
-    options: Option<GitExecOptions>,
-) -> AsyncTask<GitRangeChangedFilesTask> {
-    AsyncTask::new(GitRangeChangedFilesTask {
-        repo_root: PathBuf::from(repo_root),
-        base_ref,
-        head_ref,
-        options: resolve_options(options),
-    })
-}
-
-pub struct ParseGitRangeChangedFilesTask {
-    numstat: String,
-    name_status: String,
-}
-
-impl Task for ParseGitRangeChangedFilesTask {
-    type Output = Vec<RangeFile>;
-    type JsValue = Vec<GitRangeFile>;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        Ok(parse_changed_files(&self.numstat, &self.name_status))
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into_iter().map(GitRangeFile::from).collect())
-    }
-}
-
-/// Join `--numstat` and `--name-status` text that was produced somewhere else.
-///
-/// The WSL twin of {@link git_range_changed_files}, for the same reason
-/// {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
-/// runs git through `wsl.exe` in TypeScript, and the parser must still be the
-/// single one in the codebase.
-#[napi(ts_return_type = "Promise<GitRangeFile[]>")]
-pub fn parse_git_range_changed_files(
-    numstat: String,
-    name_status: String,
-) -> AsyncTask<ParseGitRangeChangedFilesTask> {
-    AsyncTask::new(ParseGitRangeChangedFilesTask { numstat, name_status })
-}
-
-pub struct GitRangeDiffStatsTask {
-    repo_root: PathBuf,
-    base_ref: String,
-    head_ref: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitRangeDiffStatsTask {
-    type Output = DiffStats;
-    type JsValue = GitRangeDiffStats;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        diff_stats(&self.repo_root, &self.base_ref, &self.head_ref, &self.options)
-            .map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into())
-    }
-}
-
-/// Read the added and removed line totals between two refs.
-#[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
-pub fn git_range_diff_stats(
-    repo_root: String,
-    base_ref: String,
-    head_ref: String,
-    options: Option<GitExecOptions>,
-) -> AsyncTask<GitRangeDiffStatsTask> {
-    AsyncTask::new(GitRangeDiffStatsTask {
-        repo_root: PathBuf::from(repo_root),
-        base_ref,
-        head_ref,
-        options: resolve_options(options),
-    })
-}
-
-pub struct ParseGitDiffShortstatTask {
-    text: String,
-}
-
-impl Task for ParseGitDiffShortstatTask {
-    type Output = DiffStats;
-    type JsValue = GitRangeDiffStats;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        Ok(parse_diff_shortstat(&self.text))
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output.into())
-    }
-}
-
-/// Parse `git diff --shortstat` text that was produced somewhere else.
-///
-/// The WSL twin of {@link git_range_diff_stats}.
-#[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
-pub fn parse_git_diff_shortstat(text: String) -> AsyncTask<ParseGitDiffShortstatTask> {
-    AsyncTask::new(ParseGitDiffShortstatTask { text })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1525,34 +1336,6 @@ pub struct GitNoIndexDiffInput {
     pub after_label: String,
 }
 
-pub struct GitDiffNoIndexTask {
-    before: String,
-    after: String,
-    before_label: String,
-    after_label: String,
-    options: GitCommandOptions,
-}
-
-impl Task for GitDiffNoIndexTask {
-    type Output = String;
-    type JsValue = String;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        diff_no_index(
-            &self.before,
-            &self.after,
-            &self.before_label,
-            &self.after_label,
-            &self.options,
-        )
-        .map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
 /// Render a unified diff of two contents that are already in memory.
 ///
 /// No repository is involved: the contents are written to a private temp
@@ -1567,15 +1350,18 @@ impl Task for GitDiffNoIndexTask {
 pub fn git_diff_no_index(
     input: GitNoIndexDiffInput,
     options: Option<GitExecOptions>,
-) -> AsyncTask<GitDiffNoIndexTask> {
+) -> AsyncTask<crate::task::Blocking<String>> {
     let options = resolve_options(options);
-    AsyncTask::new(GitDiffNoIndexTask {
-        before: input.before,
-        after: input.after,
-        before_label: input.before_label,
-        after_label: input.after_label,
-        options,
-    })
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        diff_no_index(
+            &input.before,
+            &input.after,
+            &input.before_label,
+            &input.after_label,
+            &options,
+        )
+        .map_err(to_napi_error)
+    }))
 }
 
 pub struct GitResolvedGitDirTask {
@@ -1612,4 +1398,338 @@ impl Task for GitResolvedGitDirTask {
 #[napi(ts_return_type = "Promise<string | null>")]
 pub fn git_resolved_git_dir(path: String) -> AsyncTask<GitResolvedGitDirTask> {
     AsyncTask::new(GitResolvedGitDirTask { path: PathBuf::from(path) })
+}
+
+/// Parse supplied host, WSL or remote unified-patch text on a libuv worker.
+/// No Git execution, repository lookup, authentication or cached state is involved.
+#[napi(ts_return_type = "Promise<PatchFile[]>")]
+pub fn parse_git_patch(
+    raw: String,
+) -> AsyncTask<crate::task::Blocking<Vec<coc_native_core::git::patch::PatchFile>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::parse_patch(&raw))
+    }))
+}
+
+/// Shared host/WSL revision command plan, preserving each comparison mode.
+#[napi(ts_return_type = "Promise<string[]>")]
+pub fn prepare_git_revision_patch(
+    mode: String,
+    base: String,
+    head: Option<String>,
+    path: Option<String>,
+    context_lines: Option<u32>,
+) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::revision_patch_args(
+            &mode,
+            &base,
+            head.as_deref(),
+            path.as_deref(),
+            context_lines,
+        )
+        .map_err(to_napi_error)
+    }))
+}
+
+/// Construct a batch of remote patches on a worker; authentication stays in transport.
+#[napi(ts_return_type = "Promise<string>")]
+pub fn build_remote_git_patch(
+    files: Vec<coc_native_core::git::remote_patch::RemotePatchInput>,
+) -> AsyncTask<crate::task::Blocking<String>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::remote_patch::build_remote_patch(files).map_err(to_napi_error)
+    }))
+}
+
+/// Shared supplied-patch processing, including summaries and truncation.
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn process_git_patch(
+    raw: String,
+    max_lines: Option<i64>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::process_patch(raw, max_lines))
+    }))
+}
+
+#[napi(ts_return_type = "Promise<string[][]>")]
+pub fn prepare_git_working_tree_patch(
+    scope: String,
+    path: Option<String>,
+    context: Option<u32>,
+) -> AsyncTask<crate::task::Blocking<Vec<Vec<String>>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::working_tree_patch_args(&scope, path.as_deref(), context)
+            .map_err(to_napi_error)
+    }))
+}
+
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn compose_git_working_tree_patch(
+    outputs: Vec<String>,
+    max_lines: Option<i64>,
+    headings: Option<bool>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::process_working_tree_patch(
+            outputs,
+            max_lines,
+            headings.unwrap_or(false),
+        ))
+    }))
+}
+
+/// Scoped Rust-owned patch snapshots keyed by object IDs or supplied bytes.
+/// Work runs on workers; `dispose` rejects later calls.
+#[napi]
+pub struct GitPatchStore {
+    store: Arc<PatchStore>,
+}
+
+/// Open a patch store. A WSL scope requires its distro and absolute Linux root;
+/// only host scopes execute Git inside Rust.
+#[napi]
+pub fn open_git_patch_store(
+    workspace_id: String,
+    root: String,
+    distro: Option<String>,
+) -> Result<GitPatchStore> {
+    open_patch_store(workspace_id, root, distro, PatchSource::Local { kind: "revision".into() })
+}
+
+/// Open an authenticated-transport patch scope. Source metadata contains no
+/// credentials; beginTransport fingerprints supplied bytes, never mutable refs.
+#[napi]
+pub fn open_remote_git_patch_store(
+    workspace_id: String,
+    root: String,
+    source: RemotePatchSource,
+    distro: Option<String>,
+) -> Result<GitPatchStore> {
+    open_patch_store(workspace_id, root, distro, PatchSource::Remote(source))
+}
+
+fn open_patch_store(
+    workspace_id: String,
+    root: String,
+    distro: Option<String>,
+    source: PatchSource,
+) -> Result<GitPatchStore> {
+    let scope = PatchScope {
+        workspace_id,
+        root: PathBuf::from(root),
+        execution: distro.map_or(PatchExecution::Host, |distro| PatchExecution::Wsl { distro }),
+        source,
+    };
+    PatchStore::open(scope, 64, 64 << 20)
+        .map(|store| GitPatchStore { store: Arc::new(store) })
+        .map_err(store_error)
+}
+
+fn store_error(error: PatchStoreError) -> Error {
+    Error::new(Status::InvalidArg, format!("patch store: {error:?}"))
+}
+
+#[napi]
+impl GitPatchStore {
+    /// Fresh Git bytes fingerprint mutable index/disk state before retaining snapshots.
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn working_tree_patch(
+        &self,
+        scope: String,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        headings: Option<bool>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.begin_transport()?.working_tree_patch(scope, path, context, max_lines, headings)
+    }
+
+    /// Capture the generation before external I/O without blocking a worker.
+    #[napi]
+    pub fn begin_transport(&self) -> Result<GitPatchRequest> {
+        let ticket = self.store.begin_transport(self.store.scope()).map_err(store_error)?;
+        let cancellation = ticket.request_cancellation.clone();
+        Ok(GitPatchRequest { store: self.store.clone(), ticket: Some(ticket), cancellation })
+    }
+
+    /// `mode` is `commit` or `show` (no head), or `range` or `comparison`.
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn revision_patch(
+        &self,
+        mode: String,
+        base: String,
+        head: Option<String>,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        options: Option<GitExecOptions>,
+    ) -> AsyncTask<GitPatchRequestTask> {
+        match self.begin_transport().and_then(|mut request| {
+            request.revision_patch(mode, base, head, path, context, max_lines, options)
+        }) {
+            Ok(task) => task,
+            Err(error) => AsyncTask::new(GitPatchRequestTask {
+                cancellation: PatchCancellation::default(),
+                task: crate::task::Blocking::new(move || Err(error)),
+            }),
+        }
+    }
+
+    /// Drop retained snapshots; pending computations cannot publish.
+    #[napi]
+    pub fn refresh(&self) -> Result<()> {
+        self.store.refresh(self.store.scope()).map_err(store_error)
+    }
+
+    #[napi]
+    pub fn dispose(&self) -> Result<()> {
+        self.store.dispose(self.store.scope()).map_err(store_error)
+    }
+}
+
+/// A single-use, handle-bound patch request for host execution or external transport.
+#[napi]
+pub struct GitPatchRequest {
+    store: Arc<PatchStore>,
+    ticket: Option<PatchTransport>,
+    cancellation: PatchCancellation,
+}
+
+pub struct GitPatchRequestTask {
+    task: crate::task::Blocking<coc_native_core::git::patch::PatchResult>,
+    cancellation: PatchCancellation,
+}
+
+impl Task for GitPatchRequestTask {
+    type Output = coc_native_core::git::patch::PatchResult;
+    type JsValue = Self::Output;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        self.cancellation.check().map_err(store_error)?;
+        self.task.compute()
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        self.cancellation.check().map_err(store_error)?;
+        Ok(output)
+    }
+}
+
+#[napi]
+impl GitPatchRequest {
+    /// Execute a host patch with cancellation retained after worker submission.
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn revision_patch(
+        &mut self,
+        mode: String,
+        base: String,
+        head: Option<String>,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        options: Option<GitExecOptions>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.submit(move |store, ticket| {
+            store
+                .revision_patch(
+                    ticket,
+                    &mode,
+                    &base,
+                    head.as_deref(),
+                    path.as_deref(),
+                    context,
+                    max_lines,
+                    &resolve_options(options),
+                )
+                .map_err(|error| Error::new(Status::GenericFailure, error.to_string()))
+        })
+    }
+
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn working_tree_patch(
+        &mut self,
+        scope: String,
+        path: Option<String>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        headings: Option<bool>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.submit(move |store, ticket| {
+            store
+                .working_tree_patch(
+                    ticket,
+                    &scope,
+                    path.as_deref(),
+                    context,
+                    max_lines,
+                    headings.unwrap_or(false),
+                )
+                .map_err(|error| Error::new(Status::GenericFailure, error.to_string()))
+        })
+    }
+
+    /// Validate an unsent continuation so external transport can stop revoked I/O.
+    #[napi]
+    pub fn check_active(&self) -> Result<()> {
+        self.cancellation.check().map_err(store_error)?;
+        let ticket = self.ticket.as_ref().ok_or_else(|| store_error(PatchStoreError::Closed))?;
+        self.store.check_ticket(ticket).map_err(store_error)
+    }
+
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn process_working_tree(
+        &mut self,
+        outputs: Vec<String>,
+        max_lines: Option<i64>,
+        headings: Option<bool>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.submit(move |store, ticket| {
+            store
+                .complete_working_tree_transport(
+                    store.scope(),
+                    ticket,
+                    outputs,
+                    max_lines,
+                    headings.unwrap_or(false),
+                )
+                .map_err(store_error)
+        })
+    }
+
+    #[napi(ts_return_type = "Promise<PatchResult>")]
+    pub fn process(
+        &mut self,
+        raw: String,
+        max_lines: Option<i64>,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        self.submit(move |store, ticket| {
+            store.complete_transport(store.scope(), ticket, raw, max_lines).map_err(store_error)
+        })
+    }
+
+    #[napi]
+    pub fn cancel(&mut self) {
+        self.cancellation.cancel();
+        self.ticket = None;
+    }
+}
+
+impl GitPatchRequest {
+    fn submit(
+        &mut self,
+        run: impl FnOnce(&PatchStore, PatchTransport) -> Result<coc_native_core::git::patch::PatchResult>
+            + Send
+            + 'static,
+    ) -> Result<AsyncTask<GitPatchRequestTask>> {
+        let ticket = self.ticket.take().ok_or_else(|| store_error(PatchStoreError::Closed))?;
+        let store = self.store.clone();
+        Ok(AsyncTask::new(GitPatchRequestTask {
+            cancellation: self.cancellation.clone(),
+            task: crate::task::Blocking::new(move || run(&store, ticket)),
+        }))
+    }
 }

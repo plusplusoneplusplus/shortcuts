@@ -112,6 +112,12 @@ describe('execGitAsync on the native path', () => {
         expect(mockedExecFileAsync).not.toHaveBeenCalled();
     });
 
+    it('rejects unsupported host AbortSignals rather than silently ignoring cancellation', async () => {
+        await expect(execGitAsync(['status'], repo, { signal: new AbortController().signal }))
+            .rejects.toThrow('AbortSignal is supported only for WSL Git transport');
+        expect(mockedExecFileAsync).not.toHaveBeenCalled();
+    });
+
     it('ensures the safe.directory entry before running', async () => {
         await execGitAsync(['rev-parse', 'HEAD'], repo);
         expect(mockedEnsureSafeDirectory).toHaveBeenCalledWith(repo);

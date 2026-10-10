@@ -315,6 +315,25 @@ references before editing. Paths are package-relative.
   uses owning-server committed objects, fails before queueing, performs no implicit
   network/branch switch, and removes without force/branch deletion.
   Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
+  Commit, branch-range, working-tree and combined/per-file PR patch routes share
+  `withPatchRequest`; `createLocalPatchRoute` adapts local routes. Request abort or
+  unfinished response close cancels only that read; normal GET-body close does not.
+  Pass per-file display limits into Rust; use `git/git-response.ts` for patch response
+  metadata and status-letter conversion. PR scope opening and supplied-read lifetimes
+  use Forge `diff/remote-patch.ts`; routes own disposal, providers retain their scope.
+  Retire listeners on every outcome and guard response delivery after awaits.
+  Working-tree native-load errors return HTTP 500 with rebuild instructions.
+  `repos/pr-patch.ts` supplies explicit workspace/root, provider host/repository and
+  PR identity; transport and scope use the same provider config, including ADO's
+  effective organization. Capture continuations before I/O and cancel on abandonment.
+  Rootless selections use stateless Rust with pre/post-await signal checks.
+  PR full-context patches use Forge `loadComparisonPatch`; TypeScript owns missing-commit
+  fetch/retry and provider-hunk fallback through the selected clone. Authenticated I/O
+  and shared commit fetches finish independently; abandoned reads cannot publish detail
+  caches or start fallback/retry work. List refreshes map current provider bytes'
+  Rust summaries to diffStats; only the list response cache retains enriched rows.
+  PR snapshot fallback metadata uses Forge `parseFullDiffAsync` for decoded paths
+  and file existence; full-text loading and its cache remain separate.
 
 ## Messaging and Secrets
 

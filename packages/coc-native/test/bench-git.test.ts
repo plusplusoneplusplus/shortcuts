@@ -361,8 +361,8 @@ describe('against a real repository', () => {
         const native = await testCase.native(repo, git);
         expect(native.baseRef).toBe(legacy.baseRef);
         expect(native.commitCount).toBe(legacy.commitCount);
-        const key = (f: { path: string; status: string; additions: number; deletions: number; oldPath?: string }) =>
-            `${f.path}|${f.status}|${f.additions}|${f.deletions}|${f.oldPath ?? ''}`;
+        const key = (f: { path: string; status: string; additions: number; deletions: number; oldPath?: string; originalPath?: string }) =>
+            `${f.path}|${f.status}|${f.additions}|${f.deletions}|${f.originalPath ?? f.oldPath ?? ''}`;
         expect(native.files.map(key).sort()).toEqual(legacy.files.map(key).sort());
         expect(native.files.some((f: { status: string }) => f.status === 'renamed')).toBe(true);
         expect(native.stats.additions).toBeGreaterThan(0);

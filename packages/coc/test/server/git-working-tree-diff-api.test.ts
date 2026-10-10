@@ -2,11 +2,12 @@
  * Tests for:
  * - GET /api/workspaces/:id/git/changes/files/{path}/diff?stage=staged|unstaged
  *
- * Mocks WorkingTreeService to avoid actual git invocations.
+ * Mocks the patch transport boundary to verify HTTP contracts.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
 import * as http from 'http';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
@@ -14,23 +15,23 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 
 // ============================================================================
-// Mock WorkingTreeService
+// Mock patch transport and WorkingTreeService
 // ============================================================================
 
-const mockGetFileDiff = vi.fn();
+const mockLoadPatch = vi.fn();
 const mockGetAllChanges = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
+        loadWorkingTreePatch: (...args: unknown[]) => mockLoadPatch(...args),
         WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: mockGetAllChanges,
             stageFile: vi.fn().mockResolvedValue({ success: true }),
             unstageFile: vi.fn().mockResolvedValue({ success: true }),
             discardChanges: vi.fn().mockResolvedValue({ success: true }),
             deleteUntrackedFile: vi.fn().mockResolvedValue({ success: true }),
-            getFileDiff: mockGetFileDiff,
         }); }),
     };
 });
@@ -127,12 +128,12 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
     });
 
     beforeEach(() => {
-        mockGetFileDiff.mockReset();
+        mockLoadPatch.mockReset();
         mockGetAllChanges.mockReset();
     });
 
     it('returns staged diff when stage=staged', async () => {
-        mockGetFileDiff.mockResolvedValue(STAGED_DIFF);
+        mockLoadPatch.mockResolvedValue({ content: { raw: STAGED_DIFF } });
 
         const filePath = encodeURIComponent('src/foo.ts');
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff?stage=staged`);
@@ -141,11 +142,11 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         const data = res.json();
         expect(data.diff).toBe(STAGED_DIFF);
         expect(data.path).toBe('src/foo.ts');
-        expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'src/foo.ts', true);
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'staged', 'src/foo.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
     it('returns unstaged diff when stage=unstaged', async () => {
-        mockGetFileDiff.mockResolvedValue(UNSTAGED_DIFF);
+        mockLoadPatch.mockResolvedValue({ content: { raw: UNSTAGED_DIFF } });
 
         const filePath = encodeURIComponent('src/foo.ts');
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff?stage=unstaged`);
@@ -153,21 +154,21 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         expect(res.status).toBe(200);
         const data = res.json();
         expect(data.diff).toBe(UNSTAGED_DIFF);
-        expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'src/foo.ts', false);
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'unstaged', 'src/foo.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
-    it('passes staged=false when stage param is absent', async () => {
-        mockGetFileDiff.mockResolvedValue('');
+    it('uses unstaged patches when stage param is absent', async () => {
+        mockLoadPatch.mockResolvedValue({ content: { raw: '' } });
 
         const filePath = encodeURIComponent('src/bar.ts');
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff`);
 
         expect(res.status).toBe(200);
-        expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'src/bar.ts', false);
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'unstaged', 'src/bar.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
     it('returns empty diff when service returns empty string', async () => {
-        mockGetFileDiff.mockResolvedValue('');
+        mockLoadPatch.mockResolvedValue({ content: { raw: '' } });
 
         const filePath = encodeURIComponent('src/new.ts');
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff?stage=staged`);
@@ -177,6 +178,13 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         expect(data.diff).toBe('');
     });
 
+    it('surfaces missing native capability instead of an empty patch', async () => {
+        mockLoadPatch.mockRejectedValue(new NativeAddonLoadError('Rebuild: npm run build:native -w packages/coc-native'));
+        const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/foo/diff`);
+        expect(res.status).toBe(500);
+        expect(res.json().error).toContain('npm run build:native');
+    });
+
     it('returns 404 for unknown workspace', async () => {
         const filePath = encodeURIComponent('src/foo.ts');
         const res = await request(`${base()}/api/workspaces/${UNKNOWN_WORKSPACE}/git/changes/files/${filePath}/diff?stage=staged`);
@@ -184,7 +192,7 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
     });
 
     it('handles nested file paths', async () => {
-        mockGetFileDiff.mockResolvedValue(STAGED_DIFF);
+        mockLoadPatch.mockResolvedValue({ content: { raw: STAGED_DIFF } });
 
         const filePath = encodeURIComponent('packages/core/src/utils/helper.ts');
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff?stage=staged`);
@@ -192,11 +200,11 @@ describe('GET /api/workspaces/:id/git/changes/files/*/diff', () => {
         expect(res.status).toBe(200);
         const data = res.json();
         expect(data.path).toBe('packages/core/src/utils/helper.ts');
-        expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'packages/core/src/utils/helper.ts', true);
+        expect(mockLoadPatch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'staged', 'packages/core/src/utils/helper.ts', { contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal) });
     });
 
-    it('returns empty diff gracefully when getFileDiff throws', async () => {
-        mockGetFileDiff.mockRejectedValue(new Error('git error'));
+    it('returns empty diff gracefully for ordinary Git errors', async () => {
+        mockLoadPatch.mockRejectedValue(new Error('git error'));
 
         const filePath = encodeURIComponent('src/broken.ts');
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes/files/${filePath}/diff?stage=staged`);

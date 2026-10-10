@@ -12,6 +12,8 @@ import type { Route } from '../types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
+import type { ParsedUrlQuery } from 'querystring';
+import { createRoute, type CreateRouteOptions, type RouteHandlerContext } from './route-utils';
 
 export interface ApiRouteContext {
     routes: Route[];
@@ -44,21 +46,39 @@ export const GIT_MAX_BUFFER = 50 * 1024 * 1024;
 /** Maximum number of diff lines returned before truncation kicks in. */
 export const DIFF_LINE_LIMIT = 100_000;
 
-/**
- * If the diff exceeds DIFF_LINE_LIMIT lines and `full` is not true,
- * returns a truncated version with metadata. Otherwise returns the full diff.
- */
-export function truncateDiffIfNeeded(
-    diff: string,
-    full: boolean,
-): { diff: string; truncated?: boolean; totalLines?: number } {
-    const lines = diff.split('\n');
-    if (!full && lines.length > DIFF_LINE_LIMIT) {
-        return {
-            diff: lines.slice(0, DIFF_LINE_LIMIT).join('\n'),
-            truncated: true,
-            totalLines: lines.length,
-        };
+export async function withPatchRequest<TResult>(
+    req: RouteHandlerContext['req'],
+    res: RouteHandlerContext['res'],
+    handler: (signal: AbortSignal) => Promise<TResult> | TResult,
+): Promise<TResult | undefined> {
+    const controller = new AbortController();
+    const abort = () => controller.abort(new Error('Patch HTTP request abandoned'));
+    const close = () => { if (!res.writableFinished) abort(); };
+    // IncomingMessage.close also fires for a normally completed GET body.
+    req.on('aborted', abort);
+    res.on('close', close);
+    try {
+        if (req.aborted || res.destroyed) abort();
+        controller.signal.throwIfAborted();
+        const result = await handler(controller.signal);
+        controller.signal.throwIfAborted();
+        return result;
+    } catch (error) {
+        if (!controller.signal.aborted) throw error;
+        // A disconnected response has no recipient for a result or error.
+    } finally {
+        req.off('aborted', abort);
+        res.off('close', close);
     }
-    return { diff };
+}
+
+export function createLocalPatchRoute<TQuery = ParsedUrlQuery, TResult = unknown>(
+    opts: Omit<CreateRouteOptions<TQuery, TResult>, 'handler'> & {
+        handler: (ctx: RouteHandlerContext<TQuery> & { signal: AbortSignal }) => Promise<TResult | void> | TResult | void;
+    },
+): Route {
+    return createRoute({
+        ...opts,
+        handler: ctx => withPatchRequest(ctx.req, ctx.res, signal => opts.handler({ ...ctx, signal })),
+    });
 }

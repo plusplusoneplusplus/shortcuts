@@ -12,6 +12,34 @@
  * binary the loader resolves.
  */
 
+/** A single-use, handle-bound patch request for host execution or external transport. */
+export declare class GitPatchRequest {
+  /** Execute a host patch with cancellation retained after worker submission. */
+  revisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
+  workingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
+  /** Validate an unsent continuation so external transport can stop revoked I/O. */
+  checkActive(): void
+  processWorkingTree(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
+  process(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
+  cancel(): void
+}
+
+/**
+ * Scoped Rust-owned patch snapshots keyed by object IDs or supplied bytes.
+ * Work runs on workers; `dispose` rejects later calls.
+ */
+export declare class GitPatchStore {
+  /** Fresh Git bytes fingerprint mutable index/disk state before retaining snapshots. */
+  workingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
+  /** Capture the generation before external I/O without blocking a worker. */
+  beginTransport(): GitPatchRequest
+  /** `mode` is `commit` or `show` (no head), or `range` or `comparison`. */
+  revisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
+  /** Drop retained snapshots; pending computations cannot publish. */
+  refresh(): void
+  dispose(): void
+}
+
 export declare class NativeDatabaseHandle {
   constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
   exec(sql: string): void
@@ -115,6 +143,11 @@ export declare class RepoFiles {
 
 /** Recursively build a complete immutable snapshot for one resolved Notes root. */
 export declare function buildNotesIndex(root: string, options?: NotesIndexBuildOptions | undefined | null): Promise<NotesIndex>
+
+/** Construct a batch of remote patches on a worker; authentication stays in transport. */
+export declare function buildRemoteGitPatch(files: Array<RemotePatchInput>): Promise<string>
+
+export declare function composeGitWorkingTreePatch(outputs: Array<string>, maxLines?: number | undefined | null, headings?: boolean | undefined | null): Promise<PatchResult>
 
 /**
  * Create a notebook, section, or page. `kind` is `notebook`, `section` or
@@ -241,49 +274,18 @@ export interface GitBranchStatus {
 /**
  * Read a commit's diff against its parent.
  *
- * The parent resolution is `gix`, so the two children this used to cost are
- * down to the one `git diff` that still does the real work.
+ * Git renders the shared first-parent/root patch plan on a worker.
  */
 export declare function gitCommitDiff(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<string>
 
 /**
- * One file a commit touched.
- *
- * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
- * they are absent on a status entry and a range file: they are the caller's
- * own values, and the caller attaches them.
- */
-export interface GitCommitFile {
-  path: string
-  /** Source path of a rename or copy; absent otherwise. */
-  originalPath?: string
-  /** A `GitChangeStatus` string union member. */
-  status: string
-  /**
-   * Absent rather than zero when `--numstat` had nothing to say — a binary
-   * file, above all. The UI renders a blank column there rather than a
-   * misleading `0`.
-   */
-  additions?: number
-  deletions?: number
-}
-
-/**
  * Read the files a commit touched, with their line counts and its parent.
  *
- * Three children become one crossing: the parent comes from `gix`, and the
- * two `diff-tree` runs are joined in Rust rather than crossing as text. A root
- * commit has no file list at all — `diff-tree` compares against parents — but
- * still reports the empty tree as its parent.
+ * Three children share one crossing: Git supplies the parent list and the
+ * two NUL-delimited `diff-tree` runs are joined in Rust. Root commits compare
+ * against the empty tree; merges compare against the first parent.
  */
 export declare function gitCommitFiles(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<GitCommitFiles>
-
-/** A commit's file list, and the parent the list was computed against. */
-export interface GitCommitFiles {
-  /** The commit's first parent, or git's empty tree for a root commit. */
-  parentHash: string
-  files: Array<GitCommitFile>
-}
 
 /**
  * The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
@@ -419,6 +421,8 @@ export declare function gitGlobalConfigAdd(key: string, value: string, options?:
  */
 export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOptions | undefined | null): Promise<string[]>
 
+export declare function gitHistory(repoRoot: string, args: Array<string>): Promise<GitLogCommit[]>
+
 /**
  * Read a page of the branch list, in git's own `refname` order.
  *
@@ -492,6 +496,8 @@ export interface GitLogOptions {
   skip: number
   /** Case-insensitive substring the commit message must contain. */
   search?: string
+  /** Include relative dates and ref decoration in CLI history reads. */
+  includeDetails?: boolean
 }
 
 /** One page of history, plus whether asking for the next one is worthwhile. */
@@ -533,16 +539,6 @@ export interface GitRangeBaseRef {
 }
 
 /**
- * Read the files changed between two refs, in git's own order.
- *
- * Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
- * range and joins them, so neither output crosses the boundary as text. The
- * list is not sorted: the caller orders it with `localeCompare`, which is not
- * a byte comparison and is what the range view already shows.
- */
-export declare function gitRangeChangedFiles(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeFile[]>
-
-/**
  * How many commits `headRef` has that `baseRef` does not.
  *
  * `git rev-list --count <base>..<head>` as a `gix` walk. A revision that names
@@ -571,26 +567,6 @@ export declare function gitRangeDefaultBranch(repoRoot: string): Promise<GitRang
 export interface GitRangeDefaultBranch {
   name: string
   fromRemote: boolean
-}
-
-/** Read the added and removed line totals between two refs. */
-export declare function gitRangeDiffStats(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeDiffStats>
-
-/** Added and removed line totals across a range. */
-export interface GitRangeDiffStats {
-  additions: number
-  deletions: number
-}
-
-/** One file in a commit range, minus the `repositoryRoot` the caller owns. */
-export interface GitRangeFile {
-  path: string
-  /** A `GitChangeStatus` string union member. */
-  status: string
-  additions: number
-  deletions: number
-  /** Source path of a rename or copy; absent otherwise. */
-  oldPath?: string
 }
 
 /**
@@ -985,6 +961,18 @@ export interface NotesWriteResult {
 }
 
 /**
+ * Open a patch store. A WSL scope requires its distro and absolute Linux root;
+ * only host scopes execute Git inside Rust.
+ */
+export declare function openGitPatchStore(workspaceId: string, root: string, distro?: string | undefined | null): GitPatchStore
+
+/**
+ * Open an authenticated-transport patch scope. Source metadata contains no
+ * credentials; beginTransport fingerprints supplied bytes, never mutable refs.
+ */
+export declare function openRemoteGitPatchStore(workspaceId: string, root: string, source: RemotePatchSource, distro?: string | undefined | null): GitPatchStore
+
+/**
  * Open the backend for an already-resolved repository root. Indexes older
  * than `ttlMs` (default 10 s) are re-walked in the background on next use.
  */
@@ -1000,21 +988,10 @@ export declare function openRepoFiles(root: string, ttlMs?: number | undefined |
 export declare function parseGitBranchStatus(output: string): Promise<GitRepositoryStatus>
 
 /**
- * Parse `git diff --shortstat` text that was produced somewhere else.
- *
- * The WSL twin of {@link git_range_diff_stats}.
+ * Parse supplied host, WSL or remote unified-patch text on a libuv worker.
+ * No Git execution, repository lookup, authentication or cached state is involved.
  */
-export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
-
-/**
- * Join `--numstat` and `--name-status` text that was produced somewhere else.
- *
- * The WSL twin of {@link git_range_changed_files}, for the same reason
- * {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
- * runs git through `wsl.exe` in TypeScript, and the parser must still be the
- * single one in the codebase.
- */
-export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: string): Promise<GitRangeFile[]>
+export declare function parseGitPatch(raw: string): Promise<PatchFile[]>
 
 /**
  * Parse porcelain text that was produced somewhere else.
@@ -1025,6 +1002,24 @@ export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: s
  * worker thread because a large repository's status output runs to megabytes.
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
+
+/** Metadata batch for WSL, sharing the host plan. */
+export declare function prepareGitCommitFiles(commit: string): Promise<string[][]>
+
+export declare function prepareGitHistory(options: GitLogOptions, rev?: string | undefined | null, fixedSearch?: boolean | undefined | null): Array<string>
+
+/** Shared host/WSL revision command plan, preserving each comparison mode. */
+export declare function prepareGitRevisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
+
+export declare function prepareGitWorkingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[][]>
+
+/** Join transported NUL metadata and resolve its comparison parent on a worker. */
+export declare function processGitCommitMetadata(nameStatus: string, numstat: string, parents: string): Promise<GitCommitFiles>
+
+export declare function processGitHistory(output: string): Promise<GitLogCommit[]>
+
+/** Shared supplied-patch processing, including summaries and truncation. */
+export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
 
 /** A file match with the complete native ordering tuple. */
 export interface RankedFileMatch {
@@ -1163,6 +1158,85 @@ export interface ContentSearchResult {
    * for being larger than `max_file_size_bytes`.
    */
   truncated: boolean
+}
+
+/**
+ * One file a commit touched.
+ *
+ * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
+ * they are absent everywhere in this capability: they are the caller's own
+ * values, and the caller attaches them.
+ */
+export interface GitCommitFile {
+  path: string
+  /** Source path of a rename or copy; `None` for everything else. */
+  originalPath?: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'
+  /**
+   * Binary files and missing numstat rows have absent counts, not zero.
+   * JavaScript omits these fields so the UI renders a blank column.
+   */
+  additions?: number
+  deletions?: number
+}
+
+/** A commit's file list, and the parent the list was computed against. */
+export interface GitCommitFiles {
+  /** The commit's first parent, or git's empty tree for a root commit. */
+  parentHash: string
+  files: Array<GitCommitFile>
+}
+
+export interface PatchContent {
+  raw: string
+  truncated: boolean
+  totalLines: number
+}
+
+export interface PatchFile {
+  path: string
+  originalPath?: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'
+  additions: number
+  deletions: number
+  isBinary: boolean
+  raw: string
+  totalLines: number
+}
+
+export interface PatchResult {
+  files: Array<PatchFile>
+  content: PatchContent
+  summary: PatchSummary
+}
+
+export interface PatchSummary {
+  filesChanged: number
+  additions: number
+  deletions: number
+}
+
+export interface RemotePatchInput {
+  path: string
+  originalPath?: string
+  before: string
+  after: string
+  beforeExists: boolean
+  afterExists: boolean
+  beforeMode?: string
+  afterMode?: string
+  isBinary?: boolean
+}
+
+export interface RemotePatchSource {
+  provider: string
+  host: string
+  /** Provider-qualified organization/project/repository identity. */
+  repository: string
+  /** Pull request or supplied snapshot source identity, without credentials. */
+  sourceId: string
+  iteration?: string
+  baseIteration?: string
 }
 
 /** File content as the blob route returns it. */

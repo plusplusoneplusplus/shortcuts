@@ -34,6 +34,17 @@ pub enum ChangeStatus {
     Conflict,
 }
 
+#[cfg(feature = "napi")]
+impl napi::bindgen_prelude::ToNapiValue for ChangeStatus {
+    unsafe fn to_napi_value(
+        env: napi::sys::napi_env,
+        value: Self,
+    ) -> napi::Result<napi::sys::napi_value> {
+        // Delegate allocation and encoding to N-API's string conversion.
+        unsafe { <&str as napi::bindgen_prelude::ToNapiValue>::to_napi_value(env, value.as_str()) }
+    }
+}
+
 impl ChangeStatus {
     /// The `GitChangeStatus` string union member this maps to in TypeScript.
     pub fn as_str(self) -> &'static str {

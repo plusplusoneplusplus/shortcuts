@@ -53,8 +53,8 @@ import { authorMatchesPrTeamRosterEntry, filterPullRequestsByPrTeamRoster, getPr
 import { sortPullRequestsByCreatedDesc } from '../spa/client/react/features/pull-requests/pr-utils';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
-import { readProvidersConfig } from '../providers/providers-config';
-import { computeSummary, execGitAsync, parseFullDiff, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { readProvidersConfig, type ProvidersFileConfig } from '../providers/providers-config';
+import { execGitAsync, loadComparisonPatch, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestAutoMerge, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
@@ -68,6 +68,8 @@ import {
     type PullRequestStorageScope,
 } from './pr-origin-scope';
 import type { RepoInfo } from './types';
+import { loadPullRequestPatch } from './pr-patch';
+import { withPatchRequest } from '../routes/api-shared';
 import {
     loadPullRequestFileContent,
     PullRequestFileContentError,
@@ -77,34 +79,6 @@ import {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Extract the diff text for a single file from a combined unified diff.
- * Returns the raw diff section (from `diff --git` to the next `diff --git` or EOF).
- */
-function extractFileDiffFromCombined(combinedDiff: string, filePath: string): string | null {
-    const lines = combinedDiff.split('\n');
-    let capturing = false;
-    const result: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.startsWith('diff --git ')) {
-            if (capturing) break;
-            const body = line.slice('diff --git '.length);
-            const bIdx = body.lastIndexOf(' b/');
-            const path = bIdx !== -1 ? body.slice(bIdx + 3) : '';
-            if (path === filePath) {
-                capturing = true;
-                result.push(line);
-            }
-        } else if (capturing) {
-            result.push(line);
-        }
-    }
-
-    return result.length > 0 ? result.join('\n') : null;
-}
 
 /** Detect whether an error is an authentication/authorization failure. */
 function isAuthError(err: unknown): boolean {
@@ -349,17 +323,6 @@ interface PrCoworkerCandidateCacheEntry {
 
 const prCoworkerCandidateCache = new Map<string, PrCoworkerCandidateCacheEntry>();
 
-interface PullRequestDiffStats {
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-}
-
-// Diff stats are derived from provider diffs and cached in memory by
-// originId|prId|headSha only. They are never persisted because diffs can contain
-// sensitive source content and can be refetched/recomputed.
-const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
-
 function makePrCacheKey(cacheScopeId: string, status: string, scope: string): string {
     return `${cacheScopeId}|${status}|${scope}`;
 }
@@ -407,7 +370,15 @@ async function resolvePullRequestsService(
         throw new PullRequestRouteError(404, `Repo ${repoId} not found`);
     }
 
-    const cfg = await readProvidersConfig(dataDir);
+    return createPullRequestsServiceForRepo(dataDir, repo);
+}
+
+async function createPullRequestsServiceForRepo(
+    dataDir: string,
+    repo: RepoInfo,
+    cfg?: ProvidersFileConfig,
+): Promise<IPullRequestsService> {
+    cfg ??= await readProvidersConfig(dataDir);
     const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
     if (!prSvc || isNoAdoCredentials(prSvc)) {
         if (isNoAdoCredentials(prSvc)) {
@@ -424,13 +395,18 @@ async function refreshPullRequestListCache(
     dataDir: string,
     svc: RepoTreeService,
     repoId: string,
+    workspaceId: string,
     cacheScopeId: string,
     status: string,
     scope: 'mine' | 'all',
 ): Promise<PrCacheEntry> {
-    const prSvc = await resolvePullRequestsService(dataDir, svc, repoId);
+    const repo = await svc.resolveRepo(repoId);
+    if (!repo) throw new PullRequestRouteError(404, `Repo ${repoId} not found`);
+    const cfg = await readProvidersConfig(dataDir);
+    const prSvc = await createPullRequestsServiceForRepo(dataDir, repo, cfg);
     let prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
-    prs = await enrichPullRequestsWithDiffStats(cacheScopeId, repoId, prs, prSvc);
+    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc,
+        (prId, fetchDiff) => loadPullRequestPatch(repo, workspaceId, prId, cfg, fetchDiff));
     const fetchedAt = Date.now();
     const entry = { data: prs, fetchedAt, expiresAt: fetchedAt + PR_LIST_TTL_MS };
     prListCache.set(makePrCacheKey(cacheScopeId, status, scope), entry);
@@ -531,11 +507,11 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
     const svc = options.service ?? new RepoTreeService(options.dataDir);
     const repo = await svc.resolveRepo(options.repoId);
     const prStorageScope = await resolvePrStorageScopeForRoute(svc, options.store, options.repoId, options.workspaceId, repo);
-    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, prStorageScope.storageOriginId, 'open', 'mine');
+    await refreshPullRequestListCache(options.dataDir, svc, options.repoId, options.workspaceId, prStorageScope.storageOriginId, 'open', 'mine');
     listRecentOpenedPullRequests(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     listPullRequestCoworkerRoster(options.dataDir, options.workspaceId, options.repoId, prStorageScope);
     if (options.autoClassifyTeamEnabled === true && options.bridge && options.store) {
-        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, prStorageScope.storageOriginId, 'open', 'all');
+        const allOpen = await refreshPullRequestListCache(options.dataDir, svc, options.repoId, options.workspaceId, prStorageScope.storageOriginId, 'open', 'all');
         await triggerTeamAutoClassification({
             dataDir: options.dataDir,
             store: options.store,
@@ -620,7 +596,6 @@ export async function fetchOriginPullRequestChecksHeadless(
 /** Clear all cached PR list entries. Exported for testing. */
 export function clearPrListCache(): void {
     prListCache.clear();
-    prDiffStatsCache.clear();
     prCoworkerCandidateCache.clear();
     teamScopeCache.clear();
 }
@@ -751,76 +726,27 @@ function getPullRequestProviderId(pr: any): number | string | undefined {
     return pr?.number ?? pr?.id;
 }
 
-function normalizePullRequestHeadSha(pr: any): string | undefined {
-    const headSha = typeof pr?.headSha === 'string' ? pr.headSha.trim() : '';
-    return headSha || undefined;
-}
-
-function makePrDiffStatsCacheKey(cacheScopeId: string, pr: any): string | undefined {
-    const headSha = normalizePullRequestHeadSha(pr);
-    if (!headSha) return undefined;
-
-    const prId = getPullRequestProviderId(pr);
-    if (prId == null) return undefined;
-
-    return `${cacheScopeId}|${String(prId)}|${headSha}`;
-}
-
-function clearPrDiffStatsCacheEntries(cacheScopeId: string, prId: string): void {
-    const prefix = `${cacheScopeId}|${prId}|`;
-    for (const key of Array.from(prDiffStatsCache.keys())) {
-        if (key.startsWith(prefix)) {
-            prDiffStatsCache.delete(key);
-        }
-    }
-}
-
-function buildPullRequestDiffStats(diff: string): PullRequestDiffStats {
-    const { files } = parseFullDiff(diff);
-    const summary = computeSummary(files);
-    return {
-        additions: summary.additions,
-        deletions: summary.deletions,
-        changedFiles: summary.filesChanged,
-    };
-}
-
-async function getPullRequestDiffStats(
-    cacheScopeId: string,
-    repoId: string,
-    pr: any,
-    prSvc: IPullRequestsService,
-): Promise<PullRequestDiffStats | undefined> {
-    if (typeof prSvc.getDiff !== 'function') return undefined;
-
-    const prId = getPullRequestProviderId(pr);
-    if (prId == null) return undefined;
-
-    const cacheKey = makePrDiffStatsCacheKey(cacheScopeId, pr);
-    const cached = cacheKey ? prDiffStatsCache.get(cacheKey) : undefined;
-    if (cached) return cached;
-
-    const diff = await prSvc.getDiff(repoId, prId);
-    const stats = buildPullRequestDiffStats(diff);
-    if (cacheKey) {
-        prDiffStatsCache.set(cacheKey, stats);
-    }
-    return stats;
-}
-
 async function enrichPullRequestsWithDiffStats(
-    cacheScopeId: string,
     repoId: string,
     prs: any[],
     prSvc: IPullRequestsService,
+    loadPatch: (prId: number | string, fetchDiff: () => Promise<string>) => ReturnType<typeof loadPullRequestPatch>,
 ): Promise<any[]> {
-    if (typeof prSvc.getDiff !== 'function') return prs;
+    const getDiff = prSvc.getDiff?.bind(prSvc);
+    if (!getDiff) return prs;
 
     return Promise.all(prs.map(async pr => {
         try {
-            const diffStats = await getPullRequestDiffStats(cacheScopeId, repoId, pr, prSvc);
-            return diffStats ? { ...pr, diffStats } : pr;
+            const prId = getPullRequestProviderId(pr);
+            if (prId == null) return pr;
+            const { summary } = await loadPatch(prId, () => getDiff(repoId, prId));
+            return { ...pr, diffStats: {
+                additions: summary.additions,
+                deletions: summary.deletions,
+                changedFiles: summary.filesChanged,
+            } };
         } catch (err) {
+            rethrowIfAddonUnavailable(err);
             const prId = getPullRequestProviderId(pr);
             console.warn(
                 `[pr-list] failed to load diff stats for repo=${repoId} pr=${prId ?? '(unknown)'}: ${err instanceof Error ? err.message : String(err)}`,
@@ -879,39 +805,6 @@ export function clearPrDetailCache(): void {
     prCommitsCache.clear();
     prReviewersCache.clear();
     prChecksCache.clear();
-}
-
-// ============================================================================
-// PR diff cache (in-memory, no TTL)
-// ============================================================================
-
-// Provider combined diffs are fetched once per origin/PR/headSha and shared by
-// the full diff and per-file diff endpoints. When the current PR head SHA cannot be
-// resolved, the cache safely falls back to originId|prId and force-refresh
-// invalidation still removes that fallback. Diff contents are never persisted.
-const prDiffCache = new Map<string, string>();
-
-function makePrDiffCacheKey(cacheScopeId: string, prId: string, headSha?: string): string {
-    const baseKey = `${cacheScopeId}|${prId}`;
-    const normalizedHeadSha = headSha?.trim();
-    return normalizedHeadSha ? `${baseKey}|${normalizedHeadSha}` : baseKey;
-}
-
-/** Clear all cached PR diff entries. Exported for testing. */
-export function clearPrDiffCache(): void {
-    prDiffCache.clear();
-}
-
-/** Clear the cached diff for one specific PR (used by force-refresh). */
-function clearPrDiffCacheEntry(cacheScopeId: string, prId: string): void {
-    const fallbackKey = makePrDiffCacheKey(cacheScopeId, prId);
-    prDiffCache.delete(fallbackKey);
-    const headShaKeyPrefix = `${fallbackKey}|`;
-    for (const key of Array.from(prDiffCache.keys())) {
-        if (key.startsWith(headShaKeyPrefix)) {
-            prDiffCache.delete(key);
-        }
-    }
 }
 
 // ============================================================================
@@ -1180,7 +1073,9 @@ export async function getFullContextFileDiff(
     prId: string,
     prData: ProviderPullRequest,
     filePath: string,
+    signal?: AbortSignal,
 ): Promise<FullContextDiffResult> {
+    signal?.throwIfAborted();
     const baseSha = prData.baseSha;
     const headSha = prData.headSha;
     if (!baseSha || !headSha) {
@@ -1188,9 +1083,11 @@ export async function getFullContextFileDiff(
     }
 
     try {
-        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999, signal });
+        signal?.throwIfAborted();
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
+        signal?.throwIfAborted();
         rethrowIfAddonUnavailable(err);
         if (!isMissingCommitError(err)) {
             console.warn(`[pr-full-context] git diff failed before fetch: ${err instanceof Error ? err.message : String(err)}`);
@@ -1199,14 +1096,17 @@ export async function getFullContextFileDiff(
     }
 
     const fetched = await fetchMissingPrCommitsDeduped(localPath, remote, prId, prData);
+    signal?.throwIfAborted();
     if (!fetched) {
         return { diff: null, unavailableReason: 'git-fetch-failed' };
     }
 
     try {
-        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999, signal });
+        signal?.throwIfAborted();
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
+        signal?.throwIfAborted();
         rethrowIfAddonUnavailable(err);
         console.warn(`[pr-full-context] git diff failed after fetch: ${err instanceof Error ? err.message : String(err)}`);
         return { diff: null, unavailableReason: 'git-diff-failed' };
@@ -1226,46 +1126,25 @@ function warmFullContextCommits(repo: RepoInfo | undefined, prId: string, prData
     });
 }
 
-/**
- * Return the combined diff for a PR, fetching it once and caching the result.
- * Both the full-diff and per-file-diff endpoints call this so only one
- * provider round-trip occurs per PR per cache lifetime.
- */
-async function getCachedCombinedDiff(
-    cacheScopeId: string,
-    repoId: string,
-    prId: string,
-    headSha: string | undefined,
-    getDiff: (repoId: string, prId: string) => Promise<string>,
-): Promise<string> {
-    const key = makePrDiffCacheKey(cacheScopeId, prId, headSha);
-    const hit = prDiffCache.get(key);
-    if (hit !== undefined) {
-        console.debug(`[pr-diff-cache] hit key=${key}`);
-        return hit;
-    }
-    console.debug(`[pr-diff-cache] miss key=${key}`);
-    const diff = await getDiff(repoId, prId);
-    prDiffCache.set(key, diff);
-    console.debug(`[pr-diff-cache] set key=${key}`);
-    return diff;
-}
-
-async function resolvePullRequestDetailForDiffCache(
+async function resolvePullRequestDetailForFullContext(
     cacheScopeId: string,
     repoId: string,
     prId: string,
     getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
+    signal: AbortSignal,
 ): Promise<ProviderPullRequest | undefined> {
     try {
+        signal.throwIfAborted();
         const pr = await getPullRequest(repoId, prId);
+        signal.throwIfAborted();
         prDetailCache.set(makePrDetailCacheKey(cacheScopeId, prId), {
             data: pr,
             expiresAt: Date.now() + PR_DETAIL_TTL_MS,
         });
         return pr;
     } catch (err) {
-        console.warn(`[pr-diff-cache] failed to resolve PR head SHA for repo=${repoId} pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
+        signal.throwIfAborted();
+        console.warn(`[pr-full-context] failed to resolve PR detail for repo=${repoId} pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
     }
 }
@@ -1374,7 +1253,7 @@ export function registerPrRoutes(
         if (cached && cached.expiresAt > Date.now()) {
             entry = cached;
         } else {
-            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, cacheScopeId, status, providerScope);
+            entry = await refreshPullRequestListCache(dataDir, svc, options.repoId, options.workspaceId, cacheScopeId, status, providerScope);
         }
 
         let pool = entry.data;
@@ -1434,8 +1313,6 @@ export function registerPrRoutes(
 
         if (force) {
             prDetailCache.delete(cacheKey);
-            clearPrDiffCacheEntry(options.cacheScopeId, options.prId);
-            clearPrDiffStatsCacheEntries(options.cacheScopeId, options.prId);
             clearPrSubCacheEntries(options.cacheScopeId, options.prId);
             console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
         }
@@ -1464,18 +1341,8 @@ export function registerPrRoutes(
         sendJson(res, pr);
     }
 
-    async function createPullRequestsServiceForRepo(repo: RepoInfo): Promise<IPullRequestsService> {
-        const cfg = await readProvidersConfig(dataDir);
-        const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg, { dataDir });
-        if (!prSvc || isNoAdoCredentials(prSvc)) {
-            if (isNoAdoCredentials(prSvc)) {
-                throw new PullRequestRouteError(401, 'no-ado-credentials', { error: 'no-ado-credentials' });
-            }
-            const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-            throw new PullRequestRouteError(401, 'unconfigured', { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl });
-        }
-        return prSvc;
-    }
+    const serviceForRepo = (repo: RepoInfo, cfg?: ProvidersFileConfig) =>
+        createPullRequestsServiceForRepo(dataDir, repo, cfg);
 
     function sendProviderBackedPrRouteError(res: Parameters<Route['handler']>[1], err: unknown): void {
         if (sendPullRequestRouteError(res, err)) return;
@@ -1499,7 +1366,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         const threads = await prSvc.getThreads(options.repoId, options.prId);
         const result = { threads };
         prThreadsCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_THREADS_TTL_MS });
@@ -1522,7 +1389,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         const reviewers = await prSvc.getReviewers(options.repoId, options.prId);
         const result = { reviewers };
         prReviewersCache.set(cacheKey, { data: result, expiresAt: Date.now() + PR_REVIEWERS_TTL_MS });
@@ -1541,7 +1408,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         if (typeof prSvc.getCommits !== 'function') {
             return sendJson(res, { commits: [] });
         }
@@ -1570,7 +1437,7 @@ export function registerPrRoutes(
             return sendJson(res, cached.data);
         }
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         if (typeof prSvc.getChecks !== 'function') {
             return sendJson(res, { checks: [] });
         }
@@ -1582,32 +1449,37 @@ export function registerPrRoutes(
         sendJson(res, result);
     }
 
-    async function sendPullRequestFileDiff(
+    async function loadPullRequestFileDiff(
         req: Parameters<Route['handler']>[0],
-        res: Parameters<Route['handler']>[1],
-        options: { repoId: string; prId: string; filePath: string; repo: RepoInfo; cacheScopeId: string },
-    ): Promise<void> {
+        options: { workspaceId: string; repoId: string; prId: string; filePath: string; repo: RepoInfo; cacheScopeId: string },
+        signal: AbortSignal,
+    ) {
         const query = url.parse(req.url ?? '', true).query;
         const fullContext = query.fullContext === 'true';
 
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
-        if (typeof prSvc.getDiff !== 'function') {
-            return sendJson(res, { diff: '' });
+        const cfg = await readProvidersConfig(dataDir);
+        signal.throwIfAborted();
+        const prSvc = await serviceForRepo(options.repo, cfg);
+        signal.throwIfAborted();
+        const getDiff = prSvc.getDiff?.bind(prSvc);
+        if (!getDiff) {
+            return { diff: '' };
         }
+        const loadFilePatch = async () => {
+            const patch = await loadPullRequestPatch(options.repo, options.workspaceId, options.prId, cfg,
+                () => getDiff(options.repoId, options.prId), signal);
+            return patch.files.find(file => file.path === options.filePath)?.raw ?? '';
+        };
 
-        const prData = await resolvePullRequestDetailForDiffCache(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            prSvc.getPullRequest.bind(prSvc),
-        );
-
-        // Full context = local git is the source of truth. When the repo has a
-        // local clone and we know the PR's SHAs, produce the diff from local git
-        // first and return without ever fetching the whole-PR combined diff from
-        // the provider. The combined diff is computed lazily only for the hunk
-        // view or the full-context fallback below.
+        // Full context uses local Git first; supplied hunks are fetched only for fallback.
         if (fullContext) {
+            const prData = await resolvePullRequestDetailForFullContext(
+                options.cacheScopeId,
+                options.repoId,
+                options.prId,
+                prSvc.getPullRequest.bind(prSvc),
+                signal,
+            );
             let unavailableReason: FullContextUnavailableReason;
             if (!prData) {
                 unavailableReason = 'pr-detail-unavailable';
@@ -1618,9 +1490,10 @@ export function registerPrRoutes(
                     options.prId,
                     prData,
                     options.filePath,
+                    signal,
                 );
                 if (fullCtxDiff.diff) {
-                    return sendJson(res, { diff: fullCtxDiff.diff, fullContextUnavailable: false });
+                    return { diff: fullCtxDiff.diff, fullContextUnavailable: false };
                 }
                 unavailableReason = fullCtxDiff.unavailableReason ?? 'git-diff-failed';
             } else {
@@ -1629,55 +1502,28 @@ export function registerPrRoutes(
 
             // Fallback: no local clone, no PR detail, or local git produced
             // nothing — serve the degraded hunk diff plus the unavailable reason.
-            const fallbackDiff = extractFileDiffFromCombined(
-                await getCachedCombinedDiff(
-                    options.cacheScopeId,
-                    options.repoId,
-                    options.prId,
-                    normalizePullRequestHeadSha(prData),
-                    prSvc.getDiff.bind(prSvc),
-                ),
-                options.filePath,
-            );
-            return sendJson(res, { diff: fallbackDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
+            return { diff: await loadFilePatch(), fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason };
         }
 
-        const combinedDiff = await getCachedCombinedDiff(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            normalizePullRequestHeadSha(prData),
-            prSvc.getDiff.bind(prSvc),
-        );
-        sendJson(res, { diff: extractFileDiffFromCombined(combinedDiff, options.filePath) ?? '' });
+        return { diff: await loadFilePatch() };
     }
 
-    async function sendPullRequestUnifiedDiff(
-        res: Parameters<Route['handler']>[1],
-        options: { repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
-    ): Promise<void> {
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
-        if (typeof prSvc.getDiff !== 'function') {
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('');
-            return;
+    async function loadPullRequestUnifiedDiff(
+        options: { workspaceId: string; repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
+        signal: AbortSignal,
+    ): Promise<string> {
+        const cfg = await readProvidersConfig(dataDir);
+        signal.throwIfAborted();
+        const prSvc = await serviceForRepo(options.repo, cfg);
+        signal.throwIfAborted();
+        const getDiff = prSvc.getDiff?.bind(prSvc);
+        if (!getDiff) {
+            return '';
         }
 
-        const prData = await resolvePullRequestDetailForDiffCache(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            prSvc.getPullRequest.bind(prSvc),
-        );
-        const diff = await getCachedCombinedDiff(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            normalizePullRequestHeadSha(prData),
-            prSvc.getDiff.bind(prSvc),
-        );
-        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end(diff);
+        const { content } = await loadPullRequestPatch(options.repo, options.workspaceId, options.prId, cfg,
+            () => getDiff(options.repoId, options.prId), signal);
+        return content.raw;
     }
 
     async function sendPullRequestFileContent(
@@ -1687,7 +1533,7 @@ export function registerPrRoutes(
         if (!options.repo.localPath) {
             throw new PullRequestFileContentError('content-unavailable', 'The selected clone has no local path');
         }
-        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        const prSvc = await serviceForRepo(options.repo);
         if (typeof prSvc.getDiff !== 'function') {
             throw new PullRequestFileContentError('content-unavailable', 'The pull request provider cannot load file content');
         }
@@ -1806,7 +1652,7 @@ export function registerPrRoutes(
                 const top = parseCandidateTop(query.top);
                 const includeRoster = query.includeRoster === 'true';
                 const normalizedQuery = rawSearch.toLowerCase();
-                const prSvc = await createPullRequestsServiceForRepo(repo);
+                const prSvc = await serviceForRepo(repo);
                 const cached = await searchPullRequestCoworkerCandidateCache(
                     repoId,
                     workspaceId,
@@ -2253,7 +2099,7 @@ export function registerPrRoutes(
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
                 const { repoId, repo } = scopeResult.value;
 
-                const prSvc = await createPullRequestsServiceForRepo(repo);
+                const prSvc = await serviceForRepo(repo);
                 if (typeof prSvc.setAutoMerge !== 'function') {
                     return sendJson(res, { error: 'not-supported' }, 501);
                 }
@@ -2303,49 +2149,60 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/diff\/files\/(.+)$/,
-        handler: async (req, res, match) => {
+        handler: (req, res, match) => withPatchRequest(req, res, async signal => {
             try {
                 const originId = parseOriginId(match![1]);
                 if (!originId) return send400(res, 'originId must be a non-empty string');
                 const prId = decodeURIComponent(match![2]);
                 const filePath = decodeURIComponent(match![3]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                signal.throwIfAborted();
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
-                const { repoId, repo, storageScope } = scopeResult.value;
-                await sendPullRequestFileDiff(req, res, {
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
+                const result = await loadPullRequestFileDiff(req, {
+                    workspaceId,
                     repoId,
                     prId,
                     filePath,
                     repo,
                     cacheScopeId: storageScope.storageOriginId,
-                });
+                }, signal);
+                signal.throwIfAborted();
+                sendJson(res, result);
             } catch (err) {
+                signal.throwIfAborted();
                 sendProviderBackedPrRouteError(res, err);
             }
-        },
+        }),
     });
 
     routes.push({
         method: 'GET',
         pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/diff$/,
-        handler: async (req, res, match) => {
+        handler: (req, res, match) => withPatchRequest(req, res, async signal => {
             try {
                 const originId = parseOriginId(match![1]);
                 if (!originId) return send400(res, 'originId must be a non-empty string');
                 const prId = decodeURIComponent(match![2]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                signal.throwIfAborted();
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
-                const { repoId, repo, storageScope } = scopeResult.value;
-                await sendPullRequestUnifiedDiff(res, {
+                const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
+                const diff = await loadPullRequestUnifiedDiff({
+                    workspaceId,
                     repoId,
                     prId,
                     repo,
                     cacheScopeId: storageScope.storageOriginId,
-                });
+                }, signal);
+                signal.throwIfAborted();
+                res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+                res.end(diff);
             } catch (err) {
+                signal.throwIfAborted();
                 sendProviderBackedPrRouteError(res, err);
             }
-        },
+        }),
     });
 
     // -- Origin-scoped provider PR list/detail ---------------------------------

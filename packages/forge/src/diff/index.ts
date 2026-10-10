@@ -25,16 +25,10 @@ export {
     createPullRequestIterationDiffProvider,
     createPullRequestIterationDiffProviderFromParams,
 } from './pr-diff-provider';
+export type { RemoteDiffContext, RemoteDiffProvider } from './pr-diff-provider';
 
-export {
-    parseFullDiff,
-    splitDiffByFile,
-    makeDiffContent,
-    computeSummary,
-    truncateDiffContent,
-    splitIntoChunks,
-    extractBPath,
-    extractAPath,
-    inferStatusFromDiffChunk,
-    countAdditionsDeletions,
-} from './diff-utils';
+export { parseFullDiffAsync } from './diff-utils';
+export { loadSuppliedPatch, openRemotePatchStore } from './remote-patch';
+
+export { loadRangePatch, loadComparisonPatch, loadCommitShowPatch, loadCommitFiles, loadWorkingTreePatch } from './local-patch';
+export type { LocalPatchOptions } from './local-patch';

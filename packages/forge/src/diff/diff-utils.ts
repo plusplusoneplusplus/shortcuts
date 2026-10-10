@@ -1,167 +1,39 @@
-/**
- * Extracted from git-diff-provider and pr-diff-provider to eliminate
- * duplication of `makeDiffContent`, `computeSummary`, and diff-splitting logic.
- */
+/** Wire conversion for Rust-owned patch processing. */
+import { loadNativeGit, type NativeGitPatchFile } from '@plusplusoneplusplus/coc-native';
+import type { DiffContent, DiffFileEntry, DiffSource, DiffSummary, GetFileDiffOptions, IDiffProvider } from './types';
 
-import type { GitChangeStatus } from '../git/types';
-import type { DiffContent, DiffFileEntry, DiffSummary } from './types';
-
-// ── DiffContent construction ─────────────────────────────────
-
-export function makeDiffContent(raw: string): DiffContent {
-    const totalLines = raw ? raw.split('\n').length : 0;
-    return { raw, truncated: false, totalLines };
+interface ParsedDiff {
+    files: DiffFileEntry[];
+    contentByPath: Map<string, DiffContent>;
 }
 
-// ── Truncation ───────────────────────────────────────────────
-
-/**
- * Returns the original object unchanged when the diff already fits `maxLines`.
- */
-export function truncateDiffContent(content: DiffContent, maxLines: number): DiffContent {
-    if (maxLines <= 0) return { raw: '', truncated: true, totalLines: content.totalLines };
-    const lines = content.raw.split('\n');
-    if (lines.length <= maxLines) return content;
+/** Shared public operations; loaders retain transport and per-file rendering semantics. */
+export function createPatchDiffProvider(
+    source: DiffSource,
+    load: (file?: string, options?: GetFileDiffOptions) => Promise<ParsedDiff & { content: DiffContent; summary: DiffSummary }>,
+): IDiffProvider {
     return {
-        raw: lines.slice(0, maxLines).join('\n'),
-        truncated: true,
-        totalLines: content.totalLines,
+        source,
+        async listFiles() { return (await load()).files; },
+        async getFileDiff(file, options) { return (await load(file, options)).content; },
+        async getFullDiff() { return (await load()).content; },
+        async prefetchAll() { return (await load()).contentByPath; },
+        async getSummary() { return (await load()).summary; },
     };
 }
 
-// ── Summary computation ──────────────────────────────────────
-
-export function computeSummary(files: DiffFileEntry[]): DiffSummary {
-    let additions = 0;
-    let deletions = 0;
-    for (const f of files) {
-        additions += f.additions ?? 0;
-        deletions += f.deletions ?? 0;
-    }
-    return { filesChanged: files.length, additions, deletions };
+/** Worker-backed parsing for asynchronous patch consumers. */
+export async function parseFullDiffAsync(fullDiff: string): Promise<ParsedDiff> {
+    return nativePatchToDiff(await loadNativeGit().parseGitPatch(fullDiff));
 }
 
-// ── Diff chunk parsing ───────────────────────────────────────
-
-/**
- * Split a combined unified diff string on `diff --git` headers.
- * Skips empty chunks.
- */
-export function splitIntoChunks(fullDiff: string): string[] {
-    if (!fullDiff.trim()) return [];
-    return fullDiff.split(/(?=^diff --git )/m).filter(c => c.trim());
-}
-
-/** Extract the `b/` path from a `diff --git a/… b/…` header. */
-export function extractBPath(chunk: string): string | undefined {
-    const match = chunk.match(/^diff --git a\/.+ b\/(.+)$/m);
-    return match?.[1];
-}
-
-/** Extract the `a/` path from a `diff --git a/… b/…` header (for renames). */
-export function extractAPath(chunk: string): string | undefined {
-    const match = chunk.match(/^diff --git a\/(.+?) b\//m);
-    return match?.[1];
-}
-
-/**
- * Infer `GitChangeStatus` from the diff header for a file chunk.
- *
- * Uses heuristics:
- * - `--- /dev/null`  → added
- * - `+++ /dev/null`  → deleted
- * - `rename from …`  → renamed
- * - `copy from …`    → copied
- * - otherwise        → modified
- */
-export function inferStatusFromDiffChunk(chunk: string): GitChangeStatus {
-    if (/^--- \/dev\/null$/m.test(chunk)) return 'added';
-    if (/^\+\+\+ \/dev\/null$/m.test(chunk)) return 'deleted';
-    if (/^rename from /m.test(chunk)) return 'renamed';
-    if (/^copy from /m.test(chunk)) return 'copied';
-    return 'modified';
-}
-
-export function countAdditionsDeletions(chunk: string): { additions: number; deletions: number } {
-    let additions = 0;
-    let deletions = 0;
-    for (const line of chunk.split('\n')) {
-        if (line.startsWith('+') && !line.startsWith('+++')) additions++;
-        else if (line.startsWith('-') && !line.startsWith('---')) deletions++;
-    }
-    return { additions, deletions };
-}
-
-// ── Full diff parsing ────────────────────────────────────────
-
-/**
- * For remote diff providers that receive the entire diff as one string and
- * need it split into per-file data.
- */
-export function parseFullDiff(fullDiff: string): {
-    files: DiffFileEntry[];
-    contentByPath: Map<string, DiffContent>;
-} {
-    const files: DiffFileEntry[] = [];
+/** Native entry-array conversion shared by supplied and local patch consumers. */
+export function nativePatchToDiff(entries: NativeGitPatchFile[]): ParsedDiff {
     const contentByPath = new Map<string, DiffContent>();
-
-    const chunks = splitIntoChunks(fullDiff);
-
-    for (const chunk of chunks) {
-        const bPath = extractBPath(chunk);
-        if (!bPath) continue;
-
-        const status = inferStatusFromDiffChunk(chunk);
-        const { additions, deletions } = countAdditionsDeletions(chunk);
-
-        const entry: DiffFileEntry = {
-            path: bPath,
-            status,
-            additions,
-            deletions,
-        };
-
-        if (status === 'renamed' || status === 'copied') {
-            const aPath = extractAPath(chunk);
-            if (aPath && aPath !== bPath) {
-                entry.originalPath = aPath;
-            }
-        }
-
-        // Detect binary: no hunk lines at all
-        if (additions === 0 && deletions === 0 && !/^@@/m.test(chunk)) {
-            entry.isBinary = true;
-        }
-
-        files.push(entry);
-        contentByPath.set(bPath, makeDiffContent(chunk));
-    }
-
+    const files: DiffFileEntry[] = entries.map(({ raw, totalLines, ...metadata }) => {
+        contentByPath.set(metadata.path, { raw, totalLines, truncated: false });
+        return metadata;
+    });
     files.sort((a, b) => a.path.localeCompare(b.path));
     return { files, contentByPath };
-}
-
-/**
- * Split a combined unified diff into per-file chunks and match against
- * a known file list. Used by git-based providers where the file list
- * is already known from `--name-status`.
- */
-export function splitDiffByFile(
-    fullDiff: string,
-    files: DiffFileEntry[],
-    target: Map<string, DiffContent>,
-): void {
-    const chunks = splitIntoChunks(fullDiff);
-
-    for (const chunk of chunks) {
-        const bPath = extractBPath(chunk);
-        if (!bPath) continue;
-
-        const file = files.find(f => f.path === bPath);
-        if (file) {
-            target.set(file.path, makeDiffContent(chunk));
-        } else {
-            target.set(bPath, makeDiffContent(chunk));
-        }
-    }
 }

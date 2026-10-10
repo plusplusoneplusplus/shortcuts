@@ -1,132 +1,17 @@
 /**
  * Git-based diff providers: commit, range, and working-tree.
  *
- * Each factory function returns an `IDiffProvider` backed by the local git CLI
- * (via `execGitAsync` from `../git/exec`).
+ * All operations use the Rust patch backend through local-patch.
  */
 
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
-import { execGitAsync } from '../git/exec';
-import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
-import type { GitChangeStatus } from '../git/types';
 import type {
     CommitDiffSource,
-    DiffContent,
-    DiffFileEntry,
-    DiffSummary,
-    GetFileDiffOptions,
     IDiffProvider,
     RangeDiffSource,
     WorkingTreeDiffSource,
 } from './types';
-import { makeDiffContent, computeSummary, splitDiffByFile, truncateDiffContent } from './diff-utils';
-
-// ── Shared helpers ───────────────────────────────────────────
-
-const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-
-/**
- * Build the `-U<n>` flag array for `contextLines`, if specified.
- */
-function contextLinesFlag(contextLines: number | undefined): string[] {
-    if (contextLines == null) return [];
-    return [`-U${Math.max(0, Math.floor(contextLines))}`];
-}
-
-function statusCharToGitChangeStatus(char: string): GitChangeStatus {
-    switch (char) {
-        case 'M': return 'modified';
-        case 'A': return 'added';
-        case 'D': return 'deleted';
-        case 'R': return 'renamed';
-        case 'C': return 'copied';
-        case 'U': return 'conflict';
-        default:  return 'modified';
-    }
-}
-
-/**
- * Parse `git diff --numstat` output into additions/deletions per file path.
- */
-function parseNumstat(output: string): Map<string, { additions: number; deletions: number }> {
-    const map = new Map<string, { additions: number; deletions: number }>();
-    for (const line of output.split('\n')) {
-        if (!line.trim()) continue;
-        const parts = line.split('\t');
-        if (parts.length < 3) continue;
-        const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0;
-        const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0;
-        let filePath = parts[2];
-        // Handle renames: {old => new} or old => new
-        if (filePath.includes(' => ')) {
-            const match = filePath.match(/(?:\{[^}]*? => ([^}]+)\}|.* => (.+))/);
-            if (match) filePath = match[1] || match[2];
-        }
-        map.set(filePath, { additions, deletions });
-    }
-    return map;
-}
-
-/**
- * Parse `git diff --name-status` output into file entries.
- */
-function parseNameStatus(output: string): Array<{
-    path: string;
-    originalPath?: string;
-    status: GitChangeStatus;
-}> {
-    const entries: Array<{ path: string; originalPath?: string; status: GitChangeStatus }> = [];
-    for (const line of output.split('\n')) {
-        if (!line.trim()) continue;
-        const parts = line.split('\t');
-        if (parts.length < 2) continue;
-
-        const statusCode = parts[0];
-        const status = statusCharToGitChangeStatus(statusCode.charAt(0));
-
-        if (statusCode.startsWith('R') || statusCode.startsWith('C')) {
-            if (parts.length >= 3) {
-                entries.push({ path: parts[2], originalPath: parts[1], status });
-            }
-        } else {
-            entries.push({ path: parts[1], status });
-        }
-    }
-    return entries;
-}
-
-/**
- * Build `DiffFileEntry[]` from combined name-status + numstat git output.
- */
-async function buildFileList(
-    repoRoot: string,
-    diffArgs: string[],
-): Promise<DiffFileEntry[]> {
-    const [nameStatusOutput, numstatOutput] = await Promise.all([
-        execGitAsync(['diff', '--name-status', '-M', '-C', ...diffArgs], repoRoot),
-        execGitAsync(['diff', '--numstat', ...diffArgs], repoRoot),
-    ]);
-
-    const entries = parseNameStatus(nameStatusOutput);
-    const stats = parseNumstat(numstatOutput);
-
-    const files: DiffFileEntry[] = entries.map(entry => {
-        const fileStat = stats.get(entry.path);
-        const isBinary = fileStat === undefined && stats.size > 0 ? undefined :
-            fileStat?.additions === 0 && fileStat?.deletions === 0 ? true : false;
-        return {
-            path: entry.path,
-            originalPath: entry.originalPath,
-            status: entry.status,
-            additions: fileStat?.additions,
-            deletions: fileStat?.deletions,
-            isBinary: isBinary || undefined,
-        };
-    });
-
-    files.sort((a, b) => a.path.localeCompare(b.path));
-    return files;
-}
+import { loadCommitPatch, loadRangePatch, loadWorkingTreePatch } from './local-patch';
+import { createPatchDiffProvider } from './diff-utils';
 
 // ── Commit diff provider─────────────────────────────────────
 
@@ -143,83 +28,7 @@ export function createCommitDiffProvider(
         commitHash,
     };
 
-    let cachedFiles: DiffFileEntry[] | undefined;
-
-    /**
-     * The commit's first parent, or the empty tree for a root commit.
-     *
-     * `gitValidateRef` resolves `<hash>^` out of the object database instead of
-     * spawning `rev-parse --verify`, and answers `null` for the same two cases
-     * that exited non-zero: a root commit, which has no `^`, and a hash that
-     * names nothing. Neither command peeled a tag and neither does this.
-     *
-     * A repository inside a WSL distro keeps the command, because every other
-     * call in this provider reaches git through `execGitAsync` — which sends
-     * it to `wsl.exe` — and the addon runs git on the host.
-     */
-    async function getParentRef(): Promise<string> {
-        try {
-            if (resolveWorkspaceExecutionContext(repositoryRoot).kind === 'wsl') {
-                const parent = await execGitAsync(
-                    ['rev-parse', '--verify', `${commitHash}^`],
-                    repositoryRoot,
-                );
-                return parent.trim() || EMPTY_TREE_HASH;
-            }
-            const parent = await loadNativeGit().gitValidateRef(repositoryRoot, `${commitHash}^`);
-            return parent || EMPTY_TREE_HASH;
-        } catch {
-            return EMPTY_TREE_HASH;
-        }
-    }
-
-    function diffArgs(parentRef: string): string[] {
-        return [parentRef, commitHash];
-    }
-
-    return {
-        source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            if (cachedFiles) return cachedFiles;
-            const parent = await getParentRef();
-            cachedFiles = await buildFileList(repositoryRoot, diffArgs(parent));
-            return cachedFiles;
-        },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const parent = await getParentRef();
-            const contextFlag = contextLinesFlag(options?.contextLines);
-            const raw = await execGitAsync(
-                ['diff', ...contextFlag, ...diffArgs(parent), '--', filePath],
-                repositoryRoot,
-            );
-            const content = makeDiffContent(raw);
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-        },
-
-        async getFullDiff(): Promise<DiffContent> {
-            const parent = await getParentRef();
-            const raw = await execGitAsync(['diff', ...diffArgs(parent)], repositoryRoot);
-            return makeDiffContent(raw);
-        },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const files = await this.listFiles();
-            const parent = await getParentRef();
-            const map = new Map<string, DiffContent>();
-
-            // Single git diff call, then split by file header
-            const fullRaw = await execGitAsync(['diff', ...diffArgs(parent)], repositoryRoot);
-            splitDiffByFile(fullRaw, files, map);
-            return map;
-        },
-
-        async getSummary(): Promise<DiffSummary> {
-            const files = await this.listFiles();
-            return computeSummary(files);
-        },
-    };
+    return createPatchDiffProvider(source, (file, options) => loadCommitPatch(repositoryRoot, commitHash, file, options));
 }
 
 // ── Range diff provider ──────────────────────────────────────
@@ -240,46 +49,7 @@ export function createRangeDiffProvider(
         headRef,
     };
 
-    const rangeSpec = `${baseRef}...${headRef}`;
-    let cachedFiles: DiffFileEntry[] | undefined;
-
-    return {
-        source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            if (cachedFiles) return cachedFiles;
-            cachedFiles = await buildFileList(repositoryRoot, [rangeSpec]);
-            return cachedFiles;
-        },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const contextFlag = contextLinesFlag(options?.contextLines);
-            const raw = await execGitAsync(
-                ['diff', ...contextFlag, rangeSpec, '--', filePath],
-                repositoryRoot,
-            );
-            const content = makeDiffContent(raw);
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-        },
-
-        async getFullDiff(): Promise<DiffContent> {
-            const raw = await execGitAsync(['diff', rangeSpec], repositoryRoot);
-            return makeDiffContent(raw);
-        },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const files = await this.listFiles();
-            const map = new Map<string, DiffContent>();
-            const fullRaw = await execGitAsync(['diff', rangeSpec], repositoryRoot);
-            splitDiffByFile(fullRaw, files, map);
-            return map;
-        },
-
-        async getSummary(): Promise<DiffSummary> {
-            const files = await this.listFiles();
-            return computeSummary(files);
-        },
-    };
+    return createPatchDiffProvider(source, (file, options) => loadRangePatch(repositoryRoot, baseRef, headRef, file, options));
 }
 
 // ── Working tree diff provider ───────────────────────────────
@@ -294,114 +64,5 @@ export function createWorkingTreeDiffProvider(
         scope,
     };
 
-    let cachedFiles: DiffFileEntry[] | undefined;
-
-    function diffArgsForScope(s: 'staged' | 'unstaged'): string[] {
-        return s === 'staged' ? ['--cached'] : [];
-    }
-
-    async function listFilesForScope(s: 'staged' | 'unstaged'): Promise<DiffFileEntry[]> {
-        return buildFileList(repositoryRoot, diffArgsForScope(s));
-    }
-
-    return {
-        source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            if (cachedFiles) return cachedFiles;
-
-            if (scope === 'all') {
-                const [staged, unstaged] = await Promise.all([
-                    listFilesForScope('staged'),
-                    listFilesForScope('unstaged'),
-                ]);
-                // Merge: unstaged overrides staged for the same path
-                const byPath = new Map<string, DiffFileEntry>();
-                for (const f of staged) byPath.set(f.path, f);
-                for (const f of unstaged) byPath.set(f.path, f);
-                cachedFiles = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
-            } else {
-                cachedFiles = await listFilesForScope(scope);
-            }
-            return cachedFiles;
-        },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const contextFlag = contextLinesFlag(options?.contextLines);
-            if (scope === 'all') {
-                const [staged, unstaged] = await Promise.all([
-                    execGitAsync(['diff', ...contextFlag, '--cached', '--', filePath], repositoryRoot).catch(() => ''),
-                    execGitAsync(['diff', ...contextFlag, '--', filePath], repositoryRoot).catch(() => ''),
-                ]);
-                const parts: string[] = [];
-                if (staged.trim()) parts.push(staged);
-                if (unstaged.trim()) parts.push(unstaged);
-                const content = makeDiffContent(parts.join('\n'));
-                return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-            }
-            const raw = await execGitAsync(
-                ['diff', ...contextFlag, ...diffArgsForScope(scope), '--', filePath],
-                repositoryRoot,
-            );
-            const content = makeDiffContent(raw);
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-        },
-
-        async getFullDiff(): Promise<DiffContent> {
-            if (scope === 'all') {
-                const [staged, unstaged] = await Promise.all([
-                    execGitAsync(['diff', '--cached'], repositoryRoot).catch(() => ''),
-                    execGitAsync(['diff'], repositoryRoot).catch(() => ''),
-                ]);
-                const parts: string[] = [];
-                if (staged.trim()) parts.push(staged);
-                if (unstaged.trim()) parts.push(unstaged);
-                return makeDiffContent(parts.join('\n'));
-            }
-            const raw = await execGitAsync(
-                ['diff', ...diffArgsForScope(scope)],
-                repositoryRoot,
-            );
-            return makeDiffContent(raw);
-        },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const files = await this.listFiles();
-            const map = new Map<string, DiffContent>();
-
-            if (scope === 'all') {
-                const [stagedRaw, unstagedRaw] = await Promise.all([
-                    execGitAsync(['diff', '--cached'], repositoryRoot).catch(() => ''),
-                    execGitAsync(['diff'], repositoryRoot).catch(() => ''),
-                ]);
-                // Split each and merge
-                const stagedMap = new Map<string, DiffContent>();
-                const unstagedMap = new Map<string, DiffContent>();
-                splitDiffByFile(stagedRaw, files, stagedMap);
-                splitDiffByFile(unstagedRaw, files, unstagedMap);
-                for (const f of files) {
-                    const staged = stagedMap.get(f.path);
-                    const unstaged = unstagedMap.get(f.path);
-                    const parts: string[] = [];
-                    if (staged?.raw.trim()) parts.push(staged.raw);
-                    if (unstaged?.raw.trim()) parts.push(unstaged.raw);
-                    if (parts.length > 0) {
-                        map.set(f.path, makeDiffContent(parts.join('\n')));
-                    }
-                }
-            } else {
-                const fullRaw = await execGitAsync(
-                    ['diff', ...diffArgsForScope(scope)],
-                    repositoryRoot,
-                );
-                splitDiffByFile(fullRaw, files, map);
-            }
-            return map;
-        },
-
-        async getSummary(): Promise<DiffSummary> {
-            const files = await this.listFiles();
-            return computeSummary(files);
-        },
-    };
+    return createPatchDiffProvider(source, (file, options) => loadWorkingTreePatch(repositoryRoot, scope, file, options));
 }

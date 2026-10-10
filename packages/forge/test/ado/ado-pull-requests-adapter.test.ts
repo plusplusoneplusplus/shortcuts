@@ -987,7 +987,7 @@ describe('AdoPullRequestsAdapter', () => {
             // All three service calls must use 'my-repo', not the workspace id 'ws-48cyxk'
             expect(svc.getPullRequestIterations).toHaveBeenCalledWith('my-repo', 99, 'my-project');
             expect(svc.getPullRequestIterationChanges).toHaveBeenCalledWith('my-repo', 99, 1, 'my-project');
-            expect(svc.getFileContent).toHaveBeenCalledWith('my-repo', expect.any(String), expect.any(String), 'my-project');
+            expect(svc.getFileContent).toHaveBeenCalledWith('my-repo', expect.any(String), expect.any(String), 'my-project', true);
         });
 
         it('getDiff falls back to repositoryId when repo is not set', async () => {
@@ -1009,7 +1009,7 @@ describe('AdoPullRequestsAdapter', () => {
 
             expect(svc.getPullRequestIterations).toHaveBeenCalledWith('fallback-repo', 99, 'my-project');
             expect(svc.getPullRequestIterationChanges).toHaveBeenCalledWith('fallback-repo', 99, 1, 'my-project');
-            expect(svc.getFileContent).toHaveBeenCalledWith('fallback-repo', expect.any(String), expect.any(String), 'my-project');
+            expect(svc.getFileContent).toHaveBeenCalledWith('fallback-repo', expect.any(String), expect.any(String), 'my-project', true);
         });
     });
 

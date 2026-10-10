@@ -69,6 +69,28 @@ describe('execGit marshalling', () => {
         await expect(gitAddon.execGit(['log', '--format=%s'], repo)).resolves.toBe('initial commit');
     });
 
+    describe('CLI history host/supplied boundary', () => {
+        it('shares one DTO and preserves absent ahead flags for host and supplied reads', async () => {
+            const args = gitAddon.prepareGitHistory({ maxCount: 10, skip: 0 });
+            const host = await gitAddon.gitHistory(repo, args);
+            const supplied = await gitAddon.processGitHistory(await gitAddon.execGit(args, repo));
+            expect(host).toEqual(supplied);
+            expect(host).toHaveLength(1);
+            expect(host[0]).toMatchObject({ subject: 'initial commit', parentHashes: '', body: '' });
+            expect(host[0]).not.toHaveProperty('isAheadOfRemote');
+        });
+
+        it('parses large supplied histories off the event-loop thread', async () => {
+            const args = gitAddon.prepareGitHistory({ maxCount: 1, skip: 0 });
+            const raw = await gitAddon.execGit(args, repo);
+            const turns = await eventLoopTurnsDuring(async () => {
+                const commits = await gitAddon.processGitHistory(raw.repeat(2000));
+                expect(commits).toHaveLength(2000);
+            });
+            expect(turns).toBeGreaterThan(0);
+        });
+    });
+
     it('accepts an omitted options object', async () => {
         const head = await gitAddon.execGit(['rev-parse', 'HEAD'], repo);
         expect(head).toMatch(/^[0-9a-f]{40}$/);
@@ -222,6 +244,63 @@ describe('gitStatusEntries marshalling', () => {
         fs.writeFileSync(path.join(repo, 'a file with spaces.md'), 'edited\n');
         const entries = await gitAddon.gitStatusEntries(repo);
         expect(entries.map(entry => entry.path)).toEqual(['"a file with spaces.md"']);
+    });
+
+    it('validates remote source identities and isolates their transport lifecycles', async () => {
+        const source = {
+            provider: 'ado', host: 'dev.azure.com', repository: 'org/project/repository',
+            sourceId: 'pr:42', iteration: '2', baseIteration: '1',
+        };
+        const root = path.resolve(os.tmpdir(), 'coc-remote-patch-scope');
+        for (const invalid of [
+            ...['provider', 'host', 'repository', 'sourceId', 'iteration', 'baseIteration']
+                .map(field => ({ ...source, [field]: ' ' })),
+            { ...source, iteration: undefined },
+        ]) {
+            expect(() => gitAddon.openRemoteGitPatchStore('workspace', root, invalid))
+                .toThrow('patch store: InvalidIdentity');
+        }
+        expect(() => gitAddon.openRemoteGitPatchStore('', root, source)).toThrow('patch store: InvalidIdentity');
+        expect(() => gitAddon.openRemoteGitPatchStore('workspace', 'relative', source)).toThrow('patch store: InvalidIdentity');
+        const stores = [
+            gitAddon.openRemoteGitPatchStore('workspace', root, source),
+            gitAddon.openRemoteGitPatchStore('clone', root, source),
+            ...[
+                { ...source, sourceId: 'pr:43' },
+                { ...source, provider: 'github', host: 'github.example' },
+                { ...source, repository: 'org/project/other' },
+                { ...source, iteration: '3', baseIteration: '2' },
+                { ...source, iteration: undefined, baseIteration: undefined },
+            ].map(identity => gitAddon.openRemoteGitPatchStore('workspace', root, identity)),
+            gitAddon.openRemoteGitPatchStore('workspace', '/repo', source, 'Ubuntu'),
+        ];
+        const raw = 'diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new\n';
+        try {
+            const results = await Promise.all(stores.map(store => store.beginTransport().process(raw)));
+            expect(results.every(result => result.content.raw === raw)).toBe(true);
+            await expect(stores[0].beginTransport().process(raw, 1)).resolves.toMatchObject({
+                content: { truncated: true },
+            });
+            expect((await stores[0].beginTransport().process(raw)).content.raw).toBe(raw);
+            const delayed = stores[0].beginTransport();
+            stores[0].refresh();
+            await expect(delayed.process(raw)).rejects.toThrow('patch store: Stale');
+            expect((await stores[0].beginTransport().process(raw.replace('+new', '+changed'))).content.raw)
+                .toContain('+changed');
+            const cancelled = stores[0].beginTransport();
+            cancelled.cancel();
+            expect(() => cancelled.process(raw)).toThrow('patch store: Closed');
+            const closed = stores[0].beginTransport();
+            stores[0].dispose();
+            await expect(closed.process(raw)).rejects.toThrow('patch store: Closed');
+            expect(() => stores[0].beginTransport()).toThrow('patch store: Closed');
+            await expect(stores[1].beginTransport().process(raw)).resolves.toMatchObject({
+                summary: { filesChanged: 1, additions: 1, deletions: 1 },
+            });
+            await expect(stores[1].revisionPatch('commit', 'HEAD')).rejects.toThrow('patch store: InvalidIdentity');
+        } finally {
+            stores.forEach(store => store.dispose());
+        }
     });
 
     it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
@@ -520,47 +599,106 @@ describe('commit-range marshalling', () => {
         await expect(gitAddon.gitRangeCountAhead(range, 'origin/main', 'HEAD')).resolves.toBe(1);
     });
 
-    it('marshals the changed-file list', async () => {
-        const files = await gitAddon.gitRangeChangedFiles(range, 'origin/main', 'HEAD');
-        expect(files).toEqual(
-            expect.arrayContaining([
-                { path: 'kept.md', status: 'modified', additions: 1, deletions: 0 },
-                { path: 'added.md', status: 'added', additions: 1, deletions: 0 },
-            ]),
-        );
-        // As with a status entry, an absent `oldPath` is an absent property.
-        expect(files.every(file => !('oldPath' in file))).toBe(true);
+    it('marshals range files and statistics through the shared patch result', async () => {
+        const patch = await gitAddon.openGitPatchStore('range', range).revisionPatch('range', 'origin/main', 'HEAD');
+        expect(patch.files).toEqual(expect.arrayContaining([
+            expect.objectContaining({ path: 'kept.md', status: 'modified', additions: 1, deletions: 0 }),
+            expect.objectContaining({ path: 'added.md', status: 'added', additions: 1, deletions: 0 }),
+        ]));
+        expect(patch.summary).toEqual({ filesChanged: 2, additions: 2, deletions: 0 });
     });
 
-    it('carries the source of a rename across the boundary', async () => {
-        const files = await gitAddon.parseGitRangeChangedFiles(
-            '0\t0\told.ts => new.ts\n',
-            'R100\told.ts\tnew.ts\n',
-        );
-        expect(files).toEqual([
-            { path: 'new.ts', status: 'renamed', additions: 0, deletions: 0, oldPath: 'old.ts' },
+    it('uses the shared parser for supplied quoted nested rename and copy paths', async () => {
+        const raw = 'diff --git "a/src/old\\t.ts" "b/src/new\\t.ts"\n' +
+            'similarity index 100%\nrename from "src/old\\t.ts"\nrename to "src/new\\t.ts"\n' +
+            'diff --git a/src/base.ts b/src/copy.ts\n' +
+            'similarity index 100%\ncopy from src/base.ts\ncopy to src/copy.ts\n';
+        const patch = await gitAddon.processGitPatch(raw);
+        expect(patch.files).toEqual([
+            expect.objectContaining({ path: 'src/new\t.ts', originalPath: 'src/old\t.ts', status: 'renamed' }),
+            expect.objectContaining({ path: 'src/copy.ts', originalPath: 'src/base.ts', status: 'copied' }),
         ]);
+        expect(patch.content.raw).toBe(raw);
     });
 
-    it('parses changed-file text produced elsewhere — the WSL path', async () => {
-        const files = await gitAddon.parseGitRangeChangedFiles(
-            '4\t1\tsrc/a.ts\n',
-            'M\tsrc/a.ts\n',
-        );
-        expect(files).toEqual([{ path: 'src/a.ts', status: 'modified', additions: 4, deletions: 1 }]);
+    it('retains nested rename destinations and literal arrows in a real range', async () => {
+        const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-range-rename-'));
+        try {
+            const destination = process.platform === 'win32' ? 'new = literal.ts' : 'new => literal.ts';
+            const git = (...args: string[]) => execFileSync('git', ['-C', fixture, ...args]);
+            git('init', '--initial-branch=main');
+            git('config', 'user.name', 'Range');
+            git('config', 'user.email', 'range@example.com');
+            git('config', 'commit.gpgsign', 'false');
+            fs.mkdirSync(path.join(fixture, 'src'));
+            fs.writeFileSync(path.join(fixture, 'src', 'old.ts'), 'unchanged contents\n');
+            git('add', '.');
+            git('commit', '-m', 'base');
+            fs.renameSync(path.join(fixture, 'src', 'old.ts'), path.join(fixture, 'src', destination));
+            git('add', '-A');
+            git('commit', '-m', 'rename');
+            const patch = await gitAddon.openGitPatchStore('fixture', fixture).revisionPatch('range', 'HEAD~1', 'HEAD');
+            expect(patch.files).toEqual([
+                expect.objectContaining({ path: `src/${destination}`, originalPath: 'src/old.ts', status: 'renamed' }),
+            ]);
+            expect(patch.summary).toEqual({ filesChanged: 1, additions: 0, deletions: 0 });
+        } finally {
+            removeDir(fixture);
+        }
     });
 
-    it('marshals diff statistics', async () => {
-        await expect(gitAddon.gitRangeDiffStats(range, 'origin/main', 'HEAD')).resolves.toEqual({
-            additions: 2,
-            deletions: 0,
+    it('keeps patch stores for same-layout roots independent and closes disposed handles', async () => {
+        const roots = ['one', 'two'].map(text => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-patch-store-'));
+            const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args]);
+            git('init', '--initial-branch=main');
+            git('config', 'user.name', 'Store');
+            git('config', 'user.email', 'store@example.com');
+            git('config', 'commit.gpgsign', 'false');
+            fs.writeFileSync(path.join(root, 'same.txt'), `${text}\n`);
+            git('add', '.');
+            git('commit', '-m', text);
+            return root;
         });
+        try {
+            const stores = roots.map(root => gitAddon.openGitPatchStore(root, root));
+            const patches = await Promise.all(stores.flatMap(store => [1, 2].map(() => store.revisionPatch('commit', 'HEAD'))));
+            expect(patches.map(patch => patch.content.raw.match(/^\+(one|two)$/m)?.[1])).toEqual(['one', 'one', 'two', 'two']);
+            stores[0].refresh();
+            await expect(stores[0].revisionPatch('show', 'HEAD', null, 'same.txt', 0, 1)).resolves.toMatchObject({ content: { truncated: true } });
+            stores[0].dispose();
+            await expect(stores[0].revisionPatch('commit', 'HEAD')).rejects.toThrow('patch store: Closed');
+            await expect(stores[1].revisionPatch('commit', 'HEAD')).resolves.toMatchObject({ summary: { additions: 1 } });
+            expect(() => gitAddon.openGitPatchStore('relative', 'relative/root')).toThrow('patch store: InvalidIdentity');
+        } finally {
+            roots.forEach(removeDir);
+        }
     });
 
-    it('parses shortstat text produced elsewhere — the WSL path', async () => {
-        await expect(
-            gitAddon.parseGitDiffShortstat(' 3 files changed, 12 insertions(+), 7 deletions(-)'),
-        ).resolves.toEqual({ additions: 12, deletions: 7 });
+    it('processes single-use WSL continuations without host Git or stale publication', async () => {
+        const stores = ['Ubuntu', 'Debian'].map(distro => gitAddon.openGitPatchStore('workspace', '/repo', distro));
+        const raw = 'diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new\n';
+        const request = stores[0].beginTransport();
+        const truncated = await request.process(raw, 1);
+        expect(truncated.content.truncated).toBe(true);
+        expect(() => request.process(raw)).toThrow('patch store: Closed');
+        expect((await stores[0].beginTransport().process(raw)).content.raw).toBe(raw);
+        expect((await stores[1].beginTransport().process(raw.replace('+new', '+other'))).content.raw).toContain('+other');
+        const stale = stores[0].beginTransport();
+        stores[0].refresh();
+        await expect(stale.process(raw)).rejects.toThrow('patch store: Stale');
+        const cancelled = stores[0].beginTransport();
+        cancelled.cancel();
+        expect(() => cancelled.process(raw)).toThrow('patch store: Closed');
+        const closed = stores[0].beginTransport();
+        stores[0].dispose();
+        await expect(closed.process(raw)).rejects.toThrow('patch store: Closed');
+        expect(() => stores[0].beginTransport()).toThrow('patch store: Closed');
+        await expect(stores[1].beginTransport().process(raw)).resolves.toMatchObject({ summary: { filesChanged: 1 } });
+        await expect(stores[1].revisionPatch('commit', 'HEAD')).rejects.toThrow('patch store: InvalidIdentity');
+        expect(() => gitAddon.openGitPatchStore('workspace', 'relative', 'Ubuntu')).toThrow('patch store: InvalidIdentity');
+        expect(() => gitAddon.openGitPatchStore('workspace', '/repo', '')).toThrow('patch store: InvalidIdentity');
+        stores[1].dispose();
     });
 
     it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
@@ -569,8 +707,8 @@ describe('commit-range marshalling', () => {
             await expect(gitAddon.gitRangeDefaultBranch(empty)).rejects.toThrow(
                 /^git rev-parse --verify origin\/main failed: /,
             );
-            await expect(gitAddon.gitRangeChangedFiles(empty, 'origin/main', 'HEAD')).rejects.toThrow(
-                /^git diff --numstat origin\/main\.\.\.HEAD failed: /,
+            await expect(gitAddon.openGitPatchStore('empty', empty).revisionPatch('range', 'origin/main', 'HEAD')).rejects.toThrow(
+                /^git --literal-pathspecs diff .* failed: /,
             );
         } finally {
             removeDir(empty);
@@ -1056,6 +1194,59 @@ describe('commit-detail marshalling', () => {
     });
 
     describe('gitCommitFiles', () => {
+        it.each([
+            ['M', 'modified'], ['A', 'added'], ['D', 'deleted'],
+            ['R100', 'renamed'], ['C075', 'copied'], ['U', 'conflict'],
+            ['X', 'modified'],
+        ])('serializes typed %s metadata without changing its wire shape', async (code, status) => {
+            const renamed = code.startsWith('R') || code.startsWith('C');
+            const destination = 'literal\tname\nfile.txt';
+            const result = await gitAddon.processGitCommitMetadata(
+                `${code}\0${renamed ? 'old.txt\0' : ''}${destination}\0`,
+                `0\t0\t${destination}\0`,
+                'first-parent second-parent',
+            );
+            expect(result).toEqual({
+                parentHash: 'first-parent',
+                files: [{
+                    path: destination, status, additions: 0, deletions: 0,
+                    ...(renamed ? { originalPath: 'old.txt' } : {}),
+                }],
+            });
+            const binary = await gitAddon.processGitCommitMetadata(
+                `${code}\0${renamed ? 'old.txt\0' : ''}${destination}\0`,
+                `-\t-\t${destination}\0`,
+                '',
+            );
+            expect(binary.parentHash).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
+            expect(binary.files[0].status).toBe(status);
+            expect(binary.files[0]).not.toHaveProperty('additions');
+            expect(binary.files[0]).not.toHaveProperty('deletions');
+        });
+
+        it.each(['root', 'head'] as const)('shares host and supplied metadata conversion for %s', async revision => {
+            const commit = revision === 'root' ? root : head;
+            const commands = await gitAddon.prepareGitCommitFiles(commit);
+            const [nameStatus, numstat, parents] = commands.map(args => detailGit(...args));
+            const host = gitAddon.gitCommitFiles(detail, commit);
+            const supplied = gitAddon.processGitCommitMetadata(nameStatus, numstat, parents);
+            expect(typeof host.then).toBe('function');
+            expect(typeof supplied.then).toBe('function');
+            const [hostResult, suppliedResult] = await Promise.all([host, supplied]);
+            expect(hostResult).toEqual(suppliedResult);
+            const binary = hostResult.files.find(file => file.path === 'logo.bin');
+            expect(binary).toBeDefined();
+            expect(binary).not.toHaveProperty('additions');
+            expect(binary).not.toHaveProperty('deletions');
+        });
+
+        it('keeps execution-option failures asynchronous', async () => {
+            const pending = gitAddon.gitCommitFiles(detail, head, { maxBuffer: 8 });
+            expect(typeof pending.then).toBe('function');
+            await expect(pending).rejects.toThrow(/^git --literal-pathspecs diff-tree .* failed: /);
+            await expect(gitAddon.gitCommitFiles(detail, head)).resolves.toMatchObject({ parentHash: root });
+        });
+
         it('reports the parent and the touched files in one crossing', async () => {
             const result = await gitAddon.gitCommitFiles(detail, head);
             expect(result.parentHash).toBe(root);
@@ -1083,19 +1274,19 @@ describe('commit-detail marshalling', () => {
             expect('deletions' in (binary as object)).toBe(false);
         });
 
-        // `diff-tree` compares against parents, so a root commit prints nothing
-        // — the empty-tree parent is reported all the same.
-        it('reports the empty tree and no files for a root commit', async () => {
+        // Root metadata compares against the empty tree.
+        it('reports the empty tree and additions for a root commit', async () => {
             const result = await gitAddon.gitCommitFiles(detail, root);
             expect(result.parentHash).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
-            expect(result.files).toEqual([]);
+            expect(result.files.map(file => file.path)).toEqual(['keep.md', 'logo.bin', 'src/old.ts']);
+            expect(result.files.every(file => file.status === 'added')).toBe(true);
         });
 
         it('rejects with the `git <args> failed:` shape outside a repository', async () => {
             const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-nogit-')));
             try {
                 await expect(gitAddon.gitCommitFiles(outside, 'HEAD')).rejects.toThrow(
-                    /^git diff-tree .* failed: /,
+                    /^git --literal-pathspecs diff-tree .* failed: /,
                 );
             } finally {
                 removeDir(outside);
@@ -1104,6 +1295,21 @@ describe('commit-detail marshalling', () => {
     });
 
     describe('gitCommitDiff', () => {
+        it.each(['root', 'head'] as const)('matches the shared first-parent plan for %s', async revision => {
+            const commit = revision === 'root' ? root : head;
+            const commands = await gitAddon.prepareGitRevisionPatch('commit', commit);
+            const pending = gitAddon.gitCommitDiff(detail, commit);
+            expect(typeof pending.then).toBe('function');
+            await expect(pending).resolves.toBe(detailGit(...commands).replace(/\r?\n$/, ''));
+        });
+
+        it('preserves buffer errors and independent concurrent results', async () => {
+            const failure = gitAddon.gitCommitDiff(detail, head, { maxBuffer: 8 });
+            const success = gitAddon.gitCommitDiff(detail, root);
+            await expect(failure).rejects.toThrow(/^git --literal-pathspecs diff-tree .* failed: /);
+            await expect(success).resolves.toContain('new file mode');
+        });
+
         it('matches the diff the two commands produced', async () => {
             const native = await gitAddon.gitCommitDiff(detail, head);
             const legacy = detailGit('diff', root, head).replace(/\r?\n$/, '');
@@ -1112,7 +1318,7 @@ describe('commit-detail marshalling', () => {
 
         it('rejects for a revision that names nothing', async () => {
             await expect(gitAddon.gitCommitDiff(detail, 'no-such-ref')).rejects.toThrow(
-                /^git diff .* failed: /,
+                /^git --literal-pathspecs diff-tree .* failed: /,
             );
         });
     });

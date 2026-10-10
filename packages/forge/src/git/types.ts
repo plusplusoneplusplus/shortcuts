@@ -3,18 +3,12 @@
  * UI-only types (`GitSectionType`, `GitViewCounts`) are omitted.
  */
 
+import type { NativeGitCommitFile } from '@plusplusoneplusplus/coc-native';
+
 /**
  * Git change status types matching git's porcelain output.
  */
-export type GitChangeStatus =
-    | 'modified'    // M - Modified
-    | 'added'       // A - Added (staged new file)
-    | 'deleted'     // D - Deleted
-    | 'renamed'     // R - Renamed
-    | 'copied'      // C - Copied
-    | 'untracked'   // ? - Untracked
-    | 'ignored'     // ! - Ignored
-    | 'conflict';   // U - Unmerged/Conflict
+export type GitChangeStatus = NativeGitCommitFile['status'];
 
 export type GitChangeStage = 'staged' | 'unstaged' | 'untracked';
 

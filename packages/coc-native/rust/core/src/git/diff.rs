@@ -60,6 +60,16 @@ pub fn diff_no_index(
     after_label: &str,
     options: &GitCommandOptions,
 ) -> Result<String, GitError> {
+    let rendered = render_no_index(before, after, options)?;
+    Ok(rewrite_no_index_headers(&rendered, before_label, after_label))
+}
+
+/// Render supplied contents without rewriting or normalizing their hunk bytes.
+pub fn render_no_index(
+    before: &str,
+    after: &str,
+    options: &GitCommandOptions,
+) -> Result<String, GitError> {
     // Dropped at every exit from this function, `?` included — the RAII form of
     // the `finally { fs.rm(...) }` the TypeScript needed.
     let dir = tempfile::Builder::new().prefix("codex-file-diff-").tempdir().map_err(setup_error)?;
@@ -69,7 +79,11 @@ pub fn diff_no_index(
     std::fs::write(&after_path, after).map_err(setup_error)?;
 
     let mut command = Command::new("git");
-    command.args(FLAGS).arg(&before_path).arg(&after_path);
+    command
+        .args(["-c", "color.ui=false", "-c", "core.autocrlf=false"])
+        .args(FLAGS)
+        .arg(&before_path)
+        .arg(&after_path);
 
     // The caller's timeout and buffer cap stand; which exit codes mean success
     // does not, because that belongs to the command.
@@ -77,7 +91,7 @@ pub fn diff_no_index(
     options.success_exit_codes = vec![DIFFERENCES_FOUND];
 
     let rendered = run_command(command, &display_args(&before_path, &after_path), &options)?;
-    Ok(rewrite_no_index_headers(&rendered, before_label, after_label))
+    Ok(rendered)
 }
 
 /// Point the first `diff --git`, `---` and `+++` lines at the labels the caller

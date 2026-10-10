@@ -16,7 +16,8 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 
 import { GitRangeService } from '../../src/git/git-range-service';
 
@@ -62,6 +63,69 @@ function makeRepo(): { repo: string; base: string } {
 
 afterAll(() => {
     for (const repo of repos) fs.rmSync(repo, { recursive: true, force: true });
+});
+
+describe('range patch caller cancellation', () => {
+    const reads = [
+        ['files', (service: GitRangeService, root: string, signal: AbortSignal) => service.getChangedFiles(root, 'origin/main', 'HEAD', signal)],
+        ['stats', (service: GitRangeService, root: string, signal: AbortSignal) => service.getDiffStats(root, 'origin/main', 'HEAD', signal)],
+        ['file patch', (service: GitRangeService, root: string, signal: AbortSignal) => service.getFileDiff(root, 'origin/main', 'HEAD', 'README.md', signal)],
+        ['full patch', (service: GitRangeService, root: string, signal: AbortSignal) => service.getRangeDiff(root, 'origin/main', 'HEAD', signal)],
+        ['detection', (service: GitRangeService, root: string, signal: AbortSignal) => service.detectCommitRange(root, { signal })],
+    ] as const;
+
+    it.each(reads)('rejects pre-aborted %s without starting native patch work', async (_name, read) => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const open = vi.spyOn(loadNativeGit(), 'openGitPatchStore');
+        const reason = new Error('abandoned range');
+        try {
+            await expect(read(service, repo, AbortSignal.abort(reason))).rejects.toBe(reason);
+            expect(open).not.toHaveBeenCalled();
+        } finally { open.mockRestore(); service.dispose(); }
+    });
+
+    it.each(reads)('propagates submitted %s cancellation rather than returning an empty fallback', async (_name, read) => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo, repo);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const controller = new AbortController();
+        const reason = new Error('abandoned range');
+        const beginTransport = store.beginTransport.bind(store);
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = beginTransport();
+            const submit = ticket.revisionPatch.bind(ticket);
+            vi.spyOn(ticket, 'revisionPatch').mockImplementation((...args) => {
+                const pending = submit(...args);
+                controller.abort(reason);
+                return pending;
+            });
+            return ticket;
+        });
+        try {
+            await expect(read(service, repo, controller.signal)).rejects.toBe(reason);
+            expect(begin).toHaveBeenCalledTimes(1);
+            begin.mockRestore();
+            expect(await service.getChangedFiles(repo, 'origin/main', 'HEAD')).toHaveLength(2);
+        } finally { open.mockRestore(); store.dispose(); service.dispose(); }
+    });
+
+    it('does not continue metadata orchestration after abandonment', async () => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const controller = new AbortController();
+        const reason = new Error('abandoned metadata');
+        vi.spyOn(service, 'getCurrentBranch').mockImplementation(async () => {
+            controller.abort(reason);
+            return 'main';
+        });
+        const resolve = vi.spyOn(service, 'resolveBaseRef');
+        await expect(service.detectCommitRange(repo, { signal: controller.signal })).rejects.toBe(reason);
+        expect(resolve).not.toHaveBeenCalled();
+        service.dispose();
+    });
 });
 
 describe('detectCommitRange', () => {
@@ -140,9 +204,77 @@ describe('detectCommitRange', () => {
 
         const range = await service.detectCommitRange(repo);
         expect(range!.files).toHaveLength(1);
-        // The count itself is not capped — only the list the view renders is.
+        expect(range!.files[0].path).toBe('docs.md');
+        expect(range!.files[0].additions).toBe(1);
+        // Totals include files outside the display cap.
+        expect(range!.additions).toBe(2);
+        expect(range!.deletions).toBe(0);
         expect(range!.commitCount).toBe(1);
         service.dispose();
+    });
+
+    it('keeps file rows and totals in one snapshot when the base ref changes after patch delivery', async () => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo, repo);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const beginTransport = store.beginTransport.bind(store);
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = beginTransport();
+            const submit = ticket.revisionPatch.bind(ticket);
+            vi.spyOn(ticket, 'revisionPatch').mockImplementation(async (...args) => {
+                const result = await submit(...args);
+                git(repo, 'update-ref', 'refs/remotes/origin/main', git(repo, 'rev-parse', 'HEAD'));
+                return result;
+            });
+            return ticket;
+        });
+        try {
+            const range = await service.detectCommitRange(repo);
+            expect(range!.files.map(file => file.path)).toEqual(['docs.md', 'README.md']);
+            expect(range!.additions).toBe(2);
+            expect(range!.deletions).toBe(0);
+            expect(begin).toHaveBeenCalledTimes(1);
+            expect(await service.detectCommitRange(repo)).toBeNull();
+        } finally { begin.mockRestore(); open.mockRestore(); store.dispose(); service.dispose(); }
+    });
+
+    it('preserves an empty range response after an ordinary patch failure without retrying statistics', async () => {
+        const { repo } = makeRepo();
+        const service = new GitRangeService();
+        const addon = loadNativeGit();
+        const store = addon.openGitPatchStore(repo, repo);
+        const open = vi.spyOn(addon, 'openGitPatchStore').mockReturnValue(store);
+        const beginTransport = store.beginTransport.bind(store);
+        const begin = vi.spyOn(store, 'beginTransport').mockImplementation(() => {
+            const ticket = beginTransport();
+            vi.spyOn(ticket, 'revisionPatch').mockRejectedValue(new Error('git patch failed'));
+            return ticket;
+        });
+        try {
+            expect(await service.detectCommitRange(repo)).toMatchObject({
+                baseRef: 'origin/main', headRef: 'HEAD', commitCount: 1,
+                files: [], additions: 0, deletions: 0,
+            });
+            expect(begin).toHaveBeenCalledTimes(1);
+        } finally { begin.mockRestore(); open.mockRestore(); store.dispose(); service.dispose(); }
+    });
+
+    it('isolates simultaneous range detection in workspaces with identical paths', async () => {
+        const one = makeRepo(), two = makeRepo();
+        write(two.repo, 'README.md', 'replacement\n');
+        commit(two.repo, 'replace contents');
+        const service = new GitRangeService();
+        try {
+            const ranges = await Promise.all([one, two].map(({ repo }) => service.detectCommitRange(repo)));
+            expect(ranges[0]).toMatchObject({ additions: 2, deletions: 0, repositoryRoot: one.repo });
+            expect(ranges[1]).toMatchObject({ additions: 2, deletions: 1, repositoryRoot: two.repo });
+            for (const [index, range] of ranges.entries()) {
+                expect(range!.files.map(file => file.path)).toEqual(['docs.md', 'README.md']);
+                expect(range!.files.every(file => file.repositoryRoot === [one, two][index].repo)).toBe(true);
+            }
+        } finally { service.dispose(); }
     });
 });
 

@@ -635,9 +635,22 @@ PR file data stays origin-scoped while `workspaceId` and optional `repoId` selec
 same-origin clone. Classic pop-out views call the per-file diff endpoint with
 `fullContext=true`; the server tries a full-file-context git diff from PR `baseSha` to
 `headSha`, fetches missing commits into that checkout, then degrades to hunk-only data
-with `fullContextUnavailable: true`. The paired-content endpoint reads both snapshots
+with `fullContextUnavailable: true`. Rust decodes supplied Git patch paths and selects
+per-file chunks with their exact bytes. Combined and per-file hunk requests fetch
+current provider bytes through the selected clone; full-context fallback uses the
+same transport. Local and PR patch routes share `withPatchRequest` response lifetimes.
+Abandonment cancels request-owned native tickets and full-context host/WSL patch
+execution, suppresses delivery and retires listeners. Authenticated transport and
+shared commit fetches finish independently; abandoned reads cannot cache PR detail
+or start fallback/retry work. Rootless PR selections bracket stateless Rust processing
+with signal checks. Each list refresh fetches current provider patches and maps Rust
+summaries to diff statistics, including when the base moves with an unchanged head
+or revision metadata is missing. Fresh list-response cache
+hits reuse enriched rows; there is no separate patch-statistics cache.
+The paired-content endpoint reads both snapshots
 from local objects first and falls back to the user's authenticated `gh api` or
-`az devops invoke`; binary, symlink, and over-10MB files return no text.
+`az devops invoke`; Rust parses supplied patch metadata for decoded original paths
+and file existence. Binary, symlink, and over-10MB files return no text.
 
 PR review suggestions sit behind `pullRequests.suggestions`. The For You filter's
 generate/refresh action first refreshes origin-scoped review history via

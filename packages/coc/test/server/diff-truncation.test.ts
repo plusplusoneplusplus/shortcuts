@@ -1,5 +1,5 @@
 /**
- * Tests for the truncateDiffIfNeeded helper and the ?full=true query param
+ * Tests for Rust patch truncation and the ?full=true query param
  * on per-file diff endpoints (commit, working-tree, branch-range).
  */
 
@@ -11,48 +11,66 @@ import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
-import { truncateDiffIfNeeded, DIFF_LINE_LIMIT } from '../../src/server/routes/api-shared';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { DIFF_LINE_LIMIT } from '../../src/server/routes/api-shared';
+import { gitStatusToChar, patchContentResponse } from '../../src/server/git/git-response';
 
 // ============================================================================
-// Unit tests for truncateDiffIfNeeded
+// Native truncation and public response conversion
 // ============================================================================
 
-describe('truncateDiffIfNeeded', () => {
-    it('returns diff unchanged when under the limit', () => {
+async function patchResponse(diff: string, full = false) {
+    return patchContentResponse((await loadNativeGit().processGitPatch(diff, full ? undefined : DIFF_LINE_LIMIT)).content);
+}
+
+describe('Rust patch response', () => {
+    it('returns diff unchanged when under the limit', async () => {
         const diff = 'line1\nline2\nline3';
-        const result = truncateDiffIfNeeded(diff, false);
+        const result = await patchResponse(diff);
         expect(result).toEqual({ diff });
         expect(result.truncated).toBeUndefined();
         expect(result.totalLines).toBeUndefined();
     });
 
-    it('truncates diff when over the limit', () => {
+    it('truncates diff when over the limit', async () => {
         const lines = Array.from({ length: DIFF_LINE_LIMIT + 500 }, (_, i) => `line ${i}`);
         const diff = lines.join('\n');
-        const result = truncateDiffIfNeeded(diff, false);
+        const result = await patchResponse(diff);
         expect(result.truncated).toBe(true);
         expect(result.totalLines).toBe(DIFF_LINE_LIMIT + 500);
         expect(result.diff.split('\n')).toHaveLength(DIFF_LINE_LIMIT);
     });
 
-    it('returns full diff when full=true even if over the limit', () => {
+    it('returns full diff when full=true even if over the limit', async () => {
         const lines = Array.from({ length: DIFF_LINE_LIMIT + 100 }, (_, i) => `line ${i}`);
         const diff = lines.join('\n');
-        const result = truncateDiffIfNeeded(diff, true);
+        const result = await patchResponse(diff, true);
         expect(result).toEqual({ diff });
         expect(result.truncated).toBeUndefined();
     });
 
-    it('returns diff unchanged when exactly at the limit', () => {
+    it('returns diff unchanged when exactly at the limit', async () => {
         const lines = Array.from({ length: DIFF_LINE_LIMIT }, (_, i) => `line ${i}`);
         const diff = lines.join('\n');
-        const result = truncateDiffIfNeeded(diff, false);
+        const result = await patchResponse(diff);
         expect(result).toEqual({ diff });
         expect(result.truncated).toBeUndefined();
     });
 
     it('DIFF_LINE_LIMIT is 100000', () => {
         expect(DIFF_LINE_LIMIT).toBe(100_000);
+    });
+
+    it.each(['', 'one\n', 'one\r\ntwo\r\n'])('preserves empty text and line endings (%j)', async diff => {
+        expect(await patchResponse(diff)).toEqual({ diff });
+    });
+
+    it.each([
+        ['modified', 'M'], ['added', 'A'], ['deleted', 'D'], ['renamed', 'R'],
+        ['copied', 'C'], ['conflict', 'U'], ['untracked', '?'], ['ignored', '!'],
+        ['M', 'M'], ['typechange', 'typechange'], ['__proto__', '__proto__'],
+    ])('converts only known status words (%s)', (status, expected) => {
+        expect(gitStatusToChar(status)).toBe(expected);
     });
 });
 
@@ -79,6 +97,20 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadWorkingTreePatch: async (root: string, scope: string, file: string, options?: { maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            return loadNativeGit().processGitPatch(await mockGetFileDiff(root, file, scope === 'staged'), options?.maxLines);
+        },
+        loadRangePatch: async (root: string, base: string, head: string, file: string, options?: { maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            return loadNativeGit().processGitPatch(await mockRangeGetFileDiff(root, base, head, file, options), options?.maxLines);
+        },
+        loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const args = await native.prepareGitRevisionPatch('show', commit, undefined, file, options?.contextLines);
+            return native.processGitPatch(await mockForgeExecGit(args, root, {}), options?.maxLines);
+        },
         execGit: (...args: any[]) => mockForgeExecGit(...args),
         // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
         execGitAsync: async (...args: any[]) => mockForgeExecGit(...args),
@@ -254,6 +286,9 @@ describe('Diff truncation endpoints', () => {
             expect(data.truncated).toBe(true);
             expect(data.totalLines).toBe(DIFF_LINE_LIMIT + 100);
             expect(data.path).toBe('big-file.ts');
+            expect(mockRangeGetFileDiff).toHaveBeenCalledWith(WS_ROOT, 'main', 'HEAD', 'big-file.ts', {
+                contextLines: 99999, maxLines: DIFF_LINE_LIMIT, signal: expect.any(AbortSignal),
+            });
         });
 
         it('returns full diff when ?full=true', async () => {
@@ -265,6 +300,9 @@ describe('Diff truncation endpoints', () => {
             const data = res.json();
             expect(data.truncated).toBeUndefined();
             expect(data.diff).toBe(largeDiff);
+            expect(mockRangeGetFileDiff).toHaveBeenCalledWith(WS_ROOT, 'main', 'HEAD', 'big-file.ts', {
+                contextLines: 99999, maxLines: undefined, signal: expect.any(AbortSignal),
+            });
         });
     });
 });

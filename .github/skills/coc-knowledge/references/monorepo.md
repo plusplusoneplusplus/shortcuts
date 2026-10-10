@@ -89,6 +89,8 @@ manifest.
 
 ### Native build boundary
 
+Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revisions key resolved object IDs; working-tree snapshots fingerprint fresh Git batches. Host admission binds execution options to ticket cancellation; host and supplied reads share snapshot finalization with per-read truncation and final generation checks. Single-use requests capture generations before I/O/dispatch. Individual cancellation and refresh/disposal stop direct host Git children; live waiters retry cancelled owners' failed computation. Forge `LocalPatchOptions.signal` cancels one request and its WSL transport, preserving the caller's abort reason. Unsent WSL validity polling observes revocation; tickets, listeners and timers retire on every outcome.
+
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
 the committed bindings, N-API addon and symbol-server executable. Windows x64
 also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
@@ -97,7 +99,82 @@ do not initialize WebView2.
 for stale binaries, and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
 Production server persistence/index capabilities require the addon and fail
-without it, rather than falling back to JavaScript.
+without it, rather than falling back to JavaScript. Supplied unified patches can
+be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
+`parseFullDiffAsync` converts native metadata/chunks to public shapes through
+`nativePatchToDiff`. PR snapshot fallback metadata uses this async adapter,
+including decoded rename paths and empty-file existence; snapshot content transport
+and its cache remain separate. Forge `diff-utils` owns wire conversion and
+`createPatchDiffProvider`, the five-operation facade shared by local and supplied
+remote factories. Each operation reads its loader freshly; per-file loaders retain
+literal Git path/context semantics or supplied-hunk selection. Forge's `DiffContent`
+and `DiffSummary` alias generated native DTOs. Patch parsing, summaries, truncation
+and caches belong to Rust.
+
+Core commit DTOs generate the public `GitCommitFile`/`GitCommitFiles` N-API
+objects directly. Host and supplied metadata workers return the same DTOs;
+typed Rust statuses generate literal TypeScript unions and absent counts stay omitted.
+Forge `GitChangeStatus` aliases the native commit-file status.
+
+REST commit history uses Forge `git/git-history.ts`: host `gitHistory` and supplied
+WSL `prepareGitHistory`/`processGitHistory` share Rust command planning and NUL-record
+parsing. Routes convert the shared DTO to their author/parent wire shape. The CLI
+plan omits decoration and unpushed computation and preserves Git grep/hash selection.
+WSL `GitLogService` sets `includeDetails` to retain relative dates and decoration.
+Native Git's exported type and runtime capability guard derive from one name tuple.
+
+### Supplied remote diff providers
+
+Forge PR/iteration factories require `RemoteDiffContext` (workspaceId, host, provider-qualified repository) separately from transport routing aliases. `diff/remote-patch.ts` shares scope opening and supplied-read lifetimes with CoC PR routes. Providers retain one lazy Rust store; routes dispose request-owned stores. Continuations capture generations before authenticated I/O, including per-file processing. Refresh/dispose and caller cancellation reject delayed output; every outcome retires tickets/listeners. Rust fingerprints fresh bytes and owns snapshots/truncation. Explicit WSL scopes require distro/Linux-root identity before I/O.
+
+### Production patch consumers
+
+ADO patch construction uses Rust `buildRemoteGitPatch` with explicit existence and
+supplied content; authenticated Forge transport reads rename bases at their original
+paths and requires successful content reads. Empty existing files stay modified.
+CoC `repos/pr-patch.ts` supplies combined/per-file hunks and list statistics through
+request-owned Rust remote stores, capturing continuations before authenticated patch
+I/O and retiring/disposal on every outcome. Scope includes selected workspace/root,
+provider host/repository and PR; ADO uses the effective configured organization.
+Transport and scope share one config snapshot. Rootless selections use stateless
+Rust processing without inventing a checkout. Quoted paths and exact bytes survive
+the HTTP adapter; native-load failures are visible. PR full-context patches use Forge
+`loadComparisonPatch` and Rust direct base/head
+planning/processing for host and WSL. Core `revision_patch_args` validates and selects
+commit/show/range/comparison argv for host execution and worker `prepareGitRevisionPatch`;
+Forge passes the same mode/endpoints through either transport. TypeScript retains missing-commit fetch/retry
+and provider-hunk fallback. PR list refreshes fetch current provider bytes and convert Rust
+summaries directly to diffStats; enriched rows live only in the existing list-response
+cache. Combined and per-file hunk routes read current authenticated provider bytes
+through the selected clone, including full-context fallback. The commit/range/working-tree
+providers and production `GitRangeService` patches, file lists and statistics use
+`diff/local-patch.ts`. Range detection derives file rows and uncapped totals from one
+Rust snapshot before applying the display cap. Commit, branch-range and working-tree
+per-file routes pass display limits into Rust and share `git/git-response.ts` wire
+conversion; untruncated responses omit truncation metadata. Host commit/range/comparison patches
+come from a per-root Rust `GitPatchStore` keyed by resolved object IDs; the benchmark
+shares its range files and summaries.
+Native range capabilities resolve refs and ahead counts. Rust plans/executes host Git and processes
+patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. WorkingTreeService per-file patches and CoC working-tree patch routes also use
+this backend with full context; routes apply native truncation and expose native-load
+failures as HTTP 500 while retaining empty patches for ordinary Git errors. Full-text
+snapshot loaders remain separate. GitLogService commit/pending/staged patches share
+the host/WSL backend; commits compare the first parent or empty tree, Rust composes
+optional staged/unstaged headings, and ordinary Git failures return empty strings.
+Production commit patch
+routes use its git-show plan and native truncation without a route patch cache;
+first-parent provider and combined-merge route semantics stay distinct. CoC
+`createLocalPatchRoute` passes per-request signals through commit, branch-range and
+working-tree patch reads; aborted requests or unfinished response close cancel host/WSL
+work without disposing shared stores. GET-body close is not cancellation. Listeners
+retire on every outcome and abandoned results/errors are not delivered. Range metadata
+orchestration checks cancellation between reads and preserves abort reasons.
+Commit metadata
+uses Forge `loadCommitMetadata` for GitLogService file details and `loadCommitFiles`
+for route rows. Rust plans/joins NUL-delimited metadata and ordered parent output
+for host and WSL, preserves Git ordering and absent binary counts, and reads fresh
+state without a route metadata cache. Root file lists include initial additions. Native contracts
+and migration boundaries belong in the native instructions below.
 
 `packages/coc-native/rust/teams-cli` is a standalone Cargo workspace project providing
 the `teams-cli` chat CLI through `teams-sdk`. It shares the native lockfile and CI gates

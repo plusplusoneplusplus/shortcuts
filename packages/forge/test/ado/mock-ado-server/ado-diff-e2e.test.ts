@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import * as path from 'path';
 import { WebApi, getPersonalAccessTokenHandler } from 'azure-devops-node-api';
 import type { GitPullRequestChange, GitPullRequestIteration } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { AdoPullRequestsAdapter } from '../../../src/ado/ado-pull-requests-adapter';
 import { AdoPullRequestsService, VersionControlChangeType } from '../../../src/ado/pull-requests-service';
-import { createPullRequestDiffProviderFromParams, parseFullDiff } from '../../../src/diff';
+import { createPullRequestDiffProviderFromParams, parseFullDiffAsync } from '../../../src/diff';
 import { nullLogger, setLogger } from '../../../src/logger';
 import { changesKey, fileKey, MockAdoServer } from './mock-ado-server';
 
@@ -45,7 +46,7 @@ describe('Mock ADO server diff integration', () => {
                 [fileKey(HEAD_SHA, '/src/modified.ts'), 'new line\nsame\n'],
                 [fileKey(HEAD_SHA, '/src/added.ts'), 'added\nfile\n'],
                 [fileKey(BASE_SHA, '/src/deleted.ts'), 'deleted\nfile\n'],
-                [fileKey(BASE_SHA, '/src/renamed.ts'), 'before rename\n'],
+                [fileKey(BASE_SHA, '/src/original.ts'), 'before rename\n'],
                 [fileKey(HEAD_SHA, '/src/renamed.ts'), 'after rename\n'],
             ]),
         });
@@ -59,7 +60,7 @@ describe('Mock ADO server diff integration', () => {
         await expect(adapter.getThreads(WORKSPACE_REPO, PR_ID)).resolves.toHaveLength(1);
 
         const diff = await adapter.getDiff(WORKSPACE_REPO, PR_ID);
-        const { files } = parseFullDiff(diff);
+        const { files } = await parseFullDiffAsync(diff);
 
         expect(files).toHaveLength(4);
         expect(files).toEqual(expect.arrayContaining([
@@ -68,8 +69,48 @@ describe('Mock ADO server diff integration', () => {
             expect.objectContaining({ path: 'src/modified.ts', status: 'modified', additions: 1, deletions: 1 }),
             expect.objectContaining({ path: 'src/renamed.ts', originalPath: 'src/original.ts' }),
         ]));
+        expect(server.requests.some(r => r.query.get('path') === '/src/original.ts')).toBe(true);
         expect(requestedRepositories()).toEqual(expect.arrayContaining([REAL_REPO]));
         expect(requestedRepositories()).not.toContain(WORKSPACE_REPO);
+    });
+
+    it('keeps empty-file edits modified and represents empty additions/deletions', async () => {
+        server.setScenario({
+            expectedRepositoryId: REAL_REPO, iterations: latestIteration(),
+            changes: new Map([[changesKey(PR_ID, 2), [
+                change('/empty-before', VersionControlChangeType.Edit),
+                change('/empty-after', VersionControlChangeType.Edit),
+                change('/empty-add', VersionControlChangeType.Add),
+                change('/empty-delete', VersionControlChangeType.Delete),
+                change('/unchanged', VersionControlChangeType.Edit),
+            ]]]),
+            files: new Map([
+                [fileKey(BASE_SHA, '/empty-before'), ''], [fileKey(HEAD_SHA, '/empty-before'), 'text\n'],
+                [fileKey(BASE_SHA, '/empty-after'), 'text\n'], [fileKey(HEAD_SHA, '/empty-after'), ''],
+                [fileKey(HEAD_SHA, '/empty-add'), ''], [fileKey(BASE_SHA, '/empty-delete'), ''],
+                [fileKey(BASE_SHA, '/unchanged'), 'same'], [fileKey(HEAD_SHA, '/unchanged'), 'same'],
+            ]),
+        });
+        const patch = await makeAdapter(REAL_REPO).getDiff(WORKSPACE_REPO, PR_ID);
+        const { files } = await (await import('@plusplusoneplusplus/coc-native')).loadNativeGit().processGitPatch(patch);
+        expect(files.map(f => [f.path, f.status, f.isBinary])).toEqual([
+            ['empty-before', 'modified', false], ['empty-after', 'modified', false],
+            ['empty-add', 'added', false], ['empty-delete', 'deleted', false],
+        ]);
+    });
+
+    it('passes explicit binary metadata without fetching text snapshots', async () => {
+        server.setScenario({
+            expectedRepositoryId: REAL_REPO, iterations: latestIteration(),
+            changes: new Map([[changesKey(PR_ID, 2), [{
+                item: { path: '/image.bin', contentMetadata: { isBinary: true } },
+                changeType: VersionControlChangeType.Add,
+            }]]]),
+        });
+        const patch = await makeAdapter(REAL_REPO).getDiff(WORKSPACE_REPO, PR_ID);
+        const { files } = await (await import('@plusplusoneplusplus/coc-native')).loadNativeGit().processGitPatch(patch);
+        expect(files).toMatchObject([{ path: 'image.bin', status: 'added', isBinary: true }]);
+        expect(server.requests.some(r => r.path.toLowerCase().includes('/items'))).toBe(false);
     });
 
     it('uses the latest iteration and pins current empty-diff behavior when commonRefCommit is missing', async () => {
@@ -100,7 +141,7 @@ describe('Mock ADO server diff integration', () => {
         expect(server.requests.some(r => r.path.toLowerCase().includes('/items'))).toBe(false);
     });
 
-    it('preserves current getItemText transport error swallowing as empty file content', async () => {
+    it('does not fabricate an addition when a required content read fails', async () => {
         server.setScenario({
             expectedRepositoryId: REAL_REPO,
             iterations: latestIteration(),
@@ -114,11 +155,10 @@ describe('Mock ADO server diff integration', () => {
         });
 
         const diff = await makeAdapter(REAL_REPO).getDiff(WORKSPACE_REPO, PR_ID);
-        const { files } = parseFullDiff(diff);
+        const { files } = await parseFullDiffAsync(diff);
 
-        expect(files).toEqual([
-            expect.objectContaining({ path: 'src/protected.ts', status: 'added', additions: 1, deletions: 0 }),
-        ]);
+        expect(diff).toBe('');
+        expect(files).toEqual([]);
     });
 
     it('handles large files and provider-level line truncation without losing file boundaries', async () => {
@@ -139,10 +179,11 @@ describe('Mock ADO server diff integration', () => {
         const adapter = makeAdapter(REAL_REPO);
         const provider = createPullRequestDiffProviderFromParams(
             'ado',
-            'mock-root',
+            path.resolve('mock-root'),
             WORKSPACE_REPO,
             PR_ID,
             adapter,
+            { workspaceId: WORKSPACE_REPO, host: new URL(server.url).host, repository: `${PROJECT}/${REAL_REPO}` },
         );
 
         const files = await provider.listFiles();
@@ -152,6 +193,16 @@ describe('Mock ADO server diff integration', () => {
         expect(content.truncated).toBe(true);
         expect(content.totalLines).toBeGreaterThan(20);
         expect(content.raw.split('\n')).toHaveLength(20);
+        const complete = await provider.getFullDiff();
+        expect(complete.truncated).toBe(false);
+        expect((await provider.prefetchAll()).get('src/large.ts')?.raw).toBe(complete.raw);
+        expect(await provider.getSummary()).toMatchObject({ filesChanged: 1, additions: 2, deletions: 2 });
+        provider.refresh();
+        expect((await provider.getFullDiff()).raw).toBe(complete.raw);
+        const requestCount = server.requests.length;
+        provider.dispose();
+        await expect(provider.getSummary()).rejects.toThrow('patch store: Closed');
+        expect(server.requests).toHaveLength(requestCount);
     });
 
     it('regresses multi-repo routing by failing without a configured remote repo and succeeding with one', async () => {
@@ -202,7 +253,8 @@ function iteration(id: number, headSha: string, baseSha: string): GitPullRequest
 
 function change(path: string, changeType: VersionControlChangeType, originalPath?: string): GitPullRequestChange {
     return {
-        item: { path, originalPath },
+        item: { path },
+        originalPath,
         changeType,
     } as GitPullRequestChange;
 }

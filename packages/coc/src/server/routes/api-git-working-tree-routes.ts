@@ -4,9 +4,11 @@
  * both full-text sides of a working-tree file.
  */
 
-import { WorkingTreeService, BranchService } from '@plusplusoneplusplus/forge';
-import { badRequest, handleAPIError, missingFields, notFound } from '../errors';
+import { WorkingTreeService, BranchService, loadWorkingTreePatch } from '@plusplusoneplusplus/forge';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { internalError, badRequest, handleAPIError, missingFields, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
+import { gitStatusToChar, patchContentResponse } from '../git/git-response';
 import {
     WORKING_TREE_CONTENT_STAGES,
     createWorkingTreeContentIO,
@@ -16,7 +18,7 @@ import {
 import type { WorkingTreeContentStage } from '../git/working-tree-file-content';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { truncateDiffIfNeeded } from './api-shared';
+import { createLocalPatchRoute, DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute, asBool } from './route-utils';
 
 export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
@@ -30,14 +32,10 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     // are inherently bounded by real edits and are never capped.
     const MAX_UNTRACKED_FILES = 500;
 
-    const STATUS_WORD_TO_CHAR: Record<string, string> = {
-        added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', conflict: 'U', untracked: '?',
-    };
-
     function normalizeChanges(changes: Array<{ filePath: string; originalPath?: string; status: string; stage: string; repositoryRoot: string; repositoryName: string }>) {
         return changes.map(c => ({
             ...c,
-            status: STATUS_WORD_TO_CHAR[c.status] ?? c.status,
+            status: gitStatusToChar(c.status),
             ...(c.originalPath ? { oldPath: c.originalPath } : {}),
         }));
     }
@@ -202,11 +200,11 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     }));
 
     // GET /api/workspaces/:id/git/changes/files/*/diff — Per-file working-tree diff
-    routes.push(createRoute({
+    routes.push(createLocalPatchRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/files\/(.+)\/diff$/,
         parseQuery: (q) => ({ stage: q.stage as string | undefined, full: asBool(q.full) }),
-        handler: async ({ res, match, query }) => {
+        handler: async ({ res, match, query, signal }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const filePath = decodeURIComponent(match[2]);
@@ -215,9 +213,15 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             const full = query.full;
 
             try {
-                const diff = await workingTreeService.getFileDiff(ws.rootPath, filePath, staged);
-                return { ...truncateDiffIfNeeded(diff, full), path: filePath };
-            } catch {
+                const { content } = await loadWorkingTreePatch(ws.rootPath, staged ? 'staged' : 'unstaged', filePath, {
+                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
+                });
+                return { ...patchContentResponse(content), path: filePath };
+            } catch (error) {
+                signal.throwIfAborted();
+                if (error instanceof NativeAddonLoadError) {
+                    return void handleAPIError(res, internalError(error.message));
+                }
                 return { diff: '', path: filePath };
             }
         },

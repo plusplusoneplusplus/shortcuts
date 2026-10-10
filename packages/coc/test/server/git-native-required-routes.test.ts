@@ -26,7 +26,7 @@ import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
-    return { ...actual, execGitAsync: vi.fn(), getRemoteUrl: vi.fn() };
+    return { ...actual, execGitAsync: vi.fn(), loadComparisonPatch: vi.fn(), getRemoteUrl: vi.fn() };
 });
 
 // The fetch guard asks the addon whether the clone is a repository at all,
@@ -41,7 +41,7 @@ vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
     };
 });
 
-import { execGitAsync, getRemoteUrl } from '@plusplusoneplusplus/forge';
+import { execGitAsync, loadComparisonPatch, getRemoteUrl } from '@plusplusoneplusplus/forge';
 import { readGitOriginRemote } from '../../src/server/work-items/work-item-sync-github-repo';
 import { cloneRepository } from '../../src/server/routes/api-git-clone-routes';
 import { getFullContextFileDiff } from '../../src/server/repos/pr-routes';
@@ -52,6 +52,7 @@ const REPO = hostRepoPath('repo');
 
 const REBUILD = 'npm run build:native -w packages/coc-native';
 const mockExecGitAsync = execGitAsync as unknown as ReturnType<typeof vi.fn>;
+const mockLoadComparisonPatch = vi.mocked(loadComparisonPatch);
 const mockGetRemoteUrl = getRemoteUrl as unknown as ReturnType<typeof vi.fn>;
 
 function loadError(): NativeAddonLoadError {
@@ -64,8 +65,10 @@ const PR_DATA = { baseSha: 'aaaa1111', headSha: 'bbbb2222' } as any;
 
 describe('route-level git callers without a usable addon', () => {
     beforeEach(() => {
+        mockLoadComparisonPatch.mockReset();
         mockExecGitAsync.mockReset();
         mockGetRemoteUrl.mockReset();
+        mockLoadComparisonPatch.mockRejectedValue(loadError());
         mockExecGitAsync.mockRejectedValue(loadError());
         mockGetRemoteUrl.mockRejectedValue(loadError());
         mockGitResolvedGitDir.mockReset();
@@ -83,10 +86,12 @@ describe('route-level git callers without a usable addon', () => {
         await expect(getFullContextFileDiff(REPO, 'origin', '42', PR_DATA, 'a.ts'))
             .rejects.toThrow(REBUILD);
         // It stops at the first crossing instead of walking the fetch candidates.
-        expect(mockExecGitAsync).toHaveBeenCalledTimes(1);
+        expect(mockLoadComparisonPatch).toHaveBeenCalledTimes(1);
+        expect(mockExecGitAsync).not.toHaveBeenCalled();
     });
 
     it('the fetch guard rejects rather than reading a broken addon as "not a repository"', async () => {
+        mockLoadComparisonPatch.mockRejectedValue(new Error('git diff failed: fatal: bad object aaaa1111'));
         mockExecGitAsync.mockRejectedValue(
             new Error('git diff failed: fatal: bad object aaaa1111'),
         );
@@ -102,8 +107,10 @@ describe('route-level git callers without a usable addon', () => {
 
 describe('route-level git callers against a directory git cannot read', () => {
     beforeEach(() => {
+        mockLoadComparisonPatch.mockReset();
         mockExecGitAsync.mockReset();
         mockGetRemoteUrl.mockReset();
+        mockLoadComparisonPatch.mockRejectedValue(new Error('git diff failed: fatal: not a git repository'));
         mockExecGitAsync.mockRejectedValue(
             new Error('git diff -U99999 aaaa1111 bbbb2222 -- a.ts failed: fatal: not a git repository'),
         );
@@ -135,21 +142,22 @@ describe('route-level git callers against a directory git cannot read', () => {
         // `fatal: bad object <sha>` is on stderr, which the native runner keeps —
         // so `isMissingCommitError` reads the same substring it always did, and
         // the fetch path is still reachable after the move.
+        mockLoadComparisonPatch.mockRejectedValue(new Error('git diff failed: fatal: bad object aaaa1111'));
         mockExecGitAsync.mockRejectedValue(
             new Error('git diff -U99999 aaaa1111 bbbb2222 -- a.ts failed: fatal: bad object aaaa1111'),
         );
         await expect(getFullContextFileDiff(REPO, 'origin', '42', PR_DATA, 'a.ts'))
             .resolves.toEqual({ diff: null, unavailableReason: 'git-fetch-failed' });
-        // diff, then the two `cat-file -e` probes. The guard that stops a
-        // network fetch against a non-repository is the fourth crossing and no
-        // longer a git command: it reads the git directory off the addon.
-        expect(mockExecGitAsync).toHaveBeenCalledTimes(3);
+        // Patch computation, then two commit probes and the native repo guard.
+        expect(mockLoadComparisonPatch).toHaveBeenCalledTimes(1);
+        expect(mockExecGitAsync).toHaveBeenCalledTimes(2);
         expect(mockGitResolvedGitDir).toHaveBeenCalledWith(REPO);
     });
 
     it('getFullContextFileDiff needs both SHAs before it runs git at all', async () => {
         await expect(getFullContextFileDiff(REPO, 'origin', '42', { headSha: 'b' } as any, 'a.ts'))
             .resolves.toEqual({ diff: null, unavailableReason: 'missing-pr-shas' });
+        expect(mockLoadComparisonPatch).not.toHaveBeenCalled();
         expect(mockExecGitAsync).not.toHaveBeenCalled();
     });
 });

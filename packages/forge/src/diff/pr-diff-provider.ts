@@ -3,66 +3,71 @@
  *
  * Both providers work by fetching the full unified diff from the remote
  * provider (via `IPullRequestsService.getDiff()` or a caller-supplied
- * callback) and then parsing it into per-file chunks.
+ * callback) and processing it through the Rust patch backend.
  *
  * This keeps the diff module decoupled from provider-specific APIs (ADO, GitHub).
  */
 
+import type { NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
 import type { IPullRequestsService } from '../providers/interfaces';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import type {
-    DiffContent,
-    DiffFileEntry,
-    DiffSummary,
     GetFileDiffOptions,
     IDiffProvider,
     PullRequestDiffSource,
     PullRequestIterationDiffSource,
 } from './types';
-import { makeDiffContent, computeSummary, parseFullDiff, truncateDiffContent } from './diff-utils';
+import { createPatchDiffProvider, nativePatchToDiff } from './diff-utils';
+import { loadSuppliedPatch, openRemotePatchStore } from './remote-patch';
+
+/** Authenticated transport identity, independent of provider routing aliases. */
+export interface RemoteDiffContext {
+    workspaceId: string;
+    host: string;
+    /** Provider-qualified organization/project/repository identity. */
+    repository: string;
+}
+
+export interface RemoteDiffProvider extends IDiffProvider {
+    refresh(): void;
+    dispose(): void;
+}
 
 // ── Core remote provider builder ─────────────────────────────
-function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestIterationDiffSource>(
-    source: S,
+function createRemoteDiffProvider(
+    source: PullRequestDiffSource | PullRequestIterationDiffSource,
     fetchFullDiff: () => Promise<string>,
-): IDiffProvider {
-    let cached: { files: DiffFileEntry[]; contentByPath: Map<string, DiffContent> } | undefined;
-
-    async function ensureParsed() {
-        if (!cached) {
-            const fullDiff = await fetchFullDiff();
-            cached = parseFullDiff(fullDiff);
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
+    const identity = { ...context };
+    const descriptor = Object.freeze({ ...source });
+    let store: NativeGitPatchStore | undefined;
+    function getStore() {
+        if (!store) {
+            const execution = resolveWorkspaceExecutionContext(descriptor.repositoryRoot);
+            store = openRemotePatchStore(identity.workspaceId, execution, {
+                provider: descriptor.provider,
+                host: identity.host,
+                repository: identity.repository,
+                sourceId: String(descriptor.pullRequestId),
+                iteration: descriptor.kind === 'pr-iteration' ? String(descriptor.iterationId) : undefined,
+                baseIteration: descriptor.kind === 'pr-iteration' && descriptor.baseIterationId != null
+                    ? String(descriptor.baseIterationId) : undefined,
+            });
         }
-        return cached;
+        return store;
+    }
+    async function load(filePath?: string, options?: GetFileDiffOptions) {
+        const result = await loadSuppliedPatch(fetchFullDiff, getStore(), undefined, filePath === undefined ? undefined : {
+            path: filePath, maxLines: options?.maxLines == null ? undefined : Math.floor(options.maxLines),
+        });
+        return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
     }
 
     return {
-        source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            const { files } = await ensureParsed();
-            return files;
-        },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const { contentByPath } = await ensureParsed();
-            const content = contentByPath.get(filePath) ?? makeDiffContent('');
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
-        },
-
-        async getFullDiff(): Promise<DiffContent> {
-            const fullDiff = await fetchFullDiff();
-            return makeDiffContent(fullDiff);
-        },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const { contentByPath } = await ensureParsed();
-            return new Map(contentByPath);
-        },
-
-        async getSummary(): Promise<DiffSummary> {
-            const { files } = await ensureParsed();
-            return computeSummary(files);
-        },
+        ...createPatchDiffProvider(descriptor, load),
+        refresh() { getStore().refresh(); },
+        dispose() { getStore().dispose(); },
     };
 }
 
@@ -79,7 +84,8 @@ function createRemoteDiffProvider<S extends PullRequestDiffSource | PullRequestI
 export function createPullRequestDiffProvider(
     source: PullRequestDiffSource,
     prService: IPullRequestsService,
-): IDiffProvider {
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
     if (!prService.getDiff) {
         throw new Error(
             `Pull request diff not supported: the ${source.provider} provider does not implement getDiff()`,
@@ -88,10 +94,8 @@ export function createPullRequestDiffProvider(
 
     const getDiff = prService.getDiff.bind(prService);
 
-    return createRemoteDiffProvider(
-        source,
-        () => getDiff(source.remoteRepositoryId, source.pullRequestId),
-    );
+    const { remoteRepositoryId, pullRequestId } = source;
+    return createRemoteDiffProvider(source, () => getDiff(remoteRepositoryId, pullRequestId), context);
 }
 
 /**
@@ -103,7 +107,8 @@ export function createPullRequestDiffProviderFromParams(
     remoteRepositoryId: string,
     pullRequestId: number | string,
     prService: IPullRequestsService,
-): IDiffProvider {
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
     const source: PullRequestDiffSource = {
         kind: 'pr',
         provider,
@@ -111,7 +116,7 @@ export function createPullRequestDiffProviderFromParams(
         remoteRepositoryId,
         pullRequestId,
     };
-    return createPullRequestDiffProvider(source, prService);
+    return createPullRequestDiffProvider(source, prService, context);
 }
 
 // ── PR iteration diff provider ───────────────────────────────
@@ -123,14 +128,15 @@ export function createPullRequestDiffProviderFromParams(
  * for the given iteration. This keeps the diff module decoupled from
  * provider-specific iteration APIs.
  *
- * For ADO, the caller would use `AdoPullRequestsService.getPullRequestIterationChanges()`
- * and `buildUnifiedDiff()` to construct the diff string.
+ * The callback supplies existing iteration data; this factory does not fetch
+ * provider iterations or implement inter-iteration comparisons.
  */
 export function createPullRequestIterationDiffProvider(
     source: PullRequestIterationDiffSource,
     fetchDiff: () => Promise<string>,
-): IDiffProvider {
-    return createRemoteDiffProvider(source, fetchDiff);
+    context: RemoteDiffContext,
+): RemoteDiffProvider {
+    return createRemoteDiffProvider(source, fetchDiff, context);
 }
 
 /**
@@ -143,8 +149,9 @@ export function createPullRequestIterationDiffProviderFromParams(
     pullRequestId: number | string,
     iterationId: number,
     fetchDiff: () => Promise<string>,
+    context: RemoteDiffContext,
     baseIterationId?: number,
-): IDiffProvider {
+): RemoteDiffProvider {
     const source: PullRequestIterationDiffSource = {
         kind: 'pr-iteration',
         provider,
@@ -154,5 +161,5 @@ export function createPullRequestIterationDiffProviderFromParams(
         iterationId,
         baseIterationId,
     };
-    return createPullRequestIterationDiffProvider(source, fetchDiff);
+    return createPullRequestIterationDiffProvider(source, fetchDiff, context);
 }

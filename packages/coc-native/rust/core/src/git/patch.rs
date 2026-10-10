@@ -1,0 +1,414 @@
+//! Shared unified-patch processing for host Git, supplied WSL output and remote data.
+//! Parsing preserves raw bytes and source order; presentation sorting belongs to callers.
+
+use super::status::ChangeStatus;
+use super::{run_git, GitCommandOptions, GitError};
+use std::path::Path;
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchFile {
+    pub path: String,
+    pub original_path: Option<String>,
+    #[cfg_attr(
+        feature = "napi",
+        napi(
+            ts_type = "'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'"
+        )
+    )]
+    pub status: String,
+    pub additions: u32,
+    pub deletions: u32,
+    pub is_binary: bool,
+    pub raw: String,
+    pub total_lines: i64,
+}
+
+/// Split at actual file headers, retaining every newline inside each patch.
+/// Preamble text (for example `git show` commit metadata) is not a file patch.
+pub fn parse_patch(raw: &str) -> Vec<PatchFile> {
+    let mut starts = Vec::new();
+    let mut offset = 0;
+    for line in raw.split_inclusive('\n') {
+        if line.starts_with("diff --git ")
+            || line.starts_with("diff --cc ")
+            || line.starts_with("diff --combined ")
+            || line.starts_with("* Unmerged path ")
+        {
+            starts.push(offset);
+        }
+        offset += line.len();
+    }
+    starts.push(raw.len());
+    starts.windows(2).filter_map(|pair| parse_file(&raw[pair[0]..pair[1]])).collect()
+}
+
+fn parse_file(raw: &str) -> Option<PatchFile> {
+    let mut lines = raw.split('\n').map(|line| line.strip_suffix('\r').unwrap_or(line));
+    let header = lines.next()?;
+    let (mut before, mut after) = if let Some(paths) = header.strip_prefix("diff --git ") {
+        header_paths(paths)?
+    } else {
+        let path = decode_path(
+            header
+                .strip_prefix("diff --cc ")
+                .or_else(|| header.strip_prefix("diff --combined "))
+                .or_else(|| header.strip_prefix("* Unmerged path "))?,
+        )?;
+        (path.clone(), path)
+    };
+    let mut status = if header.starts_with("* Unmerged path ") {
+        ChangeStatus::Conflict
+    } else {
+        ChangeStatus::Modified
+    };
+    let mut additions = 0;
+    let mut deletions = 0;
+    let mut is_binary = false;
+    let mut in_hunk = false;
+    for line in lines {
+        if line.starts_with("@@ ") || line.starts_with("@@@ ") {
+            in_hunk = true;
+        } else if in_hunk {
+            match line.as_bytes().first() {
+                Some(b'+') => additions += 1,
+                Some(b'-') => deletions += 1,
+                _ => {}
+            }
+        } else if line.starts_with("new file mode ") || line == "--- /dev/null" {
+            status = ChangeStatus::Added;
+        } else if line.starts_with("deleted file mode ") || line == "+++ /dev/null" {
+            status = ChangeStatus::Deleted;
+        } else if let Some(path) = line.strip_prefix("rename from ") {
+            status = ChangeStatus::Renamed;
+            before = decode_path(path)?;
+        } else if let Some(path) = line.strip_prefix("copy from ") {
+            status = ChangeStatus::Copied;
+            before = decode_path(path)?;
+        } else if let Some(path) =
+            line.strip_prefix("rename to ").or_else(|| line.strip_prefix("copy to "))
+        {
+            after = decode_path(path)?;
+        } else if let Some(path) = line.strip_prefix("--- a/") {
+            before = path.strip_suffix('\t').unwrap_or(path).to_string();
+        } else if let Some(path) = line.strip_prefix("+++ b/") {
+            after = path.strip_suffix('\t').unwrap_or(path).to_string();
+        } else if line.starts_with("Binary files ") || line == "GIT binary patch" {
+            is_binary = true;
+        }
+    }
+    let original_path = matches!(status, ChangeStatus::Renamed | ChangeStatus::Copied)
+        .then_some(before)
+        .filter(|path| *path != after);
+    Some(PatchFile {
+        path: after,
+        original_path,
+        status: status.as_str().to_string(),
+        additions,
+        deletions,
+        is_binary,
+        raw: raw.to_string(),
+        total_lines: raw.split('\n').count() as i64,
+    })
+}
+
+fn header_paths(header: &str) -> Option<(String, String)> {
+    let (before, after) = if header.starts_with('"') {
+        let (before, rest) = quoted_path(header)?;
+        (before, decode_path(rest.strip_prefix(' ')?)?)
+    } else {
+        // Unquoted Git paths may contain spaces, including the apparent separator.
+        // An unchanged path has a unique split where both prefixed names agree.
+        let split = header
+            .match_indices(" b/")
+            .find(|(i, _)| header[..*i].strip_prefix("a/") == header[*i + 1..].strip_prefix("b/"))
+            .map(|(i, _)| i)
+            .or_else(|| header.rfind(" \"b/"))
+            .or_else(|| header.rfind(" b/"))?;
+        (decode_path(&header[..split])?, decode_path(&header[split + 1..])?)
+    };
+    Some((before.strip_prefix("a/")?.to_string(), after.strip_prefix("b/")?.to_string()))
+}
+
+fn decode_path(path: &str) -> Option<String> {
+    if path.starts_with('"') {
+        let (decoded, rest) = quoted_path(path)?;
+        rest.is_empty().then_some(decoded)
+    } else {
+        Some(path.to_string())
+    }
+}
+
+/// Decode Git's C quoting, including octal-escaped UTF-8 bytes. Malformed
+/// quoting drops the file rather than assigning its patch to a fabricated path.
+fn quoted_path(path: &str) -> Option<(String, &str)> {
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::new();
+    let mut i = 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => return Some((String::from_utf8_lossy(&decoded).into_owned(), &path[i + 1..])),
+            b'\\' => {
+                i += 1;
+                let byte = *bytes.get(i)?;
+                decoded.push(match byte {
+                    b'a' => 7,
+                    b'b' => 8,
+                    b't' => b'\t',
+                    b'n' => b'\n',
+                    b'v' => 11,
+                    b'f' => 12,
+                    b'r' => b'\r',
+                    b'\\' | b'"' => byte,
+                    b'0'..=b'3' => {
+                        let second = *bytes.get(i + 1)?;
+                        let third = *bytes.get(i + 2)?;
+                        if !(b'0'..=b'7').contains(&second) || !(b'0'..=b'7').contains(&third) {
+                            return None;
+                        }
+                        i += 2;
+                        (byte - b'0') * 64 + (second - b'0') * 8 + (third - b'0')
+                    }
+                    _ => return None,
+                });
+            }
+            byte => decoded.push(byte),
+        }
+        i += 1;
+    }
+    None
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchContent {
+    pub raw: String,
+    pub truncated: bool,
+    pub total_lines: i64,
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchSummary {
+    pub files_changed: u32,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchResult {
+    pub files: Vec<PatchFile>,
+    pub content: PatchContent,
+    pub summary: PatchSummary,
+}
+
+/// Process complete supplied bytes before truncating the display content.
+/// An empty patch has zero lines, matching the public JavaScript contract.
+pub fn process_patch(raw: String, max_lines: Option<i64>) -> PatchResult {
+    let files = parse_patch(&raw);
+    let summary = PatchSummary {
+        files_changed: files.len() as u32,
+        additions: files.iter().map(|file| file.additions).sum(),
+        deletions: files.iter().map(|file| file.deletions).sum(),
+    };
+    PatchResult { files, content: patch_content(raw, max_lines), summary }
+}
+
+/// Display truncation of a complete retained snapshot.
+pub fn truncate_patch(result: &PatchResult, max_lines: Option<i64>) -> PatchResult {
+    PatchResult {
+        files: result.files.clone(),
+        content: patch_content(result.content.raw.clone(), max_lines),
+        summary: result.summary.clone(),
+    }
+}
+
+fn patch_content(raw: String, max_lines: Option<i64>) -> PatchContent {
+    let total_lines = if raw.is_empty() { 0 } else { raw.split('\n').count() as i64 };
+    let truncated = max_lines.is_some_and(|limit| limit <= 0 || total_lines > limit);
+    let raw = if truncated {
+        raw.split('\n').take(max_lines.unwrap_or(0).max(0) as usize).collect::<Vec<_>>().join("\n")
+    } else {
+        raw
+    };
+    PatchContent { raw, truncated, total_lines }
+}
+
+/// One shared command plan for host execution and the TypeScript WSL transport.
+/// Three-dot comparison preserves branch-range semantics. Literal pathspecs
+/// prevent file names containing Git glob/magic syntax selecting other files.
+pub fn range_patch_args(
+    base: &str,
+    head: &str,
+    path: Option<&str>,
+    context_lines: Option<u32>,
+) -> Vec<String> {
+    patch_args("diff", &[format!("{base}...{head}")], path, context_lines)
+}
+
+/// PR comparisons use the supplied endpoints directly, without a merge base.
+pub fn comparison_patch_args(
+    base: &str,
+    head: &str,
+    path: Option<&str>,
+    context_lines: Option<u32>,
+) -> Vec<String> {
+    patch_args("diff", &[base.into(), head.into()], path, context_lines)
+}
+
+fn patch_args(
+    command: &str,
+    revisions: &[String],
+    path: Option<&str>,
+    context: Option<u32>,
+) -> Vec<String> {
+    let mut args = [
+        "--literal-pathspecs",
+        command,
+        "-M",
+        "-C",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+    ]
+    .map(String::from)
+    .to_vec();
+    if let Some(context) = context {
+        args.push(format!("-U{context}"));
+    }
+    args.push("--end-of-options".into());
+    args.extend_from_slice(revisions);
+    args.push("--".into());
+    if let Some(path) = path {
+        args.push(path.into());
+    }
+    args
+}
+
+/// First-parent provider comparison, including a root commit's empty left side.
+/// diff-tree resolves the parent itself and supports the repository's hash format.
+pub fn commit_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
+    let mut args = patch_args("diff-tree", &[commit.into()], path, context);
+    args.splice(
+        2..2,
+        ["--root", "--first-parent", "-m", "-r", "-p", "--no-commit-id"].map(String::from),
+    );
+    args
+}
+
+/// Route comparison uses git-show's combined merge behavior, not first parent.
+pub fn show_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
+    let mut args = patch_args("show", &[commit.into()], path, context);
+    args.splice(2..2, ["--format=", "--patch"].map(String::from));
+    args
+}
+
+/// Host execution and external transports share mode validation and command selection.
+pub fn revision_patch_args(
+    mode: &str,
+    base: &str,
+    head: Option<&str>,
+    path: Option<&str>,
+    context: Option<u32>,
+) -> Result<Vec<String>, GitError> {
+    match (mode, head) {
+        ("commit", None) => Ok(commit_patch_args(base, path, context)),
+        ("show", None) => Ok(show_patch_args(base, path, context)),
+        ("range", Some(head)) => Ok(range_patch_args(base, head, path, context)),
+        ("comparison", Some(head)) => Ok(comparison_patch_args(base, head, path, context)),
+        _ => Err(GitError::from_parts(super::GitErrorKind::Repository, &[], "invalid patch mode")),
+    }
+}
+
+/// Staged compares HEAD to index; unstaged compares index to disk, even for all.
+pub fn working_tree_patch_args(
+    scope: &str,
+    path: Option<&str>,
+    context: Option<u32>,
+) -> Result<Vec<Vec<String>>, GitError> {
+    let scopes: &[bool] = match scope {
+        "staged" => &[true],
+        "unstaged" => &[false],
+        "all" => &[true, false],
+        _ => {
+            return Err(GitError::from_parts(
+                super::GitErrorKind::Repository,
+                &[],
+                "invalid working-tree scope",
+            ))
+        }
+    };
+    Ok(scopes
+        .iter()
+        .map(|staged| {
+            let mut args = patch_args("diff", &[], path, context);
+            if *staged {
+                args.insert(2, "--cached".into());
+            }
+            args
+        })
+        .collect())
+}
+
+/// Last patch metadata wins per path, while display bytes retain both comparisons.
+pub fn process_working_tree_patch(
+    outputs: Vec<String>,
+    max_lines: Option<i64>,
+    headings: bool,
+) -> PatchResult {
+    let content = patch_content(
+        outputs
+            .iter()
+            .enumerate()
+            .filter(|(_, raw)| !raw.trim().is_empty())
+            .map(|(index, raw)| {
+                if headings {
+                    format!(
+                        "# {} Changes\n\n{}",
+                        if index == 0 { "Staged" } else { "Unstaged" },
+                        raw
+                    )
+                } else {
+                    raw.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(if headings { "\n\n" } else { "\n" }),
+        max_lines,
+    );
+    let mut files: Vec<PatchFile> = Vec::new();
+    let mut indices = std::collections::HashMap::new();
+    for output in outputs {
+        for mut file in parse_patch(&output) {
+            if let Some(&index) = indices.get(&file.path) {
+                let previous: &PatchFile = &files[index];
+                file.raw = format!("{}\n{}", previous.raw, file.raw);
+                file.total_lines = file.raw.split('\n').count() as i64;
+                files[index] = file;
+            } else {
+                indices.insert(file.path.clone(), files.len());
+                files.push(file);
+            }
+        }
+    }
+    let summary = PatchSummary {
+        files_changed: files.len() as u32,
+        additions: files.iter().map(|file| file.additions).sum(),
+        deletions: files.iter().map(|file| file.deletions).sum(),
+    };
+    PatchResult { files, content, summary }
+}
+
+pub fn working_tree_patch_outputs(
+    root: &Path,
+    scope: &str,
+    path: Option<&str>,
+    context: Option<u32>,
+    options: &GitCommandOptions,
+) -> Result<Vec<String>, GitError> {
+    working_tree_patch_args(scope, path, context)?
+        .iter()
+        .map(|args| run_git(root, args, options))
+        .collect()
+}

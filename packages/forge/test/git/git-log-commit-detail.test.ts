@@ -95,11 +95,10 @@ describe('getCommitFiles', () => {
         expect(added?.deletions).toBe(0);
     });
 
-    // `diff-tree` compares a commit against its parents, so the first commit in
-    // a repository has always shown an empty file list.
-    it('reports the empty tree and no files for a root commit', async () => {
+    it('lists the initial commit files against the empty tree', async () => {
         const files = await service.getCommitFiles(repo, root);
-        expect(files).toEqual([]);
+        expect(files.map(file => file.path)).toEqual(['a file with spaces.md', 'keep.md', 'logo.bin', 'src/old.ts']);
+        expect(files.every(file => file.status === 'added')).toBe(true);
     });
 });
 
@@ -113,7 +112,18 @@ describe('getCommitDiff', () => {
 
     it('diffs a root commit against the empty tree', async () => {
         const diff = await service.getCommitDiff(repo, root);
+        expect(diff).toBe(git('diff-tree', '--root', '--no-commit-id', '-p', '-r', root).replace(/\r?\n$/, ''));
         expect(diff).toContain('+export const value = 1;');
+    });
+
+    it('diffs a merge against its first parent without moving HEAD', async () => {
+        const tree = git('rev-parse', `${head}^{tree}`).trim();
+        const merge = git('commit-tree', tree, '-p', root, '-p', head, '-m', 'merge fixture').trim();
+        const expected = git('diff', root, merge).replace(/\r?\n$/, '');
+        expect(expected).toContain('+new file');
+        expect(await service.getCommitDiff(repo, merge)).toBe(expected);
+        expect(git('show', '--format=', merge).trim()).toBe('');
+        expect(git('rev-parse', 'HEAD').trim()).toBe(head);
     });
 });
 

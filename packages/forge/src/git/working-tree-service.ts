@@ -13,6 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { loadWorkingTreePatch } from '../diff/local-patch';
 import type { NativeGitAddon, NativeGitStatusEntry } from '@plusplusoneplusplus/coc-native';
 import { getLogger } from '../logger';
 import { runGitViaWsl, translateWslArgs } from './exec';
@@ -351,12 +352,7 @@ export class WorkingTreeService {
         // naming the rebuild — rendering it as an empty diff would hide it.
         loadNativeGit();
         try {
-            const args = ['diff', '-U99999'];
-            if (staged) {
-                args.push('--staged');
-            }
-            args.push('--', filePath);
-            return await runGit(repoRoot, args);
+            return (await loadWorkingTreePatch(repoRoot, staged ? 'staged' : 'unstaged', filePath, { contextLines: 99999 })).content.raw;
         } catch (error) {
             getLogger().error('Git', `getFileDiff failed: ${filePath}`, error instanceof Error ? error : undefined);
             return '';

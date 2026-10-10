@@ -1,72 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { buildUnifiedDiff } from '../../src/ado/diff-builder';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 
-describe('buildUnifiedDiff', () => {
-    it('returns a unified diff for a simple edit', () => {
-        const base = 'line1\nline2\nline3\n';
-        const head = 'line1\nchanged\nline3\n';
+const api = loadNativeGit();
+const build = (before: string, after: string, extra = {}) => api.buildRemoteGitPatch([{
+    path: '/src/file.ts', before, after, beforeExists: true, afterExists: true, ...extra,
+}]);
 
-        const result = buildUnifiedDiff('src/foo.ts', undefined, base, head);
-
-        expect(result).toContain('diff --git a/src/foo.ts b/src/foo.ts');
-        expect(result).toContain('--- a/src/foo.ts');
-        expect(result).toContain('+++ b/src/foo.ts');
-        expect(result).toMatch(/^@@.+@@/m);
-        expect(result).toContain('-line2');
-        expect(result).toContain('+changed');
+describe('Rust remote patch construction', () => {
+    it('renders edited text and preserves CRLF and missing-newline markers', async () => {
+        const patch = await build('old\r\nlast', 'new\r\nlast');
+        expect(patch).toContain('-old\r\n+new\r\n');
+        expect(patch).toContain('\\ No newline at end of file');
+        expect(await api.parseGitPatch(patch)).toMatchObject([{ path: 'src/file.ts', additions: 1, deletions: 1 }]);
     });
 
-    it('strips a leading slash from the ADO file path', () => {
-        const base = 'hello\n';
-        const head = 'world\n';
-
-        const result = buildUnifiedDiff('/src/foo.ts', undefined, base, head);
-
-        expect(result).toContain('--- a/src/foo.ts');
-        expect(result).toContain('+++ b/src/foo.ts');
+    it('distinguishes an empty existing file from additions and deletions', async () => {
+        expect(await build('', 'text\n')).not.toContain('/dev/null');
+        expect(await build('text\n', '')).not.toContain('/dev/null');
+        for (const extra of [{ beforeExists: false }, { afterExists: false }]) {
+            const patch = await build('', '', extra);
+            expect(await api.parseGitPatch(patch)).toMatchObject([{
+                status: extra.beforeExists === false ? 'added' : 'deleted', isBinary: false,
+            }]);
+        }
+        expect(await build('', '')).toBe('');
     });
 
-    it('uses /dev/null as oldFileName for an added file', () => {
-        const result = buildUnifiedDiff('src/new.ts', undefined, '', 'export const x = 1;\n');
-
-        expect(result).toContain('--- /dev/null');
-        expect(result).toContain('+++ b/src/new.ts');
-        expect(result).toContain('new file mode 100644');
-        expect(result).toContain('+export const x = 1;');
+    it('keeps metadata-only rename and mode changes', async () => {
+        const patch = await build('same\n', 'same\n', {
+            originalPath: '/src/old.ts', beforeMode: '100644', afterMode: '100755',
+        });
+        expect(patch).toContain('old mode 100644\nnew mode 100755');
+        expect(await api.parseGitPatch(patch)).toMatchObject([{
+            path: 'src/file.ts', originalPath: 'src/old.ts', status: 'renamed', isBinary: false,
+        }]);
     });
 
-    it('uses /dev/null as newFileName for a deleted file', () => {
-        const result = buildUnifiedDiff('src/old.ts', undefined, 'export const x = 1;\n', '');
-
-        expect(result).toContain('--- a/src/old.ts');
-        expect(result).toContain('+++ /dev/null');
-        expect(result).toContain('deleted file mode 100644');
-        expect(result).toContain('-export const x = 1;');
+    it('quotes unusual paths and retains header-like hunk content', async () => {
+        const patch = await build('--old\n', '++new\n', { path: '/café\t"name.txt' });
+        expect(await api.parseGitPatch(patch)).toMatchObject([{
+            path: 'café\t"name.txt', additions: 1, deletions: 1,
+        }]);
     });
 
-    it('uses originalPath for the a/ header when the file was renamed', () => {
-        const base = 'content\n';
-        const head = 'content\nmore\n';
-
-        const result = buildUnifiedDiff(
-            'src/newName.ts',
-            'src/oldName.ts',
-            base,
-            head,
-        );
-
-        expect(result).toContain('diff --git a/src/oldName.ts b/src/newName.ts');
-        expect(result).toContain('rename from src/oldName.ts');
-        expect(result).toContain('rename to src/newName.ts');
-        expect(result).toContain('--- a/src/oldName.ts');
-        expect(result).toContain('+++ b/src/newName.ts');
+    it('classifies explicit and NUL-detected binary files using real labels', async () => {
+        for (const extra of [{}, { isBinary: true }]) {
+            const patch = await build('a\0b', 'b\0c', extra);
+            expect(patch).toContain('Binary files a/src/file.ts and b/src/file.ts differ');
+            expect(patch).not.toContain('codex-file-diff-');
+            expect(await api.parseGitPatch(patch)).toMatchObject([{ isBinary: true }]);
+        }
     });
 
-    it('returns an empty string when unchanged content is not a rename', () => {
-        const content = 'unchanged\n';
-
-        const result = buildUnifiedDiff('src/same.ts', undefined, content, content);
-
-        expect(result).toBe('');
+    it('isolates concurrent batches with identical paths', async () => {
+        const results = await Promise.all([build('old\n', 'workspace-one\n'), build('old\n', 'workspace-two\n')]);
+        expect(results[0]).toContain('+workspace-one');
+        expect(results[0]).not.toContain('workspace-two');
+        expect(results[1]).toContain('+workspace-two');
     });
 });

@@ -1,0 +1,557 @@
+//! Scoped, bounded patch snapshots. Callers resolve refs or fingerprint supplied
+//! bytes before requesting a version; mutable names alone are never cache keys.
+
+use super::commit::validate_ref;
+use super::patch::{
+    process_patch, process_working_tree_patch, revision_patch_args, truncate_patch,
+    working_tree_patch_outputs, PatchResult,
+};
+use super::{run_git, GitCommandOptions, GitError};
+use parking_lot::{Condvar, Mutex};
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PatchExecution {
+    Host,
+    Wsl { distro: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object))]
+pub struct RemotePatchSource {
+    pub provider: String,
+    pub host: String,
+    /// Provider-qualified organization/project/repository identity.
+    pub repository: String,
+    /// Pull request or supplied snapshot source identity, without credentials.
+    pub source_id: String,
+    pub iteration: Option<String>,
+    pub base_iteration: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PatchSource {
+    Local { kind: String },
+    Remote(RemotePatchSource),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchScope {
+    pub workspace_id: String,
+    pub root: PathBuf,
+    pub execution: PatchExecution,
+    pub source: PatchSource,
+}
+
+impl PatchScope {
+    fn valid(&self) -> bool {
+        !self.workspace_id.trim().is_empty()
+            && match &self.execution {
+                PatchExecution::Host => self.root.is_absolute(),
+                // A WSL root is a Linux path, including on a Windows host.
+                PatchExecution::Wsl { distro } => {
+                    !distro.trim().is_empty() && self.root.to_string_lossy().starts_with('/')
+                }
+            }
+            && match &self.source {
+                PatchSource::Local { kind } => !kind.trim().is_empty(),
+                PatchSource::Remote(source) => {
+                    [&source.provider, &source.host, &source.repository, &source.source_id]
+                        .iter()
+                        .all(|v| !v.trim().is_empty())
+                        && [&source.iteration, &source.base_iteration]
+                            .iter()
+                            .all(|v| v.as_ref().is_none_or(|v| !v.trim().is_empty()))
+                        && (source.base_iteration.is_none() || source.iteration.is_some())
+                }
+            }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PatchVersion {
+    Revisions { base: String, head: String },
+    Fingerprint(String),
+}
+
+/// Variant includes patch operation, path, context and composition options.
+/// Display truncation can be applied after retrieving a complete snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PatchKey {
+    pub version: PatchVersion,
+    pub variant: String,
+}
+
+impl PatchKey {
+    fn valid(&self) -> bool {
+        !self.variant.trim().is_empty()
+            && match &self.version {
+                PatchVersion::Revisions { base, head } => [base, head].iter().all(|v| {
+                    matches!(v.len(), 40 | 64) && v.bytes().all(|c| c.is_ascii_hexdigit())
+                }),
+                PatchVersion::Fingerprint(value) => !value.trim().is_empty(),
+            }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PatchStoreError {
+    InvalidIdentity,
+    ScopeMismatch,
+    Closed,
+    Stale,
+    Cancelled,
+    Capacity,
+    Compute(String),
+}
+
+impl std::fmt::Display for PatchStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Compute(message) => f.write_str(message),
+            other => write!(f, "patch store: {other:?}"),
+        }
+    }
+}
+
+impl From<GitError> for PatchStoreError {
+    fn from(error: GitError) -> Self {
+        Self::Compute(error.to_string())
+    }
+}
+
+type Outcome = Result<Arc<PatchResult>, PatchStoreError>;
+
+#[derive(Clone, Default)]
+pub struct PatchCancellation(Arc<AtomicBool>);
+
+impl PatchCancellation {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn check(&self) -> Result<(), PatchStoreError> {
+        if self.0.load(Ordering::Acquire) {
+            Err(PatchStoreError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Default)]
+struct Flight {
+    result: Mutex<Option<Outcome>>,
+    ready: Condvar,
+}
+
+impl Flight {
+    fn finish(&self, result: Outcome) {
+        let mut slot = self.result.lock();
+        if slot.is_none() {
+            *slot = Some(result);
+            self.ready.notify_all();
+        }
+    }
+
+    fn wait(&self, cancellation: Option<&PatchCancellation>) -> Outcome {
+        let mut slot = self.result.lock();
+        loop {
+            if let Some(cancellation) = cancellation {
+                cancellation.check()?;
+            }
+            if let Some(result) = slot.as_ref() {
+                return result.clone();
+            }
+            if cancellation.is_some() {
+                self.ready.wait_for(&mut slot, std::time::Duration::from_millis(10));
+            } else {
+                self.ready.wait(&mut slot);
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct State {
+    generation: u64,
+    closed: bool,
+    cache: VecDeque<(PatchKey, Arc<PatchResult>, usize)>,
+    bytes: usize,
+    pending: HashMap<PatchKey, Arc<Flight>>,
+    active: usize,
+    cancellation: Arc<AtomicBool>,
+}
+
+/// Each handle owns one exact workspace/root/execution/source scope. Work runs
+/// outside the state lock; concurrent identical requests share one completion.
+/// Running computations and retained snapshot allocations are bounded independently.
+pub struct PatchStore {
+    identity: Arc<()>,
+    scope: PatchScope,
+    max_entries: usize,
+    max_bytes: usize,
+    state: Mutex<State>,
+}
+
+/// Captured before external I/O, consumed once when its bytes arrive. It holds
+/// no worker or cache capacity while TypeScript performs authenticated/WSL I/O.
+pub struct PatchTransport {
+    identity: Arc<()>,
+    generation: u64,
+    cancellation: Arc<AtomicBool>,
+    pub request_cancellation: PatchCancellation,
+}
+
+impl PatchStore {
+    pub fn open(
+        scope: PatchScope,
+        max_entries: usize,
+        max_bytes: usize,
+    ) -> Result<Self, PatchStoreError> {
+        if !scope.valid() || max_entries == 0 {
+            return Err(PatchStoreError::InvalidIdentity);
+        }
+        Ok(Self {
+            identity: Arc::new(()),
+            scope,
+            max_entries,
+            max_bytes,
+            state: Mutex::new(State::default()),
+        })
+    }
+
+    fn check(&self, scope: &PatchScope, state: &State) -> Result<(), PatchStoreError> {
+        if scope != &self.scope {
+            Err(PatchStoreError::ScopeMismatch)
+        } else if state.closed {
+            Err(PatchStoreError::Closed)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn get_or_compute(
+        &self,
+        scope: &PatchScope,
+        key: PatchKey,
+        compute: impl FnOnce() -> Result<PatchResult, String>,
+    ) -> Outcome {
+        self.compute(scope, key, None, None, compute)
+    }
+
+    fn compute(
+        &self,
+        scope: &PatchScope,
+        key: PatchKey,
+        generation: Option<u64>,
+        cancellation: Option<&PatchCancellation>,
+        compute: impl FnOnce() -> Result<PatchResult, String>,
+    ) -> Outcome {
+        let mut compute = Some(compute);
+        loop {
+            let (flight, owner) = {
+                let mut state = self.state.lock();
+                self.check(scope, &state)?;
+                if generation.is_some_and(|generation| generation != state.generation) {
+                    return Err(PatchStoreError::Stale);
+                }
+                if let Some(cancellation) = cancellation {
+                    cancellation.check()?;
+                }
+                if !key.valid() {
+                    return Err(PatchStoreError::InvalidIdentity);
+                }
+                if let Some(index) = state.cache.iter().position(|entry| entry.0 == key) {
+                    let entry = state.cache.remove(index).unwrap();
+                    let result = entry.1.clone();
+                    state.cache.push_back(entry);
+                    return Ok(result);
+                }
+                if let Some(flight) = state.pending.get(&key) {
+                    (flight.clone(), false)
+                } else {
+                    if state.active >= self.max_entries {
+                        return Err(PatchStoreError::Capacity);
+                    }
+                    let flight = Arc::new(Flight::default());
+                    state.pending.insert(key.clone(), flight.clone());
+                    state.active += 1;
+                    (flight, true)
+                }
+            };
+            if owner {
+                // A panic cannot strand waiters or permanently consume capacity.
+                let mut result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(compute.take().unwrap()))
+                        .unwrap_or_else(|_| Err("patch computation panicked".into()))
+                        .map(Arc::new)
+                        .map_err(PatchStoreError::Compute);
+                if result.is_err()
+                    && cancellation.is_some_and(|cancellation| cancellation.check().is_err())
+                {
+                    result = Err(PatchStoreError::Cancelled);
+                }
+                let mut state = self.state.lock();
+                state.active -= 1;
+                // Refresh/disposal remove the old flight. Pointer identity is the
+                // generation token: an older completion cannot replace a new one.
+                if state.pending.get(&key).is_some_and(|current| Arc::ptr_eq(current, &flight)) {
+                    state.pending.remove(&key);
+                    // Abandoned owners cannot retain their output, but independent
+                    // waiters still receive the shared computation's actual outcome.
+                    if let Some(value) = result.as_ref().ok().filter(|_| {
+                        cancellation.is_none_or(|cancellation| cancellation.check().is_ok())
+                    }) {
+                        let bytes = retained_bytes(&key, value);
+                        if !value.content.truncated && bytes <= self.max_bytes {
+                            while state.cache.len() >= self.max_entries
+                                || state.bytes > self.max_bytes - bytes
+                            {
+                                state.bytes -= state.cache.pop_front().unwrap().2;
+                            }
+                            state.bytes += bytes;
+                            state.cache.push_back((key, value.clone(), bytes));
+                        }
+                    }
+                    flight.finish(result);
+                }
+                return flight.wait(cancellation);
+            } else {
+                match flight.wait(cancellation) {
+                    // A cancelled host owner stops its child, not independent waiters.
+                    // Their unconsumed computation retries in the same generation.
+                    Err(PatchStoreError::Cancelled) => continue,
+                    result => return result,
+                }
+            }
+        }
+    }
+
+    pub fn scope(&self) -> &PatchScope {
+        &self.scope
+    }
+
+    pub fn begin_transport(&self, scope: &PatchScope) -> Result<PatchTransport, PatchStoreError> {
+        let state = self.state.lock();
+        self.check(scope, &state)?;
+        Ok(PatchTransport {
+            identity: self.identity.clone(),
+            generation: state.generation,
+            cancellation: state.cancellation.clone(),
+            request_cancellation: PatchCancellation::default(),
+        })
+    }
+
+    pub fn check_ticket(&self, ticket: &PatchTransport) -> Result<(), PatchStoreError> {
+        if !Arc::ptr_eq(&self.identity, &ticket.identity) {
+            return Err(PatchStoreError::ScopeMismatch);
+        }
+        let state = self.state.lock();
+        self.check(&self.scope, &state)?;
+        if ticket.generation != state.generation {
+            return Err(PatchStoreError::Stale);
+        }
+        ticket.request_cancellation.check()
+    }
+
+    /// Hash and parse supplied bytes on the worker, using the same bounded
+    /// snapshot store as host revisions. Never trust mutable transport ref names.
+    pub fn complete_transport(
+        &self,
+        scope: &PatchScope,
+        ticket: PatchTransport,
+        raw: String,
+        max_lines: Option<i64>,
+    ) -> Result<PatchResult, PatchStoreError> {
+        self.check_ticket(&ticket)?;
+        let key = PatchKey {
+            version: PatchVersion::Fingerprint(blake3::hash(raw.as_bytes()).to_hex().to_string()),
+            variant: "supplied".into(),
+        };
+        self.read_snapshot(scope, ticket, key, max_lines, || Ok(process_patch(raw, None)))
+    }
+
+    pub fn complete_working_tree_transport(
+        &self,
+        scope: &PatchScope,
+        ticket: PatchTransport,
+        outputs: Vec<String>,
+        max_lines: Option<i64>,
+        headings: bool,
+    ) -> Result<PatchResult, PatchStoreError> {
+        self.check_ticket(&ticket)?;
+        if !matches!(scope.source, PatchSource::Local { .. }) {
+            return Err(PatchStoreError::InvalidIdentity);
+        }
+        let mut hash = blake3::Hasher::new();
+        // Length framing preserves staged/unstaged boundaries, including empty outputs.
+        for raw in &outputs {
+            hash.update(&(raw.len() as u64).to_le_bytes());
+            hash.update(raw.as_bytes());
+        }
+        self.read_snapshot(
+            scope,
+            ticket,
+            PatchKey {
+                version: PatchVersion::Fingerprint(hash.finalize().to_hex().to_string()),
+                variant: if headings { "pending" } else { "working-tree" }.into(),
+            },
+            max_lines,
+            || Ok(process_working_tree_patch(outputs, None, headings)),
+        )
+    }
+
+    fn read_snapshot(
+        &self,
+        scope: &PatchScope,
+        ticket: PatchTransport,
+        key: PatchKey,
+        max_lines: Option<i64>,
+        compute: impl FnOnce() -> Result<PatchResult, String>,
+    ) -> Result<PatchResult, PatchStoreError> {
+        self.check_ticket(&ticket)?;
+        let result = self.compute(
+            scope,
+            key,
+            Some(ticket.generation),
+            Some(&ticket.request_cancellation),
+            compute,
+        )?;
+        let result = truncate_patch(&result, max_lines);
+        self.check_ticket(&ticket)?;
+        Ok(result)
+    }
+
+    fn host_options(
+        &self,
+        ticket: &PatchTransport,
+        options: &GitCommandOptions,
+    ) -> Result<GitCommandOptions, PatchStoreError> {
+        if self.scope.execution != PatchExecution::Host
+            || !matches!(self.scope.source, PatchSource::Local { .. })
+        {
+            return Err(PatchStoreError::InvalidIdentity);
+        }
+        self.check_ticket(ticket)?;
+        Ok(GitCommandOptions {
+            cancellation: vec![ticket.cancellation.clone(), ticket.request_cancellation.0.clone()],
+            ..options.clone()
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn working_tree_patch(
+        &self,
+        ticket: PatchTransport,
+        scope: &str,
+        path: Option<&str>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        headings: bool,
+    ) -> Result<PatchResult, PatchStoreError> {
+        let options = self.host_options(&ticket, &GitCommandOptions::default())?;
+        let outputs = working_tree_patch_outputs(&self.scope.root, scope, path, context, &options);
+        self.check_ticket(&ticket)?;
+        self.complete_working_tree_transport(&self.scope, ticket, outputs?, max_lines, headings)
+    }
+
+    /// Host commit (`commit`/`show`) or two-revision (`range`/`comparison`)
+    /// patches. Refs resolve to object IDs and Git runs on those IDs, so a
+    /// moving ref cannot publish into another version. Names that do not
+    /// resolve run uncached to keep Git's own error text.
+    #[allow(clippy::too_many_arguments)]
+    pub fn revision_patch(
+        &self,
+        ticket: PatchTransport,
+        mode: &str,
+        base: &str,
+        head: Option<&str>,
+        path: Option<&str>,
+        context: Option<u32>,
+        max_lines: Option<i64>,
+        options: &GitCommandOptions,
+    ) -> Result<PatchResult, PatchStoreError> {
+        let options = self.host_options(&ticket, options)?;
+        let root = &self.scope.root;
+        let run = |base: &str, head: Option<&str>, max_lines| {
+            let args = revision_patch_args(mode, base, head, path, context)?;
+            run_git(root, &args, &options).map(|raw| process_patch(raw, max_lines))
+        };
+        let resolve = |rev: &str| validate_ref(root, rev).ok().flatten();
+        let resolved = match head {
+            None => resolve(base).map(|sha| (sha.clone(), sha)),
+            Some(head) => resolve(base).zip(resolve(head)),
+        };
+        self.check_ticket(&ticket)?;
+        let Some((base_sha, head_sha)) = resolved else {
+            let result = run(base, head, max_lines);
+            self.check_ticket(&ticket)?;
+            return result.map_err(Into::into);
+        };
+        let key = PatchKey {
+            version: PatchVersion::Revisions { base: base_sha.clone(), head: head_sha.clone() },
+            variant: format!("{mode}\0{path:?}\0{context:?}"),
+        };
+        self.read_snapshot(&self.scope, ticket, key, max_lines, || {
+            run(&base_sha, head.map(|_| head_sha.as_str()), None).map_err(|error| error.to_string())
+        })
+    }
+
+    pub fn refresh(&self, scope: &PatchScope) -> Result<(), PatchStoreError> {
+        let mut state = self.state.lock();
+        self.check(scope, &state)?;
+        Self::clear(&mut state, PatchStoreError::Stale);
+        Ok(())
+    }
+
+    pub fn dispose(&self, scope: &PatchScope) -> Result<(), PatchStoreError> {
+        let mut state = self.state.lock();
+        if scope != &self.scope {
+            return Err(PatchStoreError::ScopeMismatch);
+        }
+        state.closed = true;
+        Self::clear(&mut state, PatchStoreError::Closed);
+        Ok(())
+    }
+
+    fn clear(state: &mut State, error: PatchStoreError) {
+        state.cancellation.store(true, Ordering::Release);
+        state.cancellation = Arc::new(AtomicBool::new(false));
+        state.generation += 1;
+        state.cache.clear();
+        state.bytes = 0;
+        for (_, flight) in state.pending.drain() {
+            flight.finish(Err(error.clone()));
+        }
+    }
+}
+
+fn retained_bytes(key: &PatchKey, value: &PatchResult) -> usize {
+    let version = match &key.version {
+        PatchVersion::Revisions { base, head } => base.capacity() + head.capacity(),
+        PatchVersion::Fingerprint(value) => value.capacity(),
+    };
+    version
+        + std::mem::size_of::<PatchKey>()
+        + std::mem::size_of::<PatchResult>()
+        + key.variant.capacity()
+        + value.content.raw.capacity()
+        + value.files.capacity() * std::mem::size_of::<super::patch::PatchFile>()
+        + value
+            .files
+            .iter()
+            .map(|f| {
+                f.path.capacity()
+                    + f.original_path.as_ref().map_or(0, String::capacity)
+                    + f.status.capacity()
+                    + f.raw.capacity()
+            })
+            .sum::<usize>()
+}
+
+#[cfg(test)]
+#[path = "../../tests/support/patch_cancellation.rs"]
+mod cancellation_tests;

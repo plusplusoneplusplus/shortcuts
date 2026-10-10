@@ -60,6 +60,24 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadGitHistory: async (root: string, options: { maxCount: number; skip: number; search?: string }, rev?: string) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            return native.processGitHistory(await mockExecGit(native.prepareGitHistory(options, rev), root, {}));
+        },
+        loadCommitFiles: async (root: string, commit: string) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const batch = await native.prepareGitCommitFiles(commit);
+            const [names, counts, parents] = await Promise.all(batch.map(args => mockExecGit(args, root, {})));
+            return (await native.processGitCommitMetadata(names, counts, parents ?? '')).files;
+        },
+        loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const args = await native.prepareGitRevisionPatch('show', commit, undefined, file, options?.contextLines);
+            return native.processGitPatch(await mockExecGit(args, root, {}), options?.maxLines);
+        },
         execGit: (...args: any[]) => mockExecGit(...args),
         // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
         // Route it to the same mock; an async wrapper turns sync throws into rejections.
@@ -329,7 +347,7 @@ describe('Git Commit Edge Cases', () => {
         it('returns exactly 5 commits with ?limit=5', async () => {
             // Build 5 commit entries separated by NUL
             const commits = Array.from({ length: 5 }, (_, i) =>
-                `hash${String(i).padStart(15, '0')}\nhash${i}ab\nCommit ${i}\nDev\ndev@t.com\n2026-01-0${i + 1}T00:00:00Z\n\n`,
+                `hash${String(i).padStart(15, '0')}\nhash${i}ab\nCommit ${i}\nDev\ndev@t.com\n2026-01-0${i + 1}T00:00:00Z\n\n1 day ago\n\n`,
             ).join('\0');
 
             mockExecGit.mockImplementation((args: string[]) => {
@@ -404,7 +422,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('handles git log returning commits with multi-line body', async () => {
-            const logOutput = 'abc1234def567890\nabc1234\nFix bug\nDev\ndev@t.com\n2026-01-01T00:00:00Z\nparent1\nFixes #123\nAdditional details on line 2\n';
+            const logOutput = 'abc1234def567890\nabc1234\nFix bug\nDev\ndev@t.com\n2026-01-01T00:00:00Z\nparent1\n1 day ago\n\nFixes #123\nAdditional details on line 2\n';
 
             mockExecGit.mockImplementation((args: string[]) => {
                 if (args[0] === 'log') return logOutput;
@@ -455,7 +473,7 @@ describe('Git Commit Edge Cases', () => {
             gitCache.clear();
         });
 
-        it('joins the two diff-tree runs itself for a WSL commit file list', async () => {
+        it('joins WSL metadata through the shared Rust backend', async () => {
             const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
             (store.getWorkspaces as any).mockResolvedValue([
                 { id: WORKSPACE_ID, name: 'WSL Repo', rootPath: WSL_ROOT },
@@ -464,8 +482,8 @@ describe('Git Commit Edge Cases', () => {
 
             mockExecGit.mockImplementation((args: string[]) =>
                 args.includes('--name-status')
-                    ? 'R100\told/path.ts\tnew/path.ts'
-                    : '5\t2\tsrc/{old => new}/path.ts');
+                    ? 'R100\0old/path.ts\0new/path.ts\0'
+                    : '5\t2\t\0old/path.ts\0new/path.ts\0');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files`,
@@ -473,7 +491,7 @@ describe('Git Commit Edge Cases', () => {
 
             expect(res.status).toBe(200);
             expect(res.json().files).toEqual([
-                { status: 'R', path: 'new/path.ts', oldPath: 'old/path.ts' },
+                { status: 'R', path: 'new/path.ts', oldPath: 'old/path.ts', additions: 5, deletions: 2 },
             ]);
             expect(mockExecGit).toHaveBeenCalledWith(
                 expect.arrayContaining(['diff-tree', '--name-status']),
