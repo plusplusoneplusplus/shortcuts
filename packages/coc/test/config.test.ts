@@ -1132,6 +1132,10 @@ timeout: 300
                 '  enabled: true',
                 'kusto:',
                 '  enabled: true',
+                '  azureCli:',
+                '    account: fixture-account',
+                '    tenant: 11111111-1111-1111-1111-111111111111',
+                '    subscription: 22222222-2222-2222-2222-222222222222',
                 'LLMToolSystemOne:',
                 '  enabled: true',
                 'containerDefaultAgent:',
@@ -1519,6 +1523,11 @@ timeout: 300
                   "groupSingleLineMessages": false,
                   "idleTimeout": 720,
                   "kusto": {
+                    "azureCli": {
+                      "account": "",
+                      "subscription": "",
+                      "tenant": "",
+                    },
                     "enabled": false,
                   },
                   "languageServers": {
@@ -1727,6 +1736,9 @@ timeout: 300
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "idleTimeout": "file",
+                  "kusto.azureCli.account": "default",
+                  "kusto.azureCli.subscription": "default",
+                  "kusto.azureCli.tenant": "default",
                   "kusto.enabled": "default",
                   "languageServers.maxSessions": "default",
                   "languageServers.maxSessionsPerWorkspace": "default",
