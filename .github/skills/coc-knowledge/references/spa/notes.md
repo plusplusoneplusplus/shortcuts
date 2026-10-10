@@ -89,6 +89,12 @@ a tab. See `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 ### Links and file references
 
+Forge's `tasks/task-prompt-builder.ts` shares saved-plan link guidance across fixed
+and auto-folder generation prompts and CoC's Ask-mode plan save directive. Reply
+links use the saved file's exact absolute path, forward slashes, and an
+angle-bracket Markdown destination to preserve spaces. Managed plans outside the
+repository retain their absolute paths; server file access checks still apply.
+
 The destination URL and platform-specific modifier-click instruction go in a native
 hover hint written **only to the live anchor DOM**, so it never reaches the saved
 Markdown; the write is idempotent (skipped when the title already matches) so

@@ -454,6 +454,17 @@ describe('plan save guidance', () => {
         expect(directive).toContain('kebab-case, ≤3 words');
     });
 
+    it('keeps saved plan reply links absolute inside the Ask-mode guidance', () => {
+        const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx([]) })!;
+        const linkRule = directive.indexOf('use its exact absolute file path as the Markdown link destination');
+
+        expect(linkRule).toBeGreaterThan(directive.indexOf(PLAN_SAVE_GUIDANCE_INTRO));
+        expect(linkRule).toBeLessThan(directive.indexOf('</coc-read-only-mode>'));
+        expect(directive).toContain('Do NOT rewrite it as a repository-relative path or add ../ segments');
+        expect(directive).toContain('[plan](<FULL_PATH>)');
+        expect(buildChatModeDirective({ mode: 'ask' })).not.toContain('FULL_PATH');
+    });
+
     it('scopes the guidance to an explicit request rather than every question', () => {
         const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx([]) })!;
 

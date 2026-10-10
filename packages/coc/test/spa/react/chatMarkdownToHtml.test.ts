@@ -8,6 +8,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls, parseExcalidrawLink, parseCanvasEmbedLink } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import { getLocalFileLinkKind } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
+import { resolveMarkdownReviewTarget } from '../../../src/server/spa/client/react/shared/markdown-review/resolveMarkdownReviewTarget';
 
 afterEach(() => {
     cleanup();
@@ -138,6 +139,27 @@ describe('chatMarkdownToHtml', () => {
         expect(html).toContain('<a');
         expect(html).toContain('href="https://example.com"');
         expect(html).toContain('Click me');
+    });
+
+    it.each([
+        ['/data/repos/ws-a/notes/Plans/feature/task.plan.md', '/projects/repo-a'],
+        ['/data/Plan Files/repos/ws-a/notes/Plans/feature/task.plan.md', '/projects/repo-a'],
+        ['D:/Plan Files/repos/ws-a/notes/Plans/feature/task.plan.md', 'D:/projects/repo-a'],
+        ['//server/share/Plan Files/repos/ws-a/notes/Plans/feature/task.plan.md', '//server/share/projects/repo-a'],
+    ])('opens an absolute saved-plan link at the same path as the plan card: %s', (planPath, rootPath) => {
+        const html = chatMarkdownToHtml(`Saved the [detailed plan](<${planPath}>).`, 'ws-a');
+        const container = document.createElement('div');
+        container.innerHTML = html;
+        const link = container.querySelector('a');
+
+        expect(link?.getAttribute('href')).toBe(planPath);
+        const workspaces = [{ id: 'ws-a', rootPath }];
+        const fromLink = resolveMarkdownReviewTarget(
+            { filePath: link!.getAttribute('href')!, wsId: 'ws-a' }, workspaces,
+        );
+        const fromCard = resolveMarkdownReviewTarget({ filePath: planPath, wsId: 'ws-a' }, workspaces);
+        expect(fromLink).toEqual(fromCard);
+        expect(fromLink).toMatchObject({ wsId: 'ws-a', filePath: planPath, fetchMode: 'auto' });
     });
 
     it('opens https links in a new tab with rel=noopener', () => {

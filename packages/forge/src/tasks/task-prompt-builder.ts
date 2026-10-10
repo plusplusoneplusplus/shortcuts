@@ -70,6 +70,8 @@ export interface TaskGenerationOptions {
 /** Maximum character length for plan/spec content before truncation */
 const MAX_CONTENT_LENGTH = 2000;
 
+const SAVED_PLAN_LINK_RULE = '- When linking a saved plan in your reply, use its exact absolute file path as the Markdown link destination. Do NOT rewrite it as a repository-relative path or add ../ segments. Use forward slashes and angle brackets: `[plan](<FULL_PATH>)` (replace FULL_PATH with the saved file path).';
+
 // ============================================================================
 // Prompt Builders
 // ============================================================================
@@ -95,7 +97,8 @@ function buildImportantSection(
     return `**IMPORTANT: Output Location Requirement**
 1. You MUST save the file to this EXACT directory: ${targetPath}${filenamePart}
 - Do NOT save to any other location
-- Do NOT use your session state or any other directory${extraPart}`;
+- Do NOT use your session state or any other directory
+${SAVED_PLAN_LINK_RULE}${extraPart}`;
 }
 
 export function buildCreateTaskPrompt(description: string, targetPath: string): string {
@@ -143,6 +146,7 @@ export function buildCreateTaskPromptWithName(
 Save location: ${tasksRoot}/<chosen-folder>/${name}.plan.md
 Folder options: ${folderList}
 Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
+${SAVED_PLAN_LINK_RULE}
 </rule>`;
         } else {
             const desc = description || '(General task)';
@@ -152,6 +156,7 @@ Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words
 Save location: ${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md
 Folder options: ${folderList}
 Rules: pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the tasks root directly.
+${SAVED_PLAN_LINK_RULE}
 </rule>`;
         }
     }
@@ -415,7 +420,8 @@ The plan file should include:
 }
 
 function buildFixedLocationBlock(targetPath: string): string {
-    return `- Save the file to this EXACT directory: \`${targetPath}\``;
+    return `- Save the file to this EXACT directory: \`${targetPath}\`
+${SAVED_PLAN_LINK_RULE}`;
 }
 
 export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders: string[]): string {
@@ -423,7 +429,8 @@ export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders:
     const folderList = filtered.length > 0 ? filtered.join(', ') : '(none yet)';
     return `- Save location: \`${tasksRoot}/<chosen-folder>/<descriptive-name>.plan.md\`
 - Existing folder options: ${folderList}
-- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.`;
+- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.
+${SAVED_PLAN_LINK_RULE}`;
 }
 
 /**
