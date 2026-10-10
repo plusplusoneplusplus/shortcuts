@@ -68,6 +68,11 @@ transport contracts belong in [streaming-architecture.md](streaming-architecture
 Startup migrations reconcile workspace registration,
 process history and workspace IDs. Model metadata warm-up runs before listening;
 a failed catalog warm-up is logged without blocking the listener.
+Startup installs configured `skills.defaultSkills` into the global skills directory;
+`DEFAULT_BUNDLED_SKILLS` in `src/config.ts` includes `propose-diff` for read-only
+patch proposals that require explicit user approval before application. Bundled
+payloads and their registry live in `packages/forge/resources/bundled-skills/`
+and `packages/forge/src/skills/bundled-skills-registry.ts`.
 
 `infrastructure/queue-infrastructure.ts` restores SQLite queue state with execution
 stopped. Restoring a repo can create its executor before late-bound services exist.
