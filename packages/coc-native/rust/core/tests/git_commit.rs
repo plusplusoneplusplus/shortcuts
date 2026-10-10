@@ -153,8 +153,10 @@ fn a_merge_commit_takes_its_first_parent() {
 
 #[test]
 fn metadata_preserves_literal_paths_and_git_order() {
-    let files =
-        parse_commit_files("M\0z\0A\0café\t\n.txt\0D\0a => b\0", "3\t1\tz\02\t0\tcafé\t\n.txt\0");
+    let files = parse_commit_files(
+        "M\0z\0A\0café\t\n.txt\0D\0a => b\0",
+        concat!("3\t1\tz\0", "2\t0\tcafé\t\n.txt\0"),
+    );
     assert_eq!(
         files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
         vec!["z", "café\t\n.txt", "a => b"]
@@ -169,7 +171,7 @@ fn metadata_preserves_literal_paths_and_git_order() {
 fn metadata_joins_rename_and_copy_destinations_without_arrow_heuristics() {
     let files = parse_commit_files(
         "R100\0old\0src/{a => b}.txt\0C75\0source\0copy\0",
-        "2\t1\t\0old\0src/{a => b}.txt\00\t0\t\0source\0copy\0",
+        concat!("2\t1\t\0old\0src/{a => b}.txt\0", "0\t0\t\0source\0copy\0"),
     );
     assert_eq!(files[0].original_path.as_deref(), Some("old"));
     assert_eq!(files[0].status, ChangeStatus::Renamed);

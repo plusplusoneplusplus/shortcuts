@@ -79,7 +79,11 @@ pub fn render_no_index(
     std::fs::write(&after_path, after).map_err(setup_error)?;
 
     let mut command = Command::new("git");
-    command.args(["-c", "color.ui=false"]).args(FLAGS).arg(&before_path).arg(&after_path);
+    command
+        .args(["-c", "color.ui=false", "-c", "core.autocrlf=false"])
+        .args(FLAGS)
+        .arg(&before_path)
+        .arg(&after_path);
 
     // The caller's timeout and buffer cap stand; which exit codes mean success
     // does not, because that belongs to the command.
