@@ -131,10 +131,7 @@ export type NativeGitRemotePatchSource = Bindings.RemotePatchSource;
 export interface NativeGitAddon {
     prepareGitWorkingTreePatch: typeof Bindings.prepareGitWorkingTreePatch;
     composeGitWorkingTreePatch: typeof Bindings.composeGitWorkingTreePatch;
-    prepareGitShowPatch: typeof Bindings.prepareGitShowPatch;
-    prepareGitCommitPatch: typeof Bindings.prepareGitCommitPatch;
-    prepareGitComparisonPatch: typeof Bindings.prepareGitComparisonPatch;
-    prepareGitRangePatch: typeof Bindings.prepareGitRangePatch;
+    prepareGitRevisionPatch: typeof Bindings.prepareGitRevisionPatch;
     buildRemoteGitPatch: typeof Bindings.buildRemoteGitPatch;
     processGitPatch: typeof Bindings.processGitPatch;
     parseGitPatch: typeof Bindings.parseGitPatch;
@@ -184,10 +181,7 @@ export interface NativeGitAddon {
 const GIT_EXPORTS = [
     'prepareGitWorkingTreePatch',
     'composeGitWorkingTreePatch',
-    'prepareGitShowPatch',
-    'prepareGitCommitPatch',
-    'prepareGitComparisonPatch',
-    'prepareGitRangePatch',
+    'prepareGitRevisionPatch',
     'buildRemoteGitPatch',
     'processGitPatch',
     'parseGitPatch',

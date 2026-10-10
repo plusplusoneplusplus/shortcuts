@@ -196,7 +196,7 @@ it.each(['commit', 'show', 'range', 'comparison', 'working-tree'] as const)(
 
 describe('parseGitPatch worker boundary', () => {
     it('exposes the Rust root/first-parent commit plan on a worker', async () => {
-        const pending = api.prepareGitCommitPatch('HEAD', '[ab].txt', 0);
+        const pending = api.prepareGitRevisionPatch('commit', 'HEAD', undefined, '[ab].txt', 0);
         expect(typeof pending.then).toBe('function');
         const args = await pending;
         expect(args).toEqual([
@@ -339,13 +339,56 @@ it('consumes composition tickets once and isolates remote processing from local 
     }
 });
 
-it('plans direct comparisons separately from three-dot branch ranges on a worker', async () => {
-    const pending = api.prepareGitComparisonPatch('base', 'head', '[ab].txt', 99999);
-    expect(typeof pending.then).toBe('function');
-    const args = await pending;
-    expect(args).toEqual([
-        '--literal-pathspecs', 'diff', '-M', '-C', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
-        '-U99999', '--end-of-options', 'base', 'head', '--', '[ab].txt',
-    ]);
-    expect(await api.prepareGitRangePatch('base', 'head')).toContain('base...head');
+describe('prepareGitRevisionPatch worker boundary', () => {
+    it.each(['commit', 'show', 'range', 'comparison'] as const)(
+        'plans %s with literal paths, option boundaries and nullable defaults', async mode => {
+            const prefix = mode === 'commit'
+                ? ['diff-tree', '--root', '--first-parent', '-m', '-r', '-p', '--no-commit-id']
+                : mode === 'show' ? ['show', '--format=', '--patch'] : ['diff'];
+            for (const options of [
+                { base: 'base', head: 'head', file: undefined, context: undefined },
+                { base: 'base', head: 'head', file: null, context: null },
+                { base: 'base', head: 'head', file: '[ab].txt', context: 0 },
+                { base: '--output=oops', head: '--exit-code', file: ':(glob)*.txt', context: 99999 },
+                { base: 'base', head: 'head', file: '--output=oops', context: 3 },
+            ]) {
+                const needsHead = mode === 'range' || mode === 'comparison';
+                const head = needsHead ? options.head : options.file === null ? null : undefined;
+                const pending = api.prepareGitRevisionPatch(mode, options.base, head, options.file, options.context);
+                expect(typeof pending.then).toBe('function');
+                const revisions = mode === 'range' ? [`${options.base}...${options.head}`]
+                    : mode === 'comparison' ? [options.base, options.head] : [options.base];
+                expect(await pending).toEqual([
+                    '--literal-pathspecs', ...prefix,
+                    '-M', '-C', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
+                    ...(options.context == null ? [] : [`-U${options.context}`]),
+                    '--end-of-options', ...revisions, '--',
+                    ...(options.file == null ? [] : [options.file]),
+                ]);
+            }
+            if (mode === 'commit' || mode === 'show') {
+                expect(await api.prepareGitRevisionPatch(mode, 'base')).toEqual(
+                    await api.prepareGitRevisionPatch(mode, 'base', null, null, null),
+                );
+            }
+        },
+    );
+
+    it.each([
+        ['invalid', undefined], ['invalid', 'head'], ['', undefined], ['COMMIT', undefined],
+        ['working-tree', undefined], ['commit', 'head'], ['commit', ''],
+        ['show', 'head'], ['show', ''], ['range', undefined], ['range', null],
+        ['comparison', undefined], ['comparison', null],
+    ] as const)('rejects mode %j with head %j with the same Git error as host execution', async (mode, head) => {
+        const store = api.openGitPatchStore('invalid-revision-plan', path.resolve('.'));
+        try {
+            const pending = api.prepareGitRevisionPatch(mode, 'base', head, '[ab].txt', 0);
+            expect(typeof pending.then).toBe('function');
+            await expect(pending).rejects.toThrow(/^git  failed: invalid patch mode$/);
+            await expect(store.revisionPatch(mode, 'base', head, '[ab].txt', 0))
+                .rejects.toThrow(/^git  failed: invalid patch mode$/);
+        } finally {
+            store.dispose();
+        }
+    });
 });

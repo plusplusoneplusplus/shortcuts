@@ -1031,17 +1031,8 @@ export declare function parseGitStatusPorcelain(output: string): Promise<GitStat
 /** Metadata batch for WSL, sharing the host plan. */
 export declare function prepareGitCommitFiles(commit: string): Promise<string[][]>
 
-/** First-parent/root commit plan shared with external WSL execution. */
-export declare function prepareGitCommitPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
-
-/** Rust-owned direct PR comparison command plan for external execution transports. */
-export declare function prepareGitComparisonPatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
-
-/** Rust-owned branch-range command plan for external execution transports. */
-export declare function prepareGitRangePatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
-
-/** Git-show route plan shared with external WSL execution. */
-export declare function prepareGitShowPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
+/** Shared host/WSL revision command plan, preserving each comparison mode. */
+export declare function prepareGitRevisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
 
 export declare function prepareGitWorkingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[][]>
 

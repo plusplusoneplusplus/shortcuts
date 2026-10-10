@@ -3,10 +3,10 @@
 
 use super::commit::validate_ref;
 use super::patch::{
-    commit_patch_args, comparison_patch_args, process_patch, process_working_tree_patch,
-    range_patch_args, show_patch_args, truncate_patch, working_tree_patch_outputs, PatchResult,
+    process_patch, process_working_tree_patch, revision_patch_args, truncate_patch,
+    working_tree_patch_outputs, PatchResult,
 };
-use super::{run_git, GitCommandOptions, GitError, GitErrorKind};
+use super::{run_git, GitCommandOptions, GitError};
 use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -477,19 +477,7 @@ impl PatchStore {
         let options = self.host_options(&ticket, options)?;
         let root = &self.scope.root;
         let run = |base: &str, head: Option<&str>, max_lines| {
-            let args = match (mode, head) {
-                ("commit", None) => commit_patch_args(base, path, context),
-                ("show", None) => show_patch_args(base, path, context),
-                ("range", Some(head)) => range_patch_args(base, head, path, context),
-                ("comparison", Some(head)) => comparison_patch_args(base, head, path, context),
-                _ => {
-                    return Err(GitError::from_parts(
-                        GitErrorKind::Repository,
-                        &[],
-                        "invalid patch mode",
-                    ))
-                }
-            };
+            let args = revision_patch_args(mode, base, head, path, context)?;
             run_git(root, &args, &options).map(|raw| process_patch(raw, max_lines))
         };
         let resolve = |rev: &str| validate_ref(root, rev).ok().flatten();

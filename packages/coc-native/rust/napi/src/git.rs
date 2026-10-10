@@ -1421,39 +1421,24 @@ pub fn parse_git_patch(
     }))
 }
 
-/// Rust-owned direct PR comparison command plan for external execution transports.
+/// Shared host/WSL revision command plan, preserving each comparison mode.
 #[napi(ts_return_type = "Promise<string[]>")]
-pub fn prepare_git_comparison_patch(
+pub fn prepare_git_revision_patch(
+    mode: String,
     base: String,
-    head: String,
+    head: Option<String>,
     path: Option<String>,
     context_lines: Option<u32>,
 ) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::comparison_patch_args(
+        coc_native_core::git::patch::revision_patch_args(
+            &mode,
             &base,
-            &head,
+            head.as_deref(),
             path.as_deref(),
             context_lines,
-        ))
-    }))
-}
-
-/// Rust-owned branch-range command plan for external execution transports.
-#[napi(ts_return_type = "Promise<string[]>")]
-pub fn prepare_git_range_patch(
-    base: String,
-    head: String,
-    path: Option<String>,
-    context_lines: Option<u32>,
-) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::range_patch_args(
-            &base,
-            &head,
-            path.as_deref(),
-            context_lines,
-        ))
+        )
+        .map_err(to_napi_error)
     }))
 }
 
@@ -1475,30 +1460,6 @@ pub fn process_git_patch(
 ) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
         Ok(coc_native_core::git::patch::process_patch(raw, max_lines))
-    }))
-}
-
-/// First-parent/root commit plan shared with external WSL execution.
-#[napi(ts_return_type = "Promise<string[]>")]
-pub fn prepare_git_commit_patch(
-    commit: String,
-    path: Option<String>,
-    context: Option<u32>,
-) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::commit_patch_args(&commit, path.as_deref(), context))
-    }))
-}
-
-/// Git-show route plan shared with external WSL execution.
-#[napi(ts_return_type = "Promise<string[]>")]
-pub fn prepare_git_show_patch(
-    commit: String,
-    path: Option<String>,
-    context: Option<u32>,
-) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
-    AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::patch::show_patch_args(&commit, path.as_deref(), context))
     }))
 }
 

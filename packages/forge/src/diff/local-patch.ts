@@ -15,19 +15,19 @@ export interface LocalPatchOptions extends GetFileDiffOptions {
 export function loadRangePatch(
     root: string, base: string, head: string, filePath?: string, options?: LocalPatchOptions,
 ) {
-    return loadLocalPatch(root, { base, head }, filePath, options);
+    return loadLocalPatch(root, { mode: 'range', base, head }, filePath, options);
 }
 
 export function loadComparisonPatch(root: string, base: string, head: string, filePath?: string, options?: LocalPatchOptions) {
-    return loadLocalPatch(root, { base, head, direct: true }, filePath, options);
+    return loadLocalPatch(root, { mode: 'comparison', base, head }, filePath, options);
 }
 
 export function loadCommitPatch(root: string, commit: string, filePath?: string, options?: LocalPatchOptions) {
-    return loadLocalPatch(root, { commit }, filePath, options);
+    return loadLocalPatch(root, { mode: 'commit', base: commit }, filePath, options);
 }
 
 export function loadCommitShowPatch(root: string, commit: string, filePath?: string, options?: LocalPatchOptions) {
-    return loadLocalPatch(root, { commit, show: true }, filePath, options);
+    return loadLocalPatch(root, { mode: 'show', base: commit }, filePath, options);
 }
 
 export function loadWorkingTreePatch(root: string, scope: 'all' | 'staged' | 'unstaged', filePath?: string, options?: LocalPatchOptions) {
@@ -56,7 +56,7 @@ function revisionStore(root: string, distro?: string, linuxRoot?: string) {
 }
 
 async function loadLocalPatch(
-    root: string, source: { commit: string; show?: boolean } | { base: string; head: string; direct?: boolean } | { scope: string; headings?: boolean },
+    root: string, source: { mode: 'commit' | 'show'; base: string; head?: undefined } | { mode: 'range' | 'comparison'; base: string; head: string } | { scope: string; headings?: boolean },
     filePath?: string, options?: LocalPatchOptions,
 ) {
     const signal = options?.signal;
@@ -64,6 +64,7 @@ async function loadLocalPatch(
     const addon = loadNativeGit();
     const context = options?.contextLines == null ? undefined : Math.max(0, Math.floor(options.contextLines));
     const maxLines = options?.maxLines == null ? undefined : Math.floor(options.maxLines);
+    const execOptions = 'mode' in source && source.mode === 'comparison' ? { timeout: 10000 } : undefined;
     let result;
     const execution = resolveWorkspaceExecutionContext(root);
     // Unresolved default distros remain stateless rather than sharing an identity
@@ -98,14 +99,12 @@ async function loadLocalPatch(
                 }
                 batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
             } else {
-                batch = ['commit' in source
-                    ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
-                    : await (source.direct ? addon.prepareGitComparisonPatch : addon.prepareGitRangePatch)(source.base, source.head, filePath, context)];
+                batch = [await addon.prepareGitRevisionPatch(source.mode, source.base, source.head, filePath, context)];
             }
             signal?.throwIfAborted();
             request?.checkActive();
             const outputs = await Promise.all(batch.map(args => execGitAsync(args, root, {
-                signal: controller.signal, timeout: 'direct' in source && source.direct ? 10000 : undefined,
+                signal: controller.signal, ...execOptions,
             })));
             clearInterval(timer);
             signal?.throwIfAborted();
@@ -122,10 +121,7 @@ async function loadLocalPatch(
             signal?.throwIfAborted();
             result = 'scope' in source
                 ? await request.workingTreePatch(source.scope, filePath, context, maxLines, source.headings)
-                : 'commit' in source
-                    ? await request.revisionPatch(source.show ? 'show' : 'commit', source.commit, undefined, filePath, context, maxLines)
-                    : await request.revisionPatch(source.direct ? 'comparison' : 'range', source.base, source.head, filePath, context, maxLines,
-                        source.direct ? { timeout: 10000 } : undefined);
+                : await request.revisionPatch(source.mode, source.base, source.head, filePath, context, maxLines, execOptions);
         }
         signal?.throwIfAborted();
         return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
