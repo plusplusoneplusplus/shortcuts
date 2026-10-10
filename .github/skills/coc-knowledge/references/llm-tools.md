@@ -382,7 +382,7 @@ endpoint. Reads are served by `GET /canvases/:id/files[/<path>]` behind layered 
 ### kusto_query
 
 Runs a KQL query server-side against Azure Data Explorer using the official
-`azure-kusto-data` SDK + `AzureCliCredential` (no CLI shell-out) and persists the result into a
+`azure-kusto-data` SDK with the host-owned Rust Microsoft Azure CLI credential and persists the result into a
 new or existing `type: 'kusto'` canvas rendered by `KustoView` (editable query, result table,
 native charts). Omit `canvasId` to create (default title `Kusto Query`), or pass it to
 re-run/update; an existing target must be `type: 'kusto'`. Returns column schema, a capped row

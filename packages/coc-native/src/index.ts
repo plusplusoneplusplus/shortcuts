@@ -26,6 +26,17 @@ export {
 export type { NativeAddon, NativeAddonStatus } from './types';
 export { loadWebView2Binary, webview2BinaryCandidates, WEBVIEW2_BINARY_NAME } from './webview2';
 export { readWindowsCredential } from './windows-credentials';
+export { AuthError, loadNativeAuth, MicrosoftOAuthSignIn, MicrosoftTokenProvider } from './auth';
+export type {
+    AuthErrorCode,
+    MicrosoftAccount,
+    MicrosoftOAuthOptions,
+    MicrosoftSignInInstructions,
+    MicrosoftSignInResult,
+    MicrosoftToken,
+    MicrosoftTokenProviderOptions,
+    MicrosoftTokenSource,
+} from './auth';
 
 export { loadNativeRepoFiles, nativeRepoFilesStatus } from './repo-files';
 export type {

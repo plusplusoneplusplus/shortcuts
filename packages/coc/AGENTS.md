@@ -126,6 +126,14 @@ references before editing. Paths are package-relative.
   pausing retains existing suggestions. Keep desktop settings out of server config.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
+- Kusto uses only native Microsoft auth pinned to
+  Azure CLI/auto refresh. Empty `kusto.azureCli` identity settings select the native
+  active-account mode; complete settings pin account/tenant/subscription, and partial settings fail.
+  Native active selection stays pinned for the provider lifetime; changes fail without replay.
+  Server-owned clients are shared by Run/tools through
+  `getKustoRuntime`; reconfiguration/shutdown disposes providers and closes clients.
+  Let the Kusto SDK resolve the audience and native auth own token validation,
+  caching and renewal. Surface native `AuthError` unchanged; never fall back or replay queries.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
   LLM-tool settings and chat retrieval checks share
@@ -339,6 +347,9 @@ references before editing. Paths are package-relative.
   `src/server/canvas/canvas-file-sandbox.ts` checks encoded/decoded shape, resolved
   containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
   file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
+- Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
+  horizontal scrolling; column hiding, resizing and wrapping are display-only.
+  Cover actual column widths and overflow with the Kusto browser regression suite.
 - Native CLI stores are read-only with parameterized filters/path-safe IDs.
   Only explicit import bridges to chats; unavailable stores return typed states.
   Descriptors/factories share one registry; file-backed providers

@@ -163,6 +163,23 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).toContain('kusto_query');
     });
 
+    it('takes Kusto enablement from the owning host runtime, not a conflicting data-directory config', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+        fs.writeFileSync(path.join(tmpDir, CONFIG_FILE_NAME), 'kusto:\n  enabled: false\n');
+        let enabled = true;
+        const kustoRuntime = {
+            getEnabled: () => enabled,
+            clientFactory: vi.fn(() => ({ execute: async () => ({ primaryResults: [] }) })),
+        };
+        const build = () => buildChatToolBundle({
+            dataDir: tmpDir, store: makeStore(false), workspaceId: WS_ID,
+            includeCanvasTools: false, kustoRuntime,
+        });
+        expect(build().tools.map(tool => tool.name)).toContain('kusto_query');
+        enabled = false;
+        expect(build().tools.map(tool => tool.name)).not.toContain('kusto_query');
+    });
+
     it('suppresses kusto_query when kustoToolsEnabled is false', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 

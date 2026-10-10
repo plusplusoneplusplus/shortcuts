@@ -94,6 +94,9 @@ export const FILE_ONLY_NAMESPACE_LEAVES: readonly FileOnlyConfigLeaf[] = [
     { key: 'serve.dataDir', default: '~/.coc' },
     { key: 'serve.theme', default: 'auto' },
     { key: 'features.autoMemoryPromotion', default: false },
+    { key: 'kusto.azureCli.account', default: '' },
+    { key: 'kusto.azureCli.tenant', default: '' },
+    { key: 'kusto.azureCli.subscription', default: '' },
     // Merged, but intentionally not source-badged (no source indicator today).
     { key: 'features.gitCommitLookup', default: false, sourceTracked: false },
     { key: 'dreams.minIdleMs', default: 15 * 60 * 1000 },

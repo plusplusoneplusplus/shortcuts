@@ -70,6 +70,8 @@ const MIN_COLUMN_SHARE = 8;
 /** Largest share of the table any single column may take, in percent. */
 const MAX_COLUMN_SHARE = 70;
 
+const WIDE_TABLE_MIN_COLUMN_WIDTH = 160;
+
 /**
  * Length at the given percentile of a sorted-ascending list. Used instead of the
  * maximum so a single unusually long row does not decide the column's width.
@@ -474,7 +476,15 @@ export function InteractiveTable({
     const hasSizedColumns = Object.keys(columnSizing).length > 0;
 
     // Count visible columns for "prevent hiding all" logic
-    const visibleColumnCount = table.getVisibleLeafColumns().length;
+    const visibleColumns = table.getVisibleLeafColumns();
+    const visibleColumnCount = visibleColumns.length;
+    const visibleWeights = visibleColumns.map(col => columnWeights[colIds.indexOf(col.id)]);
+    const visibleWeightTotal = visibleWeights.reduce((sum, weight) => sum + weight, 0);
+    // Once the percentage floor relaxes, grow the table instead of squeezing
+    // every column into the viewport. Normalize for hidden columns too.
+    const minTableWidth = !wrapText && visibleColumnCount > 100 / MIN_COLUMN_SHARE
+        ? Math.ceil(WIDE_TABLE_MIN_COLUMN_WIDTH * visibleWeightTotal / Math.min(...visibleWeights))
+        : undefined;
 
     const tableContent = (
         <div
@@ -588,7 +598,9 @@ export function InteractiveTable({
                     // lets Chrome re-measure the content and hand the slack to
                     // the widest column, which makes the table jump the moment
                     // the widths are seeded — before any drag has happened.
-                    style={hasSizedColumns ? { width: table.getTotalSize() } : undefined}
+                    style={hasSizedColumns
+                        ? { width: table.getTotalSize() }
+                        : minTableWidth === undefined ? undefined : { minWidth: minTableWidth }}
                 >
                     {/* Before the first drag the ratio comes from the content.
                         Hidden columns are skipped so each <col> lines up with a
@@ -607,7 +619,7 @@ export function InteractiveTable({
                                         style={
                                             weight === undefined
                                                 ? undefined
-                                                : { width: `${weight.toFixed(2)}%` }
+                                                : { width: `${weight / visibleWeightTotal * 100}%` }
                                         }
                                     />
                                 );
@@ -629,6 +641,7 @@ export function InteractiveTable({
                                         <th
                                             key={header.id}
                                             data-col-id={header.column.id}
+                                            title={stripHtml(headers[colIds.indexOf(header.column.id)])}
                                             className={`table-cell interactive-table-cell interactive-table-th ${
                                                 ALIGN_CLASS[align]
                                             }${numeric ? ' interactive-table-numeric' : ''} ${
@@ -739,7 +752,11 @@ export function InteractiveTable({
                                         return <td key={id} className="table-cell interactive-table-cell interactive-table-agg-cell" />;
                                     }
                                     return (
-                                        <td key={id} className="table-cell interactive-table-cell interactive-table-agg-cell text-right">
+                                        <td
+                                            key={id}
+                                            className="table-cell interactive-table-cell interactive-table-agg-cell text-right"
+                                            title={`Sum: ${formatNumber(agg.sum)}; Average: ${formatNumber(agg.avg)}`}
+                                        >
                                             <span className="interactive-table-agg-label">Σ</span>{' '}
                                             {formatNumber(agg.sum)}
                                             <span className="interactive-table-agg-sep"> · </span>

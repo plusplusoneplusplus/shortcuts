@@ -10,6 +10,9 @@ import type { Route } from '../../../src/server/types';
 import type { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import type { KustoClientFactory, KustoClientLike } from '../../../src/server/kusto/kusto-exec';
 import { createEmptyKustoState, parseKustoState, serializeKustoState } from '../../../src/server/canvas/kusto-state';
+import { createKustoClientRuntime } from '../../../src/server/kusto/kusto-client-runtime';
+import type { KustoAuthConfig } from '../../../src/server/kusto/kusto-credential';
+import { AuthError } from '@plusplusoneplusplus/coc-native';
 
 const WS = 'run-route-ws';
 
@@ -125,6 +128,58 @@ describe('POST /canvases/:id/run', () => {
         const state = parseKustoState(res.body.canvas.content);
         expect(state.lastRun?.status).toBe('error');
         expect(state.lastRun?.error).toContain('boom');
+    });
+
+    it('uses host Rust authentication for both workspaces and persists a sanitized mismatch banner without fallback', async () => {
+        const config: KustoAuthConfig = {
+            enabled: true,
+            azureCli: {
+                account: 'fixture-account',
+                tenant: '11111111-1111-4111-8111-111111111111',
+                subscription: '22222222-2222-4222-8222-222222222222',
+            },
+        };
+        const getToken = vi.fn(async () => ({
+            source: 'azure-cli' as const, target: 'https://kusto.kusto.windows.net', tokenType: 'Bearer',
+            accessToken: 'opaque-fixture', expiresAt: Date.now() + 120_000,
+            account: { id: config.azureCli!.account!, tenant: config.azureCli!.tenant! },
+        }));
+        const createProvider = vi.fn(() => ({ getToken, dispose: vi.fn(), cancelOutstanding: vi.fn() }));
+        const runtime = createKustoClientRuntime(() => config, {
+            diagnostic: vi.fn(), createProvider,
+            buildClient: async (_cluster, credential) => ({
+                execute: async () => {
+                    await credential!.getToken(['https://kusto.kusto.windows.net/.default']);
+                    return { primaryResults: [{ columns: [{ name: 'n', type: 'long' }], rows: () => [{ getValueAt: () => 1 }] }] };
+                },
+            }),
+        });
+        try {
+            ctx = build(true, runtime.clientFactory);
+            const id = seed(ctx.store);
+            const other = ctx.store.createCanvas({
+                workspaceId: 'other-run-ws', title: 'Other fixture', type: 'kusto',
+                content: ctx.store.getCanvas(WS, id)!.content,
+            });
+            for (const [workspace, canvasId] of [[WS, id], ['other-run-ws', other.id]]) {
+                const result = await request(ctx.handler, 'POST', `/api/workspaces/${workspace}/canvases/${canvasId}/run`, {});
+                expect(parseKustoState(result.body.canvas.content).lastRun?.status).toBe('success');
+            }
+            expect(createProvider).toHaveBeenCalledTimes(1);
+            getToken.mockRejectedValueOnce(new AuthError('AccountMismatch'));
+            const result = await request(ctx.handler, 'POST', `/api/workspaces/${WS}/canvases/${id}/run`, {});
+            expect(result.status).toBe(200);
+            expect(parseKustoState(result.body.canvas.content).lastRun).toMatchObject({
+                status: 'error', error: expect.stringContaining('AccountMismatch'),
+            });
+            expect(JSON.stringify(result.body)).not.toContain('opaque-fixture');
+            expect(JSON.stringify(result.body)).not.toContain('fixture-account');
+            expect(createProvider).toHaveBeenCalledTimes(1);
+            expect(getToken).toHaveBeenCalledTimes(3);
+            expect(parseKustoState(ctx.store.getCanvas('other-run-ws', other.id)!.content).lastRun?.status).toBe('success');
+        } finally {
+            runtime.dispose();
+        }
     });
 
     it('400s for a non-Kusto canvas', async () => {

@@ -43,6 +43,7 @@ import type { SendToConversationRuntimeOptions } from '../../../src/server/llm-t
 function makeSentinelRuntime() {
     const sentinels = {
         getWsServer: vi.fn(() => undefined),
+        getKustoRuntime: vi.fn(() => undefined),
         getCronInfra: vi.fn(() => undefined),
         getTriggerInfra: vi.fn(() => undefined),
         getEnqueueChat: vi.fn(() => undefined),
@@ -129,6 +130,7 @@ describe('Executor runtime capability wiring', () => {
             (parts: ReturnType<typeof internals>) => unknown,
         ]> = [
             ['getWsServer', 'chat executors', p => p.chatExecutor.runtime.getWsServer],
+            ['getKustoRuntime', 'chat executors', p => p.chatExecutor.runtime.getKustoRuntime],
             ['getCronInfra', 'chat executors', p => p.chatExecutor.runtime.getCronInfra],
             ['getTriggerInfra', 'chat executors', p => p.chatExecutor.runtime.getTriggerInfra],
             ['getEnqueueChat', 'chat executors', p => p.chatExecutor.runtime.getEnqueueChat],

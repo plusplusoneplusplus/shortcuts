@@ -25,6 +25,7 @@ import { buildMemoryV2Addon } from './memory-v2-addon';
 import { buildChatToolBundle } from './chat-tool-builder';
 import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { ChatToolBundle } from './chat-tool-builder';
+import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 
 // ============================================================================
 // Types
@@ -65,6 +66,7 @@ export interface ChatTurnContextInput {
     };
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
+    kustoRuntime?: KustoToolsRuntime;
     /**
      * `create_pull_request` wiring. Autopilot-only: pass it for write-capable
      * turns and omit it in ask mode so read-only chats never see the tool.
@@ -185,6 +187,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         cronTools: input.cronTools,
         askUser: input.askUser,
         systemOne: input.systemOne,
+        kustoRuntime: input.kustoRuntime,
         createPullRequest: input.createPullRequest,
         sentinelTodos: input.sentinelTodos,
         excludeTools: input.excludeTools,

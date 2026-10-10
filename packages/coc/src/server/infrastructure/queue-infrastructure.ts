@@ -76,6 +76,7 @@ export function createQueueInfrastructure(
     getAskUserQuestionRelay?: () => import('../messaging/ask-user-relay').AskUserQuestionRelay | undefined,
     getLaunchRalph?: () => import('../ralph/ralph-launch-service').LaunchRalphFn | undefined,
     getSentinelTodos?: () => import('../sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined,
+    getKustoRuntime?: import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getKustoRuntime'],
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -98,6 +99,7 @@ export function createQueueInfrastructure(
     // forwards this object by identity, so adding a capability here is enough
     // to make it reach its consumer.
     const runtime: ExecutorRuntimeCapabilities = {
+        getKustoRuntime,
         getWsServer,
         getCronInfra,
         getTriggerInfra,

@@ -85,6 +85,17 @@ describe('buildChatTurnContext', () => {
         mockBuildChatToolBundle.mockReturnValue(makeBundleResult());
     });
 
+    it('forwards the host Kusto runtime unchanged to the tool bundle', async () => {
+        const kustoRuntime = {
+            getEnabled: () => true,
+            clientFactory: vi.fn(() => ({ execute: async () => ({ primaryResults: [] }) })),
+        };
+        await buildChatTurnContext({
+            store: makeStore(), workspaceId: 'fixture-ws', includeMemoryV2: false, kustoRuntime,
+        });
+        expect(mockBuildChatToolBundle.mock.calls[0][0].kustoRuntime).toBe(kustoRuntime);
+    });
+
     // -------------------------------------------------------------------------
     // Memory V2 enabled
     // -------------------------------------------------------------------------

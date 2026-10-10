@@ -88,6 +88,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
+            kustoRuntime: this.runtime.getKustoRuntime?.(),
             // Iterations and submit write (submit opens the PR); final-check is read-only.
             createPullRequest: kind === 'final-check'
                 ? undefined

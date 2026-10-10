@@ -75,6 +75,7 @@ import { registerContainerLinkRoutes } from './container-link/container-link-rou
 import { NotesSearchService } from './notes/notes-search-service';
 import { onRepoPreferencesChanged } from './preferences/repository';
 import { createDecisionService } from './decisions/decision-service';
+import { createKustoClientRuntime } from './kusto/kusto-client-runtime';
 import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
 import { CronStore } from './cron/cron-store';
 import { cancelLegacySentinelScanCrons } from './cron/legacy-sentinel-crons';
@@ -90,6 +91,7 @@ function formatLocalBaseUrl(host: string, port: number): string {
 }
 
 interface CloseHandlerDeps {
+    kustoDispose?: () => void;
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
     heapMonitor: { dispose(): void };
@@ -183,6 +185,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         if (!closeOptions?.drain) {
             bridge.dispose();
         }
+        deps.kustoDispose?.();
 
         deps.terminalSessionManager?.destroyAll();
         deps.terminalWsServer?.closeAll();
@@ -424,6 +427,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Shared by the decision route and the `system_one` chat tool.
     const decisionService = createDecisionService(copilotService);
+    const kustoRuntime = createKustoClientRuntime(() => runtimeConfigService.config.kusto);
+    const unsubscribeKustoConfig = runtimeConfigService.onChange(() => kustoRuntime.syncConfig());
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
@@ -481,6 +486,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => askUserQuestionRelay,
         () => launchRalphCapability,
         () => getSentinelTodosCapability?.(),
+        () => kustoRuntime,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -808,6 +814,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
         runtimeConfigService,
+        kustoClientFactory: kustoRuntime.clientFactory,
         remoteServerStore,
         remoteServerConnector,
         remoteServerSshConnector,
@@ -1058,6 +1065,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     return {
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
+            kustoDispose: () => { unsubscribeKustoConfig(); kustoRuntime.dispose(); },
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
             notesSearchService,
             notesSearchPreferencesDispose,

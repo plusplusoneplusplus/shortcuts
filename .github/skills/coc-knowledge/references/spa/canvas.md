@@ -171,6 +171,31 @@ Shift/Ctrl/Cmd+Enter in the editor also runs (`isRunShortcut`). When linked to a
 not compact or read-only), the Ask AI toggle opens a one-line prompt that sends a follow-up
 naming `kusto_query`.
 
+Results use `shared/InteractiveTable`, shared with markdown tables. Unwrapped tables
+with more than twelve visible columns grow past the pane to retain readable
+content-proportional widths; the table's own scroll container handles overflow.
+Hidden columns are excluded from width normalization. Header and numeric-summary
+overflow is clipped, with full text in tooltips. Resizing uses measured pixel widths;
+wrapping remains controlled by the host. These display settings do not mutate query
+results or canvas revisions.
+
+Authentication belongs to the owning server's `kusto-client-runtime.ts`, shared by
+Run and tools through `getKustoRuntime`. Authentication always
+uses native `MicrosoftTokenProvider` with Azure CLI/auto refresh. Host file settings
+`kusto.azureCli.account`, `tenant`, and `subscription` optionally pin the exact CLI
+`user.name` and tenant/subscription UUIDs. Empty settings select native active-account
+mode; partial settings fail. Rust resolves and pins active identity on first token
+use, checks it before cached returns, and rejects changes with `AccountMismatch`.
+A new provider lifecycle is required to select another identity. File edits require
+host refresh or the next manual start. The SDK resolves
+cloud/MFA audiences into the credential's scopes. Clients invalidate on host
+identity/flag changes and close on shutdown. Native auth owns token validation,
+expiry, caching and renewal; the adapter maps access token/expiry to the SDK
+credential shape and passes redacted `AuthError` through the SDK error envelope.
+Unknown auth payloads are sanitized without fallback or replay.
+Real standalone execution requires a host client factory;
+unwired callers fail rather than constructing an alternative credential.
+
 `CanvasPanel`'s header offers a new-Kusto action (`data-testid="canvas-panel-new-kusto"`)
 creating a blank `type: 'kusto'` canvas, best-effort seeding cluster/database from the
 workspace's most recent Kusto canvas (`kustoCreate.ts`). The button renders only when the

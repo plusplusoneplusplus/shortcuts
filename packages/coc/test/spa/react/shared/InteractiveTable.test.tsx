@@ -521,6 +521,94 @@ describe('InteractiveTable', () => {
     });
 
     describe('content-proportional column widths', () => {
+        const wideProps = {
+            headers: Array.from({ length: 156 }, (_, i) => `CapacityMetric_${i}`),
+            alignments: Array.from({ length: 156 }, () => 'left' as const),
+            rows: [Array.from({ length: 156 }, () => '0')],
+            originalMarkdown: '',
+            tableKey: 'wide',
+        };
+
+        it('keeps every column at least 160px wide in a 156-column result', () => {
+            const { container } = render(<InteractiveTable {...wideProps} />);
+            const table = container.querySelector('table')!;
+            const width = parseFloat(table.style.minWidth);
+            const cols = Array.from(container.querySelectorAll<HTMLTableColElement>('colgroup col'));
+            expect(cols).toHaveLength(156);
+            expect(container.querySelectorAll('tbody td')).toHaveLength(156);
+            for (const col of cols) {
+                expect(width * parseFloat(col.style.width) / 100).toBeGreaterThanOrEqual(160 - 0.01);
+            }
+        });
+
+        it('keeps empty wide results readable without invalid widths', () => {
+            const { container } = render(
+                <InteractiveTable {...wideProps} headers={wideProps.headers.map(() => '')} rows={[]} />,
+            );
+            const width = parseFloat(container.querySelector('table')!.style.minWidth);
+            expect(Number.isFinite(width)).toBe(true);
+            expect(width).toBeGreaterThanOrEqual(156 * 160);
+            expect(container.querySelectorAll('thead th')).toHaveLength(156);
+            expect(container.querySelectorAll('tbody td')).toHaveLength(0);
+        });
+
+        it('applies the width floor when percentage shares relax at 13 columns', () => {
+            const { container, rerender } = render(
+                <InteractiveTable {...wideProps} headers={wideProps.headers.slice(0, 12)} />,
+            );
+            expect(container.querySelector('table')!.style.minWidth).toBe('');
+            rerender(<InteractiveTable {...wideProps} headers={wideProps.headers.slice(0, 13)} />);
+            expect(parseFloat(container.querySelector('table')!.style.minWidth)).toBeGreaterThanOrEqual(13 * 160);
+        });
+
+        it('recalculates the width and normalizes shares when columns are hidden', () => {
+            const { container } = render(
+                <InteractiveTable {...wideProps} headers={wideProps.headers.slice(0, 14)} />,
+            );
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const checkboxes = within(screen.getByTestId('col-picker')).getAllByRole('checkbox');
+            fireEvent.click(checkboxes[0]);
+            const cols = Array.from(container.querySelectorAll<HTMLTableColElement>('colgroup col'));
+            expect(cols).toHaveLength(13);
+            expect(cols.reduce((sum, col) => sum + parseFloat(col.style.width), 0)).toBeCloseTo(100, 5);
+            const width = parseFloat(container.querySelector('table')!.style.minWidth);
+            for (const col of cols) {
+                expect(width * parseFloat(col.style.width) / 100).toBeGreaterThanOrEqual(160 - 0.01);
+            }
+            fireEvent.click(checkboxes[1]);
+            expect(container.querySelector('table')!.style.minWidth).toBe('');
+        });
+
+        it('leaves wrapping in control of wide-table layout', () => {
+            const { container } = render(<InteractiveTable {...wideProps} wrapText />);
+            expect(container.querySelector('table')!.style.minWidth).toBe('');
+            expect(container.querySelector('colgroup')).toBeNull();
+        });
+
+        it('uses explicit widths instead of the automatic floor after resizing', () => {
+            const spy = vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect')
+                .mockReturnValue({ width: 180, height: 20 } as DOMRect);
+            try {
+                const { container } = render(<InteractiveTable {...wideProps} />);
+                fireEvent.pointerEnter(screen.getByTestId('interactive-table-resizer-col_0'));
+                const table = container.querySelector('table')!;
+                expect(table.style.minWidth).toBe('');
+                expect(table.style.width).toBe(`${156 * 180}px`);
+                expect(container.querySelector('colgroup')).toBeNull();
+            } finally {
+                spy.mockRestore();
+            }
+        });
+
+        it('keeps full header and summary text available for inspection', () => {
+            const { container } = render(
+                <InteractiveTable {...defaultProps} headers={['<strong>Name</strong>', 'Score']} />,
+            );
+            expect(container.querySelector('thead th')!.title).toBe('Name');
+            expect(container.querySelector<HTMLTableCellElement>('tfoot td:last-child')!.title)
+                .toBe('Sum: 428; Average: 85.6');
+        });
+
         it('emits one percentage-width <col> per column', () => {
             const { container } = render(<InteractiveTable {...defaultProps} />);
             const cols = Array.from(container.querySelectorAll('colgroup col')) as HTMLElement[];

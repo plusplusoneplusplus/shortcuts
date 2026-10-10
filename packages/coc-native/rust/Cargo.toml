@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "lsp", "napi", "webview2", "teams-sdk", "teams-cli"]
+members = ["core", "lsp", "napi", "webview2", "teams-sdk", "teams-cli", "auth-sdk", "auth-cli"]
 resolver = "2"
 
 [workspace.package]

@@ -942,6 +942,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
+            kustoRuntime: this.runtime.getKustoRuntime?.(),
             // Autopilot-only: ask mode is read-only and never opens PRs.
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Sentinel runs on the ask path; only it gets the to-do ledger tool.

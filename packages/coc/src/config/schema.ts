@@ -17,6 +17,10 @@ import { ADMIN_SETTING_DEFINITIONS, type AdminSettingValueSpec } from './admin-s
 
 const concreteAgentProviderEnum = z.enum(['copilot', 'codex', 'claude', 'opencode']);
 const percentSchema = z.number().int().min(0).max(100);
+const kustoGuidSchema = z.string().length(36).regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    'Expected a tenant/subscription UUID',
+);
 
 const loggingLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
 
@@ -186,6 +190,14 @@ const BASE_SCHEMA_TREE: SchemaTree = {
         enabled: z.array(z.string()),
     },
     logging: loggingConfigSchema,
+    kusto: {
+        azureCli: {
+            account: z.string().max(2048).regex(/^(?!-)[A-Za-z0-9._:/@-]*$/, 'Invalid Kusto Azure CLI account format')
+                .refine(value => value === value.trim(), 'Kusto Azure CLI account must not contain surrounding whitespace'),
+            tenant: z.union([z.literal(''), kustoGuidSchema]),
+            subscription: z.union([z.literal(''), kustoGuidSchema]),
+        },
+    },
     features: {
         autoMemoryPromotion: z.boolean(),
         gitCommitLookup: z.boolean(),

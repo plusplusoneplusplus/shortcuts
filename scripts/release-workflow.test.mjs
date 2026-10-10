@@ -62,7 +62,7 @@ test("release workflow builds the native addon on all six supported targets", ()
     }
 });
 
-test("release runs Rust, Teams SDK and CLI suites once with SDK-scoped features", () => {
+test("release runs Rust, Teams and auth SDK/CLI suites once with SDK-scoped features", () => {
     const job = jobBlock("build-native");
     const commands = [...job.matchAll(/^\s+run: (cargo test [^\n]+)/gm)].map(match => match[1]);
     assert.equal(commands.length, 1);
@@ -70,7 +70,7 @@ test("release runs Rust, Teams SDK and CLI suites once with SDK-scoped features"
     assert.match(command, /--locked\b/);
     assert.match(command, /--manifest-path packages\/coc-native\/rust\/Cargo\.toml\b/);
     assert.deepEqual([...command.matchAll(/-p (\S+)/g)].map(match => match[1]).sort(),
-        ["coc-native-core", "teams-cli", "teams-sdk"]);
+        ["auth-cli", "auth-sdk", "coc-native-core", "teams-cli", "teams-sdk"]);
     assert.doesNotMatch(command, /--all-features|--no-default-features/);
 
     const sdk = readFileSync(new URL("../packages/coc-native/rust/teams-sdk/Cargo.toml", import.meta.url), "utf8");

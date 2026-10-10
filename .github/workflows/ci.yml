@@ -219,9 +219,33 @@ jobs:
           cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native -- -D warnings
           cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk --all-targets --all-features -- -D warnings
           cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --all-targets --all-features -- -D warnings
+          cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p auth-sdk --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p auth-cli --all-targets -- -D warnings
 
       - name: Run Rust unit tests
         run: cargo test --no-fail-fast --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+
+      - name: Test standalone authentication SDK
+        run: cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p auth-sdk -p auth-cli
+
+      - name: Test isolated native credential entry
+        if: runner.os != 'Linux'
+        run: cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p auth-sdk isolated_os_store_fixture -- --ignored
+
+      - name: Test isolated Linux Secret Service
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends dbus gnome-keyring
+          fixture="$(mktemp -d)"
+          mkdir -p "$fixture/data" "$fixture/config" "$fixture/runtime"
+          chmod 700 "$fixture/runtime"
+          XDG_DATA_HOME="$fixture/data" XDG_CONFIG_HOME="$fixture/config" XDG_RUNTIME_DIR="$fixture/runtime" \
+            dbus-run-session -- bash -c '
+              printf "%s" "synthetic-fixture-password" | gnome-keyring-daemon --unlock --components=secrets
+              cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p auth-sdk isolated_os_store_fixture -- --ignored
+            '
 
       - name: Test Teams SDK backend feature sets
         run: |

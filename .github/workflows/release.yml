@@ -131,7 +131,7 @@ jobs:
         run: npm ci
 
       - name: Run Rust unit, Teams SDK and CLI tests
-        run: cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core -p teams-sdk -p teams-cli --features teams-sdk/graph
+        run: cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core -p teams-sdk -p teams-cli -p auth-sdk -p auth-cli --features teams-sdk/graph
 
       - name: Build the addon
         run: npm run build:native -w packages/coc-native
