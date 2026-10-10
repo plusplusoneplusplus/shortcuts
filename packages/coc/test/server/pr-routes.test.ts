@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
+import { Socket } from 'node:net';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -300,6 +301,138 @@ describe('production PR Rust scope wiring', () => {
         expect(res.status).toBe(500);
         expect(await res.text()).toContain('npm run build:native');
         expect(mockSvc.getDiff).not.toHaveBeenCalled();
+    });
+});
+
+describe('PR patch HTTP abandonment', () => {
+    it.each([
+        ['/42/diff', 'aborted'], ['/42/diff', 'destroyed'],
+        ['/42/diff/files/foo.ts', 'aborted'], ['/42/diff/files/foo.ts', 'destroyed'],
+    ])('does not resolve a workspace for an already %s %s connection', async (endpoint, state) => {
+        const routes: Route[] = [];
+        registerPrRoutes(routes, dataDir);
+        const req = new http.IncomingMessage(new Socket());
+        req.url = originPullRequestsUrl(endpoint);
+        const res = new http.ServerResponse(req);
+        const write = vi.spyOn(res, 'end');
+        if (state === 'aborted') req.aborted = true;
+        else res.destroy();
+        const pathname = new URL(req.url).pathname;
+        const route = routes.find(candidate => candidate.pattern instanceof RegExp && candidate.pattern.test(pathname))!;
+        await route.handler(req, res, pathname.match(route.pattern)!);
+        expect(mockResolveRepo).not.toHaveBeenCalled();
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+        expect(req.listenerCount('aborted')).toBe(0);
+        expect(res.listenerCount('close')).toBe(0);
+    });
+
+    it.each([
+        ['/42/diff', false],
+        ['/42/diff', true],
+        ['/42/diff/files/foo.ts', false],
+        ['/42/diff/files/foo.ts', true],
+        ['/42/diff/files/foo.ts?fullContext=true', false],
+        ['/42/diff/files/foo.ts?fullContext=true', true],
+    ])('cancels %s before delayed transport settles (failure=%s)', async (endpoint, failure) => {
+        let release!: () => void;
+        let started!: () => void;
+        const pending = new Promise<void>(resolve => { release = resolve; });
+        const fetching = new Promise<void>(resolve => { started = resolve; });
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+            started();
+            await pending;
+            if (failure) throw new Error('late provider failure');
+            return 'diff --git a/foo.ts b/foo.ts\n';
+        });
+        const addon = loadNativeGit();
+        const original = addon.openRemoteGitPatchStore.bind(addon);
+        const tickets: Array<{
+            process: ReturnType<typeof vi.spyOn>;
+            cancel: ReturnType<typeof vi.spyOn>;
+            dispose: ReturnType<typeof vi.spyOn>;
+        }> = [];
+        const open = vi.spyOn(addon, 'openRemoteGitPatchStore').mockImplementation((...args) => {
+            const scope = original(...args);
+            const begin = scope.beginTransport.bind(scope);
+            const dispose = vi.spyOn(scope, 'dispose');
+            vi.spyOn(scope, 'beginTransport').mockImplementation(() => {
+                const ticket = begin();
+                tickets.push({ process: vi.spyOn(ticket, 'process'), cancel: vi.spyOn(ticket, 'cancel'), dispose });
+                return ticket;
+            });
+            return scope;
+        });
+        let request!: http.IncomingMessage;
+        let response!: http.ServerResponse;
+        let write!: ReturnType<typeof vi.spyOn>;
+        server.once('request', (req, res) => {
+            request = req;
+            response = res;
+            write = vi.spyOn(res, 'end');
+        });
+        const client = http.get(originPullRequestsUrl(endpoint));
+        client.on('error', () => undefined);
+        try {
+            await fetching;
+            // Normal completion of a GET body must not cancel its patch.
+            request.emit('close');
+            expect(tickets[0].cancel).not.toHaveBeenCalled();
+            client.destroy();
+            await vi.waitFor(() => expect(tickets[0].cancel).toHaveBeenCalledTimes(1));
+            const live = await fetch(originPullRequestsUrl('/42/diff/files/foo.ts'));
+            expect(live.status).toBe(200);
+            expect((await live.json()).diff).toContain('diff --git');
+            release();
+            await vi.waitFor(() => expect(request.listenerCount('aborted')).toBe(0));
+            expect(response.listenerCount('close')).toBe(0);
+            expect(write).not.toHaveBeenCalled();
+            expect(tickets[0].process).not.toHaveBeenCalled();
+            expect(tickets[0].dispose).toHaveBeenCalledTimes(1);
+            expect(tickets[1].process).toHaveBeenCalledTimes(1);
+            expect(tickets[1].dispose).toHaveBeenCalledTimes(1);
+        } finally {
+            release();
+            client.destroy();
+            open.mockRestore();
+        }
+    });
+
+    it('does not cache delayed PR detail or start fallback after abandonment', async () => {
+        let release!: (pr: ProviderPullRequest) => void;
+        let started!: () => void;
+        const pending = new Promise<ProviderPullRequest>(resolve => { release = resolve; });
+        const fetching = new Promise<void>(resolve => { started = resolve; });
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+            started();
+            return pending;
+        });
+        let request!: http.IncomingMessage;
+        let response!: http.ServerResponse;
+        let write!: ReturnType<typeof vi.spyOn>;
+        server.once('request', (req, res) => {
+            request = req;
+            response = res;
+            write = vi.spyOn(res, 'end');
+        });
+        const client = http.get(originPullRequestsUrl('/42/diff/files/foo.ts?fullContext=true'));
+        client.on('error', () => undefined);
+        try {
+            await fetching;
+            client.destroy();
+            await new Promise<void>(resolve => response.once('close', resolve));
+            release({ ...mockPr, title: 'abandoned detail' });
+            await vi.waitFor(() => expect(request.listenerCount('aborted')).toBe(0));
+            expect(response.listenerCount('close')).toBe(0);
+            expect(write).not.toHaveBeenCalled();
+            expect(mockSvc.getDiff).not.toHaveBeenCalled();
+            const detail = await fetch(originPullRequestsUrl('/42'));
+            expect((await detail.json()).title).toBe(mockPr.title);
+            expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+        } finally {
+            release(mockPr);
+            client.destroy();
+        }
     });
 });
 

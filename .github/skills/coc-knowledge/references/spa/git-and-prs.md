@@ -638,7 +638,12 @@ same-origin clone. Classic pop-out views call the per-file diff endpoint with
 with `fullContextUnavailable: true`. Rust decodes supplied Git patch paths and selects
 per-file chunks with their exact bytes. Combined and per-file hunk requests fetch
 current provider bytes through the selected clone; full-context fallback uses the
-same transport. Each list refresh fetches current provider patches and maps Rust
+same transport. Local and PR patch routes share `withPatchRequest` response lifetimes.
+Abandonment cancels request-owned native tickets and full-context host/WSL patch
+execution, suppresses delivery and retires listeners. Authenticated transport and
+shared commit fetches finish independently; abandoned reads cannot cache PR detail
+or start fallback/retry work. Rootless PR selections bracket stateless Rust processing
+with signal checks. Each list refresh fetches current provider patches and maps Rust
 summaries to diff statistics, including when the base moves with an unchanged head
 or revision metadata is missing. Fresh list-response cache
 hits reuse enriched rows; there is no separate patch-statistics cache.

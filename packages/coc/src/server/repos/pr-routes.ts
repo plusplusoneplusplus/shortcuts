@@ -69,6 +69,7 @@ import {
 } from './pr-origin-scope';
 import type { RepoInfo } from './types';
 import { loadPullRequestPatch } from './pr-patch';
+import { withPatchRequest } from '../routes/api-shared';
 import {
     loadPullRequestFileContent,
     PullRequestFileContentError,
@@ -1072,7 +1073,9 @@ export async function getFullContextFileDiff(
     prId: string,
     prData: ProviderPullRequest,
     filePath: string,
+    signal?: AbortSignal,
 ): Promise<FullContextDiffResult> {
+    signal?.throwIfAborted();
     const baseSha = prData.baseSha;
     const headSha = prData.headSha;
     if (!baseSha || !headSha) {
@@ -1080,9 +1083,11 @@ export async function getFullContextFileDiff(
     }
 
     try {
-        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999 });
+        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999, signal });
+        signal?.throwIfAborted();
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
+        signal?.throwIfAborted();
         rethrowIfAddonUnavailable(err);
         if (!isMissingCommitError(err)) {
             console.warn(`[pr-full-context] git diff failed before fetch: ${err instanceof Error ? err.message : String(err)}`);
@@ -1091,14 +1096,17 @@ export async function getFullContextFileDiff(
     }
 
     const fetched = await fetchMissingPrCommitsDeduped(localPath, remote, prId, prData);
+    signal?.throwIfAborted();
     if (!fetched) {
         return { diff: null, unavailableReason: 'git-fetch-failed' };
     }
 
     try {
-        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999 });
+        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999, signal });
+        signal?.throwIfAborted();
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
+        signal?.throwIfAborted();
         rethrowIfAddonUnavailable(err);
         console.warn(`[pr-full-context] git diff failed after fetch: ${err instanceof Error ? err.message : String(err)}`);
         return { diff: null, unavailableReason: 'git-diff-failed' };
@@ -1123,15 +1131,19 @@ async function resolvePullRequestDetailForFullContext(
     repoId: string,
     prId: string,
     getPullRequest: (repoId: string, prId: string) => Promise<ProviderPullRequest>,
+    signal: AbortSignal,
 ): Promise<ProviderPullRequest | undefined> {
     try {
+        signal.throwIfAborted();
         const pr = await getPullRequest(repoId, prId);
+        signal.throwIfAborted();
         prDetailCache.set(makePrDetailCacheKey(cacheScopeId, prId), {
             data: pr,
             expiresAt: Date.now() + PR_DETAIL_TTL_MS,
         });
         return pr;
     } catch (err) {
+        signal.throwIfAborted();
         console.warn(`[pr-full-context] failed to resolve PR detail for repo=${repoId} pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
     }
@@ -1437,23 +1449,25 @@ export function registerPrRoutes(
         sendJson(res, result);
     }
 
-    async function sendPullRequestFileDiff(
+    async function loadPullRequestFileDiff(
         req: Parameters<Route['handler']>[0],
-        res: Parameters<Route['handler']>[1],
         options: { workspaceId: string; repoId: string; prId: string; filePath: string; repo: RepoInfo; cacheScopeId: string },
-    ): Promise<void> {
+        signal: AbortSignal,
+    ) {
         const query = url.parse(req.url ?? '', true).query;
         const fullContext = query.fullContext === 'true';
 
         const cfg = await readProvidersConfig(dataDir);
+        signal.throwIfAborted();
         const prSvc = await serviceForRepo(options.repo, cfg);
+        signal.throwIfAborted();
         const getDiff = prSvc.getDiff?.bind(prSvc);
         if (!getDiff) {
-            return sendJson(res, { diff: '' });
+            return { diff: '' };
         }
         const loadFilePatch = async () => {
             const patch = await loadPullRequestPatch(options.repo, options.workspaceId, options.prId, cfg,
-                () => getDiff(options.repoId, options.prId));
+                () => getDiff(options.repoId, options.prId), signal);
             return patch.files.find(file => file.path === options.filePath)?.raw ?? '';
         };
 
@@ -1464,6 +1478,7 @@ export function registerPrRoutes(
                 options.repoId,
                 options.prId,
                 prSvc.getPullRequest.bind(prSvc),
+                signal,
             );
             let unavailableReason: FullContextUnavailableReason;
             if (!prData) {
@@ -1475,9 +1490,10 @@ export function registerPrRoutes(
                     options.prId,
                     prData,
                     options.filePath,
+                    signal,
                 );
                 if (fullCtxDiff.diff) {
-                    return sendJson(res, { diff: fullCtxDiff.diff, fullContextUnavailable: false });
+                    return { diff: fullCtxDiff.diff, fullContextUnavailable: false };
                 }
                 unavailableReason = fullCtxDiff.unavailableReason ?? 'git-diff-failed';
             } else {
@@ -1486,29 +1502,28 @@ export function registerPrRoutes(
 
             // Fallback: no local clone, no PR detail, or local git produced
             // nothing — serve the degraded hunk diff plus the unavailable reason.
-            return sendJson(res, { diff: await loadFilePatch(), fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
+            return { diff: await loadFilePatch(), fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason };
         }
 
-        sendJson(res, { diff: await loadFilePatch() });
+        return { diff: await loadFilePatch() };
     }
 
-    async function sendPullRequestUnifiedDiff(
-        res: Parameters<Route['handler']>[1],
+    async function loadPullRequestUnifiedDiff(
         options: { workspaceId: string; repoId: string; prId: string; repo: RepoInfo; cacheScopeId: string },
-    ): Promise<void> {
+        signal: AbortSignal,
+    ): Promise<string> {
         const cfg = await readProvidersConfig(dataDir);
+        signal.throwIfAborted();
         const prSvc = await serviceForRepo(options.repo, cfg);
+        signal.throwIfAborted();
         const getDiff = prSvc.getDiff?.bind(prSvc);
         if (!getDiff) {
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('');
-            return;
+            return '';
         }
 
         const { content } = await loadPullRequestPatch(options.repo, options.workspaceId, options.prId, cfg,
-            () => getDiff(options.repoId, options.prId));
-        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end(content.raw);
+            () => getDiff(options.repoId, options.prId), signal);
+        return content.raw;
     }
 
     async function sendPullRequestFileContent(
@@ -2134,51 +2149,60 @@ export function registerPrRoutes(
     routes.push({
         method: 'GET',
         pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/diff\/files\/(.+)$/,
-        handler: async (req, res, match) => {
+        handler: (req, res, match) => withPatchRequest(req, res, async signal => {
             try {
                 const originId = parseOriginId(match![1]);
                 if (!originId) return send400(res, 'originId must be a non-empty string');
                 const prId = decodeURIComponent(match![2]);
                 const filePath = decodeURIComponent(match![3]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                signal.throwIfAborted();
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
                 const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
-                await sendPullRequestFileDiff(req, res, {
+                const result = await loadPullRequestFileDiff(req, {
                     workspaceId,
                     repoId,
                     prId,
                     filePath,
                     repo,
                     cacheScopeId: storageScope.storageOriginId,
-                });
+                }, signal);
+                signal.throwIfAborted();
+                sendJson(res, result);
             } catch (err) {
+                signal.throwIfAborted();
                 sendProviderBackedPrRouteError(res, err);
             }
-        },
+        }),
     });
 
     routes.push({
         method: 'GET',
         pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/diff$/,
-        handler: async (req, res, match) => {
+        handler: (req, res, match) => withPatchRequest(req, res, async signal => {
             try {
                 const originId = parseOriginId(match![1]);
                 if (!originId) return send400(res, 'originId must be a non-empty string');
                 const prId = decodeURIComponent(match![2]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                signal.throwIfAborted();
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
                 const { workspaceId, repoId, repo, storageScope } = scopeResult.value;
-                await sendPullRequestUnifiedDiff(res, {
+                const diff = await loadPullRequestUnifiedDiff({
                     workspaceId,
                     repoId,
                     prId,
                     repo,
                     cacheScopeId: storageScope.storageOriginId,
-                });
+                }, signal);
+                signal.throwIfAborted();
+                res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+                res.end(diff);
             } catch (err) {
+                signal.throwIfAborted();
                 sendProviderBackedPrRouteError(res, err);
             }
-        },
+        }),
     });
 
     // -- Origin-scoped provider PR list/detail ---------------------------------

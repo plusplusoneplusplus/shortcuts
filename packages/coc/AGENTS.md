@@ -315,19 +315,22 @@ references before editing. Paths are package-relative.
   uses owning-server committed objects, fails before queueing, performs no implicit
   network/branch switch, and removes without force/branch deletion.
   Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
-  Commit, branch-range and working-tree patch routes use `createLocalPatchRoute`
-  to pass request-owned signals to Forge host/WSL patch reads. Request abort or
+  Commit, branch-range, working-tree and combined/per-file PR patch routes share
+  `withPatchRequest`; `createLocalPatchRoute` adapts local routes. Request abort or
   unfinished response close cancels only that read; normal GET-body close does not.
-  Retire listeners on every outcome and suppress abandoned response delivery.
+  Retire listeners on every outcome and guard response delivery after awaits.
   Working-tree patches use Rust planning, processing and truncation; native-load
   errors return HTTP 500 with rebuild instructions. PR combined/per-file hunks and list statistics use
   `repos/pr-patch.ts` request-owned Rust remote stores with explicit workspace/root,
   provider host/repository and PR identity. Capture continuations before patch I/O;
-  retire/dispose on success or failure. Remote-only selections without a root use
-  stateless Rust processing, preserving their hunk fallback. Required-native
+  cancel tickets immediately on abandonment and retire/dispose on every outcome.
+  Remote-only selections without a root use stateless Rust processing with
+  pre/post-await signal checks. Required-native
   failures remain visible. PR full-context patches use Forge loadComparisonPatch with
   direct base/head Rust planning and host/WSL execution; TypeScript orchestrates commit
-  fetch/retry and provider-hunk fallback. List refreshes fetch current provider bytes
+  fetch/retry and provider-hunk fallback. Authenticated I/O and shared commit fetches
+  finish independently; abandoned reads cannot publish detail caches or start
+  fallback/retry work. List refreshes fetch current provider bytes
   and map Rust summaries directly to diffStats; only the list response cache retains
   enriched rows. Patch transport and source identity use the same provider config;
   ADO identity includes its effective configured organization. Combined and per-file
