@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Unit tests for `useAdminSaveShortcut` — the shared Ctrl/Cmd+S handler for
- * every admin Settings section.
+ * the admin configuration pages.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
@@ -13,10 +13,11 @@ function press(init: KeyboardEventInit = { key: 's', ctrlKey: true }): KeyboardE
     return event;
 }
 
-function render(active: boolean, target: AdminSaveShortcutTarget | null) {
+function render(active: boolean, target: AdminSaveShortcutTarget | AdminSaveShortcutTarget[] | null) {
+    const targets = target === null ? [] : Array.isArray(target) ? target : [target];
     return renderHook(
-        ({ active, target }: { active: boolean; target: AdminSaveShortcutTarget | null }) => useAdminSaveShortcut(active, target),
-        { initialProps: { active, target } },
+        ({ active, targets }: { active: boolean; targets: AdminSaveShortcutTarget[] }) => useAdminSaveShortcut(active, targets),
+        { initialProps: { active, targets } },
     );
 }
 
@@ -75,10 +76,39 @@ describe('useAdminSaveShortcut', () => {
         const first = vi.fn();
         const second = vi.fn();
         const view = render(true, { dirty: true, saving: false, onSave: first });
-        view.rerender({ active: true, target: { dirty: true, saving: false, onSave: second } });
+        view.rerender({ active: true, targets: [{ dirty: true, saving: false, onSave: second }] });
         press();
         expect(first).not.toHaveBeenCalled();
         expect(second).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: multi-card pages (a section card plus its feature card)
+    // must save every dirty card, not just the first.
+    it('saves every dirty target and skips clean or in-flight ones', () => {
+        const dirty = vi.fn();
+        const clean = vi.fn();
+        const inFlight = vi.fn();
+        const alsoDirty = vi.fn();
+        render(true, [
+            { dirty: true, saving: false, onSave: dirty },
+            { dirty: false, saving: false, onSave: clean },
+            { dirty: true, saving: true, onSave: inFlight },
+            { dirty: true, saving: false, onSave: alsoDirty },
+        ]);
+        expect(press({ key: 's', metaKey: true }).defaultPrevented).toBe(true);
+        expect(dirty).toHaveBeenCalledTimes(1);
+        expect(alsoDirty).toHaveBeenCalledTimes(1);
+        expect(clean).not.toHaveBeenCalled();
+        expect(inFlight).not.toHaveBeenCalled();
+    });
+
+    it('does not save again once the target reports saving', () => {
+        const onSave = vi.fn();
+        const view = render(true, { dirty: true, saving: false, onSave });
+        press();
+        view.rerender({ active: true, targets: [{ dirty: true, saving: true, onSave }] });
+        press();
+        expect(onSave).toHaveBeenCalledTimes(1);
     });
 
     it('removes the listener on unmount', () => {

@@ -197,19 +197,35 @@ export function AdminPanel() {
         activityActive: activeDashboardTab === 'dreams-admin' && !isContainerMode(),
     });
 
-    // Ctrl/Cmd+S saves the visible Settings section. Integrations and
-    // Providers persist on change, so they only suppress the browser dialog.
-    const saveShortcutTargets: Partial<Record<SettingsSubTab, AdminSaveShortcutTarget>> = {
-        ai: { dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec },
-        chat: { dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat },
-        'chat-style': { dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave },
-        appearance: { dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance },
-        features: { dirty: features.isTabDirty('features'), saving: features.savingTab === 'features', onSave: () => features.handleSaveTab('features') },
+    // Ctrl/Cmd+S saves every dirty draft card on the visible admin page: a
+    // Settings section card plus its registry feature card, the AI Provider
+    // page, and the embedded Dreams config. Link handlers persist on change
+    // and provider credentials save per item, so Providers only suppresses the
+    // browser dialog. Advanced (read-only) and action/immediate-save pages are
+    // left to the browser.
+    const featureTarget = (tab: FeatureSettingTab): AdminSaveShortcutTarget => ({
+        dirty: features.isTabDirty(tab),
+        saving: features.savingTab === tab,
+        onSave: () => features.handleSaveTab(tab),
+    });
+    const settingsSaveTargets: Record<Exclude<SettingsSubTab, 'advanced'>, AdminSaveShortcutTarget[]> = {
+        ai: [{ dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec }, featureTarget('ai')],
+        chat: [{ dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat }, featureTarget('chat')],
+        'chat-style': [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }],
+        appearance: [{ dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance }, featureTarget('appearance')],
+        features: [featureTarget('features')],
+        integrations: [featureTarget('integrations')],
+        providers: [],
     };
-    useAdminSaveShortcut(
-        activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced',
-        saveShortcutTargets[settingsSubTab] ?? null,
-    );
+    const saveShortcutTargets: AdminSaveShortcutTarget[] | null =
+        activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced'
+            ? settingsSaveTargets[settingsSubTab]
+            : activeTab === 'agents' && !isToolEmbedded && !isContainerMode()
+                ? [{ dirty: providers.defaultProviderDirty, saving: providers.defaultProviderSaving, onSave: providers.handleSaveDefaultProvider }]
+                : activeToolItem?.tab === 'dreams-admin'
+                    ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
+                    : null;
+    useAdminSaveShortcut(saveShortcutTargets !== null, saveShortcutTargets ?? []);
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();

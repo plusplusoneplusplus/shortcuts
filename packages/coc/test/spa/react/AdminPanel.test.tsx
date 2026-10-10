@@ -1178,6 +1178,170 @@ describe('AdminPanel', () => {
             expect(mockFetch).not.toHaveBeenCalled();
         });
 
+        // Records config writes (ignoring the mount-time onboarding PATCH);
+        // `respond` controls each write's outcome.
+        function recordWrites(respond: (url: string) => Promise<any> = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })) {
+            const writes: Array<{ url: string; body: any }> = [];
+            const baseImpl = mockFetch.getMockImplementation()!;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method && options.method !== 'GET') {
+                    writes.push({ url, body: options.body ? JSON.parse(options.body) : null });
+                    return respond(url);
+                }
+                if (options?.method && options.method !== 'GET') {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                return baseImpl(url, options);
+            });
+            return writes;
+        }
+
+        function pressSave(modifier: KeyboardEventInit = { ctrlKey: true }): KeyboardEvent {
+            const event = new KeyboardEvent('keydown', { key: 's', ...modifier, bubbles: true, cancelable: true });
+            window.dispatchEvent(event);
+            return event;
+        }
+
+        // Regression: Integrations has a draft feature card (Save/Cancel) but
+        // the shortcut treated the section as persist-on-change and dropped it.
+        it.each([
+            ['Ctrl+S', { ctrlKey: true }],
+            ['Command+S', { metaKey: true }],
+        ])('%s saves dirty Integrations feature settings', async (_label, modifier) => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('integrations');
+            await waitFor(() => expect(screen.getByTestId('toggle-kusto-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-kusto-enabled')); });
+
+            let event!: KeyboardEvent;
+            await act(async () => { event = pressSave(modifier); });
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].url).toContain('/admin/config');
+            expect(writes[0].body['kusto.enabled']).toBe(true);
+            await waitFor(() => expect((screen.getByTestId('settings-tab-features-integrations-save') as HTMLButtonElement).disabled).toBe(true));
+        });
+
+        // Regression: multi-card sections must save the feature card too.
+        it('Ctrl+S on AI & Execution saves both the section card and its feature card', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-ralph-enabled')).toBeDefined());
+            await act(async () => {
+                fireEvent.change(document.getElementById('admin-config-model')!, { target: { value: 'gpt-5' } });
+                fireEvent.click(screen.getByTestId('toggle-ralph-enabled'));
+            });
+
+            await act(async () => { pressSave(); });
+
+            await waitFor(() => expect(writes).toHaveLength(2));
+            expect(writes.some(w => w.body.model === 'gpt-5')).toBe(true);
+            expect(writes.some(w => w.body['ralph.enabled'] === true)).toBe(true);
+        });
+
+        it('Ctrl+S on AI & Execution saves only the dirty feature card', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('toggle-ralph-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-ralph-enabled')); });
+
+            await act(async () => { pressSave(); });
+
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].body['ralph.enabled']).toBe(true);
+            expect(writes[0].body).not.toHaveProperty('model');
+        });
+
+        it('Ctrl+S failure keeps the Integrations draft and shows the error', async () => {
+            mockFullConfig();
+            const writes = recordWrites(() => Promise.resolve({
+                ok: false, status: 500, statusText: 'Internal Server Error',
+                json: () => Promise.resolve({ error: 'disk full' }),
+                text: () => Promise.resolve(JSON.stringify({ error: 'disk full' })),
+                headers: new Headers(),
+            }));
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('integrations');
+            await waitFor(() => expect(screen.getByTestId('toggle-kusto-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-kusto-enabled')); });
+
+            await act(async () => { pressSave(); });
+
+            await waitFor(() => expect(writes).toHaveLength(1));
+            await waitFor(() => expect(screen.getByText(/disk full/)).toBeDefined());
+            expect((screen.getByTestId('toggle-kusto-enabled') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('settings-tab-features-integrations-save') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('repeated Ctrl+S while an Integrations save is in flight writes once', async () => {
+            mockFullConfig();
+            let release!: () => void;
+            const writes = recordWrites(() => new Promise(resolve => {
+                release = () => resolve({ ok: true, json: () => Promise.resolve({}) });
+            }));
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('integrations');
+            await waitFor(() => expect(screen.getByTestId('toggle-kusto-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-kusto-enabled')); });
+
+            await act(async () => { pressSave(); });
+            await waitFor(() => expect(writes).toHaveLength(1));
+            let second!: KeyboardEvent;
+            await act(async () => { second = pressSave(); });
+            expect(second.defaultPrevented).toBe(true);
+            expect(writes).toHaveLength(1);
+
+            await act(async () => { release(); });
+            await waitFor(() => expect((screen.getByTestId('settings-tab-features-integrations-save') as HTMLButtonElement).disabled).toBe(true));
+            expect(writes).toHaveLength(1);
+        });
+
+        // Regression: the AI Provider page has a draft Save/Cancel card.
+        it.each([
+            ['Ctrl+S', { ctrlKey: true }],
+            ['Command+S', { metaKey: true }],
+        ])('%s saves the dirty AI Provider page', async (_label, modifier) => {
+            mockFullConfig({ claude: { enabled: false }, defaultProvider: 'copilot' });
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-agents')); });
+            await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-claude-enabled')); });
+
+            let event!: KeyboardEvent;
+            await act(async () => { event = pressSave(modifier); });
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].body['claude.enabled']).toBe(true);
+        });
+
+        it('Ctrl+S on a clean AI Provider page prevents browser save without writing', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-agents')); });
+            await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
+
+            const event = pressSave();
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(writes).toHaveLength(0);
+        });
+
+        it('Ctrl+S on an action-only admin page is left to the browser', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-data')); });
+
+            expect(pressSave().defaultPrevented).toBe(false);
+        });
+
         it('Features card Save sends PUT with all feature flags', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {

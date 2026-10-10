@@ -494,6 +494,42 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!.className).toContain('is-active');
     });
 
+    // Regression: the embedded Dreams config is a draft Save/Cancel card.
+    it.each([
+        ['Ctrl+S', { ctrlKey: true }],
+        ['Command+S', { metaKey: true }],
+    ])('%s saves dirty Dreams settings', async (_label, modifier) => {
+        mockDreamsAdminConfig();
+        await openDreamsAdminSettings();
+        await act(async () => {
+            fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!, { target: { value: '30' } });
+        });
+
+        const event = new KeyboardEvent('keydown', { key: 's', ...modifier, bubbles: true, cancelable: true });
+        await act(async () => { window.dispatchEvent(event); });
+
+        expect(event.defaultPrevented).toBe(true);
+        await waitFor(() => expect(getAdminConfigSavePayload()).toMatchObject({ 'dreams.timeoutMs': 1_800_000 }));
+        await waitFor(() => expect(getDreamsSaveButton().disabled).toBe(true));
+    });
+
+    it('Ctrl+S on invalid Dreams settings keeps the draft without writing', async () => {
+        mockDreamsAdminConfig();
+        await openDreamsAdminSettings();
+        await act(async () => {
+            fireEvent.change(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!, { target: { value: '0' } });
+        });
+
+        const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+        await act(async () => { window.dispatchEvent(event); });
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(mockFetch.mock.calls.some(([input, init]: [RequestInfo | URL, RequestInit | undefined]) =>
+            String(input).includes('/api/admin/config') && init?.method === 'PUT')).toBe(false);
+        expect(document.querySelector<HTMLInputElement>('[data-testid="dreams-timeout-minutes"]')!.value).toBe('0');
+        expect(document.body.textContent).toContain('Dreams run timeout must be a positive whole number of minutes');
+    });
+
     it('saves the Dreams idle check interval in milliseconds after editing minutes', async () => {
         mockDreamsAdminConfig();
         await openDreamsAdminSettings();

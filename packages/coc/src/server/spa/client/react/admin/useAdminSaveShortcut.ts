@@ -1,12 +1,14 @@
 /**
- * useAdminSaveShortcut — Ctrl/Cmd+S for the admin Settings sections.
+ * useAdminSaveShortcut — Ctrl/Cmd+S for the admin configuration pages.
  *
  * While `active`, the shortcut always blocks the browser's "Save page" dialog.
- * When the active section has a save target, it saves only if the section is
- * dirty and not already saving. Sections without a Save button (they persist
- * on change) pass `null` and get the dialog suppression only.
+ * A page passes one save target per draft card it shows (e.g. a section card
+ * plus its registry feature card); the shortcut saves each target that is
+ * dirty and not already saving. Pages without draft cards (they persist on
+ * change or use per-item actions) pass no targets and get the dialog
+ * suppression only.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export interface AdminSaveShortcutTarget {
     dirty: boolean;
@@ -14,10 +16,11 @@ export interface AdminSaveShortcutTarget {
     onSave: () => void | Promise<void>;
 }
 
-export function useAdminSaveShortcut(active: boolean, target: AdminSaveShortcutTarget | null): void {
-    const dirty = target?.dirty ?? false;
-    const saving = target?.saving ?? false;
-    const onSave = target?.onSave;
+export function useAdminSaveShortcut(active: boolean, targets: readonly AdminSaveShortcutTarget[]): void {
+    // Targets are rebuilt every render; read the latest through a ref so the
+    // listener is only re-attached when `active` flips.
+    const targetsRef = useRef(targets);
+    targetsRef.current = targets;
 
     useEffect(() => {
         if (!active) return;
@@ -33,11 +36,12 @@ export function useAdminSaveShortcut(active: boolean, target: AdminSaveShortcutT
             }
 
             event.preventDefault();
-            if (!onSave || !dirty || saving) return;
-            void onSave();
+            for (const target of targetsRef.current) {
+                if (target.dirty && !target.saving) void target.onSave();
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [active, dirty, saving, onSave]);
+    }, [active]);
 }
