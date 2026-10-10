@@ -377,4 +377,33 @@ test.describe('Sentinel auto-compact popover', () => {
             ]);
         } finally { release?.(); cleanup(); }
     });
+
+    test('SAC.9 hover preview survives pointer travel into the popover and pins once used', async ({ page, serverUrl, dataDir }) => {
+        const { wsId, taskId, cleanup } = await setup(serverUrl, dataDir, 'sac9', 'sentinel');
+        try {
+            const { writes, processId } = await stubProcess(page, wsId, taskId, 'sentinel');
+            await gotoChat(page, serverUrl, wsId, processId);
+            const trigger = page.getByRole('button', { name: /Context window/ });
+            const dialog = page.getByRole('dialog', { name: 'Context usage' });
+            await trigger.hover();
+            await expect(dialog).toBeVisible();
+            // Walk straight up from the gauge through the gap above it, without clicking the trigger.
+            const triggerBox = (await trigger.boundingBox())!;
+            const dialogBox = (await dialog.boundingBox())!;
+            const x = triggerBox.x + triggerBox.width / 2;
+            await page.mouse.move(x, triggerBox.y + 2);
+            await page.mouse.move(x, dialogBox.y + dialogBox.height - 4, { steps: 12 });
+            await expect(dialog).toBeVisible();
+            const toggle = page.getByRole('switch', { name: 'Auto-compact', exact: true });
+            await toggle.hover();
+            await toggle.click();
+            await expect(page.getByTestId('auto-compact-status')).toContainText('Saved');
+            expect(writes).toHaveLength(1);
+            // Using a control pinned it: leaving no longer dismisses, an outside press does.
+            await page.mouse.move(5, 5);
+            await expect(dialog).toBeVisible();
+            await page.mouse.click(5, 5);
+            await expect(dialog).toHaveCount(0);
+        } finally { cleanup(); }
+    });
 });
