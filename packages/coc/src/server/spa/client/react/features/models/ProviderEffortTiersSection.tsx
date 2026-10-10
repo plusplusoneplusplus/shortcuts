@@ -11,6 +11,7 @@ import { TIER_KEYS, useProviderEffortTiers, type EffortTierKey } from '../../hoo
 import { useProviderModels, type AgentProvider, type ProviderModelInfo } from '../../hooks/useProviderModels';
 import { Spinner } from '../../ui';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useAdminSaveShortcut } from '../../admin/useAdminSaveShortcut';
 
 const TIER_LABELS: Record<EffortTierKey, string> = {
     'very-low': 'Very Low',
@@ -34,6 +35,7 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
         tiers, loading, error, saveError, saving, dirty,
         setTier, clearTier, save, cancel, reload,
     } = useProviderEffortTiers(provider);
+    useAdminSaveShortcut(true, [{ dirty, saving: saving || loading || modelsLoading || error !== null, onSave: save }]);
 
     const modelMap = useMemo(() => {
         const map = new Map<string, ProviderModelInfo>();

@@ -16,7 +16,7 @@
  * Clearing a configured tier reverts it to its provider default (defaults
  * always exist for known providers).
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
 import type { AgentProvider } from './useProviderModels';
@@ -102,6 +102,7 @@ export function useProviderEffortTiers(provider: AgentProvider, baseUrl?: string
     const [error, setError] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const saveInFlight = useRef(false);
 
     const load = useCallback(() => {
         const key = configCacheKey.effortTiers(provider, baseUrl);
@@ -163,6 +164,8 @@ export function useProviderEffortTiers(provider: AgentProvider, baseUrl?: string
     }, [defaults]);
 
     const save = useCallback(async () => {
+        if (saveInFlight.current) return;
+        saveInFlight.current = true;
         setSaving(true);
         setSaveError(null);
         try {
@@ -185,6 +188,7 @@ export function useProviderEffortTiers(provider: AgentProvider, baseUrl?: string
         } catch (e: unknown) {
             setSaveError(getSpaCocClientErrorMessage(e, 'Failed to save effort tiers'));
         } finally {
+            saveInFlight.current = false;
             setSaving(false);
         }
     }, [provider, baseUrl, local]);

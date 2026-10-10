@@ -2086,6 +2086,119 @@ describe('AdminPanel', () => {
     });
 });
 
+describe('AdminPanel — Server display-name shortcut', () => {
+    let writes: Record<string, unknown>[];
+    let storedName: string;
+    let saveResponse: () => Promise<Response>;
+
+    beforeEach(() => {
+        writes = [];
+        storedName = 'original';
+        saveResponse = async () => Response.json({ resolved: { serve: { serverName: storedName }, model: 'original-model' } });
+        mockFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+            if (url.includes('/admin/version')) return Response.json({ version: 'test', commit: 'test-commit' });
+            if (url.includes('/admin/config') && options?.method === 'PUT') {
+                const body = JSON.parse(String(options.body));
+                writes.push(body);
+                storedName = body['serve.serverName'] ?? '';
+                return saveResponse();
+            }
+            if (url.includes('/admin/config')) {
+                return Response.json({ resolved: { serve: { serverName: storedName }, model: 'original-model' } });
+            }
+            return Response.json({});
+        });
+    });
+
+    async function openServer() {
+        await act(async () => { renderWithProviders(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-server')); });
+        return {
+            input: document.getElementById('admin-server-name') as HTMLInputElement,
+            button: document.getElementById('admin-server-name-save') as HTMLButtonElement,
+        };
+    }
+
+    function shortcut(modifier: 'ctrlKey' | 'metaKey') {
+        const event = new KeyboardEvent('keydown', { key: 's', [modifier]: true, bubbles: true, cancelable: true });
+        window.dispatchEvent(event);
+        return event;
+    }
+
+    it.each(['ctrlKey', 'metaKey'] as const)('%s saves only the visible server draft, suppressing browser Save even when clean', async (modifier) => {
+        const { input, button } = await openServer();
+        expect(input.value).toBe('original');
+        expect(button.disabled).toBe(true);
+        act(() => { expect(shortcut(modifier).defaultPrevented).toBe(true); });
+        expect(writes).toEqual([]);
+        act(() => { fireEvent.change(input, { target: { value: ' renamed ' } }); });
+        expect(button.disabled).toBe(false);
+        await act(async () => { expect(shortcut(modifier).defaultPrevented).toBe(true); });
+        expect(writes).toEqual([{ 'serve.serverName': 'renamed' }]);
+        expect(input.value).toBe('renamed');
+        expect(button.disabled).toBe(true);
+        act(() => { expect(shortcut(modifier).defaultPrevented).toBe(true); });
+        expect(writes).toHaveLength(1);
+        expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/restart'))).toBe(false);
+    });
+
+    it('shares same-tick admission across repeated shortcuts, button and Enter through failure and retry', async () => {
+        let release!: (response: Response) => void;
+        saveResponse = () => new Promise<Response>(resolve => { release = resolve; });
+        const { input, button } = await openServer();
+        act(() => { fireEvent.change(input, { target: { value: ' draft ' } }); });
+        act(() => {
+            shortcut('ctrlKey');
+            shortcut('metaKey');
+            fireEvent.click(button);
+            fireEvent.keyDown(input, { key: 'Enter' });
+        });
+        expect(writes).toHaveLength(1);
+        expect(button.disabled).toBe(true);
+        expect(input.value).toBe(' draft ');
+        act(() => { shortcut('ctrlKey'); fireEvent.keyDown(input, { key: 'Enter' }); });
+        expect(writes).toHaveLength(1);
+        await act(async () => { release(Response.json({ error: 'Name rejected' }, { status: 500 })); });
+        expect(await screen.findByText('Name rejected')).toBeDefined();
+        expect(input.value).toBe(' draft ');
+        expect(button.disabled).toBe(false);
+        act(() => {
+            fireEvent.keyDown(input, { key: 'Enter' });
+            fireEvent.click(button);
+            shortcut('ctrlKey');
+        });
+        expect(writes).toHaveLength(2);
+        expect(button.disabled).toBe(true);
+        await act(async () => { release(Response.json({ resolved: { serve: { serverName: 'draft' } } })); });
+        expect(input.value).toBe('draft');
+        expect(button.disabled).toBe(true);
+        act(() => { fireEvent.keyDown(input, { key: 'Enter' }); shortcut('metaKey'); });
+        expect(writes).toHaveLength(2);
+    });
+
+    it('button-led saves preserve edits on other pages and shortcuts never save a hidden server draft', async () => {
+        const { input, button } = await openServer();
+        act(() => { fireEvent.change(input, { target: { value: 'renamed' } }); });
+        await act(async () => { fireEvent.click(screen.getByTestId('settings-nav-configure')); });
+        await gotoSettingsSubTab('ai');
+        act(() => { fireEvent.change(screen.getByDisplayValue('original-model'), { target: { value: 'model-draft' } }); });
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-server')); });
+        await act(async () => { fireEvent.click(document.getElementById('admin-server-name-save')!); });
+        expect(writes).toEqual([{ 'serve.serverName': 'renamed' }]);
+        await act(async () => { fireEvent.click(screen.getByTestId('settings-nav-configure')); });
+        await gotoSettingsSubTab('ai');
+        expect(screen.getByDisplayValue('model-draft')).toBeDefined();
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-server')); });
+        act(() => { fireEvent.change(document.getElementById('admin-server-name')!, { target: { value: 'hidden-draft' } }); });
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-data')); });
+        act(() => { expect(shortcut('ctrlKey').defaultPrevented).toBe(false); });
+        expect(writes).toHaveLength(1);
+        expect(button.isConnected).toBe(false);
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-server')); });
+        expect(screen.getByDisplayValue('hidden-draft')).toBeDefined();
+    });
+});
+
 describe('AdminPanel — Browser page (desktop shell)', () => {
     function installDesktopShell() {
         const browser = {

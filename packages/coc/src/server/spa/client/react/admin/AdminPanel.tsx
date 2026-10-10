@@ -196,10 +196,12 @@ export function AdminPanel() {
         addToast,
         activityActive: activeDashboardTab === 'dreams-admin' && !isContainerMode(),
     });
+    const serverRuntime = useServerRuntime({ addToast, onSaved: setConfig });
 
     // Ctrl/Cmd+S saves every dirty draft card on the visible admin page: a
-    // Settings section card plus its registry feature card, the AI Provider
-    // page, and the embedded Dreams config. Link handlers persist on change
+    // Settings section card plus its registry feature card, Server display
+    // name, and the embedded Dreams config. AI Provider and Prompts own their
+    // nested targets. Link handlers persist on change
     // and provider credentials save per item, so Providers only suppresses the
     // browser dialog. Advanced (read-only) and action/immediate-save pages are
     // left to the browser.
@@ -220,8 +222,8 @@ export function AdminPanel() {
     const saveShortcutTargets: AdminSaveShortcutTarget[] | null =
         activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced'
             ? settingsSaveTargets[settingsSubTab]
-            : activeTab === 'agents' && !isToolEmbedded && !isContainerMode()
-                ? [{ dirty: providers.defaultProviderDirty, saving: providers.defaultProviderSaving, onSave: providers.handleSaveDefaultProvider }]
+            : activeTab === 'server' && !isToolEmbedded
+                ? [{ dirty: serverRuntime.serverNameDirty, saving: serverRuntime.serverNameSaving, onSave: serverRuntime.handleSaveServerName }]
                 : activeToolItem?.tab === 'dreams-admin'
                     ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
                     : null;
@@ -304,11 +306,6 @@ export function AdminPanel() {
         } catch { /* ignore */ }
     }, [prefsCtl.hydrateFromPreferences]);
 
-    // Server display-name + lifecycle (rebuild/restart). Restart state is shared
-    // with the sidebar restart button, so it lives in this hook rather than the
-    // Server tab panel. Save reloads config to reflect the change.
-    const serverRuntime = useServerRuntime({ addToast, reloadConfig: loadConfig });
-
     useEffect(() => {
         loadStats();
         loadConfig();
@@ -320,8 +317,9 @@ export function AdminPanel() {
 
     // Hydrate the server display-name field whenever the config (re)loads.
     useEffect(() => {
-        serverRuntime.setServerName(config?.resolved?.serve?.serverName ?? '');
-    }, [config, serverRuntime.setServerName]);
+        if (config === null) return;
+        serverRuntime.hydrateServerName(config?.resolved?.serve?.serverName ?? '');
+    }, [config, serverRuntime.hydrateServerName]);
 
     const handleRelaunchWelcome = useCallback(async () => {
         setRelaunchingWelcome(true);
@@ -796,6 +794,8 @@ export function AdminPanel() {
                                     isDefaultValue={isDefaultValue}
                                     addToast={addToast}
                                     serverName={serverRuntime.serverName}
+                                    serverNameDirty={serverRuntime.serverNameDirty}
+                                    serverNameSaving={serverRuntime.serverNameSaving}
                                     setServerName={serverRuntime.setServerName}
                                     handleSaveServerName={serverRuntime.handleSaveServerName}
                                     restarting={serverRuntime.restarting}

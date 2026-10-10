@@ -22,6 +22,8 @@ export interface ServerRuntimePanelProps {
     isDefaultValue: (key: string) => boolean | undefined;
     addToast: (message: string, type: 'success' | 'error') => void;
     serverName: string;
+    serverNameDirty: boolean;
+    serverNameSaving: boolean;
     setServerName: (value: string) => void;
     handleSaveServerName: () => void;
     restarting: boolean;
@@ -39,6 +41,8 @@ export function ServerRuntimePanel({
     isDefaultValue,
     addToast,
     serverName,
+    serverNameDirty,
+    serverNameSaving,
     setServerName,
     handleSaveServerName,
     restarting,
@@ -99,11 +103,19 @@ export function ServerRuntimePanel({
                             placeholder={resolved.serve?.host ? `auto (${resolved.serve.host})` : 'auto'}
                             value={serverName}
                             onChange={e => setServerName(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') handleSaveServerName(); }}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveServerName();
+                                }
+                            }}
                             className="ar-input ar-long ar-mono"
                         />
                         <SourceBadge source={sources['serve.serverName']} isDefault={isDefaultValue('serve.serverName')} />
-                        <button id="admin-server-name-save" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleSaveServerName}>Save</button>
+                        <button id="admin-server-name-save" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleSaveServerName} disabled={!serverNameDirty || serverNameSaving}>
+                            {serverNameSaving && <Spinner size="sm" />}
+                            Save
+                        </button>
                     </AdminRow>
                 </div>
             </section>

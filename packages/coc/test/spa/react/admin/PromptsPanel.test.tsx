@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
         getPrompts: vi.fn(),
         getConfig: vi.fn(),
         updateConfig: vi.fn(),
+        updatePrompt: vi.fn(),
+        resetPromptOverride: vi.fn(),
     },
 }));
 
@@ -184,6 +186,59 @@ describe('PromptsPanel', () => {
 });
 
 describe('PromptsPanel — Global System Prompt editor', () => {
+    function shortcut(modifier: 'ctrlKey' | 'metaKey') {
+        const event = new KeyboardEvent('keydown', { key: 's', [modifier]: true, cancelable: true });
+        window.dispatchEvent(event);
+        return event;
+    }
+
+    it.each(['ctrlKey', 'metaKey'] as const)('%s saves the global draft but never template edits or Clear', async (modifier) => {
+        mocks.admin.getPrompts.mockResolvedValue({
+            editable: { ...MOCK_PROMPTS['read-only-mode'], id: 'editable', editable: true, hasOverride: true },
+        });
+        await act(async () => { renderPanel(); });
+        const input = await screen.findByTestId('global-system-prompt-input');
+        act(() => { expect(shortcut(modifier).defaultPrevented).toBe(true); });
+        expect(mocks.admin.updateConfig).not.toHaveBeenCalled();
+        act(() => { fireEvent.click(screen.getByTestId('prompt-edit-btn')); });
+        act(() => {
+            fireEvent.change(screen.getByTestId('prompt-editor'), { target: { value: 'Template draft' } });
+            fireEvent.change(input, { target: { value: ' Global draft ' } });
+        });
+        await act(async () => { expect(shortcut(modifier).defaultPrevented).toBe(true); });
+        expect(mocks.admin.updateConfig).toHaveBeenCalledExactlyOnceWith({ 'chat.globalSystemPrompt': ' Global draft ' });
+        expect(mocks.admin.updatePrompt).not.toHaveBeenCalled();
+        expect(mocks.admin.resetPromptOverride).not.toHaveBeenCalled();
+        expect(screen.getByDisplayValue('Template draft')).toBeDefined();
+        act(() => { shortcut(modifier); });
+        expect(mocks.admin.updateConfig).toHaveBeenCalledTimes(1);
+    });
+
+    it('locks keyboard, Save and Clear together; keeps failed draft/error for retry', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+        let reject!: (error: Error) => void;
+        mocks.admin.updateConfig.mockReturnValueOnce(new Promise((_resolve, rej) => { reject = rej; }));
+        await act(async () => { renderPanel(); });
+        const input = await screen.findByTestId('global-system-prompt-input');
+        act(() => { fireEvent.change(input, { target: { value: 'retry draft' } }); });
+        act(() => {
+            shortcut('ctrlKey');
+            shortcut('metaKey');
+            fireEvent.click(screen.getByTestId('global-system-prompt-save'));
+            fireEvent.click(screen.getByTestId('global-system-prompt-clear'));
+        });
+        expect(mocks.admin.updateConfig).toHaveBeenCalledTimes(1);
+        expect(input).toBeDisabled();
+        await act(async () => { reject(new Error('Prompt rejected')); });
+        expect(screen.getByTestId('global-system-prompt-error')).toHaveTextContent('Prompt rejected');
+        expect(input).toHaveValue('retry draft');
+        expect(screen.getByTestId('global-system-prompt-save')).not.toBeDisabled();
+        await act(async () => { shortcut('metaKey'); });
+        expect(mocks.admin.updateConfig).toHaveBeenCalledTimes(2);
+        expect(screen.queryByTestId('global-system-prompt-error')).toBeNull();
+        expect(screen.getByTestId('global-system-prompt-save')).toBeDisabled();
+    });
+
     it('loads the resolved global prompt into the editor', async () => {
         mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
         mocks.admin.getConfig.mockResolvedValue({ resolved: { chat: { globalSystemPrompt: 'Stay terse.' } } });

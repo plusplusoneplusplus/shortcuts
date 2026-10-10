@@ -23,6 +23,9 @@ vi.mock('../../../../src/server/spa/client/react/features/models/ProviderModelsS
         </div>
     ),
 }));
+vi.mock('../../../../src/server/spa/client/react/features/models/ProviderEffortTiersSection', () => ({
+    ProviderEffortTiersSection: () => <div data-testid="mock-effort-tiers" />,
+}));
 
 const { AIProviderPage } = await import('../../../../src/server/spa/client/react/admin/AIProviderPage');
 
@@ -101,6 +104,26 @@ function quotaType(overrides: {
 
 describe('AIProviderPage', () => {
     beforeEach(() => { vi.clearAllMocks(); });
+
+    it.each(['ctrlKey', 'metaKey'] as const)('%s saves routing only while that draft card is visible', async (modifier) => {
+        const { props } = renderPage({ dirty: true });
+        const press = () => {
+            const event = new KeyboardEvent('keydown', { key: 's', [modifier]: true, cancelable: true });
+            window.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(true);
+        };
+        press();
+        expect(props.onSave).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByTestId('aip-subtab-models'));
+        await screen.findByTestId('mock-effort-tiers');
+        press();
+        expect(props.onSave).toHaveBeenCalledTimes(1);
+        expect(props.onInstallSdk).not.toHaveBeenCalled();
+        expect(props.onRefreshQuota).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId('aip-subtab-routing'));
+        press();
+        expect(props.onSave).toHaveBeenCalledTimes(2);
+    });
 
     // ────────────── Page structure ──────────────
     it('renders the page container with data-testid', () => {

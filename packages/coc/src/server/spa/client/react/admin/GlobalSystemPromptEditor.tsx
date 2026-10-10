@@ -8,10 +8,11 @@
  * override — CoC runtime constraints. Saving an empty prompt clears the value.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Spinner } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { SettingsCard } from './SettingsCard';
+import { useAdminSaveShortcut } from './useAdminSaveShortcut';
 
 interface GlobalSystemPromptEditorProps {
     onError: (msg: string) => void;
@@ -23,6 +24,8 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const inFlight = useRef(false);
+    const savedRef = useRef('');
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -31,6 +34,7 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
             const current = data.resolved?.chat?.globalSystemPrompt ?? '';
             setValue(current);
             setSaved(current);
+            savedRef.current = current;
         } catch (err: unknown) {
             onError(getSpaCocClientErrorMessage(err, 'Failed to load global system prompt'));
         } finally {
@@ -45,6 +49,8 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
     const dirty = value !== saved;
 
     const handleSave = useCallback(async () => {
+        if (inFlight.current || value === savedRef.current) return;
+        inFlight.current = true;
         setSaving(true);
         setError(null);
         try {
@@ -54,9 +60,11 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
             const applied = next ?? '';
             setValue(applied);
             setSaved(applied);
+            savedRef.current = applied;
         } catch (err: unknown) {
             setError(getSpaCocClientErrorMessage(err, 'Failed to save global system prompt'));
         } finally {
+            inFlight.current = false;
             setSaving(false);
         }
     }, [value]);
@@ -67,18 +75,24 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
     }, [saved]);
 
     const handleClear = useCallback(async () => {
+        if (inFlight.current) return;
+        inFlight.current = true;
         setSaving(true);
         setError(null);
         try {
             await getSpaCocClient().admin.updateConfig({ 'chat.globalSystemPrompt': null });
             setValue('');
             setSaved('');
+            savedRef.current = '';
         } catch (err: unknown) {
             setError(getSpaCocClientErrorMessage(err, 'Failed to clear global system prompt'));
         } finally {
+            inFlight.current = false;
             setSaving(false);
         }
     }, []);
+
+    useAdminSaveShortcut(true, [{ dirty, saving: loading || saving, onSave: handleSave }]);
 
     if (loading) {
         return (
