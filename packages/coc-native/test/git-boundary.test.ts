@@ -1171,6 +1171,36 @@ describe('commit-detail marshalling', () => {
     });
 
     describe('gitCommitFiles', () => {
+        it.each([
+            ['M', 'modified'], ['A', 'added'], ['D', 'deleted'],
+            ['R100', 'renamed'], ['C075', 'copied'], ['U', 'conflict'],
+            ['X', 'modified'],
+        ])('serializes typed %s metadata without changing its wire shape', async (code, status) => {
+            const renamed = code.startsWith('R') || code.startsWith('C');
+            const destination = 'literal\tname\nfile.txt';
+            const result = await gitAddon.processGitCommitMetadata(
+                `${code}\0${renamed ? 'old.txt\0' : ''}${destination}\0`,
+                `0\t0\t${destination}\0`,
+                'first-parent second-parent',
+            );
+            expect(result).toEqual({
+                parentHash: 'first-parent',
+                files: [{
+                    path: destination, status, additions: 0, deletions: 0,
+                    ...(renamed ? { originalPath: 'old.txt' } : {}),
+                }],
+            });
+            const binary = await gitAddon.processGitCommitMetadata(
+                `${code}\0${renamed ? 'old.txt\0' : ''}${destination}\0`,
+                `-\t-\t${destination}\0`,
+                '',
+            );
+            expect(binary.parentHash).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
+            expect(binary.files[0].status).toBe(status);
+            expect(binary.files[0]).not.toHaveProperty('additions');
+            expect(binary.files[0]).not.toHaveProperty('deletions');
+        });
+
         it.each(['root', 'head'] as const)('shares host and supplied metadata conversion for %s', async revision => {
             const commit = revision === 'root' ? root : head;
             const commands = await gitAddon.prepareGitCommitFiles(commit);

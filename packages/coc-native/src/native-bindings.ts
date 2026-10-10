@@ -279,28 +279,6 @@ export interface GitBranchStatus {
 export declare function gitCommitDiff(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<string>
 
 /**
- * One file a commit touched.
- *
- * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
- * they are absent on a status entry and a range file: they are the caller's
- * own values, and the caller attaches them.
- */
-export interface GitCommitFile {
-  path: string
-  /** Source path of a rename or copy; absent otherwise. */
-  originalPath?: string
-  /** A `GitChangeStatus` string union member. */
-  status: string
-  /**
-   * Absent rather than zero when `--numstat` had nothing to say — a binary
-   * file, above all. The UI renders a blank column there rather than a
-   * misleading `0`.
-   */
-  additions?: number
-  deletions?: number
-}
-
-/**
  * Read the files a commit touched, with their line counts and its parent.
  *
  * Three children share one crossing: Git supplies the parent list and the
@@ -308,13 +286,6 @@ export interface GitCommitFile {
  * against the empty tree; merges compare against the first parent.
  */
 export declare function gitCommitFiles(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<GitCommitFiles>
-
-/** A commit's file list, and the parent the list was computed against. */
-export interface GitCommitFiles {
-  /** The commit's first parent, or git's empty tree for a root commit. */
-  parentHash: string
-  files: Array<GitCommitFile>
-}
 
 /**
  * The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
@@ -1179,6 +1150,33 @@ export interface ContentSearchResult {
    * for being larger than `max_file_size_bytes`.
    */
   truncated: boolean
+}
+
+/**
+ * One file a commit touched.
+ *
+ * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
+ * they are absent everywhere in this capability: they are the caller's own
+ * values, and the caller attaches them.
+ */
+export interface GitCommitFile {
+  path: string
+  /** Source path of a rename or copy; `None` for everything else. */
+  originalPath?: string
+  status: string
+  /**
+   * Binary files and missing numstat rows have absent counts, not zero.
+   * JavaScript omits these fields so the UI renders a blank column.
+   */
+  additions?: number
+  deletions?: number
+}
+
+/** A commit's file list, and the parent the list was computed against. */
+export interface GitCommitFiles {
+  /** The commit's first parent, or git's empty tree for a root commit. */
+  parentHash: string
+  files: Array<GitCommitFile>
 }
 
 export interface PatchContent {

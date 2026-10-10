@@ -110,6 +110,10 @@ remote factories. Each operation reads its loader freshly; per-file loaders reta
 literal Git path/context semantics or supplied-hunk selection. Patch parsing,
 summaries, truncation and caches belong to Rust.
 
+Core commit DTOs generate the public `GitCommitFile`/`GitCommitFiles` N-API
+objects directly. Host and supplied metadata workers return the same DTOs;
+typed Rust statuses serialize as strings and absent counts stay omitted.
+
 ### Supplied remote diff providers
 
 Forge PR/iteration factories require `RemoteDiffContext` (workspaceId, host, provider-qualified repository) separately from transport routing aliases. Each provider lazily opens one Rust remote store and captures a continuation before every authenticated read. Rust fingerprints fresh bytes and retains bounded snapshots; per-file truncation uses native processing. Source/base-iteration descriptors and HTTP shapes remain unchanged. Providers expose refresh/dispose, reject delayed revoked output and retire continuations on transport failure. Explicit WSL roots supply distro/Linux-root identity; unresolved distro identity rejects before I/O.
