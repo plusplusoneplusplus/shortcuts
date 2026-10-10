@@ -64,6 +64,20 @@ export interface RepoGroupReadRoot {
     rootPath: string;
 }
 
+/** Probe in member order, but authorize and attribute each path to its containing member. */
+export function resolveRepoGroupRelativeFileTargets(
+    filePath: string,
+    roots: readonly RepoGroupReadRoot[],
+    isWindows: boolean = process.platform === 'win32',
+): { member: RepoGroupReadRoot; path: string }[] {
+    const owners = [...roots].sort((a, b) => b.rootPath.length - a.rootPath.length);
+    return roots.flatMap(root => {
+        const candidatePath = resolveRequestedFilePath(filePath, root.rootPath, isWindows);
+        const member = owners.find(owner => isWithinDirectory(candidatePath, owner.rootPath));
+        return member ? [{ member, path: candidatePath }] : [];
+    });
+}
+
 /**
  * Resolve the ordered live member roots that a repo-group read may access.
  * Non-group workspaces and stale members contribute no roots.

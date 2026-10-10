@@ -61,8 +61,9 @@ references before editing. Paths are package-relative.
   group id at the owning API. Groups are page/queue scope; Git uses a member.
   Names are not keys; refresh live membership and preserve search failure states.
 - Previews carry resolved workspace/member and clone route through
-  operations/caches. Probe group members in order; preview roots never authorize writes.
-  Preserve WSL UNC prefixes/root containment.
+  operations/caches. Probe group members in order; sibling-relative paths must land
+  inside a live member and report that containing member as owner. Preview roots
+  never authorize writes. Preserve WSL UNC prefixes/root containment.
 - Implement on same-origin clones. Local file plans use paths; remote
   source/target plans and canvas plans embed content read from the source client.
   Persist state on the source; execute/own PR gates on the target.

@@ -17,7 +17,7 @@ import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
 import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 import { resolveTaskRoot } from './task-root-resolver';
-import { isWithinTrustedReadOnlyDir, resolveRepoGroupReadRoots, resolveRequestedFilePath, TRUSTED_READ_ONLY_DIRS, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
+import { isWithinTrustedReadOnlyDir, resolveRepoGroupReadRoots, resolveRepoGroupRelativeFileTargets, resolveRequestedFilePath, TRUSTED_READ_ONLY_DIRS, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 import { taskCache } from './task-cache';
 import { getRepoDataPath } from '../paths';
 
@@ -160,11 +160,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             let resolvedWorkspaceId = absoluteMemberTarget?.member.workspaceId ?? ws.id;
 
             if (isRepoGroupWorkspaceId(ws.id) && !requestedPathIsAbsolute) {
-                const candidates = repoGroupReadRoots.map(member => ({
-                    member,
-                    path: resolveRequestedFilePath(filePath, member.rootPath),
-                }));
-                if (candidates.some(candidate => !isWithinDirectory(candidate.path, candidate.member.rootPath))) {
+                const candidates = resolveRepoGroupRelativeFileTargets(filePath, repoGroupReadRoots);
+                if (repoGroupReadRoots.length > 0 && candidates.length === 0) {
                     return sendError(res, 403, 'Access denied: path is outside repo-group member workspaces');
                 }
 
