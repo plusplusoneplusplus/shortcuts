@@ -1,269 +1,161 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-vi.mock('../../src/utils/exec-utils', () => ({
-    execAsync: vi.fn(),
-}));
-
-vi.mock('../../src/ado/ado-session-cache', async (importOriginal) => {
-    const original = await importOriginal<typeof import('../../src/ado/ado-session-cache')>();
-    return {
-        ...original,
-        readAdoSessionCache: vi.fn(),
-        writeAdoSessionCache: vi.fn(),
-    };
-});
-
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as path from 'node:path';
+import { AuthError, MicrosoftTokenProvider, NativeAddonLoadError, type MicrosoftToken } from '@plusplusoneplusplus/coc-native';
 import {
+    ADO_RESOURCE_ID,
+    disposeAdoTokenResolver,
+    resetAdoTokenResolverForTests,
     resolveAdoAccessToken,
     resolveAdoAccessTokenValue,
-    resetAdoTokenResolverForTests,
-    ADO_RESOURCE_ID,
 } from '../../src/ado/ado-token-resolver';
-import { readAdoSessionCache, writeAdoSessionCache } from '../../src/ado/ado-session-cache';
 
-const mockedReadCache = vi.mocked(readAdoSessionCache);
-const mockedWriteCache = vi.mocked(writeAdoSessionCache);
+vi.mock('@plusplusoneplusplus/coc-native', async importOriginal => ({
+    ...await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>(),
+    MicrosoftTokenProvider: vi.fn(),
+}));
 
-const NOW = 1_700_000_000_000;
-const VALID_EXPIRY = NOW + 60 * 60 * 1000; // 1 hour from now
-const TOKEN_JSON = JSON.stringify({
-    token: 'fresh-token-123',
-    expiresOn: new Date(VALID_EXPIRY).toISOString(),
+const token: MicrosoftToken = {
+    accessToken: 'test-access-token',
+    expiresAt: 1_700_003_600_000,
+    tokenType: 'Bearer',
+    source: 'azure-cli',
+    target: ADO_RESOURCE_ID,
+    account: { id: 'account@example.test', tenant: '00000000-0000-0000-0000-000000000001' },
+};
+
+function mockProvider() {
+    return {
+        getToken: vi.fn<() => Promise<MicrosoftToken>>().mockResolvedValue(token),
+        dispose: vi.fn(),
+    };
+}
+
+let provider: ReturnType<typeof mockProvider>;
+
+beforeEach(() => {
+    resetAdoTokenResolverForTests();
+    vi.clearAllMocks();
+    provider = mockProvider();
+    vi.mocked(MicrosoftTokenProvider).mockImplementation(function () {
+        return provider as MicrosoftTokenProvider;
+    });
 });
-const ACCOUNT_JSON = JSON.stringify({ upn: 'user@example.com', displayName: 'Test User' });
 
-describe('ado-token-resolver', () => {
-    beforeEach(() => {
-        resetAdoTokenResolverForTests();
-        vi.clearAllMocks();
-        vi.useFakeTimers();
-        vi.setSystemTime(NOW);
-        mockedReadCache.mockResolvedValue(null);
-        mockedWriteCache.mockResolvedValue(undefined);
-    });
+afterEach(() => {
+    resetAdoTokenResolverForTests();
+    vi.unstubAllEnvs();
+});
 
-    afterEach(() => {
-        resetAdoTokenResolverForTests();
-        vi.useRealTimers();
-    });
-
-    describe('cache hit', () => {
-        it('returns cached token without calling az CLI', async () => {
-            const runner = vi.fn();
-            mockedReadCache.mockResolvedValueOnce({
-                token: 'cached-token',
-                expiresAt: NOW + 10 * 60 * 1000,
-                account: { upn: 'user@example.com', displayName: 'Test User', adoId: null },
-            });
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toEqual({
-                token: 'cached-token',
-                expiresAt: NOW + 10 * 60 * 1000,
-                account: { upn: 'user@example.com', displayName: 'Test User', adoId: null },
-            });
-            expect(runner).not.toHaveBeenCalled();
+describe('native ADO token resolver', () => {
+    it('uses explicit Azure CLI source, ADO target and automatic refresh', async () => {
+        await expect(resolveAdoAccessToken()).resolves.toEqual({
+            token: token.accessToken,
+            expiresAt: token.expiresAt,
+            account: { upn: token.account.id, displayName: token.account.id, adoId: null },
+        });
+        expect(MicrosoftTokenProvider).toHaveBeenCalledExactlyOnceWith({
+            source: 'azure-cli',
+            refresh: 'auto',
+            expiryMarginSeconds: 300,
+            azureCli: {
+                selection: 'active-account',
+                namespace: expect.stringMatching(/^coc-ado-/),
+                resource: ADO_RESOURCE_ID,
+            },
         });
     });
 
-    describe('cache miss — single token refresh', () => {
-        it('fetches token via az CLI and writes cache', async () => {
-            const runner = vi.fn()
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' });
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toEqual({
-                token: 'fresh-token-123',
-                expiresAt: VALID_EXPIRY,
-                account: { upn: 'user@example.com', displayName: 'Test User', adoId: null },
-            });
-            expect(runner).toHaveBeenCalledWith(
-                expect.stringContaining('az account get-access-token'),
-            );
-            expect(mockedWriteCache).toHaveBeenCalledOnce();
-        });
-
-        it('returns null when az CLI returns empty token', async () => {
-            const runner = vi.fn().mockResolvedValueOnce({
-                stdout: JSON.stringify({ token: '', expiresOn: new Date().toISOString() }),
-                stderr: '',
-            });
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toBeNull();
-        });
-
-        it('returns null when az CLI fails', async () => {
-            const runner = vi.fn().mockRejectedValueOnce(new Error('az: not found'));
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toBeNull();
-        });
-
-        it('still succeeds when account show fails', async () => {
-            const runner = vi.fn()
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockRejectedValueOnce(new Error('account show failed'));
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toEqual({
-                token: 'fresh-token-123',
-                expiresAt: VALID_EXPIRY,
-                account: null,
-            });
-        });
-
-        it('still succeeds when cache write fails', async () => {
-            const runner = vi.fn()
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' });
-            mockedWriteCache.mockRejectedValueOnce(new Error('disk full'));
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result?.token).toBe('fresh-token-123');
-        });
+    it('shares a provider across concurrent workspace callers', async () => {
+        const results = await Promise.all([
+            resolveAdoAccessTokenValue(),
+            resolveAdoAccessTokenValue(),
+            resolveAdoAccessTokenValue(),
+        ]);
+        expect(results).toEqual(Array(3).fill(token.accessToken));
+        expect(MicrosoftTokenProvider).toHaveBeenCalledOnce();
+        expect(provider.getToken).toHaveBeenCalledTimes(3);
     });
 
-    describe('single-flight deduplication', () => {
-        it('concurrent cache misses call az CLI only once', async () => {
-            let resolveToken: (v: { stdout: string; stderr: string }) => void;
-            const tokenPromise = new Promise<{ stdout: string; stderr: string }>((r) => { resolveToken = r; });
-            const runner = vi.fn()
-                .mockReturnValueOnce(tokenPromise)
-                .mockResolvedValue({ stdout: ACCOUNT_JSON, stderr: '' });
-
-            // Launch multiple concurrent requests.
-            const p1 = resolveAdoAccessToken({ runAzCli: runner });
-            const p2 = resolveAdoAccessToken({ runAzCli: runner });
-            const p3 = resolveAdoAccessToken({ runAzCli: runner });
-
-            resolveToken!({ stdout: TOKEN_JSON, stderr: '' });
-
-            const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
-
-            expect(r1?.token).toBe('fresh-token-123');
-            expect(r2?.token).toBe('fresh-token-123');
-            expect(r3?.token).toBe('fresh-token-123');
-            // az account get-access-token should be called only once.
-            expect(runner).toHaveBeenCalledTimes(2); // token + account show
+    it('asks native auth for every token so renewal is not bypassed by a JS cache', async () => {
+        provider.getToken.mockResolvedValueOnce(token)
+            .mockResolvedValueOnce({ ...token, accessToken: 'renewed-token', expiresAt: token.expiresAt + 3600_000 });
+        expect(await resolveAdoAccessTokenValue()).toBe(token.accessToken);
+        expect(await resolveAdoAccessToken()).toMatchObject({
+            token: 'renewed-token', expiresAt: token.expiresAt + 3600_000,
         });
-
-        it('clears in-flight promise after failure so retry works', async () => {
-            const runner = vi.fn()
-                .mockRejectedValueOnce(new Error('first failure'))
-                .mockResolvedValueOnce({ stdout: TOKEN_JSON, stderr: '' })
-                .mockResolvedValueOnce({ stdout: ACCOUNT_JSON, stderr: '' });
-
-            const r1 = await resolveAdoAccessToken({ runAzCli: runner });
-            expect(r1).toBeNull();
-
-            const r2 = await resolveAdoAccessToken({ runAzCli: runner });
-            expect(r2?.token).toBe('fresh-token-123');
-        });
+        expect(MicrosoftTokenProvider).toHaveBeenCalledOnce();
     });
 
-    describe('queue prevents concurrent CLI commands', () => {
-        it('serializes token refreshes for different data dirs', async () => {
-            vi.useRealTimers();
-            const callOrder: string[] = [];
-            const runner = vi.fn().mockImplementation(async (cmd: string) => {
-                if (cmd.includes('get-access-token')) {
-                    callOrder.push('start-token');
-                    await new Promise((r) => setTimeout(r, 10));
-                    callOrder.push('end-token');
-                    return { stdout: TOKEN_JSON, stderr: '' };
-                }
-                return { stdout: ACCOUNT_JSON, stderr: '' };
-            });
-
-            // Use different dataDirs to avoid single-flight sharing.
-            const p1 = resolveAdoAccessToken({ dataDir: '/dir1', runAzCli: runner });
-            const p2 = resolveAdoAccessToken({ dataDir: '/dir2', runAzCli: runner });
-
-            await Promise.all([p1, p2]);
-
-            // The queue should serialize: start-token, end-token, start-token, end-token
-            expect(callOrder).toEqual(['start-token', 'end-token', 'start-token', 'end-token']);
-        });
+    it('normalizes host directories and honors COC_DATA_DIR', async () => {
+        const dataDir = path.resolve('host-data');
+        vi.stubEnv('COC_DATA_DIR', dataDir);
+        await resolveAdoAccessTokenValue();
+        await resolveAdoAccessTokenValue({ dataDir: path.join(dataDir, 'nested', '..') });
+        expect(MicrosoftTokenProvider).toHaveBeenCalledOnce();
     });
 
-    describe('cache populated by concurrent refresh', () => {
-        it('uses cache written by another refresh when re-checking', async () => {
-            let firstCall = true;
-            mockedReadCache.mockImplementation(async () => {
-                if (firstCall) {
-                    firstCall = false;
-                    return null;
-                }
-                // Second call: cache populated by another refresh.
-                return {
-                    token: 'other-refresh-token',
-                    expiresAt: NOW + 10 * 60 * 1000,
-                    account: null,
-                };
-            });
-
-            const runner = vi.fn();
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result?.token).toBe('other-refresh-token');
-            expect(runner).not.toHaveBeenCalled();
-        });
+    it('isolates authentication lifetimes and namespaces for different hosts', async () => {
+        await resolveAdoAccessTokenValue({ dataDir: path.resolve('host-one') });
+        await resolveAdoAccessTokenValue({ dataDir: path.resolve('host-two') });
+        const calls = vi.mocked(MicrosoftTokenProvider).mock.calls;
+        expect(calls).toHaveLength(2);
+        expect(calls[0][0]).not.toEqual(calls[1][0]);
     });
 
-    describe('resolveAdoAccessTokenValue', () => {
-        it('returns only the token string', async () => {
-            mockedReadCache.mockResolvedValueOnce({
-                token: 'value-only-token',
-                expiresAt: NOW + 10 * 60 * 1000,
-                account: null,
-            });
+    it.each(['LoginRequired', 'AccountMismatch', 'TokenExpired', 'TimedOut', 'Cancelled'] as const)(
+        'preserves %s without null results, retries or fallback',
+        async code => {
+            const error = new AuthError(code);
+            provider.getToken.mockRejectedValueOnce(error);
+            await expect(resolveAdoAccessTokenValue()).rejects.toBe(error);
+            expect(provider.getToken).toHaveBeenCalledOnce();
+            expect(MicrosoftTokenProvider).toHaveBeenCalledOnce();
+        },
+    );
 
-            const value = await resolveAdoAccessTokenValue();
-
-            expect(value).toBe('value-only-token');
-        });
-
-        it('returns undefined when no token available', async () => {
-            const runner = vi.fn().mockRejectedValueOnce(new Error('no az'));
-
-            const value = await resolveAdoAccessTokenValue({ runAzCli: runner });
-
-            expect(value).toBeUndefined();
-        });
+    it('preserves native installation errors and does not retain a failed constructor', async () => {
+        const error = new NativeAddonLoadError('native authentication unavailable');
+        vi.mocked(MicrosoftTokenProvider).mockImplementationOnce(function () { throw error; });
+        await expect(resolveAdoAccessToken()).rejects.toBe(error);
+        await expect(resolveAdoAccessTokenValue()).resolves.toBe(token.accessToken);
+        expect(MicrosoftTokenProvider).toHaveBeenCalledTimes(2);
     });
 
-    describe('ADO_RESOURCE_ID', () => {
-        it('uses the correct Azure DevOps resource ID', () => {
-            expect(ADO_RESOURCE_ID).toBe('499b84ac-1321-427f-aa17-267ca6975798');
-        });
+    it('disposes only the selected host and selects afresh on the next call', async () => {
+        const first = provider;
+        const second = mockProvider();
+        vi.mocked(MicrosoftTokenProvider)
+            .mockImplementationOnce(function () { return first as MicrosoftTokenProvider; })
+            .mockImplementationOnce(function () { return second as MicrosoftTokenProvider; });
+        const one = path.resolve('host-one');
+        const two = path.resolve('host-two');
+        await resolveAdoAccessTokenValue({ dataDir: one });
+        await resolveAdoAccessTokenValue({ dataDir: two });
+        disposeAdoTokenResolver(one);
+        disposeAdoTokenResolver(one);
+        expect(first.dispose).toHaveBeenCalledOnce();
+        expect(second.dispose).not.toHaveBeenCalled();
+        await resolveAdoAccessTokenValue({ dataDir: two });
+        expect(MicrosoftTokenProvider).toHaveBeenCalledTimes(2);
+        await resolveAdoAccessTokenValue({ dataDir: one });
+        expect(MicrosoftTokenProvider).toHaveBeenCalledTimes(3);
     });
 
-    describe('malformed token output', () => {
-        it('returns null for non-JSON output', async () => {
-            const runner = vi.fn().mockResolvedValueOnce({ stdout: 'not json', stderr: '' });
+    it('rejects late acquisitions after shutdown rather than returning a revoked token', async () => {
+        let complete!: (value: MicrosoftToken) => void;
+        provider.getToken.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
+        const pending = resolveAdoAccessTokenValue();
+        disposeAdoTokenResolver();
+        complete(token);
+        await expect(pending).rejects.toMatchObject({ code: 'Disposed' });
+        expect(provider.dispose).toHaveBeenCalledOnce();
+    });
 
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toBeNull();
-        });
-
-        it('returns null for JSON without token field', async () => {
-            const runner = vi.fn().mockResolvedValueOnce({
-                stdout: JSON.stringify({ expiresOn: new Date().toISOString() }),
-                stderr: '',
-            });
-
-            const result = await resolveAdoAccessToken({ runAzCli: runner });
-
-            expect(result).toBeNull();
-        });
+    it('does not discard a provider on account mismatch and silently switch identities', async () => {
+        await resolveAdoAccessTokenValue();
+        provider.getToken.mockRejectedValue(new AuthError('AccountMismatch'));
+        await expect(resolveAdoAccessTokenValue()).rejects.toMatchObject({ code: 'AccountMismatch' });
+        await expect(resolveAdoAccessTokenValue()).rejects.toMatchObject({ code: 'AccountMismatch' });
+        expect(MicrosoftTokenProvider).toHaveBeenCalledOnce();
     });
 });

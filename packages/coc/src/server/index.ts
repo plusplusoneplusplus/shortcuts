@@ -24,7 +24,7 @@ import {
 } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
-import { warmWslDistroCache } from '@plusplusoneplusplus/forge';
+import { warmWslDistroCache, disposeAdoTokenResolver } from '@plusplusoneplusplus/forge';
 import { CopilotSDKService, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
@@ -91,6 +91,7 @@ function formatLocalBaseUrl(host: string, port: number): string {
 }
 
 interface CloseHandlerDeps {
+    adoDispose?: () => void;
     kustoDispose?: () => void;
     staleDetector: { dispose(): void };
     outputPruner: { stopListening(): void };
@@ -186,6 +187,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
             bridge.dispose();
         }
         deps.kustoDispose?.();
+        deps.adoDispose?.();
 
         deps.terminalSessionManager?.destroyAll();
         deps.terminalWsServer?.closeAll();
@@ -1066,6 +1068,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             kustoDispose: () => { unsubscribeKustoConfig(); kustoRuntime.dispose(); },
+            adoDispose: () => disposeAdoTokenResolver(dataDir),
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
             notesSearchService,
             notesSearchPreferencesDispose,

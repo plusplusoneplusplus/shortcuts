@@ -1,22 +1,15 @@
-export { AdoConnectionResult, AdoClientOptions } from './types';
+export { AdoConnectionResult, AdoClientOptions, AdoAccountInfo } from './types';
 export { AdoConnectionFactory, getAdoConnectionFactory, resetAdoConnectionFactory } from './ado-connection-factory';
-export {
-    AdoSessionCache,
-    AdoAccountInfo,
-    readAdoSessionCache,
-    writeAdoSessionCache,
-    isTokenValid,
-} from './ado-session-cache';
 export {
     ADO_RESOURCE_ID,
     resolveAdoAccessToken,
     resolveAdoAccessTokenValue,
+    disposeAdoTokenResolver,
     resetAdoTokenResolverForTests,
-    type AdoAzCliRunner,
     type ResolveAdoAccessTokenOptions,
     type ResolvedAdoAccessToken,
 } from './ado-token-resolver';
-export { resolveAdoIdentity, resolveAndCacheAdoIdentity, getOrResolveAdoUserId, resolveAdoUserIdFromConnectionData } from './ado-identity-resolver';
+export { getOrResolveAdoUserId, resolveAdoUserIdFromConnectionData } from './ado-identity-resolver';
 export { AdoWorkItemsService, AdoWorkItemError, type PatchOp, type FieldPatch } from './workitems-service';
 export {
     AdoPullRequestsService,

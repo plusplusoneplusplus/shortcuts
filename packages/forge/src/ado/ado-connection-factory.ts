@@ -31,18 +31,10 @@ export class AdoConnectionFactory {
             return { connected: false, error: msg };
         }
 
-        const dataDir = options?.dataDir;
-        const resolved = await resolveAdoAccessToken({ dataDir });
-        if (!resolved) {
-            const error = `Failed to get token from Azure CLI. Run 'az login' to authenticate.`;
-            logger.warn(LogCategory.ADO, error);
-            return { connected: false, error };
-        }
-
-        const authHandler = azdev.getBearerHandler(resolved.token);
-        logger.info(LogCategory.ADO, 'Using Azure CLI bearer token for authentication');
-
         try {
+            const resolved = await resolveAdoAccessToken({ dataDir: options?.dataDir });
+            const authHandler = azdev.getBearerHandler(resolved.token);
+            logger.info(LogCategory.ADO, 'Using native Azure CLI bearer token authentication');
             const connection = new azdev.WebApi(orgUrl, authHandler);
             logger.info(LogCategory.ADO, `Connected to Azure DevOps at ${orgUrl}`);
             return { connected: true, connection, account: resolved.account };

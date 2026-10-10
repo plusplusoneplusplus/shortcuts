@@ -1,10 +1,8 @@
-import { execFile } from 'child_process';
 import * as crypto from 'crypto';
 import type { IncomingMessage } from 'http';
 import * as https from 'https';
-import { promisify } from 'util';
 import type { WorkItemSyncProviderStatus } from '@plusplusoneplusplus/coc-client';
-import { ADO_RESOURCE_ID, resolveAdoAccessTokenValue } from '@plusplusoneplusplus/forge';
+import { resolveAdoAccessTokenValue } from '@plusplusoneplusplus/forge';
 import { readProvidersConfig } from '../providers/providers-config';
 import type {
     WorkItemSyncProviderAdapter,
@@ -34,12 +32,6 @@ import {
     isValidParentChildTypes,
 } from './types';
 import { WORK_ITEM_SYNC_MAX_ITEMS } from './work-item-sync-provider';
-
-type ExecFileAsync = (
-    file: string,
-    args: string[],
-    options: { encoding: 'utf8'; windowsHide: true; maxBuffer: number },
-) => Promise<{ stdout: string; stderr: string }>;
 
 export type AzureBoardsAccessTokenResolver = () => Promise<string | undefined>;
 export type AzureBoardsWorkItemSyncProjectSource = 'preference' | 'workspaceRemote';
@@ -197,26 +189,6 @@ interface AzureBoardsJsonPatchOperation {
 }
 
 const AZURE_BOARDS_REMOTE_WINS_FIELDS = ['title', 'description', 'status', 'priority', 'tags', 'parentId'];
-const AZURE_DEVOPS_ACCESS_TOKEN_ARGS = [
-    'account',
-    'get-access-token',
-    '--resource',
-    ADO_RESOURCE_ID,
-    '--query',
-    'accessToken',
-    '-o',
-    'tsv',
-];
-
-// Resolve child_process.execFile lazily so importing this module has no
-// load-time side effects (tests with partial child_process mocks would
-// otherwise fail on the export access before any transport is used).
-let lazyExecFileAsync: ExecFileAsync | undefined;
-const execFileAsync: ExecFileAsync = (file, args, options) => {
-    lazyExecFileAsync ??= promisify(execFile) as ExecFileAsync;
-    return lazyExecFileAsync(file, args, options);
-};
-
 function authNotChecked(
     message = 'Azure CLI authentication was not checked because Azure Boards configuration is incomplete.',
 ): WorkItemSyncProviderStatus['auth'] {
@@ -1227,46 +1199,9 @@ export async function importAzureBoardsEpicTreeAsWorkItems(
 }
 
 /**
- * Resolve an Azure DevOps CLI access token.
- *
- * When called with default arguments, delegates to the shared token resolver
- * (cached + single-flighted). When called with custom `run`/`platform`/`comSpec`
- * arguments (tests), falls back to direct CLI invocation for backward compat.
+ * Resolve an Azure DevOps token through the native Azure CLI provider.
  */
-export async function resolveAzureDevOpsCliAccessToken(
-    run?: ExecFileAsync,
-    platform?: NodeJS.Platform,
-    comSpec?: string | undefined,
-): Promise<string | undefined> {
-    // If called with non-default arguments (test injection), use direct CLI path.
-    if (run !== undefined || platform !== undefined || comSpec !== undefined) {
-        const effectiveRun = run ?? execFileAsync;
-        const effectivePlatform = platform ?? process.platform;
-        const effectiveComSpec = comSpec ?? process.env.ComSpec;
-        try {
-            const accessTokenArgs = [...AZURE_DEVOPS_ACCESS_TOKEN_ARGS];
-            const command = effectivePlatform === 'win32'
-                ? {
-                    file: effectiveComSpec?.trim() || 'cmd.exe',
-                    args: ['/d', '/s', '/c', 'az', ...accessTokenArgs],
-                }
-                : {
-                    file: 'az',
-                    args: accessTokenArgs,
-                };
-            const { stdout } = await effectiveRun(command.file, command.args, {
-                encoding: 'utf8',
-                windowsHide: true,
-                maxBuffer: 1024 * 1024,
-            });
-            const token = stdout.trim();
-            return token.length > 0 ? token : undefined;
-        } catch {
-            return undefined;
-        }
-    }
-
-    // Default: use the shared cached/single-flighted resolver.
+export async function resolveAzureDevOpsCliAccessToken(): Promise<string> {
     return resolveAdoAccessTokenValue();
 }
 

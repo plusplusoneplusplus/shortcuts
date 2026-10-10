@@ -180,8 +180,12 @@ and migration boundaries belong in the native instructions below.
 It is independent of Node; its Microsoft module provides immutable source-pinned
 OAuth/Azure CLI providers and explicit PKCE/device sign-in. The addon exposes
 `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`.
-Kusto authentication uses only native Azure CLI providers; other
-runtime consumers retain their own auth paths. Shared types, storage and lifecycle remain
+Kusto and ADO authentication use only native Azure CLI providers. Forge's ADO
+resolver shares a source-pinned provider per host data directory across PR and
+Azure Boards callers, with native caching/renewal and host shutdown disposal.
+ADO identity lookup uses the current bearer token and organization; bearer tokens
+are not persisted by TypeScript. Other runtime consumers retain their own auth paths.
+Shared types, storage and lifecycle remain
 vendor-neutral. Protocol/security contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).
 
