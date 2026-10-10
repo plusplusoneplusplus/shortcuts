@@ -29,6 +29,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, A
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
+import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
 import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
@@ -690,7 +691,7 @@ export function buildKustoToolsAddon(
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
     processId: string | undefined,
-    opts?: { enabled?: boolean },
+    opts?: { enabled?: boolean; runtime?: KustoToolsRuntime },
 ): { tools: Tool<any>[]; suffix: string } {
     if (!dataDir || !workspaceId) {
         return { tools: [], suffix: '' };
@@ -707,6 +708,7 @@ export function buildKustoToolsAddon(
         workspaceId,
         processId,
         processStore: store,
+        clientFactory: opts?.runtime?.clientFactory,
     });
 
     // No prose suffix — the tool description carries its own guidance.

@@ -521,6 +521,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
                 systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),
+                kustoRuntime: this.runtime.getKustoRuntime?.(),
                 // Write-capable modes only: an ask-mode follow-up never opens PRs.
                 createPullRequest: currentMode === 'autopilot' || currentMode === 'ralph'
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)

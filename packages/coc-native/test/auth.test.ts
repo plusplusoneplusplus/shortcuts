@@ -39,6 +39,13 @@ function cli(refresh: 'auto' | 'never' = 'auto'): MicrosoftTokenProviderOptions 
     };
 }
 
+function activeCli(refresh: 'auto' | 'never' = 'auto'): MicrosoftTokenProviderOptions {
+    return {
+        source: 'azure-cli', refresh,
+        azureCli: { selection: 'active-account', namespace: directory(), resource: 'https://resource.example' },
+    };
+}
+
 function fakeCli(mode: 'valid' | 'malformed' | 'mismatch' | 'hang' | 'login' = 'valid'): void {
     const root = directory();
     const account = JSON.stringify({
@@ -97,6 +104,9 @@ describe('built authentication addon', () => {
             { ...cli(), refresh: undefined },
             { ...cli(), timeoutMs: -1 },
             { ...cli(), expiryMarginSeconds: 0.5 },
+            { ...activeCli(), azureCli: { selection: 'unknown', namespace: 'fixture', resource: 'https://resource.example' } },
+            { ...activeCli(), azureCli: { selection: 'active-account', namespace: 'fixture',
+                resource: 'https://resource.example', subscription } },
             { source: 'oauth', refresh: 'auto', oauth: { ...oauth(), clientId: 'fixture-private' },
                 account: { id: subscription, tenant } },
         ]) {
@@ -127,6 +137,38 @@ describe('built authentication addon', () => {
             await expect(provider.getToken({ forceRefresh: true })).resolves.toMatchObject({ accessToken: 'opaque-fixture' });
             await provider.invalidate();
             await expect(provider.getToken()).resolves.toMatchObject({ source: 'azure-cli' });
+        } finally { provider.dispose(); }
+    });
+
+    it('resolves the active account natively, caches tokens and rejects changes without fallback', async () => {
+        fakeCli();
+        const options = activeCli();
+        const provider = new MicrosoftTokenProvider(options);
+        try {
+            const first = await provider.getToken();
+            expect(first).toMatchObject({ account: { id: 'fixture-account', tenant }, source: 'azure-cli' });
+            await expect(provider.getToken()).resolves.toEqual(first);
+            fakeCli('mismatch');
+            await expect(provider.getToken()).rejects.toMatchObject({ code: 'AccountMismatch' });
+            await expect(provider.getToken({ forceRefresh: true })).rejects.toMatchObject({ code: 'AccountMismatch' });
+            const other = new MicrosoftTokenProvider(options);
+            try {
+                await expect(other.getToken()).resolves.toMatchObject({ account: { id: 'other-fixture', tenant } });
+            } finally { other.dispose(); }
+        } finally { provider.dispose(); }
+    });
+
+    it('active-account acquisition and refresh failures remain native errors', async () => {
+        process.env.PATH = directory();
+        const provider = new MicrosoftTokenProvider(activeCli());
+        try {
+            await expect(provider.getToken()).rejects.toMatchObject({ code: 'CliUnavailable' });
+            fakeCli('login');
+            await expect(provider.getToken()).rejects.toMatchObject({ code: 'LoginRequired' });
+            fakeCli();
+            await provider.getToken();
+            fakeCli('malformed');
+            await expect(provider.getToken({ forceRefresh: true })).rejects.toMatchObject({ code: 'InvalidTokenResponse' });
         } finally { provider.dispose(); }
     });
 
@@ -164,9 +206,12 @@ describe('built authentication addon', () => {
     });
 
     it('cancels and disposes in-flight processes and enforces operation timeout', async () => {
-        for (const mode of ['cancel', 'dispose', 'timeout'] as const) {
+        for (const [mode, active] of [
+            ['cancel', false], ['dispose', false], ['timeout', false],
+            ['cancel', true], ['dispose', true], ['timeout', true],
+        ] as const) {
             fakeCli('hang');
-            const options = cli();
+            const options = active ? activeCli() : cli();
             const provider = new MicrosoftTokenProvider({ ...options, timeoutMs: mode === 'timeout' ? 100 : 5000 });
             const pending = provider.getToken();
             if (mode !== 'timeout') {

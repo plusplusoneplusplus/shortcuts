@@ -46,6 +46,7 @@ export function loadNativeAuth(): AuthAddon {
     const provider = addon.NativeMicrosoftTokenProvider;
     const signIn = addon.NativeMicrosoftOAuthSignIn;
     if (typeof provider?.oauth !== 'function' || typeof provider.azureCli !== 'function'
+        || typeof provider.azureCliActive !== 'function'
         || !['getToken', 'invalidate', 'deleteCredentials', 'cancelOutstanding', 'dispose']
             .every(method => typeof Reflect.get(provider.prototype, method) === 'function')
         || typeof signIn !== 'function'
@@ -66,7 +67,8 @@ interface Policy {
 }
 export type MicrosoftTokenProviderOptions = Policy & (
     | { source: 'oauth'; oauth: MicrosoftOAuthOptions; account: MicrosoftAccount }
-    | { source: 'azure-cli'; azureCli: Bindings.MicrosoftAzureCliOptions }
+    | { source: 'azure-cli'; azureCli: Bindings.MicrosoftAzureCliOptions
+        | (Bindings.MicrosoftActiveAzureCliOptions & { selection: 'active-account' }) }
 );
 export type MicrosoftTokenSource = MicrosoftTokenProviderOptions['source'];
 
@@ -96,7 +98,15 @@ export class MicrosoftTokenProvider {
             if (options.source === 'oauth') {
                 this.native = addon.NativeMicrosoftTokenProvider.oauth(options.oauth, options.account, options);
             } else if (options.source === 'azure-cli') {
-                this.native = addon.NativeMicrosoftTokenProvider.azureCli(options.azureCli, options);
+                if ('selection' in options.azureCli) {
+                    if (options.azureCli.selection !== 'active-account'
+                        || 'account' in options.azureCli || 'subscription' in options.azureCli) {
+                        throw new AuthError('InvalidConfiguration');
+                    }
+                    this.native = addon.NativeMicrosoftTokenProvider.azureCliActive(options.azureCli, options);
+                } else {
+                    this.native = addon.NativeMicrosoftTokenProvider.azureCli(options.azureCli, options);
+                }
             } else {
                 throw new AuthError('InvalidConfiguration');
             }

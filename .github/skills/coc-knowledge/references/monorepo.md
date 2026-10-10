@@ -179,8 +179,9 @@ and migration boundaries belong in the native instructions below.
 `rust/auth-sdk` shares the native Cargo workspace/lockfile and release/audit gates.
 It is independent of Node; its Microsoft module provides immutable source-pinned
 OAuth/Azure CLI providers and explicit PKCE/device sign-in. The addon exposes
-`MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`, with
-no runtime consumer migration. Shared types, storage and lifecycle remain
+`MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`.
+Kusto authentication uses only native Azure CLI providers; other
+runtime consumers retain their own auth paths. Shared types, storage and lifecycle remain
 vendor-neutral. Protocol/security contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).
 

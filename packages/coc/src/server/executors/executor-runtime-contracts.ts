@@ -45,6 +45,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
+import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 
 // ============================================================================
 // Feature dependency bundles
@@ -104,6 +105,8 @@ export interface InFlightTurn {
 }
 
 export interface ExecutorRuntimeCapabilities {
+    /** Host-owned Kusto clients and live enablement, shared with the canvas Run route. */
+    readonly getKustoRuntime?: () => KustoToolsRuntime | undefined;
     /** WebSocket server for process/git broadcasts. */
     readonly getWsServer?: () => ProcessWebSocketServer | undefined;
     /** Cron infrastructure powering the `cron` and `scheduleWakeup` tools. */
@@ -199,6 +202,7 @@ export interface ExecutorRuntimeCapabilities {
 export type ChatExecutorRuntime = Pick<
     ExecutorRuntimeCapabilities,
     | 'getWsServer'
+    | 'getKustoRuntime'
     | 'getCronInfra'
     | 'getTriggerInfra'
     | 'getEnqueueChat'

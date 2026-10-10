@@ -3,7 +3,7 @@
  *
  * A single tool the AI calls to run a Kusto query for the user. It executes the
  * query server-side through the same {@link runKustoCanvas} path used by the
- * AC-02 Run endpoint (official `azure-kusto-data` SDK + `AzureCliCredential`),
+ * AC-02 Run endpoint (official `azure-kusto-data` SDK + host-selected credential),
  * persists the result into a new or existing Kusto canvas, and returns to the
  * model a compact view — column schema, a capped row sample, the total row
  * count — plus a `canvas://<id>` embed link so the canvas renders inline in

@@ -101,8 +101,10 @@ token DTOs, clocks, lifecycle, storage and errors are vendor-neutral;
 `rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
 exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles,
 sanitized typed errors and a complete capability guard.
-Construction validates immutable configuration only. Consumers opt in by
-construction; existing Teams, ADO, Kusto and Copilot auth paths are independent.
+Construction validates immutable configuration only. Kusto uses native authentication
+exclusively, selecting Azure CLI/auto refresh with native active-account selection
+or a complete explicit host identity and the Kusto SDK's audience.
+Teams, ADO and Copilot auth paths are independent.
 
 Source and refresh policy are required. `never` allows one successful
 noninteractive acquisition; failure leaves the initial attempt retryable.
@@ -114,6 +116,9 @@ refresh credentials enter the OS store. Resource providers serialize rotation
 through OS advisory locks; lock-directory identity participates in credential keys.
 Azure CLI token requests select only `--subscription`; account and response tenant
 checks enforce the pinned tenant without the incompatible `--tenant` argument.
+`selection: 'active-account'` resolves and pins identity on first token use, checks
+selection before cached returns and after acquisition, and rejects changes with
+`AccountMismatch`. Its token cache is provider-local; discovery stays in Rust.
 See `rust/auth-sdk/README.md` for source selection, storage/timeout boundaries and
 registration/consent constraints. Rust tests inject providers and clocks;
 `test/auth.test.ts` uses the built addon and synthetic CLI executables.

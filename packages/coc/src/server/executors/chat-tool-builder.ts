@@ -6,6 +6,7 @@ import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
@@ -69,6 +70,7 @@ export interface ChatToolBundleOptions {
     includeKustoTools?: boolean;
     /** Overrides the `kusto.enabled` config flag (used by tests). */
     kustoToolsEnabled?: boolean;
+    kustoRuntime?: KustoToolsRuntime;
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
     includeSystemOneTool?: boolean;
@@ -177,7 +179,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.store,
             options.workspaceId,
             options.processId,
-            options.kustoToolsEnabled !== undefined ? { enabled: options.kustoToolsEnabled } : undefined,
+            {
+                enabled: options.kustoToolsEnabled ?? options.kustoRuntime?.getEnabled(),
+                runtime: options.kustoRuntime,
+            },
         ));
     }
 

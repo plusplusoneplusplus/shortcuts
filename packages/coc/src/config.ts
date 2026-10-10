@@ -259,6 +259,11 @@ export interface CLIConfig {
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
+        azureCli?: {
+            account?: string;
+            tenant?: string;
+            subscription?: string;
+        };
     };
     /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). Disabled by default. */
     LLMToolSystemOne?: {
@@ -634,6 +639,11 @@ export interface ResolvedCLIConfig {
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
+        azureCli: {
+            account: string;
+            tenant: string;
+            subscription: string;
+        };
     };
     /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). */
     LLMToolSystemOne: {
@@ -944,6 +954,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     kusto: {
         enabled: false,
+        azureCli: { account: '', tenant: '', subscription: '' },
     },
     LLMToolSystemOne: {
         enabled: false,
