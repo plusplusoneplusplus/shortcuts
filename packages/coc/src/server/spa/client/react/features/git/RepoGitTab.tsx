@@ -798,7 +798,6 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
             pendingReorder={data.pendingReorder}
             onApplyReorder={() => { void actions.applyReorder(); }}
             onCancelReorder={actions.cancelReorder}
-            openedCommit={selection.openedCommit}
             commits={data.commits}
             unpushedCount={data.unpushedCount}
             selectedCommit={selection.selectedCommit}

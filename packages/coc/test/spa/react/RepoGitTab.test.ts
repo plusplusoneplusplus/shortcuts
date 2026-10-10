@@ -2127,8 +2127,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const [commitLookupError, setCommitLookupError] = useState<string | null>(null)');
         });
 
-        it('declares openedCommit state', () => {
-            expect(source).toContain('const [openedCommit, setOpenedCommit]');
+        it('keeps lookup selection in the detail view without separate opened-commit state', () => {
+            expect(source).not.toContain('openedCommit');
+            expect(source).not.toContain('setOpenedCommit');
         });
 
         it('defines handleCommitLookup callback', () => {
@@ -2149,10 +2150,11 @@ describe('RepoGitTab', () => {
             expect(source).toContain('getCommit(workspaceId');
         });
 
-        it('handleCommitLookup sets openedCommit on success', () => {
+        it('handleCommitLookup opens the detail view on success', () => {
             const block = source.match(/const lookupCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('setOpenedCommit');
+            expect(block![0]).toContain('selectCommit(existing)');
+            expect(block![0]).toContain('openCommitBySha(normalizedSha');
         });
 
         it('handleCommitLookup sets commitLookupError on failure', () => {
@@ -2181,23 +2183,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('{commitLookupError}');
         });
 
-        it('shows opened commit section with data-testid when openedCommit is set', () => {
-            expect(source).toContain('data-testid="git-opened-commit-section"');
-        });
-
-        it('shows opened commit row with data-testid', () => {
-            expect(source).toContain('data-testid="git-opened-commit-row"');
-        });
-
-        it('opened commit row shows shortHash and subject', () => {
-            const block = source.match(/data-testid="git-opened-commit-row"[\s\S]*?<\/div>/);
-            expect(block).toBeTruthy();
-            expect(block![0]).toContain('openedCommit.shortHash');
-            expect(block![0]).toContain('openedCommit.subject');
-        });
-
-        it('opened commit row calls handleSelect when clicked', () => {
-            expect(source).toContain('onClick={() => props.onSelect(openedCommit)');
+        it('omits the opened-commit sidebar section while keeping the history list', () => {
+            const listSource = readRepoGitTabModuleSource('RepoGitListPane.tsx');
+            expect(listSource).not.toContain('git-opened-commit-section');
+            expect(listSource).not.toContain('git-opened-commit-row');
+            expect(listSource).not.toContain('Opened commit');
+            expect(listSource).toContain('{commitListPanel}');
         });
 
         it('a routed commit that is not in the loaded page falls back to getCommit', () => {
@@ -2208,10 +2199,12 @@ describe('RepoGitTab', () => {
             expect(source).toContain('getCommit(workspaceId');
         });
 
-        it('deep-link lookup sets openedCommit on success', () => {
+        it('deep-link lookup opens commit or file details on success', () => {
             const block = source.match(/const openCommitBySha = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('setOpenedCommit');
+            expect(block![0]).toContain('setView(options?.filePath');
+            expect(block![0]).toContain("{ type: 'commit', commit }");
+            expect(block![0]).toContain("{ type: 'commit-file', hash: commit.hash, filePath: options.filePath }");
         });
 
         it('feature flag check uses isGitCommitLookupEnabled function', () => {

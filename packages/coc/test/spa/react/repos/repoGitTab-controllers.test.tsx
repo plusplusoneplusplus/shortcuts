@@ -420,9 +420,8 @@ describe('useRepoGitSelection', () => {
             const { result } = setup([]);
 
             act(() => result.current.hydrateFromInitialLoad([]));
-            await waitFor(() => expect(result.current.openedCommit).toEqual(remote));
+            await waitFor(() => expect(result.current.view).toEqual({ type: 'commit', commit: remote }));
             expect(clientFor(WS).git.getCommit).toHaveBeenCalledWith(WS, 'ffffffffffff');
-            expect(result.current.view).toEqual({ type: 'commit', commit: remote });
         });
 
         it('reports a lookup miss instead of changing the view', async () => {
@@ -466,7 +465,7 @@ describe('useRepoGitSelection', () => {
             clientFor(WS).git.getCommit.mockResolvedValue(remote);
             const { result } = setup([]);
             await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
-            expect(result.current.openedCommit).toEqual(remote);
+            expect(result.current.view).toEqual({ type: 'commit', commit: remote });
             expect(location.hash).toBe(`#repos/${WS}/git/${remote.hash}`);
         });
 
@@ -618,7 +617,6 @@ describe('useRepoGitSelection — routed navigation', () => {
 
         routeTo(rerender, { selectedGitCommitHash: null, selectedGitFilePath: null });
         expect(result.current.view).toBeNull();
-        expect(result.current.openedCommit).toBeNull();
         expect(result.current.commitLookupError).toBeNull();
     });
 
@@ -627,8 +625,7 @@ describe('useRepoGitSelection — routed navigation', () => {
         clientFor(WS).git.getCommit.mockResolvedValue(remote);
         const { result } = setupRouted({ selectedGitCommitHash: remote.hash, selectedGitFilePath: 'src/a.ts' });
 
-        await waitFor(() => expect(result.current.openedCommit).toEqual(remote));
-        expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' });
+        await waitFor(() => expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' }));
     });
 
     it('discards a lookup that lands after the member has changed', async () => {
@@ -647,7 +644,6 @@ describe('useRepoGitSelection — routed navigation', () => {
         act(() => rerender({ id: OTHER_WS }));
         await act(async () => { settle(remote); });
 
-        expect(result.current.openedCommit).toBeNull();
         expect(result.current.view).toBeNull();
     });
 });
