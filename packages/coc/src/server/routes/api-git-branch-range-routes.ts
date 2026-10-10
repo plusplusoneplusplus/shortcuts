@@ -5,27 +5,24 @@
 
 import type { IncomingMessage } from 'http';
 import * as url from 'url';
-import { GitRangeService } from '@plusplusoneplusplus/forge';
+import { GitRangeService, loadRangePatch } from '@plusplusoneplusplus/forge';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/forge';
 import { handleAPIError, badRequest, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
+import { gitStatusToChar, patchContentResponse } from '../git/git-response';
 import { loadBranchRangeFileDiffContent } from '../git/ref-file-content';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { createLocalPatchRoute, truncateDiffIfNeeded } from './api-shared';
+import { createLocalPatchRoute, DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute } from './route-utils';
 
 export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
 
-    const STATUS_WORD_TO_CHAR: Record<string, string> = {
-        added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', conflict: 'U', untracked: '?',
-    };
-
     function normalizeRangeFiles(files: Array<{ path: string; status: string; additions: number; deletions: number; oldPath?: string; repositoryRoot: string }>) {
         return files.map(f => ({
             path: f.path,
-            status: STATUS_WORD_TO_CHAR[f.status] ?? f.status,
+            status: gitStatusToChar(f.status),
             additions: f.additions,
             deletions: f.deletions,
             ...(f.oldPath && { oldPath: f.oldPath }),
@@ -189,9 +186,10 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 if (!range) {
                     return { diff: '', path: filePath };
                 }
-                const diff = await rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath, signal);
-                const result = { ...truncateDiffIfNeeded(diff, full), path: filePath };
-                return result;
+                const { content } = await loadRangePatch(ws.rootPath, range.baseRef, 'HEAD', filePath.replace(/\\/g, '/'), {
+                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
+                });
+                return { ...patchContentResponse(content), path: filePath };
             } catch {
                 signal.throwIfAborted();
                 return { diff: '', path: filePath };

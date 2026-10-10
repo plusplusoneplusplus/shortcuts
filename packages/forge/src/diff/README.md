@@ -84,7 +84,9 @@ const summary = await wtProvider.getSummary();
 - `types.ts`: public provider/source/content contracts.
 - `git-diff-provider.ts`: commit, range and working-tree factories.
 - `local-patch.ts`: shared host/WSL transport and native wire conversion.
-- `pr-diff-provider.ts`: authenticated supplied PR and iteration transport.
+- `pr-diff-provider.ts`: PR and iteration factories with retained native scopes.
+- `remote-patch.ts`: shared remote scope opening, authenticated supplied-read lifetimes,
+  and generation-bound per-file processing.
 - `diff-utils.ts`: async native parsing adapter and public wire conversion.
 - `index.ts`: public exports.
 

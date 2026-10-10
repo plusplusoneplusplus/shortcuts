@@ -26,7 +26,9 @@ use coc_native_core::git::commit::{
 };
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
-use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
+use coc_native_core::git::log::{
+    get_commit, get_commits, history_args, parse_history, read_history, Commit, CommitPage,
+};
 use coc_native_core::git::patch_store::{
     PatchCancellation, PatchExecution, PatchScope, PatchSource, PatchStore, PatchStoreError,
     PatchTransport, RemotePatchSource,
@@ -283,6 +285,8 @@ pub struct GitLogOptions {
     pub skip: u32,
     /// Case-insensitive substring the commit message must contain.
     pub search: Option<String>,
+    /// Include relative dates and ref decoration in CLI history reads.
+    pub include_details: Option<bool>,
 }
 
 /// Seconds since the epoch, for rendering `%ar`.
@@ -360,6 +364,43 @@ impl Task for GitLogCommitTask {
 #[napi(ts_return_type = "Promise<GitLogCommit | null>")]
 pub fn git_log_commit(repo_root: String, rev: String) -> AsyncTask<GitLogCommitTask> {
     AsyncTask::new(GitLogCommitTask { repo_root: PathBuf::from(repo_root), rev })
+}
+
+#[napi]
+pub fn prepare_git_history(
+    options: GitLogOptions,
+    rev: Option<String>,
+    fixed_search: Option<bool>,
+) -> Vec<String> {
+    history_args(
+        options.max_count,
+        options.skip,
+        options.search.as_deref(),
+        rev.as_deref(),
+        fixed_search.unwrap_or(false),
+        options.include_details.unwrap_or(false),
+    )
+}
+
+fn history_task(
+    read: impl FnOnce() -> Result<Vec<Commit>> + Send + 'static,
+) -> AsyncTask<crate::task::Blocking<Vec<GitLogCommit>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(read()?.into_iter().map(GitLogCommit::from).collect())
+    }))
+}
+
+#[napi(ts_return_type = "Promise<GitLogCommit[]>")]
+pub fn git_history(
+    repo_root: String,
+    args: Vec<String>,
+) -> AsyncTask<crate::task::Blocking<Vec<GitLogCommit>>> {
+    history_task(move || read_history(&PathBuf::from(repo_root), &args).map_err(to_napi_error))
+}
+
+#[napi(ts_return_type = "Promise<GitLogCommit[]>")]
+pub fn process_git_history(output: String) -> AsyncTask<crate::task::Blocking<Vec<GitLogCommit>>> {
+    history_task(move || Ok(parse_history(&output)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

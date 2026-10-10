@@ -1,5 +1,5 @@
 import { loadNativeGit, type NativeGitPatchStore, type NativeGitRemotePatchSource } from '@plusplusoneplusplus/coc-native';
-import { resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { loadSuppliedPatch, openRemotePatchStore, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { ProvidersFileConfig } from '../providers/providers-config';
 import type { RepoInfo } from './types';
@@ -14,7 +14,7 @@ export async function loadPullRequestPatch(
     signal?: AbortSignal,
 ) {
     signal?.throwIfAborted();
-    const addon = loadNativeGit();
+    loadNativeGit();
     let store: NativeGitPatchStore | undefined;
     // A remote-only selection still supports hunks without inventing a checkout root.
     if (repo.localPath) {
@@ -39,31 +39,10 @@ export async function loadPullRequestPatch(
         }
 
         const execution = resolveWorkspaceExecutionContext(repo.localPath);
-        if (execution.kind === 'wsl' && !execution.distro) {
-            throw new Error('Remote patch processing requires a resolved WSL distro identity');
-        }
-        store = addon.openRemoteGitPatchStore(workspaceId,
-            execution.kind === 'wsl' ? execution.linuxWorkingDirectory : repo.localPath,
-            source, execution.kind === 'wsl' ? execution.distro : undefined);
+        store = openRemotePatchStore(workspaceId, execution, source);
     }
     try {
-        const request = store?.beginTransport();
-        const cancel = () => request?.cancel();
-        signal?.addEventListener('abort', cancel, { once: true });
-        try {
-            signal?.throwIfAborted();
-            const raw = await fetchDiff();
-            signal?.throwIfAborted();
-            const patch = await (request ? request.process(raw) : addon.processGitPatch(raw));
-            signal?.throwIfAborted();
-            return patch;
-        } catch (error) {
-            signal?.throwIfAborted();
-            throw error;
-        } finally {
-            signal?.removeEventListener('abort', cancel);
-            request?.cancel();
-        }
+        return await loadSuppliedPatch(fetchDiff, store, signal);
     } finally {
         store?.dispose();
     }

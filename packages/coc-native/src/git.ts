@@ -122,54 +122,12 @@ export type NativeGitNoIndexDiffInput = Bindings.GitNoIndexDiffInput;
 
 /** Parsed supplied patch metadata and raw per-file content. */
 export type NativeGitPatchFile = Bindings.PatchFile;
+export type NativeGitPatchContent = Bindings.PatchContent;
+export type NativeGitPatchSummary = Bindings.PatchSummary;
 
 /** One workspace/execution/source scope's Rust-owned patch snapshots. */
 export type NativeGitPatchStore = Bindings.GitPatchStore;
 export type NativeGitRemotePatchSource = Bindings.RemotePatchSource;
-
-/** The exact addon slice required to run git. */
-export interface NativeGitAddon {
-    prepareGitWorkingTreePatch: typeof Bindings.prepareGitWorkingTreePatch;
-    composeGitWorkingTreePatch: typeof Bindings.composeGitWorkingTreePatch;
-    prepareGitRevisionPatch: typeof Bindings.prepareGitRevisionPatch;
-    buildRemoteGitPatch: typeof Bindings.buildRemoteGitPatch;
-    processGitPatch: typeof Bindings.processGitPatch;
-    parseGitPatch: typeof Bindings.parseGitPatch;
-    openGitPatchStore: typeof Bindings.openGitPatchStore;
-    openRemoteGitPatchStore: typeof Bindings.openRemoteGitPatchStore;
-    execGit: typeof Bindings.execGit;
-    gitStatusEntries: typeof Bindings.gitStatusEntries;
-    parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
-    gitLogCommits: typeof Bindings.gitLogCommits;
-    gitLogCommit: typeof Bindings.gitLogCommit;
-    prepareGitCommitFiles: typeof Bindings.prepareGitCommitFiles;
-    processGitCommitMetadata: typeof Bindings.processGitCommitMetadata;
-    gitCommitFiles: typeof Bindings.gitCommitFiles;
-    gitCommitDiff: typeof Bindings.gitCommitDiff;
-    gitFileContentAtCommit: typeof Bindings.gitFileContentAtCommit;
-    gitFileBytesAtCommit: typeof Bindings.gitFileBytesAtCommit;
-    gitFileExistsAtCommit: typeof Bindings.gitFileExistsAtCommit;
-    gitValidateRef: typeof Bindings.gitValidateRef;
-    gitRangeDefaultBranch: typeof Bindings.gitRangeDefaultBranch;
-    gitRangeUpstreamBranch: typeof Bindings.gitRangeUpstreamBranch;
-    gitRangeResolveBaseRef: typeof Bindings.gitRangeResolveBaseRef;
-    gitRangeMergeBase: typeof Bindings.gitRangeMergeBase;
-    gitRangeCountAhead: typeof Bindings.gitRangeCountAhead;
-    gitRepositoryStatus: typeof Bindings.gitRepositoryStatus;
-    parseGitBranchStatus: typeof Bindings.parseGitBranchStatus;
-    gitBranchStatus: typeof Bindings.gitBranchStatus;
-    gitCurrentBranchName: typeof Bindings.gitCurrentBranchName;
-    gitUpstreamConfig: typeof Bindings.gitUpstreamConfig;
-    gitListBranches: typeof Bindings.gitListBranches;
-    gitLocalBranchNames: typeof Bindings.gitLocalBranchNames;
-    gitRemoteUrl: typeof Bindings.gitRemoteUrl;
-    gitDetectRemoteUrl: typeof Bindings.gitDetectRemoteUrl;
-    gitGlobalConfigGetAll: typeof Bindings.gitGlobalConfigGetAll;
-    gitGlobalConfigAdd: typeof Bindings.gitGlobalConfigAdd;
-    gitDiscoverRepoRoot: typeof Bindings.gitDiscoverRepoRoot;
-    gitResolvedGitDir: typeof Bindings.gitResolvedGitDir;
-    gitDiffNoIndex: typeof Bindings.gitDiffNoIndex;
-}
 
 /**
  * Every function the capability is made of.
@@ -192,6 +150,9 @@ const GIT_EXPORTS = [
     'parseGitStatusPorcelain',
     'gitLogCommits',
     'gitLogCommit',
+    'prepareGitHistory',
+    'gitHistory',
+    'processGitHistory',
     'prepareGitCommitFiles',
     'processGitCommitMetadata',
     'gitCommitFiles',
@@ -220,6 +181,9 @@ const GIT_EXPORTS = [
     'gitResolvedGitDir',
     'gitDiffNoIndex',
 ] as const;
+
+/** Runtime capability admission and compile-time signatures share one export list. */
+export type NativeGitAddon = { [K in typeof GIT_EXPORTS[number]]: typeof Bindings[K] };
 
 /** Whether the loaded module actually exposes the git capability. */
 function isGitAddon(addon: unknown): addon is NativeGitAddon {

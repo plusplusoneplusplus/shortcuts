@@ -10,30 +10,15 @@ import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { NativeGitLogCommit } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
 import { toForwardSlashes } from '../utils/path-utils';
-import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
+import { GitCommit, GitCommitFile, CommitLoadOptions, CommitLoadResult } from './types';
+import { loadGitHistory } from './git-history';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
+import { execGitAsync } from './exec';
 
-/**
- * Timeout (ms) applied to every git command this service runs.
- *
- * Many git commands can be in flight at once (e.g. across parallel test
- * workers). Under that contention the wall-clock time of an individual command
- * can exceed a tight per-call timeout even when the command itself is fast,
- * which would surface as spurious timeout failures. A single generous timeout
- * keeps behaviour consistent and robust under load.
- *
- * The 50 MiB output cap the diffs used to ask for is the addon's own default,
- * so it is no longer spelled out per call.
- */
+/** Shared budget tolerates concurrent Git workers in large repositories. */
 const GIT_COMMAND_TIMEOUT_MS = 30000;
 
-/**
- * Coerce a paging argument to the unsigned 32-bit integer the native boundary
- * takes.
- *
- * `git log -n` shrugged at a float or a negative number; N-API rejects the
- * conversion outright, so clamping keeps a sloppy caller working rather than
- * turning it into a new failure mode.
- */
+/** Normalize paging values before the unsigned N-API boundary. */
 function toUint32(value: number): number {
     if (!Number.isFinite(value) || value < 0) {
         return 0;
@@ -46,11 +31,6 @@ interface BranchCacheEntry {
     timestamp: number;
 }
 
-/**
- * All public methods are asynchronous, so the single-threaded Node event loop
- * is never blocked by git I/O — whether the work happens in the addon or in a
- * child process.
- */
 export class GitLogService {
     private branchCache: Map<string, BranchCacheEntry> = new Map();
     private static readonly BRANCH_CACHE_TTL = 180_000; // 3 minutes
@@ -59,17 +39,30 @@ export class GitLogService {
      * Get commits from a repository.
      */
     async getCommits(repoRoot: string, options: CommitLoadOptions): Promise<CommitLoadResult> {
-        // Deliberately outside the try: a missing or capability-stale binary is
-        // a NativeAddonLoadError naming the rebuild, and an empty commit list
-        // for a repository that has history is the one wrong answer here.
+        // Capability failures must stay visible rather than become empty history.
         const native = loadNativeGit();
         try {
+            if (resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl') {
+                const maxCount = toUint32(options.maxCount);
+                const commits = await loadGitHistory(repoRoot, {
+                    maxCount: Math.min(maxCount + 1, 0xffffffff), skip: toUint32(options.skip),
+                    search: options.search || undefined, includeDetails: true,
+                }, undefined, true);
+                const hasMore = commits.length > maxCount;
+                let ahead = new Set<string>();
+                try {
+                    ahead = new Set((await execGitAsync(['rev-list', '@{upstream}..HEAD'], repoRoot)).split('\n'));
+                } catch { /* No upstream means no unpushed decoration. */ }
+                return {
+                    commits: commits.slice(0, maxCount).map(commit => this.toGitCommit({
+                        ...commit, isAheadOfRemote: ahead.has(commit.hash),
+                    }, repoRoot)),
+                    hasMore,
+                };
+            }
             const page = await native.gitLogCommits(repoRoot, {
                 maxCount: toUint32(options.maxCount),
                 skip: toUint32(options.skip),
-                // An empty search string has always meant "no filter", because
-                // the old command only appended `--grep` when the value was
-                // truthy.
                 search: options.search || undefined,
             });
             return {
@@ -88,7 +81,9 @@ export class GitLogService {
     async getCommit(repoRoot: string, hash: string): Promise<GitCommit | undefined> {
         const native = loadNativeGit();
         try {
-            const commit = await native.gitLogCommit(repoRoot, hash);
+            const commit = resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl'
+                ? (await loadGitHistory(repoRoot, { maxCount: 1, skip: 0, includeDetails: true }, hash))[0]
+                : await native.gitLogCommit(repoRoot, hash);
             return commit ? this.toGitCommit(commit, repoRoot) : undefined;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get commit ${hash} from ${repoRoot}`, error instanceof Error ? error : undefined);
@@ -106,19 +101,12 @@ export class GitLogService {
         loadNativeGit();
         try {
             const { parentHash, files } = await loadCommitMetadata(repoRoot, commitHash, GIT_COMMAND_TIMEOUT_MS);
-            // The three repository-level fields are the caller's own values, so
-            // they are attached here rather than rebuilt in Rust. `additions`
-            // and `deletions` stay *absent* when numstat had nothing to say —
-            // a binary file — because the UI renders a blank column there.
+            // Spread retains omitted counts/source paths exactly as Rust returns them.
             return files.map(file => ({
-                path: file.path,
-                ...(file.originalPath !== undefined ? { originalPath: file.originalPath } : {}),
-                status: file.status as GitChangeStatus,
+                ...file,
                 commitHash,
                 parentHash,
                 repositoryRoot: repoRoot,
-                ...(file.additions !== undefined ? { additions: file.additions } : {}),
-                ...(file.deletions !== undefined ? { deletions: file.deletions } : {}),
             }));
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get commit files for ${commitHash} from ${repoRoot}`, error instanceof Error ? error : undefined);
@@ -356,13 +344,6 @@ export class GitLogService {
     // Private helpers
     // -----------------------------------------------------------------------
 
-    /**
-     * Attach the two fields Rust does not build.
-     *
-     * `repositoryRoot` is the caller's own argument and `repositoryName` is
-     * `path.basename` of it — Node's path semantics shaped every name the UI
-     * has shown, so they stay here rather than being re-derived in Rust.
-     */
     private toGitCommit(commit: NativeGitLogCommit, repoRoot: string): GitCommit {
         return { ...commit, repositoryRoot: repoRoot, repositoryName: path.basename(repoRoot) };
     }

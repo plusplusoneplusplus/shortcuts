@@ -1,37 +1,10 @@
-/**
- * The two commit-log routes, against a real repository.
- *
- * `GET /git/commits` and `GET /git/commits/:hash` run their own
- * `git log --format=%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b -z` through
- * `execGitArgsAsync` and parse it by splitting on NUL and newlines. Everything
- * that used to test them mocked that command and asserted on its argv, so
- * nothing checked what the routes actually put on the wire — and the argv is
- * the part least worth pinning. This file drives real repositories and compares
- * each field against what `git log` itself prints.
- *
- * The routes are deliberately **not** collapsed onto `GitLogService`, which
- * answers the same question natively. Measured on this repo (569 refs, 7 packs,
- * 2-core arm64): the route's single `git log` costs 4.31 ms for a 50-commit
- * page and `GitLogService.getCommits` costs 9.44 ms, because `gix` pays ~4.7 ms
- * per repository open to abbreviate the first `%h` where git pays nothing
- * measurable. The child the collapse would remove is spawned from Rust on a
- * libuv worker, not on the event-loop thread, so it is not the kind of spawn
- * this move exists to delete. The duplication is real; paying 2.2x for the Git
- * tab's main list to remove it is not. See `coc-native/AGENTS.md`.
- *
- * The one mock rejects `execGitAsync` with a real `NativeAddonLoadError`, so the
- * guard that keeps a broken binary from reading as an empty history can be
- * driven. The route reaches git through `execGitArgsAsync` in
- * `core/api-handler`, which delegates to the `@plusplusoneplusplus/forge` root
- * barrel — so that is the specifier mocked, spread over the real module because
- * the guard narrows with `instanceof`.
- */
+/** Real HTTP contract parity with Git, including native capability failures. */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
+import { tmpdir } from 'node:os';
 import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 
 const state = vi.hoisted(() => ({ failWith: undefined as Error | undefined }));
@@ -45,6 +18,10 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         execGitAsync: (...args: Parameters<typeof actual.execGitAsync>) => {
             if (state.failWith) { return Promise.reject(state.failWith); }
             return actual.execGitAsync(...args);
+        },
+        loadGitHistory: (...args: Parameters<typeof actual.loadGitHistory>) => {
+            if (state.failWith) { return Promise.reject(state.failWith); }
+            return actual.loadGitHistory(...args);
         },
     };
 });
@@ -137,7 +114,7 @@ async function buildRepo(): Promise<void> {
 }
 
 beforeAll(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-log-routes-'));
+    tmpDir = fs.mkdtempSync(path.join(tmpdir(), 'commit-log-routes-'));
     repoRoot = path.join(tmpDir, 'repo');
     await buildRepo();
 
@@ -181,6 +158,9 @@ describe('GET /api/workspaces/:id/git/commits against a real repository', () => 
             expect(row.body).toBe((await git(['log', '-1', '--format=%b', row.hash])).trim());
             const parents = (await git(['log', '-1', '--format=%P', row.hash])).split(' ').filter(Boolean);
             expect(row.parentHashes).toEqual(parents);
+            expect(Object.keys(row).sort()).toEqual([
+                'author', 'authorEmail', 'body', 'date', 'hash', 'parentHashes', 'shortHash', 'subject',
+            ]);
         }
     });
 
@@ -252,6 +232,53 @@ describe('GET /api/workspaces/:id/git/commits against a real repository', () => 
     it('matches on the body as well as the subject', async () => {
         const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=body+paragraph`);
         expect(res.json().commits.map((c: any) => c.subject)).toEqual(['second commit']);
+    });
+
+    it('retains Git basic-regex search rather than substring matching', async () => {
+        const search = '^second.*commit$';
+        const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${encodeURIComponent(search)}`);
+        expect(res.json().commits.map((c: any) => c.subject)).toEqual(['second commit']);
+    });
+
+    it('hash search selects a merge or root independently of pagination', async () => {
+        for (const hash of [await git(['rev-parse', 'HEAD']), await git(['rev-list', '--max-parents=0', 'HEAD'])]) {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}&limit=1&skip=200`);
+            expect(res.json().commits.map((c: any) => c.hash)).toEqual([hash]);
+        }
+    });
+
+    it('resolves a hash outside HEAD history without traversing its ancestors', async () => {
+        const tree = await git(['rev-parse', 'HEAD^{tree}']);
+        const hash = await git(['commit-tree', tree, '-m', 'off-head history']);
+        const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?search=${hash}&skip=200`);
+        expect(res.json().commits).toHaveLength(1);
+        expect(res.json().commits[0]).toMatchObject({ hash, subject: 'off-head history', parentHashes: [] });
+        const detail = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/${hash}`);
+        expect(detail.json()).toEqual(res.json().commits[0]);
+    });
+
+    it('keeps warm history caches scoped to each workspace', async () => {
+        const otherRoot = path.join(tmpDir, 'other-repo');
+        fs.mkdirSync(otherRoot);
+        for (const args of [
+            ['init', '-q', '-b', 'main'],
+            ['config', 'user.name', 'Example Author'],
+            ['config', 'user.email', 'author@example.test'],
+            ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'other history'],
+        ]) await execGitAsync(args, otherRoot);
+        const workspaces = [
+            { id: WORKSPACE_ID, name: 'Repo', rootPath: repoRoot, isGitRepo: true },
+            { id: 'ws-other-history', name: 'Other', rootPath: otherRoot, isGitRepo: true },
+        ];
+        (store.getWorkspaces as any).mockResolvedValue(workspaces);
+        try {
+            const first = (await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits`)).json();
+            const other = (await request(`${base()}/api/workspaces/ws-other-history/git/commits`)).json();
+            expect(other.commits.map((c: any) => c.subject)).toEqual(['other history']);
+            expect((await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits`)).json()).toEqual(first);
+        } finally {
+            (store.getWorkspaces as any).mockResolvedValue([workspaces[0]]);
+        }
     });
 
     it('reports an empty history for a directory that is not a repository', async () => {

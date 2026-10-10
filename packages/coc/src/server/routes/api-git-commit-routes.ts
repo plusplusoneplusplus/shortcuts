@@ -5,32 +5,20 @@
 
 import * as path from 'path';
 import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
-import { BranchService, loadCommitShowPatch, loadCommitFiles } from '@plusplusoneplusplus/forge';
-import { execGitArgsAsync, readGitFileAtCommit } from '../core/api-handler';
+import { BranchService, loadCommitShowPatch, loadCommitFiles, loadGitHistory } from '@plusplusoneplusplus/forge';
+import type { NativeGitLogCommit } from '@plusplusoneplusplus/coc-native';
+import { readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import type { APIError } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { loadCommitFileDiffContent } from '../git/ref-file-content';
+import { gitStatusToChar, patchContentResponse } from '../git/git-response';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { createLocalPatchRoute, DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute, asString, asInt, asBool } from './route-utils';
 
-/**
- * Re-dress a `NativeAddonLoadError` so its words reach the caller.
- *
- * The two commit-log routes answer a git failure with silence — an empty list
- * and a 404 — which is the right answer for a directory that is not a
- * repository and the wrong one for a binary that is missing or too old, where
- * the commits are right there and nobody can read them. The Git tab would show
- * an empty history for a repository with a thousand commits in it.
- *
- * `handleAPIError` only carries the message of an `APIError`; anything else
- * becomes a bare "Internal server error" and the sentence naming the rebuild
- * lands in the server log alone. So the load failure comes back as a 500 that
- * says what to do, the way the clone route already does. Every other failure
- * returns `undefined` and the caller keeps handling it as it did.
- */
+/** Missing capabilities must surface their rebuild instruction, not empty history. */
 function asLoadFailure(err: unknown): APIError | undefined {
     return err instanceof NativeAddonLoadError ? internalError(err.message) : undefined;
 }
@@ -38,28 +26,13 @@ function asLoadFailure(err: unknown): APIError | undefined {
 /** The 5 s budget the two `diff-tree` spawns this route used to make carried. */
 const COMMIT_FILES_TIMEOUT_MS = 5_000;
 
-/**
- * `GitChangeStatus` word back to the porcelain letter the wire carries.
- *
- * The addon reports a status as the word the rest of the codebase uses, and
- * this route's JSON has always been the letter. Mapping here rather than
- * widening the response keeps every consumer — the Git tab, the work-item
- * commit pane — reading exactly what it read before.
- *
- * A `T` (typechange) arrives as `modified`, because that is what the shared
- * parser makes of every letter it does not know; the UI has no `T` label, so
- * a typechange now renders as a modification instead of a blank badge.
- */
-const STATUS_WORD_TO_CHAR: Record<string, string> = {
-    modified: 'M',
-    added: 'A',
-    deleted: 'D',
-    renamed: 'R',
-    copied: 'C',
-    conflict: 'U',
-    untracked: '?',
-    ignored: '!',
-};
+function commitResponse(commit: NativeGitLogCommit) {
+    return {
+        hash: commit.hash, shortHash: commit.shortHash, subject: commit.subject,
+        author: commit.authorName, authorEmail: commit.authorEmail, date: commit.date,
+        parentHashes: commit.parentHashes.split(' ').filter(Boolean), body: commit.body,
+    };
+}
 
 export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
@@ -93,57 +66,15 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             const cacheKey = `${id}:commits:${limit}:${skip}${search ? `:search:${search}` : ''}`;
-            const cached = gitCache.get<{ commits: any[]; unpushedCount: number }>(cacheKey);
+            const cached = gitCache.get<{ commits: ReturnType<typeof commitResponse>[]; unpushedCount: number }>(cacheKey);
             if (cached) {
                 return cached;
             }
 
             try {
-                const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
-                const isHashLookup = search ? /^[0-9a-f]{7,40}$/i.test(search) : false;
-                let raw: string;
-                if (isHashLookup) {
-                    try {
-                        raw = await execGitArgsAsync(['log', `--format=${format}`, '-z', `${search}^!`], ws.rootPath);
-                    } catch (err) {
-                        // "That hash names nothing" is the answer here; a broken
-                        // addon is not, and this catch would otherwise eat it
-                        // before the outer one could speak.
-                        if (err instanceof NativeAddonLoadError) { throw err; }
-                        raw = '';
-                    }
-                } else {
-                    const searchArgs = search ? [`--grep=${search}`, '--regexp-ignore-case'] : [];
-                    raw = await execGitArgsAsync(
-                        ['log', `--format=${format}`, `--skip=${skip}`, `--max-count=${limit}`, '-z', ...searchArgs],
-                        ws.rootPath
-                    );
-                }
-
-                const commits: Array<{
-                    hash: string; shortHash: string; subject: string;
-                    author: string; authorEmail: string; date: string; parentHashes: string[];
-                    body: string;
-                }> = [];
-
-                if (raw.trim()) {
-                    const entries = raw.split('\0').filter(Boolean);
-                    for (const entry of entries) {
-                        const lines = entry.split('\n');
-                        if (lines.length >= 6) {
-                            commits.push({
-                                hash: lines[0],
-                                shortHash: lines[1],
-                                subject: lines[2],
-                                author: lines[3],
-                                authorEmail: lines[4],
-                                date: lines[5],
-                                parentHashes: lines[6] ? lines[6].split(' ').filter(Boolean) : [],
-                                body: lines.slice(7).join('\n').trim(),
-                            });
-                        }
-                    }
-                }
+                const commits = (await loadGitHistory(ws.rootPath, {
+                    maxCount: limit, skip, search: search || undefined,
+                })).map(commitResponse);
 
                 let unpushedCount = 0;
                 const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, false);
@@ -173,28 +104,17 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             const hash = match[2];
 
             const cacheKey = `${id}:commit:${hash}`;
-            const cached = gitCache.get<Record<string, string>>(cacheKey);
+            const cached = gitCache.get<ReturnType<typeof commitResponse>>(cacheKey);
             if (cached) {
                 return cached;
             }
 
             try {
-                const format = '%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n%b';
-                const raw = await execGitArgsAsync(['log', '-1', `--format=${format}`, hash], ws.rootPath);
-                const lines = raw.trim().split('\n');
-                if (lines.length < 6) {
+                const [commit] = await loadGitHistory(ws.rootPath, { maxCount: 1, skip: 0 }, hash);
+                if (!commit) {
                     return void handleAPIError(res, notFound('Commit'));
                 }
-                const result = {
-                    hash: lines[0],
-                    shortHash: lines[1],
-                    subject: lines[2],
-                    author: lines[3],
-                    authorEmail: lines[4],
-                    date: lines[5],
-                    parentHashes: lines[6] ? lines[6].split(' ').filter(Boolean) : [],
-                    body: lines.slice(7).join('\n').trim(),
-                };
+                const result = commitResponse(commit);
                 gitCache.set(cacheKey, result);
                 return result;
             } catch (err) {
@@ -215,12 +135,9 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             const hash = match[2];
             try {
                 const files = await loadCommitFiles(ws.rootPath, hash, COMMIT_FILES_TIMEOUT_MS);
-                return { files: files.map(file => ({
-                    status: STATUS_WORD_TO_CHAR[file.status] ?? 'M',
-                    path: file.path,
-                    ...(file.additions !== undefined && { additions: file.additions }),
-                    ...(file.deletions !== undefined && { deletions: file.deletions }),
-                    ...(file.originalPath !== undefined && { oldPath: file.originalPath }),
+                return { files: files.map(({ status, originalPath, ...file }) => ({
+                    ...file, status: gitStatusToChar(status),
+                    ...(originalPath !== undefined && { oldPath: originalPath }),
                 })) };
             } catch (err: any) {
                 return void handleAPIError(res, asLoadFailure(err) ?? badRequest('Failed to get commit files: ' + (err.message || 'unknown error')));
@@ -264,10 +181,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 const { content } = await loadCommitShowPatch(ws.rootPath, hash, filePath, {
                     contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
                 });
-                return {
-                    diff: content.raw,
-                    ...(content.truncated ? { truncated: true, totalLines: content.totalLines } : {}),
-                };
+                return patchContentResponse(content);
             } catch (err: any) {
                 signal.throwIfAborted();
                 return void handleAPIError(res, asLoadFailure(err) ?? badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));

@@ -53,6 +53,7 @@ const COMPLETE_ADDON =
     'parseGitStatusPorcelain: async () => [], ' +
     'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
     'gitLogCommit: async () => null, ' +
+    'prepareGitHistory: () => [], gitHistory: async () => [], processGitHistory: async () => [], ' +
     'prepareGitCommitFiles: async () => [], processGitCommitMetadata: async () => [], gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
     "gitCommitDiff: async () => '', " +
     'gitFileContentAtCommit: async () => null, ' +
@@ -99,6 +100,9 @@ it('exposes the capability when the addon provides it', async () => {
         hasMore: false,
     });
     expect(await api.gitLogCommit('/repo', 'HEAD')).toBeNull();
+    expect(api.prepareGitHistory({ maxCount: 1, skip: 0 })).toEqual([]);
+    expect(await api.gitHistory('/repo', [])).toEqual([]);
+    expect(await api.processGitHistory('')).toEqual([]);
     expect(await api.gitCommitFiles('/repo', 'HEAD')).toEqual({ parentHash: '', files: [] });
     expect(await api.gitCommitDiff('/repo', 'HEAD')).toBe('');
     expect(await api.prepareGitRevisionPatch('commit', 'HEAD')).toEqual([]);
@@ -454,7 +458,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitRevisionPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'composeGitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale patch/metadata capability missing %s', (name) => {
+it.each(['prepareGitHistory', 'gitHistory', 'processGitHistory', 'prepareGitRevisionPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'composeGitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale read capability missing %s', (name) => {
     useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
 });

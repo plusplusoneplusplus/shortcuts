@@ -37,6 +37,10 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
+        loadRangePatch: async (root: string, base: string, head: string, file: string, options?: { maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            return loadNativeGit().processGitPatch(await mockGetFileDiff(root, base, head, file, options), options?.maxLines);
+        },
         GitRangeService: vi.fn().mockImplementation(function () { return ({
             detectCommitRange: mockDetectCommitRange,
             getRangeDiff: mockGetRangeDiff,

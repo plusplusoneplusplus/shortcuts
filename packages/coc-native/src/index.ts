@@ -79,6 +79,8 @@ export type {
     NativeGitLogPage,
     NativeGitNoIndexDiffInput,
     NativeGitPatchFile,
+    NativeGitPatchContent,
+    NativeGitPatchSummary,
     NativeGitPatchStore,
     NativeGitRemotePatchSource,
     NativeGitRangeBaseRef,

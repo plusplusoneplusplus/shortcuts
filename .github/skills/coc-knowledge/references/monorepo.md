@@ -107,16 +107,25 @@ including decoded rename paths and empty-file existence; snapshot content transp
 and its cache remain separate. Forge `diff-utils` owns wire conversion and
 `createPatchDiffProvider`, the five-operation facade shared by local and supplied
 remote factories. Each operation reads its loader freshly; per-file loaders retain
-literal Git path/context semantics or supplied-hunk selection. Patch parsing,
-summaries, truncation and caches belong to Rust.
+literal Git path/context semantics or supplied-hunk selection. Forge's `DiffContent`
+and `DiffSummary` alias generated native DTOs. Patch parsing, summaries, truncation
+and caches belong to Rust.
 
 Core commit DTOs generate the public `GitCommitFile`/`GitCommitFiles` N-API
 objects directly. Host and supplied metadata workers return the same DTOs;
-typed Rust statuses serialize as strings and absent counts stay omitted.
+typed Rust statuses generate literal TypeScript unions and absent counts stay omitted.
+Forge `GitChangeStatus` aliases the native commit-file status.
+
+REST commit history uses Forge `git/git-history.ts`: host `gitHistory` and supplied
+WSL `prepareGitHistory`/`processGitHistory` share Rust command planning and NUL-record
+parsing. Routes convert the shared DTO to their author/parent wire shape. The CLI
+plan omits decoration and unpushed computation and preserves Git grep/hash selection.
+WSL `GitLogService` sets `includeDetails` to retain relative dates and decoration.
+Native Git's exported type and runtime capability guard derive from one name tuple.
 
 ### Supplied remote diff providers
 
-Forge PR/iteration factories require `RemoteDiffContext` (workspaceId, host, provider-qualified repository) separately from transport routing aliases. Each provider lazily opens one Rust remote store and captures a continuation before every authenticated read. Rust fingerprints fresh bytes and retains bounded snapshots; per-file truncation uses native processing. Source/base-iteration descriptors and HTTP shapes remain unchanged. Providers expose refresh/dispose, reject delayed revoked output and retire continuations on transport failure. Explicit WSL roots supply distro/Linux-root identity; unresolved distro identity rejects before I/O.
+Forge PR/iteration factories require `RemoteDiffContext` (workspaceId, host, provider-qualified repository) separately from transport routing aliases. `diff/remote-patch.ts` shares scope opening and supplied-read lifetimes with CoC PR routes. Providers retain one lazy Rust store; routes dispose request-owned stores. Continuations capture generations before authenticated I/O, including per-file processing. Refresh/dispose and caller cancellation reject delayed output; every outcome retires tickets/listeners. Rust fingerprints fresh bytes and owns snapshots/truncation. Explicit WSL scopes require distro/Linux-root identity before I/O.
 
 ### Production patch consumers
 
@@ -140,7 +149,9 @@ cache. Combined and per-file hunk routes read current authenticated provider byt
 through the selected clone, including full-context fallback. The commit/range/working-tree
 providers and production `GitRangeService` patches, file lists and statistics use
 `diff/local-patch.ts`. Range detection derives file rows and uncapped totals from one
-Rust snapshot before applying the display cap. Host commit/range/comparison patches
+Rust snapshot before applying the display cap. Commit, branch-range and working-tree
+per-file routes pass display limits into Rust and share `git/git-response.ts` wire
+conversion; untruncated responses omit truncation metadata. Host commit/range/comparison patches
 come from a per-root Rust `GitPatchStore` keyed by resolved object IDs; the benchmark
 shares its range files and summaries.
 Native range capabilities resolve refs and ahead counts. Rust plans/executes host Git and processes

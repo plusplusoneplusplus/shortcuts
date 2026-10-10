@@ -8,7 +8,7 @@
  * This keeps the diff module decoupled from provider-specific APIs (ADO, GitHub).
  */
 
-import { loadNativeGit, type NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
+import type { NativeGitPatchStore } from '@plusplusoneplusplus/coc-native';
 import type { IPullRequestsService } from '../providers/interfaces';
 import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import type {
@@ -18,6 +18,7 @@ import type {
     PullRequestIterationDiffSource,
 } from './types';
 import { createPatchDiffProvider, nativePatchToDiff } from './diff-utils';
+import { loadSuppliedPatch, openRemotePatchStore } from './remote-patch';
 
 /** Authenticated transport identity, independent of provider routing aliases. */
 export interface RemoteDiffContext {
@@ -43,36 +44,24 @@ function createRemoteDiffProvider(
     let store: NativeGitPatchStore | undefined;
     function getStore() {
         if (!store) {
-            const addon = loadNativeGit();
             const execution = resolveWorkspaceExecutionContext(descriptor.repositoryRoot);
-            if (execution.kind === 'wsl' && !execution.distro) {
-                throw new Error('Remote patch processing requires a resolved WSL distro identity');
-            }
-            store = addon.openRemoteGitPatchStore(identity.workspaceId,
-                execution.kind === 'wsl' ? execution.linuxWorkingDirectory : descriptor.repositoryRoot, {
-                    provider: descriptor.provider,
-                    host: identity.host,
-                    repository: identity.repository,
-                    sourceId: String(descriptor.pullRequestId),
-                    iteration: descriptor.kind === 'pr-iteration' ? String(descriptor.iterationId) : undefined,
-                    baseIteration: descriptor.kind === 'pr-iteration' && descriptor.baseIterationId != null
-                        ? String(descriptor.baseIterationId) : undefined,
-                }, execution.kind === 'wsl' ? execution.distro : undefined);
+            store = openRemotePatchStore(identity.workspaceId, execution, {
+                provider: descriptor.provider,
+                host: identity.host,
+                repository: identity.repository,
+                sourceId: String(descriptor.pullRequestId),
+                iteration: descriptor.kind === 'pr-iteration' ? String(descriptor.iterationId) : undefined,
+                baseIteration: descriptor.kind === 'pr-iteration' && descriptor.baseIterationId != null
+                    ? String(descriptor.baseIterationId) : undefined,
+            });
         }
         return store;
     }
     async function load(filePath?: string, options?: GetFileDiffOptions) {
-        const request = getStore().beginTransport();
-        let result;
-        try {
-            result = await request.process(await fetchFullDiff());
-        } finally {
-            request.cancel();
-        }
-        const content = filePath === undefined ? result.content
-            : (await loadNativeGit().processGitPatch(result.files.find(file => file.path === filePath)?.raw ?? '',
-                options?.maxLines == null ? undefined : Math.floor(options.maxLines))).content;
-        return { ...nativePatchToDiff(result.files), content, summary: result.summary };
+        const result = await loadSuppliedPatch(fetchFullDiff, getStore(), undefined, filePath === undefined ? undefined : {
+            path: filePath, maxLines: options?.maxLines == null ? undefined : Math.floor(options.maxLines),
+        });
+        return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };
     }
 
     return {
