@@ -16,7 +16,8 @@ import type { Route } from '../../src/server/types';
 import { registerAllRoutes } from '../../src/server/routes/index';
 import type { RegisterRoutesOptions } from '../../src/server/routes/index';
 import type { CreateTaskInput, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { SentinelTodoService } from '../../src/server/sentinel-todos/sentinel-todo-service';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
 import { WhatsAppMessagingManager } from '../../src/server/messaging/whatsapp-messaging-manager';
@@ -197,6 +198,88 @@ describe('registerAllRoutes', () => {
     afterEach(async () => {
         vi.restoreAllMocks();
         await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('initializes Sentinel SQLite before publishing tools and borrows the process database lifecycle', async () => {
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owner = { workspaceId: 'ws-fixture', processId: 'parent' };
+        await store.addProcess({
+            id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+            metadata: { workspaceId: owner.workspaceId, mode: 'sentinel' },
+        });
+        const delegatedJobs = new DelegatedJobStore(tmpDir);
+        delegatedJobs.register({
+            id: 'child', title: 'Existing job', parent: owner,
+            child: { workspaceId: 'ws-child', processId: 'child' },
+        });
+        const previousJobs = delegatedJobs.list(owner.workspaceId);
+        const base = makeOpts();
+        base.runtimeConfigService!.config.features.sentinelTodoLedger = true;
+        let getTodos: (() => SentinelTodoService | undefined) | undefined;
+        const opts = makeOpts({
+            store, dataDir: tmpDir,
+            runtimeConfigService: base.runtimeConfigService,
+            setSentinelTodos: get => { getTodos = get; },
+        });
+        let composition: ReturnType<typeof registerAllRoutes> | undefined;
+        try {
+            const version = store.getDatabase().pragma<number>('user_version', { simple: true });
+            composition = registerAllRoutes([], opts);
+            const service = getTodos?.();
+            expect(service).toBeDefined();
+            await service!.create(owner, { title: 'Persist bookkeeping' }, { actor: 'user' });
+            composition.whatsappMessagingManager.dispose();
+            expect((await service!.list(owner)).items).toMatchObject([{ title: 'Persist bookkeeping' }]);
+            expect(await store.getProcess(owner.processId)).toBeDefined();
+            expect(delegatedJobs.list(owner.workspaceId)).toEqual(previousJobs);
+            expect(store.getDatabase().pragma<number>('user_version', { simple: true })).toBe(version);
+        } finally {
+            composition?.whatsappMessagingManager.dispose();
+            composition?.teamsMessagingManager.dispose();
+            composition?.autoPullManager.dispose();
+            composition?.workItemGitHubPullPoller.dispose();
+            composition?.workItemAzureBoardsPullPoller.dispose();
+            composition?.activeWorkspaceBackgroundRefresher.dispose();
+            composition?.dreamIdleScheduler.dispose();
+            composition?.repoTreeService.dispose();
+            composition?.agentProvidersQuotaCache?.dispose();
+            composition?.quotaPauseWatcher?.dispose();
+            store.close();
+        }
+    });
+
+    it('closes its owned native test database on shutdown without creating a file ledger', async () => {
+        const store = makeStore();
+        vi.mocked(store.getProcess).mockResolvedValue({
+            id: 'parent', type: 'chat', status: 'completed', startTime: new Date(),
+            metadata: { workspaceId: 'ws-fixture', mode: 'sentinel' },
+        });
+        const base = makeOpts();
+        base.runtimeConfigService!.config.features.sentinelTodoLedger = true;
+        let getTodos: (() => SentinelTodoService | undefined) | undefined;
+        const composition = registerAllRoutes([], makeOpts({
+            store, dataDir: tmpDir, runtimeConfigService: base.runtimeConfigService,
+            setSentinelTodos: get => { getTodos = get; },
+        }));
+        const owner = { workspaceId: 'ws-fixture', processId: 'parent' };
+        const service = getTodos!()!;
+        try {
+            await service.create(owner, { title: 'Test bookkeeping' }, { actor: 'user' });
+            expect(await fs.readdir(tmpDir)).not.toContain('processes.db');
+            composition.whatsappMessagingManager.dispose();
+            await expect(service.list(owner)).rejects.toThrow();
+        } finally {
+            composition.whatsappMessagingManager.dispose();
+            composition.teamsMessagingManager.dispose();
+            composition.autoPullManager.dispose();
+            composition.workItemGitHubPullPoller.dispose();
+            composition.workItemAzureBoardsPullPoller.dispose();
+            composition.activeWorkspaceBackgroundRefresher.dispose();
+            composition.dreamIdleScheduler.dispose();
+            composition.repoTreeService.dispose();
+            composition.agentProvidersQuotaCache?.dispose();
+            composition.quotaPauseWatcher?.dispose();
+        }
     });
 
     it('publishes the shared conversation cancellation capability through tool runtime', async () => {

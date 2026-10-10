@@ -1,7 +1,4 @@
 import { EventEmitter } from 'node:events';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
@@ -11,6 +8,7 @@ import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../../../src/server/delegation/delegated-job-reviews';
 import { sentinelTodoDisplayStatus } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
+import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
 const owner = { workspaceId: 'ws-parent', processId: 'queue_parent' };
 const childId = 'queue_child';
@@ -18,6 +16,7 @@ const flush = () => new Promise<void>(resolve => setTimeout(resolve, 20));
 
 describe('Sentinel to-do reviewed outcomes', () => {
     let dataDir: string;
+    let database: ReturnType<typeof createTodoTestDatabase>;
     let enabled: boolean;
     let jobs: DelegatedJobStore;
     let todos: SentinelTodoStore;
@@ -44,7 +43,8 @@ describe('Sentinel to-do reviewed outcomes', () => {
     }
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-review-'));
+        database = createTodoTestDatabase(createTodoTestDirectory());
+        dataDir = database.dataDir;
         enabled = true;
         const parent = {
             id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
@@ -60,7 +60,7 @@ describe('Sentinel to-do reviewed outcomes', () => {
         deliverOnce = vi.fn(async () => ({ path: 'queued', events: [] }));
         deliverNoticeOnce = vi.fn(async () => 'delivered');
         jobs = new DelegatedJobStore(dataDir);
-        todos = new SentinelTodoStore(dataDir);
+        todos = new SentinelTodoStore(database.db);
         onChange = vi.fn();
         service = new SentinelTodoService({ todos, store, jobs, onChange, getTask: queue.getTask as any });
         jobs.register({ id: childId, title: 'Fix login', parent: owner, child: { workspaceId: 'ws-child', processId: childId } });
@@ -68,7 +68,7 @@ describe('Sentinel to-do reviewed outcomes', () => {
     });
     afterEach(() => {
         results.dispose(); reviews.dispose();
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        database.dispose();
     });
 
     async function linkedItem(completionCondition = 'Login e2e passes'): Promise<SentinelTodoItem> {
@@ -140,7 +140,9 @@ describe('Sentinel to-do reviewed outcomes', () => {
         expect(sentinelTodoDisplayStatus(await view())).toBe('todo');
         expect((await view()).jobs[0].execution).toMatchObject({ review: { assessment: 'reviewed' } });
         const acknowledged = item(linked.id).jobs[0].result!.reviewed;
-        todos = new SentinelTodoStore(dataDir);
+        database.close();
+        database = createTodoTestDatabase(dataDir);
+        todos = new SentinelTodoStore(database.db);
         service = new SentinelTodoService({ todos, store, jobs });
         expect(sentinelTodoDisplayStatus(await view())).toBe('todo');
         await service.update(owner, linked.id, item(linked.id).revision, {
@@ -235,6 +237,28 @@ describe('Sentinel to-do reviewed outcomes', () => {
         await expect(service.update(owner, linked.id, accepted.revision, { reviewedJobs: evidence() }, 'sentinel'))
             .rejects.toMatchObject({ code: 'invalid' });
         expect(item(linked.id)).toEqual(accepted);
+    });
+
+    it('rolls back a failed review assessment without publishing a verdict and allows retry', async () => {
+        const linked = await linkedItem();
+        finish('completed');
+        await flush();
+        const accepted = todos.get(owner);
+        onChange.mockClear();
+        const restoreWrites = failTodoWrites(database.db);
+        const verdict = {
+            status: 'done' as const, statusReason: 'Completion condition verified', reviewedJobs: evidence(),
+        };
+        await expect(service.update(owner, linked.id, item(linked.id).revision, verdict, 'sentinel'))
+            .rejects.toThrow('sentinel test write failure');
+        expect(todos.get(owner)).toEqual(accepted);
+        expect(onChange).not.toHaveBeenCalled();
+        expect(sentinelTodoDisplayStatus(await view())).toBe('in_review');
+        restoreWrites();
+        await service.update(owner, linked.id, item(linked.id).revision, verdict, 'sentinel');
+        expect(sentinelTodoDisplayStatus(await view())).toBe('done');
+        expect(item(linked.id).jobs[0].result?.reviewed?.recordedBy).toBe('sentinel');
+        expect(onChange).toHaveBeenCalledTimes(1);
     });
 
     it('allows newly authorized linked work to be assessed without changing the earlier user verdict evidence', async () => {

@@ -1,6 +1,3 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
@@ -9,7 +6,7 @@ import {
     SENTINEL_TODOS_TOOL_NAME, createSentinelTodosTool, type SentinelTodosArgs,
 } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { buildSentinelTodosAddon, SENTINEL_TODO_LEDGER_GUIDANCE } from '../../../src/server/executors/prompt-builder';
-import { atomicWriteJsonUnique } from '../../../src/server/shared/fs-utils';
+import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-a', processId: 'queue_other' };
@@ -19,7 +16,7 @@ function sentinelProcess(id: string, workspaceId: string, mode = 'sentinel'): AI
 }
 
 describe('sentinel_todos tool', () => {
-    let dataDir: string;
+    let database: ReturnType<typeof createTodoTestDatabase>;
     let todos: SentinelTodoStore;
     let service: SentinelTodoService;
     let onChange: ReturnType<typeof vi.fn>;
@@ -37,19 +34,19 @@ describe('sentinel_todos tool', () => {
     }
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-tools-'));
+        database = createTodoTestDatabase(createTodoTestDirectory());
         processes.clear();
         processes.set(owner.processId, sentinelProcess(owner.processId, owner.workspaceId));
         processes.set(other.processId, sentinelProcess(other.processId, other.workspaceId));
         processes.set('queue_ask', sentinelProcess('queue_ask', 'ws-a', 'ask'));
-        todos = new SentinelTodoStore(dataDir);
+        todos = new SentinelTodoStore(database.db);
         onChange = vi.fn();
         service = new SentinelTodoService({
             todos, onChange,
             store: { getProcess: async (id: string) => processes.get(id) },
         });
     });
-    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+    afterEach(() => { database.dispose(); });
 
     it('is named sentinel_todos and offers no archive or job-control parameters', () => {
         const { tool } = createSentinelTodosTool({ service, owner });
@@ -327,18 +324,30 @@ describe('sentinel_todos tool', () => {
         expect(await call({ action: 'list' }, { workspaceId: 'ws-b', processId: owner.processId })).toMatchObject({ code: 'not_found' });
     });
 
-    it('reports a disk failure as an error without a change event', async () => {
-        const failing = new SentinelTodoService({
-            todos: new SentinelTodoStore(dataDir, () => { throw new Error('ENOSPC'); }),
-            store: { getProcess: async (id: string) => processes.get(id) },
-            onChange,
-        });
-        const result = await call({ action: 'create', title: 'A', completionCondition: 'c' }, owner, failing);
-        expect(result.error).toContain('ENOSPC');
+    it('reports a SQLite failure as an error without a change event and rolls back the write', async () => {
+        const restoreWrites = failTodoWrites(database.db);
+        const result = await call({ action: 'create', title: 'A', completionCondition: 'c' });
+        expect(result.error).toContain('sentinel test write failure');
         expect(onChange).not.toHaveBeenCalled();
-        // The real store still writes normally afterwards.
-        new SentinelTodoStore(dataDir, atomicWriteJsonUnique).create(owner, { title: 'B' }, { actor: 'user' });
+        expect(todos.get(owner)).toEqual({ revision: 0, items: [] });
+        restoreWrites();
+        new SentinelTodoStore(database.db).create(owner, { title: 'B' }, { actor: 'user' });
         expect(todos.get(owner).items.map(i => i.title)).toEqual(['B']);
+    });
+
+    it('leaves an existing item and ledger revision unchanged when an update fails', async () => {
+        const item = await createItem();
+        const accepted = todos.get(owner);
+        onChange.mockClear();
+        const restoreWrites = failTodoWrites(database.db);
+        const args = { action: 'update', itemId: item.id, expectedRevision: item.revision, notes: 'Updated' };
+        expect((await call(args)).error).toContain('sentinel test write failure');
+        expect(todos.get(owner)).toEqual(accepted);
+        expect(onChange).not.toHaveBeenCalled();
+        restoreWrites();
+        expect(await call(args)).toMatchObject({ item: { notes: 'Updated', revision: 2 } });
+        expect(todos.get(owner).revision).toBe(2);
+        expect(onChange).toHaveBeenCalledTimes(1);
     });
 });
 

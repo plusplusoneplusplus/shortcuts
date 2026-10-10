@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import * as fs from 'node:fs';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { z } from 'zod';
-import { getRepoDataPath } from '../paths';
-import { atomicWriteJsonUnique } from '../shared/fs-utils';
 
-export const SENTINEL_TODOS_FILE = 'sentinel-todos.json';
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
 
@@ -45,21 +42,19 @@ const jobLinkSchema = z.object({
     openLink: z.string().min(1).max(2_000),
     title: z.string().max(200).optional(),
     linkedAt: z.iso.datetime(),
-    linkedRevision: z.number().int().min(1).optional(),
+    linkedRevision: z.number().int().min(1),
     result: jobResultSchema.optional(),
 });
 const itemSchema = z.object({
     id,
-    /** Immutable tracking kind; stored items without a type remain normal. */
-    type: todoTypeSchema.default('normal'),
+    type: todoTypeSchema,
     title: z.string().trim().min(1).max(200),
     completionCondition: z.string().max(1_000),
     notes: z.string().max(8_000),
     targetRepo: targetRepoSchema.optional(),
     status: todoStatusSchema,
     statusReason: z.string().min(1).max(2_000).optional(),
-    /** Items stored before priorities existed read as `regular`. */
-    priority: todoPrioritySchema.default('regular'),
+    priority: todoPrioritySchema,
     outcome: outcomeSchema.optional(),
     archived: z.boolean(),
     revision: z.number().int().min(1),
@@ -68,14 +63,13 @@ const itemSchema = z.object({
     createdBy: actorSchema,
     updatedBy: actorSchema,
     idempotencyKey: id.optional(),
-    jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS).default([]),
+    jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS),
     /** Last user edit; job outcomes recorded before it must not override it. */
     userEditedAt: z.iso.datetime().optional(),
     /** Explicit user verdicts protect against reviews of already-linked work. */
     userVerdictRevision: z.number().int().min(1).optional(),
 });
 const ledgerSchema = z.object({ revision: z.number().int().min(0), items: z.array(itemSchema) });
-const fileSchema = z.object({ version: z.literal(1), ledgers: z.record(z.string(), ledgerSchema) });
 
 export type SentinelTodoItem = z.infer<typeof itemSchema>;
 export type SentinelTodoType = z.infer<typeof todoTypeSchema>;
@@ -131,22 +125,80 @@ export class SentinelTodoError extends Error {
     }
 }
 
-type FileShape = z.infer<typeof fileSchema>;
-
 /**
- * Per-workspace ledger file, partitioned by parent Sentinel process ID.
- * Every mutation is a synchronous read-modify-atomic-rename, so writes to one
- * ledger are serialized and a failed write never changes the accepted state.
- * Item revisions reject stale writers instead of overwriting newer edits.
+ * Owner-scoped ledgers in the shared processes database. SQLite serializes
+ * writers before they read; item and ledger revisions protect accepted state.
+ * The caller owns the database lifetime.
  */
 export class SentinelTodoStore {
-    constructor(
-        private readonly dataDir: string,
-        private readonly write: (file: string, data: unknown) => void = atomicWriteJsonUnique,
-    ) {}
+    constructor(private readonly db: NativeDatabase) {
+        db.transaction(() => db.exec(`
+            CREATE TABLE IF NOT EXISTS sentinel_todo_ledgers (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                PRIMARY KEY (workspace_id, parent_process_id)
+            );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_items (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                id TEXT NOT NULL,
+                item_order INTEGER NOT NULL CHECK (item_order >= 0),
+                type TEXT NOT NULL CHECK (type IN ('normal', 'manual')),
+                title TEXT NOT NULL,
+                completion_condition TEXT NOT NULL,
+                notes TEXT NOT NULL,
+                target_repo TEXT,
+                status TEXT NOT NULL CHECK (status IN ('todo', 'in_progress', 'needs_attention', 'done')),
+                status_reason TEXT,
+                priority TEXT NOT NULL CHECK (priority IN ('high', 'regular')),
+                outcome TEXT,
+                archived INTEGER NOT NULL CHECK (archived IN (0, 1)),
+                revision INTEGER NOT NULL CHECK (revision >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                created_by TEXT NOT NULL CHECK (created_by IN ('user', 'sentinel')),
+                updated_by TEXT NOT NULL CHECK (updated_by IN ('user', 'sentinel', 'system')),
+                idempotency_key TEXT,
+                user_edited_at TEXT,
+                user_verdict_revision INTEGER,
+                PRIMARY KEY (workspace_id, parent_process_id, id),
+                UNIQUE (workspace_id, parent_process_id, item_order),
+                FOREIGN KEY (workspace_id, parent_process_id)
+                    REFERENCES sentinel_todo_ledgers (workspace_id, parent_process_id) ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS sentinel_todo_items_idempotency
+                ON sentinel_todo_items (workspace_id, parent_process_id, idempotency_key)
+                WHERE idempotency_key IS NOT NULL;
+            CREATE TABLE IF NOT EXISTS sentinel_todo_jobs (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                server_key TEXT NOT NULL,
+                process_id TEXT NOT NULL,
+                job_order INTEGER NOT NULL CHECK (job_order >= 0),
+                job_workspace_id TEXT NOT NULL,
+                server_id TEXT,
+                kind TEXT NOT NULL CHECK (kind IN ('local', 'remote', 'ralph')),
+                session_id TEXT,
+                open_link TEXT NOT NULL,
+                title TEXT,
+                linked_at TEXT NOT NULL,
+                linked_revision INTEGER NOT NULL CHECK (linked_revision >= 1),
+                result TEXT,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id, server_key, process_id),
+                UNIQUE (workspace_id, parent_process_id, item_id, job_order),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS sentinel_todo_jobs_process
+                ON sentinel_todo_jobs (workspace_id, parent_process_id, process_id, server_key);
+        `))();
+    }
 
     get(owner: SentinelTodoOwner): SentinelTodoLedger {
-        return this.read(owner.workspaceId).ledgers[owner.processId] ?? { revision: 0, items: [] };
+        assertOwner(owner);
+        return this.db.transaction(() => this.read(owner))();
     }
 
     /** Retried creation with the same idempotency key returns the original item. */
@@ -155,40 +207,44 @@ export class SentinelTodoStore {
         input: SentinelTodoCreate,
         opts: { actor: SentinelTodoActor; idempotencyKey?: string },
     ): { item: SentinelTodoItem; created: boolean; ledgerRevision: number } {
-        const data = this.read(owner.workspaceId);
-        const ledger = data.ledgers[owner.processId] ?? { revision: 0, items: [] };
-        const replay = opts.idempotencyKey
-            ? ledger.items.find(item => item.idempotencyKey === opts.idempotencyKey) : undefined;
-        if (replay) return { item: replay, created: false, ledgerRevision: ledger.revision };
-        if (ledger.items.length >= MAX_TODO_ITEMS) {
-            throw new SentinelTodoError('limit', `A ledger holds at most ${MAX_TODO_ITEMS} items`);
-        }
-        const now = new Date().toISOString();
-        const fields = parse(todoCreateSchema, input);
-        assertReviewReason(opts.actor, fields.status, fields.statusReason);
-        const item = parse(itemSchema, {
-            id: randomUUID(),
-            type: fields.type ?? 'normal',
-            title: fields.title,
-            completionCondition: fields.completionCondition ?? '',
-            notes: fields.notes ?? '',
-            ...(fields.targetRepo ? { targetRepo: fields.targetRepo } : {}),
-            status: fields.status ?? 'todo',
-            ...(fields.statusReason ? { statusReason: fields.statusReason } : {}),
-            priority: fields.priority ?? 'regular',
-            archived: false,
-            revision: 1,
-            createdAt: now,
-            updatedAt: now,
-            createdBy: opts.actor,
-            updatedBy: opts.actor,
-            ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+        assertCaller(opts.actor);
+        if (opts.idempotencyKey !== undefined) parse(id, opts.idempotencyKey);
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const replay = opts.idempotencyKey
+                ? ledger.items.find(item => item.idempotencyKey === opts.idempotencyKey) : undefined;
+            if (replay) return { item: replay, created: false, ledgerRevision: ledger.revision };
+            if (ledger.items.length >= MAX_TODO_ITEMS) {
+                throw new SentinelTodoError('limit', `A ledger holds at most ${MAX_TODO_ITEMS} items`);
+            }
+            const now = new Date().toISOString();
+            const fields = parse(todoCreateSchema, input);
+            assertReviewReason(opts.actor, fields.status, fields.statusReason);
+            const item = parse(itemSchema, {
+                id: randomUUID(),
+                type: fields.type ?? 'normal',
+                title: fields.title,
+                completionCondition: fields.completionCondition ?? '',
+                notes: fields.notes ?? '',
+                ...(fields.targetRepo ? { targetRepo: fields.targetRepo } : {}),
+                status: fields.status ?? 'todo',
+                ...(fields.statusReason ? { statusReason: fields.statusReason } : {}),
+                priority: fields.priority ?? 'regular',
+                archived: false,
+                revision: 1,
+                createdAt: now,
+                updatedAt: now,
+                createdBy: opts.actor,
+                updatedBy: opts.actor,
+                jobs: [],
+                ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+            });
+            this.db.prepare(`INSERT INTO sentinel_todo_ledgers (workspace_id, parent_process_id, revision)
+                VALUES (?, ?, 0) ON CONFLICT DO NOTHING`).run(owner.workspaceId, owner.processId);
+            this.insertItem(owner, item, ledger.items.length);
+            this.advanceLedger(owner, ledger.revision);
+            return { item, created: true, ledgerRevision: ledger.revision + 1 };
         });
-        ledger.items.push(item);
-        ledger.revision += 1;
-        data.ledgers[owner.processId] = ledger;
-        this.save(owner.workspaceId, data);
-        return { item, created: true, ledgerRevision: ledger.revision };
     }
 
     /** Applies a patch only when `expectedRevision` matches the accepted item. */
@@ -199,79 +255,81 @@ export class SentinelTodoStore {
         patch: SentinelTodoPatch,
         actor: SentinelTodoActor,
     ): { item: SentinelTodoItem; ledgerRevision: number } {
+        assertCaller(actor);
         const fields = parse(todoPatchSchema, patch);
         assertReviewReason(actor, fields.status, fields.statusReason);
-        const data = this.read(owner.workspaceId);
-        const ledger = data.ledgers[owner.processId];
-        const index = ledger?.items.findIndex(item => item.id === itemId) ?? -1;
-        if (!ledger || index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
-        const current = ledger.items[index];
-        if (current.revision !== expectedRevision) {
-            throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
-        }
-        if (current.type === 'manual' && actor !== 'user' && fields.archived !== undefined) {
-            throw new SentinelTodoError('invalid', 'Only the user may archive or restore manual items');
-        }
-        const latestLinkedRevision = Math.max(0, ...current.jobs.map(link => link.linkedRevision ?? 0));
-        const changesVerdict = (fields.status !== undefined && fields.status !== current.status)
-            || fields.statusReason !== undefined || fields.outcome !== undefined
-            || (fields.archived !== undefined && fields.archived !== current.archived);
-        if (actor !== 'user' && current.type === 'normal' && changesVerdict
-            && current.jobs.some(link => !link.serverId && link.result)
-            && (current.userVerdictRevision ?? 0) > latestLinkedRevision) {
-            throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this work; preserve it rather than applying a stale review');
-        }
-        const reviewedLinks = fields.reviewedJobs?.map(evidence => {
-            const link = current.jobs.find(job => !job.serverId && job.kind !== 'remote' && job.processId === evidence.processId
-                && job.result?.terminalEventId === evidence.terminalEventId);
-            if (current.type !== 'normal' || !link) {
-                throw new SentinelTodoError('invalid', 'Review evidence must match a local terminal result on this item');
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
+            const current = ledger.items[index];
+            if (current.revision !== expectedRevision) {
+                throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
             }
-            return link;
-        }) ?? [];
-        if (reviewedLinks.length && (fields.status === undefined || (actor !== 'user' && !fields.statusReason?.trim()))) {
-            throw new SentinelTodoError('invalid', 'Acknowledging results requires an explicit status verdict and a short reason');
-        }
-        if (actor !== 'user' && reviewedLinks.some(link =>
-            (current.userVerdictRevision ?? 0) > (link.linkedRevision ?? 0))) {
-            throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this job; preserve it rather than applying a stale review');
-        }
-        if (actor !== 'user' && reviewedLinks.length && (current.archived || current.status === 'done')
-            && fields.status !== current.status) {
-            throw new SentinelTodoError('invalid', 'A result review cannot reopen an archived or Done item');
-        }
-        const now = new Date().toISOString();
-        const next: Record<string, unknown> = { ...current };
-        for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
-            if (fields[key] !== undefined) next[key] = fields[key];
-        }
-        for (const key of ['targetRepo', 'statusReason'] as const) {
-            if (fields[key] === null) delete next[key];
-            else if (fields[key] !== undefined) next[key] = fields[key];
-        }
-        // A status change without a fresh reason must not keep the old one.
-        if (fields.status !== undefined && fields.status !== current.status && fields.statusReason === undefined) {
-            delete next.statusReason;
-        }
-        // A new Done without a fresh outcome must not show an earlier review as this one's.
-        if (fields.status === 'done' && current.status !== 'done' && fields.outcome === undefined) {
-            delete next.outcome;
-        }
-        if (fields.outcome === null) delete next.outcome;
-        else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
-        // Priority is metadata: a priority-only edit must not supersede a linked job's result.
-        if (actor === 'user' && Object.keys(fields).some(key => key !== 'priority' && fields[key as keyof SentinelTodoPatch] !== undefined)) {
-            next.userEditedAt = now;
-        }
-        if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
-            || fields.outcome !== undefined || fields.archived !== undefined)) {
-            next.userVerdictRevision = current.revision + 1;
-        }
-        next.jobs = current.jobs.map(link => link.result && !link.result.reviewed
-            && reviewedLinks.includes(link)
-            ? { ...link, result: { ...link.result, reviewed: { recordedAt: now, recordedBy: actor } } }
-            : link);
-        return this.commit(owner, data, ledger, index, next, actor, now);
+            if (current.type === 'manual' && actor !== 'user' && fields.archived !== undefined) {
+                throw new SentinelTodoError('invalid', 'Only the user may archive or restore manual items');
+            }
+            const latestLinkedRevision = Math.max(0, ...current.jobs.map(link => link.linkedRevision));
+            const changesVerdict = (fields.status !== undefined && fields.status !== current.status)
+                || fields.statusReason !== undefined || fields.outcome !== undefined
+                || (fields.archived !== undefined && fields.archived !== current.archived);
+            if (actor !== 'user' && current.type === 'normal' && changesVerdict
+                && current.jobs.some(link => !link.serverId && link.result)
+                && (current.userVerdictRevision ?? 0) > latestLinkedRevision) {
+                throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this work; preserve it rather than applying a stale review');
+            }
+            const reviewedLinks = fields.reviewedJobs?.map(evidence => {
+                const link = current.jobs.find(job => !job.serverId && job.kind !== 'remote' && job.processId === evidence.processId
+                    && job.result?.terminalEventId === evidence.terminalEventId);
+                if (current.type !== 'normal' || !link) {
+                    throw new SentinelTodoError('invalid', 'Review evidence must match a local terminal result on this item');
+                }
+                return link;
+            }) ?? [];
+            if (reviewedLinks.length && (fields.status === undefined || (actor !== 'user' && !fields.statusReason?.trim()))) {
+                throw new SentinelTodoError('invalid', 'Acknowledging results requires an explicit status verdict and a short reason');
+            }
+            if (actor !== 'user' && reviewedLinks.some(link =>
+                (current.userVerdictRevision ?? 0) > link.linkedRevision)) {
+                throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this job; preserve it rather than applying a stale review');
+            }
+            if (actor !== 'user' && reviewedLinks.length && (current.archived || current.status === 'done')
+                && fields.status !== current.status) {
+                throw new SentinelTodoError('invalid', 'A result review cannot reopen an archived or Done item');
+            }
+            const now = new Date().toISOString();
+            const next: Record<string, unknown> = { ...current };
+            for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
+                if (fields[key] !== undefined) next[key] = fields[key];
+            }
+            for (const key of ['targetRepo', 'statusReason'] as const) {
+                if (fields[key] === null) delete next[key];
+                else if (fields[key] !== undefined) next[key] = fields[key];
+            }
+            // A status change without a fresh reason must not keep the old one.
+            if (fields.status !== undefined && fields.status !== current.status && fields.statusReason === undefined) {
+                delete next.statusReason;
+            }
+            // A new Done without a fresh outcome must not show an earlier review as this one's.
+            if (fields.status === 'done' && current.status !== 'done' && fields.outcome === undefined) {
+                delete next.outcome;
+            }
+            if (fields.outcome === null) delete next.outcome;
+            else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
+            // Priority is metadata: a priority-only edit must not supersede a linked job's result.
+            if (actor === 'user' && Object.keys(fields).some(key => key !== 'priority' && fields[key as keyof SentinelTodoPatch] !== undefined)) {
+                next.userEditedAt = now;
+            }
+            if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
+                || fields.outcome !== undefined || fields.archived !== undefined)) {
+                next.userVerdictRevision = current.revision + 1;
+            }
+            next.jobs = current.jobs.map(link => link.result && !link.result.reviewed
+                && reviewedLinks.includes(link)
+                ? { ...link, result: { ...link.result, reviewed: { recordedAt: now, recordedBy: actor } } }
+                : link);
+            return this.commit(owner, ledger, index, next, actor, now);
+        });
     }
 
     /**
@@ -283,27 +341,28 @@ export class SentinelTodoStore {
         itemId: string,
         input: SentinelTodoJobLinkInput,
     ): { item: SentinelTodoItem; ledgerRevision: number; changed: boolean } {
-        const data = this.read(owner.workspaceId);
-        const ledger = data.ledgers[owner.processId];
-        const index = ledger?.items.findIndex(item => item.id === itemId) ?? -1;
-        if (!ledger || index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
-        const current = ledger.items[index];
-        if (current.type === 'manual') {
-            throw new SentinelTodoError('invalid', 'Manual items cannot link jobs or authorize execution; ask the user for clarification');
-        }
-        if (current.jobs.some(job => job.processId === input.processId && job.serverId === input.serverId)) {
-            return { item: current, ledgerRevision: ledger.revision, changed: false };
-        }
-        if (current.jobs.length >= MAX_TODO_JOB_LINKS) {
-            throw new SentinelTodoError('limit', `An item links at most ${MAX_TODO_JOB_LINKS} jobs`);
-        }
-        const now = new Date().toISOString();
-        const next: Record<string, unknown> = {
-            ...current, status: 'in_progress',
-            jobs: [...current.jobs, { ...input, linkedAt: now, linkedRevision: current.revision + 1 }],
-        };
-        delete next.statusReason;
-        return { ...this.commit(owner, data, ledger, index, next, 'sentinel', now), changed: true };
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
+            const current = ledger.items[index];
+            if (current.type === 'manual') {
+                throw new SentinelTodoError('invalid', 'Manual items cannot link jobs or authorize execution; ask the user for clarification');
+            }
+            if (current.jobs.some(job => job.processId === input.processId && job.serverId === input.serverId)) {
+                return { item: current, ledgerRevision: ledger.revision, changed: false };
+            }
+            if (current.jobs.length >= MAX_TODO_JOB_LINKS) {
+                throw new SentinelTodoError('limit', `An item links at most ${MAX_TODO_JOB_LINKS} jobs`);
+            }
+            const now = new Date().toISOString();
+            const next: Record<string, unknown> = {
+                ...current, status: 'in_progress',
+                jobs: [...current.jobs, { ...input, linkedAt: now, linkedRevision: current.revision + 1 }],
+            };
+            delete next.statusReason;
+            return { ...this.commit(owner, ledger, index, next, 'sentinel', now), changed: true };
+        });
     }
 
     /**
@@ -319,34 +378,34 @@ export class SentinelTodoStore {
         result: Omit<SentinelTodoJobResult, 'recordedAt'>,
         describe: (link: SentinelTodoJobLink) => string,
     ): { item: SentinelTodoItem; ledgerRevision: number } | undefined {
-        const data = this.read(owner.workspaceId);
-        const ledger = data.ledgers[owner.processId];
-        const index = ledger?.items.findIndex(item =>
-            item.type === 'normal' && item.jobs.some(job => job.processId === processId && !job.serverId)) ?? -1;
-        if (!ledger || index < 0) return undefined;
-        const current = ledger.items[index];
-        const link = current.jobs.find(job => job.processId === processId && !job.serverId)!;
-        if (link.result) return undefined;
-        const now = new Date().toISOString();
-        const recorded = { ...link, result: { ...result, recordedAt: now } };
-        const next: Record<string, unknown> = {
-            ...current, jobs: current.jobs.map(job => job === link ? recorded : job),
-        };
-        const supersededByUser = (current.userVerdictRevision ?? 0) > (link.linkedRevision ?? 0)
-            || (!!current.userEditedAt && current.userEditedAt > link.linkedAt);
-        const supersededByAttempt = current.jobs.slice(current.jobs.indexOf(link) + 1)
-            .some(job => job.result?.outcome === 'completed');
-        if (result.outcome !== 'completed' && !current.archived && current.status !== 'done'
-            && !supersededByUser && !supersededByAttempt) {
-            next.status = 'needs_attention';
-            next.statusReason = describe(recorded).slice(0, 2_000);
-        }
-        return this.commit(owner, data, ledger, index, next, 'system', now);
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item =>
+                item.type === 'normal' && item.jobs.some(job => job.processId === processId && !job.serverId));
+            if (index < 0) return undefined;
+            const current = ledger.items[index];
+            const link = current.jobs.find(job => job.processId === processId && !job.serverId)!;
+            if (link.result) return undefined;
+            const now = new Date().toISOString();
+            const recorded = { ...link, result: { ...result, recordedAt: now } };
+            const next: Record<string, unknown> = {
+                ...current, jobs: current.jobs.map(job => job === link ? recorded : job),
+            };
+            const supersededByUser = (current.userVerdictRevision ?? 0) > link.linkedRevision
+                || (!!current.userEditedAt && current.userEditedAt > link.linkedAt);
+            const supersededByAttempt = current.jobs.slice(current.jobs.indexOf(link) + 1)
+                .some(job => job.result?.outcome === 'completed');
+            if (result.outcome !== 'completed' && !current.archived && current.status !== 'done'
+                && !supersededByUser && !supersededByAttempt) {
+                next.status = 'needs_attention';
+                next.statusReason = describe(recorded).slice(0, 2_000);
+            }
+            return this.commit(owner, ledger, index, next, 'system', now);
+        });
     }
 
     private commit(
         owner: SentinelTodoOwner,
-        data: FileShape,
         ledger: SentinelTodoLedger,
         index: number,
         next: Record<string, unknown>,
@@ -356,30 +415,138 @@ export class SentinelTodoStore {
         const item = parse(itemSchema, {
             ...next, revision: ledger.items[index].revision + 1, updatedAt: now, updatedBy: actor,
         });
-        ledger.items[index] = item;
-        ledger.revision += 1;
-        this.save(owner.workspaceId, data);
-        return { item, ledgerRevision: ledger.revision };
+        const row = itemRow(owner, item);
+        const changed = this.db.prepare(`UPDATE sentinel_todo_items SET
+            ${ITEM_FIELDS.map(field => `${field} = @${field}`).join(', ')}
+            WHERE workspace_id = @workspace_id AND parent_process_id = @parent_process_id
+                AND id = @id AND revision = @expected_revision`)
+            .run({ ...row, expected_revision: ledger.items[index].revision }).changes;
+        if (changed !== 1) throw new SentinelTodoError('conflict', 'The item changed since it was loaded');
+        this.writeJobs(owner, item);
+        this.advanceLedger(owner, ledger.revision);
+        return { item, ledgerRevision: ledger.revision + 1 };
     }
 
-    private read(workspaceId: string): FileShape {
-        let raw: string;
-        try {
-            raw = fs.readFileSync(this.file(workspaceId), 'utf8');
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, ledgers: {} };
-            throw error;
+    private read(owner: SentinelTodoOwner): SentinelTodoLedger {
+        const scope = [owner.workspaceId, owner.processId];
+        const ledger = this.db.prepare(`SELECT revision FROM sentinel_todo_ledgers
+            WHERE workspace_id = ? AND parent_process_id = ?`).get<{ revision: number }>(...scope);
+        if (!ledger) return { revision: 0, items: [] };
+        const jobs = this.db.prepare(`SELECT * FROM sentinel_todo_jobs
+            WHERE workspace_id = ? AND parent_process_id = ? ORDER BY job_order`).all<JobRow>(...scope);
+        const byItem = new Map<string, SentinelTodoJobLink[]>();
+        for (const row of jobs) {
+            const links = byItem.get(row.item_id) ?? [];
+            links.push(parse(jobLinkSchema, {
+                processId: row.process_id, workspaceId: row.job_workspace_id, kind: row.kind,
+                openLink: row.open_link, linkedAt: row.linked_at, linkedRevision: row.linked_revision,
+                ...optional('serverId', row.server_id), ...optional('sessionId', row.session_id),
+                ...optional('title', row.title), ...jsonField('result', row.result),
+            }));
+            byItem.set(row.item_id, links);
         }
-        return fileSchema.parse(JSON.parse(raw));
+        const items = this.db.prepare(`SELECT * FROM sentinel_todo_items
+            WHERE workspace_id = ? AND parent_process_id = ? ORDER BY item_order`).all<ItemRow>(...scope);
+        return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
+            id: row.id, type: row.type, title: row.title, completionCondition: row.completion_condition,
+            notes: row.notes, status: row.status, priority: row.priority, archived: row.archived === 1,
+            revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
+            createdBy: row.created_by, updatedBy: row.updated_by, jobs: byItem.get(row.id) ?? [],
+            ...jsonField('targetRepo', row.target_repo), ...jsonField('outcome', row.outcome),
+            ...optional('statusReason', row.status_reason), ...optional('idempotencyKey', row.idempotency_key),
+            ...optional('userEditedAt', row.user_edited_at), ...optional('userVerdictRevision', row.user_verdict_revision),
+        })) });
     }
 
-    private save(workspaceId: string, data: FileShape): void {
-        this.write(this.file(workspaceId), data);
+    private insertItem(owner: SentinelTodoOwner, item: SentinelTodoItem, order: number): void {
+        const columns = ['workspace_id', 'parent_process_id', 'id', 'item_order', ...ITEM_FIELDS];
+        this.db.prepare(`INSERT INTO sentinel_todo_items (${columns.join(', ')})
+            VALUES (${columns.map(column => `@${column}`).join(', ')})`)
+            .run({ ...itemRow(owner, item), item_order: order });
     }
 
-    private file(workspaceId: string): string {
-        return getRepoDataPath(this.dataDir, workspaceId, SENTINEL_TODOS_FILE);
+    private writeJobs(owner: SentinelTodoOwner, item: SentinelTodoItem): void {
+        const statement = this.db.prepare(`INSERT INTO sentinel_todo_jobs (
+            workspace_id, parent_process_id, item_id, server_key, process_id, job_order,
+            job_workspace_id, server_id, kind, session_id, open_link, title, linked_at, linked_revision, result
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (workspace_id, parent_process_id, item_id, server_key, process_id)
+        DO UPDATE SET result = excluded.result`);
+        item.jobs.forEach((job, order) => statement.run(
+            owner.workspaceId, owner.processId, item.id, job.serverId ?? '', job.processId, order,
+            job.workspaceId, job.serverId ?? null, job.kind, job.sessionId ?? null, job.openLink,
+            job.title ?? null, job.linkedAt, job.linkedRevision, encode(job.result),
+        ));
     }
+
+    private advanceLedger(owner: SentinelTodoOwner, expectedRevision: number): void {
+        const changed = this.db.prepare(`UPDATE sentinel_todo_ledgers SET revision = revision + 1
+            WHERE workspace_id = ? AND parent_process_id = ? AND revision = ?`)
+            .run(owner.workspaceId, owner.processId, expectedRevision).changes;
+        if (changed !== 1) throw new SentinelTodoError('conflict', 'The ledger changed since it was loaded');
+    }
+
+    private mutate<T>(owner: SentinelTodoOwner, mutation: () => T): T {
+        assertOwner(owner);
+        return this.db.transaction(() => {
+            // Native transactions begin deferred. A zero-row write reserves the
+            // SQLite writer before reads while the native mutex stays held.
+            this.db.prepare('UPDATE sentinel_todo_ledgers SET revision = revision WHERE 0').run();
+            return mutation();
+        })();
+    }
+}
+
+const ITEM_FIELDS = [
+    'type', 'title', 'completion_condition', 'notes', 'target_repo', 'status', 'status_reason',
+    'priority', 'outcome', 'archived', 'revision', 'created_at', 'updated_at', 'created_by',
+    'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision',
+] as const;
+
+interface ItemRow {
+    id: string; type: string; title: string; completion_condition: string; notes: string;
+    target_repo: string | null; status: string; status_reason: string | null; priority: string;
+    outcome: string | null; archived: number; revision: number; created_at: string; updated_at: string;
+    created_by: string; updated_by: string; idempotency_key: string | null; user_edited_at: string | null;
+    user_verdict_revision: number | null;
+}
+
+interface JobRow {
+    item_id: string; process_id: string; job_workspace_id: string; server_id: string | null;
+    kind: string; session_id: string | null; open_link: string; title: string | null;
+    linked_at: string; linked_revision: number; result: string | null;
+}
+
+function itemRow(owner: SentinelTodoOwner, item: SentinelTodoItem) {
+    return {
+        workspace_id: owner.workspaceId, parent_process_id: owner.processId, id: item.id,
+        type: item.type, title: item.title, completion_condition: item.completionCondition, notes: item.notes,
+        target_repo: encode(item.targetRepo), status: item.status, status_reason: item.statusReason ?? null,
+        priority: item.priority, outcome: encode(item.outcome), archived: Number(item.archived), revision: item.revision,
+        created_at: item.createdAt, updated_at: item.updatedAt, created_by: item.createdBy, updated_by: item.updatedBy,
+        idempotency_key: item.idempotencyKey ?? null, user_edited_at: item.userEditedAt ?? null,
+        user_verdict_revision: item.userVerdictRevision ?? null,
+    };
+}
+
+function encode(value: unknown): string | null {
+    return value === undefined ? null : JSON.stringify(value);
+}
+
+function optional(key: string, value: string | number | null): Record<string, unknown> {
+    return value === null ? {} : { [key]: value };
+}
+
+function jsonField(key: string, value: string | null): Record<string, unknown> {
+    return value === null ? {} : { [key]: JSON.parse(value) };
+}
+
+function assertOwner(owner: SentinelTodoOwner): void {
+    parse(z.object({ workspaceId: id, processId: id }).strict(), owner);
+}
+
+function assertCaller(actor: SentinelTodoActor): void {
+    parse(z.enum(['user', 'sentinel']), actor);
 }
 
 function assertReviewReason(actor: SentinelTodoActor, status: SentinelTodoStatus | undefined, reason: string | null | undefined): void {

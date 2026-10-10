@@ -154,12 +154,14 @@ See [admin-config.md](admin-config.md) for runtime semantics and gates; use help
 ### Global persistence
 
 The data directory defaults to `~/.coc/`. Native SQLite `processes.db` stores
-processes, workspaces, queue and scheduling state.
+processes, workspaces, queue, scheduling state and workspace/chat-scoped Sentinel to-dos.
 `createProcessStore()` selects `SqliteProcessStore`; `store.backend: file` warns and is ignored.
 File stores are injected test fixtures.
 Native-addon failure is a startup failure, not a JavaScript SQLite fallback.
 
-Schema definitions, migrations and version live in `packages/forge/src/sqlite-schema.ts`.
+The process schema definitions, migrations and version live in `packages/forge/src/sqlite-schema.ts`.
+`sentinel-todos/sentinel-todo-store.ts` initializes its additive feature tables on the
+shared native handle before queue activation; the store borrows its owner's lifecycle.
 Queue tasks, controls and paths live in `queue_tasks`, `queue_repo_state` and `queue_repo_paths`.
 `queues.json` is handled by storage snapshot import/export, not live queue persistence.
 See [process-store.md](process-store.md) for tables and read/write contracts.

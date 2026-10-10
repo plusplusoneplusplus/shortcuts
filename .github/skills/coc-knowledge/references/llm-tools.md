@@ -83,7 +83,8 @@ items; Done reasons explain available evidence against Done when, or title/notes
 outcome with independent delivery and assessment, or `unavailable` for remote links.
 Local verdict updates pass `reviewedJobs` with exact process/terminal-event identities,
 `status` and a reason; the store atomically acknowledges only that evidence under the
-item revision. Notes/priority edits and delivered parent turns never prove assessment.
+item revision in native SQLite; see [process-store.md](process-store.md#sentinel-to-do-store).
+Notes/priority edits and delivered parent turns never prove assessment.
 User status/reason/outcome/archive decisions supersede already-linked jobs without
 declaring their evidence reviewed; acknowledgment requires exact `reviewedJobs`. Reviewed markers
 survive reload/replay. Delivery commits invalidate the linked ledger without changing its revision.

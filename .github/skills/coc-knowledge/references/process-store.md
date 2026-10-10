@@ -24,7 +24,7 @@ between calls.
 
 `getDatabase()` returns the shared `NativeDatabase` handle used by queue, cron,
 wakeup, schedule, trigger, turn-performance, chat-binding, task-group, startup
-repair, and route stores. The admin database browser opens `processes.db` by path
+repair, Sentinel to-do, and route stores. The admin database browser opens `processes.db` by path
 through its own short-lived native handle so each request closes what it owns.
 
 ### Conversation search
@@ -82,6 +82,18 @@ counts to separate native/transport cost from Forge hydration.
 | `work_item_chat_bindings` | workItemId → taskId (one chat per Work Item per canonical origin; `workspace_id` stores the origin key) |
 | `task_groups` | Parent/child task-group registry: one row per hierarchical run/session or chat folder (type, title, normalized status, hidden flag, origin process, `parent_group_id`, extra JSON) |
 | `task_group_members` | Child links per group: role (`generation`/`item`/`reduce`/`iteration`/`final-check`/`analyzer`/`critic`), task/process IDs, `itemKey`, `memberIndex` |
+
+### Sentinel to-do store
+
+`packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
+`sentinel_todo_ledgers`, `sentinel_todo_items` and `sentinel_todo_jobs` tables in
+the shared `processes.db`. Workspace and parent process keys isolate repos,
+groups and chats; unique scoped idempotency keys and job identities make replays
+safe. Transactions acquire the database writer before mutation reads and compare
+ledger/item revisions. Item edits, terminal evidence and review acknowledgments
+commit together. Reads use a consistent snapshot. Structured fields use JSON
+inside SQLite; machine-local items are excluded from export/import and cleared
+transactionally by the to-do wipe domain.
 
 ### Chat binding stores
 

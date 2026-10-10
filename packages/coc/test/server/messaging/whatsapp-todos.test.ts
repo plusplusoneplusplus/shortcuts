@@ -1,6 +1,3 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
@@ -9,11 +6,13 @@ import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/ser
 import { formatTodosReply, TODOS_DISABLED_REPLY, TODOS_NO_TARGET_REPLY } from '../../../src/server/messaging/messaging-todos';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
+import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
 
 const GLOBAL = 'global-workspace-00';
 
 describe('WhatsApp list todos', () => {
     let dir: string;
+    let database: ReturnType<typeof createTodoTestDatabase>;
     let bindings: WhatsAppBindings;
     let todos: SentinelTodoStore;
     let service: SentinelTodoService;
@@ -38,10 +37,9 @@ describe('WhatsApp list todos', () => {
         groupJid: 'group@g.us', workspaceId, processId, taskId: `t-${outboundId}`, inboundId: `in-${outboundId}`,
         outboundIds: [outboundId], nextPart: 1, status: 'delivered',
     });
-    const ledgerFile = () => path.join(dir, 'repos', 'ws-a', 'sentinel-todos.json');
-
     beforeEach(async () => {
-        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-todos-'));
+        database = createTodoTestDatabase(createTodoTestDirectory());
+        dir = database.dataDir;
         bindings = new WhatsAppBindings(dir);
         store = {
             getWorkspaces: vi.fn().mockResolvedValue(workspaces),
@@ -52,7 +50,7 @@ describe('WhatsApp list todos', () => {
             updateProcess: vi.fn(),
         } as unknown as WhatsAppRouterDeps['store'];
         await bindings.restore(store);
-        todos = new SentinelTodoStore(dir);
+        todos = new SentinelTodoStore(database.db);
         service = new SentinelTodoService({ todos, store: store as never });
         enabled = true;
         const queue = new TaskQueueManager();
@@ -64,7 +62,7 @@ describe('WhatsApp list todos', () => {
             getTask: id => queue.getTask(id), getTodos: () => enabled ? service : undefined,
         });
     });
-    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+    afterEach(() => database.dispose());
 
     function seedLedger() {
         const owner = { workspaceId: 'ws-a', processId: 'sent-a' };
@@ -82,10 +80,11 @@ describe('WhatsApp list todos', () => {
     }
 
     it('lists the selected Sentinel topic\'s unfinished items, grouping manual tracking, read-only', async () => {
-        seedLedger();
+        const owner = seedLedger();
         bindings.selectRepo('ws-a');
         bindings.selectTopic('ws-a', 'sent-a');
-        const before = fs.readFileSync(ledgerFile(), 'utf8');
+        const before = todos.get(owner);
+        database.db.pragma('query_only = ON');
         await router.handle(inbound('list todos', 'todos'));
         expect(send).toHaveBeenCalledTimes(1);
         expect(send).toHaveBeenCalledWith([
@@ -99,7 +98,7 @@ describe('WhatsApp list todos', () => {
             '4. [To do] Call the vendor',
         ].join('\n'), 'todos');
         // No ledger write, AI admission, selection change; replies are guarded own messages.
-        expect(fs.readFileSync(ledgerFile(), 'utf8')).toBe(before);
+        expect(todos.get(owner)).toEqual(before);
         expect(enqueue).not.toHaveBeenCalled();
         expect(bindings.selectedRepo).toBe('ws-a');
         expect(bindings.topic('ws-a')).toBe('sent-a');
