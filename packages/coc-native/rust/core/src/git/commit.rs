@@ -33,23 +33,31 @@ pub const EMPTY_TREE_HASH: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /// `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
 /// they are absent everywhere in this capability: they are the caller's own
 /// values, and the caller attaches them.
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "GitCommitFile")
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitFile {
     pub path: String,
     /// Source path of a rename or copy; `None` for everything else.
     pub original_path: Option<String>,
+    #[cfg_attr(feature = "napi", napi(ts_type = "string"))]
     pub status: ChangeStatus,
-    /// `None` rather than zero when `--numstat` had nothing to say — a binary
-    /// file, or a missing numstat row. The
-    /// TypeScript left the fields `undefined` there and the UI renders a blank
-    /// column rather than a misleading `0`.
+    /// Binary files and missing numstat rows have absent counts, not zero.
+    /// JavaScript omits these fields so the UI renders a blank column.
     pub additions: Option<u32>,
     pub deletions: Option<u32>,
 }
 
 /// A commit's file list, and the parent the list was computed against.
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "GitCommitFiles")
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitFiles {
+    /// The commit's first parent, or git's empty tree for a root commit.
     pub parent_hash: String,
     pub files: Vec<CommitFile>,
 }

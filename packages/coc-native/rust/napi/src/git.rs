@@ -22,7 +22,7 @@ use coc_native_core::git::branch::{
 };
 use coc_native_core::git::commit::{
     commit_diff, commit_files, file_bytes_at_commit, file_content_at_commit, file_exists_at_commit,
-    validate_ref, CommitFile, CommitFiles,
+    validate_ref, CommitFiles,
 };
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::diff::diff_no_index;
@@ -366,54 +366,6 @@ pub fn git_log_commit(repo_root: String, rev: String) -> AsyncTask<GitLogCommitT
 // Commit detail
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// One file a commit touched.
-///
-/// `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
-/// they are absent on a status entry and a range file: they are the caller's
-/// own values, and the caller attaches them.
-#[napi(object)]
-pub struct GitCommitFile {
-    pub path: String,
-    /// Source path of a rename or copy; absent otherwise.
-    pub original_path: Option<String>,
-    /// A `GitChangeStatus` string union member.
-    pub status: String,
-    /// Absent rather than zero when `--numstat` had nothing to say — a binary
-    /// file, above all. The UI renders a blank column there rather than a
-    /// misleading `0`.
-    pub additions: Option<u32>,
-    pub deletions: Option<u32>,
-}
-
-impl From<CommitFile> for GitCommitFile {
-    fn from(file: CommitFile) -> Self {
-        Self {
-            path: file.path,
-            original_path: file.original_path,
-            status: file.status.as_str().to_string(),
-            additions: file.additions,
-            deletions: file.deletions,
-        }
-    }
-}
-
-/// A commit's file list, and the parent the list was computed against.
-#[napi(object)]
-pub struct GitCommitFiles {
-    /// The commit's first parent, or git's empty tree for a root commit.
-    pub parent_hash: String,
-    pub files: Vec<GitCommitFile>,
-}
-
-impl From<CommitFiles> for GitCommitFiles {
-    fn from(output: CommitFiles) -> Self {
-        Self {
-            parent_hash: output.parent_hash,
-            files: output.files.into_iter().map(GitCommitFile::from).collect(),
-        }
-    }
-}
-
 /// Read the files a commit touched, with their line counts and its parent.
 ///
 /// Three children share one crossing: Git supplies the parent list and the
@@ -424,12 +376,10 @@ pub fn git_commit_files(
     repo_root: String,
     commit: String,
     options: Option<GitExecOptions>,
-) -> AsyncTask<crate::task::Blocking<GitCommitFiles>> {
+) -> AsyncTask<crate::task::Blocking<CommitFiles>> {
     let options = resolve_options(options);
     AsyncTask::new(crate::task::Blocking::new(move || {
-        commit_files(&PathBuf::from(repo_root), &commit, &options)
-            .map(GitCommitFiles::from)
-            .map_err(to_napi_error)
+        commit_files(&PathBuf::from(repo_root), &commit, &options).map_err(to_napi_error)
     }))
 }
 
@@ -449,10 +399,9 @@ pub fn process_git_commit_metadata(
     name_status: String,
     numstat: String,
     parents: String,
-) -> AsyncTask<crate::task::Blocking<GitCommitFiles>> {
+) -> AsyncTask<crate::task::Blocking<CommitFiles>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::commit::process_commit_metadata(&name_status, &numstat, &parents)
-            .into())
+        Ok(coc_native_core::git::commit::process_commit_metadata(&name_status, &numstat, &parents))
     }))
 }
 
