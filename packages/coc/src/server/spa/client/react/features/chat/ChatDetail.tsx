@@ -2735,12 +2735,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     resumeLaunching={headerMetadata.resumeLaunching}
                     resumeSessionId={headerMetadata.resumeSessionId}
                     isPending={headerMetadata.isPending}
-                    sessionTokenLimit={sessionTokenLimit}
-                    sessionCurrentTokens={sessionCurrentTokens}
-                    sessionSystemTokens={sessionSystemTokens}
-                    sessionToolTokens={sessionToolTokens}
-                    sessionConversationTokens={sessionConversationTokens}
-                    sessionModel={sessionModel}
                     copied={copied}
                     setCopied={setCopied}
                     taskId={taskId}
