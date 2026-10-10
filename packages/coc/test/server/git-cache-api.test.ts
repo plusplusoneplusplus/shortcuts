@@ -4,7 +4,8 @@
  * Verifies that the git endpoints use GitCacheService correctly:
  * - Second call without refresh returns cached data (git not re-invoked)
  * - Call with ?refresh=true re-invokes git and updates cache
- * - Commit-files and commit-diff are cached immutably
+ * - Commit files and patches read through the shared Rust backend without a
+ *   duplicate route cache
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
@@ -18,32 +19,15 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
-// Mock forge git exec and child_process
-// ============================================================================
-
-const mockExecSync = vi.fn();
-vi.mock('child_process', function () { return ({
-    execSync: (...args: any[]) => mockExecSync(...args),
-}); });
-
-// The commit-files route reads the addon capability, so the call the cache
-// tests count is the capability's, not a git spawn's.
-const mockGitCommitFiles = vi.fn();
-vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
-    const actual = await importOriginal<Record<string, unknown>>();
-    return {
-        ...actual,
-        loadNativeGit: () => ({ gitCommitFiles: (...args: any[]) => mockGitCommitFiles(...args) }),
-    };
-});
-
-// ============================================================================
-// Mock GitRangeService (used by branch-range endpoint) and BranchService
+// Mock Forge Git services
 // ============================================================================
 
 const mockDetectCommitRange = vi.fn();
 const mockGetBranchStatus = vi.fn();
 const mockForgeExecGit = vi.fn();
+const mockLoadGitHistory = vi.fn();
+const mockLoadCommitFiles = vi.fn();
+const mockLoadCommitShowPatch = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<any>();
@@ -52,6 +36,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         execGit: (...args: any[]) => mockForgeExecGit(...args),
         // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
         execGitAsync: async (...args: any[]) => mockForgeExecGit(...args),
+        loadGitHistory: (...args: any[]) => mockLoadGitHistory(...args),
+        loadCommitFiles: (...args: any[]) => mockLoadCommitFiles(...args),
+        loadCommitShowPatch: (...args: any[]) => mockLoadCommitShowPatch(...args),
         GitRangeService: class {
             detectCommitRange = mockDetectCommitRange;
             getCurrentBranch = vi.fn().mockResolvedValue('main');
@@ -64,6 +51,19 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         }); }),
     };
 });
+
+function setupGitHistoryMock() {
+    mockLoadGitHistory.mockResolvedValue([{
+        hash: 'aaaa',
+        shortHash: 'aaaa',
+        subject: 'First',
+        authorName: 'Alice',
+        authorEmail: 'alice@example.com',
+        date: '2026-01-01T00:00:00Z',
+        parentHashes: '',
+        body: '',
+    }]);
+}
 
 // ============================================================================
 // Test Helpers
@@ -133,11 +133,14 @@ describe('Git API caching', () => {
     });
 
     beforeEach(() => {
-        mockExecSync.mockReset();
-        mockGitCommitFiles.mockReset();
-        mockGitCommitFiles.mockResolvedValue({ parentHash: '', files: [] });
         mockForgeExecGit.mockReset();
         mockForgeExecGit.mockReturnValue('');
+        mockLoadGitHistory.mockReset();
+        mockLoadGitHistory.mockResolvedValue([]);
+        mockLoadCommitFiles.mockReset();
+        mockLoadCommitFiles.mockResolvedValue([]);
+        mockLoadCommitShowPatch.mockReset();
+        mockLoadCommitShowPatch.mockResolvedValue({ content: { raw: '' } });
         mockDetectCommitRange.mockReset();
         mockGetBranchStatus.mockReset();
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
@@ -151,123 +154,108 @@ describe('Git API caching', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/git/commits (cache)', () => {
-        const COMMIT_LOG = 'aaaa\naaaa\nFirst\nAlice\nalice@example.com\n2026-01-01T00:00:00Z\n\n';
-
-        function setupGitMock() {
-            mockForgeExecGit.mockImplementation((args: string[]) => {
-                if (args[0] === 'log') return COMMIT_LOG;
-                return '';
-            });
-        }
-
         it('second call returns cached data without re-invoking git', async () => {
-            setupGitMock();
+            setupGitHistoryMock();
 
             const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50`);
             expect(res1.status).toBe(200);
             expect(res1.json().commits).toHaveLength(1);
 
-            // git was invoked on the first call
-            const callCountAfterFirst = mockForgeExecGit.mock.calls.length;
+            // The history backend was invoked on the first call.
+            const callCountAfterFirst = mockLoadGitHistory.mock.calls.length;
             expect(callCountAfterFirst).toBeGreaterThan(0);
 
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50`);
             expect(res2.status).toBe(200);
             expect(res2.json().commits).toHaveLength(1);
 
-            // no additional git calls
-            expect(mockForgeExecGit.mock.calls.length).toBe(callCountAfterFirst);
+            // No additional history reads.
+            expect(mockLoadGitHistory.mock.calls.length).toBe(callCountAfterFirst);
         });
 
         it('refresh=true bypasses cache and re-invokes git', async () => {
-            setupGitMock();
+            setupGitHistoryMock();
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50`);
-            const callCountAfterFirst = mockForgeExecGit.mock.calls.length;
+            const callCountAfterFirst = mockLoadGitHistory.mock.calls.length;
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50&refresh=true`);
-            expect(mockForgeExecGit.mock.calls.length).toBeGreaterThan(callCountAfterFirst);
+            expect(mockLoadGitHistory.mock.calls.length).toBeGreaterThan(callCountAfterFirst);
         });
 
         it('different limit/skip produces different cache entries', async () => {
-            setupGitMock();
+            setupGitHistoryMock();
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50`);
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
+            const callsAfterFirst = mockLoadGitHistory.mock.calls.length;
 
             // Different skip → cache miss → git re-invoked
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50&skip=10`);
-            expect(mockForgeExecGit.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+            expect(mockLoadGitHistory.mock.calls.length).toBeGreaterThan(callsAfterFirst);
         });
     });
 
     // ========================================================================
-    // GET /api/workspaces/:id/git/commits/:hash/files — immutable cache
+    // GET /api/workspaces/:id/git/commits/:hash/files — Rust-backed reads
     // ========================================================================
 
-    describe('GET /api/workspaces/:id/git/commits/:hash/files (cache)', () => {
-        it('second call for same hash returns cached data', async () => {
-            mockGitCommitFiles.mockResolvedValue({
-                parentHash: 'p1',
-                files: [{ path: 'src/index.ts', status: 'modified' }],
-            });
+    describe('GET /api/workspaces/:id/git/commits/:hash/files', () => {
+        it('reads fresh metadata for each request', async () => {
+            mockLoadCommitFiles.mockResolvedValue([
+                { path: 'src/index.ts', status: 'modified' },
+            ]);
 
             const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/files`);
             expect(res1.status).toBe(200);
             expect(res1.json().files).toHaveLength(1);
 
-            const callsAfterFirst = mockGitCommitFiles.mock.calls.length;
-
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/files`);
             expect(res2.status).toBe(200);
             expect(res2.json().files).toHaveLength(1);
-            expect(mockGitCommitFiles.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockLoadCommitFiles).toHaveBeenCalledTimes(2);
         });
 
-        it('immutable cache survives mutable invalidation', async () => {
-            mockGitCommitFiles.mockResolvedValue({
-                parentHash: 'p1',
-                files: [{ path: 'new.ts', status: 'added' }],
-            });
+        it('keeps metadata reads independent of mutable cache invalidation', async () => {
+            mockLoadCommitFiles.mockResolvedValue([
+                { path: 'new.ts', status: 'added' },
+            ]);
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
-            const callsAfterFirst = mockGitCommitFiles.mock.calls.length;
 
             gitCache.invalidateMutable(WORKSPACE_ID);
 
-            // Immutable entry still cached
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
-            expect(mockGitCommitFiles.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockLoadCommitFiles).toHaveBeenCalledTimes(2);
         });
     });
 
     // ========================================================================
-    // GET /api/workspaces/:id/git/commits/:hash/diff — immutable cache
+    // GET /api/workspaces/:id/git/commits/:hash/diff — Rust-backed reads
     // ========================================================================
 
-    describe('GET /api/workspaces/:id/git/commits/:hash/diff (cache)', () => {
-        it('second call for same hash returns cached diff', async () => {
-            mockForgeExecGit.mockReturnValue('diff --git a/f.ts b/f.ts\n-old\n+new');
+    describe('GET /api/workspaces/:id/git/commits/:hash/diff', () => {
+        it('reads a fresh patch for each request', async () => {
+            mockLoadCommitShowPatch.mockResolvedValue({
+                content: { raw: 'diff --git a/f.ts b/f.ts\n-old\n+new' },
+            });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/diff`);
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
 
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/diff`);
             expect(res2.status).toBe(200);
             expect(res2.json().diff).toContain('diff --git');
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockLoadCommitShowPatch).toHaveBeenCalledTimes(2);
         });
 
-        it('immutable diff cache survives mutable invalidation', async () => {
-            mockForgeExecGit.mockReturnValue('patch data');
+        it('keeps patch reads independent of mutable cache invalidation', async () => {
+            mockLoadCommitShowPatch.mockResolvedValue({ content: { raw: 'patch data' } });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/dead5678/diff`);
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
 
             gitCache.invalidateMutable(WORKSPACE_ID);
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/dead5678/diff`);
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockLoadCommitShowPatch).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -343,34 +331,25 @@ describe('Git API caching', () => {
                 { id: 'ws-other', name: 'Repo B', rootPath: hostRepoPath('test', 'other') },
             ]);
 
-            mockForgeExecGit.mockImplementation((args: string[]) => {
-                if (args[0] === 'log') return 'aaaa\naaaa\nFirst\nAlice\nalice@example.com\n2026-01-01T00:00:00Z\n\n';
-                return '';
-            });
+            setupGitHistoryMock();
 
             // Populate cache for both workspaces
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50`);
             await request(`${base()}/api/workspaces/ws-other/git/commits?limit=50`);
 
-            const callsAfterBoth = mockForgeExecGit.mock.calls.length;
+            const callsAfterBoth = mockLoadGitHistory.mock.calls.length;
 
             // Refresh only ws-cache-test
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits?limit=50&refresh=true`);
 
             // ws-other should still be cached — request should not add git calls
             await request(`${base()}/api/workspaces/ws-other/git/commits?limit=50`);
-            // Only the refresh for WORKSPACE_ID should have re-invoked git
-            // (refresh call adds git invocations, but the ws-other call should not)
-            const refreshCalls = mockForgeExecGit.mock.calls.length - callsAfterBoth;
-            // The refresh triggered git calls for WORKSPACE_ID only.
-            // The subsequent ws-other call should have been served from cache (0 additional calls).
-            // So total new calls == calls from the one refresh.
-            const callsForRefresh = refreshCalls;
-            
-            // Verify ws-other is still cached by checking no new calls are added
-            const callsBeforeOther = mockForgeExecGit.mock.calls.length;
+            expect(mockLoadGitHistory.mock.calls.length).toBeGreaterThan(callsAfterBoth);
+
+            // Verify ws-other is still cached by checking no new calls are added.
+            const callsBeforeOther = mockLoadGitHistory.mock.calls.length;
             await request(`${base()}/api/workspaces/ws-other/git/commits?limit=50`);
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsBeforeOther);
+            expect(mockLoadGitHistory.mock.calls.length).toBe(callsBeforeOther);
         });
     });
 });

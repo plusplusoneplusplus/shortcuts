@@ -35,6 +35,7 @@ const mockDeleteUntrackedFile = vi.fn();
 const mockGetFileDiff = vi.fn();
 const mockStageFiles = vi.fn();
 const mockUnstageFiles = vi.fn();
+const mockLoadWorkingTreePatch = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -51,6 +52,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             stageFiles: mockStageFiles,
             unstageFiles: mockUnstageFiles,
         }); }),
+        loadWorkingTreePatch: (...args: any[]) => mockLoadWorkingTreePatch(...args),
     };
 });
 
@@ -139,6 +141,7 @@ describe('Git Working Tree Edge Cases', () => {
         mockGetFileDiff.mockReset();
         mockStageFiles.mockReset();
         mockUnstageFiles.mockReset();
+        mockLoadWorkingTreePatch.mockReset();
     });
 
     // ========================================================================
@@ -149,7 +152,7 @@ describe('Git Working Tree Edge Cases', () => {
         it('returns binary diff string for binary files (git output includes "Binary files differ")', async () => {
             // git diff for binary files emits "Binary files a/X and b/X differ"
             const binaryDiffOutput = 'Binary files a/binary-image.png and b/binary-image.png differ';
-            mockGetFileDiff.mockResolvedValue(binaryDiffOutput);
+            mockLoadWorkingTreePatch.mockResolvedValue({ content: { raw: binaryDiffOutput } });
 
             const filePath = encodeURIComponent('binary-image.png');
             const res = await request(
@@ -171,7 +174,7 @@ new file mode 100644
 +line 1
 +line 2
 +line 3`;
-            mockGetFileDiff.mockResolvedValue(untrackedDiff);
+            mockLoadWorkingTreePatch.mockResolvedValue({ content: { raw: untrackedDiff } });
 
             const filePath = encodeURIComponent('new-untracked.txt');
             const res = await request(
@@ -192,7 +195,7 @@ deleted file mode 100644
 @@ -1,2 +0,0 @@
 -old content
 -more old content`;
-            mockGetFileDiff.mockResolvedValue(deletedDiff);
+            mockLoadWorkingTreePatch.mockResolvedValue({ content: { raw: deletedDiff } });
 
             const filePath = encodeURIComponent('deleted.txt');
             const res = await request(

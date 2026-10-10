@@ -49,6 +49,7 @@ const mockRebaseAutosquash = vi.fn();
 const mockCherryPick = vi.fn();
 
 const mockForgeExecGit = vi.fn();
+const mockLoadGitHistory = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -56,6 +57,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
         execGitAsync: (...args: any[]) => Promise.resolve(mockForgeExecGit(...args)),
+        loadGitHistory: (...args: any[]) => mockLoadGitHistory(...args),
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
@@ -182,6 +184,8 @@ describe('Git Branch Edge Cases', () => {
         mockExecSync.mockReset();
         mockForgeExecGit.mockReset();
         mockForgeExecGit.mockReturnValue('');
+        mockLoadGitHistory.mockReset();
+        mockLoadGitHistory.mockResolvedValue([]);
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetRepositoryStatus.mockResolvedValue({
@@ -440,14 +444,16 @@ describe('Git Branch Edge Cases', () => {
 
     describe('GET /api/workspaces/:id/git/commits — detached HEAD', () => {
         it('returns commits from current HEAD when in detached HEAD state', async () => {
-            const logOutput = [
-                'abc1234def567890\nabc1234\nDetached commit\nDev\ndev@test.com\n2026-01-01T00:00:00Z\n\n',
-            ].join('\0');
-
-            mockForgeExecGit.mockImplementation((args: string[]) => {
-                if (args[0] === 'log') return logOutput;
-                return '';
-            });
+            mockLoadGitHistory.mockResolvedValue([{
+                hash: 'abc1234def567890',
+                shortHash: 'abc1234',
+                subject: 'Detached commit',
+                authorName: 'Dev',
+                authorEmail: 'dev@test.com',
+                date: '2026-01-01T00:00:00Z',
+                parentHashes: '',
+                body: '',
+            }]);
             mockGetBranchStatus.mockReturnValue({
                 name: null,
                 isDetached: true,

@@ -178,7 +178,7 @@ const timer = setInterval(() => {
             { status: 'A', path: '[ab].txt', additions: 1, deletions: 0 },
             { status: 'A', path: 'a.txt', additions: 1, deletions: 0 },
         ] } }));
-        const literal = process.platform === 'win32' ? 'café arrow => name.txt' : 'café\tline\n => name.txt';
+        const literal = process.platform === 'win32' ? 'café arrow = name.txt' : 'café\tline\n => name.txt';
         fs.renameSync(path.join(one.root, '[ab].txt'), path.join(one.root, literal));
         fs.writeFileSync(path.join(one.root, 'empty.txt'), '');
         fs.writeFileSync(path.join(one.root, 'binary.bin'), Buffer.from([0, 1, 2]));

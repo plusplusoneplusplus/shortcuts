@@ -19,8 +19,13 @@ const operations: Array<[string, (provider: IDiffProvider) => Promise<unknown>]>
 describe.each(['pr', 'pr-iteration'] as const)('%s requires native processing', kind => {
     it.each(operations)('%s exposes rebuild diagnostics before authenticated I/O', async (_name, call) => {
         const fetch = vi.fn().mockResolvedValue('');
-        const source = { repositoryRoot: '/repo', provider: 'github' as const, remoteRepositoryId: 'owner/repo', pullRequestId: 1 };
-        const context = { workspaceId: 'workspace-a', host: 'provider.example', repository: 'owner/repo' };
+        const source = {
+            repositoryRoot: process.cwd(), provider: 'github' as const,
+            remoteRepositoryId: 'owner/repo', pullRequestId: 1,
+        };
+        const context = {
+            workspaceId: 'workspace-a', host: 'provider.example', repository: 'github:owner/repo',
+        };
         const provider = kind === 'pr'
             ? createPullRequestDiffProvider({ ...source, kind }, { getDiff: fetch } as unknown as IPullRequestsService, context)
             : createPullRequestIterationDiffProvider({ ...source, kind, iterationId: 3, baseIterationId: 1 }, fetch, context);
