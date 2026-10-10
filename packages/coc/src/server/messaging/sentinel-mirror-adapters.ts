@@ -19,7 +19,8 @@ export interface SentinelMirrorAdapter {
     send(destination: SentinelMirrorDestination, chunk: string): Promise<string>;
     validateAttachments?(attachments: MirrorAttachment[]): void;
     sendAttachment?(destination: SentinelMirrorDestination, attachment: MirrorAttachment, caption: string): Promise<string>;
-    record(destination: SentinelMirrorDestination, messageId: string): void;
+    /** Arms the connector's own-message guard for one confirmed outbound ID. */
+    record(destination: Pick<SentinelMirrorDestination, 'connector' | 'chatKey' | 'threadId'>, messageId: string): void;
 }
 
 export function sameMirrorDestination(a: SentinelMirrorDestination, b: SentinelMirrorDestination): boolean {

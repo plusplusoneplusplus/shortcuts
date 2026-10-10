@@ -15,7 +15,7 @@ import { WhatsAppNotConnectedError, type WhatsAppMessagingManager } from '../../
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../../../src/server/processes/process-message-delivery-service';
 import { ProcessOperationAdmission } from '../../../src/server/processes/process-operation-admission';
 import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
-import { getRepoDataPath } from '../../../src/server/paths';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 
 vi.mock('node:fs', async importOriginal => {
     const actual = await importOriginal<typeof import('node:fs')>();
@@ -510,14 +510,19 @@ describe('Sentinel desktop WhatsApp attachment delivery', () => {
             await f.admit('desktop text', [upload('first.txt'), upload('second.txt')]);
             expect(f.row()).toMatchObject({ state: 'pending', nextPart: 2, outboundIds: ['sent-1', 'sent-2'] });
             expect(f.row().attachments![0].data).toBeUndefined();
-            const ledger = getRepoDataPath(f.directory, 'workspace-a', 'sentinel-mirror-outbox.json');
             const rows = f.mirror.outbox.list('workspace-a');
-            const attachment = rows[0].attachments![1];
+            const attachments = rows[0].attachments!;
+            const attachment = attachments[1];
             if (corruption === 'missing') delete attachment.data;
             if (corruption === 'base64') attachment.data = '!!!';
             if (corruption === 'digest') attachment.sha256 = '0'.repeat(64);
             if (corruption === 'size') attachment.size++;
-            fs.writeFileSync(ledger, JSON.stringify(rows));
+            // Corrupt the stored payload directly in the shared ledger database.
+            const db = new NativeDatabase(path.join(f.directory, 'processes.db'));
+            try {
+                db.prepare('UPDATE sentinel_mirror_deliveries SET attachments = ? WHERE event_id = ?')
+                    .run(JSON.stringify(attachments), rows[0].eventId);
+            } finally { db.close(); }
             f.setConnected(true);
             await f.restart();
             await f.mirror.flush();

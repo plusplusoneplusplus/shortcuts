@@ -395,6 +395,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             // Language servers are child processes rooted in the workspace
             // directory; a removed workspace must not leave one running.
             await disposeLanguageServersForWorkspace(id);
+            // Unfinished mirror work owned by the removed workspace ends; other owners are untouched.
+            ctx.getSentinelMirror?.()?.workspaceRemoved(id);
             ctx.getWsServer?.()?.broadcastProcessEvent({
                 type: 'workspace-topology-changed',
                 action: 'removed',

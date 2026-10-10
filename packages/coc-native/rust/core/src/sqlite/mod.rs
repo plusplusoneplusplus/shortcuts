@@ -108,8 +108,9 @@ pub mod process_writes;
 
 pub(super) fn check_process_schema(connection: &Connection) -> Result<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    // Queue-only provenance in v39 leaves the typed process layout unchanged.
-    if !matches!(version, 38 | 39) {
+    // Queue-only provenance in v39 and relay indexes/mirror tables in v40 leave
+    // the typed process layout unchanged.
+    if !matches!(version, 38..=40) {
         return Err(Error::UnsupportedVersion(version));
     }
     Ok(())

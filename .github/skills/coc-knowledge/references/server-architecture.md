@@ -227,13 +227,43 @@ send; process-less admission requires an exact live request and canonical queued
 initial owner. Dashboard transport routing keeps clone/group selection separate
 from the loaded owning workspace.
 
-`sentinel-mirror-outbox.ts` stores machine-local receipts at
-`repos/<workspaceId>/sentinel-mirror-outbox.json`, excluded from export/import and
-included in wipe. All known owner ledgers recover before admission. Immutable
-chunks, attempt identities, confirmed IDs and attempted prefixes preserve progress.
-Heads serialize physical destinations across current registered workspaces.
-Definite failures use durable exponential backoff/Retry-After; unknown or
-unrecorded sends quarantine. Fixed display-only notices report known-owner failures.
+`sentinel-mirror-outbox.ts` keeps the ledger in the shared `processes.db`
+(schema V40, `workspace_id` on every row): `sentinel_mirror_requests` tracks one
+admitted request until its answer is materialized or suppressed (answer state is
+independent of user delivery state); `sentinel_mirror_deliveries` tracks physical
+parts per role with attempt tokens, retry deadlines and captured binding;
+`sentinel_mirror_receipts` keeps compact confirmed outbound IDs. Partial indexes
+cover only unfinished requests, destination heads, retry deadlines and unreported
+failures, so finished history never enters active work. Every transition is one
+SQLite transaction with its precondition checked inside it; failed writes never
+advance state. Legacy `repos/<workspaceId>/sentinel-mirror-outbox.json` ledgers
+import once per workspace (`sentinel_mirror_imports` marker) before scheduling:
+unresolved sends become ambiguous, delivered users without answers stay active,
+corrupt files fail visibly and stay intact, and JSON is never read again. Downgrade
+to the JSON-only runtime is unsupported after import. Ledger rows are machine-local:
+excluded from export/import, cleared (with legacy files) by wipe.
+
+Scheduling is event-driven, with no polling timer: admission, queue terminal events,
+cancellation, connector readiness (`connectorReady`), runtime setting changes,
+workspace removal and one timer for the earliest durable retry deadline. Wakes
+coalesce into a single-flight drain with a dirty marker. Each drain reconciles
+active requests in batches of 32 (yielding between batches) and delivers up to
+four physical destinations concurrently; parts within a destination stay serialized
+and ordered across workspaces. Disabled workers do nothing (no reads, timers or
+sends) and leave work paused; an already issued send still persists its
+acknowledgement. Captured-origin authorization returns `wait` while disabled.
+Restore pages receipts into connector echo guards; a failed guard re-arms from the
+index on the next drain. Definite failures use durable exponential
+backoff/Retry-After; unknown or unrecorded sends quarantine. Fixed display-only
+notices report known-owner failures once (`reported_failure`).
+
+The mirror receives only the narrow `SentinelMirrorProcessStore` capabilities:
+`getProcessOwnerProjection`, `hasRelayRequestAdmission`, `hasRelayReceiptTurn` and
+`getRelayRequestProjection` (forge `relay-request-projection.ts`; SQLite answers them
+with bounded indexed reads on `idx_turns_relay_request`/`idx_turns_process_role`
+and never selects tool calls, timelines or unrelated turns). Full `getProcess` and
+`getConversationTurns` are not reachable from the mirror. Stores without these
+projections disable mirroring at composition.
 
 `sentinel-mirror-adapters.ts` reuses Teams/WhatsApp formatting and own-ID guards.
 Every part carries the full logical request ID, Desktop role and part number.

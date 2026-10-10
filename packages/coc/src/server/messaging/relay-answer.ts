@@ -41,12 +41,20 @@ export function findRequestFailureText(
     turns: readonly ConversationTurn[], userIndex: number, processError?: string,
 ): string {
     if (userIndex < 0) return RELAY_ANSWER_TEXT.failed;
-    const following = turns.slice(userIndex + 1);
-    const nextUser = following.findIndex(turn => turn.role === 'user');
-    const last = findRequestFailureEvidence(turns, userIndex);
-    const error = last?.interruptionReason
-        ?? (last?.content?.startsWith('Error: ') ? last.content.slice(7) : undefined)
-        ?? (nextUser < 0 ? processError : undefined);
+    const closed = turns.slice(userIndex + 1).some(turn => turn.role === 'user');
+    return relayFailureText(findRequestFailureEvidence(turns, userIndex), closed, processError);
+}
+
+/**
+ * Safe failure text from bounded request evidence (see forge `RelayRequestProjection`).
+ * `processError` applies only while no later user turn closes the request.
+ */
+export function relayFailureText(
+    evidence: Pick<ConversationTurn, 'interruptionReason' | 'content'> | undefined, closed: boolean, processError?: string,
+): string {
+    const error = evidence?.interruptionReason
+        ?? (evidence?.content?.startsWith('Error: ') ? evidence.content.slice(7) : undefined)
+        ?? (!closed ? processError : undefined);
     const imageFailure = Object.values(CHAT_IMAGE_FAILURE_TEXT).find(message => message === error);
     if (imageFailure) return imageFailure;
     if (!error || !/\b(?:session|usage) limit\b/i.test(error)) return RELAY_ANSWER_TEXT.failed;

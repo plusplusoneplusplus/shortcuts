@@ -8,6 +8,7 @@ import type { ActiveProviderSession, BotControlMetadata, PendingMessage, Process
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
+import type { ProcessOwnerProjection, RelayRequestProjection } from './relay-request-projection';
 
 /**
  * A single FTS5 search hit within a conversation turn,
@@ -644,6 +645,29 @@ export interface ProcessStore {
      * Optional — only SQLite-backed stores support this.
      */
     getConversationTurns?(processId: string): Promise<ConversationTurn[]>;
+
+    /**
+     * Owner/status fields of one process without turns or pending payloads.
+     * Request-correlated relays use this instead of `getProcess`. Like
+     * `getProcess`, `workspaceId` is a lookup hint that stores may ignore.
+     */
+    getProcessOwnerProjection?(id: string, workspaceId?: string): Promise<ProcessOwnerProjection | undefined>;
+
+    /**
+     * Whether a request was admitted: a pending message or a user turn carries
+     * `relayRequestId`. Indexed existence check; never loads the transcript.
+     */
+    hasRelayRequestAdmission?(processId: string, relayRequestId: string, workspaceId?: string): Promise<boolean>;
+
+    /** Whether any turn carries this exact relay/notice receipt identity. */
+    hasRelayReceiptTurn?(processId: string, relayRequestId: string, workspaceId?: string): Promise<boolean>;
+
+    /**
+     * Bounded result evidence for one request: answer text and failure fields
+     * between its user turn and the next user turn. Tool calls, timelines and
+     * unrelated history are never selected.
+     */
+    getRelayRequestProjection?(processId: string, relayRequestId: string, workspaceId?: string): Promise<RelayRequestProjection>;
 
     /**
      * List recent processes ordered by start time (descending).

@@ -3,14 +3,21 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRepoDataPath } from '../../../src/server/paths';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import {
-    SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox, type SentinelMirrorIntent,
+    SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorImportError, SentinelMirrorOutbox, type SentinelMirrorEntry, type SentinelMirrorIntent,
 } from '../../../src/server/messaging/sentinel-mirror-outbox';
 
-vi.mock('node:fs', async importOriginal => {
-    const actual = await importOriginal<typeof import('node:fs')>();
-    return { ...actual, renameSync: vi.fn(actual.renameSync) };
-});
+type Seam = { transact<T>(mutation: () => T): T };
+/** Fails the next ledger transaction after its mutation ran, rolling it back like a failed disk write. */
+function failNextWrite(outbox: SentinelMirrorOutbox) {
+    const seam = outbox as unknown as Seam;
+    const original = seam.transact.bind(outbox);
+    vi.spyOn(seam, 'transact').mockImplementationOnce(mutation => original(() => {
+        mutation();
+        throw new Error('disk failure');
+    }));
+}
 
 describe('SentinelMirrorOutbox', () => {
     let dataDir: string;
@@ -39,8 +46,17 @@ describe('SentinelMirrorOutbox', () => {
     });
     afterEach(() => {
         vi.restoreAllMocks();
+        outbox.close();
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
+    const reopen = () => {
+        outbox.close();
+        outbox = new SentinelMirrorOutbox(dataDir);
+    };
+    const sql = (statement: string, ...args: unknown[]) => {
+        const db = new NativeDatabase(path.join(dataDir, 'processes.db'));
+        try { db.prepare(statement).run(...args); } finally { db.close(); }
+    };
 
     it.each(['teams', 'whatsapp'] as const)('captures immutable %s destination and deduplicates stable user/answer identities', connector => {
         const input = intent({ destination: { connector, chatKey: 'conversation', threadId: 'root', bindingId: 'binding' } });
@@ -75,7 +91,7 @@ describe('SentinelMirrorOutbox', () => {
         const row = outbox.stage(intent());
         expect(outbox.beginPart('workspace-a', row.eventId)).toBeUndefined();
         expect(() => outbox.prepare('workspace-a', row.eventId, ['text'])).toThrow('not admitted');
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0].state).toBe('admitting');
         expect(outbox.reject('workspace-a', row.eventId)).toBe(true);
@@ -105,7 +121,7 @@ describe('SentinelMirrorOutbox', () => {
             .map(row => row.eventId)).toEqual([first]);
         expect(outbox.beginPart('workspace-a', second)).toBeUndefined();
         now.mockReturnValue(Date.parse('2025-12-31T23:59:59.000Z'));
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         outbox.recover('workspace-b');
         const third = admitted(intent({ workspaceId: 'workspace-c' }));
@@ -125,7 +141,7 @@ describe('SentinelMirrorOutbox', () => {
         const first = begin(identity);
         expect(outbox.acknowledgePart('workspace-a', identity, first, 'one')).toBe(true);
         expect(outbox.acknowledgePart('workspace-a', identity, first, 'one')).toBe(false);
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'pending', nextPart: 1, outboundIds: ['one'] });
         expect(() => outbox.prepare('workspace-a', identity, ['different'])).toThrow('boundaries');
@@ -139,7 +155,7 @@ describe('SentinelMirrorOutbox', () => {
         const identity = admitted();
         const first = begin(identity);
         expect(outbox.failPart('workspace-a', identity, first, outcome)).toBe(true);
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'retryable', failure: outcome, nextPart: 0 });
         const retry = begin(identity);
@@ -153,7 +169,7 @@ describe('SentinelMirrorOutbox', () => {
         const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T00:00:00.000Z'));
         const identity = admitted();
         outbox.failPart('workspace-a', identity, begin(identity), 'rejected', 10_000);
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0]).toMatchObject({
             state: 'retryable', retryCount: 1, nextAttemptAt: '2026-01-01T00:00:10.000Z',
@@ -173,7 +189,7 @@ describe('SentinelMirrorOutbox', () => {
         const next = admitted(intent({ requestId: 'later' }));
         const attempt = begin(identity);
         if (mode === 'failure') outbox.failPart('workspace-a', identity, attempt, 'unknown');
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'ambiguous', failure: 'unknown', nextPart: 0 });
         expect(outbox.beginPart('workspace-a', identity)).toBeUndefined();
@@ -226,23 +242,23 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.beginPart('workspace-b', later, ['workspace-b'])).toBeTypeOf('string');
     });
 
-    it('does not advance persisted state after a failed atomic write', () => {
+    it('does not advance persisted state after a failed write', () => {
         const row = outbox.stage(intent());
-        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        failNextWrite(outbox);
         expect(() => outbox.accept('workspace-a', row.eventId)).toThrow('disk failure');
         expect(outbox.list('workspace-a')[0].state).toBe('admitting');
-        expect(fs.readdirSync(path.dirname(getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE))))
-            .toEqual([SENTINEL_MIRROR_OUTBOX_FILE]);
+        expect(outbox.requestState('workspace-a', 'sentinel', 'accepted-request')?.admission).toBe('staged');
         expect(outbox.accept('workspace-a', row.eventId)).toBe(true);
+        expect(outbox.requestState('workspace-a', 'sentinel', 'accepted-request')?.admission).toBe('accepted');
     });
 
     it('retains a durable sending intent when acknowledgement persistence fails', () => {
         const identity = admitted();
         const attempt = begin(identity);
-        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        failNextWrite(outbox);
         expect(() => outbox.acknowledgePart('workspace-a', identity, attempt, 'posted')).toThrow('disk failure');
-        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'sending', nextPart: 0, attemptId: attempt });
-        outbox = new SentinelMirrorOutbox(dataDir);
+        expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'sending', nextPart: 0, attemptId: attempt, outboundIds: [] });
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'ambiguous', failure: 'unknown', outboundIds: [] });
         expect(outbox.beginPart('workspace-a', identity)).toBeUndefined();
@@ -250,12 +266,13 @@ describe('SentinelMirrorOutbox', () => {
 
     it('does not authorize a network attempt or cancellation after persistence failure', () => {
         const identity = admitted();
-        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        failNextWrite(outbox);
         expect(() => outbox.beginPart('workspace-a', identity)).toThrow('disk failure');
         expect(outbox.list('workspace-a')[0].state).toBe('pending');
-        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk failure'); });
+        failNextWrite(outbox);
         expect(() => outbox.cancel('workspace-a', 'sentinel', 'unbound')).toThrow('disk failure');
         expect(outbox.list('workspace-a')[0]).toMatchObject({ state: 'pending', cancelRequested: false });
+        expect(outbox.requestState('workspace-a', 'sentinel', 'accepted-request')?.answer).toBe('awaiting');
     });
 
     it('records an unknown outcome even if cancellation raced the send', () => {
@@ -274,7 +291,7 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.list('workspace-a')[0].attemptedPartCount).toBe(1);
         outbox.failPart('workspace-a', identity, attempt, 'unknown');
         outbox.cancel('workspace-a', 'sentinel', 'unbound');
-        outbox = new SentinelMirrorOutbox(dataDir);
+        reopen();
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')[0]).toMatchObject({
             state: 'cancelled', attemptedPartCount: 1, failure: 'unknown',
@@ -292,28 +309,178 @@ describe('SentinelMirrorOutbox', () => {
         expect(outbox.list('workspace-a')[0].attemptedPartCount).toBe(2);
     });
 
-    it.each(['wrong-owner', 'duplicate', 'invalid-progress', 'extra-routing'] as const)('rejects %s persisted data without exposing content', corruption => {
+    it.each(['wrong-owner', 'identity', 'invalid-progress'] as const)('rejects %s stored rows without exposing content', corruption => {
         const identity = admitted();
-        const rows = outbox.list('workspace-a');
-        if (corruption === 'wrong-owner') rows[0].workspaceId = 'workspace-b';
-        if (corruption === 'duplicate') rows.push(rows[0]);
-        if (corruption === 'invalid-progress') rows[0].nextPart = 10;
-        const raw = JSON.stringify(rows);
-        const file = getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE);
-        fs.writeFileSync(file, corruption === 'extra-routing' ? raw.replace('"bindingId":"binding"', '"bindingId":"binding","secret":"sensitive"') : raw);
-        expect(() => outbox.list('workspace-a')).toThrow(/Invalid Sentinel mirror/);
-        expect(() => outbox.beginPart('workspace-a', identity)).toThrow(/Invalid Sentinel mirror/);
+        if (corruption === 'wrong-owner') sql('UPDATE sentinel_mirror_deliveries SET process_id = ? WHERE event_id = ?', 'other', identity);
+        if (corruption === 'identity') sql('UPDATE sentinel_mirror_deliveries SET request_id = ? WHERE event_id = ?', 'forged', identity);
+        if (corruption === 'invalid-progress') sql('UPDATE sentinel_mirror_deliveries SET next_part = 10 WHERE event_id = ?', identity);
+        expect(() => outbox.list('workspace-a')).toThrow(/^Invalid Sentinel mirror outbox$/);
+        expect(() => outbox.beginPart('workspace-a', identity)).toThrow(/^Invalid Sentinel mirror outbox$/);
     });
 
-    it('creates no files or historical backlog just by reading/recovering an empty workspace', () => {
+    it('creates no legacy JSON ledger or historical backlog just by reading/recovering an empty workspace', () => {
         outbox.recover('workspace-a');
         expect(outbox.list('workspace-a')).toEqual([]);
-        expect(fs.readdirSync(dataDir)).toEqual([]);
+        expect(outbox.activeRequests(0, 32)).toEqual([]);
+        expect(fs.existsSync(getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE))).toBe(false);
     });
 
-    it('sanitizes malformed JSON errors rather than exposing stored message fragments', () => {
-        admitted();
-        fs.writeFileSync(getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE), 'private message fragment');
-        expect(() => outbox.list('workspace-a')).toThrow(/^Invalid Sentinel mirror outbox$/);
+    describe('request answer tracking', () => {
+        it('keeps a delivered user request active until its answer is materialized exactly once', () => {
+            const identity = admitted(intent(), ['only']);
+            outbox.acknowledgePart('workspace-a', identity, begin(identity), 'sent');
+            expect(outbox.list('workspace-a')[0].state).toBe('delivered');
+            expect(outbox.activeRequests(0, 32).map(row => row.requestId)).toEqual(['accepted-request']);
+            const user = outbox.list('workspace-a')[0];
+            const answer = outbox.materializeAnswer(user, 'Answer');
+            expect(answer).toMatchObject({ role: 'assistant', state: 'pending', content: 'Answer' });
+            expect(outbox.materializeAnswer(user, 'Different repeated completion').eventId).toBe(answer.eventId);
+            expect(outbox.list('workspace-a').filter(row => row.role === 'assistant')).toHaveLength(1);
+            expect(outbox.requestState('workspace-a', 'sentinel', 'accepted-request')?.answer).toBe('materialized');
+            expect(outbox.activeRequests(0, 32)).toEqual([]);
+        });
+
+        it('suppresses unanswered requests on cancellation and excludes rejected admissions', () => {
+            admitted();
+            const rejected = outbox.stage(intent({ requestId: 'rejected' }));
+            outbox.reject('workspace-a', rejected.eventId);
+            outbox.cancel('workspace-a', 'sentinel', 'unbound', 'binding', 'accepted-request');
+            expect(outbox.requestState('workspace-a', 'sentinel', 'accepted-request')?.answer).toBe('suppressed');
+            expect(outbox.requestState('workspace-a', 'sentinel', 'rejected')?.admission).toBe('rejected');
+            expect(outbox.activeRequests(0, 32)).toEqual([]);
+        });
+
+        it('pages active requests and omits attachment bytes from scheduler listings', () => {
+            for (let index = 0; index < 5; index++) admitted(intent({ requestId: `request-${index}` }));
+            const first = outbox.activeRequests(0, 2);
+            const second = outbox.activeRequests(first[1].seq, 2);
+            expect([...first, ...second].map(row => row.requestId)).toEqual(['request-0', 'request-1', 'request-2', 'request-3']);
+            const withBytes = outbox.stage(intent({
+                requestId: 'bytes', attachments: [{ name: 'a.txt', mimeType: 'text/plain', size: 1, sha256: 'a'.repeat(64), data: 'YQ==' }],
+            }));
+            expect(outbox.activeRequests(0, 32).find(row => row.requestId === 'bytes')!.attachments![0].data).toBeUndefined();
+            expect(outbox.get('workspace-a', withBytes.eventId).attachments![0].data).toBe('YQ==');
+        });
+
+        it('keeps active work proportional to unfinished requests as finished receipts grow', () => {
+            const active = admitted(intent({ requestId: 'still-active' }));
+            const counts: number[] = [];
+            for (const total of [1_000, 100_000]) {
+                const db = new NativeDatabase(path.join(dataDir, 'processes.db'));
+                try {
+                    db.transaction(() => {
+                        const delivery = db.prepare(`INSERT OR IGNORE INTO sentinel_mirror_deliveries (event_id, workspace_id, process_id, request_id,
+                            role, connector, chat_key, binding_id, destination_key, content, chunks, state, next_part, seq, created_at)
+                            VALUES (?, 'workspace-a', 'sentinel', ?, 'user', 'whatsapp', 'group', 'binding', '["whatsapp","group",null]',
+                            'old', '["old"]', 'delivered', 1, ?, '2020-01-01T00:00:00.000Z')`);
+                        const request = db.prepare(`INSERT OR IGNORE INTO sentinel_mirror_requests (workspace_id, process_id, request_id, connector,
+                            chat_key, binding_id, admission, answer, seq, created_at)
+                            VALUES ('workspace-a', 'sentinel', ?, 'whatsapp', 'group', 'binding', 'accepted', 'materialized', ?, '2020-01-01T00:00:00.000Z')`);
+                        const receipt = db.prepare(`INSERT OR IGNORE INTO sentinel_mirror_receipts (event_id, part_index, outbound_id, connector, chat_key, acknowledged_at)
+                            VALUES (?, 0, ?, 'whatsapp', 'group', '2020-01-01T00:00:00.000Z')`);
+                        for (let index = 0; index < total; index++) {
+                            delivery.run(`finished-${index}`, `finished-${index}`, index + 1);
+                            request.run(`finished-${index}`, index + 1);
+                            receipt.run(`finished-${index}`, `outbound-${index}`);
+                        }
+                    })();
+                } finally { db.close(); }
+                counts.push(outbox.activeRequests(0, 32).length + outbox.headsAcrossWorkspaces().length + outbox.sending().length);
+            }
+            expect(counts).toEqual([2, 2]);
+            expect(outbox.headsAcrossWorkspaces().map(row => row.eventId)).toEqual([active]);
+        });
+
+        it('uses active-state, destination-head and retry-deadline indexes', () => {
+            const db = new NativeDatabase(path.join(dataDir, 'processes.db'));
+            try {
+                const plan = (statement: string) => (db.prepare(`EXPLAIN QUERY PLAN ${statement}`).all() as Array<{ detail: string }>)
+                    .map(row => row.detail).join('\n');
+                expect(plan(`SELECT * FROM sentinel_mirror_requests WHERE (admission = 'staged' OR (admission = 'accepted' AND answer = 'awaiting')) AND seq > 0 ORDER BY seq LIMIT 32`))
+                    .toContain('idx_sentinel_mirror_requests_active');
+                expect(plan(`SELECT * FROM sentinel_mirror_deliveries WHERE state NOT IN ('delivered', 'cancelled') ORDER BY seq`))
+                    .toMatch(/idx_sentinel_mirror_deliveries_(heads|seq)/);
+                expect(plan(`SELECT MIN(next_attempt_at) FROM sentinel_mirror_deliveries WHERE state = 'retryable' AND next_attempt_at IS NOT NULL`))
+                    .toContain('idx_sentinel_mirror_deliveries_retry');
+                expect(plan(`SELECT * FROM sentinel_mirror_deliveries WHERE request_id = 'r' AND role = 'user' AND connector = 'whatsapp' AND chat_key = 'g'`))
+                    .toContain('idx_sentinel_mirror_deliveries_request');
+            } finally { db.close(); }
+        });
+    });
+
+    describe('legacy JSON import', () => {
+        const ledger = () => getRepoDataPath(dataDir, 'workspace-a', SENTINEL_MIRROR_OUTBOX_FILE);
+        const legacyRows = (): SentinelMirrorEntry[] => {
+            const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-mirror-legacy-'));
+            const builder = new SentinelMirrorOutbox(scratch);
+            try {
+                const user = builder.stage(intent({ requestId: 'delivered-no-answer' }));
+                builder.accept('workspace-a', user.eventId);
+                builder.prepare('workspace-a', user.eventId, ['one']);
+                builder.acknowledgePart('workspace-a', user.eventId, builder.beginPart('workspace-a', user.eventId)!, 'out-1');
+                const answered = builder.stage(intent({ requestId: 'answered' }));
+                builder.accept('workspace-a', answered.eventId);
+                builder.prepare('workspace-a', answered.eventId, ['two']);
+                builder.acknowledgePart('workspace-a', answered.eventId, builder.beginPart('workspace-a', answered.eventId)!, 'out-2');
+                const answer = builder.materializeAnswer(builder.get('workspace-a', answered.eventId), 'Reply');
+                builder.prepare('workspace-a', answer.eventId, ['three']);
+                builder.beginPart('workspace-a', answer.eventId);
+                return builder.list('workspace-a');
+            } finally {
+                builder.close();
+                fs.rmSync(scratch, { recursive: true, force: true });
+            }
+        };
+
+        it('imports once without sending, quarantining unresolved attempts and keeping unanswered requests active', () => {
+            const rows = legacyRows();
+            fs.mkdirSync(path.dirname(ledger()), { recursive: true });
+            fs.writeFileSync(ledger(), JSON.stringify(rows));
+            expect(outbox.isImported('workspace-a')).toBe(false);
+            expect(outbox.importLegacy('workspace-a')).toBe(3);
+            expect(outbox.importLegacy('workspace-a')).toBe(0);
+            expect(fs.existsSync(ledger())).toBe(true);
+            const imported = outbox.list('workspace-a');
+            expect(imported.map(row => [row.requestId, row.role, row.state])).toEqual([
+                ['delivered-no-answer', 'user', 'delivered'],
+                ['answered', 'user', 'delivered'],
+                ['answered', 'assistant', 'ambiguous'],
+            ]);
+            expect(imported[2]).toMatchObject({ failure: 'unknown' });
+            expect(imported[2]).not.toHaveProperty('attemptId');
+            expect(imported[0].outboundIds).toEqual(['out-1']);
+            expect(outbox.activeRequests(0, 32).map(row => row.requestId)).toEqual(['delivered-no-answer']);
+            expect(outbox.requestState('workspace-a', 'sentinel', 'answered')?.answer).toBe('materialized');
+            expect(outbox.receipts(0, 10).map(receipt => receipt.outboundId)).toEqual(['out-1', 'out-2']);
+            // Runtime never reads JSON again: later edits to the original file are ignored.
+            fs.writeFileSync(ledger(), 'not json');
+            expect(outbox.importLegacy('workspace-a')).toBe(0);
+            expect(outbox.list('workspace-a')).toHaveLength(3);
+        });
+
+        it('marks a workspace without a legacy ledger as imported', () => {
+            expect(outbox.importLegacy('workspace-a')).toBe(0);
+            expect(outbox.isImported('workspace-a')).toBe(true);
+        });
+
+        it.each(['malformed-json', 'wrong-owner', 'duplicate', 'invalid-progress', 'extra-routing'] as const)(
+            'fails visibly on %s input and preserves the source file', corruption => {
+                const rows = legacyRows();
+                if (corruption === 'wrong-owner') rows[0].workspaceId = 'workspace-b';
+                if (corruption === 'duplicate') rows.push(rows[0]);
+                if (corruption === 'invalid-progress') rows[0].nextPart = 10;
+                const raw = corruption === 'malformed-json' ? 'private message fragment'
+                    : corruption === 'extra-routing' ? JSON.stringify(rows).replace('"bindingId":"binding"', '"bindingId":"binding","secret":"sensitive"')
+                        : JSON.stringify(rows);
+                fs.mkdirSync(path.dirname(ledger()), { recursive: true });
+                fs.writeFileSync(ledger(), raw);
+                expect(() => outbox.importLegacy('workspace-a')).toThrow(SentinelMirrorImportError);
+                try { outbox.importLegacy('workspace-a'); } catch (error) {
+                    expect(String(error)).not.toMatch(/private|sensitive/);
+                }
+                expect(fs.readFileSync(ledger(), 'utf8')).toBe(raw);
+                expect(outbox.isImported('workspace-a')).toBe(false);
+                expect(outbox.list('workspace-a')).toEqual([]);
+            });
     });
 });
