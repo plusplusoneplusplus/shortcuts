@@ -672,13 +672,22 @@ active list. The tab never offers delegation, conversion or copying. Each add fo
 owns its draft and idempotency key (`useAddItemForm`). Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
-Late loads are dropped by a sequence counter. Choosing Needs attention requires a
+Late loads are dropped by a sequence counter. Choosing Needs attention from the status group requires a
 reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
 Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Add and Edit forms carry a Priority select
 (Regular default, High); a High row draws an `aria-hidden` red leading band over the card's
 reserved `pl-1` gutter (every row reserves it, so priority changes never shift content) plus a
 visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
-missing value (older owning server) as Regular. Priority never reorders sections. Referenced conversations
+missing value (older owning server) as Regular. Priority never reorders sections. The header shows the
+active normal count and, when nonzero, how many normal items display Needs attention (stored or derived).
+A collapsed row is the toggle (status, High, title, chevron), a muted meta line (target repo, Updated time),
+a one-line truncated reason preview for Needs attention, the latest job only (`+N earlier jobs`), and
+`Ref` links. Expanding lists every job (with its workspace), notes when the displayed status is derived
+(`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
+start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
+stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
+never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
+`Tracked only · never run` tag. Referenced conversations
 (`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
 below jobs, with no execution or review label. Job links only navigate; nothing in
 the tab starts, retries, or cancels a job. Tests live in
