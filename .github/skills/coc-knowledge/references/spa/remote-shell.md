@@ -280,6 +280,15 @@ unregistered members and unreadable group files conservatively reserve potential
 writers. New grants require resolved roots. Standalone chats are independent, and
 membership saves neither interrupt running turns nor reject queued work.
 
+`GET /api/repo-groups/access?groupId=<rawId>` returns the owner's live `enabled`
+capability and candidate/current-member sharing, unresolved identity and all saved
+writers, using the admission snapshot matcher. `groupId` is optional for creation.
+`RepoGroupDialog` and `RepoGroupMemberList` consume it through `useRepoGroupAccess`;
+owner changes discard late responses. Shared selections default Read-only, and
+rows disclose Writer/Read-only policies and every conflicting writer. Authoritative
+409 details stay member-local without dropping drafts. `groupServerId` and settings
+`selectionId` qualify writer links; API requests retain raw IDs and owner base URLs.
+
 **View.** A `group-<slug>` id renders `repos/RepoGroupView.tsx`, a branch in `ReposView`
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
 feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,

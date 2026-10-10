@@ -305,6 +305,9 @@ references before editing. Paths are package-relative.
   admission and persistence; shared additions default read-only and new writer conflicts
   return 409 with group links. Preserve saved conflicts and allow revocation, including
   retained stale members. Unresolved memberships cannot silently admit a new writer.
+  `/api/repo-groups/access` shares admission identity and returns the owner's live flag,
+  sharing state and every saved writer. Dialog/settings links qualify remote group IDs
+  with the owning server ID; saves stay authoritative and rejected drafts stay intact.
 - Notes root authority is `src/server/notes/notes-root-resolver.ts`, not client paths.
   Task roots are opaque/protected, never user-root config or counted against its limit.
   Native Notes I/O owns containment/symlinks, atomic writes, sidecars, and order.

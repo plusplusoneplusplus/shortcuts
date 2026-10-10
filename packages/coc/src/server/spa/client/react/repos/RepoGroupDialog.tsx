@@ -14,8 +14,8 @@
  * cannot become members. In edit mode the current membership is loaded from
  * `GET /api/repo-groups/:id`; stale members (root path missing on disk, or
  * workspace no longer registered) are badged so the user can drop them. Keeping
- * a removed workspace checked is rejected by the server on save and the
- * validation message surfaces inline.
+ * saved stale memberships editable under exclusive-writer policy lets users
+ * revoke access without first repairing registration.
  *
  * Each checked member also carries an optional free-form description saying what
  * that repo is for inside this group, and a read-only policy provider tools
@@ -41,6 +41,10 @@ import {
     type RepoGroupServerOption,
 } from './repoGroupService';
 import { getRepositoryApiErrorMessage } from './repositoryService';
+import type { RepoGroupWriterConflict } from '@plusplusoneplusplus/coc-client';
+import { useRepoGroupAccess } from './useRepoGroupAccess';
+import { getRepoGroupWriterConflicts } from './repoGroupAccess';
+import { RepoGroupAccessStatus } from './RepoGroupAccessStatus';
 
 export interface RepoGroupDialogProps {
     open: boolean;
@@ -51,6 +55,8 @@ export interface RepoGroupDialogProps {
      * group, and ignored in create mode where the dropdown decides).
      */
     groupBaseUrl?: string;
+    /** Stable registry server identity for remote links, independent of its URL. */
+    groupServerId?: string;
     /** Known repos — filtered here to the selected server's repo workspaces. */
     repos: RepoData[];
     onClose: () => void;
@@ -85,7 +91,7 @@ function isMissingRouteError(error: unknown): boolean {
     return typeof (error as { status?: unknown })?.status === 'number' && (error as { status: number }).status === 404;
 }
 
-export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, onSaved }: RepoGroupDialogProps) {
+export function RepoGroupDialog({ open, groupId, groupBaseUrl, groupServerId, repos, onClose, onSaved }: RepoGroupDialogProps) {
     const [name, setName] = useState('');
     const [checked, setChecked] = useState<Set<string>>(new Set());
     // Pending descriptions keyed by workspace id. Only the checked members' entries
@@ -100,6 +106,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [conflicts, setConflicts] = useState<RepoGroupWriterConflict[]>([]);
 
     const editing = !!groupId;
 
@@ -118,13 +125,16 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
     const editingServerId = useMemo(() => {
         if (!editing) return null;
         if (!groupBaseUrl) return LOCAL_REPO_GROUP_SERVER_ID;
+        if (groupServerId) return groupServerId;
         return servers.find(s => s.baseUrl === groupBaseUrl)?.id ?? groupBaseUrl;
-    }, [editing, groupBaseUrl, servers]);
+    }, [editing, groupBaseUrl, groupServerId, servers]);
 
     const selectedServerId = editingServerId ?? serverId;
     const selectedBaseUrl = editing
         ? groupBaseUrl
         : servers.find(s => s.id === serverId)?.baseUrl;
+    const sharing = useRepoGroupAccess(groupId ?? undefined, selectedBaseUrl, open);
+    const accessById = useMemo(() => new Map(sharing.access?.members.map(member => [member.workspaceId, member])), [sharing.access]);
 
     useEffect(() => {
         if (!open) return;
@@ -134,6 +144,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         setReadOnly({});
         setStaleMembers([]);
         setError(null);
+        setConflicts([]);
         setSaving(false);
         setServerId(LOCAL_REPO_GROUP_SERVER_ID);
         if (!groupId) return;
@@ -151,8 +162,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                 ));
                 setReadOnly(Object.fromEntries(
                     group.members
-                        .filter(m => m.readOnly === true)
-                        .map(m => [m.workspaceId, true]),
+                        .map(m => [m.workspaceId, m.readOnly]),
                 ));
                 setStaleMembers(group.members.filter(m => m.stale));
             })
@@ -198,13 +208,16 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
     }, [repos, staleMembers, selectedServerId]);
 
     const toggleMember = useCallback((workspaceId: string) => {
+        if (!checked.has(workspaceId) && readOnly[workspaceId] === undefined && sharing.access?.enabled) {
+            setReadOnly(prev => ({ ...prev, [workspaceId]: accessById.get(workspaceId)?.shared === true }));
+        }
         setChecked(prev => {
             const next = new Set(prev);
             if (next.has(workspaceId)) next.delete(workspaceId);
             else next.add(workspaceId);
             return next;
         });
-    }, []);
+    }, [checked, readOnly, sharing.access, accessById]);
 
     // Switching servers drops the previous server's picks outright: their ids mean
     // nothing in the new server's registry, so carrying them over could only
@@ -215,6 +228,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         setDescriptions({});
         setReadOnly({});
         setError(null);
+        setConflicts([]);
     }, []);
 
     const handleSave = useCallback(async () => {
@@ -227,10 +241,12 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         // Same rule for the flag: an explicit `false` is what makes unticking the
         // box clear a previously saved entry server-side.
         const memberReadOnly = Object.fromEntries(
-            members.map(id => [id, readOnly[id] === true]),
+            members.filter(id => sharing.access || readOnly[id] !== undefined)
+                .map(id => [id, readOnly[id] === true]),
         );
         setSaving(true);
         setError(null);
+        setConflicts([]);
         try {
             if (groupId) {
                 await updateRepoGroup(
@@ -246,12 +262,14 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
             }
             onSaved();
         } catch (err: unknown) {
+            setConflicts(getRepoGroupWriterConflicts(err));
+            sharing.refresh();
             setError(isMissingRouteError(err)
                 ? "This server doesn't support repo groups."
                 : getRepositoryApiErrorMessage(err, 'Failed to save repo group'));
             setSaving(false);
         }
-    }, [groupId, name, options, checked, descriptions, readOnly, selectedBaseUrl, onSaved]);
+    }, [groupId, name, options, checked, descriptions, readOnly, selectedBaseUrl, onSaved, sharing.access, sharing.refresh]);
 
     // Editing a group on a server that is no longer in the list (offline since) —
     // still show which server it belongs to rather than a blank select.
@@ -310,6 +328,9 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                 </select>
 
                 <div className="text-xs font-medium text-[#616161] dark:text-[#999]">Member repos</div>
+                {sharing.access?.enabled && <p className="text-xs">Shared additions start Read-only. To change writers, revoke access in the writer group first. Saved access applies on the next turn; running turns continue.</p>}
+                {!sharing.access && !sharing.error && <p role="status" className="text-xs">Checking sharing with the owning server…</p>}
+                {sharing.error && <p role="status" className="text-xs">{sharing.error}</p>}
                 {loading ? (
                     <div className="text-xs text-[#848484] py-2">Loading…</div>
                 ) : options.length === 0 ? (
@@ -330,17 +351,18 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                                 className="flex flex-col gap-0.5 px-3 py-1.5 hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] text-xs"
                             >
                                 <label
-                                    className="flex items-center gap-2 cursor-pointer"
+                                    className="flex flex-wrap items-center gap-2 cursor-pointer min-w-0"
                                     htmlFor={`repo-group-member-check-${option.workspaceId}`}
                                 >
                                     <input
                                         type="checkbox"
                                         id={`repo-group-member-check-${option.workspaceId}`}
                                         checked={checked.has(option.workspaceId)}
+                                        disabled={saving || (!sharing.access && !sharing.error)}
                                         onChange={() => toggleMember(option.workspaceId)}
                                         data-testid={`repo-group-member-check-${option.workspaceId}`}
                                     />
-                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{option.name}</span>
+                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] break-words min-w-0">{option.name}</span>
                                     {option.staleReason && (
                                         <span
                                             data-testid="repo-group-stale-badge"
@@ -353,9 +375,17 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                                         </span>
                                     )}
                                     {option.rootPath && (
-                                        <span className="text-[#848484] truncate">{option.rootPath}</span>
+                                        <span className="text-[#848484] truncate min-w-0">{option.rootPath}</span>
                                     )}
                                 </label>
+                                {(sharing.access?.enabled || conflicts.some(conflict => conflict.workspaceId === option.workspaceId)) && (
+                                    <RepoGroupAccessStatus
+                                        access={accessById.get(option.workspaceId)}
+                                        readOnly={checked.has(option.workspaceId) ? readOnly[option.workspaceId] === true : undefined}
+                                        conflicts={conflicts.filter(conflict => conflict.workspaceId === option.workspaceId)}
+                                        serverId={selectedServerId}
+                                    />
+                                )}
                                 {/* Only a member can carry a description, so the field
                                     appears once the repo is checked. */}
                                 {checked.has(option.workspaceId) && (
@@ -381,6 +411,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                                             type="checkbox"
                                             id={`repo-group-member-read-only-${option.workspaceId}`}
                                             checked={readOnly[option.workspaceId] === true}
+                                            disabled={saving}
                                             aria-label={`Read-only for ${option.name}`}
                                             data-testid={`repo-group-member-read-only-${option.workspaceId}`}
                                             onChange={e => {

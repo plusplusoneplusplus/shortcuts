@@ -32,6 +32,7 @@ import {
     updateRepoGroup,
     searchRepoGroupFiles,
 } from '../../../../src/server/spa/client/react/repos/repoGroupService';
+import { getRepoGroupAccess, getRepoGroupWriterConflicts } from '../../../../src/server/spa/client/react/repos/repoGroupAccess';
 
 const REMOTE = 'http://127.0.0.1:4000';
 
@@ -43,6 +44,24 @@ beforeEach(() => {
 });
 
 describe('repo-group requests route to the owning server', () => {
+    it('reads diagnostics and owner capability from the selected server using a raw group id', async () => {
+        await getRepoGroupAccess('group-remote', REMOTE);
+        await getRepoGroupAccess();
+        expect(clientForCalls).toEqual([REMOTE, undefined]);
+        expect(mockRequest.mock.calls.map(call => call[0])).toEqual([
+            '/repo-groups/access?groupId=group-remote', '/repo-groups/access',
+        ]);
+    });
+
+    it('preserves every structured authoritative conflict and ignores unrelated errors', () => {
+        const conflicts = ['first', 'second'].map(id => ({
+            workspaceId: 'repo', writerGroupId: `group-${id}`, writerGroupName: id,
+        }));
+        expect(getRepoGroupWriterConflicts({ details: { conflicts } })).toEqual(conflicts);
+        expect(getRepoGroupWriterConflicts(new Error('Network'))).toEqual([]);
+        expect(getRepoGroupWriterConflicts({ details: { conflicts: [{}] } })).toEqual([]);
+    });
+
     it('creates on the remote server when a base URL is given', async () => {
         await createRepoGroup({ name: 'Platform', members: ['a'] }, REMOTE);
 

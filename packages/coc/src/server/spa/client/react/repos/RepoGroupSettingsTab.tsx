@@ -134,7 +134,7 @@ function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl
                 <div className={panelsOwnHeader ? '' : 'px-6 pb-8 flex flex-col gap-4'}>
                     {activeSection === 'members' && (
                         members
-                            ? <RepoGroupMemberList workspaceId={workspaceId} baseUrl={baseUrl} members={members} />
+                            ? <RepoGroupMemberList key={selectionId} workspaceId={workspaceId} selectionId={selectionId} baseUrl={baseUrl} members={members} />
                             : <div className="text-xs text-[#848484] px-3 py-2" data-testid="repo-group-settings-loading">Loading…</div>
                     )}
                     {activeSection === 'mcp' && (

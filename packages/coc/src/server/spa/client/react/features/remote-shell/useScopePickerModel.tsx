@@ -216,7 +216,7 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
     const [addFolderOpen, setAddFolderOpen] = useState(false);
     const [addRepoOpen, setAddRepoOpen] = useState(false);
     const [cloneOpen, setCloneOpen] = useState(false);
-    const [groupDialog, setGroupDialog] = useState<{ groupId: string | null; baseUrl?: string } | null>(null);
+    const [groupDialog, setGroupDialog] = useState<{ groupId: string | null; baseUrl?: string; serverId?: string } | null>(null);
     const [groupDeleteTarget, setGroupDeleteTarget] = useState<any | null>(null);
     const [groupDeleting, setGroupDeleting] = useState(false);
 
@@ -318,7 +318,7 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
     const buildGroupMenuItems = useCallback((groupWs: any): ContextMenuItem[] => [{
         label: 'Edit group',
         icon: '✎',
-        onClick: () => { close(); setGroupDialog({ groupId: String(groupWs.id), baseUrl: groupWs?.remote?.baseUrl }); },
+        onClick: () => { close(); setGroupDialog({ groupId: String(groupWs.id), baseUrl: groupWs?.remote?.baseUrl, serverId: groupWs?.remote?.serverId }); },
     }, {
         label: 'Delete group',
         icon: 'X',
@@ -502,6 +502,7 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
                 open={!!groupDialog}
                 groupId={groupDialog?.groupId ?? null}
                 groupBaseUrl={groupDialog?.baseUrl}
+                groupServerId={groupDialog?.serverId}
                 repos={repos}
                 onClose={() => setGroupDialog(null)}
                 onSaved={() => { setGroupDialog(null); fetchRepos(); }}

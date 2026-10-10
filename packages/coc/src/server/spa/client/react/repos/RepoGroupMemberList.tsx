@@ -28,6 +28,11 @@ import {
     type RepoGroupMember,
 } from './repoGroupService';
 import { getRepositoryApiErrorMessage } from './repositoryService';
+import type { RepoGroupWriterConflict } from '@plusplusoneplusplus/coc-client';
+import { useRepoGroupAccess } from './useRepoGroupAccess';
+import { getRepoGroupWriterConflicts } from './repoGroupAccess';
+import { RepoGroupAccessStatus } from './RepoGroupAccessStatus';
+import { parseRemoteCloneKey } from './cloneIdentity';
 
 /** Muted prompt shown in an empty description field. */
 export const REPO_GROUP_DESCRIPTION_PLACEHOLDER = 'Add description';
@@ -43,13 +48,16 @@ function staleBadgeLabel(reason: RepoGroupMember['staleReason']): string {
 export interface RepoGroupMemberListProps {
     /** The `group-<slug>` workspace id owning these members. */
     workspaceId: string;
+    selectionId?: string;
     /** Base URL of the server owning the group; omit for a local group. */
     baseUrl?: string;
     /** Members as resolved by `GET /api/repo-groups/:id`. */
     members: readonly RepoGroupMember[];
 }
 
-export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroupMemberListProps) {
+export function RepoGroupMemberList({ workspaceId, selectionId = workspaceId, baseUrl, members }: RepoGroupMemberListProps) {
+    const sharing = useRepoGroupAccess(workspaceId, baseUrl);
+    const [conflicts, setConflicts] = useState<RepoGroupWriterConflict[]>([]);
     // Text being typed, per member — absent means "not editing, show the saved
     // value". `saved` holds descriptions this component has written since the
     // snapshot in `members` was loaded.
@@ -117,6 +125,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
         const previous = isReadOnly(member);
         const next = !previous;
         setSavedReadOnly(current => ({ ...current, [memberId]: next }));
+        setConflicts(current => current.filter(conflict => conflict.workspaceId !== memberId));
         setSavingReadOnly(current => new Set(current).add(memberId));
         setReadOnlyErrors(current => {
             if (!(memberId in current)) return current;
@@ -126,7 +135,10 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
         });
         try {
             await updateRepoGroup(workspaceId, { readOnly: { [memberId]: next } }, baseUrl);
+            sharing.refresh();
         } catch (err: unknown) {
+            setConflicts(current => [...current.filter(conflict => conflict.workspaceId !== memberId), ...getRepoGroupWriterConflicts(err)]);
+            sharing.refresh();
             setSavedReadOnly(current => ({ ...current, [memberId]: previous }));
             setReadOnlyErrors(current => ({
                 ...current,
@@ -139,7 +151,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                 return nextSaving;
             });
         }
-    }, [baseUrl, isReadOnly, workspaceId]);
+    }, [baseUrl, isReadOnly, workspaceId, sharing.refresh]);
 
     if (members.length === 0) {
         return (
@@ -151,6 +163,8 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
 
     return (
         <div className="flex flex-col" data-testid="repo-group-member-list">
+            {sharing.access?.enabled && <p className="text-xs px-3 py-2">Saved access applies on the next turn; running turns continue. Revoke the writer first, then grant another group access.</p>}
+            {sharing.error && <p role="status" className="text-xs px-3 py-2">{sharing.error}</p>}
             {members.map(member => {
                 const memberId = member.workspaceId;
                 const value = drafts[memberId] ?? committed(member);
@@ -163,8 +177,8 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                         className="flex flex-col gap-0.5 px-3 py-1.5 text-xs border-b border-[#f0f0f0] dark:border-[#2a2a2a] last:border-b-0"
                         data-testid={`repo-group-member-row-${memberId}`}
                     >
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] shrink-0">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
+                            <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] break-words min-w-0">
                                 {member.name || memberId}
                             </span>
                             {member.stale && (
@@ -191,6 +205,14 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                                 <span className="text-[#848484] truncate">{member.rootPath}</span>
                             )}
                         </div>
+                        {(sharing.access?.enabled || conflicts.some(conflict => conflict.workspaceId === memberId)) && (
+                            <RepoGroupAccessStatus
+                                access={sharing.access?.members.find(access => access.workspaceId === memberId)}
+                                readOnly={readOnly}
+                                conflicts={conflicts.filter(conflict => conflict.workspaceId === memberId)}
+                                serverId={parseRemoteCloneKey(selectionId)?.serverId}
+                            />
+                        )}
                         <div className="flex items-center gap-3">
                             <input
                                 type="text"
