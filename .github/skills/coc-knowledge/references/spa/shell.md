@@ -457,7 +457,8 @@ copy action and no save or dirty-state registration. With
 `features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos`; only the descriptor
-persists. The full contract lives in
+persists. Normal tracking comes first, then an always-visible Manual tracking
+section with its own add form and separate Done/Archived groups. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

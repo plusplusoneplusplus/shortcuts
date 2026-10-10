@@ -653,9 +653,18 @@ asynchronously), and hides the `+` menu's To-do entry.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
-and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` lists
-active items (Needs attention, In progress, To do), then collapsed Done and
-Archived sections. Every write carries the item revision it was based on; a
+and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` splits the ledger by item type
+(`sentinelTodoType`; a missing type reads as normal) through
+`sentinelTodoSections(items, type)`. Normal tracking lists active items (Needs
+attention, In progress, To do; oldest first within a status), then collapsed Done
+and Archived sections. Manual tracking follows as a labelled region whose
+`aria-expanded` toggle, named `Manual tracking (<active> active)`, starts
+expanded. It stays visible when empty (`No manual items yet.`), has its own
+**Add manual item** form (required Title; optional Notes, Done when and Priority;
+creates send `type: 'manual'`, normal creates send no type), and its own
+initially collapsed Done and Archived groups. Reopening returns an item to the
+active list. The tab never offers delegation, conversion or copying. Each add form
+owns its draft and idempotency key (`useAddItemForm`). Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
 Late loads are dropped by a sequence counter. Choosing Needs attention requires a

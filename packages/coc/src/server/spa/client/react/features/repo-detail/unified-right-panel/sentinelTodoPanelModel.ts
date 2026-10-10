@@ -13,6 +13,7 @@ import type {
     SentinelTodoJobLink,
     SentinelTodoPriority,
     SentinelTodoStatus,
+    SentinelTodoType,
 } from '@plusplusoneplusplus/coc-client';
 import {
     activeTabId,
@@ -58,6 +59,14 @@ export function sentinelTodoPriority(item: Pick<SentinelTodoItem, 'priority'>): 
     return item.priority === 'high' ? 'high' : 'regular';
 }
 
+/**
+ * An item's tracking type. An older owning server omits the field, and every
+ * item stored before manual tracking existed is normal.
+ */
+export function sentinelTodoType(item: Pick<SentinelTodoItem, 'type'>): SentinelTodoType {
+    return item.type === 'manual' ? 'manual' : 'normal';
+}
+
 /** Active items needing a person first, then work in flight, then queued work. */
 const ACTIVE_ORDER: Readonly<Record<SentinelTodoStatus, number>> = {
     needs_attention: 0,
@@ -73,20 +82,22 @@ export interface SentinelTodoSections {
 }
 
 /**
- * Active items first (needs attention, in progress, to do; oldest first within
- * a status so the list does not reshuffle on every edit), then Done and
- * Archived newest first. Archive is separate from status, so an archived item
- * is listed only under Archived whatever its status.
+ * One tracking type's sections: active items first (needs attention, in
+ * progress, to do; oldest first within a status so the list does not reshuffle
+ * on every edit), then Done and Archived newest first. Archive is separate from
+ * status, so an archived item is listed only under Archived whatever its
+ * status. Normal and Manual tracking each get their own sections.
  */
-export function sentinelTodoSections(items: readonly SentinelTodoItem[]): SentinelTodoSections {
+export function sentinelTodoSections(items: readonly SentinelTodoItem[], type: SentinelTodoType): SentinelTodoSections {
     const byCreated = (a: SentinelTodoItem, b: SentinelTodoItem) => a.createdAt.localeCompare(b.createdAt);
     const newestFirst = (a: SentinelTodoItem, b: SentinelTodoItem) => b.updatedAt.localeCompare(a.updatedAt);
-    const live = items.filter(item => !item.archived);
+    const ofType = items.filter(item => sentinelTodoType(item) === type);
+    const live = ofType.filter(item => !item.archived);
     return {
         active: live.filter(item => item.status !== 'done')
             .sort((a, b) => ACTIVE_ORDER[a.status] - ACTIVE_ORDER[b.status] || byCreated(a, b)),
         done: live.filter(item => item.status === 'done').sort(newestFirst),
-        archived: items.filter(item => item.archived).sort(newestFirst),
+        archived: ofType.filter(item => item.archived).sort(newestFirst),
     };
 }
 

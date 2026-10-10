@@ -437,6 +437,271 @@ describe('UnifiedTodoTab', () => {
     });
 });
 
+describe('UnifiedTodoTab Manual tracking', () => {
+    const manualItem = (overrides: Partial<SentinelTodoItem> = {}) => item({
+        id: 'm1', title: 'Call the vendor', completionCondition: '', notes: '', type: 'manual', createdBy: 'user', ...overrides,
+    });
+    const manualSection = () => screen.getByTestId('sentinel-todo-manual-section');
+
+    it('keeps an expanded, empty Manual tracking section after normal tracking', async () => {
+        get.mockResolvedValue(ledger([]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const empty = await screen.findByTestId('sentinel-todo-empty');
+        const section = manualSection();
+        expect(empty.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const toggle = within(section).getByRole('button', { name: 'Manual tracking (0 active)' });
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
+        expect(screen.getByRole('region', { name: 'Manual tracking (0 active)' })).toBe(section);
+        expect(within(section).getByTestId('sentinel-todo-manual-empty').textContent).toBe('No manual items yet.');
+        expect(within(section).getByRole('button', { name: 'Add manual item' })).toBeTruthy();
+    });
+
+    it('waits for the ledger before showing Manual tracking, and never shows it as empty on a load error', async () => {
+        const pending = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(pending.promise);
+        const { unmount } = render(<UnifiedTodoTab owner={OWNER} />);
+        expect(screen.getByTestId('sentinel-todo-loading').textContent).toMatch(/Loading to-do items/);
+        expect(screen.queryByTestId('sentinel-todo-manual-section')).toBeNull();
+        unmount();
+        get.mockReset().mockRejectedValueOnce(new Error('Network down')).mockResolvedValue(ledger([manualItem()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const alert = await screen.findByTestId('sentinel-todo-load-error');
+        expect(screen.queryByTestId('sentinel-todo-manual-empty')).toBeNull();
+        fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+        await screen.findByTestId('sentinel-todo-row-m1');
+        expect(screen.queryByTestId('sentinel-todo-load-error')).toBeNull();
+    });
+
+    it('adds a title-only manual item from its own form, separate from Add item', async () => {
+        get.mockResolvedValueOnce(ledger([])).mockResolvedValue(ledger([manualItem()]));
+        create.mockResolvedValue({ item: manualItem(), ledgerRevision: 1, created: true });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-empty');
+        fireEvent.click(within(manualSection()).getByRole('button', { name: 'Add manual item' }));
+        const form = screen.getByRole('form', { name: 'Add manual item' });
+        expect(screen.queryByTestId('sentinel-todo-add-form')).toBeNull();
+        expect(within(form).getByLabelText('Done when (optional)')).toBeTruthy();
+        expect(within(form).getByLabelText('Notes (optional)')).toBeTruthy();
+        const title = within(form).getByLabelText('Title') as HTMLInputElement;
+        expect(title.required).toBe(true);
+        const add = within(form).getByRole('button', { name: 'Add' }) as HTMLButtonElement;
+        expect(add.disabled).toBe(true);
+        fireEvent.change(title, { target: { value: '  Call the vendor ' } });
+        fireEvent.click(add);
+        await within(manualSection()).findByTestId('sentinel-todo-row-m1');
+        expect(create).toHaveBeenCalledWith('ws-1', 'queue_sentinel', {
+            title: 'Call the vendor', completionCondition: '', notes: '', priority: 'regular', type: 'manual',
+            idempotencyKey: expect.any(String),
+        });
+        expect(screen.queryByRole('form', { name: 'Add manual item' })).toBeNull();
+        expect(within(manualSection()).getByRole('button', { name: 'Manual tracking (1 active)' })).toBeTruthy();
+        // Normal tracking is untouched: its empty state and Add item remain.
+        expect(screen.getByTestId('sentinel-todo-empty')).toBeTruthy();
+    });
+
+    it('creates normal items without a type from Add item', async () => {
+        get.mockResolvedValueOnce(ledger([])).mockResolvedValue(ledger([item()]));
+        create.mockResolvedValue({ item: item(), ledgerRevision: 1, created: true });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Add item' }));
+        expect(screen.getByLabelText('Done when')).toBeTruthy();
+        fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fix login' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+        await screen.findByTestId('sentinel-todo-row-i1');
+        expect(create.mock.calls[0][2]).not.toHaveProperty('type');
+        expect(within(manualSection()).getByTestId('sentinel-todo-manual-empty').textContent).toBe('No manual items yet.');
+    });
+
+    it('keeps a failed manual draft and retries it with the same idempotency key', async () => {
+        get.mockResolvedValueOnce(ledger([])).mockResolvedValue(ledger([manualItem()]));
+        create.mockRejectedValueOnce(new Error('disk full')).mockResolvedValue({ item: manualItem(), ledgerRevision: 1, created: true });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-empty');
+        fireEvent.click(screen.getByRole('button', { name: 'Add manual item' }));
+        const form = screen.getByRole('form', { name: 'Add manual item' });
+        fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'Call the vendor' } });
+        fireEvent.change(within(form).getByLabelText('Notes (optional)'), { target: { value: 'Ask about pricing' } });
+        fireEvent.click(within(form).getByRole('button', { name: 'Add' }));
+        const alert = await screen.findByTestId('sentinel-todo-manual-add-error');
+        expect(form.contains(alert)).toBe(true);
+        expect(alert.textContent).toMatch(/Could not save: disk full/);
+        expect((within(form).getByLabelText('Title') as HTMLInputElement).value).toBe('Call the vendor');
+        expect((within(form).getByLabelText('Notes (optional)') as HTMLTextAreaElement).value).toBe('Ask about pricing');
+        fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+        await screen.findByTestId('sentinel-todo-row-m1');
+        expect(create).toHaveBeenCalledTimes(2);
+        expect(create.mock.calls[1][2]).toMatchObject({ type: 'manual', notes: 'Ask about pricing' });
+        expect(create.mock.calls[1][2].idempotencyKey).toBe(create.mock.calls[0][2].idempotencyKey);
+    });
+
+    it('groups manual items apart from normal ones, status first and oldest first, with collapsed Done and Archived', async () => {
+        get.mockResolvedValue(ledger([
+            item({ id: 'n-todo', title: 'Normal todo' }),
+            item({ id: 'n-done', title: 'Normal done', status: 'done' }),
+            manualItem({ id: 'm-todo-new', title: 'Newer todo', createdAt: '2026-10-09T05:00:00.000Z' }),
+            manualItem({ id: 'm-todo-old', title: 'Older todo', priority: 'high', createdAt: '2026-10-09T01:00:00.000Z' }),
+            manualItem({ id: 'm-progress', status: 'in_progress', createdAt: '2026-10-09T06:00:00.000Z' }),
+            manualItem({ id: 'm-attn', status: 'needs_attention', statusReason: 'Vendor silent', createdAt: '2026-10-09T07:00:00.000Z' }),
+            manualItem({ id: 'm-done', status: 'done' }),
+            manualItem({ id: 'm-arch', archived: true }),
+        ]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-n-todo');
+        const section = manualSection();
+        const rowIds = (root: HTMLElement) => within(root).queryAllByTestId(/^sentinel-todo-row-(?!error)/).map(r => r.getAttribute('data-testid'));
+        expect(rowIds(section)).toEqual([
+            'sentinel-todo-row-m-attn', 'sentinel-todo-row-m-progress', 'sentinel-todo-row-m-todo-old', 'sentinel-todo-row-m-todo-new',
+        ]);
+        // High is a visible label, not a scheduling signal.
+        expect(within(section).getByTestId('sentinel-todo-priority-high-m-todo-old').textContent).toContain('High');
+        expect(within(section).getByTestId('sentinel-todo-row-m-attn').textContent).toContain('Needs attention');
+        expect(within(section).getByRole('button', { name: 'Manual tracking (4 active)' })).toBeTruthy();
+        // Normal sections hold only normal items.
+        expect(screen.getByTestId('sentinel-todo-done-section').textContent).toContain('Done (1)');
+        expect(screen.queryByTestId('sentinel-todo-archived-section')).toBeNull();
+        const done = within(section).getByTestId('sentinel-todo-manual-done-section');
+        const archived = within(section).getByTestId('sentinel-todo-manual-archived-section');
+        const doneToggle = within(done).getByRole('button', { name: 'Done (1)' });
+        const archivedToggle = within(archived).getByRole('button', { name: 'Archived (1)' });
+        expect(doneToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(archivedToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('sentinel-todo-row-m-done')).toBeNull();
+        fireEvent.click(doneToggle);
+        expect(within(done).getByTestId('sentinel-todo-row-m-done')).toBeTruthy();
+        expect(screen.queryByTestId('sentinel-todo-row-n-done')).toBeNull();
+        fireEvent.click(archivedToggle);
+        expect(within(archived).getByTestId('sentinel-todo-row-m-arch')).toBeTruthy();
+    });
+
+    it('collapses and expands Manual tracking, and Add manual item reopens it', async () => {
+        get.mockResolvedValue(ledger([manualItem()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-m1');
+        const toggle = within(manualSection()).getByRole('button', { name: 'Manual tracking (1 active)' });
+        expect(toggle.tagName).toBe('BUTTON');
+        fireEvent.click(toggle);
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('sentinel-todo-row-m1')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Add manual item' }));
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByRole('form', { name: 'Add manual item' })).toBeTruthy();
+        expect(screen.getByTestId('sentinel-todo-row-m1')).toBeTruthy();
+    });
+
+    it('shows No active manual items when every manual item is Done or Archived', async () => {
+        get.mockResolvedValue(ledger([manualItem({ status: 'done' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const empty = await within(await screen.findByTestId('sentinel-todo-manual-section')).findByTestId('sentinel-todo-manual-empty');
+        expect(empty.textContent).toBe('No active manual items.');
+        expect(within(manualSection()).getByRole('button', { name: 'Manual tracking (0 active)' })).toBeTruthy();
+    });
+
+    it('edits a manual item inline with optional fields and priority, keeping the draft on a conflict', async () => {
+        const current = manualItem({ title: 'Call the vendor today', revision: 3 });
+        get.mockResolvedValueOnce(ledger([manualItem({ revision: 2 })])).mockResolvedValue(ledger([current]));
+        update.mockRejectedValueOnce(conflict(current)).mockResolvedValue({ item: current, ledgerRevision: 5 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-m1');
+        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        expect(within(row).getByText('Not set')).toBeTruthy();
+        fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+        fireEvent.change(within(row).getByLabelText('Title'), { target: { value: 'Call the vendor back' } });
+        fireEvent.change(within(row).getByLabelText('Notes (optional)'), { target: { value: 'Ask about renewal' } });
+        fireEvent.change(within(row).getByLabelText('Done when (optional)'), { target: { value: 'Quote received' } });
+        fireEvent.change(within(row).getByLabelText('Priority'), { target: { value: 'high' } });
+        fireEvent.click(within(row).getByRole('button', { name: 'Save' }));
+        const error = await screen.findByTestId('sentinel-todo-row-error-m1');
+        expect(error.textContent).toMatch(/changed since you opened it/);
+        expect(update.mock.calls[0][3]).toEqual({
+            expectedRevision: 2, title: 'Call the vendor back', notes: 'Ask about renewal', completionCondition: 'Quote received', priority: 'high',
+        });
+        expect(update.mock.calls[0][3]).not.toHaveProperty('type');
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+        // The latest accepted item is shown while the edit is retained.
+        const latest = screen.getByTestId('sentinel-todo-row-m1');
+        expect(latest.textContent).toContain('Call the vendor today');
+        expect((within(latest).getByLabelText('Title') as HTMLInputElement).value).toBe('Call the vendor back');
+        fireEvent.click(within(latest).getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+        expect(update.mock.calls[1][3]).toMatchObject({ expectedRevision: 3, title: 'Call the vendor back', priority: 'high' });
+    });
+
+    it('moves a manual item through all four statuses, reopens it, archives and restores it', async () => {
+        get.mockResolvedValue(ledger([manualItem({ revision: 2 })]));
+        update.mockResolvedValue({ item: manualItem(), ledgerRevision: 3 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-m1');
+        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        const status = within(row).getByLabelText('Status') as HTMLSelectElement;
+        expect([...status.options].map(o => o.textContent)).toEqual(['To do', 'In progress', 'Needs attention', 'Done']);
+        fireEvent.change(status, { target: { value: 'in_progress' } });
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 2, status: 'in_progress', statusReason: null }));
+        fireEvent.change(within(row).getByLabelText('Status'), { target: { value: 'needs_attention' } });
+        fireEvent.change(within(row).getByLabelText('Reason for Needs attention'), { target: { value: 'Vendor silent' } });
+        fireEvent.click(within(row).getByRole('button', { name: 'Set status' }));
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 2, status: 'needs_attention', statusReason: 'Vendor silent' }));
+        fireEvent.change(within(row).getByLabelText('Status'), { target: { value: 'done' } });
+        fireEvent.change(within(row).getByLabelText('Reason for Done (optional)'), { target: { value: 'Quote received' } });
+        fireEvent.click(within(row).getByRole('button', { name: 'Set status' }));
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', {
+            expectedRevision: 2, status: 'done', statusReason: 'Quote received', outcome: 'Quote received',
+        }));
+        cleanup();
+
+        // A Done manual item reopens to the active list and archives/restores through user writes.
+        get.mockReset().mockResolvedValueOnce(ledger([manualItem({ status: 'done', revision: 4 })]))
+            .mockResolvedValueOnce(ledger([manualItem({ status: 'todo', revision: 5 })]))
+            .mockResolvedValueOnce(ledger([manualItem({ status: 'todo', archived: true, revision: 6 })]))
+            .mockResolvedValue(ledger([manualItem({ status: 'todo', revision: 7 })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const done = await screen.findByTestId('sentinel-todo-manual-done-section');
+        fireEvent.click(within(done).getByRole('button', { name: 'Done (1)' }));
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-m1')).getByRole('button', { expanded: false }));
+        fireEvent.click(screen.getByRole('button', { name: 'Reopen' }));
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 4, status: 'todo', statusReason: null }));
+        await waitFor(() => expect(screen.queryByTestId('sentinel-todo-manual-done-section')).toBeNull());
+        expect(within(manualSection()).getByRole('button', { name: 'Manual tracking (1 active)' })).toBeTruthy();
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-m1')).getByRole('button', { name: 'Archive' }));
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 5, archived: true }));
+        const archived = await screen.findByTestId('sentinel-todo-manual-archived-section');
+        expect(within(manualSection()).getByRole('button', { name: 'Manual tracking (0 active)' })).toBeTruthy();
+        fireEvent.click(within(archived).getByRole('button', { name: 'Archived (1)' }));
+        const archivedRow = within(archived).getByTestId('sentinel-todo-row-m1');
+        // The row stays expanded across groups because expansion is keyed by item id.
+        fireEvent.click(within(archivedRow).getByRole('button', { name: 'Restore' }));
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 6, archived: false }));
+        await within(manualSection()).findByRole('button', { name: 'Manual tracking (1 active)' });
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('keeps a failed manual status save visible with Retry', async () => {
+        get.mockResolvedValue(ledger([manualItem({ revision: 2 })]));
+        update.mockRejectedValueOnce(new Error('disk full')).mockResolvedValue({ item: manualItem(), ledgerRevision: 3 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-m1');
+        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.change(within(row).getByLabelText('Status'), { target: { value: 'in_progress' } });
+        const alert = await within(row).findByTestId('sentinel-todo-row-error-m1');
+        expect(alert.textContent).toMatch(/Could not save: disk full/);
+        fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+        expect(update.mock.calls[1][3]).toEqual(update.mock.calls[0][3]);
+    });
+
+    it('wraps manual rows and stacks form fields in a narrow pane', async () => {
+        get.mockResolvedValue(ledger([manualItem({ priority: 'high', title: 'A very long manual title that must wrap inside a narrow panel' })]));
+        render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const row = await screen.findByTestId('sentinel-todo-row-m1');
+        expect(within(row).getByText(/A very long manual title/).className).toMatch(/break-words/);
+        fireEvent.click(screen.getByRole('button', { name: 'Add manual item' }));
+        const form = screen.getByRole('form', { name: 'Add manual item' });
+        expect(form.className).toMatch(/flex-col/);
+        const header = screen.getByRole('button', { name: /Manual tracking/ }).closest('h3')!.parentElement!;
+        expect(header.className).toMatch(/flex-wrap/);
+    });
+});
+
 describe('Sentinel chat registry and flag gating', () => {
     afterEach(() => {
         clearSentinelTodoChats();
