@@ -103,7 +103,8 @@ Chat modes are Ask, Autopilot and Ralph; incoming `mode: 'plan'` normalizes to A
 First turns (`ChatBaseExecutor.execute`) and follow-ups (`FollowUpExecutor.executeFollowUp`) share:
 
 1. `chat-turn-context-builder.ts`: per-turn tools, memory and interactive handles.
-2. `chat-turn-system-message.ts`: canonical system-message assembly.
+2. `chat-turn-system-message.ts`: canonical system-message assembly, including mandatory
+   Sentinel job-review rules from `delegation/sentinel-job-review-instructions.ts`.
 3. `chat-turn-policy-resolver.ts`: provider-aware model, effort and context policy.
 4. `chat-turn-runner.ts`: common `sendMessage` options and callbacks.
 5. `chat-turn-settlement.ts`: token roll-up and turn-end side effects.
@@ -113,6 +114,12 @@ paths. First turns add attachments; follow-ups add continuation/session policy.
 `BaseExecutor` and `ProcessSessionRegistry` own live streaming, serialized turn writes,
 partial-turn capture and cleanup. Durable conversation state belongs to the process
 store, not this execution registry.
+
+Sentinel result envelopes contain a short untrusted-JSON prefix and unchanged result data.
+The central review contract is appended after configurable admin/repo prompts on every
+Sentinel request, including existing/native-resumed, provider-switched and post-compaction
+turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
+review recipients receive the same contract inline. Cancellation remains display-only.
 
 ### Runtime capability wiring
 

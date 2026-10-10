@@ -32,6 +32,7 @@ import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning
 import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 import { backgroundTasksRegistry } from '../../../src/server/streaming/background-tasks-registry';
 import { SENTINEL_DISPATCHER_DIRECTIVE } from '../../../src/server/executors/chat-mode-directive';
+import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
 
 // ============================================================================
 // Mocks
@@ -767,6 +768,8 @@ describe('ChatExecutor system message content', () => {
         expect(call.prompt).toContain('unless the user requests a particular provider/model');
         expect(call.prompt).not.toContain('<chosen-folder>');
         expect(call.systemMessage?.content ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(call.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(call.prompt).not.toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
     });
 
     it('does not give an ask chat the dispatcher rules', async () => {
@@ -774,6 +777,7 @@ describe('ChatExecutor system message content', () => {
         await executor.execute(makeChatTask('ask', 'task-ask-no-dispatcher'), 'Hi');
 
         expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '').not.toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
     });
 
     it('does NOT inject note-file block when noteChat is absent', async () => {

@@ -550,13 +550,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
 
             // Build the system message AFTER the tool bundle so the
-            // tool-guidance prose lives in `systemMessage` (sent once at
-            // session creation) rather than being stapled to every user
-            // turn.
+            // tool-guidance prose and required runtime rules are supplied on
+            // every request, including native resumes and fresh sessions.
             const systemMessage = await buildChatTurnSystemMessage({
                 workingDirectory,
                 provider: sessionProvider,
                 globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+                sentinel: currentMode === 'sentinel',
                 forEachGeneration,
                 mapReduceGeneration,
                 memoryV2: chatCtx.memoryV2,

@@ -370,7 +370,13 @@ references before editing. Paths are package-relative.
   writes/reloads; retain
   state on scan failure. Wakeups persist before arming.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
-  the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
+  the mode directive (`chat-mode-directive.ts`). Required review rules live in
+  `delegation/sentinel-job-review-instructions.ts` and are appended by
+  `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
+  resumed, provider-switched and post-compaction sessions, independently of admin/repo
+  prompts. Sentinel completion messages contain only the untrusted-result prefix and
+  result JSON; non-Sentinel parents receive the shared rules inline.
+  `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
   requests a particular provider/model. Enabled Auto uses target routing without parent AI
   inheritance. Disabled/unavailable Auto uses the parent's concrete provider after target

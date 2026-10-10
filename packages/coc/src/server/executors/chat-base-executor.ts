@@ -871,6 +871,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             workingDirectory: input.workingDirectory,
             provider: payload.provider ?? this.provider,
             globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+            sentinel: normalizeChatMode(payload.mode) === 'sentinel',
             forEachGeneration: (() => {
                 const context = getForEachContext({ payload });
                 return isForEachGenerationContext(context) ? context : null;
