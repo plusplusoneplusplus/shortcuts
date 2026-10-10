@@ -288,6 +288,45 @@ describe('repo-group chat context injection (AC-03)', () => {
             });
         }
 
+        it('keeps the running turn intact and applies saved revocation on the next turn, not standalone chats', async () => {
+            seedFirstTurnProcess(groupId, 'running-writer');
+            let release!: () => void;
+            let entered!: () => void;
+            const started = new Promise<void>(resolve => { entered = resolve; });
+            const finish = new Promise<void>(resolve => { release = resolve; });
+            sdkMocks.mockSendMessage.mockImplementationOnce(async () => {
+                entered();
+                await finish;
+                return { success: true, response: 'Finished', sessionId: 'sess-1', toolCalls: [] };
+            });
+            const first = new ChatExecutor(store, makeOptions(), tmpDir);
+            const running = first.execute(makeChatTask(groupId, 'running-writer'), 'Hello');
+            await started;
+            const activeOptions = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(activeOptions.additionalDirectories).toEqual([repoA, repoB]);
+            await updateRepoGroup(tmpDir, store, groupId, { readOnly: { 'ws-v2-aaa': true } }, { exclusiveWriter: true });
+            expect(activeOptions.additionalDirectories).toEqual([repoA, repoB]);
+            expect(activeOptions.readOnlyDirectories).toBeUndefined();
+            expect(activeOptions.signal?.aborted ?? false).toBe(false);
+            expect(store.processes.get(toQueueProcessId('running-writer'))?.status).toBe('running');
+            release();
+            await running;
+
+            const process = seedInjectedProcess(groupId, 'next-saved-policy');
+            pushUserTurn(process);
+            const next = new FollowUpExecutor(store, makeOptions(), tmpDir);
+            await next.executeFollowUp(process.id, 'next question', undefined, 'ask');
+            const nextOptions = sdkMocks.mockSendMessage.mock.calls[1][0];
+            expect(nextOptions.additionalDirectories).toEqual([repoB]);
+            expect(nextOptions.readOnlyDirectories).toEqual([repoA]);
+            expect(nextOptions.prompt).toContain('Repo A [read-only]');
+
+            await first.execute(makeChatTask('ws-v2-aaa', 'standalone'), 'Hello');
+            const standalone = sdkMocks.mockSendMessage.mock.calls[2][0];
+            expect(standalone.readOnlyDirectories).toBeUndefined();
+            expect(standalone.additionalDirectories).toBeUndefined();
+        });
+
         it('appends the member block when no earlier turn carried it', async () => {
             seedProcess(groupId, 'proc-group');
             const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);

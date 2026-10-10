@@ -80,6 +80,37 @@ describe('RequestRunner.send() — availability', () => {
 // ============================================================================
 
 describe('RequestRunner.send() — non-streaming path', () => {
+    it('reapplies newly protected roots before the next resumed turn on the same client', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const updateOptions = vi.fn().mockResolvedValue({ success: true });
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: vi.fn().mockResolvedValue({ success: true }) } },
+            options: { update: updateOptions },
+        };
+        const group = path.resolve('group-fixture');
+        const member = path.resolve('member-fixture');
+        const first = await runner.send({
+            prompt: 'first', client: mockClient as any, workingDirectory: group,
+            additionalDirectories: [member], loadDefaultMcpConfig: false,
+        });
+        expect(first.success).toBe(true);
+        expect(updateOptions).not.toHaveBeenCalled();
+        const next = await runner.send({
+            prompt: 'next', client: mockClient as any, workingDirectory: group,
+            sessionId: first.sessionId, readOnlyDirectories: [member], loadDefaultMcpConfig: false,
+        });
+        expect(next.success).toBe(true);
+        expect(mockClient.resumeSession).toHaveBeenCalled();
+        expect(updateOptions).toHaveBeenCalledWith(expect.objectContaining({
+            sandboxConfig: expect.objectContaining({
+                enabled: true,
+                userPolicy: { filesystem: expect.objectContaining({ readonlyPaths: [member] }) },
+            }),
+        }));
+        expect(updateOptions.mock.invocationCallOrder[0]).toBeLessThan(mockSession.sendAndWait.mock.invocationCallOrder[1]);
+        expect(mockClient.stop).not.toHaveBeenCalled();
+    });
+
     it('applies writable external roots through the public session RPC without enabling a sandbox', async () => {
         const { runner, mockSession } = makeRunner();
         const addPath = vi.fn().mockResolvedValue({ success: true });
