@@ -110,4 +110,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'Trace the call stack of a function or feature and render it as a nested tree where every node links to its definition and call site',
         relativePath: 'trace-callstack',
     },
+    {
+        name: 'propose-diff',
+        description: 'Propose a minimal unified diff for review without changing files. Use when the user asks to propose a diff, preview a patch, or review changes before applying them.',
+        relativePath: 'propose-diff',
+    },
 ];

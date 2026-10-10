@@ -833,6 +833,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'classify-diff',
     'dream',
     'trace-callstack',
+    'propose-diff',
 ];
 
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
