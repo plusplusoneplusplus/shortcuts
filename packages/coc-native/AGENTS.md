@@ -93,6 +93,45 @@ Core `repo_files::tracked_content_candidates` prepares bounded `ls-files` comman
 
 The `*Status()` accessors never throw, because `/api/health` reports them and has to be able to describe a failed load rather than become one.
 
+## Authentication capability
+
+`rust/auth-sdk/` is a standalone Node-independent Rust crate. Shared secrets,
+token DTOs, clocks, lifecycle, storage and errors are vendor-neutral;
+`auth_sdk::microsoft` owns Microsoft OAuth and Azure CLI protocols.
+`rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
+exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles,
+sanitized typed errors and a complete capability guard.
+Construction validates immutable configuration only. Consumers opt in by
+construction; existing Teams, ADO, Kusto and Copilot auth paths are independent.
+
+Source and refresh policy are required. `never` allows one successful
+noninteractive acquisition; failure leaves the initial attempt retryable.
+Invalidation and credential deletion retain its acquired state. Forced renewal
+under `never` rejects. OAuth sign-in verifies ID-token signatures/issuer/audience,
+tenant/object identity and browser nonce, uses PKCE/state and owns cancellable
+loopback/device deadlines. Access tokens stay in memory; only exact SDK-owned
+refresh credentials enter the OS store. Resource providers serialize rotation
+through OS advisory locks; lock-directory identity participates in credential keys.
+Azure CLI token requests select only `--subscription`; account and response tenant
+checks enforce the pinned tenant without the incompatible `--tenant` argument.
+See `rust/auth-sdk/README.md` for source selection, storage/timeout boundaries and
+registration/consent constraints. Rust tests inject providers and clocks;
+`test/auth.test.ts` uses the built addon and synthetic CLI executables.
+
+`rust/auth-cli/` provides a standalone, opt-in `auth-cli microsoft` dispatcher
+over the SDK, independent of Node and runtime consumers. `microsoft login`
+explicitly invokes Azure CLI browser login; `microsoft token --resource ...`
+(`get-access-token` alias) reads its selected user/tenant/subscription and pins
+them into the SDK for verification. Token access never logs in or switches accounts.
+Direct browser/device OAuth sign-in and source-specific `token oauth`/`token azure-cli`
+commands use explicit options.
+JSON Lines output masks secrets to eight leading/trailing characters; secrets
+with at most sixteen characters and URL queries/fragments are fully masked.
+`--show-secrets` explicitly reveals full token and sign-in instructions and warns
+on stderr. Ctrl+C drops SDK handles and closes callback/CLI work. Install from
+`rust/` with `cargo install --locked --path auth-cli`; test with
+`cargo test --locked -p auth-cli`. Usage belongs in `rust/auth-cli/README.md`.
+
 ## Teams capability
 
 `rust/napi/src/teams/` links the `rust/teams-sdk/` workspace crate with Graph,

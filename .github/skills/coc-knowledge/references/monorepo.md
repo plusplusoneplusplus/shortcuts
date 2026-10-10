@@ -19,7 +19,7 @@ See [server architecture](server-architecture.md) for CoC internals.
 | `forge/` | Queue/process stores, Git, policies, connectors and utilities; SDK/workflow re-exports |
 | `coc-agent-sdk/` | Providers, sessions, streaming, MCP and models; [SDK](sdk-wrapper.md) |
 | `coc-memory/` | Memory stores, search, embeddings, capture and safety; [memory](memory-system.md) |
-| `coc-native/` | Rust/N-API capabilities, symbol language server, teams-sdk and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
+| `coc-native/` | Rust/N-API capabilities, standalone auth-sdk/teams-sdk, symbol language server and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
 | `coc-connector/` | Dependency-independent messaging contract; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
 
 ### Node package dependencies
@@ -175,6 +175,24 @@ for route rows. Rust plans/joins NUL-delimited metadata and ordered parent outpu
 for host and WSL, preserves Git ordering and absent binary counts, and reads fresh
 state without a route metadata cache. Root file lists include initial additions. Native contracts
 and migration boundaries belong in the native instructions below.
+
+`rust/auth-sdk` shares the native Cargo workspace/lockfile and release/audit gates.
+It is independent of Node; its Microsoft module provides immutable source-pinned
+OAuth/Azure CLI providers and explicit PKCE/device sign-in. The addon exposes
+`MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`, with
+no runtime consumer migration. Shared types, storage and lifecycle remain
+vendor-neutral. Protocol/security contracts belong in the
+[crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).
+
+`rust/auth-cli` is the standalone Cargo `auth-cli` binary over auth-sdk, installed
+with `cargo install --locked --path auth-cli` from the native workspace. Its
+vendor dispatcher supports Microsoft `login` through Azure CLI and resource-only
+`token` (`get-access-token` alias) that pins the selected CLI account into the SDK.
+Direct browser/device OAuth and source-specific token commands accept explicit
+configuration. Output is JSON Lines with masked secrets;
+`--show-secrets` reveals full output with a warning. It shares Rust CI/audit gates,
+does not migrate consumers, and is not bundled into Node or desktop installers.
+See [CLI usage](../../../../packages/coc-native/rust/auth-cli/README.md).
 
 `packages/coc-native/rust/teams-cli` is a standalone Cargo workspace project providing
 the `teams-cli` chat CLI through `teams-sdk`. It shares the native lockfile and CI gates

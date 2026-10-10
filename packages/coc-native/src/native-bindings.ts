@@ -59,6 +59,26 @@ export declare class NativeDatabaseHandle {
   upsertStreamingTurn(processId: string, content: string, streaming: boolean, timeline: string, timestamp: string): Promise<void>
 }
 
+export declare class NativeMicrosoftOAuthSignIn {
+  constructor(options: MicrosoftOAuthOptions, expectedAccount?: MicrosoftAccount | undefined | null, timeoutMs?: number | undefined | null)
+  beginBrowser(): Promise<MicrosoftSignInInstructions>
+  beginDevice(): Promise<MicrosoftSignInInstructions>
+  wait(): Promise<MicrosoftSignInResult>
+  cancel(): void
+  dispose(): void
+}
+
+export declare class NativeMicrosoftTokenProvider {
+  static oauth(optionsValue: MicrosoftOAuthOptions, account: MicrosoftAccount, policy: MicrosoftProviderPolicy): NativeMicrosoftTokenProvider
+  static azureCli(optionsValue: MicrosoftAzureCliOptions, policy: MicrosoftProviderPolicy): NativeMicrosoftTokenProvider
+  static azureCliActive(optionsValue: MicrosoftActiveAzureCliOptions, policy: MicrosoftProviderPolicy): NativeMicrosoftTokenProvider
+  getToken(forceRefresh?: boolean | undefined | null): Promise<MicrosoftToken>
+  invalidate(): Promise<void>
+  deleteCredentials(): Promise<undefined>
+  cancelOutstanding(): void
+  dispose(): void
+}
+
 export declare class NativeStatementHandle {
   allWithStats(values?: Array<number | string | Buffer | null>, names?: string[]): NativeSqliteReadStats
   run(values?: Array<number | string | Buffer | null>, names?: string[]): NativeRunResult
@@ -723,6 +743,61 @@ export declare function gitValidateRef(repoRoot: string, rev: string): Promise<s
  * core module for what that costs and why it is the trade taken.
  */
 export declare function matchDangerousCommand(command: string): DangerousCommandVerdict
+
+export interface MicrosoftAccount {
+  id: string
+  tenant: string
+}
+
+export interface MicrosoftActiveAzureCliOptions {
+  namespace: string
+  resource: string
+}
+
+export interface MicrosoftAzureCliOptions {
+  namespace: string
+  account: MicrosoftAccount
+  subscription: string
+  resource: string
+}
+
+export interface MicrosoftOAuthOptions {
+  namespace: string
+  authority: string
+  clientId: string
+  scopes: Array<string>
+  target: string
+  resource?: string
+  coordinationDirectory: string
+}
+
+export interface MicrosoftProviderPolicy {
+  refresh: string
+  expiryMarginSeconds?: number
+  timeoutMs?: number
+}
+
+export interface MicrosoftSignInInstructions {
+  authorizationUrl?: string
+  userCode?: string
+  verificationUri?: string
+  expiresAt: number
+}
+
+export interface MicrosoftSignInResult {
+  account: MicrosoftAccount
+  token: MicrosoftToken
+}
+
+export interface MicrosoftToken {
+  accessToken: string
+  tokenType: string
+  expiresAt: number
+  source: string
+  target: string
+  account: MicrosoftAccount
+  grantedScopes?: Array<string>
+}
 
 export interface NativeConversationSearchFilter {
   workspaceId?: string
