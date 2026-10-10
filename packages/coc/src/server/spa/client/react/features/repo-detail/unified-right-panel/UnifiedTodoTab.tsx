@@ -488,6 +488,12 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                                     {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
                                     {job.title ?? job.processId}
                                 </a>
+                                {/* Remote links retain their transport kind and the Ralph launch's sessionId. */}
+                                {(job.kind === 'ralph' || job.sessionId) && (
+                                    <span title="Ralph session" className="inline-flex shrink-0 items-center rounded bg-[#8764b8]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#7150a2] dark:text-[#c5a5ed]">
+                                        Ralph
+                                    </span>
+                                )}
                                 {job.workspaceId && <span className={MUTED}>· {job.serverId ? `${job.workspaceId} @ ${job.serverId}` : job.workspaceId}</span>}
                                 <span className={MUTED}>· {sentinelTodoJobStateLabel(job)}</span>
                                 {review && <span className={MUTED}>· {review}</span>}

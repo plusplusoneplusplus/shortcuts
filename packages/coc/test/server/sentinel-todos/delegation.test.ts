@@ -270,7 +270,7 @@ describe('Sentinel to-do job links', () => {
         function makeTool(opts: { bound?: typeof owner; enqueue?: (input: CreateTaskInput) => Promise<string>; tracking?: boolean } = {}) {
             const enqueueChat = vi.fn(opts.enqueue ?? (async () => 'task-1'));
             const launchRalph = vi.fn(async () => ({ ok: true as const, processId: 'queue_ralph', sessionId: 'ralph-1' }));
-            const startRemoteChat = vi.fn(async () => ({ processId: 'queue_remote' }));
+            const startRemoteChat = vi.fn(async (): Promise<{ processId: string; sessionId?: string }> => ({ processId: 'queue_remote' }));
             const store = {
                 getWorkspaces: async () => [{ id: 'ws-a', name: 'a', rootPath: '/a' }, { id: 'ws-child', name: 'child', rootPath: '/c' }],
                 getProcess: async (id: string) => processes.get(id),
@@ -333,16 +333,17 @@ describe('Sentinel to-do job links', () => {
             expect(onChange).not.toHaveBeenCalled();
         });
 
-        it('links an admitted local job and reports it as tracked', async () => {
+        it.each(['ask', 'autopilot'])('links an ordinary local %s job without Ralph metadata', async mode => {
             const item = await createItem();
             const { call, enqueueChat } = makeTool();
-            const result = await call({ content: 'go', todoItemId: item.id, workspaceId: 'ws-child', title: 'Fix it' }) as SendToConversationSuccess;
+            const result = await call({ content: 'go', mode, todoItemId: item.id, workspaceId: 'ws-child', title: 'Fix it' }) as SendToConversationSuccess;
             expect(enqueueChat).toHaveBeenCalledTimes(1);
             expect(result).toMatchObject({ processId: 'queue_task-1', tracking: { status: 'tracked', itemId: item.id } });
             expect(current(item.id)).toMatchObject({
                 status: 'in_progress',
                 jobs: [{ processId: 'queue_task-1', workspaceId: 'ws-child', kind: 'local', title: 'Fix it', openLink: '#/process/queue_task-1' }],
             });
+            expect(current(item.id).jobs[0].sessionId).toBeUndefined();
         });
 
         it('links a Ralph launch as one whole-session job', async () => {
@@ -356,6 +357,39 @@ describe('Sentinel to-do job links', () => {
             ]);
             const ledger = await service.list(owner);
             expect(ledger.items[0].jobs[0].execution).toEqual({ state: 'running' });
+            const reloaded = new SentinelTodoService({
+                todos: new SentinelTodoStore(dataDir),
+                store: { getProcess: async id => processes.get(id) },
+            });
+            const metadata = { processId: 'queue_ralph', kind: 'ralph', sessionId: 'ralph-1', workspaceId: 'ws-a' };
+            expect((await reloaded.list(owner)).items[0].jobs[0]).toMatchObject({
+                ...metadata, execution: { state: 'running' },
+            });
+            // Finishing the first iteration is not a whole-session completion.
+            processes.set('queue_ralph', { ...sentinel('queue_ralph', 'ws-a'), metadata: { workspaceId: 'ws-a', ralph: { sessionId: 'ralph-1' } } });
+            expect((await reloaded.list(owner)).items[0].jobs[0].execution).toEqual({ state: 'running' });
+            const completed = { ...terminalJob('queue_ralph', 'completed'),
+                child: { workspaceId: 'ws-a', processId: 'queue_ralph', sessionId: 'ralph-1' } };
+            reloaded.recordJobResult(completed);
+            const terminal = (await reloaded.list(owner)).items[0];
+            expect(terminal.jobs[0]).toMatchObject({ ...metadata, execution: { state: 'completed' } });
+            expect(terminal.status).toBe('in_progress');
+        });
+
+        it('preserves remote Ralph launch metadata through dispatch, list and reload while status is unavailable', async () => {
+            const item = await createItem();
+            const { call, startRemoteChat } = makeTool();
+            startRemoteChat.mockResolvedValueOnce({ processId: 'queue_remote', sessionId: 'session-remote' });
+            await call({ content: 'goal', mode: 'ralph', workspaceId: 'remote:srv-1:w-api', todoItemId: item.id });
+            expect(startRemoteChat).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ralph' }));
+            const reloaded = new SentinelTodoService({
+                todos: new SentinelTodoStore(dataDir),
+                store: { getProcess: async id => processes.get(id) },
+            });
+            expect((await reloaded.list(owner)).items[0].jobs[0]).toMatchObject({
+                kind: 'remote', sessionId: 'session-remote', serverId: 'srv-1', workspaceId: 'w-api',
+                execution: { state: 'unavailable' },
+            });
         });
 
         it('links a remote job with its server routing only after admission', async () => {
@@ -366,6 +400,7 @@ describe('Sentinel to-do job links', () => {
             expect(result.tracking.status).toBe('tracked');
             const job = current(item.id).jobs[0];
             expect(job).toMatchObject({ processId: 'queue_remote', workspaceId: 'w-api', serverId: 'srv-1', kind: 'remote' });
+            expect(job.sessionId).toBeUndefined();
             expect(job.openLink).toBe(`#repos/${encodeURIComponent('remote:srv-1:w-api')}/chats/queue_remote`);
             expect((await service.list(owner)).items[0].jobs[0].execution).toEqual({ state: 'unavailable' });
         });

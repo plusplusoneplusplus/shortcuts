@@ -89,6 +89,66 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
+    it.each([
+        { state: 'queued', label: 'Queued' },
+        { state: 'running', label: 'Running' },
+        { state: 'unknown', label: 'Status unknown' },
+        { state: 'completed', label: 'Job completed' },
+        { state: 'failed', label: 'Job failed' },
+        { state: 'cancelled', label: 'Job cancelled' },
+        { state: 'capped', label: 'Job capped' },
+        { state: 'unavailable', label: 'Status unavailable' },
+    ] as const)('keeps the Ralph badge alongside $state status and links after reload', async ({ state, label }) => {
+        const remote = state === 'unavailable';
+        const linked = item({ status: 'in_progress', jobs: [{
+            processId: 'queue_child', workspaceId: 'ws-child', kind: remote ? 'remote' : 'ralph',
+            sessionId: 'session-1', ...(remote ? { serverId: 'srv-2' } : {}),
+            title: 'Exclusive writer', openLink: remote ? 'https://example.test/#/process/queue_child' : '#/process/queue_child',
+            linkedAt: item().createdAt,
+            execution: state === 'completed'
+                ? { state, review: { state: 'delivered', assessment: 'pending' } } : { state },
+        }] });
+        get.mockResolvedValue(ledger([linked]));
+        const { unmount } = render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        async function assertJob() {
+            const badge = await screen.findByText('Ralph', { exact: true });
+            expect(badge.getAttribute('title')).toBe('Ralph session');
+            expect(badge.getAttribute('aria-hidden')).toBeNull();
+            expect(badge.className).toContain('shrink-0');
+            const jobs = screen.getByRole('list', { name: 'Jobs for Fix login' });
+            expect(jobs.textContent).toContain(label);
+            expect(badge.closest('li')?.className).toContain('flex-wrap');
+            const link = within(jobs).getByRole('link', { name: 'Exclusive writer' });
+            expect(link.getAttribute('href')).toBe(linked.jobs[0].openLink);
+            expect(link.getAttribute('target')).toBe(remote ? '_blank' : null);
+            expect(screen.getByTestId(`sentinel-todo-status-${state === 'completed' ? 'in_review' : 'in_progress'}`)).toBeTruthy();
+            if (state === 'completed') expect(jobs.textContent).toContain('Review pending (result delivered)');
+        }
+        await assertJob();
+        unmount();
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await assertJob();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('uses persisted Ralph kind even without session lookup and never guesses from ordinary titles or IDs', async () => {
+        get.mockResolvedValue(ledger([item({ jobs: [
+            { processId: 'queue_child', workspaceId: 'ws-child', kind: 'ralph', title: 'Writer',
+                openLink: '#/process/queue_child', linkedAt: item().createdAt, execution: { state: 'running' } },
+            { processId: 'queue_ralph-looking', workspaceId: 'ws-child', kind: 'local', title: 'Ralph ordinary ask',
+                openLink: '#/process/queue_ralph-looking', linkedAt: item().createdAt, execution: { state: 'queued' } },
+            { processId: 'queue_auto', workspaceId: 'ws-child', kind: 'remote', serverId: 'srv-2', title: 'Ralph ordinary autopilot',
+                openLink: '#/process/queue_auto', linkedAt: item().createdAt, execution: { state: 'unavailable' } },
+        ] })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByText('Ralph', { exact: true });
+        expect(screen.getAllByText('Ralph', { exact: true })).toHaveLength(1);
+        for (const title of ['Ralph ordinary ask', 'Ralph ordinary autopilot']) {
+            expect(within(screen.getByRole('link', { name: title }).closest('li')!).queryByText('Ralph', { exact: true })).toBeNull();
+        }
+    });
+
     it('renders an accessible derived In review badge and refreshes assessment from the exact remote owner', async () => {
         const pending = item({
             status: 'in_progress', revision: 4, jobs: [{
