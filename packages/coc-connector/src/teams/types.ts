@@ -55,7 +55,7 @@ export interface TeamsBotOptions {
     graphReadOptions?: GraphOutboundOptions;
     /**
      * Transport mode (default: 'graph').
-     * - 'graph': Uses Graph API directly. Requires teamId + bearerToken (from az login).
+     * - 'graph': Uses Graph API with native Azure CLI auth or an explicit bearer token.
      * - 'mcp': Uses Teams MCP server. Requires mcpServerUrl + preauthorized app.
      */
     mode?: TeamsTransportMode;
@@ -105,11 +105,11 @@ export interface TeamsAuthConfig {
     clientId?: string;
     /** OAuth2 scope for the Teams MCP resource. */
     scope?: string;
-    /** Pre-existing bearer token (skips device code flow). */
+    /** Explicit bearer token; omitted Graph credentials use source-pinned native Azure CLI auth. */
     bearerToken?: string;
     /** Called when device code flow requires user interaction. */
     onDeviceCode?: (verification: DeviceCodeInfo) => void;
-    /** Called to refresh the token when a 401 is received. Should return a new bearer token. */
+    /** Refreshes explicit Graph bearer tokens or MCP credentials after HTTP401; native Graph auth renews through the SDK. */
     onTokenRefresh?: () => Promise<string | null>;
 }
 

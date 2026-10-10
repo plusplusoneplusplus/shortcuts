@@ -2,10 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ic3Operations, type Ic3OperationsOptions } from '../../src/teams/ic3/operations-ic3';
 import { Ic3DirectMessageClient } from '../../src/teams/ic3/ic3-direct-message';
 import { TeamsBot, createTransport } from '../../src/teams/bot';
-import { acquireTokenViaAzCli } from '../../src/teams/auth';
 import type { TeamsDestination } from '../../src/teams/operations';
 
-vi.mock('../../src/teams/auth', () => ({ acquireTokenViaAzCli: vi.fn() }));
+const acquireAzureCliToken = vi.hoisted(() => vi.fn());
+vi.mock('../../src/teams/azure-cli-credential', () => ({
+    TeamsAzureCliCredential: class {
+        constructor(private readonly resource: string) {}
+        get(signal: AbortSignal) { return acquireAzureCliToken(this.resource, signal); }
+        clear() {}
+        dispose() {}
+    },
+}));
 
 const objectId = '00000000-0000-0000-0000-000000000001';
 const tenantId = '00000000-0000-0000-0000-000000000002';
@@ -36,7 +43,7 @@ function setup(options: Partial<Ic3OperationsOptions> = {}) {
 
 beforeEach(() => {
     fetchMock.mockReset().mockImplementation(async () => Response.json({ OriginalArrivalTime: '123' }, { status: 201 }));
-    vi.mocked(acquireTokenViaAzCli).mockReset().mockResolvedValue(token());
+    vi.mocked(acquireAzureCliToken).mockReset().mockResolvedValue(token());
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -264,7 +271,7 @@ describe('MCP verification and CoC connector routing', () => {
         await expect(transport.operations.send({ ...destination, connectionId: transport.connectionId }, body))
             .rejects.toMatchObject({ outcome: 'not-attempted', message: expect.stringContaining('GetChat and ListChatMembers access') });
         expect(fetchMock).not.toHaveBeenCalled();
-        expect(acquireTokenViaAzCli).toHaveBeenCalledExactlyOnceWith('https://ic3.teams.office.com', expect.any(AbortSignal));
+        expect(acquireAzureCliToken).toHaveBeenCalledExactlyOnceWith('https://ic3.teams.office.com', expect.any(AbortSignal));
         transport.stop();
     });
 

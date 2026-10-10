@@ -82,3 +82,62 @@ fn subcommand_help_and_equals_options_use_clap_without_authentication() {
         assert!(output.stderr.is_empty());
     }
 }
+
+#[test]
+fn invalid_or_partial_explicit_credentials_never_try_azure_cli() {
+    for (backend, token, expiry) in [
+        ("ic3", "TEAMS_IC3_TOKEN", "TEAMS_IC3_TOKEN_EXPIRES_AT"),
+        #[cfg(feature = "graph")]
+        ("graph", "TEAMS_GRAPH_TOKEN", "TEAMS_GRAPH_TOKEN_EXPIRES_AT"),
+    ] {
+        for setting in [
+            "missing-tenant",
+            "missing-user",
+            "missing-expiry",
+            "empty-token",
+            "expired",
+        ] {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_teams-cli"));
+            command
+                .args(["list", "--backend", backend])
+                .env_remove("TEAMS_TENANT_ID")
+                .env_remove("TEAMS_USER_ID")
+                .env_remove("TEAMS_GRAPH_TOKEN")
+                .env_remove("TEAMS_GRAPH_TOKEN_EXPIRES_AT")
+                .env_remove("TEAMS_IC3_TOKEN")
+                .env_remove("TEAMS_IC3_TOKEN_EXPIRES_AT")
+                .env("PATH", "")
+                .env(
+                    token,
+                    if setting == "empty-token" {
+                        ""
+                    } else {
+                        "synthetic-secret"
+                    },
+                );
+            if setting != "missing-tenant" {
+                command.env("TEAMS_TENANT_ID", "example-tenant");
+            }
+            if setting != "missing-user" {
+                command.env("TEAMS_USER_ID", "example-user");
+            }
+            if setting != "missing-expiry" {
+                command.env(
+                    expiry,
+                    if setting == "expired" {
+                        "0"
+                    } else {
+                        "9999999999"
+                    },
+                );
+            }
+            let output = command.output().unwrap();
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            let error = String::from_utf8(output.stderr).unwrap();
+            assert!(!error.contains("synthetic-secret"));
+            assert!(!error.contains("Authentication failed"));
+            assert!(!error.contains("Azure CLI"));
+        }
+    }
+}

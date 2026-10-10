@@ -20,7 +20,7 @@ See [server architecture](server-architecture.md) for CoC internals.
 | `coc-agent-sdk/` | Providers, sessions, streaming, MCP and models; [SDK](sdk-wrapper.md) |
 | `coc-memory/` | Memory stores, search, embeddings, capture and safety; [memory](memory-system.md) |
 | `coc-native/` | Rust/N-API capabilities, standalone auth-sdk/teams-sdk, symbol language server and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
-| `coc-connector/` | Dependency-independent messaging contract; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
+| `coc-connector/` | CoC/forge-independent messaging contract with native Teams Azure CLI auth; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
 
 ### Node package dependencies
 
@@ -180,11 +180,17 @@ and migration boundaries belong in the native instructions below.
 It is independent of Node; its Microsoft module provides immutable source-pinned
 OAuth/Azure CLI providers and explicit PKCE/device sign-in. The addon exposes
 `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`.
-Kusto and ADO authentication use only native Azure CLI providers. Forge's ADO
+Kusto, ADO and Teams Azure CLI authentication use native providers. Forge's ADO
 resolver shares a source-pinned provider per host data directory across PR and
 Azure Boards callers, with native caching/renewal and host shutdown disposal.
 ADO identity lookup uses the current bearer token and organization; bearer tokens
-are not persisted by TypeScript. Other runtime consumers retain their own auth paths.
+are not persisted by TypeScript. The Teams connector owns one lazy provider per
+connection/resource and delegates every credential read to the SDK; Graph/IC3
+retain resource authorization and MCP-account matching. Native credential acquisition
+and each hybrid Graph writer/reader startup acquisition share a thirty-second budget; outbound writes keep
+their ten-second total deadline. Standalone Graph startup,
+polling and writes share a provider. Teams MCP OAuth and Copilot credentials
+retain separate ownership.
 Shared types, storage and lifecycle remain
 vendor-neutral. Protocol/security contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).

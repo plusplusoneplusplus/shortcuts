@@ -16,10 +16,11 @@ graph = ["teams-sdk/graph"]
 
 [dependencies]
 async-trait = "0.1"
+auth-sdk = { path = "../auth-sdk" }
 clap = "4"
 serde_json = "1"
 teams-sdk = { path = "../teams-sdk", default-features = false }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 uuid = "1"
 
 [dev-dependencies]

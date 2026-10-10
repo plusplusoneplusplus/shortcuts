@@ -101,10 +101,12 @@ token DTOs, clocks, lifecycle, storage and errors are vendor-neutral;
 `rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
 exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles,
 sanitized typed errors and a complete capability guard.
-Construction validates immutable configuration only. Kusto uses native authentication
-exclusively, selecting Azure CLI/auto refresh with native active-account selection
-or a complete explicit host identity and the Kusto SDK's audience.
-Teams, ADO and Copilot auth paths are independent.
+Construction validates immutable configuration only. Kusto, ADO and Teams Azure CLI
+credentials use native authentication with automatic demand renewal. Kusto selects
+active-account mode or a complete explicit host identity and the Kusto SDK's audience.
+Teams connector providers are connection/resource scoped; the standalone Rust Teams
+CLI adapts auth-sdk to the Teams token-provider contract. Teams MCP OAuth and Copilot
+credentials have separate ownership.
 
 Source and refresh policy are required. `never` allows one successful
 noninteractive acquisition; failure leaves the initial attempt retryable.

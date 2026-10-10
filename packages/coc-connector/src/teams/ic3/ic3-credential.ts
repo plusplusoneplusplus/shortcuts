@@ -1,4 +1,5 @@
-import { acquireTokenViaAzCli } from '../auth';
+import { TeamsAzureCliCredential } from '../azure-cli-credential';
+import { AuthError, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import {
     IC3_CREDENTIAL_EXPIRY_MARGIN_MS, IC3_DIRECT_MESSAGE_TIMEOUT_MS, IC3_RESOURCE,
     isIc3DirectMessageRegion,
@@ -50,6 +51,7 @@ export class Ic3CredentialStore {
     private readonly acquireToken: Ic3TokenProvider;
     private readonly expectedAccount: Ic3DirectMessageOptions['expectedAccount'];
     private readonly lifetime = new AbortController();
+    private readonly nativeCredential?: TeamsAzureCliCredential;
 
     constructor(options: Ic3DirectMessageOptions = {}) {
         const region = options.region;
@@ -58,7 +60,8 @@ export class Ic3CredentialStore {
                 'ic3', 'unsupported', 'not-attempted');
         }
         this.region = region;
-        this.acquireToken = options.acquireToken ?? (signal => acquireTokenViaAzCli(IC3_RESOURCE, signal));
+        if (!options.acquireToken) this.nativeCredential = new TeamsAzureCliCredential(IC3_RESOURCE);
+        this.acquireToken = options.acquireToken ?? (signal => this.nativeCredential!.get(signal));
         this.expectedAccount = options.expectedAccount ? { ...options.expectedAccount } : undefined;
         if (this.expectedAccount
             && (typeof this.expectedAccount.tenantId !== 'string' || !guid.test(this.expectedAccount.tenantId)
@@ -76,11 +79,13 @@ export class Ic3CredentialStore {
     }
 
     clear(): void {
+        this.nativeCredential?.clear();
         this.credential = null;
     }
 
     dispose(): void {
         this.lifetime.abort();
+        this.nativeCredential?.dispose();
         this.clear();
     }
 
@@ -122,13 +127,18 @@ export class Ic3CredentialStore {
     private async read(signal: AbortSignal, requireSender: boolean): Promise<Credential> {
         signal.throwIfAborted();
         let credential = this.credential;
-        if (!credential || credential.expiresAt <= Date.now() + IC3_CREDENTIAL_EXPIRY_MARGIN_MS) {
-            this.clear();
+        if (this.nativeCredential || !credential || credential.expiresAt <= Date.now() + IC3_CREDENTIAL_EXPIRY_MARGIN_MS) {
+            this.credential = null;
             let value: string;
             try {
                 value = await boundedIc3(this.acquireToken(signal), signal);
-            } catch {
-                throw new TeamsOperationError('unavailable: IC3 credential could not be acquired',
+            } catch (error) {
+                if (error instanceof NativeAddonLoadError) {
+                    throw new TeamsOperationError('IC3 native authentication unavailable; rebuild with npm run build:native -w packages/coc-native',
+                        'ic3', 'unavailable', 'not-attempted');
+                }
+                const reason = error instanceof AuthError ? ` (${error.code})` : '';
+                throw new TeamsOperationError(`unavailable: IC3 credential could not be acquired${reason}`,
                     'ic3', 'authentication', 'not-attempted');
             }
             let claims: { aud?: unknown; exp?: unknown; oid?: unknown; tid?: unknown; name?: unknown };
@@ -158,7 +168,7 @@ export class Ic3CredentialStore {
         }
         signal.throwIfAborted();
         this.lifetime.signal.throwIfAborted();
-        this.credential = credential;
+        if (!this.nativeCredential) this.credential = credential;
         return credential;
     }
 

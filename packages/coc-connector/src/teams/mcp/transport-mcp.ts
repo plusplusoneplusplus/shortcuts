@@ -14,6 +14,7 @@ import { GraphClient } from '../graph/graph-client';
 import { GraphOperations } from '../graph/operations-graph';
 import { GraphCredentialStore, type GraphOutboundOptions } from '../graph/graph-credential';
 import { GraphChannelReader } from '../graph/channel-reader';
+import { TEAMS_AZURE_CLI_TIMEOUT_MS } from '../azure-cli-credential';
 import { RoutedTeamsOperations, TeamsOperationError, type TeamsDestination, type TeamsOperationRoutes, type TeamsOperations } from '../operations';
 export { TeamsMcpSendRejectedError } from './operations-mcp';
 
@@ -169,7 +170,7 @@ export class McpTransport implements TeamsTransport {
         if (this.operationOptions.graphOutboundOptions) {
             const credentials = new GraphCredentialStore(this.account, this.operationOptions.graphOutboundOptions);
             this.graphCredentials = credentials;
-            const credential = await credentials.get(AbortSignal.any([signal, AbortSignal.timeout(10_000)]));
+            const credential = await credentials.get(AbortSignal.any([signal, AbortSignal.timeout(TEAMS_AZURE_CLI_TIMEOUT_MS)]));
             signal.throwIfAborted();
             backends.push(new GraphOperations({
                 connectionId: this.connectionId, client: new GraphClient({ bearerToken: credential }),
@@ -239,7 +240,7 @@ export class McpTransport implements TeamsTransport {
         this.initialized = true;
         this.lifetime = new AbortController();
         const signal = this.lifetime.signal;
-        this.graphCredentials?.clear();
+        this.graphCredentials?.dispose();
         this.graphCredentials = undefined;
         this.graphReader?.stop();
         this.graphReader = undefined;
@@ -755,7 +756,7 @@ export class McpTransport implements TeamsTransport {
         this.lifetime.abort();
         this.graphReader?.stop();
         this.graphReader = undefined;
-        this.graphCredentials?.clear();
+        this.graphCredentials?.dispose();
         this.graphCredentials = undefined;
         this.client = null;
         void this.outbound?.dispose();

@@ -3,6 +3,7 @@ import { GraphClient, GraphHttpError, GraphProtocolError, type GraphListResponse
 import { GraphCredentialStore, type GraphOutboundOptions } from './graph-credential';
 import { TeamsOperationError } from '../operations';
 import { decodeGraphHtmlEntities, graphChannelImages } from './inbound-image';
+import { TEAMS_AZURE_CLI_TIMEOUT_MS } from '../azure-cli-credential';
 
 /** Graph pages feed the same ID/thread admission scanner as MCP pages. */
 export class GraphChannelReader {
@@ -15,12 +16,12 @@ export class GraphChannelReader {
     }
 
     async initialize(): Promise<void> {
-        await this.credentials.get(AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(10_000)]));
+        await this.credentials.get(AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(TEAMS_AZURE_CLI_TIMEOUT_MS)]));
     }
 
     stop(): void {
         this.lifetime.abort();
-        this.credentials.clear();
+        this.credentials.dispose();
     }
 
     async page(teamId: string, channelId: string, rootId?: string, nextLink?: string,

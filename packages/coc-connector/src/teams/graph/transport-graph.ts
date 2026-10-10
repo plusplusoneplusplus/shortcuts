@@ -25,6 +25,7 @@ export class GraphTransport implements TeamsTransport {
         connectionId?: string;
         routes?: Partial<TeamsOperationRoutes>;
         onTokenRefresh?: () => Promise<string | null>;
+        acquireToken?: (signal: AbortSignal) => Promise<string>;
     } = {}) {
         this.connectionId = operationOptions.connectionId ?? randomUUID();
         this.operationOptions = { ...operationOptions, routes: { ...operationOptions.routes } };
@@ -64,7 +65,8 @@ export class GraphTransport implements TeamsTransport {
             selfSend: 'graph', chatSend: 'graph', channelSend: 'graph', channelReply: 'graph', channelLike: 'graph',
             ...this.operationOptions.routes,
         }, [new GraphOperations({ client, connectionId: this.connectionId,
-            onTokenRefresh: this.operationOptions.onTokenRefresh })]);
+            onTokenRefresh: this.operationOptions.onTokenRefresh,
+            acquireToken: this.operationOptions.acquireToken })]);
     }
 
     async send(target: string, text: string, opts?: TransportSendOptions): Promise<string> {
@@ -95,6 +97,9 @@ export class GraphTransport implements TeamsTransport {
 
     async poll(target: string, since?: string, hints?: TeamsReadHints): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('GraphTransport not initialized');
+        if (this.operationOptions.acquireToken) {
+            this.client.setBearerToken(await this.operationOptions.acquireToken(hints?.signal ?? AbortSignal.timeout(15_000)));
+        }
 
         if (this._useChat) {
             return this.pollChat(since);

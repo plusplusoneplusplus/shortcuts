@@ -1,4 +1,5 @@
-//! Read-only Teams CLI using a delegated token supplied by a trusted OAuth authority.
+//! Read-only Teams CLI with explicit credentials or source-pinned Azure CLI authentication.
+mod azure;
 mod constants;
 use async_trait::async_trait;
 use constants::*;
@@ -164,44 +165,6 @@ fn read_setting(name: &str) -> CliResult<String> {
     })
 }
 
-fn parse_az_output(success: bool, stdout: &[u8]) -> CliResult<String> {
-    let failure = || {
-        io::Error::other(
-            "Cannot resolve Azure CLI identity; install Azure CLI and run az login \
-             for the selected tenant, or set TEAMS_USER_ID",
-        )
-    };
-    if !success {
-        return Err(failure().into());
-    }
-    let text = std::str::from_utf8(stdout).map_err(|_| failure())?.trim();
-    uuid::Uuid::parse_str(text).map_err(|_| failure())?;
-    Ok(text.to_owned())
-}
-
-fn run_azure_cli(args: &[&str]) -> CliResult<Vec<u8>> {
-    let output = std::process::Command::new(if cfg!(windows) { "az.cmd" } else { "az" })
-        .args(args)
-        .output()
-        .map_err(|_| {
-            io::Error::other(
-                "Cannot run Azure CLI; install it and run az login, or supply explicit credentials",
-            )
-        })?;
-    // Do not expose CLI diagnostics, which may contain account details.
-    if !output.status.success() {
-        return Err(io::Error::other(
-            "Azure CLI failed; run az login for the selected tenant and check the requested resource's consent",
-        )
-        .into());
-    }
-    Ok(output.stdout)
-}
-
-fn query_azure_cli(args: &[&str]) -> CliResult<String> {
-    parse_az_output(true, &run_azure_cli(args)?)
-}
-
 fn optional_setting(name: &str) -> CliResult<Option<String>> {
     match std::env::var(name) {
         Ok(value) => Ok(Some(value)),
@@ -212,64 +175,6 @@ fn optional_setting(name: &str) -> CliResult<Option<String>> {
         )
         .into()),
     }
-}
-
-fn resolve_tenant(
-    argument: Option<TenantId>,
-    read: impl FnOnce() -> CliResult<Option<String>>,
-    query: impl FnOnce(&[&str]) -> CliResult<String>,
-) -> CliResult<TenantId> {
-    if let Some(tenant) = argument {
-        return Ok(tenant);
-    }
-    if let Some(tenant) = read()? {
-        return Ok(TenantId::new(tenant)?);
-    }
-    Ok(TenantId::new(query(&[
-        "account",
-        "show",
-        "--query",
-        "tenantId",
-        "-o",
-        "tsv",
-        "--only-show-errors",
-    ])?)?)
-}
-
-fn resolve_user(
-    tenant: &TenantId,
-    explicit: Option<String>,
-    mut query: impl FnMut(&[&str]) -> CliResult<String>,
-) -> CliResult<UserId> {
-    if let Some(user) = explicit {
-        return Ok(UserId::new(user)?);
-    }
-    let active_tenant = query(&[
-        "account",
-        "show",
-        "--query",
-        "tenantId",
-        "-o",
-        "tsv",
-        "--only-show-errors",
-    ])?;
-    if !active_tenant.eq_ignore_ascii_case(tenant.as_str()) {
-        return Err(io::Error::other(
-            "Azure CLI's active tenant does not match; run az login --tenant \
-             <tenant-id> and select the matching account, or set TEAMS_USER_ID",
-        )
-        .into());
-    }
-    Ok(UserId::new(query(&[
-        "ad",
-        "signed-in-user",
-        "show",
-        "--query",
-        "id",
-        "-o",
-        "tsv",
-        "--only-show-errors",
-    ])?)?)
 }
 
 struct ApplicationCredentials {
@@ -285,9 +190,8 @@ impl ApplicationCredentials {
         account: Account,
         explicit_token: Option<String>,
         read: impl FnMut(&str) -> CliResult<String>,
-        query: impl FnMut(&[&str]) -> CliResult<Vec<u8>>,
     ) -> CliResult<Self> {
-        Self::load_for(account, Audience::Graph, explicit_token, read, query)
+        Self::load_for(account, Audience::Graph, explicit_token, read)
     }
 
     fn load_for(
@@ -295,65 +199,14 @@ impl ApplicationCredentials {
         audience: Audience,
         explicit_token: Option<String>,
         mut read: impl FnMut(&str) -> CliResult<String>,
-        mut query: impl FnMut(&[&str]) -> CliResult<Vec<u8>>,
     ) -> CliResult<Self> {
         let expiry_setting = match audience {
             Audience::Graph => GRAPH_TOKEN_EXPIRY_ENV,
             Audience::Ic3 => IC3_TOKEN_EXPIRY_ENV,
             _ => return Err(Error::new(ErrorCode::Unsupported).into()),
         };
-        let (secret, expiry) = if let Some(secret) = explicit_token {
-            (secret, read(expiry_setting)?)
-        } else {
-            let signed_in = resolve_user(&account.tenant, None, |args| {
-                parse_az_output(true, &query(args)?)
-            })?;
-            if !signed_in
-                .as_str()
-                .eq_ignore_ascii_case(account.user.as_str())
-            {
-                return Err(io::Error::other(
-                    "Azure CLI's signed-in user does not match TEAMS_USER_ID; \
-                     use matching credentials or supply an explicit backend token",
-                )
-                .into());
-            }
-            let resource = audience.resource(&account);
-            let output = query(&[
-                "account",
-                "get-access-token",
-                "--tenant",
-                account.tenant.as_str(),
-                "--resource",
-                &resource,
-                "-o",
-                "json",
-                "--only-show-errors",
-            ])?;
-            let invalid = || {
-                io::Error::other(
-                    "Invalid Azure CLI token response; update Azure CLI and sign in again",
-                )
-            };
-            // Only trust metadata supplied by Azure CLI; do not decode unverified JWT claims.
-            let token: serde_json::Value =
-                serde_json::from_slice(&output).map_err(|_| invalid())?;
-            let tenant = token["tenant"].as_str().ok_or_else(invalid)?;
-            if !tenant.eq_ignore_ascii_case(account.tenant.as_str())
-                || token["tokenType"].as_str() != Some("Bearer")
-            {
-                return Err(invalid().into());
-            }
-            let secret = token["accessToken"]
-                .as_str()
-                .ok_or_else(invalid)?
-                .to_owned();
-            let expiry = match &token["expires_on"] {
-                serde_json::Value::String(value) => value.clone(),
-                value => value.as_u64().ok_or_else(invalid)?.to_string(),
-            };
-            (secret, expiry)
-        };
+        let secret = explicit_token.ok_or_else(|| Error::new(ErrorCode::Configuration))?;
+        let expiry = read(expiry_setting)?;
         let mut credentials = Self::from_settings(|name| {
             Ok(match name {
                 TENANT_ID_ENV => account.tenant.as_str().to_owned(),
@@ -564,28 +417,45 @@ async fn watch_notifications(
 
 async fn execute() -> CliResult<()> {
     let options = Options::parse(&std::env::args().skip(1).collect::<Vec<_>>())?;
-    let tenant = resolve_tenant(
-        options.tenant.clone(),
-        || optional_setting(TENANT_ID_ENV),
-        query_azure_cli,
-    )?;
-    let explicit_user = optional_setting(USER_ID_ENV)?;
-    let user = resolve_user(&tenant, explicit_user, query_azure_cli)?;
+    let tenant = match options.tenant.clone() {
+        Some(tenant) => Some(tenant),
+        None => optional_setting(TENANT_ID_ENV)?
+            .map(TenantId::new)
+            .transpose()?,
+    };
+    let user = optional_setting(USER_ID_ENV)?
+        .map(UserId::new)
+        .transpose()?;
     let (audience, token_setting) = match options.backend {
         Backend::Graph => (Audience::Graph, GRAPH_TOKEN_ENV),
         Backend::Ic3 => (Audience::Ic3, IC3_TOKEN_ENV),
         _ => return Err(Error::new(ErrorCode::Unsupported).into()),
     };
-    let credentials = ApplicationCredentials::load_for(
-        Account::new(tenant, user),
-        audience,
-        optional_setting(token_setting)?,
-        read_setting,
-        run_azure_cli,
-    )?;
-    let account = credentials.account.clone();
+    let (account, credentials): (_, Arc<dyn TokenProvider>) =
+        if let Some(secret) = optional_setting(token_setting)? {
+            let account = Account::new(
+                tenant.ok_or_else(|| io::Error::other("Explicit tokens require a tenant ID"))?,
+                user.ok_or_else(|| io::Error::other("Explicit tokens require TEAMS_USER_ID"))?,
+            );
+            let credentials = ApplicationCredentials::load_for(
+                account.clone(),
+                audience,
+                Some(secret),
+                read_setting,
+            )?;
+            (account, Arc::new(credentials))
+        } else {
+            let credentials = azure::AzureCredentials::new(
+                tenant,
+                user,
+                audience,
+                Arc::new(auth_sdk::microsoft::Dependencies::default()),
+            )
+            .await?;
+            (credentials.account.clone(), Arc::new(credentials))
+        };
     let client = options
-        .configure(TeamsClient::builder(Arc::new(credentials)))?
+        .configure(TeamsClient::builder(credentials))?
         .build()?;
     let session = client.session(account);
     let result = run_command(
@@ -601,7 +471,14 @@ async fn execute() -> CliResult<()> {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    match execute().await {
+    let result = tokio::select! {
+        biased;
+        signal = tokio::signal::ctrl_c() => {
+            Err(io::Error::other(if signal.is_ok() { "Cancelled" } else { "Cannot listen for cancellation" }).into())
+        },
+        result = execute() => result,
+    };
+    match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             if let Some(error) = error.downcast_ref::<clap::Error>() {
@@ -768,76 +645,6 @@ mod tests {
         session.close();
     }
 
-    #[test]
-    fn tenant_defaults_to_azure_cli_with_explicit_override_precedence() {
-        let argument = TenantId::new("argument-tenant").unwrap();
-        assert_eq!(
-            resolve_tenant(
-                Some(argument.clone()),
-                || panic!("argument must bypass environment"),
-                |_| panic!("argument must bypass Azure CLI"),
-            )
-            .unwrap(),
-            argument,
-        );
-        assert_eq!(
-            resolve_tenant(
-                None,
-                || Ok(Some("environment-tenant".into())),
-                |_| panic!("environment must bypass Azure CLI"),
-            )
-            .unwrap()
-            .as_str(),
-            "environment-tenant",
-        );
-        let tenant = resolve_tenant(
-            None,
-            || Ok(None),
-            |args| {
-                assert_eq!(
-                    args,
-                    [
-                        "account",
-                        "show",
-                        "--query",
-                        "tenantId",
-                        "-o",
-                        "tsv",
-                        "--only-show-errors"
-                    ]
-                );
-                Ok("active-tenant".into())
-            },
-        )
-        .unwrap();
-        assert_eq!(tenant.as_str(), "active-tenant");
-    }
-
-    #[test]
-    fn invalid_tenant_settings_and_discovery_fail_without_silent_fallback() {
-        for invalid in ["", "..", "tenant\n"] {
-            assert!(resolve_tenant(
-                None,
-                || Ok(Some(invalid.into())),
-                |_| panic!("invalid explicit tenant must not fall back"),
-            )
-            .is_err());
-            assert!(resolve_tenant(None, || Ok(None), |_| Ok(invalid.into())).is_err());
-        }
-        assert!(resolve_tenant(
-            None,
-            || Err(io::Error::other("invalid environment").into()),
-            |_| panic!("environment errors must not fall back"),
-        )
-        .is_err());
-        assert!(resolve_tenant(
-            None,
-            || Ok(None),
-            |_| Err(io::Error::other("Azure CLI unavailable").into()),
-        )
-        .is_err());
-    }
-
     fn options(args: &[&str]) -> CliResult<Options> {
         Options::parse(&args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>())
     }
@@ -927,7 +734,6 @@ mod tests {
                 assert_eq!(name, "TEAMS_IC3_TOKEN_EXPIRES_AT");
                 settings("TEAMS_GRAPH_TOKEN_EXPIRES_AT")
             },
-            |_| panic!("explicit IC3 token must not invoke Azure CLI"),
         )
         .unwrap();
         assert!(credentials
@@ -944,36 +750,10 @@ mod tests {
             .unwrap();
         assert_eq!(token.secret, "synthetic-ic3-token");
 
-        let credentials = ApplicationCredentials::load_for(
-            azure_account(),
-            Audience::Ic3,
-            None,
-            |_| panic!("automatic IC3 token must not read Graph settings"),
-            |args| {
-                if args[1] == "get-access-token" {
-                    assert_eq!(args[5], "https://ic3.teams.office.com");
-                    Ok(serde_json::to_vec(&azure_token())?)
-                } else {
-                    azure_response(args, &azure_token())
-                }
-            },
-        )
-        .unwrap();
-        assert_eq!(credentials.audience, Audience::Ic3);
-        assert!(ApplicationCredentials::load_for(
-            azure_account(),
-            Audience::Ic3,
-            None,
-            settings,
-            |args| {
-                if args[1] == "get-access-token" {
-                    Err(io::Error::other("resource not authorized").into())
-                } else {
-                    azure_response(args, &azure_token())
-                }
-            },
-        )
-        .is_err());
+        assert!(
+            ApplicationCredentials::load_for(azure_account(), Audience::Ic3, None, settings,)
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1036,7 +816,6 @@ mod tests {
                     Audience::Ic3,
                     Some("synthetic-ic3-token".into()),
                     |_| settings("TEAMS_GRAPH_TOKEN_EXPIRES_AT"),
-                    |_| panic!("unexpected credential lookup"),
                 )
                 .unwrap();
                 let account = credentials.account.clone();
@@ -1083,7 +862,6 @@ mod tests {
             Audience::Ic3,
             Some("synthetic-ic3-token".into()),
             |_| settings("TEAMS_GRAPH_TOKEN_EXPIRES_AT"),
-            |_| panic!("unexpected credential lookup"),
         )
         .unwrap();
         let account = credentials.account.clone();
@@ -1128,147 +906,21 @@ mod tests {
         )
     }
 
-    fn azure_token() -> serde_json::Value {
-        serde_json::json!({
-            "accessToken": "synthetic-token",
-            "tenant": azure_account().tenant.as_str(),
-            "tokenType": "Bearer",
-            "expires_on": settings("TEAMS_GRAPH_TOKEN_EXPIRES_AT").unwrap()
-        })
-    }
-
-    fn azure_response(args: &[&str], token: &serde_json::Value) -> CliResult<Vec<u8>> {
-        let account = azure_account();
-        Ok(match args[0..2] {
-            ["account", "show"] => account.tenant.as_str().as_bytes().to_vec(),
-            ["ad", "signed-in-user"] => account.user.as_str().as_bytes().to_vec(),
-            ["account", "get-access-token"] => {
-                assert_eq!(
-                    args,
-                    [
-                        "account",
-                        "get-access-token",
-                        "--tenant",
-                        account.tenant.as_str(),
-                        "--resource",
-                        "https://graph.microsoft.com",
-                        "-o",
-                        "json",
-                        "--only-show-errors"
-                    ]
-                );
-                serde_json::to_vec(token)?
-            }
-            _ => panic!("unexpected Azure CLI invocation"),
-        })
-    }
-
-    #[test]
-    fn absent_token_loads_graph_credentials_and_utc_expiry_without_environment() {
-        for numeric in [false, true] {
-            let mut token = azure_token();
-            if numeric {
-                token["expires_on"] = serde_json::json!(token["expires_on"]
-                    .as_str()
-                    .unwrap()
-                    .parse::<u64>()
-                    .unwrap());
-            }
-            let mut calls = 0;
-            let credentials = ApplicationCredentials::load(
-                azure_account(),
-                None,
-                |_| panic!("automatic token must not read token settings"),
-                |args| {
-                    calls += 1;
-                    azure_response(args, &token)
-                },
-            )
-            .unwrap();
-            assert_eq!(calls, 3);
-            assert_eq!(credentials.secret, "synthetic-token");
-            assert_eq!(credentials.account, azure_account());
-        }
-    }
-
     #[test]
     fn explicit_token_takes_priority_and_requires_its_own_expiry() {
-        let credentials = ApplicationCredentials::load(
-            azure_account(),
-            Some("explicit-token".into()),
-            settings,
-            |_| panic!("explicit token must not invoke Azure CLI"),
-        )
-        .unwrap();
+        let credentials =
+            ApplicationCredentials::load(azure_account(), Some("explicit-token".into()), settings)
+                .unwrap();
         assert_eq!(credentials.secret, "explicit-token");
         assert!(ApplicationCredentials::load(
             azure_account(),
             Some("explicit-token".into()),
             |_| Err(io::Error::other("missing expiry").into()),
-            |_| panic!("missing expiry must not fall back"),
         )
         .is_err());
-        assert!(ApplicationCredentials::load(
-            azure_account(),
-            Some(String::new()),
-            settings,
-            |_| panic!("invalid explicit token must not fall back"),
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn automatic_token_rejects_wrong_identity_invalid_metadata_and_expired_tokens() {
-        let mut other = azure_account();
-        other.user = UserId::new("other-user").unwrap();
-        let error = ApplicationCredentials::load(other, None, settings, |args| {
-            assert_ne!(args[1], "get-access-token");
-            azure_response(args, &azure_token())
-        })
-        .err()
-        .unwrap();
-        assert!(error.to_string().contains("does not match"));
-
-        for (field, value) in [
-            ("tenant", serde_json::json!("other-tenant")),
-            ("tokenType", serde_json::json!("Other")),
-            ("accessToken", serde_json::Value::Null),
-            ("accessToken", serde_json::json!("")),
-            ("accessToken", serde_json::json!("synthetic token")),
-            ("expires_on", serde_json::Value::Null),
-            ("expires_on", serde_json::json!("invalid")),
-            ("expires_on", serde_json::json!(0)),
-            ("expires_on", serde_json::json!(u64::MAX)),
-        ] {
-            let mut token = azure_token();
-            token[field] = value;
-            let error = ApplicationCredentials::load(azure_account(), None, settings, |args| {
-                azure_response(args, &token)
-            })
-            .err()
-            .unwrap();
-            assert!(!error.to_string().contains("synthetic-token"));
-        }
-    }
-
-    #[test]
-    fn automatic_token_errors_do_not_leak_cli_payloads() {
-        for malformed in [false, true] {
-            let error = ApplicationCredentials::load(azure_account(), None, settings, |args| {
-                if args[1] == "get-access-token" {
-                    if malformed {
-                        Ok(b"invalid json synthetic-token".to_vec())
-                    } else {
-                        Err(io::Error::other("Azure CLI failed").into())
-                    }
-                } else {
-                    azure_response(args, &azure_token())
-                }
-            })
-            .err()
-            .unwrap();
-            assert!(!error.to_string().contains("synthetic-token"));
-        }
+        assert!(
+            ApplicationCredentials::load(azure_account(), Some(String::new()), settings,).is_err()
+        );
     }
 
     #[test]
@@ -1327,108 +979,6 @@ mod tests {
                 .try_get_matches_from(std::iter::once("teams-cli").chain(args))
                 .is_err());
         }
-    }
-
-    #[test]
-    fn explicit_user_skips_azure_cli_and_invalid_explicit_values_do_not_fall_back() {
-        let tenant = TenantId::new("example-tenant").unwrap();
-        let user = resolve_user(&tenant, Some("example-user".into()), |_| {
-            panic!("explicit user must not invoke Azure CLI");
-        })
-        .unwrap();
-        assert_eq!(user.as_str(), "example-user");
-        assert!(resolve_user(&tenant, Some(String::new()), |_| {
-            panic!("invalid explicit user must not fall back");
-        })
-        .is_err());
-    }
-
-    #[test]
-    fn absent_user_resolves_signed_in_user_only_after_matching_tenant() {
-        let tenant = TenantId::new("example-tenant").unwrap();
-        let mut calls = Vec::new();
-        let user = resolve_user(&tenant, None, |args| {
-            calls.push(args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
-            Ok(if args[0] == "account" {
-                "EXAMPLE-TENANT"
-            } else {
-                "example-user"
-            }
-            .into())
-        })
-        .unwrap();
-        assert_eq!(user.as_str(), "example-user");
-        assert_eq!(calls.len(), 2);
-        assert_eq!(
-            calls[0],
-            [
-                "account",
-                "show",
-                "--query",
-                "tenantId",
-                "-o",
-                "tsv",
-                "--only-show-errors"
-            ]
-        );
-        assert_eq!(
-            calls[1],
-            [
-                "ad",
-                "signed-in-user",
-                "show",
-                "--query",
-                "id",
-                "-o",
-                "tsv",
-                "--only-show-errors"
-            ]
-        );
-    }
-
-    #[test]
-    fn azure_cli_mismatch_and_failures_are_explicit() {
-        let tenant = TenantId::new("example-tenant").unwrap();
-        let mut calls = 0;
-        let error = resolve_user(&tenant, None, |_| {
-            calls += 1;
-            Ok("other-tenant".into())
-        })
-        .err()
-        .unwrap();
-        assert_eq!(calls, 1);
-        assert!(error.to_string().contains("does not match"));
-        for failing_command in ["account", "ad"] {
-            assert!(resolve_user(&tenant, None, |args| {
-                if args[0] == failing_command {
-                    Err(io::Error::other("Azure CLI failed").into())
-                } else {
-                    Ok("example-tenant".into())
-                }
-            })
-            .is_err());
-        }
-    }
-
-    #[test]
-    fn azure_cli_tsv_parsing_accepts_line_endings_and_rejects_invalid_output() {
-        let id = "00000000-0000-0000-0000-000000000002";
-        for ending in ["", "\n", "\r\n"] {
-            assert_eq!(
-                parse_az_output(true, format!("{id}{ending}").as_bytes()).unwrap(),
-                id
-            );
-        }
-        for output in [
-            Vec::new(),
-            b"not-an-id".to_vec(),
-            format!("{id}\n{id}").into_bytes(),
-            b"\xff".to_vec(),
-            format!("warning\n{id}").into_bytes(),
-        ] {
-            assert!(parse_az_output(true, &output).is_err());
-        }
-        assert!(parse_az_output(false, id.as_bytes()).is_err());
     }
 
     #[test]

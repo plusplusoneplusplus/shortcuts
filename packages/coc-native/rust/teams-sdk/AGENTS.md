@@ -153,33 +153,46 @@ for reconciliation and are not a complete message stream.
 Clap defines subcommands, typed identifiers and global
 options, accepting options before or after subcommands and `--option=value` syntax.
 Help/version exit successfully without authentication; invalid arguments exit with code
-2, and runtime failures exit with code 1. Supply `TEAMS_TENANT_ID`, `TEAMS_USER_ID`,
-`TEAMS_GRAPH_TOKEN` and `TEAMS_GRAPH_TOKEN_EXPIRES_AT` (Unix seconds) from a trusted
-OAuth authority with delegated Graph `Chat.Read` permission. Credentials stay pinned;
-the CLI does not authenticate, verify token claims or refresh. Output contains
-transient message content and must not enter shared logs.
-`--tenant-id <tenant-id>` before or after the command overrides `TEAMS_TENANT_ID`;
-when both are absent, the tenant defaults to `az account show --query tenantId -o tsv`.
-Invalid explicit settings and failed discovery fail without fallback.
-When `TEAMS_USER_ID` is absent, the CLI checks `az account show --query tenantId -o tsv`
-against the selected tenant, then reads `az ad signed-in-user show --query id -o tsv`.
-Explicit user IDs bypass identity discovery when the token is also explicit.
-Without `TEAMS_GRAPH_TOKEN`, the CLI verifies Azure CLI's tenant and signed-in user,
-then loads `az account get-access-token --tenant <tenant-id> --resource https://graph.microsoft.com -o json`.
-It validates the returned tenant, Bearer type and UTC `expires_on` through the same expiry
-checks as explicit credentials. CLI diagnostics and token payloads are not printed.
-An explicit token requires `TEAMS_GRAPH_TOKEN_EXPIRES_AT`; invalid explicit values fail
-without fallback. Azure CLI must be signed in as a user; Graph chat permissions/consent
-are still required and an Azure CLI token may lack them.
+2, and runtime failures exit with code 1. Output contains transient message content
+and must not enter shared logs. Ctrl+C drops authentication and Teams work; SDK
+CLI process-tree cancellation and provider disposal prevent delayed token publication.
+
+Authentication selects one source: a supplied backend token, or sibling `auth-sdk`'s
+Azure CLI provider with `Refresh::Auto` and active-account selection. The SDK pins the
+exact CLI `user.name`, tenant and subscription, validates CLI selection around acquisition
+and cached returns, uses only `--subscription` for token acquisition, and validates
+UTC `expires_on`. Tokens renew on demand and on bounded forced-refresh
+requests (one read retry after HTTP 401 and IC3 notification lease/auth renewal).
+CLI diagnostics and token payloads are not printed; there is no source fallback,
+interactive login, active-account change or access-token persistence.
+
+The CLI binds Teams object identity through trusted `az ad signed-in-user show`
+object-ID evidence bracketed by auth-sdk active-account checks. It checks that binding
+on every acquisition, including cached/forced requests. CLI `user.name` is not a Teams
+object ID; access-token JWT claims are not identity evidence.
+`--tenant-id <tenant-id>` before or after the command overrides `TEAMS_TENANT_ID`.
+Without either setting, Azure CLI's pinned tenant supplies the tenant. `TEAMS_USER_ID`
+is an optional expected object ID for Azure CLI credentials, not an identity override.
+Invalid explicit settings, mismatched tenant/user and failed discovery fail closed.
+
+An explicit token requires `TEAMS_TENANT_ID` (or `--tenant-id`), `TEAMS_USER_ID` and its
+matching expiry setting (Unix seconds), all supplied by a trusted OAuth authority.
+Explicit credentials bypass Azure CLI entirely, remain account/audience pinned and
+cannot refresh. Graph uses `TEAMS_GRAPH_TOKEN` and `TEAMS_GRAPH_TOKEN_EXPIRES_AT`.
+Invalid explicit values fail without fallback. Azure CLI must already be signed in
+as a user; delegated Graph `Chat.Read`, resource permissions and consent remain required.
 `--backend graph|ic3` defaults to IC3. IC3 defaults to region `amer`;
 `--region amer|emea|apac` overrides it. IC3 is always available;
 Graph rejects region arguments. Both commands
 use the selected backend without fallback. IC3 uses `TEAMS_IC3_TOKEN` with
-`TEAMS_IC3_TOKEN_EXPIRES_AT`, or the same Azure CLI credential flow for resource
+`TEAMS_IC3_TOKEN_EXPIRES_AT`, or the auth-sdk Azure CLI provider for resource
 `https://ic3.teams.office.com`. Tokens remain audience/account pinned.
 IC3 is a private experimental API; Azure CLI resource authorization may be unavailable.
 Use `--backend graph` for Graph reads. These defaults apply only to the CLI;
-library feature selection and write routes retain their own defaults.
+library feature selection and write routes retain their own defaults. CLI tests
+inject fake auth-sdk clocks, CLI runners, prohibited OAuth HTTP/storage and Teams
+transports; they exercise caching, forced/demand renewal, identity changes, failures,
+dropped-future cancellation and read HTTP 401/403 without live authentication.
 Run from the native Rust workspace with `cargo run --locked -p teams-cli -- --help`,
 `cargo run --locked -p teams-cli -- list` or
 `cargo run --locked -p teams-cli -- view <chat-id>`.

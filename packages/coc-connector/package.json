@@ -19,7 +19,9 @@
     "test": "vitest",
     "test:run": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@plusplusoneplusplus/coc-native": "*"
+  },
   "optionalDependencies": {
     "@whiskeysockets/baileys": "^6.7.23",
     "qrcode-terminal": "^0.12.0"
