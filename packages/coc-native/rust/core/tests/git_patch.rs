@@ -227,6 +227,55 @@ fn processes_summary_before_display_truncation() {
 }
 
 #[test]
+fn shared_revision_plan_matches_mode_specific_argv_and_rejects_invalid_modes_and_heads() {
+    use coc_native_core::git::patch::{
+        commit_patch_args, comparison_patch_args, range_patch_args, revision_patch_args,
+        show_patch_args,
+    };
+    use coc_native_core::git::GitErrorKind;
+
+    for (base, head, path, context) in [
+        ("base", "head", None, None),
+        ("base", "head", Some("[ab].txt"), Some(0)),
+        ("--output=oops", "--exit-code", Some(":(glob)*.txt"), Some(99999)),
+        ("base", "head", Some("--output=oops"), Some(3)),
+    ] {
+        for (mode, head, expected) in [
+            ("commit", None, commit_patch_args(base, path, context)),
+            ("show", None, show_patch_args(base, path, context)),
+            ("range", Some(head), range_patch_args(base, head, path, context)),
+            ("comparison", Some(head), comparison_patch_args(base, head, path, context)),
+        ] {
+            assert_eq!(
+                revision_patch_args(mode, base, head, path, context).unwrap(),
+                expected,
+                "{mode}"
+            );
+        }
+    }
+
+    for (mode, head) in [
+        ("invalid", None),
+        ("invalid", Some("head")),
+        ("", None),
+        ("COMMIT", None),
+        ("working-tree", None),
+        ("commit", Some("head")),
+        ("commit", Some("")),
+        ("show", Some("head")),
+        ("show", Some("")),
+        ("range", None),
+        ("comparison", None),
+    ] {
+        let error = revision_patch_args(mode, "base", head, Some("[ab].txt"), Some(0)).unwrap_err();
+        assert_eq!(error.kind, GitErrorKind::Repository);
+        assert!(error.args.is_empty());
+        assert_eq!(error.stderr, "invalid patch mode");
+        assert_eq!(error.to_string(), "git  failed: invalid patch mode");
+    }
+}
+
+#[test]
 fn range_plan_keeps_context_revision_boundary_and_literal_path() {
     use coc_native_core::git::patch::range_patch_args;
     assert_eq!(

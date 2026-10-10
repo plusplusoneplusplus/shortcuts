@@ -74,7 +74,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
             const native = loadNativeGit();
-            const args = await native.prepareGitShowPatch(commit, file, options?.contextLines);
+            const args = await native.prepareGitRevisionPatch('show', commit, undefined, file, options?.contextLines);
             return native.processGitPatch(await mockForgeExecGit(args, root, {}), options?.maxLines);
         },
         BranchService: vi.fn().mockImplementation(function () { return ({

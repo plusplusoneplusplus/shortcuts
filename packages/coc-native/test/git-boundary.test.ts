@@ -1244,7 +1244,7 @@ describe('commit-detail marshalling', () => {
     describe('gitCommitDiff', () => {
         it.each(['root', 'head'] as const)('matches the shared first-parent plan for %s', async revision => {
             const commit = revision === 'root' ? root : head;
-            const commands = await gitAddon.prepareGitCommitPatch(commit);
+            const commands = await gitAddon.prepareGitRevisionPatch('commit', commit);
             const pending = gitAddon.gitCommitDiff(detail, commit);
             expect(typeof pending.then).toBe('function');
             await expect(pending).resolves.toBe(detailGit(...commands).replace(/\r?\n$/, ''));

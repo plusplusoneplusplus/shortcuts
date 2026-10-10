@@ -127,7 +127,9 @@ Transport and scope share one config snapshot. Rootless selections use stateless
 Rust processing without inventing a checkout. Quoted paths and exact bytes survive
 the HTTP adapter; native-load failures are visible. PR full-context patches use Forge
 `loadComparisonPatch` and Rust direct base/head
-planning/processing for host and WSL; TypeScript retains missing-commit fetch/retry
+planning/processing for host and WSL. Core `revision_patch_args` validates and selects
+commit/show/range/comparison argv for host execution and worker `prepareGitRevisionPatch`;
+Forge passes the same mode/endpoints through either transport. TypeScript retains missing-commit fetch/retry
 and provider-hunk fallback. PR list refreshes fetch current provider bytes and convert Rust
 summaries directly to diffStats; enriched rows live only in the existing list-response
 cache. Combined and per-file hunk routes read current authenticated provider bytes

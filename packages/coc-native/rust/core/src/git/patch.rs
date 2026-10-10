@@ -298,6 +298,23 @@ pub fn show_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -
     args
 }
 
+/// Host execution and external transports share mode validation and command selection.
+pub fn revision_patch_args(
+    mode: &str,
+    base: &str,
+    head: Option<&str>,
+    path: Option<&str>,
+    context: Option<u32>,
+) -> Result<Vec<String>, GitError> {
+    match (mode, head) {
+        ("commit", None) => Ok(commit_patch_args(base, path, context)),
+        ("show", None) => Ok(show_patch_args(base, path, context)),
+        ("range", Some(head)) => Ok(range_patch_args(base, head, path, context)),
+        ("comparison", Some(head)) => Ok(comparison_patch_args(base, head, path, context)),
+        _ => Err(GitError::from_parts(super::GitErrorKind::Repository, &[], "invalid patch mode")),
+    }
+}
+
 /// Staged compares HEAD to index; unstaged compares index to disk, even for all.
 pub fn working_tree_patch_args(
     scope: &str,
