@@ -4,7 +4,8 @@
  * Shows colored strips proportional to turn content length.  Users can click a
  * strip to smooth-scroll to that turn, or drag the viewport indicator to scrub
  * through the conversation.  Collapses automatically on narrow viewports and
- * supports Alt+M toggling.
+ * supports Alt+M toggling.  Hidden (unmounted, no collapsed rail) for
+ * conversations with more than MAX_TURNS_TO_SHOW turns.
  *
  * Visual design matches the `coc-conversation-redesign-3` spec:
  *  - 7 strip kinds (user / assistant / whisper / agent / error / pinned / historical)
@@ -25,6 +26,9 @@ const MIN_STRIP_HEIGHT = 4;
 const MAX_STRIP_HEIGHT = 60;
 const MINIMAP_WIDTH = 28;
 const MIN_TURNS_TO_SHOW = 5;
+/** Above this many turns the strips get too crowded to be useful, so the
+ *  minimap unmounts entirely and gives its width back to the conversation. */
+const MAX_TURNS_TO_SHOW = 30;
 const NARROW_VIEWPORT_PX = 900;
 const HEAVY_TOOL_THRESHOLD = 3;
 const ACTIVE_PROBE_OFFSET_RATIO = 0.28;
@@ -189,7 +193,7 @@ export function ConversationMiniMap({
         [strips],
     );
 
-    const isVisible = turns.length >= MIN_TURNS_TO_SHOW;
+    const isVisible = turns.length >= MIN_TURNS_TO_SHOW && turns.length <= MAX_TURNS_TO_SHOW;
     const isCollapsed = collapsed || narrowViewport;
 
     // ── Responsive collapse ────────────────────────────────────────────
@@ -506,5 +510,5 @@ export function ConversationMiniMap({
 
 // ── Exports for testing ────────────────────────────────────────────────
 
-export { buildStrips, computeStripHeights, getLandmark, MIN_TURNS_TO_SHOW };
+export { buildStrips, computeStripHeights, getLandmark, MIN_TURNS_TO_SHOW, MAX_TURNS_TO_SHOW };
 export type { StripInfo };

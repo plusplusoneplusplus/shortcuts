@@ -1,6 +1,3 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess, CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
@@ -11,8 +8,7 @@ import {
     createSendToConversationTool, type SendToConversationSuccess,
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import { buildSendToConversationAddon } from '../../../src/server/executors/prompt-builder';
-import { atomicWriteJsonUnique } from '../../../src/server/shared/fs-utils';
-import { getRepoDataPath } from '../../../src/server/paths';
+import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_other' };
@@ -38,22 +34,22 @@ function terminalJob(processId: string, outcome: 'completed' | 'failed' | 'cance
 }
 
 describe('Sentinel to-do job links', () => {
-    let dataDir: string;
+    let database: ReturnType<typeof createTodoTestDatabase>;
     let todos: SentinelTodoStore;
     let service: SentinelTodoService;
     let onChange: ReturnType<typeof vi.fn>;
     const processes = new Map<string, AIProcess>();
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-links-'));
+        database = createTodoTestDatabase(createTodoTestDirectory());
         processes.clear();
         processes.set(owner.processId, sentinel(owner.processId, owner.workspaceId));
         processes.set(other.processId, sentinel(other.processId, other.workspaceId));
-        todos = new SentinelTodoStore(dataDir);
+        todos = new SentinelTodoStore(database.db);
         onChange = vi.fn();
         service = new SentinelTodoService({ todos, onChange, store: { getProcess: async (id: string) => processes.get(id) } });
     });
-    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+    afterEach(() => { database.dispose(); });
 
     async function createItem(at = owner): Promise<SentinelTodoItem> {
         return (await service.create(at, { title: 'Fix login', completionCondition: 'Login test passes' }, { actor: 'sentinel' })).item;
@@ -86,17 +82,6 @@ describe('Sentinel to-do job links', () => {
         expect(onChange).not.toHaveBeenCalled();
     });
 
-    it('keeps items created before job links readable with an empty jobs list', async () => {
-        const file = path.join(dataDir, 'repos', 'ws-a', 'sentinel-todos.json');
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        const now = new Date().toISOString();
-        fs.writeFileSync(file, JSON.stringify({ version: 1, ledgers: { [owner.processId]: { revision: 1, items: [{
-            id: 'old', title: 'Old', completionCondition: '', notes: '', status: 'todo', archived: false, revision: 1,
-            createdAt: now, updatedAt: now, createdBy: 'user', updatedBy: 'user',
-        }] } } }));
-        expect(todos.get(owner).items[0].jobs).toEqual([]);
-    });
-
     it('rejects linking from another chat even for the same item ID', async () => {
         const item = await createItem();
         await expect(link(item.id, 'queue_a', {}, other)).rejects.toMatchObject({ code: 'not_found' });
@@ -120,19 +105,14 @@ describe('Sentinel to-do job links', () => {
         expect(onChange).not.toHaveBeenCalled();
     });
 
-    it('excludes manual items from result recording and review lookup even with an invalid stored job link', async () => {
+    it('excludes manual items from result recording and review lookup after rejecting a link', async () => {
         const { item } = await service.create(owner, { type: 'manual', title: 'Read checklist' }, { actor: 'sentinel' });
-        const seeded = { ...item, jobs: [{
-            processId: 'queue_a', workspaceId: 'ws-child', kind: 'local', openLink: '#/process/queue_a', linkedAt: item.createdAt,
-        }] };
-        atomicWriteJsonUnique(getRepoDataPath(dataDir, owner.workspaceId, 'sentinel-todos.json'), {
-            version: 1, ledgers: { [owner.processId]: { revision: 1, items: [seeded] } },
-        });
         onChange.mockClear();
+        await expect(link(item.id, 'queue_a')).rejects.toMatchObject({ code: 'invalid' });
         const job = terminalJob('queue_a', 'failed', 'Unrelated failure');
         expect(service.recordJobResult(job)).toBeUndefined();
         expect(service.findLinkedItem(job)).toBeUndefined();
-        expect(current(item.id)).toEqual(seeded);
+        expect(current(item.id)).toEqual(item);
         expect(onChange).not.toHaveBeenCalled();
     });
 
@@ -164,6 +144,24 @@ describe('Sentinel to-do job links', () => {
         expect(current(item.id).revision).toBe(revision);
         expect(current(item.id).jobs[0].result?.outcome).toBe('failed');
         expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('rolls back failed job results without consuming terminal evidence or emitting a change', async () => {
+        const item = await createItem();
+        await link(item.id, 'queue_a');
+        const accepted = todos.get(owner);
+        onChange.mockClear();
+        const restoreWrites = failTodoWrites(database.db);
+        const job = terminalJob('queue_a', 'failed', 'Tests failed');
+        expect(() => service.recordJobResult(job)).toThrow('sentinel test write failure');
+        expect(todos.get(owner)).toEqual(accepted);
+        expect(onChange).not.toHaveBeenCalled();
+        restoreWrites();
+        expect(service.recordJobResult(job)).toMatchObject({
+            status: 'needs_attention',
+            jobs: [{ result: { terminalEventId: 'queue_a:terminal', outcome: 'failed' } }],
+        });
+        expect(onChange).toHaveBeenCalledTimes(1);
     });
 
     it('does not let a job outcome overwrite a newer user edit', async () => {
@@ -358,7 +356,7 @@ describe('Sentinel to-do job links', () => {
             const ledger = await service.list(owner);
             expect(ledger.items[0].jobs[0].execution).toEqual({ state: 'running' });
             const reloaded = new SentinelTodoService({
-                todos: new SentinelTodoStore(dataDir),
+                todos: new SentinelTodoStore(database.db),
                 store: { getProcess: async id => processes.get(id) },
             });
             const metadata = { processId: 'queue_ralph', kind: 'ralph', sessionId: 'ralph-1', workspaceId: 'ws-a' };
@@ -383,7 +381,7 @@ describe('Sentinel to-do job links', () => {
             await call({ content: 'goal', mode: 'ralph', workspaceId: 'remote:srv-1:w-api', todoItemId: item.id });
             expect(startRemoteChat).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ralph' }));
             const reloaded = new SentinelTodoService({
-                todos: new SentinelTodoStore(dataDir),
+                todos: new SentinelTodoStore(database.db),
                 store: { getProcess: async id => processes.get(id) },
             });
             expect((await reloaded.list(owner)).items[0].jobs[0]).toMatchObject({
@@ -416,10 +414,16 @@ describe('Sentinel to-do job links', () => {
         it('reports a failed link without relaunching the admitted job', async () => {
             const item = await createItem();
             const { call, enqueueChat } = makeTool();
-            vi.spyOn(service, 'linkJob').mockRejectedValueOnce(new Error('disk full'));
+            const accepted = todos.get(owner);
+            onChange.mockClear();
+            const restoreWrites = failTodoWrites(database.db);
             const result = await call({ content: 'go', todoItemId: item.id });
-            expect(result).toMatchObject({ processId: 'queue_task-1', tracking: { status: 'failed', error: 'disk full' } });
+            expect(result).toMatchObject({ processId: 'queue_task-1', tracking: { status: 'failed' } });
+            expect(result.tracking.error).toContain('sentinel test write failure');
             expect(enqueueChat).toHaveBeenCalledTimes(1);
+            expect(todos.get(owner)).toEqual(accepted);
+            expect(onChange).not.toHaveBeenCalled();
+            restoreWrites();
         });
 
         it('leaves post and cancel modes untouched', async () => {

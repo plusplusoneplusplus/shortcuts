@@ -1,15 +1,13 @@
 import * as fs from 'node:fs';
 import * as http from 'node:http';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRouter } from '../../../src/server/shared/router';
 import type { Route } from '../../../src/server/types';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { registerSentinelTodoRoutes } from '../../../src/server/sentinel-todos/sentinel-todo-routes';
-import { atomicWriteJsonUnique } from '../../../src/server/shared/fs-utils';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
+import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
 const processes: Record<string, { mode: string; workspaceId: string }> = {
     queue_s1: { mode: 'sentinel', workspaceId: 'ws-a' },
@@ -18,8 +16,10 @@ const processes: Record<string, { mode: string; workspaceId: string }> = {
     queue_ask: { mode: 'ask', workspaceId: 'ws-a' },
 };
 
-async function startServer(opts: { enabled?: boolean; write?: (file: string, data: unknown) => void; dataDir?: string } = {}) {
-    const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-routes-'));
+async function startServer(opts: { enabled?: boolean; dataDir?: string } = {}) {
+    const database = createTodoTestDatabase(opts.dataDir ?? createTodoTestDirectory());
+    const { dataDir, db } = database;
+    const todos = new SentinelTodoStore(db);
     const routes: Route[] = [];
     const onChange = vi.fn();
     const enabled = { value: opts.enabled ?? true };
@@ -27,7 +27,7 @@ async function startServer(opts: { enabled?: boolean; write?: (file: string, dat
         routes,
         getEnabled: () => enabled.value,
         service: new SentinelTodoService({
-            todos: new SentinelTodoStore(dataDir, opts.write),
+            todos,
             store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
             onChange,
         }),
@@ -36,10 +36,16 @@ async function startServer(opts: { enabled?: boolean; write?: (file: string, dat
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('no address');
+    let closed = false;
     return {
-        dataDir, onChange, enabled,
+        dataDir, db, onChange, enabled,
         baseUrl: `http://127.0.0.1:${address.port}`,
-        close: () => new Promise<void>(resolve => server.close(() => resolve())),
+        close: async () => {
+            if (closed) return;
+            closed = true;
+            await new Promise<void>(resolve => server.close(() => resolve()));
+            database.close();
+        },
     };
 }
 
@@ -68,7 +74,7 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'GET', ledger)).status).toBe(404);
         expect((await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'x' })).status).toBe(404);
         expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/x`, { expectedRevision: 1 })).status).toBe(404);
-        expect(fs.existsSync(path.join(s.dataDir, 'repos'))).toBe(false);
+        expect(s.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_ledgers').get()).toEqual({ count: 0 });
         expect(s.onChange).not.toHaveBeenCalled();
     });
 
@@ -115,7 +121,7 @@ describe('Sentinel to-do routes', () => {
         const s = await track(await startServer());
         const client = new CocClient({ baseUrl: s.baseUrl });
         const { item } = await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Feature' });
-        const todos = new SentinelTodoStore(s.dataDir);
+        const todos = new SentinelTodoStore(s.db);
         const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
         todos.linkJob(owner, item.id, {
             processId: 'queue_child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
@@ -166,9 +172,11 @@ describe('Sentinel to-do routes', () => {
         expect(await client.sentinelTodos.get('ws-a', 'queue_s1')).toMatchObject({
             revision: 2, items: [{ type: 'manual', title: 'Check release', notes: 'Read notes', revision: 2 }],
         });
+        const beforeRestart = await client.sentinelTodos.get('ws-a', 'queue_s1');
+        await s.close();
         const restarted = await track(await startServer({ dataDir: s.dataDir }), false);
         expect((await new CocClient({ baseUrl: restarted.baseUrl }).sentinelTodos.get('ws-a', 'queue_s1')).items)
-            .toEqual((await client.sentinelTodos.get('ws-a', 'queue_s1')).items);
+            .toEqual(beforeRestart.items);
     });
 
     it('isolates manual items across chats, groups, and same-ID owners on separate servers', async () => {
@@ -193,20 +201,16 @@ describe('Sentinel to-do routes', () => {
     });
 
     it('keeps failed manual writes unpublished and accepts an idempotent retry', async () => {
-        let failWrite = false;
-        const s = await track(await startServer({ write: (file, data) => {
-            if (failWrite) throw new Error('EIO');
-            atomicWriteJsonUnique(file, data);
-        } }));
+        const s = await track(await startServer());
         const input = { type: 'manual', title: 'Check release', idempotencyKey: 'manual-k1' };
-        failWrite = true;
+        let restoreWrites = failTodoWrites(s.db);
         expect((await req(s.baseUrl, 'POST', `${ledger}/items`, input)).status).toBe(500);
         expect(s.onChange).not.toHaveBeenCalled();
         expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [] });
-        failWrite = false;
+        restoreWrites();
         const created = await req(s.baseUrl, 'POST', `${ledger}/items`, input);
         expect(created.status).toBe(201);
-        failWrite = true;
+        restoreWrites = failTodoWrites(s.db);
         expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/${created.body.item.id}`, {
             expectedRevision: 1, notes: 'Not saved',
         })).status).toBe(500);
@@ -214,7 +218,7 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'GET', ledger)).body).toMatchObject({
             revision: 1, items: [{ type: 'manual', notes: '', revision: 1 }],
         });
-        failWrite = false;
+        restoreWrites();
         expect((await req(s.baseUrl, 'POST', `${ledger}/items`, input)).status).toBe(200);
         expect((await req(s.baseUrl, 'GET', ledger)).body.items).toHaveLength(1);
         expect(s.onChange).toHaveBeenCalledTimes(1);
@@ -282,12 +286,13 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/missing`, { expectedRevision: 1, title: 'y' })).status).toBe(404);
     });
 
-    it('returns 500 with no live update when the disk write fails', async () => {
-        const s = await track(await startServer({ write: () => { throw new Error('EIO'); } }));
+    it('returns 500 with no live update when the SQLite write fails', async () => {
+        const s = await track(await startServer());
+        failTodoWrites(s.db);
         const res = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'x' });
         expect(res.status).toBe(500);
         expect(res.body.item).toBeUndefined();
         expect(s.onChange).not.toHaveBeenCalled();
-        expect((await req(s.baseUrl, 'GET', ledger)).body.items).toEqual([]);
+        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [] });
     });
 });

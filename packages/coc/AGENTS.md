@@ -140,9 +140,11 @@ references before editing. Paths are package-relative.
   skill/tool mutations invalidate it; superseded reads cannot repopulate the cache.
 - Sentinel to-do ledgers (`src/server/sentinel-todos/`) are bookkeeping only: REST and AI
   tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
-  read/write and emits only after the atomic write commits. Item revisions reject stale
-  writers (`409` with the current item). Item `type` is immutable (`normal` or `manual`):
-  creation defaults to normal, and untyped stored items read as normal without rewriting.
+  read/write and emits only after the SQLite transaction commits. The store borrows
+  the process store's native `processes.db` handle; ledger, item and job rows are scoped
+  by workspace and parent chat. Mutations acquire the database writer before reading
+  and compare revisions; stale item writers receive `409` with the current item.
+  Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
   including evidence-based Done with a reason; Notes and Done when are optional.
   Archive/restore are user-only, enforced for manual items in the shared store.
@@ -481,7 +483,8 @@ references before editing. Paths are package-relative.
   labels and `% left`, and preserve unknown values and limit-id prefixes.
   `git status` uses `messaging/git-status.ts` to read every accessible registered local
   repo, expanding groups within the supplied registry and deduplicating roots; one row per
-  repo (`name - clean`, else only nonzero change/conflict counts).
+  repo (`name - clean`, else only nonzero change/conflict counts), plus `<N> ahead` when tracking
+  metadata is reliable (no branch names, upstream labels or behind counts).
   Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
   this command bypasses pending question answers and never changes selection or invokes AI.
   WhatsApp-only `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`) lists the

@@ -154,12 +154,14 @@ See [admin-config.md](admin-config.md) for runtime semantics and gates; use help
 ### Global persistence
 
 The data directory defaults to `~/.coc/`. Native SQLite `processes.db` stores
-processes, workspaces, queue and scheduling state.
+processes, workspaces, queue, scheduling state and workspace/chat-scoped Sentinel to-dos.
 `createProcessStore()` selects `SqliteProcessStore`; `store.backend: file` warns and is ignored.
 File stores are injected test fixtures.
 Native-addon failure is a startup failure, not a JavaScript SQLite fallback.
 
-Schema definitions, migrations and version live in `packages/forge/src/sqlite-schema.ts`.
+The process schema definitions, migrations and version live in `packages/forge/src/sqlite-schema.ts`.
+`sentinel-todos/sentinel-todo-store.ts` initializes its additive feature tables on the
+shared native handle before queue activation; the store borrows its owner's lifecycle.
 Queue tasks, controls and paths live in `queue_tasks`, `queue_repo_state` and `queue_repo_paths`.
 `queues.json` is handled by storage snapshot import/export, not live queue persistence.
 See [process-store.md](process-store.md) for tables and read/write contracts.
@@ -411,7 +413,9 @@ without changing selections or invoking AI. Native branch/change parsers and for
 WSL runner serve fixed status argv with optional locks disabled; safe-directory config,
 Git state and network remain untouched. Per-repo errors remain visible alongside
 successful summaries. Each repo is one row: `name - clean`, or only the nonzero
-staged/unstaged/untracked/conflict counts (no branch or ahead/behind). Replies use
+staged/unstaged/untracked/conflict counts, then `<N> ahead` only when the ahead count is
+positive and tracking is reliable (`branch.ab` present, upstream set, not detached/unborn);
+no branch names, upstream labels or behind counts. Replies use
 lossless connector text chunking.
 
 ### Messaging ask_user question relay

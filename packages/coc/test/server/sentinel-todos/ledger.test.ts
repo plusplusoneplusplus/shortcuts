@@ -1,11 +1,14 @@
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { Worker } from 'node:worker_threads';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
+import { initializeDatabase, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRepoDataPath } from '../../../src/server/paths';
-import { atomicWriteJsonUnique } from '../../../src/server/shared/fs-utils';
 import {
-    MAX_TODO_ITEMS, SENTINEL_TODOS_FILE, SentinelTodoError, SentinelTodoStore,
+    MAX_TODO_ITEMS, MAX_TODO_JOB_LINKS, SentinelTodoError, SentinelTodoStore,
+    type SentinelTodoActor, type SentinelTodoJobLinkInput, type SentinelTodoOwner,
 } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
@@ -13,6 +16,13 @@ import { createSnapshotDomains } from '../../../src/server/storage/snapshot/regi
 import type { StorageSnapshotContext } from '../../../src/server/storage/snapshot/types';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
+const otherOwners = [
+    { ...owner, processId: 'queue_other' },
+    { workspaceId: 'ws-b', processId: owner.processId },
+];
+const job: SentinelTodoJobLinkInput = {
+    processId: 'queue_child', workspaceId: 'ws-a', kind: 'local', openLink: '#repos/ws-a/chats/child',
+};
 
 function expectTodoError(fn: () => unknown, code: string): SentinelTodoError {
     try {
@@ -25,344 +35,589 @@ function expectTodoError(fn: () => unknown, code: string): SentinelTodoError {
     throw new Error('expected a SentinelTodoError');
 }
 
-describe('SentinelTodoStore', () => {
-    let dataDir: string;
-    beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todos-')); });
-    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+let dataDir: string;
+let db: NativeDatabase;
+let store: SentinelTodoStore;
+let handles: NativeDatabase[];
 
-    it('returns an empty ledger before anything is saved', () => {
-        expect(new SentinelTodoStore(dataDir).get(owner)).toEqual({ revision: 0, items: [] });
+function openDatabase(): NativeDatabase {
+    const handle = new NativeDatabase(path.join(dataDir, 'processes.db'));
+    handles.push(handle);
+    initializeDatabase(handle);
+    handle.pragma('journal_mode = WAL');
+    return handle;
+}
+
+function reopen(): SentinelTodoStore {
+    return new SentinelTodoStore(openDatabase());
+}
+
+function linkedItem() {
+    const { item } = store.create(owner, { title: 'Tracked' }, { actor: 'user' });
+    return store.linkJob(owner, item.id, job).item;
+}
+
+function failWrites(table: 'sentinel_todo_ledgers' | 'sentinel_todo_items' | 'sentinel_todo_jobs',
+    operation: 'INSERT' | 'UPDATE' = 'UPDATE'): void {
+    db.exec(`CREATE TRIGGER reject_write BEFORE ${operation} ON ${table}
+        BEGIN SELECT RAISE(ABORT, 'injected SQL failure'); END`);
+}
+
+beforeEach(() => {
+    dataDir = fs.mkdtempSync(path.join(process.cwd(), '.sentinel-ledger-test-'));
+    handles = [];
+    db = openDatabase();
+    store = new SentinelTodoStore(db);
+});
+
+afterEach(() => {
+    for (const handle of handles) handle.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+});
+
+describe('SentinelTodoStore SQLite persistence', () => {
+    it('starts empty, initializes additively and leaves the process schema/version intact', () => {
+        const shared = new NativeDatabase(path.join(dataDir, 'schema.db'));
+        handles.push(shared);
+        initializeDatabase(shared);
+        const version = shared.pragma('user_version', { simple: true });
+        shared.exec('CREATE TABLE unrelated (value TEXT); INSERT INTO unrelated VALUES (\'preserved\')');
+        const schema = shared.prepare(`SELECT name, sql FROM sqlite_master
+            WHERE tbl_name NOT LIKE 'sentinel_todo_%' ORDER BY name`).all();
+        const feature = new SentinelTodoStore(shared);
+        expect(feature.get(owner)).toEqual({ revision: 0, items: [] });
+        new SentinelTodoStore(shared);
+        expect(shared.pragma('user_version', { simple: true })).toBe(version);
+        expect(shared.prepare(`SELECT name, sql FROM sqlite_master
+            WHERE tbl_name NOT LIKE 'sentinel_todo_%' ORDER BY name`).all()).toEqual(schema);
+        expect(shared.prepare('SELECT value FROM unrelated').get()).toEqual({ value: 'preserved' });
     });
 
-    it('persists created and edited items across store instances (server restart)', () => {
-        const created = new SentinelTodoStore(dataDir).create(owner, {
-            title: 'Fix login', completionCondition: 'Login test passes', targetRepo: { workspaceId: 'ws-b', label: 'web' },
+    it('persists ordered items, optional fields and jobs after every handle closes and reopens', () => {
+        const created = store.create(owner, {
+            title: 'Fix login', completionCondition: 'Login test passes',
+            targetRepo: { workspaceId: 'ws-b', serverId: 'srv-b', label: 'web' },
         }, { actor: 'user' });
-        expect(created.created).toBe(true);
-        expect(created.item).toMatchObject({
-            title: 'Fix login', status: 'todo', archived: false, revision: 1, notes: '', createdBy: 'user',
-        });
-        new SentinelTodoStore(dataDir).update(owner, created.item.id, 1, { notes: 'see PR', status: 'in_progress' }, 'sentinel');
-
-        const reloaded = new SentinelTodoStore(dataDir).get(owner);
-        expect(reloaded.revision).toBe(2);
-        expect(reloaded.items).toHaveLength(1);
+        store.create(owner, { title: 'Second' }, { actor: 'sentinel' });
+        store.linkJob(owner, created.item.id, job);
+        store.linkJob(owner, created.item.id, { ...job, processId: 'queue_remote', serverId: 'srv-b', kind: 'remote' });
+        store.update(owner, created.item.id, 3, { notes: 'see PR', priority: 'high' }, 'user');
+        const accepted = store.get(owner);
+        handles.pop()!.close();
+        const reloaded = reopen().get(owner);
+        expect(reloaded).toEqual(accepted);
+        expect(reloaded.revision).toBe(5);
+        expect(reloaded.items.map(item => item.title)).toEqual(['Fix login', 'Second']);
         expect(reloaded.items[0]).toMatchObject({
-            notes: 'see PR', status: 'in_progress', revision: 2, updatedBy: 'sentinel', targetRepo: { workspaceId: 'ws-b' },
+            type: 'normal', notes: 'see PR', status: 'in_progress', revision: 4, priority: 'high',
+            updatedBy: 'user', targetRepo: { workspaceId: 'ws-b', serverId: 'srv-b', label: 'web' },
         });
-        expect(fs.existsSync(getRepoDataPath(dataDir, 'ws-a', SENTINEL_TODOS_FILE))).toBe(true);
+        expect(reloaded.items[0].jobs.map(link => link.processId)).toEqual(['queue_child', 'queue_remote']);
     });
 
-    it('isolates ledgers by parent chat and by workspace', () => {
-        const store = new SentinelTodoStore(dataDir);
-        store.create(owner, { title: 'A' }, { actor: 'user' });
-        store.create({ ...owner, processId: 'queue_other' }, { title: 'B' }, { actor: 'user' });
-        store.create({ workspaceId: 'group-team', processId: owner.processId }, { title: 'C' }, { actor: 'user' });
+    it('ignores stale and malformed sentinel-todos.json files without importing or modifying them', () => {
+        const file = getRepoDataPath(dataDir, owner.workspaceId, 'sentinel-todos.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const stale = JSON.stringify({ version: 1, ledgers: { queue_parent: { revision: 99, items: [{ title: 'Stale' }] } } });
+        fs.writeFileSync(file, stale);
+        expect(reopen().get(owner)).toEqual({ revision: 0, items: [] });
+        store.create(owner, { title: 'Fresh' }, { actor: 'user' });
+        expect(fs.readFileSync(file, 'utf8')).toBe(stale);
+        fs.writeFileSync(file, 'not JSON');
+        expect(reopen().get(owner)).toMatchObject({ revision: 1, items: [{ title: 'Fresh' }] });
+        expect(fs.readFileSync(file, 'utf8')).toBe('not JSON');
+    });
+
+    it('isolates owners for reads, writes, job results and idempotency', () => {
+        const first = store.create(owner, { title: 'A' }, { actor: 'user', idempotencyKey: 'same' }).item;
+        store.linkJob(owner, first.id, job);
+        otherOwners.forEach((scope, index) => {
+            const { item } = store.create(scope, { title: `Other ${index}` }, { actor: 'user', idempotencyKey: 'same' });
+            expect(item.id).not.toBe(first.id);
+            expectTodoError(() => store.update(scope, first.id, 2, { title: 'forged' }, 'user'), 'not_found');
+            expectTodoError(() => store.linkJob(scope, first.id, job), 'not_found');
+            expect(store.recordJobResult(scope, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => 'failed'))
+                .toBeUndefined();
+            expect(store.get(scope).items.map(entry => entry.title)).toEqual([`Other ${index}`]);
+        });
         expect(store.get(owner).items.map(item => item.title)).toEqual(['A']);
-        expect(store.get({ ...owner, processId: 'queue_other' }).items.map(item => item.title)).toEqual(['B']);
-        expect(store.get({ workspaceId: 'group-team', processId: owner.processId }).items.map(item => item.title)).toEqual(['C']);
+        for (const scope of [{ ...owner, workspaceId: '' }, { ...owner, processId: '' }]) {
+            expectTodoError(() => store.get(scope), 'invalid');
+            expectTodoError(() => store.create(scope, { title: 'x' }, { actor: 'user' }), 'invalid');
+        }
     });
 
-    it('replays a retried create with the same idempotency key', () => {
-        const store = new SentinelTodoStore(dataDir);
+    it('replays creation across independent handles without changing order or revisions', () => {
         const first = store.create(owner, { title: 'Ship it' }, { actor: 'sentinel', idempotencyKey: 'k1' });
-        const retry = store.create(owner, { title: 'Ship it' }, { actor: 'sentinel', idempotencyKey: 'k1' });
-        expect(retry.created).toBe(false);
-        expect(retry.item.id).toBe(first.item.id);
-        expect(store.get(owner).items).toHaveLength(1);
-        expect(store.get(owner).revision).toBe(1);
+        const retry = reopen().create(owner, { title: 'Ignored retry' }, { actor: 'user', idempotencyKey: 'k1' });
+        expect(retry).toEqual({ ...first, created: false });
+        expect(store.get(owner)).toEqual({ revision: 1, items: [first.item] });
+        expectTodoError(() => store.create(owner, { title: 'x' }, { actor: 'user', idempotencyKey: '' }), 'invalid');
+        expectTodoError(() => store.create(owner, { title: 'x' }, { actor: 'user', idempotencyKey: 'k'.repeat(201) }), 'invalid');
+        expect(() => db.prepare(`INSERT INTO sentinel_todo_items
+            SELECT workspace_id, parent_process_id, 'duplicate', 1, type, title, completion_condition,
+                notes, target_repo, status, status_reason, priority, outcome, archived, revision,
+                created_at, updated_at, created_by, updated_by, idempotency_key, user_edited_at, user_verdict_revision
+            FROM sentinel_todo_items`).run()).toThrow();
     });
 
-    it('rejects the second of two edits from the same revision without changing the accepted version', () => {
-        const store = new SentinelTodoStore(dataDir);
+    it('rejects a stale revision from a second handle and returns the accepted item', () => {
+        const second = reopen();
         const { item } = store.create(owner, { title: 'Draft' }, { actor: 'user' });
+        expect(second.get(owner).items[0].revision).toBe(1);
         store.update(owner, item.id, 1, { title: 'User title' }, 'user');
-        const error = expectTodoError(() => store.update(owner, item.id, 1, { title: 'Stale AI title' }, 'sentinel'), 'conflict');
+        const error = expectTodoError(() => second.update(owner, item.id, 1, { title: 'Stale AI title' }, 'sentinel'), 'conflict');
         expect(error.current).toMatchObject({ title: 'User title', revision: 2 });
-        expect(store.get(owner).items[0]).toMatchObject({ title: 'User title', revision: 2, updatedBy: 'user' });
+        expect(second.get(owner)).toEqual(store.get(owner));
+        second.update(owner, item.id, 2, { notes: 'accepted' }, 'sentinel');
+        expect(store.get(owner)).toMatchObject({ revision: 3, items: [{ title: 'User title', notes: 'accepted', revision: 3 }] });
+    });
+
+    it('caps items, including archived ones, while allowing idempotent replay at the limit', () => {
+        const first = store.create(owner, { title: 'First' }, { actor: 'user', idempotencyKey: 'first' }).item;
+        store.update(owner, first.id, 1, { archived: true }, 'user');
+        for (let index = 1; index < MAX_TODO_ITEMS; index++) {
+            store.create(owner, { title: `Item ${index}` }, { actor: 'user' });
+        }
+        const before = store.get(owner);
+        expectTodoError(() => reopen().create(owner, { title: 'one more' }, { actor: 'user' }), 'limit');
+        expect(store.create(owner, { title: 'retry' }, { actor: 'user', idempotencyKey: 'first' }).created).toBe(false);
+        expect(store.get(owner)).toEqual(before);
+        expect(store.create(otherOwners[0], { title: 'independent' }, { actor: 'user' }).created).toBe(true);
+    });
+
+    it.each(['sentinel_todo_items', 'sentinel_todo_ledgers'] as const)(
+        'rolls back item creation and the new ledger when %s rejects a write', table => {
+            failWrites(table, table === 'sentinel_todo_items' ? 'INSERT' : 'UPDATE');
+            expect(() => store.create(owner, { title: 'New' }, { actor: 'user' })).toThrow('injected SQL failure');
+            expect(store.get(owner)).toEqual({ revision: 0, items: [] });
+            expect(db.prepare('SELECT * FROM sentinel_todo_ledgers').all()).toEqual([]);
+            db.exec('DROP TRIGGER reject_write');
+            expect(store.create(owner, { title: 'Retry' }, { actor: 'user' }).ledgerRevision).toBe(1);
+        },
+    );
+
+    it('rolls back an item edit when the ledger CAS fails and remains usable', () => {
+        const { item } = store.create(owner, { title: 'Before' }, { actor: 'user' });
+        const before = store.get(owner);
+        failWrites('sentinel_todo_ledgers');
+        expect(() => store.update(owner, item.id, 1, { title: 'After' }, 'user')).toThrow('injected SQL failure');
+        expect(reopen().get(owner)).toEqual(before);
+        db.exec('DROP TRIGGER reject_write');
+        expect(store.update(owner, item.id, 1, { title: 'Retry' }, 'user').ledgerRevision).toBe(2);
+    });
+
+    it.each(['sentinel_todo_items', 'sentinel_todo_ledgers'] as const)(
+        'rejects a zero-row %s CAS and rolls back all related state', table => {
+            const item = linkedItem();
+            const before = store.get(owner);
+            db.exec(`CREATE TRIGGER reject_cas BEFORE UPDATE ON ${table}
+                BEGIN SELECT RAISE(IGNORE); END`);
+            expectTodoError(() => store.recordJobResult(owner, job.processId, {
+                terminalEventId: 'e', outcome: 'failed',
+            }, () => 'failed'), 'conflict');
+            expect(reopen().get(owner)).toEqual(before);
+            db.exec('DROP TRIGGER reject_cas');
+            expect(store.update(owner, item.id, item.revision, { notes: 'retry' }, 'user').item.revision).toBe(item.revision + 1);
+        },
+    );
+
+    it('preserves a trigger-driven rollback error and accepts the next transaction', () => {
+        const { item } = store.create(owner, { title: 'Before' }, { actor: 'user' });
+        const before = store.get(owner);
+        db.exec(`CREATE TRIGGER rollback_write BEFORE UPDATE ON sentinel_todo_ledgers
+            BEGIN SELECT RAISE(ROLLBACK, 'trigger rollback'); END`);
+        expect(() => store.update(owner, item.id, 1, { title: 'After' }, 'user')).toThrow('trigger rollback');
+        expect(reopen().get(owner)).toEqual(before);
+        db.exec('DROP TRIGGER rollback_write');
+        expect(store.update(owner, item.id, 1, { title: 'Retry' }, 'user').ledgerRevision).toBe(2);
+    });
+
+    it('serializes genuinely simultaneous writers and detects stale edits across worker handles', async () => {
+        const { item } = store.create(owner, { title: 'Before' }, { actor: 'user' });
+        const source = fs.readFileSync(new URL('../../../src/server/sentinel-todos/sentinel-todo-store.ts', import.meta.url), 'utf8');
+        const moduleFile = path.join(dataDir, 'store.cjs');
+        fs.writeFileSync(moduleFile, ts.transpileModule(source, {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText);
+        const workers = [0, 1].map(index => new Worker(`
+            const { parentPort, workerData } = require('node:worker_threads');
+            const { NativeDatabase } = require('@plusplusoneplusplus/coc-native');
+            const { SentinelTodoStore } = require(workerData.moduleFile);
+            const db = new NativeDatabase(workerData.file);
+            const store = new SentinelTodoStore(db);
+            parentPort.postMessage('ready');
+            parentPort.once('message', () => {
+                try {
+                    let edited = false;
+                    try {
+                        store.update(workerData.owner, workerData.itemId, 1, { notes: String(workerData.index) }, 'user');
+                        edited = true;
+                    } catch (error) { if (error.code !== 'conflict') throw error; }
+                    for (let i = 0; i < 12; i++) {
+                        store.create(workerData.owner, { title: 'worker-' + workerData.index + '-' + i }, { actor: 'user' });
+                    }
+                    const replay = store.create(workerData.owner, { title: 'once' }, { actor: 'user', idempotencyKey: 'shared' });
+                    db.close();
+                    parentPort.postMessage({ edited, created: replay.created });
+                } catch (error) { parentPort.postMessage({ error: String(error) }); }
+            });
+        `, {
+            eval: true, workerData: {
+                file: path.join(dataDir, 'processes.db'), moduleFile, owner, itemId: item.id, index,
+            },
+        }));
+        try {
+            await Promise.all(workers.map(worker => new Promise<void>((resolve, reject) => {
+                worker.once('message', () => resolve());
+                worker.once('error', reject);
+            })));
+            const results = workers.map(worker => new Promise<{ edited: boolean; created: boolean; error?: string }>((resolve, reject) => {
+                worker.once('message', resolve);
+                worker.once('error', reject);
+            }));
+            workers.forEach(worker => worker.postMessage('go'));
+            for (let index = 0; index < 30; index++) {
+                const snapshot = store.get(owner);
+                expect(snapshot.revision).toBe(snapshot.items.reduce((total, entry) => total + entry.revision, 0));
+                await new Promise<void>(resolve => setImmediate(resolve));
+            }
+            const completed = await Promise.all(results);
+            expect(completed.every(result => !result.error)).toBe(true);
+            expect(completed.filter(result => result.edited)).toHaveLength(1);
+            expect(completed.filter(result => result.created)).toHaveLength(1);
+            const accepted = store.get(owner);
+            expect(accepted.revision).toBe(27);
+            expect(accepted.items).toHaveLength(26);
+            expect(accepted.items[0].revision).toBe(2);
+            expect(new Set(accepted.items.map(entry => entry.id)).size).toBe(26);
+        } finally {
+            await Promise.all(workers.map(worker => worker.terminate()));
+        }
+    }, 20_000);
+});
+
+describe('SentinelTodoStore validation and verdict semantics', () => {
+    it('validates every caller actor, including idempotent retries', () => {
+        const { item } = store.create(owner, { title: 'valid' }, { actor: 'user', idempotencyKey: 'key' });
+        const before = store.get(owner);
+        for (const actor of ['system', 'forged', undefined] as unknown as SentinelTodoActor[]) {
+            expectTodoError(() => store.create(owner, { title: 'x' }, { actor }), 'invalid');
+            expectTodoError(() => store.create(owner, { title: 'x' }, { actor, idempotencyKey: 'key' }), 'invalid');
+            expectTodoError(() => store.update(owner, item.id, 1, { title: 'x' }, actor), 'invalid');
+        }
+        expect(store.get(owner)).toEqual(before);
+    });
+
+    it('validates inputs and unknown items without writes', () => {
+        for (const input of [
+            { title: '  ' }, { title: 'x', status: 'closed' }, { title: 'x', extra: 1 },
+            { title: 'x', priority: 'urgent' }, { title: 'x', type: 'other' }, { title: 'x', type: null },
+        ]) expectTodoError(() => store.create(owner, input as never, { actor: 'user' }), 'invalid');
+        expectTodoError(() => store.update(owner, 'missing', 1, { title: 'y' }, 'user'), 'not_found');
+        const { item } = store.create(owner, { title: 'x' }, { actor: 'user' });
+        for (const patch of [{ archived: 'yes' }, { priority: 'low' }, { priority: null }, { type: 'manual' }]) {
+            expectTodoError(() => store.update(owner, item.id, 1, patch as never, 'user'), 'invalid');
+        }
+        expect(store.get(owner)).toMatchObject({ revision: 1, items: [{ revision: 1 }] });
     });
 
     it('archives and restores without deleting notes or outcomes', () => {
-        const store = new SentinelTodoStore(dataDir);
         const { item } = store.create(owner, { title: 'T', notes: 'keep me' }, { actor: 'user' });
         const done = store.update(owner, item.id, 1, { status: 'done', statusReason: 'Tests pass', outcome: 'All green' }, 'sentinel');
         expect(done.item.outcome).toMatchObject({ summary: 'All green', recordedBy: 'sentinel' });
-        const archived = store.update(owner, item.id, 2, { archived: true }, 'user');
-        expect(archived.item).toMatchObject({ archived: true, status: 'done', notes: 'keep me', statusReason: 'Tests pass' });
-        const restored = store.update(owner, item.id, 3, { archived: false }, 'user');
-        expect(restored.item).toMatchObject({ archived: false, notes: 'keep me', outcome: { summary: 'All green' } });
+        store.update(owner, item.id, 2, { archived: true }, 'user');
+        expect(reopen().get(owner).items[0]).toMatchObject({ archived: true, status: 'done', notes: 'keep me', statusReason: 'Tests pass' });
+        expect(store.update(owner, item.id, 3, { archived: false }, 'user').item)
+            .toMatchObject({ archived: false, notes: 'keep me', outcome: { summary: 'All green' } });
     });
 
-    it('clears a stale status reason on status change and clears nullable fields', () => {
-        const store = new SentinelTodoStore(dataDir);
+    it('clears stale reasons and nullable fields, and drops an earlier outcome on a fresh Done', () => {
         const { item } = store.create(owner, {
             title: 'T', status: 'needs_attention', statusReason: 'Job failed', targetRepo: { workspaceId: 'ws-b' },
         }, { actor: 'sentinel' });
         const reopened = store.update(owner, item.id, 1, { status: 'in_progress', targetRepo: null }, 'user');
         expect(reopened.item.statusReason).toBeUndefined();
         expect(reopened.item.targetRepo).toBeUndefined();
-    });
-
-    it('lets a person mark Done without a reason and drops the earlier reason and outcome', () => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
-        store.update(owner, item.id, 1, { status: 'done', statusReason: 'Old review', outcome: 'Old outcome' }, 'sentinel');
-        store.update(owner, item.id, 2, { status: 'needs_attention', statusReason: 'Regressed' }, 'sentinel');
-        const done = store.update(owner, item.id, 3, { status: 'done', statusReason: null }, 'user');
-        expect(done.item).toMatchObject({ status: 'done', revision: 4, updatedBy: 'user' });
+        store.update(owner, item.id, 2, { status: 'done', statusReason: 'Old review', outcome: 'Old outcome' }, 'sentinel');
+        store.update(owner, item.id, 3, { status: 'needs_attention', statusReason: 'Regressed' }, 'sentinel');
+        const done = store.update(owner, item.id, 4, { status: 'done', statusReason: null }, 'user');
         expect(done.item.statusReason).toBeUndefined();
         expect(done.item.outcome).toBeUndefined();
         expect(done.item.userEditedAt).toBe(done.item.updatedAt);
-        // A supplied reason and outcome still record with the person's provenance.
-        const { item: other } = store.create(owner, { title: 'U' }, { actor: 'user' });
-        const reviewed = store.update(owner, other.id, 1, { status: 'done', statusReason: 'Checked', outcome: 'Checked' }, 'user');
-        expect(reviewed.item).toMatchObject({ statusReason: 'Checked', outcome: { summary: 'Checked', recordedBy: 'user' } });
-        // Edits that do not newly mark Done keep the recorded outcome.
-        const archived = store.update(owner, other.id, 2, { archived: true }, 'user');
-        expect(archived.item.outcome).toMatchObject({ summary: 'Checked' });
+        expect(done.item.userVerdictRevision).toBe(5);
+        store.update(owner, item.id, 5, { outcome: 'Checked', statusReason: 'Checked' }, 'user');
+        expect(reopen().get(owner).items[0].outcome).toMatchObject({ recordedBy: 'user', summary: 'Checked' });
+        expect(store.update(owner, item.id, 6, { outcome: null, statusReason: null }, 'user').item.outcome).toBeUndefined();
     });
 
-    it('requires a reason when an automated actor sets Done or Needs attention', () => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
-        expectTodoError(() => store.update(owner, item.id, 1, { status: 'done' }, 'sentinel'), 'invalid');
-        expectTodoError(() => store.update(owner, item.id, 1, { status: 'done', statusReason: null }, 'sentinel'), 'invalid');
-        expectTodoError(() => store.update(owner, item.id, 1, { status: 'needs_attention' }, 'sentinel'), 'invalid');
-        expectTodoError(() => store.create(owner, { title: 'x', status: 'done' }, { actor: 'sentinel' }), 'invalid');
-        expect(store.get(owner).items).toHaveLength(1);
-        expect(store.get(owner).items[0].revision).toBe(1);
-        expect(store.update(owner, item.id, 1, { status: 'in_progress' }, 'sentinel').item.status).toBe('in_progress');
+    it.each(['normal', 'manual'] as const)('requires sentinel evidence for %s Done/Needs attention but allows user Done', type => {
+        const { item } = store.create(owner, { type, title: 'T' }, { actor: 'user' });
+        for (const status of ['done', 'needs_attention'] as const) {
+            for (const statusReason of [undefined, null, '  ']) {
+                expectTodoError(() => store.update(owner, item.id, 1, { status, statusReason }, 'sentinel'), 'invalid');
+            }
+            expectTodoError(() => store.create(owner, { type, title: 'x', status }, { actor: 'sentinel' }), 'invalid');
+        }
+        expect(store.update(owner, item.id, 1, { status: 'done' }, 'user').item.status).toBe('done');
     });
 
-    it('validates input and reports unknown items', () => {
-        const store = new SentinelTodoStore(dataDir);
-        expectTodoError(() => store.create(owner, { title: '  ' }, { actor: 'user' }), 'invalid');
-        expectTodoError(() => store.create(owner, { title: 'x', status: 'closed' } as never, { actor: 'user' }), 'invalid');
-        expectTodoError(() => store.create(owner, { title: 'x', extra: 1 } as never, { actor: 'user' }), 'invalid');
-        expectTodoError(() => store.update(owner, 'missing', 1, { title: 'y' }, 'user'), 'not_found');
-        const { item } = store.create(owner, { title: 'x' }, { actor: 'user' });
-        expectTodoError(() => store.update(owner, item.id, 1, { archived: 'yes' } as never, 'user'), 'invalid');
-        expect(store.get(owner).items[0].revision).toBe(1);
-    });
-
-    it('caps the ledger size', () => {
-        const file = getRepoDataPath(dataDir, owner.workspaceId, SENTINEL_TODOS_FILE);
-        const now = new Date().toISOString();
-        const items = Array.from({ length: MAX_TODO_ITEMS }, (_, i) => ({
-            id: `i${i}`, title: `t${i}`, completionCondition: '', notes: '', status: 'todo', archived: false,
-            revision: 1, createdAt: now, updatedAt: now, createdBy: 'user', updatedBy: 'user',
-        }));
-        atomicWriteJsonUnique(file, { version: 1, ledgers: { [owner.processId]: { revision: 1, items } } });
-        expectTodoError(() => new SentinelTodoStore(dataDir).create(owner, { title: 'one more' }, { actor: 'user' }), 'limit');
-    });
-
-    it('leaves the accepted ledger untouched when the disk write fails', () => {
-        const ok = new SentinelTodoStore(dataDir);
-        const { item } = ok.create(owner, { title: 'Before' }, { actor: 'user' });
-        const failing = new SentinelTodoStore(dataDir, () => { throw new Error('ENOSPC'); });
-        expect(() => failing.update(owner, item.id, 1, { title: 'After' }, 'user')).toThrow('ENOSPC');
-        expect(() => failing.create(owner, { title: 'New' }, { actor: 'user' })).toThrow('ENOSPC');
-        expect(ok.get(owner)).toMatchObject({ revision: 1, items: [{ title: 'Before', revision: 1 }] });
+    it('treats priority as metadata without changing status/review evidence or superseding linked work', () => {
+        const item = linkedItem();
+        expect(item.priority).toBe('regular');
+        const raised = store.update(owner, item.id, item.revision, { priority: 'high' }, 'user');
+        expect(raised.item.userEditedAt).toBeUndefined();
+        expect(raised.item.userVerdictRevision).toBeUndefined();
+        const failed = store.recordJobResult(owner, job.processId, { terminalEventId: 'e1', outcome: 'failed' }, () => 'failed')!;
+        expect(failed.item).toMatchObject({ status: 'needs_attention', priority: 'high' });
+        const reviewed = store.update(owner, item.id, failed.item.revision, {
+            status: 'done', statusReason: 'Checked', outcome: 'All green',
+        }, 'sentinel');
+        const lowered = store.update(owner, item.id, reviewed.item.revision, { priority: 'regular' }, 'sentinel');
+        expect(lowered.item).toMatchObject({
+            status: 'done', statusReason: 'Checked', outcome: reviewed.item.outcome,
+            createdAt: item.createdAt, createdBy: 'user', priority: 'regular',
+        });
+        expectTodoError(() => store.update(owner, item.id, reviewed.item.revision, { priority: 'high' }, 'user'), 'conflict');
     });
 });
 
-describe('SentinelTodoStore item type', () => {
-    let dataDir: string;
-    beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-type-')); });
-    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+describe('SentinelTodoStore jobs and atomic reviews', () => {
+    it('keys links by job process and server, preserves order and enforces the job limit', () => {
+        const item = linkedItem();
+        const before = store.get(owner);
+        expect(store.linkJob(owner, item.id, { ...job, title: 'Ignored retry' }).changed).toBe(false);
+        expect(store.get(owner)).toEqual(before);
+        store.linkJob(owner, item.id, { ...job, serverId: 'remote-a', kind: 'remote' });
+        store.linkJob(owner, item.id, { ...job, serverId: 'remote-b', kind: 'remote' });
+        for (let index = 3; index < MAX_TODO_JOB_LINKS; index++) {
+            store.linkJob(owner, item.id, { ...job, processId: `child-${index}` });
+        }
+        const capped = store.get(owner);
+        expectTodoError(() => store.linkJob(owner, item.id, { ...job, processId: 'extra' }), 'limit');
+        expect(store.linkJob(owner, item.id, job).changed).toBe(false);
+        expect(reopen().get(owner)).toEqual(capped);
+        expect(capped.items[0].jobs.slice(0, 3).map(link => link.serverId)).toEqual([undefined, 'remote-a', 'remote-b']);
+    });
 
-    it('persists title-only manual items with To do and Regular defaults', () => {
-        const store = new SentinelTodoStore(dataDir);
+    it.each(['completed', 'failed', 'cancelled', 'capped'] as const)('records only the first %s terminal result and never auto-completes', outcome => {
+        const item = linkedItem();
+        const first = store.recordJobResult(owner, job.processId, { terminalEventId: 'e1', outcome, reason: 'detail' }, () => 'job ended')!;
+        expect(first.item).toMatchObject({ status: outcome === 'completed' ? 'in_progress' : 'needs_attention', updatedBy: 'system' });
+        expect(first.item.jobs[0].result).toMatchObject({ terminalEventId: 'e1', outcome, reason: 'detail' });
+        const before = store.get(owner);
+        expect(store.recordJobResult(owner, job.processId, { terminalEventId: 'e2', outcome: 'failed' }, () => 'again')).toBeUndefined();
+        expect(store.recordJobResult(owner, 'unknown', { terminalEventId: 'e3', outcome }, () => 'unknown')).toBeUndefined();
+        expect(reopen().get(owner)).toEqual(before);
+        expect(first.item.revision).toBe(item.revision + 1);
+    });
+
+    it('ignores remote terminal results and preserves explicit user verdicts and later successful attempts', () => {
+        const item = linkedItem();
+        store.linkJob(owner, item.id, { ...job, processId: 'remote', serverId: 'srv-a', kind: 'remote' });
+        expect(store.recordJobResult(owner, 'remote', { terminalEventId: 'e', outcome: 'failed' }, () => 'remote')).toBeUndefined();
+        const latest = store.linkJob(owner, item.id, { ...job, processId: 'new-attempt' }).item;
+        store.recordJobResult(owner, 'new-attempt', { terminalEventId: 'new', outcome: 'completed' }, () => 'done');
+        const older = store.recordJobResult(owner, job.processId, { terminalEventId: 'old', outcome: 'failed' }, () => 'failed')!;
+        expect(older.item.status).toBe('in_progress');
+        const done = store.update(owner, item.id, older.item.revision, { status: 'done' }, 'user').item;
+        expect(done.userVerdictRevision).toBeGreaterThan(latest.revision);
+        expectTodoError(() => store.update(owner, item.id, done.revision, {
+            status: 'needs_attention', statusReason: 'stale',
+            reviewedJobs: [{ processId: job.processId, terminalEventId: 'old' }],
+        }, 'sentinel'), 'invalid');
+        expectTodoError(() => store.update(owner, item.id, done.revision, {
+            status: 'needs_attention', statusReason: 'stale',
+        }, 'sentinel'), 'invalid');
+        expect(store.get(owner).items[0]).toEqual(done);
+    });
+
+    it.each(['archived', 'done', 'edited'] as const)('records failed evidence but preserves a user-%s item', change => {
+        const item = linkedItem();
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date(Date.parse(item.updatedAt) + 1_000));
+            const updated = store.update(owner, item.id, item.revision,
+                change === 'archived' ? { archived: true } : change === 'done' ? { status: 'done' } : { notes: 'user change' }, 'user').item;
+            const result = store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => 'failed')!;
+            expect(result.item.status).toBe(updated.status);
+            expect(result.item.archived).toBe(updated.archived);
+            expect(result.item.jobs[0].result?.outcome).toBe('failed');
+        } finally { vi.useRealTimers(); }
+    });
+
+    it('requires exact local terminal evidence and an explicit reviewed verdict', () => {
+        const item = linkedItem();
+        const result = store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'completed' }, () => 'done')!;
+        const evidence = [{ processId: job.processId, terminalEventId: 'e' }];
+        const before = store.get(owner);
+        for (const patch of [
+            { reviewedJobs: evidence },
+            { status: 'in_progress', reviewedJobs: evidence },
+            { status: 'done', statusReason: 'checked', reviewedJobs: [{ processId: job.processId, terminalEventId: 'wrong' }] },
+        ]) expectTodoError(() => store.update(owner, item.id, result.item.revision, patch as never, 'sentinel'), 'invalid');
+        store.update(owner, item.id, result.item.revision, { notes: 'unrelated' }, 'sentinel');
+        expect(store.get(owner).items[0].jobs[0].result?.reviewed).toBeUndefined();
+        const accepted = store.update(owner, item.id, result.item.revision + 1, {
+            status: 'done', statusReason: 'Tested', outcome: 'Verified', reviewedJobs: evidence,
+        }, 'sentinel');
+        expect(accepted.item.jobs[0].result?.reviewed).toMatchObject({ recordedBy: 'sentinel', recordedAt: accepted.item.updatedAt });
+        expect(reopen().get(owner)).toEqual({ revision: before.revision + 2, items: [accepted.item] });
+    });
+
+    it('rolls back linked jobs, terminal results and review evidence together with item and ledger state', () => {
+        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
+        const beforeLink = store.get(owner);
+        failWrites('sentinel_todo_jobs', 'INSERT');
+        expect(() => store.linkJob(owner, item.id, job)).toThrow('injected SQL failure');
+        expect(reopen().get(owner)).toEqual(beforeLink);
+        db.exec('DROP TRIGGER reject_write');
+        const linked = store.linkJob(owner, item.id, job).item;
+        const beforeResult = store.get(owner);
+        failWrites('sentinel_todo_ledgers');
+        expect(() => store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => 'failed'))
+            .toThrow('injected SQL failure');
+        expect(reopen().get(owner)).toEqual(beforeResult);
+        db.exec('DROP TRIGGER reject_write');
+        const recorded = store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => 'failed')!;
+        expect(recorded.item.revision).toBe(linked.revision + 1);
+        const beforeReview = store.get(owner);
+        failWrites('sentinel_todo_jobs');
+        expect(() => store.update(owner, item.id, recorded.item.revision, {
+            status: 'done', statusReason: 'checked', reviewedJobs: [{ processId: job.processId, terminalEventId: 'e' }],
+        }, 'sentinel')).toThrow('injected SQL failure');
+        expect(reopen().get(owner)).toEqual(beforeReview);
+        db.exec('DROP TRIGGER reject_write');
+        expect(() => store.recordJobResult(owner, 'unknown', { terminalEventId: 'e2', outcome: 'failed' }, () => 'fail')).not.toThrow();
+    });
+
+    it('rolls back when describing or validating a terminal result fails', () => {
+        linkedItem();
+        const before = store.get(owner);
+        expect(() => store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => { throw new Error('description failed'); }))
+            .toThrow('description failed');
+        expectTodoError(() => store.recordJobResult(owner, job.processId, { terminalEventId: '', outcome: 'failed' }, () => 'failed'), 'invalid');
+        expect(store.get(owner)).toEqual(before);
+    });
+});
+
+describe('SentinelTodoStore manual invariants', () => {
+    it('persists title-only manual defaults and rejects all type changes', () => {
         const { item } = store.create(owner, { type: 'manual', title: 'Check release' }, { actor: 'user' });
         expect(item).toMatchObject({
-            type: 'manual', title: 'Check release', status: 'todo', priority: 'regular',
-            completionCondition: '', notes: '', archived: false, jobs: [], revision: 1,
+            type: 'manual', status: 'todo', priority: 'regular', completionCondition: '', notes: '',
+            archived: false, jobs: [], revision: 1,
         });
-        store.update(owner, item.id, 1, { notes: 'Read the release notes', priority: 'high' }, 'user');
-        expect(new SentinelTodoStore(dataDir).get(owner)).toMatchObject({
-            revision: 2, items: [{ type: 'manual', notes: 'Read the release notes', priority: 'high', revision: 2 }],
-        });
-        expect(store.create(owner, { title: 'Normal' }, { actor: 'user' }).item.type).toBe('normal');
-    });
-
-    it('reads untyped job-linked items as normal without rewriting their revisions or links', () => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { title: 'Tracked job' }, { actor: 'user' });
-        const linked = store.linkJob(owner, item.id, {
-            processId: 'queue_child', workspaceId: 'ws-a', kind: 'local', openLink: '#repos/ws-a/chats/child',
-        });
-        const { type: _type, ...untyped } = linked.item;
-        const file = getRepoDataPath(dataDir, owner.workspaceId, SENTINEL_TODOS_FILE);
-        atomicWriteJsonUnique(file, { version: 1, ledgers: { [owner.processId]: { revision: 2, items: [untyped] } } });
-        const before = fs.readFileSync(file, 'utf8');
-        expect(store.get(owner)).toMatchObject({
-            revision: 2, items: [{ ...untyped, type: 'normal' }],
-        });
-        expect(fs.readFileSync(file, 'utf8')).toBe(before);
-        expect(store.update(owner, item.id, 2, { notes: 'Checked' }, 'user').item).toMatchObject({
-            type: 'normal', revision: 3, jobs: linked.item.jobs,
-        });
-    });
-
-    it('rejects invalid creation types and every type patch without a write', () => {
-        const store = new SentinelTodoStore(dataDir);
-        for (const type of ['other', null]) {
-            expectTodoError(() => store.create(owner, { type, title: 'Invalid' } as never, { actor: 'user' }), 'invalid');
-        }
-        for (const type of ['manual', 'normal'] as const) {
-            const { item } = store.create(owner, { type, title: type }, { actor: 'user' });
-            const before = store.get(owner);
-            for (const replacement of ['manual', 'normal', null]) {
-                expectTodoError(() => store.update(owner, item.id, 1, { type: replacement } as never, 'user'), 'invalid');
-                expect(store.get(owner)).toEqual(before);
-            }
+        store.update(owner, item.id, 1, { notes: 'Read release notes', priority: 'high' }, 'user');
+        expect(reopen().get(owner)).toMatchObject({ revision: 2, items: [{ type: 'manual', priority: 'high', revision: 2 }] });
+        for (const type of ['manual', 'normal', null]) {
+            expectTodoError(() => store.update(owner, item.id, 2, { type } as never, 'user'), 'invalid');
         }
     });
 
-    it.each(['sentinel', 'system'] as const)('rejects manual archive/restore by %s at the shared store boundary', actor => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor });
+    it('allows only the user to archive/restore a manual item', () => {
+        const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor: 'sentinel' });
         const before = store.get(owner);
         for (const archived of [true, false]) {
-            expectTodoError(() => store.update(owner, item.id, 1, { archived, notes: 'forged' }, actor), 'invalid');
-            expect(store.get(owner)).toEqual(before);
+            expectTodoError(() => store.update(owner, item.id, 1, { archived, notes: 'forged' }, 'sentinel'), 'invalid');
         }
-        const archived = store.update(owner, item.id, 1, { archived: true }, 'user');
-        expectTodoError(() => store.update(owner, item.id, archived.item.revision, { archived: false }, actor), 'invalid');
-        expect(store.get(owner).items[0]).toEqual(archived.item);
-        expect(store.update(owner, item.id, archived.item.revision, { archived: false }, 'user').item)
+        expect(store.get(owner)).toEqual(before);
+        const archived = store.update(owner, item.id, 1, { archived: true }, 'user').item;
+        expectTodoError(() => store.update(owner, item.id, archived.revision, { archived: false }, 'sentinel'), 'invalid');
+        expect(store.update(owner, item.id, archived.revision, { archived: false }, 'user').item)
             .toMatchObject({ type: 'manual', archived: false, revision: 3 });
     });
 
-    it.each(['sentinel', 'system'] as const)('requires manual Done evidence from %s even without the AI tool', actor => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { type: 'manual', title: 'Review checklist' }, { actor });
-        for (const statusReason of [undefined, null, '  ']) {
-            expectTodoError(() => store.update(owner, item.id, 1, { status: 'done', statusReason }, actor), 'invalid');
-        }
-        expectTodoError(() => store.create(owner, { type: 'manual', title: 'Unreviewed', status: 'done' }, { actor }), 'invalid');
-        expect(store.get(owner)).toMatchObject({ revision: 1, items: [{ revision: 1, status: 'todo' }] });
-        expect(store.update(owner, item.id, 1, { status: 'done', statusReason: 'Read every checklist entry' }, actor).item)
-            .toMatchObject({ status: 'done', statusReason: 'Read every checklist entry' });
-    });
-
-    it.each(['local', 'remote', 'ralph'] as const)('rejects direct %s job links on manual items without writes', kind => {
-        const write = vi.fn(atomicWriteJsonUnique);
-        const store = new SentinelTodoStore(dataDir, write);
+    it.each(['local', 'remote', 'ralph'] as const)('rejects %s jobs on manual items without any durable changes', kind => {
         const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor: 'user' });
         const before = store.get(owner);
-        write.mockClear();
         expectTodoError(() => store.linkJob(owner, item.id, {
-            processId: 'queue_child', workspaceId: 'ws-child', kind, openLink: '#/process/queue_child',
-            ...(kind === 'remote' ? { serverId: 'srv-a' } : {}),
+            ...job, kind, ...(kind === 'remote' ? { serverId: 'srv-a' } : {}),
             ...(kind === 'ralph' ? { sessionId: 'ralph-a' } : {}),
         }), 'invalid');
+        expect(store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => 'failed')).toBeUndefined();
         expect(store.get(owner)).toEqual(before);
-        expect(write).not.toHaveBeenCalled();
-    });
-});
-
-describe('SentinelTodoStore priority', () => {
-    let dataDir: string;
-    beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-priority-')); });
-    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
-
-    it('defaults new items to regular and stores high when asked', () => {
-        const store = new SentinelTodoStore(dataDir);
-        expect(store.create(owner, { title: 'Plain' }, { actor: 'user' }).item.priority).toBe('regular');
-        const high = store.create(owner, { title: 'Urgent', priority: 'high' }, { actor: 'sentinel' }).item;
-        expect(high).toMatchObject({ priority: 'high', revision: 1, createdBy: 'sentinel' });
-        expect(new SentinelTodoStore(dataDir).get(owner).items.map(item => item.priority)).toEqual(['regular', 'high']);
-    });
-
-    it('reads items stored before priorities existed as regular without rewriting or bumping revisions', () => {
-        const file = getRepoDataPath(dataDir, owner.workspaceId, SENTINEL_TODOS_FILE);
-        const now = new Date().toISOString();
-        const legacy = {
-            id: 'old', title: 'Legacy', completionCondition: '', notes: '', status: 'in_progress', archived: false,
-            revision: 4, createdAt: now, updatedAt: now, createdBy: 'user', updatedBy: 'sentinel', jobs: [],
-        };
-        atomicWriteJsonUnique(file, { version: 1, ledgers: { [owner.processId]: { revision: 7, items: [legacy] } } });
-        const before = fs.readFileSync(file, 'utf8');
-        const store = new SentinelTodoStore(dataDir);
-        expect(store.get(owner)).toMatchObject({ revision: 7, items: [{ id: 'old', priority: 'regular', revision: 4 }] });
-        expect(fs.readFileSync(file, 'utf8')).toBe(before);
-        // The next ordinary edit keeps working and persists the default.
-        const edited = store.update(owner, 'old', 4, { notes: 'n' }, 'user');
-        expect(edited.item).toMatchObject({ priority: 'regular', revision: 5, status: 'in_progress' });
-    });
-
-    it('changes priority alone without touching status, reason, outcome, or audit fields', () => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
-        store.update(owner, item.id, 1, { status: 'done', statusReason: 'Checked', outcome: 'All green' }, 'sentinel');
-        const before = store.get(owner).items[0];
-        const raised = store.update(owner, item.id, 2, { priority: 'high' }, 'sentinel');
-        expect(raised.item).toMatchObject({
-            priority: 'high', status: 'done', statusReason: 'Checked', revision: 3, updatedBy: 'sentinel',
-            outcome: before.outcome, createdAt: before.createdAt, createdBy: 'user',
-        });
-        const lowered = store.update(owner, item.id, 3, { priority: 'regular' }, 'user');
-        expect(lowered.item).toMatchObject({ priority: 'regular', status: 'done', statusReason: 'Checked', outcome: before.outcome, updatedBy: 'user' });
-        // Priority is metadata: it is not a user edit that supersedes a linked job's result.
-        expect(lowered.item.userEditedAt).toBeUndefined();
-        // A stale priority edit still conflicts.
-        expectTodoError(() => store.update(owner, item.id, 3, { priority: 'high' }, 'user'), 'conflict');
-    });
-
-    it('lets a failed job still flag an item whose priority a person changed after linking', () => {
-        const store = new SentinelTodoStore(dataDir);
-        const { item } = store.create(owner, { title: 'T' }, { actor: 'user' });
-        const linked = store.linkJob(owner, item.id, {
-            processId: 'queue_child', workspaceId: 'ws-a', kind: 'local', openLink: '#repos/ws-a/chats/child',
-        });
-        store.update(owner, item.id, linked.item.revision, { priority: 'high' }, 'user');
-        const result = store.recordJobResult(owner, 'queue_child', { terminalEventId: 'e1', outcome: 'failed' }, () => 'Job failed');
-        expect(result?.item).toMatchObject({ status: 'needs_attention', priority: 'high' });
-    });
-
-    it('rejects unknown or null priorities without writing', () => {
-        const store = new SentinelTodoStore(dataDir);
-        expectTodoError(() => store.create(owner, { title: 'x', priority: 'urgent' } as never, { actor: 'user' }), 'invalid');
-        const { item } = store.create(owner, { title: 'x' }, { actor: 'user' });
-        expectTodoError(() => store.update(owner, item.id, 1, { priority: 'low' } as never, 'user'), 'invalid');
-        expectTodoError(() => store.update(owner, item.id, 1, { priority: null } as never, 'user'), 'invalid');
-        expect(store.get(owner)).toMatchObject({ revision: 1, items: [{ priority: 'regular', revision: 1 }] });
+        expect(db.prepare('SELECT * FROM sentinel_todo_jobs').all()).toEqual([]);
     });
 });
 
 describe('Sentinel to-do snapshot policy', () => {
-    it('wipes ledgers with server data and never exports or imports them', async () => {
-        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-snap-'));
+    it('borrows a real process store database without changing process data or its schema version', async () => {
+        const processes = new SqliteProcessStore({ dbPath: path.join(dataDir, 'shared-processes.db') });
         try {
-            new SentinelTodoStore(dataDir).create(owner, { title: 'x' }, { actor: 'user' });
-            expect(createSnapshotDomains().map(domain => domain.id)).toContain('sentinel-todos');
+            await processes.addProcess({
+                id: owner.processId, type: 'clarification', promptPreview: 'retained conversation',
+                fullPrompt: 'retained conversation', status: 'completed', startTime: new Date(),
+                metadata: { mode: 'sentinel', workspaceId: owner.workspaceId },
+            });
+            await processes.addProcess({
+                id: 'unrelated-process', type: 'clarification', promptPreview: 'unrelated conversation',
+                fullPrompt: 'unrelated conversation', status: 'completed', startTime: new Date(),
+                metadata: { mode: 'ask', workspaceId: 'ws-b' },
+            });
+            const shared = processes.getDatabase();
+            const version = shared.pragma('user_version', { simple: true });
+            const rows = shared.prepare('SELECT * FROM processes ORDER BY id').all();
+            const schema = shared.prepare(`SELECT name, sql FROM sqlite_master
+                WHERE tbl_name NOT LIKE 'sentinel_todo_%' ORDER BY name`).all();
+            const todos = new SentinelTodoStore(shared);
+            const { item } = todos.create(owner, { title: 'Local ledger' }, { actor: 'user' });
+            todos.linkJob(owner, item.id, job);
+            const context = { dataDir, store: processes, includeWikis: false };
             const domain = createSentinelTodosDomain();
-            const context = { dataDir, includeWikis: false } as StorageSnapshotContext;
-            expect(await domain.collect(context)).toEqual({ data: {}, metadata: {}, warnings: [] });
-            const wipe = await domain.planWipe(context);
-            expect(wipe.plan).toEqual([getRepoDataPath(dataDir, owner.workspaceId, SENTINEL_TODOS_FILE)]);
             const errors = { errors: [] as string[] };
-            await domain.executeWipe(context, wipe.plan, errors);
+            await domain.executeWipe(context, (await domain.planWipe(context)).plan, errors);
             expect(errors.errors).toEqual([]);
-            expect(new SentinelTodoStore(dataDir).get(owner).items).toEqual([]);
-        } finally {
-            fs.rmSync(dataDir, { recursive: true, force: true });
+            expect(todos.get(owner)).toEqual({ revision: 0, items: [] });
+            expect(shared.pragma('user_version', { simple: true })).toBe(version);
+            expect(shared.prepare('SELECT * FROM processes ORDER BY id').all()).toEqual(rows);
+            expect(shared.prepare(`SELECT name, sql FROM sqlite_master
+                WHERE tbl_name NOT LIKE 'sentinel_todo_%' ORDER BY name`).all()).toEqual(schema);
+            expect(await processes.getProcess(owner.processId)).toMatchObject({ fullPrompt: 'retained conversation' });
+            expect(await processes.getProcess('unrelated-process')).toMatchObject({ fullPrompt: 'unrelated conversation' });
+            expect(todos.create(owner, { title: 'After wipe' }, { actor: 'user' }).ledgerRevision).toBe(1);
+        } finally { processes.close(); }
+    });
+
+    it('never exports/restores ledgers and wipes all three SQL tables with server data', async () => {
+        const item = linkedItem();
+        store.recordJobResult(owner, job.processId, { terminalEventId: 'e', outcome: 'failed' }, () => 'failed');
+        store.create(otherOwners[0], { title: 'Other ledger' }, { actor: 'user' });
+        expect(createSnapshotDomains().map(domain => domain.id)).toContain('sentinel-todos');
+        const domain = createSentinelTodosDomain();
+        const context = { dataDir, includeWikis: false } as StorageSnapshotContext & { includeWikis: boolean };
+        expect(await domain.collect(context)).toEqual({ data: {}, metadata: {}, warnings: [] });
+        const before = store.get(owner);
+        const restoreResult = { errors: [] };
+        await domain.restoreReplace({} as never, context, restoreResult as never);
+        await domain.restoreMerge({} as never, context, restoreResult as never);
+        expect(store.get(owner)).toEqual(before);
+        const wipe = await domain.planWipe(context);
+        expect(wipe.plan).toEqual([]);
+        const errors = { errors: [] as string[] };
+        const version = db.pragma('user_version', { simple: true });
+        db.exec('CREATE TABLE retained_feature (value TEXT); INSERT INTO retained_feature VALUES (\'retained\')');
+        await domain.executeWipe(context, wipe.plan, errors);
+        expect(errors.errors).toEqual([]);
+        for (const table of ['sentinel_todo_jobs', 'sentinel_todo_items', 'sentinel_todo_ledgers']) {
+            expect(db.prepare(`SELECT * FROM ${table}`).all()).toEqual([]);
         }
+        expect(reopen().get(owner)).toEqual({ revision: 0, items: [] });
+        expect(store.get(otherOwners[0]).items).toEqual([]);
+        expect(db.prepare('SELECT value FROM retained_feature').get()).toEqual({ value: 'retained' });
+        expect(db.pragma('user_version', { simple: true })).toBe(version);
+        expectTodoError(() => store.update(owner, item.id, 1, { notes: 'missing' }, 'user'), 'not_found');
     });
 });
 
 describe('SentinelTodoService', () => {
-    let dataDir: string;
-    beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-svc-')); });
-    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
-
     const processes: Record<string, { mode: string; workspaceId: string }> = {
         queue_parent: { mode: 'sentinel', workspaceId: 'ws-a' },
         queue_ask: { mode: 'ask', workspaceId: 'ws-a' },
     };
     const makeService = (overrides: Partial<ConstructorParameters<typeof SentinelTodoService>[0]> = {}) => new SentinelTodoService({
-        todos: new SentinelTodoStore(dataDir),
+        todos: store,
         store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
         ...overrides,
     });
@@ -370,10 +625,10 @@ describe('SentinelTodoService', () => {
     it('rejects non-Sentinel chats and forged parent workspaces', async () => {
         const service = makeService();
         await expect(service.list({ workspaceId: 'ws-a', processId: 'queue_ask' })).rejects.toMatchObject({ code: 'not_found' });
-        await expect(service.list({ workspaceId: 'ws-b', processId: 'queue_parent' })).rejects.toMatchObject({ code: 'not_found' });
-        await expect(service.create({ workspaceId: 'ws-b', processId: 'queue_parent' }, { title: 'x' }, { actor: 'sentinel' }))
-            .rejects.toMatchObject({ code: 'not_found' });
-        expect(new SentinelTodoStore(dataDir).get({ workspaceId: 'ws-b', processId: 'queue_parent' }).items).toEqual([]);
+        const forged: SentinelTodoOwner = { workspaceId: 'ws-b', processId: 'queue_parent' };
+        await expect(service.list(forged)).rejects.toMatchObject({ code: 'not_found' });
+        await expect(service.create(forged, { title: 'x' }, { actor: 'sentinel' })).rejects.toMatchObject({ code: 'not_found' });
+        expect(store.get(forged).items).toEqual([]);
     });
 
     it('accepts a Sentinel whose first turn is still queued', async () => {
@@ -382,22 +637,22 @@ describe('SentinelTodoService', () => {
                 type: 'chat', status: 'queued', repoId: 'ws-a', payload: { kind: 'chat', mode: 'sentinel' },
             } as never : undefined,
         });
-        const created = await service.create({ workspaceId: 'ws-a', processId: 'queue_live' }, { title: 'x' }, { actor: 'user' });
-        expect(created.created).toBe(true);
+        await expect(service.create({ workspaceId: 'ws-a', processId: 'queue_live' }, { title: 'x' }, { actor: 'user' }))
+            .resolves.toMatchObject({ created: true });
     });
 
-    it('emits changes only after a committed write, and not for replays or failures', async () => {
+    it('emits changes only after committed writes, not replays, conflicts or SQL failures', async () => {
         const onChange = vi.fn();
         const service = makeService({ onChange });
         const first = await service.create(owner, { title: 'x' }, { actor: 'user', idempotencyKey: 'k' });
         await service.create(owner, { title: 'x' }, { actor: 'user', idempotencyKey: 'k' });
         expect(onChange).toHaveBeenCalledTimes(1);
         expect(onChange).toHaveBeenLastCalledWith({ owner, ledgerRevision: 1, item: first.item });
-
         await expect(service.update(owner, first.item.id, 99, { title: 'y' }, 'user')).rejects.toMatchObject({ code: 'conflict' });
-        const failing = makeService({ onChange, todos: new SentinelTodoStore(dataDir, () => { throw new Error('EIO'); }) });
-        await expect(failing.update(owner, first.item.id, 1, { title: 'y' }, 'user')).rejects.toThrow('EIO');
+        failWrites('sentinel_todo_ledgers');
+        await expect(service.update(owner, first.item.id, 1, { title: 'y' }, 'user')).rejects.toThrow('injected SQL failure');
         expect(onChange).toHaveBeenCalledTimes(1);
+        expect(store.get(owner).items[0]).toEqual(first.item);
     });
 
     it('still reports success when the change notification throws', async () => {

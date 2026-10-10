@@ -195,7 +195,7 @@ Repo-scoped annotations outside conversation history; all routes take `?workspac
 
 ## Sentinel To-do Ledger
 
-Bookkeeping per Sentinel chat in the parent workspace's `sentinel-todos.json` (partitioned by parent process ID; wiped with server data, never exported). `features.sentinelTodoLedger` defaults off (`404` off). `:workspaceId` is the parent chat's repo or group on the owning server; non-Sentinel or mismatched owners → `404`. Writes never start, retry, or cancel jobs. Change commits broadcast `sentinel-todos-changed` (`workspaceId`, `processId`, `ledgerRevision`, `itemId`).
+Bookkeeping per Sentinel chat in native SQLite `processes.db`, keyed by workspace and parent process ID (wiped with server data, never exported or restored). `features.sentinelTodoLedger` defaults off (`404` off). `:workspaceId` is the parent chat's repo or group on the owning server; non-Sentinel or mismatched owners → `404`. Writes never start, retry, or cancel jobs. Change commits broadcast `sentinel-todos-changed` (`workspaceId`, `processId`, `ledgerRevision`, `itemId`).
 
 | Method | Path | Description |
 |--------|------|-------------|

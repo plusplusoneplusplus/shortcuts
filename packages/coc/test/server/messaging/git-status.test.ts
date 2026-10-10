@@ -9,7 +9,7 @@ import { localGitStatusReply, readMessagingGitStatus, type MessagingGitStatus } 
 import { handleMessagingCommand } from '../../../src/server/messaging/messaging-commands';
 
 const clean = (): MessagingGitStatus => ({
-    branch: { branch: 'main', isDetached: false, dirty: false, ahead: 8, behind: 2, trackingBranch: 'origin/main', unborn: false },
+    branch: { branch: 'main', isDetached: false, dirty: false, ahead: 0, behind: 2, trackingBranch: 'origin/main', unborn: false },
     entries: [], conflicts: 0, trackingAvailable: true,
 });
 
@@ -58,10 +58,11 @@ describe('local messaging Git status', () => {
     });
 
     it('renders one row per repo: clean without branch/tracking clutter, otherwise only nonzero counts', async () => {
+        const ahead = (status: MessagingGitStatus): MessagingGitStatus => ({ ...status, branch: { ...status.branch, ahead: 4 } });
         const read = vi.fn()
-            .mockResolvedValueOnce({ ...clean(), branch: { ...clean().branch, isDetached: true, trackingBranch: undefined } })
-            .mockResolvedValueOnce({ ...clean(), branch: { ...clean().branch, unborn: true, trackingBranch: undefined } })
-            .mockResolvedValueOnce({ ...clean(), trackingAvailable: false })
+            .mockResolvedValueOnce(ahead({ ...clean(), branch: { ...clean().branch, isDetached: true, trackingBranch: undefined } }))
+            .mockResolvedValueOnce(ahead({ ...clean(), branch: { ...clean().branch, unborn: true, trackingBranch: undefined } }))
+            .mockResolvedValueOnce(ahead({ ...clean(), trackingAvailable: false }))
             .mockResolvedValueOnce({ ...clean(), entries: [{ path: 'a', status: 'untracked', stage: 'untracked' }] })
             .mockResolvedValueOnce({ ...clean(), conflicts: 1 })
             .mockResolvedValueOnce({ ...clean(), conflicts: 3, entries: [{ path: 'b', status: 'modified', stage: 'unstaged' }] });
@@ -73,6 +74,27 @@ describe('local messaging Git status', () => {
             'conflicted - 1 conflict', 'mixed - 1 unstaged, 3 conflicts',
         ].join('\n'));
         expect(reply).not.toMatch(/main|ahead|behind|upstream|0 |fetch/);
+    });
+
+    it('appends a positive ahead count only when branch tracking is reliable', async () => {
+        const branch = clean().branch;
+        const read = vi.fn()
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 2 } })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 2 }, entries: [{ path: 'a', status: 'modified', stage: 'staged' }] })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 1 }, conflicts: 1 })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 0 } })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 3 }, trackingAvailable: false })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 3, trackingBranch: undefined } })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: 3, isDetached: true } })
+            .mockResolvedValueOnce({ ...clean(), branch: { ...branch, ahead: Number.NaN } });
+        const reply = await localGitStatusReply(
+            ['clean', 'dirty', 'conflicted', 'zero', 'unavailable', 'no-tracking', 'detached', 'invalid'].map(id => workspace(id)), dir, read);
+        expect(reply).toBe([
+            'Git status - local repos (8)', '',
+            'clean - clean, 2 ahead', 'dirty - 1 staged, 2 ahead', 'conflicted - 1 conflict, 1 ahead',
+            'zero - clean', 'unavailable - clean', 'no-tracking - clean', 'detached - clean', 'invalid - clean',
+        ].join('\n'));
+        expect(reply).not.toMatch(/main|behind|upstream|origin/);
     });
 
     it('isolates status failures and reports missing paths, non-Git roots and unreadable groups', async () => {
@@ -136,8 +158,8 @@ describe('local messaging Git status', () => {
         const addon = loadNativeGit();
         const exec = vi.spyOn(addon, 'execGit');
         const reply = await localGitStatusReply([repo]);
-        expect(reply).toContain('repo - 1 staged, 1 unstaged, 2 untracked');
-        expect(reply).not.toMatch(/conflict|ahead|behind/);
+        expect(reply).toContain('repo - 1 staged, 1 unstaged, 2 untracked, 1 ahead');
+        expect(reply).not.toMatch(/conflict|behind|origin/);
         expect(exec.mock.calls.map(call => call[0])).toEqual([
             ['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=all'],
             ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all'],
@@ -147,6 +169,7 @@ describe('local messaging Git status', () => {
         expect(git('show-ref')).toBe(refs);
         git('update-ref', '-d', 'refs/remotes/origin/main');
         expect((await readMessagingGitStatus(repo.rootPath)).trackingAvailable).toBe(false);
+        expect(await localGitStatusReply([repo])).toMatch(/repo - 1 staged, 1 unstaged, 2 untracked$/);
         git('config', '--remove-section', 'branch.main');
         expect((await readMessagingGitStatus(repo.rootPath)).branch.trackingBranch).toBeUndefined();
         git('update-ref', '--no-deref', 'HEAD', next);

@@ -24,8 +24,9 @@ import { createImageBlobDomain } from '../../src/server/storage/snapshot/image-b
 import { createPreferencesDomain } from '../../src/server/storage/snapshot/preferences-domain';
 import { createScheduleDomain } from '../../src/server/storage/snapshot/schedule-domain';
 import { createGitOpsDomain } from '../../src/server/storage/snapshot/git-ops-domain';
-import { createSentinelMirrorOutboxDomain } from '../../src/server/storage/snapshot/delegated-jobs-domain';
+import { createSentinelMirrorOutboxDomain, createSentinelTodosDomain } from '../../src/server/storage/snapshot/delegated-jobs-domain';
 import { SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox } from '../../src/server/messaging/sentinel-mirror-outbox';
+import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 
 // ============================================================================
 // Helpers
@@ -202,6 +203,65 @@ describe('snapshot domain behavior', () => {
         await domain.executeWipe({ dataDir, store, includeWikis: true }, planResult.plan, result);
         expect(await store.getAllProcesses()).toHaveLength(0);
         expect(fs.existsSync(wikiDir)).toBe(false);
+    });
+
+    it('sentinel-todos: excludes items from import/export and wipes only its SQLite tables', async () => {
+        const db = store.getDatabase();
+        const version = db.pragma<number>('user_version', { simple: true });
+        const todos = new SentinelTodoStore(db);
+        const owner = { workspaceId: 'ws1', processId: 'p1' };
+        const { item } = todos.create(owner, { title: 'Verify delivery' }, { actor: 'user' });
+        todos.linkJob(owner, item.id, {
+            processId: 'child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
+        });
+        const before = todos.get(owner);
+        const domain = createSentinelTodosDomain();
+        const ctx = { dataDir, store, includeWikis: false };
+        expect(await domain.collect(ctx)).toEqual({ data: {}, metadata: {}, warnings: [] });
+        const imported = createImportResult();
+        await domain.restoreReplace(emptyPayload(), ctx, imported);
+        await domain.restoreMerge(emptyPayload(), ctx, imported);
+        expect(imported.errors).toEqual([]);
+        expect(todos.get(owner)).toEqual(before);
+        const plan = await domain.planWipe(ctx);
+        expect(todos.get(owner)).toEqual(before);
+        const result = { errors: [] as string[] };
+        await domain.executeWipe(ctx, plan.plan, result);
+        expect(result.errors).toEqual([]);
+        expect(todos.get(owner)).toEqual({ revision: 0, items: [] });
+        expect(await store.getProcess('p1')).toBeDefined();
+        expect(db.prepare('SELECT id FROM queue_tasks').all()).toHaveLength(1);
+        expect(db.pragma<number>('user_version', { simple: true })).toBe(version);
+    });
+
+    it('sentinel-todos: reports SQLite wipe failures and rolls back all item and job deletions', async () => {
+        const db = store.getDatabase();
+        const todos = new SentinelTodoStore(db);
+        const owner = { workspaceId: 'ws1', processId: 'p1' };
+        const { item } = todos.create(owner, { title: 'Keep evidence' }, { actor: 'user' });
+        todos.linkJob(owner, item.id, {
+            processId: 'child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
+        });
+        const before = todos.get(owner);
+        db.exec(`CREATE TEMP TRIGGER reject_todo_wipe BEFORE DELETE ON sentinel_todo_items
+            BEGIN SELECT RAISE(ABORT, 'wipe failed'); END`);
+        const domain = createSentinelTodosDomain();
+        const ctx = { dataDir, store, includeWikis: false };
+        const result = { errors: [] as string[] };
+        await domain.executeWipe(ctx, (await domain.planWipe(ctx)).plan, result);
+        expect(result.errors).toEqual([expect.stringContaining('wipe failed')]);
+        expect(todos.get(owner)).toEqual(before);
+    });
+
+    it('sentinel-todos: surfaces an incomplete SQLite schema instead of reporting a successful wipe', async () => {
+        const db = store.getDatabase();
+        new SentinelTodoStore(db);
+        db.exec('DROP TABLE sentinel_todo_jobs');
+        const domain = createSentinelTodosDomain();
+        const ctx = { dataDir, store, includeWikis: false };
+        const result = { errors: [] as string[] };
+        await domain.executeWipe(ctx, (await domain.planWipe(ctx)).plan, result);
+        expect(result.errors).toEqual([expect.stringContaining('missing sentinel_todo_jobs')]);
     });
 
     it('sentinel-mirror-outbox: receipts stay machine-local and participate in explicit wipe', async () => {

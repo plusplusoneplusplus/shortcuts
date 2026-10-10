@@ -500,8 +500,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getSentinelTodoLedgerEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.features?.sentinelTodoLedger === true
         : () => opts.resolvedConfig?.features?.sentinelTodoLedger === true;
+    // Production borrows the process-store connection; stub stores use native
+    // in-memory SQLite, like the queue infrastructure.
+    const todoDb = store instanceof SqliteProcessStore ? store.getDatabase() : new NativeDatabase(':memory:');
+    let todoStore: SentinelTodoStore;
+    try {
+        todoStore = new SentinelTodoStore(todoDb);
+    } catch (error) {
+        if (!(store instanceof SqliteProcessStore)) todoDb.close();
+        throw error;
+    }
     const sentinelTodos = new SentinelTodoService({
-        todos: new SentinelTodoStore(dataDir), store, jobs: delegatedJobs,
+        todos: todoStore, store, jobs: delegatedJobs,
         getTask: taskId => bridge.getTask(taskId),
         onChange: ({ owner, ledgerRevision, item }) => getWsServer().broadcastProcessEvent({
             type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
@@ -1202,6 +1212,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         jobNotices.dispose();
         delegatedJobResults.dispose();
         delegatedJobReviews.dispose();
+        if (!(store instanceof SqliteProcessStore)) todoDb.close();
     });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime

@@ -64,7 +64,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'list-repos', group: 'Repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'Show repos (alias: list agents)' },
     { type: 'select-repo', group: 'Repos', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'Choose a repo; next message starts a new chat', example: 'select repo 2' },
     { type: 'list-remotes', group: 'Repos', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'Show remote servers and repos' },
-    { type: 'git-status', group: 'Repos', pattern: /^git\s+status$/i, usage: 'git status', summary: 'All accessible local repos: changes, conflicts, ahead/behind (local tracking refs; no fetch)' },
+    { type: 'git-status', group: 'Repos', pattern: /^git\s+status$/i, usage: 'git status', summary: 'All accessible local repos: changes, conflicts, commits ahead (local tracking refs; no fetch)' },
     { type: 'list-topics', group: 'Topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics [ref] [-v]', summary: 'Local: all repos, last24hours, top5; -v adds ids. Remote ref: n.m or repo@server (read-only)', example: 'list topics 1.2 -v' },
     { type: 'create-topic', group: 'Topics', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'Next message starts a new chat' },
     { type: 'select-topic', group: 'Topics', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'Continue an existing chat', example: 'select topic 1' },

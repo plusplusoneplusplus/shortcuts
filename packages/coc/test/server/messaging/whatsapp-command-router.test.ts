@@ -120,8 +120,8 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('/GIT STATUS', 'status'));
         await router.handle(inbound('/GIT STATUS', 'status'));
         expect(readGitStatus).toHaveBeenCalledTimes(2);
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Alpha - clean\n'), 'status');
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Beta - clean'), 'status');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Alpha - clean, 8 ahead\n'), 'status');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Beta - clean, 8 ahead'), 'status');
         expect(bindings.selectedRepo).toBe('ws-a');
         expect(bindings.topic('ws-a')).toBe('topic-a');
         expect(enqueue).not.toHaveBeenCalled();

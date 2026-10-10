@@ -21,6 +21,7 @@ import {
     computeStripHeights,
     getLandmark,
     MIN_TURNS_TO_SHOW,
+    MAX_TURNS_TO_SHOW,
     type StripInfo,
 } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
@@ -361,6 +362,56 @@ describe('ConversationMiniMap', () => {
 
         it('renders panel when turns >= MIN_TURNS_TO_SHOW', () => {
             renderMiniMap({ turns: makeTurns(MIN_TURNS_TO_SHOW) });
+            expect(screen.getByTestId('minimap-panel')).toBeTruthy();
+        });
+
+        it('caps visibility at 30 turns', () => {
+            expect(MAX_TURNS_TO_SHOW).toBe(30);
+        });
+
+        it('renders panel at exactly MAX_TURNS_TO_SHOW turns', () => {
+            renderMiniMap({ turns: makeTurns(MAX_TURNS_TO_SHOW) });
+            expect(screen.getByTestId('minimap-panel')).toBeTruthy();
+            expect(screen.getByTestId(`minimap-strip-${MAX_TURNS_TO_SHOW - 1}`)).toBeTruthy();
+        });
+
+        it('renders nothing (reclaims layout) above MAX_TURNS_TO_SHOW turns', () => {
+            const { container } = renderMiniMap({ turns: makeTurns(MAX_TURNS_TO_SHOW + 1) });
+            expect(screen.queryByTestId('minimap-panel')).toBeNull();
+            expect(screen.queryByTestId('minimap-collapsed')).toBeNull();
+            expect(container.childElementCount).toBe(0);
+        });
+
+        it('renders no collapsed rail above MAX_TURNS_TO_SHOW on a narrow viewport', () => {
+            window.matchMedia = vi.fn().mockImplementation((_query: string) => ({
+                matches: true,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+            }));
+            const { container } = renderMiniMap({ turns: makeTurns(MAX_TURNS_TO_SHOW + 1) });
+            expect(screen.queryByTestId('minimap-collapsed')).toBeNull();
+            expect(container.childElementCount).toBe(0);
+        });
+
+        it('hides when history grows 30 -> 31 and returns when it shrinks back to 30', () => {
+            const scrollRef = { current: createScrollContainer() };
+            const turnsRef = { current: createTurnsContainer(MAX_TURNS_TO_SHOW + 1) };
+            const renderWith = (count: number) => (
+                <ConversationMiniMap
+                    turns={makeTurns(count)}
+                    scrollContainerRef={scrollRef}
+                    turnsContainerRef={turnsRef}
+                    isStreaming={false}
+                />
+            );
+            const { container, rerender } = render(renderWith(MAX_TURNS_TO_SHOW));
+            expect(screen.getByTestId('minimap-panel')).toBeTruthy();
+
+            rerender(renderWith(MAX_TURNS_TO_SHOW + 1));
+            expect(screen.queryByTestId('minimap-panel')).toBeNull();
+            expect(container.childElementCount).toBe(0);
+
+            rerender(renderWith(MAX_TURNS_TO_SHOW));
             expect(screen.getByTestId('minimap-panel')).toBeTruthy();
         });
 
