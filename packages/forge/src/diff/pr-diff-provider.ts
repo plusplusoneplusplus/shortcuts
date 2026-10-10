@@ -17,7 +17,7 @@ import type {
     PullRequestDiffSource,
     PullRequestIterationDiffSource,
 } from './types';
-import { nativePatchToDiff } from './diff-utils';
+import { createPatchDiffProvider, nativePatchToDiff } from './diff-utils';
 
 /** Authenticated transport identity, independent of provider routing aliases. */
 export interface RemoteDiffContext {
@@ -61,28 +61,24 @@ function createRemoteDiffProvider(
         }
         return store;
     }
-    async function load() {
+    async function load(filePath?: string, options?: GetFileDiffOptions) {
         const request = getStore().beginTransport();
+        let result;
         try {
-            return await request.process(await fetchFullDiff());
+            result = await request.process(await fetchFullDiff());
         } finally {
             request.cancel();
         }
+        const content = filePath === undefined ? result.content
+            : (await loadNativeGit().processGitPatch(result.files.find(file => file.path === filePath)?.raw ?? '',
+                options?.maxLines == null ? undefined : Math.floor(options.maxLines))).content;
+        return { ...nativePatchToDiff(result.files), content, summary: result.summary };
     }
 
     return {
-        source: descriptor,
+        ...createPatchDiffProvider(descriptor, load),
         refresh() { getStore().refresh(); },
         dispose() { getStore().dispose(); },
-        async listFiles() { return nativePatchToDiff((await load()).files).files; },
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions) {
-            const raw = (await load()).files.find(file => file.path === filePath)?.raw ?? '';
-            const maxLines = options?.maxLines == null ? undefined : Math.floor(options.maxLines);
-            return (await loadNativeGit().processGitPatch(raw, maxLines)).content;
-        },
-        async getFullDiff() { return (await load()).content; },
-        async prefetchAll() { return nativePatchToDiff((await load()).files).contentByPath; },
-        async getSummary() { return (await load()).summary; },
     };
 }
 

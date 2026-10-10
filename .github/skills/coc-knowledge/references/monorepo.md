@@ -104,8 +104,11 @@ be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
 `parseFullDiffAsync` converts native metadata/chunks to public shapes through
 `nativePatchToDiff`. PR snapshot fallback metadata uses this async adapter,
 including decoded rename paths and empty-file existence; snapshot content transport
-and its cache remain separate. Forge diff-utils contains wire conversion only;
-patch parsing, summaries and truncation belong to Rust.
+and its cache remain separate. Forge `diff-utils` owns wire conversion and
+`createPatchDiffProvider`, the five-operation facade shared by local and supplied
+remote factories. Each operation reads its loader freshly; per-file loaders retain
+literal Git path/context semantics or supplied-hunk selection. Patch parsing,
+summaries, truncation and caches belong to Rust.
 
 ### Supplied remote diff providers
 
