@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { BotControlPresentation } from '@plusplusoneplusplus/coc-client';
+import type { BotControlPresentation, ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { readBotControl } from '../../../utils/botControl';
 
 export interface BotControlUpdate {
@@ -7,6 +7,7 @@ export interface BotControlUpdate {
     workspaceId?: string;
     control?: BotControlPresentation;
     compaction?: { state: string; customInstructions?: string; error?: string; taskId?: string };
+    autoCompact?: ProcessAutoCompactState;
 }
 
 /** Observe the existing owning-server socket, including conversations absent from the local index. */
@@ -32,6 +33,7 @@ export function useBotControlUpdates(
                 workspaceId: process.workspaceId,
                 control: readBotControl(process.botControl),
                 ...(process.compaction ? { compaction: process.compaction } : {}),
+                ...(process.autoCompact ? { autoCompact: process.autoCompact } : {}),
             });
         };
         window.addEventListener(eventName, handle);

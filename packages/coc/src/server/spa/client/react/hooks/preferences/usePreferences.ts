@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
+import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 
 export type SkillMode = 'task' | 'ask';
 export type ModelMode = SkillMode | 'note';
@@ -43,6 +44,7 @@ const EMPTY_SKILLS: LastSkillsByMode = { task: [], ask: [] };
 const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', note: '' };
 
 export function usePreferences(repoId?: string): UsePreferencesResult {
+    const client = useCocClient(repoId);
     const [models, setModelsState] = useState<LastModelsByMode>({ ...EMPTY_MODELS });
     const [depth, setDepthState] = useState('');
     const [effort, setEffortState] = useState('');
@@ -64,7 +66,7 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
         let cancelled = false;
         (async () => {
             try {
-                const prefs = await getSpaCocClient().preferences.getRepo(repoId);
+                const prefs = await getRepoPreferences(client, repoId);
                 if (!cancelled) {
                     // Read per-mode models, falling back to legacy lastModel
                     if (typeof prefs.lastModels === 'object' && prefs.lastModels !== null) {
@@ -111,40 +113,40 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
             }
         })();
         return () => { cancelled = true; };
-    }, [repoId]);
+    }, [repoId, client]);
 
     const setModel = useCallback((mode: ModelMode, m: string) => {
         setModelsState(prev => ({ ...prev, [mode]: m }));
         if (!repoId) return;
-        getSpaCocClient().preferences.patchRepo(repoId, { lastModels: { [mode]: m } }).catch(() => {});
-    }, [repoId]);
+        patchRepoPreferences(client, repoId, { lastModels: { [mode]: m } }).catch(() => {});
+    }, [repoId, client]);
 
     const setDepth = useCallback((d: string) => {
         setDepthState(d);
         if (!repoId) return;
-        getSpaCocClient().preferences.patchRepo(repoId, { lastDepth: d }).catch(() => {});
-    }, [repoId]);
+        patchRepoPreferences(client, repoId, { lastDepth: d }).catch(() => {});
+    }, [repoId, client]);
 
     const setEffort = useCallback((e: string) => {
         setEffortState(e);
         if (!repoId) return;
-        getSpaCocClient().preferences.patchRepo(repoId, { lastEffort: e }).catch(() => {});
-    }, [repoId]);
+        patchRepoPreferences(client, repoId, { lastEffort: e }).catch(() => {});
+    }, [repoId, client]);
 
     const setSkill = useCallback((mode: SkillMode, s: string[]) => {
         setSkillsState(prev => ({ ...prev, [mode]: s }));
         if (!repoId) return;
-        getSpaCocClient().preferences.patchRepo(repoId, { lastSkills: { [mode]: s } }).catch(() => {});
-    }, [repoId]);
+        patchRepoPreferences(client, repoId, { lastSkills: { [mode]: s } }).catch(() => {});
+    }, [repoId, client]);
 
     const setMaxRalphIterations = useCallback((n: number | undefined) => {
         setMaxRalphIterationsLocal(n);
         if (!repoId) return;
         // Send null to clear (matches server-side patch semantics for omit).
-        getSpaCocClient().preferences.patchRepo(repoId, {
+        patchRepoPreferences(client, repoId, {
             maxRalphIterations: n as any,
         }).catch(() => {});
-    }, [repoId]);
+    }, [repoId, client]);
 
     // Backward compat: expose task model as the single 'model' property
     const model = models.task;

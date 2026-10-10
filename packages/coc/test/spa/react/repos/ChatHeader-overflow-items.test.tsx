@@ -1,8 +1,8 @@
 /**
  * Regression coverage for the chat header overflow menu layout: actions are
  * grouped (conversation → export → CLI → window), every action row carries an
- * SVG icon (no text/emoji placeholders), and duration / model-context usage
- * render as a non-actionable footer instead of sitting between action rows.
+ * SVG icon (no text/emoji placeholders), and duration renders as a
+ * non-actionable footer; context usage never appears in the menu.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -23,9 +23,6 @@ function props(overrides: Partial<BuildProps> = {}): BuildProps {
         onCopyResumeCommand: vi.fn(),
         planPath: '',
         createdFiles: [],
-        sessionTokenLimit: 1_000_000,
-        sessionCurrentTokens: 87_600,
-        sessionModel: 'opus',
         variant: 'inline',
         isPopOut: false,
         isMobile: false,
@@ -55,10 +52,10 @@ describe('buildOverflowItems', () => {
             'pin-conversation', 'open-scratchpad', 'fork',
             'copy-html', 'select-turns', 'export-pdf',
             'resume-cli', 'copy-resume-cli',
-            'duration', 'context-window',
+            'duration',
         ]);
-        expect(items.filter(i => i.info).map(i => i.key)).toEqual(['duration', 'context-window']);
-        expect(items.find(i => i.key === 'context-window')?.group).toBeUndefined();
+        expect(items.filter(i => i.info).map(i => i.key)).toEqual(['duration']);
+        expect(items.find(i => i.key === 'duration')?.group).toBeUndefined();
     });
 
     it('keeps Pin plus the export group at wide tier', () => {
@@ -86,10 +83,18 @@ describe('buildOverflowItems', () => {
         expect(buildOverflowItems('medium', props({ isPending: true })).map(i => i.key)).not.toContain('resume-cli');
         expect(buildOverflowItems('medium', props({ onTogglePin: undefined })).map(i => i.key)).not.toContain('pin-conversation');
     });
+
+    it.each(['wide', 'medium', 'narrow'] as const)('never adds a context-usage row at %s tier', (tier) => {
+        for (const extra of [{}, { isPopOut: true }, { variant: 'floating' as const }, { isMobile: true }]) {
+            const items = buildOverflowItems(tier, props(extra));
+            expect(items.map(i => i.key)).not.toContain('context-window');
+            expect(items.map(i => i.label)).not.toContain('Context window');
+        }
+    });
 });
 
 describe('overflow menu rendering with real header items', () => {
-    it('renders every action with an SVG icon and the context usage outside the action rows', () => {
+    it('renders every action with an SVG icon and only duration in the info footer', () => {
         render(<ChatHeaderOverflowMenu items={buildOverflowItems('medium', props())} />);
         fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
 
@@ -106,8 +111,9 @@ describe('overflow menu rendering with real header items', () => {
         const menu = screen.getByTestId('chat-header-overflow-menu');
         expect(menu.querySelectorAll('[role="separator"]').length).toBe(2);
         const footer = screen.getByTestId('chat-header-overflow-info');
-        expect(footer.textContent).toContain('opus');
         expect(footer.textContent).toContain('Duration');
+        expect(footer.textContent).not.toMatch(/ctx|opus/);
+        expect(screen.queryByTestId('context-window-indicator')).toBeNull();
         // Footer sits after the last action row, not between rows.
         expect(rows[rows.length - 1].compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });

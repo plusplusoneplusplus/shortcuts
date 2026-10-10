@@ -15,6 +15,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockUpdateRepoGroup = vi.fn();
+const mockSharing = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupAccess', () => ({
+    useRepoGroupAccess: (...args: unknown[]) => mockSharing(...args),
+}));
 
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
     updateRepoGroup: (...args: unknown[]) => mockUpdateRepoGroup(...args),
@@ -45,9 +49,29 @@ function renderList(members: any[] = MEMBERS, baseUrl?: string) {
 beforeEach(() => {
     cleanup();
     mockUpdateRepoGroup.mockReset().mockResolvedValue({ id: GROUP_ID, name: 'Frontend', members: [] });
+    mockSharing.mockReset().mockReturnValue({ access: { enabled: false, members: [] }, refresh: vi.fn() });
 });
 
 describe('RepoGroupMemberList', () => {
+    it('shows writer/shared text and every saved conflict; rejects a toggle with an owner-qualified link', async () => {
+        const writer = { workspaceId: 'r2', writerGroupId: 'group-owner', writerGroupName: 'Owner', reason: 'writer-exists' };
+        mockSharing.mockReturnValue({ access: { enabled: true, members: [
+            { workspaceId: 'r1', shared: false, unresolved: false, writers: [] },
+            { workspaceId: 'r2', shared: true, unresolved: false, writers: [writer] },
+        ] }, refresh: vi.fn() });
+        mockUpdateRepoGroup.mockRejectedValue(Object.assign(new Error('Another writer'), { details: { conflicts: [writer] } }));
+        render(<RepoGroupMemberList workspaceId={GROUP_ID} selectionId={`remote:owner:${GROUP_ID}`} baseUrl="http://remote:3000" members={MEMBERS} />);
+        expect(screen.getByTestId('repo-group-member-row-r1').textContent).toContain('Writer');
+        expect(screen.getByTestId('repo-group-member-row-r2').textContent).toContain('Shared repository');
+        fireEvent.click(readOnlyToggle('r2'));
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Writer conflict'));
+        expect(readOnlyToggle('r2').checked).toBe(true);
+        expect(field('r1').value).toBe('');
+        const row = screen.getByTestId('repo-group-member-row-r2');
+        expect(row.querySelector('a')?.getAttribute('href')).toBe('#repos/remote%3Aowner%3Agroup-owner/settings');
+        expect(mockUpdateRepoGroup).toHaveBeenCalledWith(GROUP_ID, { readOnly: { r2: false } }, 'http://remote:3000');
+    });
+
     it('shows a muted placeholder for a member with no description and the saved text otherwise', () => {
         renderList();
 

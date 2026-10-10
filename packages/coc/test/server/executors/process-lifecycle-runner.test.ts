@@ -2465,3 +2465,73 @@ describe('ProcessLifecycleRunner — metadata.pullRequestChat from PR-chat conte
         expect((await store.getProcess(`queue_${task.id}`))?.metadata?.pullRequestChat).toBeUndefined();
     });
 });
+
+// ============================================================================
+// Post-response hook (Sentinel auto-compact)
+// ============================================================================
+
+describe('ProcessLifecycleRunner — post-response hook', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('fires after a completed new task, after pending messages drain', async () => {
+        const calls: string[] = [];
+        const task = makeTask();
+        await runner.run(task, makeOpts({
+            onDrainPendingMessages: vi.fn(async () => { calls.push('drain'); }),
+            onResponseCompleted: vi.fn(async (pid: string) => { calls.push(`response:${pid}`); }),
+        }));
+        expect(calls).toEqual(['drain', `response:queue_${task.id}`]);
+    });
+
+    it('waits for persisted response and absolute usage before firing, never during execution', async () => {
+        let finish!: (result: { response: string }) => void;
+        const response = new Promise<{ response: string }>(resolve => { finish = resolve; });
+        const task = makeTask({ payload: { kind: 'chat', mode: 'sentinel', prompt: 'watch', workspaceId: 'ws-abc' } });
+        const processId = `queue_${task.id}`;
+        const hook = vi.fn(async (id: string) => {
+            const proc = (await store.getProcess(id))!;
+            expect(proc.status).toBe('completed');
+            expect(proc.currentTokens).toBe(700001);
+            expect(proc.tokenLimit).toBeUndefined();
+            expect(proc.conversationTurns?.at(-1)).toMatchObject({ role: 'assistant', content: 'persisted reply' });
+        });
+        const execute = vi.fn(async () => {
+            await store.updateProcess(processId, { currentTokens: 700001, tokenLimit: undefined });
+            return response;
+        });
+        const running = runner.run(task, makeOpts({ executeByTypeFn: execute, onResponseCompleted: hook }));
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        expect((await store.getProcess(processId))?.status).toBe('running');
+        expect(hook).not.toHaveBeenCalled();
+        finish({ response: 'persisted reply' });
+        expect((await running).success).toBe(true);
+        expect(hook).toHaveBeenCalledExactlyOnceWith(processId);
+    });
+
+    it('does not fire when the task fails or is cancelled', async () => {
+        const hook = vi.fn().mockResolvedValue(undefined);
+        await runner.run(makeTask(), makeOpts({ onResponseCompleted: hook, executeByTypeFn: vi.fn().mockRejectedValue(new Error('boom')) }));
+        const cancelledTasks = new Set<string>(['task-2']);
+        await runner.run(makeTask({ id: 'task-2' }), makeOpts({ cancelledTasks, onResponseCompleted: hook }));
+        expect(hook).not.toHaveBeenCalled();
+    });
+
+    it.each([['completed', 1], ['failed', 0]] as const)('fires for a follow-up only when it completed (%s)', async (status, expected) => {
+        const processId = 'existing-process';
+        store.processes.set(processId, { id: processId, type: 'chat', promptPreview: 'p', fullPrompt: 'p', status: 'running',
+            startTime: new Date(), conversationTurns: [] } as any);
+        const hook = vi.fn().mockResolvedValue(undefined);
+        await runner.run(makeTask({ id: 'follow', payload: { kind: 'chat', prompt: 'next', processId, workspaceId: 'ws-abc' } as any }), makeOpts({
+            onResponseCompleted: hook,
+            executeFollowUpFn: vi.fn(async () => { await store.updateProcess(processId, { status }); }),
+        }));
+        expect(hook).toHaveBeenCalledTimes(expected);
+        if (expected) expect(hook).toHaveBeenCalledWith(processId);
+    });
+});

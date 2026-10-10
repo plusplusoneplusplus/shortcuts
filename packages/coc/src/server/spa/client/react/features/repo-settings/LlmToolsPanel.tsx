@@ -3,9 +3,10 @@
  * Follows the same toggle pattern used by Agent Skills.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { LlmToolMeta, LlmToolParam, LlmToolsConfig } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient, useCloneBaseUrl } from '../../repos/cloneRouting';
+import { invalidateRepoPreferences } from '../../api/repoPreferences';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../../api/staticConfigCache';
 import { useGlobalToast } from '../../contexts/ToastContext';
 
@@ -100,17 +101,21 @@ function ToolParams({ tool }: { tool: LlmToolMeta }) {
 
 export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
     const { addToast } = useGlobalToast();
+    const cloneClient = useCocClient(workspaceId);
+    const baseUrl = useCloneBaseUrl(workspaceId);
     // Seed from a warm per-workspace cache hit so a reopen paints without a
     // loading flash and without refetching (AC-01).
-    const seed = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId));
+    const seed = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId, baseUrl));
     const [tools, setTools] = useState<LlmToolMeta[]>(seed?.tools ?? []);
     const [disabledTools, setDisabledTools] = useState<string[]>(seed?.disabledLlmTools ?? []);
     const [approvalTools, setApprovalTools] = useState<string[]>(seed?.approvalRequiredLlmTools ?? []);
     const [loading, setLoading] = useState(seed === undefined);
     const [saving, setSaving] = useState(false);
+    const loadGenerationRef = useRef(0);
 
     const loadConfig = useCallback(() => {
-        const key = configCacheKey.llmToolsConfig(workspaceId);
+        const generation = ++loadGenerationRef.current;
+        const key = configCacheKey.llmToolsConfig(workspaceId, baseUrl);
         // Warm cache hit — apply synchronously without a loading flash (AC-01).
         const cached = peekConfig<LlmToolsConfig>(key);
         if (cached !== undefined) {
@@ -121,17 +126,23 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
             return;
         }
         setLoading(true);
-        getOrFetchConfig(key, () => getSpaCocClient().preferences.getLlmToolsConfig(workspaceId))
+        getOrFetchConfig(key, () => cloneClient.preferences.getLlmToolsConfig(workspaceId))
             .then((data: LlmToolsConfig) => {
+                if (generation !== loadGenerationRef.current) return;
                 setTools(data.tools ?? []);
                 setDisabledTools(data.disabledLlmTools ?? []);
                 setApprovalTools(data.approvalRequiredLlmTools ?? []);
             })
             .catch(() => {})
-            .finally(() => setLoading(false));
-    }, [workspaceId]);
+            .finally(() => {
+                if (generation === loadGenerationRef.current) setLoading(false);
+            });
+    }, [workspaceId, cloneClient, baseUrl]);
 
-    useEffect(() => { loadConfig(); }, [loadConfig]);
+    useEffect(() => {
+        loadConfig();
+        return () => { loadGenerationRef.current++; };
+    }, [loadConfig]);
 
     const handleToggle = async (toolName: string, enabled: boolean) => {
         const nextDisabled = enabled
@@ -141,13 +152,14 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
         setDisabledTools(nextDisabled);
         setSaving(true);
         try {
-            await getSpaCocClient().preferences.updateLlmToolsConfig(
+            await cloneClient.preferences.updateLlmToolsConfig(
                 workspaceId,
                 { disabledLlmTools: nextDisabled },
             );
             // AC-05: drop the cached workspace config so other readers (e.g. the
             // chat conversation-retrieval check) refetch the changed config.
-            invalidateConfig(configCacheKey.llmToolsConfig(workspaceId));
+            invalidateConfig(configCacheKey.llmToolsConfig(workspaceId, baseUrl));
+            invalidateRepoPreferences(cloneClient, workspaceId);
         } catch (e: any) {
             setDisabledTools(prevDisabled);
             addToast(e?.message ?? 'Failed to save LLM tools config', 'error');
@@ -164,11 +176,12 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
         setApprovalTools(nextApproval);
         setSaving(true);
         try {
-            await getSpaCocClient().preferences.updateLlmToolsConfig(
+            await cloneClient.preferences.updateLlmToolsConfig(
                 workspaceId,
                 { approvalRequiredLlmTools: nextApproval },
             );
-            invalidateConfig(configCacheKey.llmToolsConfig(workspaceId));
+            invalidateConfig(configCacheKey.llmToolsConfig(workspaceId, baseUrl));
+            invalidateRepoPreferences(cloneClient, workspaceId);
         } catch (e: any) {
             setApprovalTools(prevApproval);
             addToast(e?.message ?? 'Failed to save LLM tools config', 'error');

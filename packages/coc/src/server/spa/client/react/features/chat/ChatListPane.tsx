@@ -6,6 +6,8 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'react';
+import { createPortal } from 'react-dom';
+import { useAnchoredPanelPosition } from '../../shared/useAnchoredPanelPosition';
 import { Card, Button, cn } from '../../ui';
 import { copyToClipboard, formatDuration, formatRelativeTime, statusLabel } from '../../utils/format';
 import { ensureQueueProcessId, isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
@@ -1318,6 +1320,8 @@ function PauseDurationMenu({
     sections,
     quotaData,
     taskDelay,
+    anchorRef,
+    onClose,
 }: {
     testIdScope: string;
     sections: PauseMenuSectionSpec[];
@@ -1329,7 +1333,34 @@ function PauseDurationMenu({
         onSelect: (minutes: number | null) => Promise<void>;
         onSkip: () => Promise<void>;
     };
+    anchorRef: React.RefObject<HTMLElement | null>;
+    onClose: () => void;
 }) {
+    const panelRef = useRef<HTMLDivElement>(null);
+    const position = useAnchoredPanelPosition({
+        open: true, placement: 'down', constrainHeight: true,
+        triggerRef: anchorRef, panelRef,
+    });
+    useEffect(() => {
+        const outside = (event: MouseEvent | TouchEvent) => {
+            const target = event.target as Node;
+            if (!anchorRef.current?.contains(target) && !panelRef.current?.contains(target)) onClose();
+        };
+        const escape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            onClose();
+            anchorRef.current?.focus();
+        };
+        document.addEventListener('mousedown', outside);
+        document.addEventListener('touchstart', outside);
+        document.addEventListener('keydown', escape);
+        return () => {
+            document.removeEventListener('mousedown', outside);
+            document.removeEventListener('touchstart', outside);
+            document.removeEventListener('keydown', escape);
+        };
+    }, [anchorRef, onClose]);
     const now = Date.now();
 
     const mostConstrained = getMostConstrainedProviderQuota(quotaData);
@@ -1353,9 +1384,11 @@ function PauseDurationMenu({
         if (allConstrainedResetMs === undefined || ms > allConstrainedResetMs) allConstrainedResetMs = ms;
     }
 
-    return (
+    return createPortal(
         <div
-            className="absolute right-0 top-full mt-1 z-30 min-w-52 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
+            ref={panelRef}
+            style={{ position: 'fixed', ...position }}
+            className="z-[10003] w-52 overflow-y-auto overscroll-contain break-words rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
             data-testid={`pause-duration-menu-${testIdScope}`}
             onClick={(e) => e.stopPropagation()}
         >
@@ -1399,7 +1432,8 @@ function PauseDurationMenu({
                 </React.Fragment>
             ))}
             {taskDelay && <TaskDelaySection {...taskDelay} />}
-        </div>
+        </div>,
+        document.body,
     );
 }
 
@@ -1882,7 +1916,8 @@ export function ChatListPane({
     const searchInputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const { isWide: showFullBotBadge } = useContainerWidth(containerRef, { wideThreshold: 360, mediumThreshold: 280 });
-    const pauseMenuRef = useRef<HTMLDivElement>(null);
+    const pauseAllTriggerRef = useRef<HTMLButtonElement>(null);
+    const pauseAutopilotTriggerRef = useRef<HTMLButtonElement>(null);
 
     // ── Folder drag and drop (AC-07) ───────────────────────────────────────
     // The list already hosts three drags: queue reorder, queue touch-reorder,
@@ -1998,7 +2033,6 @@ export function ChatListPane({
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
     const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
     const [pauseMenuScope, setPauseMenuScope] = useState<PauseMenuScope | null>(null);
-    const pauseMarkerMenuRef = useRef<HTMLDivElement | null>(null);
     const queuePauseRemaining = formatPauseRemaining(pausedUntil, now);
     const autopilotPauseRemaining = formatPauseRemaining(autopilotPausedUntil, now);
     const queueTaskDelayRemaining = formatPauseRemaining(taskDelayUntil, now);
@@ -2024,37 +2058,6 @@ export function ChatListPane({
         await onSkipTaskDelay(scope);
         setPauseMenuScope(null);
     }, [onSkipTaskDelay]);
-
-    useEffect(() => {
-        if (!pauseMenuScope) return;
-        function handleOutsideInteraction(e: MouseEvent | TouchEvent) {
-            if (pauseMenuRef.current && !pauseMenuRef.current.contains(e.target as Node)) {
-                setPauseMenuScope(null);
-            }
-        }
-        document.addEventListener('mousedown', handleOutsideInteraction);
-        document.addEventListener('touchstart', handleOutsideInteraction);
-        return () => {
-            document.removeEventListener('mousedown', handleOutsideInteraction);
-            document.removeEventListener('touchstart', handleOutsideInteraction);
-        };
-    }, [pauseMenuScope]);
-
-    useEffect(() => {
-        if (pauseMarkerMenuIndex === null) return;
-        function handleOutsideInteraction(e: MouseEvent | TouchEvent) {
-            if (pauseMarkerMenuRef.current && !pauseMarkerMenuRef.current.contains(e.target as Node)) {
-                setPauseMarkerMenuIndex(null);
-                setInsertingPauseAt(null);
-            }
-        }
-        document.addEventListener('mousedown', handleOutsideInteraction);
-        document.addEventListener('touchstart', handleOutsideInteraction);
-        return () => {
-            document.removeEventListener('mousedown', handleOutsideInteraction);
-            document.removeEventListener('touchstart', handleOutsideInteraction);
-        };
-    }, [pauseMarkerMenuIndex]);
 
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
     const isDense = taskCardDensity === 'dense';
@@ -4879,7 +4882,7 @@ export function ChatListPane({
                         )}
                     </Button>
 
-                    <div className="relative" ref={pauseMenuRef}>
+                    <div className="relative">
                         <div
                             className={cn(
                                 'inline-flex items-stretch h-7 rounded-md border overflow-hidden transition-colors',
@@ -4890,6 +4893,7 @@ export function ChatListPane({
                             data-testid="pause-toggle-group"
                         >
                             <button
+                                ref={pauseAllTriggerRef}
                                 type="button"
                                 disabled={isPauseResumeLoading}
                                 onClick={() => isPaused ? onPauseResume() : setPauseMenuScope(pauseMenuScope === 'all' ? null : 'all')}
@@ -4958,6 +4962,7 @@ export function ChatListPane({
                                             : 'bg-[#e0e0e0] dark:bg-[#474749]',
                                     )} />
                                     <button
+                                        ref={pauseAutopilotTriggerRef}
                                         type="button"
                                         disabled={isAutopilotPauseLoading}
                                         onClick={() => isAutopilotPaused ? onPauseResumeAutopilot() : setPauseMenuScope(pauseMenuScope === 'autopilot' ? null : 'autopilot')}
@@ -5022,6 +5027,9 @@ export function ChatListPane({
                         </div>
                         {pauseMenuScope && (
                             <PauseDurationMenu
+                                key={pauseMenuScope}
+                                anchorRef={pauseMenuScope === 'all' ? pauseAllTriggerRef : pauseAutopilotTriggerRef}
+                                onClose={() => setPauseMenuScope(null)}
                                 testIdScope={pauseMenuScope}
                                 sections={[{
                                     testIdScope: pauseMenuScope,
@@ -5255,7 +5263,7 @@ export function ChatListPane({
                                         index={-1}
                                         active={insertingPauseAt === -1 || pauseMarkerMenuIndex === -1}
                                         menuOpen={pauseMarkerMenuIndex === -1}
-                                        menuRef={pauseMarkerMenuIndex === -1 ? pauseMarkerMenuRef : undefined}
+                                        onCloseMenu={() => { setPauseMarkerMenuIndex(null); setInsertingPauseAt(null); }}
                                         onMouseEnter={() => setInsertingPauseAt(-1)}
                                         onMouseLeave={() => setInsertingPauseAt(null)}
                                         onClick={() => openPauseMarkerMenu(-1)}
@@ -5305,7 +5313,7 @@ export function ChatListPane({
                                                     index={globalIndex}
                                                     active={insertingPauseAt === globalIndex || pauseMarkerMenuIndex === globalIndex}
                                                     menuOpen={pauseMarkerMenuIndex === globalIndex}
-                                                    menuRef={pauseMarkerMenuIndex === globalIndex ? pauseMarkerMenuRef : undefined}
+                                                    onCloseMenu={() => { setPauseMarkerMenuIndex(null); setInsertingPauseAt(null); }}
                                                     onMouseEnter={() => setInsertingPauseAt(globalIndex)}
                                                     onMouseLeave={() => setInsertingPauseAt(null)}
                                                     onClick={() => openPauseMarkerMenu(globalIndex)}
@@ -5850,24 +5858,26 @@ function PauseMarkerRow({ markerId, durationHours, scope, onRemove }: {
     );
 }
 
-function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMouseLeave, onClick, onSelectDuration, quotaData }: {
+function PauseInsertZone({ index, active, menuOpen, onCloseMenu, onMouseEnter, onMouseLeave, onClick, onSelectDuration, quotaData }: {
     index: number;
     active: boolean;
     menuOpen: boolean;
-    menuRef?: React.Ref<HTMLDivElement>;
+    onCloseMenu: () => void;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     onClick: () => void;
     onSelectDuration: (options?: QueuePauseInsertOptions) => void;
     quotaData: AgentProvidersQuotaResponse | null;
 }) {
+    const anchorRef = useRef<HTMLDivElement>(null);
     return (
         <div
             className={cn(
                 'relative flex items-center justify-center overflow-visible transition-all duration-150 ease-in-out cursor-pointer group',
                 active ? 'h-7 opacity-100' : 'h-1 opacity-0',
             )}
-            ref={menuRef}
+            ref={anchorRef}
+            tabIndex={-1}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             onClick={onClick}
@@ -5882,6 +5892,8 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
             )}
             {menuOpen && (
                 <PauseDurationMenu
+                    anchorRef={anchorRef}
+                    onClose={onCloseMenu}
                     testIdScope={`insert-${index}`}
                     sections={[
                         {

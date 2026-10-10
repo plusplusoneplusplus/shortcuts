@@ -8,6 +8,8 @@ import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, Conversat
 import { REPO_SUB_TAB_VALUES } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientForWorkspace } from '../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../api/repoPreferences';
 import { isContainerMode, setCurrentAgentId } from '../utils/config';
 import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
 import { isRepoGroupWorkspaceId, isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
@@ -891,7 +893,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return;
         }
         const wsId = state.workspace;
-        getSpaCocClient().preferences.getRepo(wsId)
+        getRepoPreferences(getCocClientForWorkspace(wsId), wsId)
             .then((prefs: any) => {
                 const sf: string = prefs.activityFilters?.statusFilter ?? '__all';
                 const tf: string = prefs.activityFilters?.typeFilter ?? '__all';
@@ -920,7 +922,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (filterSaveRef.current) clearTimeout(filterSaveRef.current);
         filterSaveRef.current = setTimeout(() => {
-            getSpaCocClient().preferences.patchRepo(state.workspace, { activityFilters: { statusFilter: state.statusFilter, typeFilter: state.typeFilter } } as any).catch(() => {});
+            patchRepoPreferences(getCocClientForWorkspace(state.workspace), state.workspace, { activityFilters: { statusFilter: state.statusFilter, typeFilter: state.typeFilter } } as any).catch(() => {});
         }, 500);
 
         return () => { if (filterSaveRef.current) clearTimeout(filterSaveRef.current); };

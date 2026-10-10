@@ -29,6 +29,10 @@ import { readActiveProviderSession, turnProviderAttribution } from './active-pro
 const IDLE_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
 const compactionAdmissions = new Map<string, Promise<CompactProcessOutcome>>();
 
+/** The queue capabilities durable compaction admission needs. */
+export type CompactionQueueBridge = Pick<QueueExecutorBridge,
+    'enqueue' | 'enqueueAdmitted' | 'findCompactionTask' | 'findTaskByProcessId' | 'getTask' | 'cancelQueuedTask'>;
+
 export interface CompactProcessOutcome {
     /** The provider's raw compaction result (the route's JSON response). */
     result: any;
@@ -109,9 +113,11 @@ export async function compactProcess(
     store: Pick<ProcessStore, 'updateProcess' | 'emitProcessEvent' | 'appendConversationTurn'>,
     proc: AIProcess,
     customInstructions?: string,
-    bridge?: QueueExecutorBridge,
+    bridge?: CompactionQueueBridge,
     onQueued?: (taskId: string) => void,
+    options?: { trigger?: 'auto' },
 ): Promise<CompactProcessOutcome> {
+    const auto = options?.trigger === 'auto';
     if (bridge) {
         const fullStore = store as ProcessStore;
         const key = `${proc.metadata?.workspaceId ?? ''}\0${proc.id}`;
@@ -128,7 +134,8 @@ export async function compactProcess(
             const owningTask = bridge.findTaskByProcessId?.(current.id);
             const busy = !IDLE_STATUSES.has(current.status) || !!current.pendingMessages?.length
                 || owningTask?.status === 'queued' || owningTask?.status === 'running';
-            if (!busy) return compactProcess(store, current, customInstructions);
+            // Automatic compaction always runs as a background queue task.
+            if (!busy && !auto) return compactProcess(store, current, customInstructions);
             if (!bridge.enqueue) throw compactGuardError(current) ?? internalError('Queue unavailable');
             // An admitted first turn may not have reported its session yet. Execution validates its latest binding.
             if (!readActiveProviderSession(current).sessionId && !owningTask) {
@@ -144,7 +151,7 @@ export async function compactProcess(
                     id: taskId, processId: current.id, type: 'chat', priority: 'normal',
                     payload: { kind: 'compact', processId: current.id,
                         workspaceId: current.metadata?.workspaceId, workingDirectory: current.workingDirectory,
-                        customInstructions },
+                        customInstructions, ...(auto ? { trigger: 'auto' } : {}) },
                     config: { retryOnFailure: false, retryAttempts: 0, pauseOnFailure: false, timeoutMs: 0, cancelRunning: false },
                     displayName: 'Compact conversation',
                 });
@@ -152,6 +159,8 @@ export async function compactProcess(
                     ...current.metadata, type: current.metadata?.type ?? 'chat',
                     compaction: { state: 'queued', taskId, priorStatus: current.status,
                         startedAt: new Date().toISOString(), ...(customInstructions ? { customInstructions } : {}) },
+                    ...(auto && current.metadata?.autoCompact
+                        ? { autoCompact: { ...(current.metadata.autoCompact as object), taskId } } : {}),
                 } });
                 onQueued?.(taskId);
             } catch (error) {

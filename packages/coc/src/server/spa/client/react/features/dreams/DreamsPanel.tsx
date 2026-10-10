@@ -14,6 +14,7 @@ import { DREAM_CONVERSION_ARTIFACT_TYPES } from '@plusplusoneplusplus/coc-client
 import { Button, Card, Spinner, cn } from '../../ui';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 import { isDreamsEnabled } from '../../utils/config';
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import { resolveWorkItemOriginId } from '../work-items/workItemOriginScope';
@@ -902,7 +903,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         setPreferencesLoading(true);
         setPreferencesError(null);
         runDreamsRequest<PerRepoPreferences>(
-            () => getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId),
+            () => getRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId),
             'Failed to load dream preferences',
         )
             .then(preferences => {
@@ -949,7 +950,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         setPreferencesError(null);
         try {
             await runDreamsRequest(
-                () => getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId, { dreams: { enabled: true } }),
+                () => patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { dreams: { enabled: true } }),
                 'Failed to enable workspace dreams',
             );
             setWorkspaceEnabled(true);

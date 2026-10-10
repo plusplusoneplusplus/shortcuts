@@ -20,6 +20,10 @@ const mockCreateRepoGroup = vi.fn();
 const mockGetRepoGroup = vi.fn();
 const mockUpdateRepoGroup = vi.fn();
 const mockListServers = vi.fn();
+const mockSharing = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupAccess', () => ({
+    useRepoGroupAccess: (...args: unknown[]) => mockSharing(...args),
+}));
 
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
     createRepoGroup: (...args: unknown[]) => mockCreateRepoGroup(...args),
@@ -36,6 +40,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
 }));
 
 import { RepoGroupDialog } from '../../../../src/server/spa/client/react/repos/RepoGroupDialog';
+import { getRepoGroupReadOnlyDefaults } from '../../../../src/server/spa/client/react/repos/repoGroupAccess';
 
 const REMOTE_URL = 'http://127.0.0.1:4000';
 const SERVER_OPTIONS = [
@@ -65,6 +70,7 @@ beforeEach(() => {
     mockGetRepoGroup.mockReset();
     mockUpdateRepoGroup.mockReset().mockResolvedValue({ id: 'group-x', name: 'x', members: [] });
     mockListServers.mockReset().mockResolvedValue([{ id: 'local', label: 'Local' }]);
+    mockSharing.mockReset().mockReturnValue({ access: { enabled: false, members: [] }, refresh: vi.fn() });
 });
 
 function renderDialog(props: Partial<Parameters<typeof RepoGroupDialog>[0]> = {}) {
@@ -84,6 +90,138 @@ function renderDialog(props: Partial<Parameters<typeof RepoGroupDialog>[0]> = {}
 }
 
 describe('RepoGroupDialog create (repo-group AC-01)', () => {
+    it.each([['parent', 'c'], ['c', 'parent']])(
+        'shows consistent overlapping defaults in selection order %j and omits automatic grants', async (...order) => {
+            const repos = [
+                { ...localRepo('parent', 'Parent'), workspace: { id: 'parent', name: 'Parent', rootPath: '/repo' } },
+                { ...localRepo('c', 'Nested'), workspace: { id: 'c', name: 'Nested', rootPath: '/repo/c' } },
+            ];
+            mockSharing.mockReturnValue({ access: { enabled: true, members: [
+                { workspaceId: 'parent', shared: true, unresolved: false, writers: [] },
+                { workspaceId: 'c', shared: false, unresolved: false, writers: [] },
+            ] }, refresh: vi.fn() });
+            renderDialog({ repos: repos as any });
+            fireEvent.change(screen.getByTestId('repo-group-name-input'), { target: { value: 'New' } });
+            order.forEach(id => fireEvent.click(screen.getByTestId(`repo-group-member-check-${id}`)));
+            expect((screen.getByTestId('repo-group-member-read-only-parent') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('repo-group-member-read-only-c') as HTMLInputElement).checked).toBe(true);
+            fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+            await waitFor(() => expect(mockCreateRepoGroup.mock.lastCall?.[0].readOnly).toEqual({}));
+        },
+    );
+
+    it('preserves explicit mixed policies and the full draft on a within-group API rejection', async () => {
+        mockSharing.mockReturnValue({ access: { enabled: true, members: [
+            { workspaceId: 'a', shared: false, unresolved: false, writers: [] },
+            { workspaceId: 'f', shared: false, unresolved: false, writers: [] },
+        ] }, refresh: vi.fn() });
+        mockCreateRepoGroup.mockRejectedValue(Object.assign(
+            new Error('Overlapping repo group members must have compatible read-only settings'),
+            { status: 409, code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT' },
+        ));
+        const repos = [localRepo('a', 'Parent'), { ...localRepo('f', 'Child'), workspace: { id: 'f', name: 'Child', rootPath: '/r/a/child' } }];
+        const { onSaved } = renderDialog({ repos: repos as any });
+        fireEvent.change(screen.getByTestId('repo-group-name-input'), { target: { value: 'Draft' } });
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+        fireEvent.click(screen.getByTestId('repo-group-member-check-f'));
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-a'));
+        // The child's default closes to read-only; deliberately request a writer.
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-f'));
+        fireEvent.change(screen.getByTestId('repo-group-member-description-f'), { target: { value: 'Keep this' } });
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+        await waitFor(() => expect(screen.getByTestId('repo-group-error').textContent).toContain('compatible read-only'));
+        expect(mockCreateRepoGroup.mock.lastCall?.[0].readOnly).toEqual({ a: true, f: false });
+        expect((screen.getByTestId('repo-group-name-input') as HTMLInputElement).value).toBe('Draft');
+        expect((screen.getByTestId('repo-group-member-description-f') as HTMLInputElement).value).toBe('Keep this');
+        expect((screen.getByTestId('repo-group-member-read-only-f') as HTMLInputElement).checked).toBe(false);
+        expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it('preserves loaded writers while defaulting an overlapping new member read-only', async () => {
+        mockSharing.mockReturnValue({ access: { enabled: true, members: [
+            { workspaceId: 'a', shared: false, unresolved: false, writers: [] },
+            { workspaceId: 'f', shared: true, unresolved: false, writers: [] },
+        ] }, refresh: vi.fn() });
+        mockGetRepoGroup.mockResolvedValue({ id: 'group-saved', name: 'Saved', members: [{ workspaceId: 'a', readOnly: false, stale: false }] });
+        renderDialog({ groupId: 'group-saved', repos: [
+            localRepo('a', 'Parent'), { ...localRepo('f', 'Child'), workspace: { id: 'f', name: 'Child', rootPath: '/r/a/child' } },
+        ] as any });
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-a')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('repo-group-member-check-f'));
+        expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(false);
+        expect((screen.getByTestId('repo-group-member-read-only-f') as HTMLInputElement).checked).toBe(true);
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+        await waitFor(() => expect(mockUpdateRepoGroup.mock.lastCall?.[1].readOnly).toEqual({ a: false }));
+    });
+
+    it('defaults shared additions read-only and preserves the entire draft on an authoritative writer conflict', async () => {
+        const writer = {
+            workspaceId: 'a', writerWorkspaceId: 'a', writerGroupId: 'group-owner',
+            writerGroupName: 'Owner', writerGroupLink: '#repos/group-owner/settings', reason: 'writer-exists',
+        };
+        mockSharing.mockReturnValue({
+            access: { enabled: true, members: [
+                { workspaceId: 'a', shared: true, unresolved: false, writers: [writer] },
+                { workspaceId: 'f', shared: false, unresolved: false, writers: [] },
+            ] }, refresh: vi.fn(),
+        });
+
+        mockCreateRepoGroup.mockRejectedValue(Object.assign(new Error('Another writer'), { status: 409, details: { conflicts: [writer] } }));
+        const { onSaved } = renderDialog();
+        fireEvent.change(screen.getByTestId('repo-group-name-input'), { target: { value: 'Draft group' } });
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+        fireEvent.click(screen.getByTestId('repo-group-member-check-f'));
+        expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByTestId('repo-group-member-read-only-f') as HTMLInputElement).checked).toBe(false);
+        expect(screen.getByText('Shared repository')).toBeTruthy();
+        fireEvent.change(screen.getByTestId('repo-group-member-description-f'), { target: { value: 'Unrelated draft' } });
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-a'));
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+        await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Writer conflict'));
+        expect((screen.getByTestId('repo-group-name-input') as HTMLInputElement).value).toBe('Draft group');
+        expect((screen.getByTestId('repo-group-member-description-f') as HTMLInputElement).value).toBe('Unrelated draft');
+        expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(false);
+        expect(screen.getByRole('link', { name: 'Open writer group' }).getAttribute('href')).toBe('#repos/group-owner/settings');
+        expect(onSaved).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-a'));
+        mockCreateRepoGroup.mockResolvedValueOnce({ workspace: { id: 'group-new' }, members: [] });
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+        await waitFor(() => expect(onSaved).toHaveBeenCalled());
+        expect(mockCreateRepoGroup.mock.lastCall?.[0].descriptions.f).toBe('Unrelated draft');
+    });
+
+    it('uses remote owner capability and server-qualified writer links, not local capability', async () => {
+        mockListServers.mockResolvedValue(SERVER_OPTIONS);
+        const writer = { workspaceId: 'r', writerGroupId: 'group-owner', writerGroupName: 'Remote owner', reason: 'writer-exists' };
+        mockSharing.mockImplementation((_groupId, baseUrl) => ({
+            access: { enabled: baseUrl === REMOTE_URL, members: [
+                { workspaceId: 'r', shared: true, unresolved: false, writers: [writer] },
+            ] }, refresh: vi.fn(),
+        }));
+        renderDialog({ repos: [remoteRepo('r', 'Remote repo')] as any });
+        await waitFor(() => expect(screen.getByTestId('repo-group-server-select').querySelector('option[value="srv-1"]')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('repo-group-server-select'), { target: { value: 'srv-1' } });
+        fireEvent.click(screen.getByTestId('repo-group-member-check-r'));
+        expect((screen.getByTestId('repo-group-member-read-only-r') as HTMLInputElement).checked).toBe(true);
+        expect(screen.getByRole('link', { name: 'Open writer group' }).getAttribute('href'))
+            .toBe('#repos/remote%3Asrv-1%3Agroup-owner/settings');
+    });
+
+    it('lists every saved conflicting writer without changing loaded policies', async () => {
+        const writers = ['One', 'Two', 'Three'].map(name => ({
+            workspaceId: 'a', writerGroupId: `group-${name.toLowerCase()}`, writerGroupName: name, reason: 'writer-exists',
+        }));
+        mockSharing.mockReturnValue({ access: { enabled: true, members: [
+            { workspaceId: 'a', shared: true, unresolved: false, writers },
+        ] }, refresh: vi.fn() });
+        mockGetRepoGroup.mockResolvedValue({ id: 'group-one', name: 'One', members: [{ workspaceId: 'a', readOnly: false, stale: false }] });
+        renderDialog({ groupId: 'group-one' });
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-a')).toBeTruthy());
+        expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(false);
+        expect(screen.getAllByRole('link', { name: 'Open writer group' })).toHaveLength(3);
+        expect(mockUpdateRepoGroup).not.toHaveBeenCalled();
+    });
+
     it('creates a group from the name and the checked registered repos', async () => {
         const { onSaved } = renderDialog();
 
@@ -370,6 +508,33 @@ describe('RepoGroupDialog member descriptions (repo-group AC-03)', () => {
             { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: 'the build tool' }, readOnly: { a: false, f: false } },
             undefined,
         ));
+    });
+});
+
+describe('repo-group advisory automatic root closure', () => {
+    it.each([
+        ['/repo/', '/repo/c', '/repo-copy'],
+        ['C:\\Repo\\', 'c:\\repo\\c', 'C:\\Repo-copy'],
+        ['\\\\host\\share\\repo\\', '\\\\HOST\\SHARE\\REPO\\c', '\\\\host\\share\\repo-copy'],
+        ['/', '/repo/c', undefined],
+    ])('handles root boundaries for %s', (parent, child, sibling) => {
+        expect(getRepoGroupReadOnlyDefaults([
+            { workspaceId: 'child', rootPath: child },
+            { workspaceId: 'parent', rootPath: parent },
+            { workspaceId: 'sibling', rootPath: sibling },
+        ], {}, new Set(['parent']))).toEqual({ child: true, parent: true, sibling: false });
+    });
+
+    it('closes transitively but never overwrites explicit/saved writers or unresolved roots', () => {
+        expect(getRepoGroupReadOnlyDefaults([
+            { workspaceId: 'c', rootPath: '/repo/c' },
+            { workspaceId: 'parent', rootPath: '/repo' },
+            { workspaceId: 'a', rootPath: '/repo/a' },
+            { workspaceId: 'writer', rootPath: '/repo/writer' },
+            { workspaceId: 'unknown' },
+        ], { a: true, writer: false }, new Set())).toEqual({
+            c: true, parent: true, a: true, writer: false, unknown: false,
+        });
     });
 });
 

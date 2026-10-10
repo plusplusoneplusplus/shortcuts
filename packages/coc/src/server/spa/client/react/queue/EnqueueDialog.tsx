@@ -8,6 +8,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../ui';
 import { getCocClientForWorkspace, requestForWorkspace } from '../repos/cloneRegistry';
+import { invalidateRepoPreferences } from '../api/repoPreferences';
 import { useReposOptional } from '../contexts/ReposContext';
 import { isRemoteWorkspace } from '../repos/remoteWorkspaceAggregation';
 import { usePreferences } from '../hooks/preferences/usePreferences';
@@ -509,7 +510,9 @@ export function EnqueueDialog() {
             // Record skill usage for ordering
             for (const sk of effectiveSkills) {
                 if (sk && workspaceId) {
-                    getCocClientForWorkspace(workspaceId).preferences.recordSkillUsage(workspaceId, sk).catch(() => { /* ignore */ });
+                    const owner = getCocClientForWorkspace(workspaceId);
+                    owner.preferences.recordSkillUsage(workspaceId, sk)
+                        .then(() => invalidateRepoPreferences(owner, workspaceId)).catch(() => { /* ignore */ });
                 }
             }
             clearAttachments();

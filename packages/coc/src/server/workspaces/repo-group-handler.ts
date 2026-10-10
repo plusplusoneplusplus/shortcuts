@@ -40,6 +40,7 @@ import {
     updateRepoGroup,
     RepoGroupValidationError,
 } from './repo-group-workspace';
+import { getRepoGroupAccess, withRepoGroupMutation } from './repo-group-exclusive-writer';
 
 /** Minimal broadcast surface of the process WebSocket server. */
 interface TopologyBroadcaster {
@@ -52,6 +53,8 @@ interface TopologyBroadcaster {
 }
 
 export interface RepoGroupRouteDeps {
+    /** Live owning-server policy; missing means disabled. */
+    getExclusiveWriterEnabled?: () => boolean;
     /** Broadcast workspace topology changes to connected dashboard clients. */
     getWsServer?: () => TopologyBroadcaster | undefined;
     /**
@@ -208,6 +211,24 @@ export function registerRepoGroupRoutes(
     deps: RepoGroupRouteDeps = {},
 ): void {
 
+    routes.push({
+        method: 'GET',
+        pattern: '/api/repo-groups/access',
+        handler: async (req, res) => {
+            try {
+                const groupId = new URL(req.url ?? '', 'http://localhost').searchParams.get('groupId') ?? undefined;
+                if (groupId && !readRepoGroup(dataDir, groupId)) {
+                    return handleAPIError(res, notFound('Repo group'));
+                }
+                const access = await withRepoGroupMutation(dataDir, () =>
+                    getRepoGroupAccess(dataDir, store, deps.getExclusiveWriterEnabled?.() === true, groupId));
+                sendJSON(res, 200, access);
+            } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
+
     function broadcast(workspaceId: string, action: 'added' | 'updated' | 'removed'): void {
         deps.getWsServer?.()?.broadcastProcessEvent({
             type: 'workspace-topology-changed',
@@ -332,7 +353,7 @@ export function registerRepoGroupRoutes(
                     members: body.members,
                     descriptions: body.descriptions,
                     readOnly: body.readOnly,
-                });
+                }, { exclusiveWriter: deps.getExclusiveWriterEnabled?.() === true });
                 await deps.onGroupRegistered?.(ws);
                 broadcast(ws.id, 'added');
                 const members = await resolveRepoGroupMembers(dataDir, store, ws.id);
@@ -392,7 +413,7 @@ export function registerRepoGroupRoutes(
                     members: body.members,
                     descriptions: body.descriptions,
                     readOnly: body.readOnly,
-                });
+                }, { exclusiveWriter: deps.getExclusiveWriterEnabled?.() === true });
                 if (!updated) {
                     return handleAPIError(res, notFound('Repo group'));
                 }

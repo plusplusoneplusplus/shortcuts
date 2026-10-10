@@ -3,9 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AskUserInline } from '../../../../../src/server/spa/client/react/features/chat/AskUserInline';
 import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { getAskUserDraft } from '../../../../../src/server/spa/client/react/features/chat/hooks/useAskUserDraftStore';
 // The approval options come from the server tool that emits the prompt, so a
 // rename there fails this suite instead of silently changing what the user sees.
@@ -28,6 +29,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', async (impor
 beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    resetCloneRegistryForTests();
     mocks.processes.askUserResponse.mockReset().mockResolvedValue({ ok: true });
 });
 
@@ -299,6 +301,155 @@ describe('AskUserInline', () => {
             );
         });
         expect(onAnswered).toHaveBeenCalled();
+    });
+
+    describe('reply keyboard submission', () => {
+        function renderDeferred(questions = [makeQuestion()]) {
+            const onAnswered = vi.fn();
+            const bubbledKey = vi.fn();
+            render(<div onKeyDown={bubbledKey}><AskUserInline batch={makeBatch(questions)} processId="proc-1" onAnswered={onAnswered} /></div>);
+            fireEvent.change(screen.getAllByTestId('ask-user-question-disposition')[0], { target: { value: 'needs-context' } });
+            return { note: screen.getByTestId('ask-user-deferred-note-input'), onAnswered, bubbledKey };
+        }
+
+        it.each(['Enter', 'button'])('submits the same deferred batch via %s and clears the draft', async method => {
+            const { note, onAnswered, bubbledKey } = renderDeferred([
+                makeQuestion({ batchSize: 3 }),
+                makeQuestion({ questionId: 'q-2', type: 'text', options: undefined, index: 1, batchSize: 3 }),
+                makeQuestion({ questionId: 'q-3', index: 2, batchSize: 3 }),
+            ]);
+            fireEvent.change(note, { target: { value: '  Explain targets\nand permissions  ' } });
+            fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: '  answer  ' } });
+            fireEvent.change(screen.getAllByTestId('ask-user-question-disposition')[2], { target: { value: 'skip' } });
+            if (method === 'Enter') {
+                expect(fireEvent.keyDown(note, { key: 'Enter' })).toBe(false);
+                expect(bubbledKey).not.toHaveBeenCalled();
+            } else {
+                fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+            }
+            await waitFor(() => expect(onAnswered).toHaveBeenCalledTimes(1));
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledExactlyOnceWith('proc-1', {
+                batchId: 'batch-1',
+                answers: [
+                    { questionId: 'q-1', deferred: true, reason: 'needs-context', note: 'Explain targets\nand permissions' },
+                    { questionId: 'q-2', answer: 'answer' },
+                    { questionId: 'q-3', skipped: true },
+                ],
+            });
+            expect(getAskUserDraft('proc-1', 'batch-1')).toBeNull();
+        });
+
+        it.each([
+            { key: 'Enter', shiftKey: true },
+            { key: 'Enter', isComposing: true },
+            { key: 'Enter', keyCode: 229 },
+            { key: 'a' },
+        ])('leaves multiline/composition/non-submit keys alone: %j', event => {
+            const { note } = renderDeferred();
+            fireEvent.change(note, { target: { value: 'Explain targets' } });
+            expect(note.tagName).toBe('TEXTAREA');
+            expect(fireEvent.keyDown(note, event)).toBe(true);
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+        });
+
+        it.each(['', '   '])('preserves the optional empty deferred note (%j)', async value => {
+            const { note, onAnswered } = renderDeferred();
+            fireEvent.change(note, { target: { value } });
+            fireEvent.keyDown(note, { key: 'Enter' });
+            await waitFor(() => expect(onAnswered).toHaveBeenCalledTimes(1));
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledExactlyOnceWith('proc-1', {
+                batchId: 'batch-1', answers: [{ questionId: 'q-1', deferred: true, reason: 'needs-context' }],
+            });
+        });
+
+        it('does not bypass an incomplete required answer elsewhere in the batch', () => {
+            const { note } = renderDeferred([
+                makeQuestion({ batchSize: 2 }),
+                makeQuestion({ questionId: 'q-2', type: 'text', options: undefined, index: 1, batchSize: 2 }),
+            ]);
+            fireEvent.change(note, { target: { value: 'Explain targets' } });
+            fireEvent.change(screen.getByTestId('ask-user-text-input'), { target: { value: '   ' } });
+            expect(screen.getByTestId('ask-user-submit-all-btn')).toBeDisabled();
+            fireEvent.keyDown(note, { key: 'Enter' });
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+        });
+
+        it('blocks same-tick, loading, repeated-key and accepted response duplicates', async () => {
+            let resolve!: (value: { ok: boolean }) => void;
+            mocks.processes.askUserResponse.mockImplementation(() => new Promise(done => { resolve = done; }));
+            const { note, onAnswered } = renderDeferred();
+            fireEvent.keyDown(note, { key: 'Enter', repeat: true });
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+            // Dispatch before React can render disabled controls, as well as after.
+            act(() => {
+                note.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+                note.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+                screen.getByTestId('ask-user-submit-all-btn').click();
+                screen.getByTestId('ask-user-skip-all-btn').click();
+            });
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledTimes(1);
+            expect(note).toBeDisabled();
+            expect(screen.getByText('Submitting...')).toBeInTheDocument();
+            expect(screen.getByTestId('ask-user-submit-all-btn')).toBeDisabled();
+            expect(screen.getByTestId('ask-user-skip-all-btn')).toBeDisabled();
+            fireEvent.keyDown(note, { key: 'Enter' });
+            await act(async () => resolve({ ok: true }));
+            fireEvent.keyDown(note, { key: 'Enter' });
+            fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledTimes(1);
+            expect(onAnswered).toHaveBeenCalledTimes(1);
+            expect(note).toBeDisabled();
+        });
+
+        it('keeps the draft and permits retry after failure', async () => {
+            mocks.processes.askUserResponse.mockRejectedValueOnce(new Error('network'));
+            const { note, onAnswered } = renderDeferred();
+            fireEvent.change(note, { target: { value: 'Explain targets' } });
+            fireEvent.keyDown(note, { key: 'Enter' });
+            await waitFor(() => expect(note).not.toBeDisabled());
+            expect(onAnswered).not.toHaveBeenCalled();
+            expect(getAskUserDraft('proc-1', 'batch-1')?.answers['q-1'].note).toBe('Explain targets');
+            fireEvent.keyDown(note, { key: 'Enter' });
+            await waitFor(() => expect(onAnswered).toHaveBeenCalledTimes(1));
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledTimes(2);
+        });
+
+        it.each(['remote-a', 'remote-b'])('routes Enter through the owning workspace client (%s)', async workspaceId => {
+            const baseUrl = workspaceId === 'remote-a' ? 'http://remote-a.test' : 'http://remote-b.test';
+            registerCloneBaseUrls([{ workspaceId, baseUrl }]);
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }));
+            const onAnswered = vi.fn();
+            render(<AskUserInline batch={makeBatch()} processId="proc-1" workspaceId={workspaceId} onAnswered={onAnswered} />);
+            fireEvent.change(screen.getByTestId('ask-user-question-disposition'), { target: { value: 'needs-context' } });
+            fireEvent.change(screen.getByTestId('ask-user-deferred-note-input'), { target: { value: 'Explain targets' } });
+            fireEvent.keyDown(screen.getByTestId('ask-user-deferred-note-input'), { key: 'Enter' });
+            await waitFor(() => expect(onAnswered).toHaveBeenCalledTimes(1));
+            expect(fetchSpy).toHaveBeenCalledWith(`${baseUrl}/api/processes/proc-1/ask-user-response`, expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({ batchId: 'batch-1', answers: [{ questionId: 'q-1', deferred: true, reason: 'needs-context', note: 'Explain targets' }] }),
+            }));
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+        });
+
+        it.each(['text', 'custom'])('preserves ordinary %s answer Enter submission and validation', async kind => {
+            const onAnswered = vi.fn();
+            render(<AskUserInline batch={makeBatch([makeQuestion(kind === 'text' ? { type: 'text', options: undefined } : {})])} processId="proc-1" onAnswered={onAnswered} />);
+            if (kind === 'custom') fireEvent.click(screen.getByTestId('ask-user-custom-radio'));
+            const input = screen.getByTestId(kind === 'text' ? 'ask-user-text-input' : 'ask-user-custom-input');
+            fireEvent.change(input, { target: { value: '   ' } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+            fireEvent.change(input, { target: { value: '  answer  ' } });
+            fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+            fireEvent.keyDown(input, { key: 'Enter' });
+            await waitFor(() => expect(onAnswered).toHaveBeenCalledTimes(1));
+            expect(mocks.processes.askUserResponse).toHaveBeenCalledExactlyOnceWith('proc-1', {
+                batchId: 'batch-1', answers: [{ questionId: 'q-1', answer: 'answer' }],
+            });
+        });
     });
 
     it('restores draft answers and defer notes for the same process and batch after remount', async () => {

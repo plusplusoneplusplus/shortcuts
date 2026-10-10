@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 // ── client factory: LOCAL stub + per-baseUrl stubs ────────────────────────────
 const gitInfoCalls: Array<{ baseUrl: string; workspaceId: string }> = [];
@@ -69,5 +69,31 @@ describe('useGitInfo routing', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(LOCAL.workspaces.gitInfo).toHaveBeenCalledWith('w2');
         expect(gitInfoCalls).toEqual([{ baseUrl: '', workspaceId: 'w2' }]);
+    });
+
+    it('shares the header and detail request for the same workspace', async () => {
+        const { result } = renderHook(() => ({
+            header: useGitInfo('w2'),
+            detail: useGitInfo('w2'),
+        }));
+        await waitFor(() => expect(result.current.header.loading).toBe(false));
+        expect(result.current.detail).toEqual(result.current.header);
+        expect(LOCAL.workspaces.gitInfo).toHaveBeenCalledTimes(1);
+    });
+
+    it('an unmounted reader does not cancel another reader or cache a stale snapshot', async () => {
+        let resolve!: (value: { branch: string; ahead: number; behind: number; dirty: boolean }) => void;
+        LOCAL.workspaces.gitInfo.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        const header = renderHook(() => useGitInfo('w2'));
+        const detail = renderHook(() => useGitInfo('w2'));
+        header.unmount();
+        await act(async () => { resolve({ branch: 'topic', ahead: 3, behind: 0, dirty: false }); });
+        await waitFor(() => expect(detail.result.current.branch).toBe('topic'));
+        expect(LOCAL.workspaces.gitInfo).toHaveBeenCalledTimes(1);
+        detail.unmount();
+
+        const revisit = renderHook(() => useGitInfo('w2'));
+        await waitFor(() => expect(revisit.result.current.branch).toBe('main'));
+        expect(LOCAL.workspaces.gitInfo).toHaveBeenCalledTimes(2);
     });
 });

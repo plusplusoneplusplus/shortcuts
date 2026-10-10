@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +72,56 @@ describe('ProviderEffortTiersSection', () => {
 
     afterEach(() => {
         cleanup();
+    });
+
+    it.each(['ctrlKey', 'metaKey'] as const)('%s saves the visible effort-tier draft once and suppresses clean-page Save', async (modifier) => {
+        mockReplaceEffortTiers.mockResolvedValue(makeEffortTiersResponse({
+            low: { model: 'mid-model', reasoningEffort: null, source: 'config' },
+        }));
+        render(<ProviderEffortTiersSection provider="copilot" />);
+        await screen.findByTestId('effort-tiers-table');
+        const press = () => {
+            const event = new KeyboardEvent('keydown', { key: 's', [modifier]: true, cancelable: true });
+            window.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(true);
+        };
+        act(press);
+        expect(mockReplaceEffortTiers).not.toHaveBeenCalled();
+        fireEvent.change(screen.getByTestId('effort-tier-model-select-low'), { target: { value: 'mid-model' } });
+        await act(async () => { press(); });
+        expect(mockReplaceEffortTiers).toHaveBeenCalledExactlyOnceWith('copilot', {
+            low: { model: 'mid-model', reasoningEffort: null },
+        });
+        expect(screen.getByTestId('effort-tiers-save')).toBeDisabled();
+        act(press);
+        expect(mockReplaceEffortTiers).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares same-tick admission with the button and retains errors/drafts on deferred failure before retry', async () => {
+        let reject!: (error: Error) => void;
+        mockReplaceEffortTiers.mockReturnValueOnce(new Promise((_resolve, rej) => { reject = rej; }));
+        render(<ProviderEffortTiersSection provider="copilot" />);
+        await screen.findByTestId('effort-tiers-table');
+        fireEvent.change(screen.getByTestId('effort-tier-model-select-low'), { target: { value: 'mid-model' } });
+        act(() => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }));
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true }));
+            fireEvent.click(screen.getByTestId('effort-tiers-save'));
+        });
+        expect(mockReplaceEffortTiers).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('effort-tiers-save')).toBeDisabled();
+        await act(async () => { reject(new Error('Tiers rejected')); });
+        expect(screen.getByTestId('effort-tiers-save-error')).toHaveTextContent('Tiers rejected');
+        expect(screen.getByTestId('effort-tier-model-select-low')).toHaveValue('mid-model');
+        expect(screen.getByTestId('effort-tiers-save')).not.toBeDisabled();
+        mockReplaceEffortTiers.mockResolvedValueOnce(makeEffortTiersResponse({
+            low: { model: 'mid-model', reasoningEffort: null, source: 'config' },
+        }));
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true }));
+        });
+        expect(mockReplaceEffortTiers).toHaveBeenCalledTimes(2);
+        expect(screen.queryByTestId('effort-tiers-save-error')).toBeNull();
     });
 
     it('renders four tier rows with Very Low first', async () => {

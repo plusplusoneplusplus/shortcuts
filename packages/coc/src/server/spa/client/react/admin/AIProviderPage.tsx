@@ -9,6 +9,7 @@
  */
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { Spinner } from '../ui';
+import { useAdminSaveShortcut } from './useAdminSaveShortcut';
 import type {
     ProviderInstallStatus,
     AgentProvidersQuotaResponse,
@@ -394,6 +395,7 @@ export function AIProviderPage(props: AIProviderPageProps) {
         defaultProvider,
     );
     const [activeSubTab, setActiveSubTab] = useState<AIProviderSubTab>('routing');
+    useAdminSaveShortcut(true, activeSubTab === 'routing' ? [{ dirty, saving, onSave }] : []);
 
     const providers: Array<{
         id: Provider;

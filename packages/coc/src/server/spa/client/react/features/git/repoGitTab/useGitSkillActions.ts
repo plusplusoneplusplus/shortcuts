@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { getRepoPreferences, invalidateRepoPreferences } from '../../../api/repoPreferences';
 import { useQueue } from '../../../contexts/QueueContext';
 import type { ResolvedModalJobAiSelection } from '../../../shared/ModalJobAiControls';
 import { mergeAutoProviderRoutingContext } from '../../../utils/providerSelection';
@@ -97,7 +98,7 @@ export function useGitSkillActions({
     // Fetch the commit-scoped skill usage map per workspace
     useEffect(() => {
         setCommitSkillUsageMap({});
-        cloneClient.preferences.getRepo(workspaceId)
+        getRepoPreferences(cloneClient, workspaceId)
             .then(prefs => {
                 if (prefs?.commitSkillUsageMap) {
                     setCommitSkillUsageMap(prefs.commitSkillUsageMap);
@@ -196,7 +197,8 @@ export function useGitSkillActions({
         // Record commit-scoped skill usage (best-effort) and optimistic local update
         const skillName = pendingSkillRun.skillName;
         setCommitSkillUsageMap(prev => ({ ...prev, [skillName]: new Date().toISOString() }));
-        cloneClient.preferences.recordCommitSkillUsage(workspaceId, skillName).catch(() => {});
+        cloneClient.preferences.recordCommitSkillUsage(workspaceId, skillName)
+            .then(() => invalidateRepoPreferences(cloneClient, workspaceId)).catch(() => {});
     }, [pendingSkillRun, workspaceId, branchRangeData, branchName, resolvedBaseRef, enqueueChat, showToast]);
 
     // ── Direct AI launches ────────────────────────────────────────────────────

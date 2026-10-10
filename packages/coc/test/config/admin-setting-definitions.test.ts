@@ -669,6 +669,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.commitChatLens': 'features',
         'features.commitChatLensDormantMode': 'features',
         'features.nativeCliSessions': 'features',
+        'features.repoGroupExclusiveWriter': 'features',
         // Not named in the placement spec — falls back to the Features default.
         'features.schedulesInScheduledSlide': 'features',
     };

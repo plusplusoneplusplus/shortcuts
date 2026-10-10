@@ -8,7 +8,7 @@ import type { SentinelTodoService } from './sentinel-todo-service';
  * retries, or reviews, and neither ever launches or cancels a job.
  */
 export function createSentinelTodoDelegationHooks(
-    service: Pick<SentinelTodoService, 'recordJobResult' | 'findLinkedItem'>,
+    service: Pick<SentinelTodoService, 'recordJobResult' | 'findLinkedItem' | 'notifyReviewDelivery'>,
     isEnabled: () => boolean,
 ) {
     return {
@@ -17,6 +17,11 @@ export function createSentinelTodoDelegationHooks(
             if (!isEnabled()) return;
             try { service.recordJobResult(job); }
             catch (error) { console.error('[sentinel-todos] Could not record a job outcome:', error); }
+        },
+        deliveryChanged(job: DelegatedJob): void {
+            if (!isEnabled()) return;
+            try { service.notifyReviewDelivery(job); }
+            catch (error) { console.error('[sentinel-todos] Could not notify review delivery:', error); }
         },
         /** The linked item quoted in the parent review prompt. */
         findTodo(job: DelegatedJob): DelegatedReviewTodo | undefined {

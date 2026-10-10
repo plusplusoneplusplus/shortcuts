@@ -9,7 +9,6 @@
  */
 
 import type {
-    SentinelTodoItem,
     SentinelTodoJobLink,
     SentinelTodoPriority,
     SentinelTodoStatus,
@@ -32,12 +31,7 @@ export interface SentinelTodoOwner {
     processId: string;
 }
 
-export const SENTINEL_TODO_STATUS_LABELS: Readonly<Record<SentinelTodoStatus, string>> = {
-    todo: 'To do',
-    in_progress: 'In progress',
-    needs_attention: 'Needs attention',
-    done: 'Done',
-};
+export * from './sentinelTodoStatusModel';
 
 /** Statuses a user can pick, in the order the select lists them. */
 export const SENTINEL_TODO_STATUSES: readonly SentinelTodoStatus[] = ['todo', 'in_progress', 'needs_attention', 'done'];
@@ -49,46 +43,6 @@ export const SENTINEL_TODO_PRIORITY_LABELS: Readonly<Record<SentinelTodoPriority
 
 /** Priorities a user can pick, in the order the select lists them. */
 export const SENTINEL_TODO_PRIORITIES: readonly SentinelTodoPriority[] = ['regular', 'high'];
-
-/**
- * An item's priority. An older owning server omits the field, which reads as
- * Regular like any item stored before priorities existed.
- */
-export function sentinelTodoPriority(item: Pick<SentinelTodoItem, 'priority'>): SentinelTodoPriority {
-    return item.priority === 'high' ? 'high' : 'regular';
-}
-
-/** Active items needing a person first, then work in flight, then queued work. */
-const ACTIVE_ORDER: Readonly<Record<SentinelTodoStatus, number>> = {
-    needs_attention: 0,
-    in_progress: 1,
-    todo: 2,
-    done: 3,
-};
-
-export interface SentinelTodoSections {
-    active: SentinelTodoItem[];
-    done: SentinelTodoItem[];
-    archived: SentinelTodoItem[];
-}
-
-/**
- * Active items first (needs attention, in progress, to do; oldest first within
- * a status so the list does not reshuffle on every edit), then Done and
- * Archived newest first. Archive is separate from status, so an archived item
- * is listed only under Archived whatever its status.
- */
-export function sentinelTodoSections(items: readonly SentinelTodoItem[]): SentinelTodoSections {
-    const byCreated = (a: SentinelTodoItem, b: SentinelTodoItem) => a.createdAt.localeCompare(b.createdAt);
-    const newestFirst = (a: SentinelTodoItem, b: SentinelTodoItem) => b.updatedAt.localeCompare(a.updatedAt);
-    const live = items.filter(item => !item.archived);
-    return {
-        active: live.filter(item => item.status !== 'done')
-            .sort((a, b) => ACTIVE_ORDER[a.status] - ACTIVE_ORDER[b.status] || byCreated(a, b)),
-        done: live.filter(item => item.status === 'done').sort(newestFirst),
-        archived: items.filter(item => item.archived).sort(newestFirst),
-    };
-}
 
 /**
  * Whether choosing a status asks for a reason first. Needs attention requires
@@ -123,10 +77,16 @@ export function sentinelTodoJobStateLabel(job: SentinelTodoJobLink): string {
 export function sentinelTodoReviewLabel(job: SentinelTodoJobLink): string | null {
     const execution = job.execution;
     if (!('review' in execution) || !execution.review) return null;
+    if (execution.review.assessment === 'reviewed') return 'Reviewed';
+    if (execution.review.assessment === 'superseded') return 'User verdict retained';
+    if (execution.review.assessment === 'not_required') {
+        if (execution.review.state === 'failed') return `Notice failed${execution.review.reason ? `: ${execution.review.reason}` : ''}`;
+        return execution.review.state === 'delivered' ? 'Notice delivered' : 'Notice pending';
+    }
     switch (execution.review.state) {
         case 'pending':
         case 'queued': return 'Review pending';
-        case 'delivered': return 'Review delivered';
+        case 'delivered': return execution.review.assessment === 'pending' ? 'Review pending (result delivered)' : 'Review delivered';
         case 'failed': return `Review failed${execution.review.reason ? `: ${execution.review.reason}` : ''}`;
     }
 }

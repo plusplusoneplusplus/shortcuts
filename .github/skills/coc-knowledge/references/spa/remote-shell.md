@@ -264,6 +264,35 @@ that same registry.
 - A 404 from create/save means a remote predating the feature; there is no GET-list
   endpoint to probe with, so the message is reworded rather than retried.
 
+### Writable membership admission
+
+`features.repoGroupExclusiveWriter` is live and defaults off (runtime
+`repoGroupExclusiveWriterEnabled`). The owning server's POST/PATCH routes pass the
+policy into `repo-group-workspace.ts`; `repo-group-exclusive-writer.ts` serializes
+check and save per data directory. Omitted new shared memberships default read-only,
+with protection closed transitively across overlapping new automatic roots. Saved
+and explicit writers are not reassigned. Newly introduced mixed overlapping policies
+return 409 `REPO_GROUP_ACCESS_POLICY_CONFLICT` with writable/read-only member IDs.
+Explicit competing writers return 409 `REPO_GROUP_WRITER_CONFLICT` with
+`details.conflicts` naming the member, writer group and relative settings link.
+
+Identity is workspace ID or overlapping realpath roots within that server's
+registry, not Git remote. Saved conflicts remain writable; unchanged policies and
+revocations stay editable, including retained removed members. Missing roots,
+unregistered members and unreadable group files conservatively reserve potential
+writers. New grants require resolved roots. Standalone chats are independent, and
+membership saves neither interrupt running turns nor reject queued work.
+
+`GET /api/repo-groups/access?groupId=<rawId>` returns the owner's live `enabled`
+capability and candidate/current-member sharing, unresolved identity and all saved
+writers, using the admission snapshot matcher. `groupId` is optional for creation.
+`RepoGroupDialog` and `RepoGroupMemberList` consume it through `useRepoGroupAccess`;
+owner changes discard late responses. Dialog automatic defaults close protection over
+selected registered paths and remain omitted in save payloads; saved/user policies stay
+explicit. Rows disclose Writer/Read-only policies and every conflicting writer. Authoritative
+409 details stay member-local without dropping drafts. `groupServerId` and settings
+`selectionId` qualify writer links; API requests retain raw IDs and owner base URLs.
+
 **View.** A `group-<slug>` id renders `repos/RepoGroupView.tsx`, a branch in `ReposView`
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
 feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,

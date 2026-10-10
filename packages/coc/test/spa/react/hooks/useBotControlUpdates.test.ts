@@ -24,6 +24,17 @@ describe('owning-server bot control updates', () => {
         expect(update).toHaveBeenCalledWith({ processId: process.id, workspaceId: process.workspaceId, control, compaction });
     });
 
+    it('forwards Sentinel auto-compact state from the owning remote server only', () => {
+        const update = vi.fn();
+        renderHook(() => useBotControlUpdates(remote, 'ws-example', update));
+        const autoCompact = { enabled: true, thresholdTokens: 850_000, taskId: 'auto' };
+        const autoMessage = { ...message, process: { ...process, autoCompact } };
+        emit('coc-remote-ws-message', { baseUrl: 'https://other.example.test', message: autoMessage });
+        expect(update).not.toHaveBeenCalled();
+        emit('coc-remote-ws-message', { baseUrl: remote, message: autoMessage });
+        expect(update).toHaveBeenCalledWith({ processId: process.id, workspaceId: process.workspaceId, control, autoCompact });
+    });
+
     it('observes local authoritative claims and omission releases, not automation messages', () => {
         const update = vi.fn();
         renderHook(() => useBotControlUpdates(undefined, 'ws-example', update));

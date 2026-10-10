@@ -146,6 +146,12 @@ describe('toProcessSummary — field completeness for notifications', () => {
         expect(summary.compaction?.priorStatus).toBe('completed');
     });
 
+    it('forwards Sentinel auto-compact state and omits it when unset', () => {
+        const autoCompact = { enabled: true, thresholdTokens: 700000, taskId: 'auto-1' };
+        expect(toProcessSummary(makeAIProcess({ metadata: { type: 'chat', autoCompact } })).autoCompact).toEqual(autoCompact);
+        expect('autoCompact' in toProcessSummary(makeAIProcess({ metadata: { type: 'chat' } }))).toBe(false);
+    });
+
     it('forwards settled compaction state (completed) so the client can release the running row', () => {
         const summary = toProcessSummary(makeAIProcess({
             status: 'completed',

@@ -239,7 +239,20 @@ unrecorded sends quarantine. Fixed display-only notices report known-owner failu
 Every part carries the full logical request ID, Desktop role and part number.
 Inbound guards verify self/account/destination/thread/owner and exact attempted
 content before commands/admission/reactions, including after cancellation/restart.
-Unsupported attachments receive a path-free marker. Final answers are bounded by
+WhatsApp captures only raw request uploads via `sentinel-mirror-attachments.ts`,
+never SDK paths, prompt references, paste cards or generated artifacts. PNG/JPEG/GIF/WebP
+use native images; other valid MIME files, including audio/video, use documents.
+Batches allow 10 attachments and 10 MiB decoded total; malformed, unsupported or
+oversize uploads reject admission before any part sends. Teams/reference-only inputs
+retain path-free unsupported markers.
+
+Upload bytes, filenames, MIME, sizes and integrity hashes persist inside the existing
+owning outbox's atomic receipt, independently of executor temporary files. Text parts
+precede ordered media filename captions; every part shares stable identity, confirmation
+and retry policy. Confirmed media discard their bytes; delivered/cancelled receipts
+discard remaining bytes. Offline/ambiguous receipts retain unsent bytes for recovery
+or explicit cancellation. Transport uncertainty is not exactly-once delivery and
+never triggers automatic replay. Final answers are bounded by
 their request; pending drain and stale parent terminal state cannot settle them.
 Empty completions require the exact completed task; taskless failures require local evidence.
 
@@ -289,7 +302,9 @@ answer-part ordering stays independent.
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`, `git status`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
-command" + generated help, never sent to the AI).
+command" + generated help, never sent to the AI). WhatsApp passes `platform: 'whatsapp'`,
+enabling the WhatsApp-only read-only `list todos` (alias `todo[s]`): not-Done, non-archived
+Sentinel ledger items of the quoted chat, else the selected topic (`messaging-todos.ts`).
 `formatMessagingHelp` derives grouped help from the command/mode specs. Routers
 use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 `MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own
@@ -346,8 +361,9 @@ other virtual workspaces are excluded. `git status` bypasses pending question an
 without changing selections or invoking AI. Native branch/change parsers and forge's
 WSL runner serve fixed status argv with optional locks disabled; safe-directory config,
 Git state and network remain untouched. Per-repo errors remain visible alongside
-successful summaries. Replies disclose local-tracking-ref freshness and use lossless
-connector text chunking.
+successful summaries. Each repo is one row: `name - clean`, or only the nonzero
+staged/unstaged/untracked/conflict counts (no branch or ahead/behind). Replies use
+lossless connector text chunking.
 
 ### Messaging ask_user question relay
 
@@ -459,6 +475,19 @@ follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` 
 top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection for it, so thread
 replies route to the job by root (a reply inside the dispatcher's thread would route to the
 dispatcher) and user selection is untouched.
+
+Automatic Sentinel compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
+`taskAdded`. `messaging/auto-compaction-origins.ts` picks the destination from the request whose
+response triggered it: that request's own WhatsApp receipt (current group, not released or
+notice-only), else its desktop-mirror capture while the mirror is enabled. Nothing is sent
+for unbound, manual, non-Sentinel or other-workspace cases. `taskStarted` records one
+`<taskId>:start` notice only while the compaction record still names the task. The outcome
+follows on the existing terminal path: fixed wording plus removed-message/freed-token counts,
+never summaries, errors or history. Cancellation before start says it never ran. An unsent
+start is dropped once the outcome is pending. Every part rechecks the captured binding:
+released or moved bindings suppress, never retarget. Notices wait while the triggering answer
+is undelivered, and the answer relay's `onSettled` wakes them. Mirror origins use
+`authorizeCapturedOrigin(origin, owner)` instead.
 
 Parent Sentinel results use `MessagingJobNotices.queueResult` with the stable review receipt
 and the connector origin captured in `delegated-jobs.json` before admission. The owning

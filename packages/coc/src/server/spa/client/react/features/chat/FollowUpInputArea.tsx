@@ -29,6 +29,7 @@ import { ChatStyleSelector } from './ChatStyleSelector';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
+import type { ContextAutoCompact } from '../../ui/ContextUsagePopover';
 import { useContainerWidth } from './hooks/useContainerWidth';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
@@ -188,6 +189,8 @@ export interface FollowUpInputAreaProps {
     sessionToolTokens?: number;
     /** Conversation-history token count (Copilot SDK only). */
     sessionConversationTokens?: number;
+    /** Sentinel auto-compact state and popover section for the context gauge. */
+    contextAutoCompact?: ContextAutoCompact;
     /** Provider of the active native session; pending composer selection is kept separate. */
     activeProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Confirmed composer provider. It may differ from activeProvider until Send. */
@@ -307,6 +310,7 @@ export function FollowUpInputArea({
     sessionSystemTokens,
     sessionToolTokens,
     sessionConversationTokens,
+    contextAutoCompact,
     activeProvider,
     selectedProvider,
     providerOptions = [],
@@ -1348,6 +1352,7 @@ export function FollowUpInputArea({
                                             sessionSystemTokens={sessionSystemTokens}
                                             sessionToolTokens={sessionToolTokens}
                                             sessionConversationTokens={sessionConversationTokens}
+                                            autoCompact={contextAutoCompact}
                                         />
                                     </div>
                                 </div>

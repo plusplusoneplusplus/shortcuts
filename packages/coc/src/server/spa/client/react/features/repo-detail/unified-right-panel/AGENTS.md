@@ -91,7 +91,7 @@ from same-id clones never merge into one tab.
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | One Git tab per chat (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu; `unifiedGitTabId` takes the chat id). Only the shown chat's tab mounts, so the host stays one node per panel scope. On a chat switch `useSplitGitPanel` hands `RepoGitTab` a new `viewScopeKey`, which cancels pending lookups and restores that chat's `gitView` or clears the selection. Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
-| `sentinelTodoPanelModel.ts` + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
+| `sentinelTodoPanelModel.ts` (+ dependency-free `sentinelTodoStatusModel.ts`, shared with WhatsApp `list todos`) + `sentinelTodoChats.ts` + `UnifiedTodoTab.tsx` | A Sentinel chat's To-do tab (see "Sentinel To-do"). |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
@@ -653,9 +653,23 @@ asynchronously), and hides the `+` menu's To-do entry.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
-and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` lists
-active items (Needs attention, In progress, To do), then collapsed Done and
-Archived sections. Every write carries the item revision it was based on; a
+and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` splits the ledger by item type
+(`sentinelTodoType`; a missing type reads as normal) through
+`sentinelTodoSections(items, type)`. `sentinelTodoDisplayStatus` derives In review
+from local pending assessment evidence, independently of persisted fulfillment status
+and result delivery. Running/queued follow-ups stay In progress, and each job retains
+its own assessment label. New unavailable/unknown follow-ups keep the stored status.
+Done, archived, manual and user-superseded items retain their verdicts; failed delivery
+needs attention. Normal tracking lists active items (Needs attention, In review,
+In progress, To do; oldest first within a display status), then the Manual
+tracking region, then normal collapsed Done and Archived sections. Manual tracking is a labelled region whose
+`aria-expanded` toggle, named `Manual tracking (<active> active)`, starts
+expanded. It stays visible when empty (`No manual items yet.`), has its own
+**Add manual item** form (required Title; optional Notes, Done when and Priority;
+creates send `type: 'manual'`, normal creates send no type), and its own
+initially collapsed Done and Archived groups. Reopening returns an item to the
+active list. The tab never offers delegation, conversion or copying. Each add form
+owns its draft and idempotency key (`useAddItemForm`). Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
 Late loads are dropped by a sequence counter. Choosing Needs attention requires a

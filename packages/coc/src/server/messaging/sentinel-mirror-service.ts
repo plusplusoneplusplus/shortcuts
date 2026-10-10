@@ -4,10 +4,11 @@ import { normalizeChatMode } from '../tasks/task-types';
 import { onTaskTerminal } from './chat-target';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { findRequestAnswer, findRequestFailureEvidence, findRequestFailureText, findRequestTurn, isTerminalStatus, RELAY_ANSWER_TEXT } from './relay-answer';
-import { SentinelMirrorOutbox, type SentinelMirrorEntry } from './sentinel-mirror-outbox';
+import { mirrorAttachmentPartIndex, SentinelMirrorOutbox, type SentinelMirrorEntry } from './sentinel-mirror-outbox';
 import { mirrorChunkEchoMatches, mirrorEchoText, mirrorRetryAfterMs, mirrorSendOutcome, sameMirrorDestination, type SentinelMirrorAdapter } from './sentinel-mirror-adapters';
 import type { QuestionRelayLocation } from './ask-user-relay';
 import type { MessagingJobOrigin, MessagingOriginAuthority } from './job-notices';
+import { captureMirrorUploads, MirrorAttachmentError, type MirrorUploadSource } from './sentinel-mirror-attachments';
 
 export interface SentinelMirrorDeps {
     dataDir: string;
@@ -68,19 +69,20 @@ export class SentinelMirrorService {
 
     /** The receipt is staged before the queue/pending/turn write, not after an observer fires. */
     async capture(
-        workspaceId: string, processId: string, content: string, attachmentCount = 0,
+        workspaceId: string, processId: string, content: string, attachmentCount: number | MirrorUploadSource = 0,
         requestId = randomUUID(),
     ): Promise<SentinelMirrorEntry | undefined> {
         try {
             return await this.captureBound(workspaceId, processId, content, attachmentCount, requestId);
-        } catch {
+        } catch (error) {
+            if (error instanceof MirrorAttachmentError) throw error;
             this.logFailure();
             throw new Error('Sentinel mirror durable admission is unavailable. The submission was not accepted.');
         }
     }
 
     private async captureBound(
-        workspaceId: string, processId: string, content: string, attachmentCount: number, requestId: string,
+        workspaceId: string, processId: string, content: string, attachmentCount: number | MirrorUploadSource, requestId: string,
     ): Promise<SentinelMirrorEntry | undefined> {
         if (!this.deps.enabled()) return;
         await this.ensureReady();
@@ -100,9 +102,23 @@ export class SentinelMirrorService {
         // Multiple physical owners are ambiguous even if they happen to share a display name.
         const destinations = [...new Map(candidates.map(dest => [JSON.stringify(dest), dest])).values()];
         if (destinations.length !== 1) return;
+        const uploads = typeof attachmentCount !== 'number' && destinations[0].connector === 'whatsapp'
+            ? captureMirrorUploads(attachmentCount) : [];
+        const count = typeof attachmentCount === 'number' ? attachmentCount
+            : uploads.length || (Array.isArray(attachmentCount.attachments) ? attachmentCount.attachments.length
+                : Array.isArray(attachmentCount.images) ? attachmentCount.images.length : 0);
+        const adapter = this.deps.adapters.find(candidate => candidate.connector === destinations[0].connector)!;
+        if (uploads.length && destinations[0].connector === 'whatsapp') {
+            if (!adapter.validateAttachments || !adapter.sendAttachment) {
+                throw new MirrorAttachmentError('Attachment delivery is unavailable.');
+            }
+            adapter.validateAttachments(uploads);
+        }
         const entry = this.outbox.stage({
             workspaceId, processId, requestId, role: 'user', destination: destinations[0],
-            content: content + (attachmentCount ? `\n\n[${attachmentCount} attachment(s) cannot be mirrored; view them in the desktop chat.]` : ''),
+            content: content + (count && (destinations[0].connector !== 'whatsapp' || !uploads.length)
+                ? `\n\n[${count} attachment(s) cannot be mirrored; view them in the desktop chat.]` : ''),
+            ...(uploads.length && destinations[0].connector === 'whatsapp' ? { attachments: uploads } : {}),
         });
         this.activeAdmissions.add(entry.eventId);
         return entry;
@@ -135,7 +151,7 @@ export class SentinelMirrorService {
     }
 
     /** New queue submissions can address an existing, already-bound process or a bound queued initial task. */
-    async captureTask(input: CreateTaskInput, content?: string): Promise<SentinelMirrorEntry | undefined> {
+    async captureTask(input: CreateTaskInput, content?: string, uploads?: MirrorUploadSource): Promise<SentinelMirrorEntry | undefined> {
         if (!this.deps.enabled() || input.type !== 'chat') return;
         const payload = input.payload as Record<string, unknown>;
         const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : input.repoId;
@@ -145,8 +161,7 @@ export class SentinelMirrorService {
             || (input.repoId && input.repoId !== workspaceId) || typeof payload.prompt !== 'string') return;
         // Client-supplied relay identifiers do not grant mirror origin or deduplication authority.
         const entry = await this.capture(workspaceId, processId, content ?? payload.prompt,
-            Array.isArray(payload.fileAttachmentMeta) ? payload.fileAttachmentMeta.length
-                : Array.isArray(payload.attachments) ? payload.attachments.length : Array.isArray(payload.images) ? payload.images.length : 0);
+            uploads ?? { attachments: payload.attachments, images: payload.images });
         if (entry) {
             payload.workspaceId = entry.workspaceId;
             payload.relayRequestId = entry.requestId;
@@ -462,6 +477,7 @@ export class SentinelMirrorService {
             || proc.conversationTurns?.some(turn => turn.relayRequestId === id)) return;
         const detail = row.failure === 'unknown'
             ? 'Delivery is uncertain. Automatic replay is paused to avoid duplicates; reconcile the messaging conversation manually.'
+            : row.failure === 'attachment-invalid' ? 'Stored attachment bytes are unavailable or invalid. Delivery stopped; already confirmed parts were not resent.'
             : row.failure === 'unbound' ? 'Delivery stopped because the captured messaging binding is unavailable.'
                 : row.failure === 'cancelled' ? 'Pending delivery cancelled.'
                     : 'Delivery was not confirmed. The unsent part will retry with bounded backoff while the captured binding remains active.';
@@ -542,6 +558,20 @@ export class SentinelMirrorService {
                 if (availability === 'unbound') {
                     this.cancelCapture(row, 'unbound');
                 } else if (availability === 'ready' && (row.state === 'pending' || row.state === 'retryable')) {
+                    const remainingMedia = (row.attachments ?? []).slice(row.chunks.length
+                        ? Math.max(0, mirrorAttachmentPartIndex(row, row.nextPart)) : 0);
+                    try {
+                        if (remainingMedia.length) {
+                            if (!adapter.validateAttachments || !adapter.sendAttachment) {
+                                throw new MirrorAttachmentError('Attachment delivery is unavailable.');
+                            }
+                            adapter.validateAttachments(remainingMedia);
+                        }
+                    } catch (error) {
+                        if (!(error instanceof MirrorAttachmentError)) throw error;
+                        this.outbox.invalidateAttachments(row.workspaceId, row.eventId);
+                        continue;
+                    }
                     if (!row.chunks.length) this.outbox.prepare(row.workspaceId, row.eventId, adapter.format(row));
                     let current = this.outbox.list(row.workspaceId).find(entry => entry.eventId === row.eventId)!;
                     while (!this.disposed && this.deps.enabled() && adapter.availability(current) === 'ready') {
@@ -563,7 +593,11 @@ export class SentinelMirrorService {
                         if (!attempt) break;
                         let id: string;
                         try {
-                            id = await adapter.send(current.destination, current.chunks[current.nextPart]);
+                            const mediaIndex = mirrorAttachmentPartIndex(current, current.nextPart);
+                            const attachment = mediaIndex >= 0 ? current.attachments?.[mediaIndex] : undefined;
+                            id = attachment
+                                ? await adapter.sendAttachment!(current.destination, attachment, current.chunks[current.nextPart])
+                                : await adapter.send(current.destination, current.chunks[current.nextPart]);
                             if (!id?.trim()) throw new Error('Missing send receipt');
                         } catch (error) {
                             this.outbox.failPart(row.workspaceId, row.eventId, attempt, mirrorSendOutcome(error), mirrorRetryAfterMs(error));

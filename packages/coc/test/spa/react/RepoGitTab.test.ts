@@ -489,7 +489,7 @@ describe('RepoGitTab', () => {
 
         it('persists interval changes via patchRepo with the full autoPull object', () => {
             expect(source).toContain('const setAutoPull = useCallback((next: AutoPullSetting)');
-            expect(source).toContain('cloneClient.preferences.patchRepo(workspaceId, { autoPull: next })');
+            expect(source).toContain('patchRepoPreferences(cloneClient, workspaceId, { autoPull: next })');
         });
     });
 

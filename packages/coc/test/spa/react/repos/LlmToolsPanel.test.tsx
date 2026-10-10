@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     addToast: vi.fn(),
     preferences: {
+        getRepo: vi.fn(),
         getLlmToolsConfig: vi.fn(),
         updateLlmToolsConfig: vi.fn(),
     },
@@ -20,6 +21,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => (
 }));
 
 import { LlmToolsPanel } from '../../../../src/server/spa/client/react/features/repo-settings/LlmToolsPanel';
+import { getSpaCocClient } from '../../../../src/server/spa/client/react/api/cocClient';
+import { getRepoPreferences, peekRepoPreferences } from '../../../../src/server/spa/client/react/api/repoPreferences';
 
 const TOOLS = [
     {
@@ -76,6 +79,22 @@ describe('LlmToolsPanel', () => {
         expect((screen.getByTestId('llm-tool-toggle-tavily_web_search') as HTMLInputElement).checked).toBe(false);
     });
 
+    it('ignores a late tool config from the previous workspace before writing', async () => {
+        let resolveOld!: (config: unknown) => void;
+        mocks.preferences.getLlmToolsConfig.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+        const view = render(<LlmToolsPanel workspaceId="old-owner" />);
+        view.rerender(<LlmToolsPanel workspaceId="new-owner" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+        await act(async () => {
+            resolveOld({ tools: TOOLS, disabledLlmTools: ['demo_tool', 'old-only-tool'] });
+        });
+        expect(screen.getByTestId('llm-tool-toggle-demo_tool')).toBeChecked();
+        await act(async () => { fireEvent.click(screen.getByTestId('llm-tool-toggle-demo_tool')); });
+        expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith('new-owner', {
+            disabledLlmTools: ['tavily_web_search', 'demo_tool'],
+        });
+    });
+
     it.each(['save_memory', 'recall_memory'])('enables %s independently through its existing toggle', async name => {
         const memoryTools = ['save_memory', 'recall_memory'].map(toolName => ({
             name: toolName, label: toolName, description: 'Memory V2 tool', enabledByDefault: false,
@@ -108,6 +127,21 @@ describe('LlmToolsPanel', () => {
         expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith('repo-a', {
             disabledLlmTools: ['tavily_web_search', 'demo_tool'],
         });
+    });
+
+    it.each([true, false])('invalidates shared repo preferences only when the tool mutation succeeds (%s)', async succeeds => {
+        mocks.preferences.getRepo.mockResolvedValue({ disabledLlmTools: ['tavily_web_search'] });
+        const client = getSpaCocClient();
+        await getRepoPreferences(client, 'repo-a');
+        render(<LlmToolsPanel workspaceId="repo-a" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-demo_tool')).toBeTruthy());
+        if (!succeeds) mocks.preferences.updateLlmToolsConfig.mockRejectedValueOnce(new Error('save failed'));
+        await act(async () => { fireEvent.click(screen.getByTestId('llm-tool-toggle-demo_tool')); });
+        expect(peekRepoPreferences(client, 'repo-a')).toEqual(
+            succeeds ? undefined : { disabledLlmTools: ['tavily_web_search'] },
+        );
+        await getRepoPreferences(client, 'repo-a');
+        expect(mocks.preferences.getRepo).toHaveBeenCalledTimes(succeeds ? 2 : 1);
     });
 
     it('preserves explicit empty disabled-tool override arrays when enabling all tools', async () => {

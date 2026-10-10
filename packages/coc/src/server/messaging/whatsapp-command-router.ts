@@ -19,8 +19,9 @@ import { PendingImages, PendingImagesError, type PendingImageScope } from './pen
 import { createCache } from '../cache';
 
 import { LocalTopicMemory } from './local-topics';
+import { listTodosReply, TODOS_NO_TARGET_REPLY, type MessagingTodoReader } from './messaging-todos';
 
-const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*` };
+const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*`, platform: 'whatsapp' as const };
 
 interface PendingImageReference {
     scope: PendingImageScope;
@@ -51,6 +52,8 @@ export interface WhatsAppRouterDeps {
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
     isOwnMirrorMessage?: (message: InboundWAMessage) => boolean | Promise<boolean>;
+    /** Read-only Sentinel to-do ledgers for `list todos`; undefined while the ledger is off. */
+    getTodos?: () => MessagingTodoReader | undefined;
 }
 
 function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding): task is QueuedTask {
@@ -101,7 +104,7 @@ export class WhatsAppCommandRouter {
         const generation = this.generation;
         if (this.deps.isOwnMirrorMessage && await this.deps.isOwnMirrorMessage(msg)) return;
         if (this.disposed || signal?.aborted || generation !== this.generation) return;
-        const command = parseMessagingCommand(msg.text);
+        const command = parseMessagingCommand(msg.text, 'whatsapp');
         if (command.type === 'invalid' || isMessagingControlCommand(command)) {
             await this.handleMessage(msg, signal);
             return;
@@ -116,6 +119,22 @@ export class WhatsAppCommandRouter {
         }
     }
 
+    /**
+     * `list todos` reads the quoted message's chat when the quote is a known
+     * binding, else the selected topic; it never scans other chats or repos.
+     */
+    private async todosReply(msg: InboundWAMessage): Promise<string> {
+        const workspaces = await this.deps.store.getWorkspaces();
+        const quoted = msg.quotedMessageId ? this.deps.bindings.findMessage(msg.quotedMessageId) : undefined;
+        if (quoted?.releaseState !== undefined) return 'Quoted topic binding is unavailable. Select a topic or create a new one.';
+        const workspaceId = quoted?.workspaceId ?? resolveChatWorkspace(workspaces, this.deps.bindings.selectedRepo)?.id;
+        const processId = quoted ? quoted.processId : workspaceId ? this.deps.bindings.topic(workspaceId) : null;
+        if (!workspaceId || !processId) return TODOS_NO_TARGET_REPLY;
+        // Bindings name local chats only; a chat this server does not hold is never read from another ledger.
+        if (!workspaces.some(ws => ws.id === workspaceId)) return '❌ That chat\'s repo is not on this server. Select a local topic.';
+        return listTodosReply(this.deps.getTodos?.(), this.deps.store, { workspaceId, processId });
+    }
+
     private async handleMessage(msg: InboundWAMessage, signal?: AbortSignal): Promise<void> {
         if (this.disposed || signal?.aborted || !msg.fromMe || !this.deps.groupJid() || msg.chatJid !== this.deps.groupJid()
             || !msg.messageId || this.deps.bindings.isKnownMessage(msg.messageId)) return;
@@ -128,7 +147,7 @@ export class WhatsAppCommandRouter {
         const selectionVersion = this.selectionVersion;
         const hadPendingImages = this.pendingImages.has(context);
         const hasImages = !!msg.images?.length;
-        const parsed = parseMessagingCommand(msg.text);
+        const parsed = parseMessagingCommand(msg.text, 'whatsapp');
         const explicit = hasImages && parsed.type === 'chat' ? /^\[([^\]]+)\]$/.exec(parsed.args) : null;
         const command = explicit && parsed.type === 'chat'
             ? { type: 'chat-explicit' as const, chatId: explicit[1].trim(), args: '', mode: parsed.mode } : parsed;
@@ -170,7 +189,7 @@ export class WhatsAppCommandRouter {
                 if (bindings.isKnownMessage(msg.messageId)) return;
                 bindings.recordOutbound(msg.messageId);
                 await react();
-                const text = await handleMessagingCommand(command, {
+                const text = command.type === 'list-todos' ? await this.todosReply(msg) : await handleMessagingCommand(command, {
                     store: this.deps.store,
                     dataDir: this.deps.dataDir,
                     readGitStatus: this.deps.readGitStatus,
@@ -202,7 +221,7 @@ export class WhatsAppCommandRouter {
                         },
                     },
                 });
-                for (const part of command.type === 'git-status' ? chunkWhatsAppText(text) : [text]) await reply(part);
+                for (const part of command.type === 'git-status' || command.type === 'list-todos' ? chunkWhatsAppText(text) : [text]) await reply(part);
                 return;
             }
             const workspaces = await this.deps.store.getWorkspaces();

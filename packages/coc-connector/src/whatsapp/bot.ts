@@ -2,11 +2,12 @@
  * WhatsAppBot — high-level bot API wrapping Baileys connection.
  */
 
-import type { BotOptions, BotStatus, InboundWAMessage, WASocket } from './types';
+import type { BotOptions, BotStatus, InboundWAMessage, WASocket, WhatsAppOutboundMedia } from './types';
 import { createHash } from 'node:crypto';
 import type { ConnectorStatus, MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { createBaileysConnection } from './connection';
 import { createWhatsAppImage } from './inbound-image';
+import { prepareWhatsAppMedia, WhatsAppMediaError } from './outbound-media';
 
 const RECENT_MESSAGE_LIMIT = 500;
 
@@ -111,9 +112,45 @@ export class WhatsAppBot implements MessagingConnector {
         if (!this.sock) {
             throw new Error('WhatsAppBot is not started');
         }
-        // The normalized replyToId maps to a WhatsApp quoted message. Baileys throws
-        // when the quoted message has no body, so fall back to an empty one.
-        const sendOpts = opts?.replyToId
+        const result = await this.sock.sendMessage(jid, { text }, this.quoteOptions(jid, opts));
+        const msgId = result.key.id ?? '';
+        if (msgId) {
+            this._sentMessageIds.add(msgId);
+            this.rememberMessage(msgId, { conversation: text });
+        }
+        return msgId;
+    }
+
+    /** Send native raster images or documents; uncertain delivery throws without replay. */
+    async sendMedia(jid: string, media: WhatsAppOutboundMedia, opts?: SendOptions): Promise<string> {
+        const content = prepareWhatsAppMedia(media);
+        const sock = this.sock;
+        if (!sock || !this.isConnected()) throw new WhatsAppMediaError('disconnected');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const result = await Promise.race([
+                sock.sendMessage(jid, content, this.quoteOptions(jid, opts)),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new WhatsAppMediaError('timeout')), 30_000);
+                }),
+            ]);
+            const msgId = result?.key?.id;
+            if (typeof msgId !== 'string' || !msgId.trim()) throw new WhatsAppMediaError('send');
+            this._sentMessageIds.add(msgId);
+            // Cache the encoded receipt, never decoded attachment bytes.
+            this.rememberMessage(msgId, result.message ?? { conversation: media.caption ?? '' });
+            return msgId;
+        } catch (error) {
+            if (error instanceof WhatsAppMediaError) throw error;
+            throw new WhatsAppMediaError('send');
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    private quoteOptions(jid: string, opts?: SendOptions): Parameters<WASocket['sendMessage']>[2] {
+        // Baileys needs a body as well as a key to build a quoted reply.
+        return opts?.replyToId
             ? {
                 quoted: {
                     key: { remoteJid: jid, id: opts.replyToId, fromMe: true },
@@ -121,13 +158,6 @@ export class WhatsAppBot implements MessagingConnector {
                 },
             }
             : undefined;
-        const result = await this.sock.sendMessage(jid, { text }, sendOpts);
-        const msgId = result.key.id ?? '';
-        if (msgId) {
-            this._sentMessageIds.add(msgId);
-            this.rememberMessage(msgId, { conversation: text });
-        }
-        return msgId;
     }
 
     /** React to a message; reject if Baileys does not complete within five seconds. */

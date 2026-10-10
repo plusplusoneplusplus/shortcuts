@@ -17,7 +17,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { AIProcess, MarkdownComment, ProcessCompactionState } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../logging/server-logger';
 import { isLoopbackOrigin } from '../shared/cors';
-import type { BotControlPresentation } from '@plusplusoneplusplus/coc-client';
+import type { BotControlPresentation, ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { projectBotControl } from '../processes/bot-control-read-model';
 
 // ============================================================================
@@ -81,6 +81,8 @@ export interface ProcessSummary {
      * the process never ran `/compact`.
      */
     compaction?: ProcessCompactionState;
+    /** Sentinel auto-compact setting and runtime state (`metadata.autoCompact`). */
+    autoCompact?: ProcessAutoCompactState;
 }
 
 /** Lightweight queue task summary for WebSocket messages. */
@@ -523,6 +525,7 @@ export function toProcessSummary(process: AIProcess, botManagedConversationsEnab
         lastEventAt: process.lastEventAt instanceof Date ? process.lastEventAt.toISOString() : (process.lastEventAt ? String(process.lastEventAt) : undefined),
         pendingAskUserCount: askUserCount > 0 ? askUserCount : 0,
         compaction: process.metadata?.compaction,
+        ...(process.metadata?.autoCompact ? { autoCompact: process.metadata.autoCompact as ProcessAutoCompactState } : {}),
         ...(botControl ? { botControl } : {}),
     };
 }

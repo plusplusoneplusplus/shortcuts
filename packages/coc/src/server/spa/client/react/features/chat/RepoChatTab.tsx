@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { cn } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
+import { readWorkspaceQueue, workspaceReadSource } from '../../api/workspaceReads';
 import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
@@ -327,22 +328,26 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         setHasMore(nextHasMore);
     }, [workspaceId, queueDispatch, cloneClient, withPendingChatStamps]);
 
-    const fetchQueueAndHistory = useCallback(async () => {
+    const fetchGenerationRef = useRef(0);
+    useEffect(() => () => { fetchGenerationRef.current++; }, []);
+    const fetchQueueAndHistory = useCallback(async (refresh = false) => {
         // In container mode, skip fetch if agent hasn't been resolved yet —
         // the effect will re-fire once currentAgentId is set.
         if (isContainerMode() && !appState.currentAgentId) return;
+        const generation = ++fetchGenerationRef.current;
         try {
             const client = cloneClient;
             const groupPinsRequest = typeof client.processes.listGroupPins === 'function'
                 ? client.processes.listGroupPins(workspaceId).catch(() => null)
                 : Promise.resolve(null);
             const [queueData, historyData, forEachData, mapReduceData, groupPinsData] = await Promise.all([
-                client.queue.list({ repoId: workspaceId }).catch(() => null),
+                readWorkspaceQueue(client, workspaceId, refresh).catch(() => null),
                 client.workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
                 isForEachEnabled() ? client.forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
                 isMapReduceEnabled() ? client.mapReduce.list(workspaceId).catch(() => null) : Promise.resolve(null),
                 groupPinsRequest,
             ]);
+            if (generation !== fetchGenerationRef.current) return;
             // Only update queue/pause state when the queue fetch actually succeeded —
             // a transient network error must not clear the running list out from under
             // the user (this was the "no tasks in queue" flash on rapid repo switches).
@@ -366,6 +371,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 queueDispatch({
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: workspaceId,
+                    source: workspaceReadSource(client),
                     queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
                 });
             }
@@ -785,7 +791,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             } else {
                 await cloneClient.queue.pause({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
             }
-            await fetchQueue();
+            await fetchQueue(true);
         } finally {
             setIsPauseResumeLoading(false);
         }
@@ -795,7 +801,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         setIsRepoGateReleaseLoading(true);
         try {
             await cloneClient.queue.releaseRepoGate({ repoId: workspaceId });
-            await fetchQueue();
+            await fetchQueue(true);
         } finally {
             setIsRepoGateReleaseLoading(false);
         }
@@ -809,7 +815,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             } else {
                 await cloneClient.queue.pauseAutopilot({ repoId: workspaceId }, isQueuePauseOptions(options) ? options : undefined);
             }
-            await fetchQueue();
+            await fetchQueue(true);
         } finally {
             setIsAutopilotPauseLoading(false);
         }
@@ -820,19 +826,19 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             { scope, delayMinutes },
             { repoId: workspaceId },
         );
-        await fetchQueue();
+        await fetchQueue(true);
     }
 
     async function handleSkipTaskDelay(scope: 'all' | 'autopilot') {
         await cloneClient.queue.skipTaskDelay(scope, { repoId: workspaceId });
-        await fetchQueue();
+        await fetchQueue(true);
     }
 
     const handleRefresh = useCallback(async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
         try {
-            await fetchQueue();
+            await fetchQueue(true);
         } finally {
             setIsRefreshing(false);
         }

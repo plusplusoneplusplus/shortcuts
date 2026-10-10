@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GitAutoPullStatusResponse } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { getRepoPreferences, patchRepoPreferences } from '../../../api/repoPreferences';
 import type { AutoPullSetting } from '../GitAutoPullControl';
 
 /**
@@ -70,7 +71,7 @@ export function useGitAutoPullController({
     useEffect(() => {
         setAutoPullState(undefined);
         const scope = workspaceId;
-        cloneClient.preferences.getRepo(workspaceId)
+        getRepoPreferences(cloneClient, workspaceId)
             .then(prefs => {
                 if (workspaceRef.current !== scope) return;
                 if (prefs?.autoPull) setAutoPullState(prefs.autoPull);
@@ -93,7 +94,7 @@ export function useGitAutoPullController({
     // preference change, so re-read the status once that has landed.
     const setAutoPull = useCallback((next: AutoPullSetting) => {
         setAutoPullState(next);
-        cloneClient.preferences.patchRepo(workspaceId, { autoPull: next })
+        patchRepoPreferences(cloneClient, workspaceId, { autoPull: next })
             .then(() => { setTimeout(refreshStatus, STATUS_REFRESH_AFTER_WRITE_MS); })
             .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps

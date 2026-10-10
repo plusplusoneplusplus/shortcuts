@@ -8,31 +8,59 @@
  * exits 75, an external supervisor re-forks it); the desktop-shell guard that
  * hides the controls stays at the call sites.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import type { AdminConfigResponse } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 
 export interface UseServerRuntimeOptions {
     addToast: (message: string, type: 'success' | 'error') => void;
-    /** Reloads the admin config after a successful display-name save. */
-    reloadConfig: () => Promise<void>;
+    /** Updates config metadata without rehydrating unrelated draft cards. */
+    onSaved: (config: AdminConfigResponse) => void;
 }
 
-export function useServerRuntime({ addToast, reloadConfig }: UseServerRuntimeOptions) {
-    const [serverName, setServerName] = useState('');
+export function useServerRuntime({ addToast, onSaved }: UseServerRuntimeOptions) {
+    const [serverName, setServerNameState] = useState('');
+    const [serverNameSnapshot, setServerNameSnapshot] = useState<string | null>(null);
+    const [serverNameSaving, setServerNameSaving] = useState(false);
+    const nameRef = useRef<{ draft: string; saved: string | null; saving: boolean }>({ draft: '', saved: null, saving: false });
     const [restarting, setRestarting] = useState(false);
     const [restartStatus, setRestartStatus] = useState<string>('');
 
+    const setServerName = useCallback((value: string) => {
+        nameRef.current.draft = value;
+        setServerNameState(value);
+    }, []);
+
+    const hydrateServerName = useCallback((value: string) => {
+        const state = nameRef.current;
+        if (state.saving) return;
+        if (state.saved === null || state.draft.trim() === state.saved) setServerName(value);
+        state.saved = value.trim();
+        setServerNameSnapshot(state.saved);
+    }, [setServerName]);
+
     const handleSaveServerName = useCallback(async () => {
-        const trimmed = serverName.trim();
+        const state = nameRef.current;
+        const draft = state.draft;
+        const trimmed = draft.trim();
+        if (state.saving || state.saved === null || trimmed === state.saved) return;
+        // All entry points share admission before React can render saving state.
+        state.saving = true;
+        setServerNameSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ 'serve.serverName': trimmed || null });
-            setServerName(trimmed);
+            const config = await getSpaCocClient().admin.updateConfig({ 'serve.serverName': trimmed || null });
+            state.saved = trimmed;
+            setServerNameSnapshot(trimmed);
+            if (state.draft === draft) setServerName(trimmed);
+            onSaved(config);
             addToast('Server name saved — takes effect on next page reload', 'success');
-            await reloadConfig();
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Could not save server name'), 'error');
+        } finally {
+            state.saving = false;
+            setServerNameSaving(false);
         }
-    }, [serverName, addToast, reloadConfig]);
+    }, [setServerName, addToast, onSaved]);
 
     const handleRestart = useCallback(async () => {
         setRestarting(true);
@@ -61,7 +89,9 @@ export function useServerRuntime({ addToast, reloadConfig }: UseServerRuntimeOpt
     }, [addToast]);
 
     return {
-        serverName, setServerName,
+        serverName, setServerName, hydrateServerName,
+        serverNameDirty: serverNameSnapshot !== null && serverName.trim() !== serverNameSnapshot,
+        serverNameSaving,
         handleSaveServerName,
         restarting, restartStatus, handleRestart,
     };

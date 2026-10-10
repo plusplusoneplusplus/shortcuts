@@ -8,10 +8,13 @@ import type { Route } from '../../../src/server/types';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { registerSentinelTodoRoutes } from '../../../src/server/sentinel-todos/sentinel-todo-routes';
+import { atomicWriteJsonUnique } from '../../../src/server/shared/fs-utils';
+import { CocClient } from '@plusplusoneplusplus/coc-client';
 
 const processes: Record<string, { mode: string; workspaceId: string }> = {
     queue_s1: { mode: 'sentinel', workspaceId: 'ws-a' },
     queue_s2: { mode: 'sentinel', workspaceId: 'group-team' },
+    queue_s3: { mode: 'sentinel', workspaceId: 'ws-a' },
     queue_ask: { mode: 'ask', workspaceId: 'ws-a' },
 };
 
@@ -106,6 +109,115 @@ describe('Sentinel to-do routes', () => {
         expect(stale.status).toBe(409);
         expect(stale.body).toMatchObject({ code: 'conflict', current: { title: 'First', revision: 2 } });
         expect((await req(s.baseUrl, 'GET', ledger)).body.items[0].title).toBe('First');
+    });
+
+    it('accepts exact user review evidence through the revision-checked client API', async () => {
+        const s = await track(await startServer());
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const { item } = await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Feature' });
+        const todos = new SentinelTodoStore(s.dataDir);
+        const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
+        todos.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
+        });
+        todos.recordJobResult(owner, 'queue_child', { terminalEventId: 'event', outcome: 'completed' }, () => 'Completed');
+        const current = (await client.sentinelTodos.get('ws-a', 'queue_s1')).items[0];
+        expect(current.jobs[0].execution).toMatchObject({ review: { assessment: 'pending' } });
+        const reviewedJobs = [{ processId: 'queue_child', terminalEventId: 'event' }];
+        await expect(client.sentinelTodos.update('ws-a', 'queue_s1', item.id, {
+            expectedRevision: 1, status: 'todo', reviewedJobs,
+        })).rejects.toMatchObject({ status: 409 });
+        await client.sentinelTodos.update('ws-a', 'queue_s1', item.id, {
+            expectedRevision: current.revision, status: 'todo', reviewedJobs,
+        });
+        const assessed = (await client.sentinelTodos.get('ws-a', 'queue_s1')).items[0];
+        expect(assessed.status).toBe('todo');
+        expect(assessed.jobs[0].execution).toMatchObject({ review: { assessment: 'reviewed', terminalEventId: 'event' } });
+        expect(s.onChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('round-trips manual items through the client and API with replay and revision protection', async () => {
+        const s = await track(await startServer());
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const created = await client.sentinelTodos.create('ws-a', 'queue_s1', {
+            type: 'manual', title: 'Check release', idempotencyKey: 'manual-k1',
+        });
+        expect(created.item).toMatchObject({
+            type: 'manual', status: 'todo', priority: 'regular', notes: '', completionCondition: '', jobs: [],
+        });
+        const retry = await client.sentinelTodos.create('ws-a', 'queue_s1', {
+            type: 'normal', title: 'Retry cannot convert', idempotencyKey: 'manual-k1',
+        });
+        expect(retry).toMatchObject({ created: false, item: created.item, ledgerRevision: 1 });
+        const edited = await client.sentinelTodos.update('ws-a', 'queue_s1', created.item.id, {
+            expectedRevision: 1, notes: 'Read notes', priority: 'high',
+        });
+        expect(edited.item).toMatchObject({ type: 'manual', revision: 2, priority: 'high' });
+        await expect(client.sentinelTodos.update('ws-a', 'queue_s1', created.item.id, {
+            expectedRevision: 1, title: 'Stale',
+        })).rejects.toMatchObject({
+            code: 'conflict', body: { current: { type: 'manual', title: 'Check release', revision: 2 } },
+        });
+        const rejected = await req(s.baseUrl, 'PATCH', `${ledger}/items/${created.item.id}`, {
+            expectedRevision: 2, type: 'normal',
+        });
+        expect(rejected).toMatchObject({ status: 400, body: { code: 'invalid' } });
+        expect(s.onChange).toHaveBeenCalledTimes(2);
+        expect(await client.sentinelTodos.get('ws-a', 'queue_s1')).toMatchObject({
+            revision: 2, items: [{ type: 'manual', title: 'Check release', notes: 'Read notes', revision: 2 }],
+        });
+        const restarted = await track(await startServer({ dataDir: s.dataDir }), false);
+        expect((await new CocClient({ baseUrl: restarted.baseUrl }).sentinelTodos.get('ws-a', 'queue_s1')).items)
+            .toEqual((await client.sentinelTodos.get('ws-a', 'queue_s1')).items);
+    });
+
+    it('isolates manual items across chats, groups, and same-ID owners on separate servers', async () => {
+        const local = await track(await startServer());
+        const remote = await track(await startServer());
+        await req(local.baseUrl, 'POST', `${ledger}/items`, { type: 'manual', title: 'Local' });
+        const otherChat = '/api/workspaces/ws-a/sentinel-todos/queue_s3';
+        const group = '/api/workspaces/group-team/sentinel-todos/queue_s2';
+        await req(local.baseUrl, 'POST', `${otherChat}/items`, { type: 'manual', title: 'Other chat' });
+        await req(local.baseUrl, 'POST', `${group}/items`, { type: 'manual', title: 'Group' });
+        expect((await req(remote.baseUrl, 'GET', ledger)).body.items).toEqual([]);
+        await new CocClient({ baseUrl: remote.baseUrl }).sentinelTodos.create('ws-a', 'queue_s1', {
+            type: 'manual', title: 'Remote',
+        });
+        for (const [baseUrl, route, title] of [
+            [local.baseUrl, ledger, 'Local'], [local.baseUrl, otherChat, 'Other chat'],
+            [local.baseUrl, group, 'Group'], [remote.baseUrl, ledger, 'Remote'],
+        ]) {
+            expect((await req(baseUrl, 'GET', route)).body.items).toMatchObject([{ type: 'manual', title }]);
+            expect((await req(baseUrl, 'GET', route)).body.items).toHaveLength(1);
+        }
+    });
+
+    it('keeps failed manual writes unpublished and accepts an idempotent retry', async () => {
+        let failWrite = false;
+        const s = await track(await startServer({ write: (file, data) => {
+            if (failWrite) throw new Error('EIO');
+            atomicWriteJsonUnique(file, data);
+        } }));
+        const input = { type: 'manual', title: 'Check release', idempotencyKey: 'manual-k1' };
+        failWrite = true;
+        expect((await req(s.baseUrl, 'POST', `${ledger}/items`, input)).status).toBe(500);
+        expect(s.onChange).not.toHaveBeenCalled();
+        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [] });
+        failWrite = false;
+        const created = await req(s.baseUrl, 'POST', `${ledger}/items`, input);
+        expect(created.status).toBe(201);
+        failWrite = true;
+        expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/${created.body.item.id}`, {
+            expectedRevision: 1, notes: 'Not saved',
+        })).status).toBe(500);
+        expect(s.onChange).toHaveBeenCalledTimes(1);
+        expect((await req(s.baseUrl, 'GET', ledger)).body).toMatchObject({
+            revision: 1, items: [{ type: 'manual', notes: '', revision: 1 }],
+        });
+        failWrite = false;
+        expect((await req(s.baseUrl, 'POST', `${ledger}/items`, input)).status).toBe(200);
+        expect((await req(s.baseUrl, 'GET', ledger)).body.items).toHaveLength(1);
+        expect(s.onChange).toHaveBeenCalledTimes(1);
     });
 
     it('isolates chats and workspaces, including repo groups, and rejects non-Sentinel or mismatched owners', async () => {

@@ -120,8 +120,8 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('/GIT STATUS', 'status'));
         await router.handle(inbound('/GIT STATUS', 'status'));
         expect(readGitStatus).toHaveBeenCalledTimes(2);
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Alpha - main\nclean; 0 conflicts; origin/main: 8 ahead, 0 behind'), 'status');
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Beta - main'), 'status');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Alpha - clean\n'), 'status');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Beta - clean'), 'status');
         expect(bindings.selectedRepo).toBe('ws-a');
         expect(bindings.topic('ws-a')).toBe('topic-a');
         expect(enqueue).not.toHaveBeenCalled();
@@ -129,7 +129,7 @@ describe('WhatsApp workspace command routing', () => {
     });
 
     it('chunks all Git repo summaries losslessly and records every outbound part', async () => {
-        const workspaces = Array.from({ length: 90 }, (_, i) => ({
+        const workspaces = Array.from({ length: 400 }, (_, i) => ({
             id: `repo-${i}`, name: `Repo ${i}`, rootPath: path.join(dir, `repo-${i}`),
         }));
         vi.mocked(store.getWorkspaces).mockResolvedValue(workspaces);
@@ -144,7 +144,7 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('git status', 'many'));
         expect(send.mock.calls.length).toBeGreaterThan(1);
         const text = send.mock.calls.map(([part]) => part).join('');
-        for (const ws of workspaces) expect(text).toContain(`${ws.name} - main\nclean; 0 conflicts; no upstream`);
+        for (const ws of workspaces) expect(text).toContain(`${ws.name} - clean`);
         send.mock.calls.forEach(([part, quoted], i) => {
             expect(part.length).toBeLessThanOrEqual(4096);
             expect(quoted).toBe('many');

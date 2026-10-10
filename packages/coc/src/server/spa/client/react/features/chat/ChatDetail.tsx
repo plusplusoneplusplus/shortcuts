@@ -14,7 +14,7 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
-import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { isChatStyle, type ChatStyle, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl, resolveCloneRoute } from '../../repos/cloneRegistry';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
@@ -90,6 +90,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
+import { useSentinelAutoCompact } from './AutoCompactPanel';
 import { normalizeChatMode } from '../../repos/modeConfig';
 import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
@@ -434,7 +435,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (update.processId !== processId) return;
         setTask((prev: any) => prev ? { ...prev, botControl: update.control } : prev);
         setProcessDetails((prev: any) => prev ? { ...prev, botControl: update.control,
-            ...(update.compaction ? { metadata: { ...prev.metadata, compaction: update.compaction } } : {}),
+            ...(update.compaction || update.autoCompact ? { metadata: { ...prev.metadata,
+                ...(update.compaction ? { compaction: update.compaction } : {}),
+                ...(update.autoCompact ? { autoCompact: update.autoCompact } : {}) } } : {}),
         } : prev);
         if (update.compaction && ['completed', 'failed', 'cancelled'].includes(update.compaction.state)) {
             void compactionRefreshRef.current(update.processId);
@@ -1495,6 +1498,28 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         } catch { /* keep current turns */ }
     }, [client, setTurnsAndRef, seedSessionTokensFromProcess]);
     compactionRefreshRef.current = refreshConversation;
+
+    // Sentinel-only auto-compact control in the context-usage popover. The
+    // owning server persists the setting and runs every check and compaction.
+    const handleAutoCompactState = useCallback((autoCompact: ProcessAutoCompactState) => {
+        setProcessDetails((prev: any) => prev ? { ...prev, metadata: { ...prev.metadata, autoCompact } } : prev);
+    }, []);
+    const cancelQueuedAutoCompaction = useCallback(async () => {
+        if (!processId) return;
+        await client.processes.cancelCompaction(processId, owningWorkspaceId ? { workspace: owningWorkspaceId } : undefined);
+        await refreshConversation(processId);
+    }, [client, processId, owningWorkspaceId, refreshConversation]);
+    const contextAutoCompact = useSentinelAutoCompact({
+        isSentinel: resolveLoadedTaskMode(task) === 'sentinel' || metadataProcess?.metadata?.mode === 'sentinel',
+        processId,
+        workspaceId: owningWorkspaceId,
+        client,
+        metadata: metadataProcess?.metadata,
+        usedTokens: sessionCurrentTokens,
+        tokenLimit: sessionTokenLimit,
+        onState: handleAutoCompactState,
+        onCancelQueued: cancelQueuedAutoCompaction,
+    });
 
     // When a task transitions out of `queued` (via WebSocket or polling), force
     // a one-shot conversation refresh. Without this hook, a fast `queued →
@@ -2735,12 +2760,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     resumeLaunching={headerMetadata.resumeLaunching}
                     resumeSessionId={headerMetadata.resumeSessionId}
                     isPending={headerMetadata.isPending}
-                    sessionTokenLimit={sessionTokenLimit}
-                    sessionCurrentTokens={sessionCurrentTokens}
-                    sessionSystemTokens={sessionSystemTokens}
-                    sessionToolTokens={sessionToolTokens}
-                    sessionConversationTokens={sessionConversationTokens}
-                    sessionModel={sessionModel}
                     copied={copied}
                     setCopied={setCopied}
                     taskId={taskId}
@@ -3074,6 +3093,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             sessionSystemTokens={sessionSystemTokens}
                             sessionToolTokens={sessionToolTokens}
                             sessionConversationTokens={sessionConversationTokens}
+                            contextAutoCompact={contextAutoCompact}
                             activeProvider={conversationProvider}
                             selectedProvider={composerProvider}
                             providerOptions={followUpProviderOptions}
@@ -3224,6 +3244,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     sessionSystemTokens={sessionSystemTokens}
                     sessionToolTokens={sessionToolTokens}
                     sessionConversationTokens={sessionConversationTokens}
+                    contextAutoCompact={contextAutoCompact}
                     activeProvider={conversationProvider}
                     selectedProvider={composerProvider}
                     providerOptions={followUpProviderOptions}

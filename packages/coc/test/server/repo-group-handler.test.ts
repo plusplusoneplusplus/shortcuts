@@ -80,6 +80,7 @@ describe('Repo Group Handler', () => {
     let repoTreeService: RepoTreeService;
     let broadcastEvents: Array<{ type: string; workspaceId: string; action: string }>;
     let registeredGroups: WorkspaceInfo[];
+    let exclusiveWriterEnabled: boolean;
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repo-group-handler-test-'));
@@ -95,6 +96,7 @@ describe('Repo Group Handler', () => {
 
         broadcastEvents = [];
         registeredGroups = [];
+        exclusiveWriterEnabled = false;
         const routes: Route[] = [];
         registerRepoGroupRoutes(routes, store, dataDir, {
             getWsServer: () => ({
@@ -102,6 +104,7 @@ describe('Repo Group Handler', () => {
             }),
             onGroupRegistered: async (ws) => { registeredGroups.push(ws); },
             repoTreeService,
+            getExclusiveWriterEnabled: () => exclusiveWriterEnabled,
         });
         const handler = createRequestHandler({ routes, spaHtml: () => '<html></html>' });
         server = http.createServer(handler);
@@ -121,6 +124,86 @@ describe('Repo Group Handler', () => {
         expect(res.status).toBe(201);
         return JSON.parse(res.body) as { workspace: WorkspaceInfo; members: any[] };
     }
+
+    it('serves owning-server diagnostics before the generic group route and honors the live flag', async () => {
+        const group = await createGroup('Writer', [repoA.id]);
+        let response = await request(`${baseUrl}/api/repo-groups/access`);
+        expect(response.status).toBe(200);
+        expect(JSON.parse(response.body)).toEqual({ enabled: false, members: [] });
+        exclusiveWriterEnabled = true;
+        response = await request(`${baseUrl}/api/repo-groups/access?groupId=${group.workspace.id}`);
+        expect(response.status).toBe(200);
+        expect(JSON.parse(response.body).members.find((member: any) => member.workspaceId === repoA.id))
+            .toMatchObject({ shared: false, writers: [{ writerGroupId: group.workspace.id, writerGroupName: 'Writer' }] });
+        const events = broadcastEvents.length;
+        response = await request(`${baseUrl}/api/repo-groups/access`);
+        expect(JSON.parse(response.body).members.find((member: any) => member.workspaceId === repoA.id).shared).toBe(true);
+        expect(broadcastEvents).toHaveLength(events);
+        expect((await request(`${baseUrl}/api/repo-groups/access?groupId=group-missing`)).status).toBe(404);
+    });
+
+    it('enforces live exclusive-writer policy on POST/PATCH without mutating rejected drafts', async () => {
+        exclusiveWriterEnabled = true;
+        const first = await createGroup('First', [repoA.id]);
+        const second = await createGroup('Second', [repoA.id]);
+        expect(second.members[0].readOnly).toBe(true);
+        const eventsBefore = broadcastEvents.length;
+        const rejected = await patchJSON(`${baseUrl}/api/repo-groups/${second.workspace.id}`, {
+            name: 'Rejected name', descriptions: { [repoA.id]: 'Rejected note' }, readOnly: { [repoA.id]: false },
+        });
+        expect(rejected.status).toBe(409);
+        expect(JSON.parse(rejected.body)).toMatchObject({
+            code: 'REPO_GROUP_WRITER_CONFLICT',
+            details: { conflicts: [expect.objectContaining({
+                workspaceId: repoA.id, writerGroupId: first.workspace.id,
+                writerGroupLink: `#repos/${first.workspace.id}/settings`,
+            })] },
+        });
+        expect(broadcastEvents).toHaveLength(eventsBefore);
+        const saved = JSON.parse((await request(`${baseUrl}/api/repo-groups/${second.workspace.id}`)).body);
+        expect(saved.name).toBe('Second');
+        expect(saved.members[0]).toMatchObject({ readOnly: true });
+        expect(saved.members[0].description).toBeUndefined();
+        expect((await postJSON(`${baseUrl}/api/repo-groups`, {
+            name: 'Third', members: [repoA.id], readOnly: { [repoA.id]: false },
+        })).status).toBe(409);
+        expect((await patchJSON(`${baseUrl}/api/repo-groups/${first.workspace.id}`, {
+            readOnly: { [repoA.id]: true },
+        })).status).toBe(200);
+        expect((await patchJSON(`${baseUrl}/api/repo-groups/${second.workspace.id}`, {
+            readOnly: { [repoA.id]: false },
+        })).status).toBe(200);
+        exclusiveWriterEnabled = false;
+        const third = await createGroup('Third', [repoA.id]);
+        expect(third.members[0].readOnly).toBe(false);
+    });
+
+    it('closes overlapping defaults and returns atomic mixed-policy API errors on POST/PATCH', async () => {
+        exclusiveWriterEnabled = true;
+        const parent = { id: 'parent', name: 'Parent', rootPath: path.dirname(repoA.rootPath) };
+        await store.registerWorkspace(parent);
+        await createGroup('Owner', [repoA.id]);
+        const group = await createGroup('Protected', [parent.id, repoB.id]);
+        expect(group.members.map(member => member.readOnly)).toEqual([true, true]);
+        const events = broadcastEvents.length;
+        const before = (await request(`${baseUrl}/api/repo-groups/${group.workspace.id}`)).body;
+        const rejected = await patchJSON(`${baseUrl}/api/repo-groups/${group.workspace.id}`, {
+            name: 'Rejected', descriptions: { [repoB.id]: 'Draft' }, readOnly: { [repoB.id]: false },
+        });
+        expect(rejected.status).toBe(409);
+        expect(JSON.parse(rejected.body)).toMatchObject({
+            code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT',
+            details: { writableWorkspaceId: repoB.id, readOnlyWorkspaceId: parent.id },
+        });
+        const rejectedCreate = await postJSON(`${baseUrl}/api/repo-groups`, {
+            name: 'Mixed', members: [parent.id, repoB.id], readOnly: { [parent.id]: true, [repoB.id]: false },
+        });
+        expect(rejectedCreate.status).toBe(409);
+        expect(JSON.parse(rejectedCreate.body).code).toBe('REPO_GROUP_ACCESS_POLICY_CONFLICT');
+        expect(broadcastEvents).toHaveLength(events);
+        expect((await request(`${baseUrl}/api/repo-groups/${group.workspace.id}`)).body).toBe(before);
+        expect((await store.getWorkspaces()).find(ws => ws.id === group.workspace.id)?.name).toBe('Protected');
+    });
 
     // ------------------------------------------------------------------
     // POST /api/repo-groups

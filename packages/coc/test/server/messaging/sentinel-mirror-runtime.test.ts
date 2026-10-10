@@ -299,6 +299,60 @@ function desktopQueueRoutes(
     return routes;
 }
 
+describe('desktop upload admission wiring', () => {
+    const upload = {
+        name: 'notes.txt', mimeType: 'text/plain', size: 240,
+        dataUrl: `data:text/plain;base64,${Buffer.from('x'.repeat(240)).toString('base64')}`,
+    };
+
+    it.each(['single', 'bulk'] as const)('snapshots %s queue uploads before SDK decoding and temporary cleanup', async kind => {
+        const f = await fixture('whatsapp');
+        f.setConnected(false);
+        const route = desktopQueueRoutes(f).find(route => route.pattern === (kind === 'single' ? '/api/queue' : '/api/queue/bulk'))!;
+        const task = {
+            type: 'chat', repoId: 'workspace-a', config: {},
+            payload: { kind: 'chat', mode: 'sentinel', processId: f.processId, prompt: 'caption', attachments: [upload] },
+        };
+        expect(await invoke(route, kind === 'single' ? '/api/queue' : '/api/queue/bulk',
+            kind === 'single' ? task : { tasks: [task] })).toBe(201);
+        const receipt = f.mirror.outbox.list('workspace-a')[0];
+        expect(receipt.content).toBe('caption');
+        expect(receipt.attachments?.[0]).toMatchObject({ name: 'notes.txt', size: 240, data: upload.dataUrl.split(',')[1] });
+        const queued = f.tasks.get(receipt.requestId)!;
+        expect(queued.payload.prompt).toContain('<attached_file');
+        const tempDir = queued.payload.imageTempDir;
+        expect(typeof tempDir).toBe('string');
+        fs.rmSync(String(tempDir), { recursive: true, force: true });
+        await f.restart();
+        expect(f.mirror.outbox.list('workspace-a')[0].attachments).toEqual(receipt.attachments);
+        expect(f.sends).toEqual([]);
+    });
+
+    it('captures upload bytes on the owning follow-up route and rejects malformed uploads explicitly', async () => {
+        const f = await fixture('whatsapp');
+        f.setConnected(false);
+        const routes: Route[] = [];
+        registerApiProcessRoutes({
+            routes, store: f.store,
+            bridge: Object.assign(f.bridge, { isSessionAlive: async () => true }) as unknown as QueueExecutorBridge,
+            gitOpsStore: {} as never, getSentinelMirror: () => f.mirror,
+        });
+        const route = routes.find(route => String(route.pattern) === String(/^\/api\/processes\/([^/]+)\/message$/))!;
+        const url = `/api/processes/${f.processId}/message?workspace=workspace-a`;
+        expect(await invoke(route, url, { content: 'caption', attachments: [upload] })).toBe(202);
+        const receipt = f.mirror.outbox.list('workspace-a')[0];
+        expect(receipt.content).toBe('caption');
+        expect(receipt.attachments?.[0].data).toBe(upload.dataUrl.split(',')[1]);
+        const queued = f.tasks.get(receipt.requestId)!;
+        fs.rmSync(String(queued.payload.imageTempDir), { recursive: true, force: true });
+        await f.store.updateProcess(f.processId, { status: 'completed' });
+        f.tasks.clear();
+        expect(await invoke(route, url, { content: 'must not forward', attachments: [{ ...upload, dataUrl: 'missing' }] })).toBe(400);
+        expect(f.mirror.outbox.list('workspace-a')).toHaveLength(1);
+        expect(f.sends).toEqual([]);
+    });
+});
+
 describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (%s)', connector => {
     it('holds a new accepted explicit resume through old cancelled-parent state without reviving source tombstones', async () => {
         const f = await fixture(connector);

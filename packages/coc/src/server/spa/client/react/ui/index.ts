@@ -47,6 +47,8 @@ export type { SuggestionChipsProps } from './SuggestionChips';
 // ── Display / data components ──────────────────────────────────────────
 export { CapacityBar } from './CapacityBar';
 export { ContextWindowIndicator } from './ContextWindowIndicator';
+export { ContextUsageBreakdown, useContextUsagePopover, formatTokenCount } from './ContextUsagePopover';
+export type { ContextAutoCompact, ContextAutoCompactStatus } from './ContextUsagePopover';
 export { CopySectionBtn } from './CopySectionBtn';
 export { JsonResponseView } from './JsonResponseView';
 export { isJsonResponse } from './json-utils';

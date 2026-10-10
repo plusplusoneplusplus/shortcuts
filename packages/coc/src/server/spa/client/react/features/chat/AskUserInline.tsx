@@ -2,7 +2,7 @@
  * AskUserInline — renders one batched interactive ask_user form from the AI.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { AskUserResponseRequest } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
@@ -244,6 +244,7 @@ function QuestionProvenance({ question }: { question: AskUserQuestion }) {
 export function AskUserInline({ batch, processId, onAnswered, workspaceId }: AskUserInlineProps) {
     const cloneClient = useCocClient(workspaceId);
     const responseAcceptedRef = useRef(false);
+    const submittingRef = useRef(false);
     const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => initialAnswers(batch, processId));
     const [submitting, setSubmitting] = useState(false);
     const planning = planningSummaryFor(batch);
@@ -267,9 +268,14 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
         }
     }, [answers, batch.batchId, processId]);
 
+    const submissionDisabled = submitting || responseAcceptedRef.current;
     const canSubmitAll = batch.questions.every(question => isAnswerComplete(question, answers[question.questionId]));
 
     const submitAll = useCallback(async (skipAll = false) => {
+        if (submittingRef.current || responseAcceptedRef.current || (!skipAll && !canSubmitAll)) {
+            return;
+        }
+        submittingRef.current = true;
         setSubmitting(true);
         try {
             await cloneClient.processes.askUserResponse(processId, {
@@ -288,9 +294,21 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
         } catch {
             // The running AI session owns timeout/cleanup if the response cannot be delivered.
         } finally {
+            submittingRef.current = false;
             setSubmitting(false);
         }
-    }, [answers, batch.batchId, batch.questions, onAnswered, processId, cloneClient]);
+    }, [answers, batch.batchId, batch.questions, canSubmitAll, onAnswered, processId, cloneClient]);
+
+    const handleReplyKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) {
+            void submitAll();
+        }
+    };
 
     return (
         <div className="mx-2 my-3 overflow-hidden rounded-md border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] px-2.5 py-2 shadow-sm" data-testid="ask-user-inline">
@@ -304,7 +322,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                 {submitting && <p className="text-[11px] text-[#848484]">Submitting...</p>}
                 <button
                     onClick={() => void submitAll(false)}
-                    disabled={submitting || !canSubmitAll}
+                    disabled={submissionDisabled || !canSubmitAll}
                     className="px-2.5 py-1 text-xs font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
                     data-testid="ask-user-submit-all-btn"
                 >
@@ -312,7 +330,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                 </button>
                 <button
                     onClick={() => void submitAll(true)}
-                    disabled={submitting}
+                    disabled={submissionDisabled}
                     className="px-1.5 py-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
                     data-testid="ask-user-skip-all-btn"
                 >
@@ -336,7 +354,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                             const questionIndex = batch.questions.findIndex(item => item.questionId === question.questionId);
                             const state = answers[question.questionId];
                             const isCustomSelected = question.type === 'select' && state.value === CUSTOM_OPTION_VALUE;
-                            const inputDisabled = submitting || state.disposition !== 'answer';
+                            const inputDisabled = submissionDisabled || state.disposition !== 'answer';
                             return (
                                 <div
                                     key={question.questionId}
@@ -381,7 +399,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                 <select
                                                     value={state.disposition}
                                                     onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
-                                                    disabled={submitting}
+                                                    disabled={submissionDisabled}
                                                     className="max-w-[9rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0 text-[11px] text-[#848484] hover:border-[#d4d4d4] hover:text-[#1e1e1e] dark:hover:border-[#3e3e3e] dark:hover:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
                                                     data-testid="ask-user-question-disposition"
                                                 >
@@ -400,11 +418,12 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                     <p className="text-[11px] text-[#848484]">
                                         The AI should explain the missing context and re-ask this question if it is still needed.
                                     </p>
-                                    <input
-                                        type="text"
+                                    <textarea
+                                        rows={2}
                                         value={state.note}
                                         onChange={e => updateQuestion(question.questionId, { note: e.target.value })}
-                                        disabled={submitting}
+                                        disabled={submissionDisabled}
+                                        onKeyDown={handleReplyKeyDown}
                                         maxLength={300}
                                         placeholder="Optional note about what context you need..."
                                         className="w-full px-2 py-1 text-[13px] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
@@ -480,9 +499,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                     placeholder="Type your answer..."
                                                     autoFocus
                                                     className="mt-1 w-full px-2 py-1 text-[13px] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Enter' && canSubmitAll) void submitAll();
-                                                    }}
+                                                    onKeyDown={handleReplyKeyDown}
                                                     data-testid="ask-user-custom-input"
                                                 />
                                             )}
@@ -542,9 +559,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                             disabled={inputDisabled}
                                             placeholder="Type your answer..."
                                             className="mt-1 w-full px-2 py-1 text-[13px] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter' && canSubmitAll) void submitAll();
-                                            }}
+                                            onKeyDown={handleReplyKeyDown}
                                             data-testid="ask-user-text-input"
                                         />
                                     )}

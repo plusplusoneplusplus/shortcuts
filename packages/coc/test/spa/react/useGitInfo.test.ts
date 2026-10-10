@@ -16,8 +16,8 @@ describe('useGitInfo hook source', () => {
         expect(HOOK_SOURCE).toContain('workspaceId: string');
     });
 
-    it('fetches git info through typed workspace client', () => {
-        expect(HOOK_SOURCE).toContain('workspaces.gitInfo(workspaceId)');
+    it('fetches git info through the shared workspace reader', () => {
+        expect(HOOK_SOURCE).toContain('readWorkspaceGitInfo(client, workspaceId)');
     });
 
     it('imports the clone-aware CoC client hook', () => {
@@ -51,7 +51,7 @@ describe('useGitInfo hook source', () => {
     });
 
     it('delegates workspaceId encoding to the typed client', () => {
-        expect(HOOK_SOURCE).toContain('gitInfo(workspaceId)');
+        expect(HOOK_SOURCE).toContain('readWorkspaceGitInfo(client, workspaceId)');
     });
 
     it('cancels in-flight fetch when workspaceId changes (cleanup)', () => {

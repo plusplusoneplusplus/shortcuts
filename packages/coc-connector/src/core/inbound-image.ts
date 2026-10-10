@@ -41,6 +41,14 @@ const IMAGE_SIGNATURES: Record<string, (data: Buffer) => boolean> = {
         && data.subarray(8, 12).toString('ascii') === 'WEBP',
 };
 
+export function isRasterImageMimeType(mimeType: string): boolean {
+    return Object.hasOwn(IMAGE_SIGNATURES, mimeType);
+}
+
+export function hasRasterImageSignature(mimeType: string, data: Buffer): boolean {
+    return isRasterImageMimeType(mimeType) && IMAGE_SIGNATURES[mimeType](data);
+}
+
 /** Bound acquisition and streaming together, including transports that stall before returning a stream. */
 export async function downloadInboundImage(
     mimeType: string | (() => string),
@@ -53,7 +61,7 @@ export async function downloadInboundImage(
         || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
         throw new RangeError('Invalid image download limits');
     }
-    if (typeof mimeType === 'string' && !Object.hasOwn(IMAGE_SIGNATURES, mimeType)) {
+    if (typeof mimeType === 'string' && !isRasterImageMimeType(mimeType)) {
         throw new ImageDownloadError('unsupported');
     }
 
@@ -80,8 +88,7 @@ export async function downloadInboundImage(
                 controller.signal.throwIfAborted();
             }
             const resolvedMime = typeof mimeType === 'string' ? mimeType : mimeType();
-            if (!Object.hasOwn(IMAGE_SIGNATURES, resolvedMime)) throw new ImageDownloadError('unsupported');
-            const checkSignature = IMAGE_SIGNATURES[resolvedMime];
+            if (!isRasterImageMimeType(resolvedMime)) throw new ImageDownloadError('unsupported');
             const chunks: Buffer[] = [];
             let size = 0;
             for await (const chunk of stream) {
@@ -93,7 +100,7 @@ export async function downloadInboundImage(
             }
             controller.signal.throwIfAborted();
             const data = Buffer.concat(chunks, size);
-            if (!checkSignature(data)) throw new ImageDownloadError('unsupported');
+            if (!hasRasterImageSignature(resolvedMime, data)) throw new ImageDownloadError('unsupported');
             return data;
         })();
         return await Promise.race([download, interrupted]);

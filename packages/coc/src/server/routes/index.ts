@@ -187,6 +187,7 @@ import { WhatsAppAnswerRelay, createWhatsAppNoticeTransport, createWhatsAppQuest
 import { SentinelMirrorService, type SentinelMirrorEcho } from '../messaging/sentinel-mirror-service';
 import { createTeamsMirrorAdapter, createWhatsAppMirrorAdapter } from '../messaging/sentinel-mirror-adapters';
 import { MessagingJobNotices } from '../messaging/job-notices';
+import { createAutoCompactionOrigins } from '../messaging/auto-compaction-origins';
 import { createMessagingHandOff } from '../messaging/job-handoff';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
@@ -510,10 +511,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
     opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
     const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos, getSentinelTodoLedgerEnabled);
+    // Bound after the WhatsApp connector is wired below.
+    let autoCompactionOrigins: ReturnType<typeof createAutoCompactionOrigins> | undefined;
     const jobNotices = new MessagingJobNotices({
         dataDir, store, queue: queueFacade, delegatedJobs,
         authorizeDesktopOrigin: (origin, parent) => sentinelMirror?.authorizeCapturedOrigin(origin, parent)
             ?? Promise.resolve('wait'),
+        locateAutoCompactionOrigin: async (proc, turnIndex) => autoCompactionOrigins?.locate(proc, turnIndex),
+        authorizeAutoCompactionOrigin: async (origin, owner) => autoCompactionOrigins?.authorize(origin, owner) ?? 'wait',
     });
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
@@ -522,6 +527,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
         findTodo: job => sentinelTodoHooks.findTodo(job),
+        onDeliveryChange: job => sentinelTodoHooks.deliveryChanged(job),
     });
     const delegatedJobResults = new DelegatedJobResults({
         jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
@@ -912,6 +918,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRepoGroupRoutes(routes, store, dataDir, {
         getWsServer,
         repoTreeService,
+        getExclusiveWriterEnabled: () =>
+            (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.repoGroupExclusiveWriter === true,
         onGroupRegistered: async (ws) => {
             // Match the startup workspace sweep so a freshly created group can
             // enqueue chats and host schedules without a server restart.
@@ -1091,6 +1099,21 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
+        onSettled: () => { void jobNotices.reconcile('whatsapp').catch(error =>
+            console.error('[job-notices] Could not reconcile notices:', error)); },
+    });
+    autoCompactionOrigins = createAutoCompactionOrigins({
+        bindings: whatsappBindings,
+        ready: ensureWhatsAppBindingsReady,
+        whatsappGroup: () => {
+            const status = whatsappMessagingManager.getStatus();
+            return status.enabled ? status.groupJid : undefined;
+        },
+        isDeliveringAnswer: inboundId => whatsappRelay.isDelivering(inboundId),
+        mirror: {
+            locate: request => sentinelMirror?.locateCapturedOrigin(request),
+            authorize: (origin, owner) => sentinelMirror?.authorizeCapturedOrigin(origin, owner) ?? Promise.resolve('wait'),
+        },
     });
     questionRelay.register(createWhatsAppQuestionTransport({
         bindings: whatsappBindings,
@@ -1132,6 +1155,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         remotes: workspaceDirectory,
         questions: questionRelay,
         handOff: messagingHandOff,
+        getTodos: () => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined,
         getTask: taskId => queueFacade.getTask(taskId),
         enqueue: async (workspaceId, message, mode, processId, taskId, botControl, images, admissionHeld = false) => {
             const followUp = processId !== toQueueProcessId(taskId);

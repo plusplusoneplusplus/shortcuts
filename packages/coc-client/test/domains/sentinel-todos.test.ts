@@ -31,6 +31,43 @@ describe('SentinelTodosClient', () => {
     expect(adapter.calls[1].options).toEqual(expect.objectContaining({ method: 'PATCH', body: { expectedRevision: 1, priority: 'regular' } }));
   });
 
+  it('preserves exact review evidence in verdict writes and independent assessment in reads', async () => {
+    const adapter = createMockAdapter({ item: { id: 'i1' }, ledgerRevision: 5 });
+    const client = new SentinelTodosClient(adapter);
+    const reviewedJobs = [{ processId: 'queue_child', terminalEventId: 'terminal-event' }];
+    await client.update('parent-workspace', 'parent-chat', 'i1', {
+      expectedRevision: 4, status: 'todo', statusReason: 'Spec assessed; awaiting approval', reviewedJobs,
+    });
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/workspaces/parent-workspace/sentinel-todos/parent-chat/items/i1',
+      options: { method: 'PATCH', body: { expectedRevision: 4, status: 'todo', reviewedJobs } },
+    });
+    const execution = { state: 'completed', review: {
+      state: 'delivered', assessment: 'pending', terminalEventId: 'terminal-event',
+    } };
+    const readAdapter = createMockAdapter({ revision: 4, items: [{ id: 'i1', jobs: [{ processId: 'queue_child', execution }] }] });
+    expect((await new SentinelTodosClient(readAdapter).get('parent-workspace', 'parent-chat')).items[0].jobs[0].execution)
+      .toEqual(execution);
+  });
+
+  it('round-trips manual item type through create, edit, and ledger reads', async () => {
+    const item = { id: 'i1', type: 'manual', title: 'Check release', status: 'todo', priority: 'regular' };
+    const adapter = createMockAdapter({ item, ledgerRevision: 1 });
+    const client = new SentinelTodosClient(adapter);
+    const created = await client.create('ws', 'p', { type: 'manual', title: item.title, idempotencyKey: 'manual-k1' });
+    expect(created.item.type).toBe('manual');
+    expect(adapter.calls[0].options).toMatchObject({
+      method: 'POST', body: { type: 'manual', title: item.title, idempotencyKey: 'manual-k1' },
+    });
+    const edited = await client.update('ws', 'p', 'i1', { expectedRevision: 1, notes: 'Read notes' });
+    expect(edited.item.type).toBe('manual');
+    expect(adapter.calls[1].options).toMatchObject({
+      method: 'PATCH', body: { expectedRevision: 1, notes: 'Read notes' },
+    });
+    const readAdapter = createMockAdapter({ revision: 2, items: [item] });
+    expect((await new SentinelTodosClient(readAdapter).get('ws', 'p')).items[0].type).toBe('manual');
+  });
+
   it('is exposed on CocClient', () => {
     expect(new CocClient({ baseUrl: 'http://localhost:4000' }).sentinelTodos).toBeInstanceOf(SentinelTodosClient);
   });

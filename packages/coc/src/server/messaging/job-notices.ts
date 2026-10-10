@@ -17,7 +17,8 @@
 
 import * as fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { toQueueProcessId, toTaskId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, toTaskId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { isSentinelProcess, readAutoCompact } from '../processes/auto-compact';
 import type { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { getRepoDataPath } from '../paths';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
@@ -62,6 +63,8 @@ export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigi
 
 export interface JobNotice {
     operation?: 'compact' | 'result';
+    /** Automatic Sentinel compaction (start or outcome), not a user-requested one. */
+    auto?: true;
     /** Parent review answer or fixed cancellation notice, already scoped to its receipt. */
     body?: string;
     threadId?: string;
@@ -69,7 +72,8 @@ export interface JobNotice {
     processId: string;
     repo: string;
     title: string;
-    status: RelayTerminalStatus;
+    /** `running` only for an automatic compaction's start notice. */
+    status: RelayTerminalStatus | 'running';
     /** Safe failure text (fixed, or a recognized usage-limit reset); failed notices only. */
     detail?: string;
     /** Ephemeral authority recheck before each physical part; never persisted or formatted. */
@@ -78,12 +82,12 @@ export interface JobNotice {
     desktopResult?: { chunks: readonly string[]; beforePart: (index: number) => Promise<boolean> };
 }
 
-const STATUS_EMOJI: Record<RelayTerminalStatus, string> = { completed: '✅', failed: '❌', cancelled: '⏹' };
+const STATUS_EMOJI: Record<JobNotice['status'], string> = { completed: '✅', failed: '❌', cancelled: '⏹', running: '⏳' };
 
 /** `<repo> · <title> · ✅`, plus the failure detail line. Each connector escapes/formats it. */
 export function formatJobNotice(notice: JobNotice): { line: string; detail?: string } {
     return {
-        line: `${notice.repo} · ${notice.title.slice(0, 80)}${notice.operation === 'compact' ? ' · Compaction' : ''} · ${STATUS_EMOJI[notice.status]}`,
+        line: `${notice.repo} · ${notice.title.slice(0, 80)}${notice.operation === 'compact' ? notice.auto ? ' · Auto-compaction' : ' · Compaction' : ''} · ${STATUS_EMOJI[notice.status]}`,
         ...(notice.detail ? { detail: notice.detail } : {}),
     };
 }
@@ -109,8 +113,10 @@ interface NoticeJob {
     createdAt: string;
     /** Queue task ids whose notice was posted or attempted with an unknown outcome. */
     done: string[];
-    /** Terminal turns waiting for their connector. */
-    pending: Array<{ taskId: string; status: RelayTerminalStatus }>;
+    /** Terminal turns waiting for their connector; an automatic compaction's start uses `<taskId>:start`. */
+    pending: Array<{ taskId: string; status: RelayTerminalStatus | 'running' }>;
+    /** Automatic compaction triggered by the response at `turnIndex`; `started` once execution began. */
+    autoCompact?: { turnIndex: number; started?: true };
     /** Task id of the send in flight. */
     sending?: string;
     noticeIds: string[];
@@ -124,12 +130,28 @@ const MAX_JOBS = 500;
 const MAX_DONE = 50;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 const resultLabel = (receiptId: string) => createHash('sha256').update(receiptId).digest('hex');
+const startKey = (taskId: string) => `${taskId}:start`;
+const AUTO_COMPACT_TEXT = {
+    started: 'Compacting context automatically. New messages will wait until it finishes.',
+    failed: 'Automatic compaction failed. Waiting messages will continue.',
+    unsupported: 'Automatic compaction is not supported for this provider and is paused. Waiting messages will continue.',
+    paused: ' Auto-compact is paused after repeated failures.',
+    insufficient: ' Context is still above the auto-compact threshold.',
+    cancelled: 'Automatic compaction was cancelled. Waiting messages will continue.',
+    cancelledBeforeStart: 'Queued automatic compaction was cancelled before it started. Waiting messages will continue.',
+} as const;
+
+function isAutoCompactionTask(task: QueuedTask): boolean {
+    return task.payload?.kind === 'compact' && task.payload.trigger === 'auto';
+}
 
 export class MessagingJobNotices {
     private readonly transports = new Map<MessagingConnector, JobNoticeTransport>();
     private readonly jobs = new Map<string, NoticeJob[]>();
     private readonly active = new Map<NoticeJob, Promise<void>>();
     private readonly rerun = new Set<NoticeJob>();
+    /** Automatic compaction admissions still resolving their destination, by task id. */
+    private readonly autoAdmissions = new Map<string, Promise<void>>();
     private readonly unsubscribe: () => void;
     private disposed = false;
 
@@ -141,11 +163,40 @@ export class MessagingJobNotices {
         authorizeDesktopOrigin?: (
             origin: MessagingJobOrigin, parent?: { workspaceId: string; processId: string },
         ) => Promise<MessagingOriginAuthority>;
+        /** The triggering request's own bound origin for an automatic compaction, if any. */
+        locateAutoCompactionOrigin?: (proc: AIProcess, turnIndex: number) => Promise<MessagingJobOrigin | undefined>;
+        /** Rechecks that origin before each send; `wait` holds notices behind the triggering answer. */
+        authorizeAutoCompactionOrigin?: (
+            origin: MessagingJobOrigin, owner: { workspaceId: string; processId: string },
+        ) => Promise<MessagingOriginAuthority>;
     }) {
-        this.unsubscribe = onTaskTerminal(deps.queue, task => {
+        const unsubscribeTerminal = onTaskTerminal(deps.queue, task => {
             void this.onTerminal(task).catch(error =>
                 console.error('[job-notices] Could not record a terminal notice:', error));
         });
+        if (!deps.locateAutoCompactionOrigin) {
+            this.unsubscribe = unsubscribeTerminal;
+            return;
+        }
+        const onAdded = (task: QueuedTask) => {
+            if (!isAutoCompactionTask(task) || this.autoAdmissions.has(task.id)) return;
+            const work = this.onAutoCompactionAdded(task).catch(error =>
+                console.error('[job-notices] Could not track an automatic compaction:', error));
+            this.autoAdmissions.set(task.id, work);
+            void work.finally(() => { if (this.autoAdmissions.get(task.id) === work) this.autoAdmissions.delete(task.id); });
+        };
+        const onStarted = (task: QueuedTask) => {
+            if (!isAutoCompactionTask(task)) return;
+            void this.onAutoCompactionStarted(task).catch(error =>
+                console.error('[job-notices] Could not record an automatic compaction start:', error));
+        };
+        deps.queue.on('taskAdded', onAdded);
+        deps.queue.on('taskStarted', onStarted);
+        this.unsubscribe = () => {
+            unsubscribeTerminal();
+            deps.queue.off('taskAdded', onAdded);
+            deps.queue.off('taskStarted', onStarted);
+        };
     }
 
     register(transport: JobNoticeTransport): void {
@@ -158,16 +209,57 @@ export class MessagingJobNotices {
     }
 
     /** Start tracking a handed-off local job; every terminal turn of it is noticed. */
-    track(job: { processId: string; workspaceId: string; origin: MessagingJobOrigin; taskId?: string }): void {
+    track(job: {
+        processId: string; workspaceId: string; origin: MessagingJobOrigin; taskId?: string;
+        autoCompact?: { turnIndex: number };
+    }): void {
         const rows = this.load(job.workspaceId);
         if (rows.some(row => row.processId === job.processId && row.taskId === job.taskId)) return;
         const cutoff = Date.now() - RETENTION_MS;
         const kept = rows.filter(row => Date.parse(row.createdAt) >= cutoff).slice(-(MAX_JOBS - 1));
         rows.splice(0, rows.length, ...kept, {
             processId: job.processId, workspaceId: job.workspaceId, origin: job.origin, ...(job.taskId ? { taskId: job.taskId } : {}),
+            ...(job.taskId && job.autoCompact ? { autoCompact: { turnIndex: job.autoCompact.turnIndex } } : {}),
             createdAt: new Date().toISOString(), done: [], pending: [], noticeIds: [],
         });
         this.save(job.workspaceId);
+    }
+
+    /**
+     * An admitted automatic compaction notices only the origin of the request
+     * whose response triggered it, never the selected group or later bindings.
+     */
+    private async onAutoCompactionAdded(task: QueuedTask): Promise<void> {
+        const processId = task.processId ?? task.payload.processId;
+        const workspaceId = task.payload.workspaceId ?? task.repoId;
+        if (typeof processId !== 'string' || typeof workspaceId !== 'string' || !processId || !workspaceId
+            || (task.repoId && task.repoId !== workspaceId)) return;
+        const proc = await this.deps.store.getProcess(processId, workspaceId);
+        if (!proc || proc.id !== processId || proc.metadata?.workspaceId !== workspaceId || !isSentinelProcess(proc)) return;
+        const turnIndex = readAutoCompact(proc.metadata)?.lastEvaluatedTurnIndex;
+        if (turnIndex === undefined) return;
+        const origin = await this.deps.locateAutoCompactionOrigin!(proc, turnIndex);
+        if (!origin || this.disposed) return;
+        this.track({ processId, workspaceId, origin, taskId: task.id, autoCompact: { turnIndex } });
+    }
+
+    /** The start notice is recorded once, only while the admitted compaction is current and not yet terminal. */
+    private async onAutoCompactionStarted(task: QueuedTask): Promise<void> {
+        await this.autoAdmissions.get(task.id);
+        const processId = task.processId ?? task.payload.processId;
+        const rows = typeof task.repoId === 'string' && task.repoId ? this.load(task.repoId) : [...this.jobs.values()].flat();
+        const job = rows.find(row => row.autoCompact && row.taskId === task.id && row.processId === processId);
+        if (!job?.autoCompact || job.autoCompact.started || job.done.includes(task.id) || job.sending === task.id
+            || job.pending.some(entry => entry.taskId === task.id)) return;
+        const proc = await this.deps.store.getProcess(job.processId, job.workspaceId);
+        const compaction = proc?.metadata?.compaction;
+        if (compaction?.taskId !== task.id || (compaction.state !== 'queued' && compaction.state !== 'running')
+            || job.autoCompact.started || job.pending.some(entry => entry.taskId === task.id) || job.done.includes(task.id)) return;
+        job.autoCompact.started = true;
+        job.pending.push({ taskId: startKey(task.id), status: 'running' });
+        try { this.save(job.workspaceId); }
+        catch (error) { job.pending.pop(); delete job.autoCompact.started; throw error; }
+        await this.drain(job);
     }
 
     /** Persist a parent result before the delegation ledger acknowledges delivery. */
@@ -204,7 +296,11 @@ export class MessagingJobNotices {
                     job.sending = undefined;
                     changed = true;
                 }
-                if (job.result || job.done.length || job.pending.length) continue;
+                if (job.result) continue;
+                // Single-receipt rows (compaction) may already carry an automatic start notice.
+                if (job.taskId ? job.done.includes(job.taskId) || job.sending === job.taskId
+                    || job.pending.some(entry => entry.taskId === job.taskId)
+                    : job.done.length || job.pending.length) continue;
                 if (job.taskId) {
                     const task = this.deps.queue.getAll?.().find(task => task.id === job.taskId);
                     const process = await this.deps.store.getProcess(job.processId, job.workspaceId);
@@ -235,7 +331,7 @@ export class MessagingJobNotices {
         for (const rows of this.jobs.values()) {
             for (const job of rows) {
                 if (job.pending.length && (!platform || job.origin.connector === platform)
-                    && (!desktopResultsOnly || (job.result && job.origin.desktopMirror))) {
+                    && (!desktopResultsOnly || ((job.result || job.autoCompact) && job.origin.desktopMirror))) {
                     // Source settlement must recheck an earlier in-flight readiness snapshot.
                     if (desktopResultsOnly) await this.active.get(job);
                     await this.drain(job);
@@ -281,6 +377,7 @@ export class MessagingJobNotices {
 
     private async onTerminal(task: QueuedTask): Promise<void> {
         if (!isTerminalStatus(task.status)) return;
+        await this.autoAdmissions.get(task.id);
         const processId = task.processId ?? toQueueProcessId(task.id);
         const rows = typeof task.repoId === 'string' && task.repoId ? this.load(task.repoId) : [...this.jobs.values()].flat();
         const job = rows.find(row => !row.result && row.processId === processId && (row.taskId ? row.taskId === task.id : task.payload?.kind !== 'compact'));
@@ -310,6 +407,13 @@ export class MessagingJobNotices {
                 const transport = this.transports.get(job.origin.connector);
                 if (!transport?.connected(job.origin.chatKey)) return;
                 const entry = job.pending[0];
+                if (entry.status === 'running' && job.pending.some(other => other.taskId === job.taskId)) {
+                    // An unsent start notice is stale once the outcome is known; the outcome alone is accurate.
+                    job.pending.shift();
+                    job.done = [...job.done, entry.taskId].slice(-MAX_DONE);
+                    this.save(job.workspaceId);
+                    continue;
+                }
                 const notice = await this.buildNotice(job, entry.status);
                 const policy = await this.directNoticePolicy(job, entry.taskId);
                 if (this.disposed || policy === 'wait') return;
@@ -322,11 +426,13 @@ export class MessagingJobNotices {
                     try { this.save(job.workspaceId); }
                     catch (error) { job.pending.unshift(entry); job.done = done; throw error; }
                     if (authority === 'suppress') {
-                        console.error('[job-notices] Captured desktop destination authority unavailable; notice suppressed');
+                        console.error(job.autoCompact
+                            ? '[job-notices] Automatic compaction destination is no longer bound; notice suppressed'
+                            : '[job-notices] Captured desktop destination authority unavailable; notice suppressed');
                     }
                     continue;
                 }
-                if (job.origin.desktopMirror) {
+                if (job.origin.desktopMirror || job.autoCompact) {
                     notice.beforeSend = async () => !this.disposed
                         && await this.desktopAuthority(job) === 'ready' && !this.disposed;
                     if (job.result) {
@@ -386,6 +492,16 @@ export class MessagingJobNotices {
 
     private async desktopAuthority(job: NoticeJob): Promise<MessagingOriginAuthority> {
         const pin = job.origin.desktopMirror;
+        if (job.autoCompact) {
+            // The conversation owns these notices; the captured origin must still be its bound destination.
+            try {
+                return await this.deps.authorizeAutoCompactionOrigin?.(job.origin,
+                    { workspaceId: job.workspaceId, processId: job.processId }) ?? 'suppress';
+            } catch {
+                console.error('[job-notices] Automatic compaction destination verification unavailable; delivery paused');
+                return 'wait';
+            }
+        }
         if (!pin) return 'ready';
         try {
             if (!job.result && !this.deps.delegatedJobs?.list(pin.workspaceId).some(row =>
@@ -426,11 +542,20 @@ export class MessagingJobNotices {
         return 'send';
     }
 
-    private async buildNotice(job: NoticeJob, status: RelayTerminalStatus): Promise<JobNotice> {
+    private async buildNotice(job: NoticeJob, status: JobNotice['status']): Promise<JobNotice> {
         if (job.result) return { ...job.result, operation: 'result',
             workspaceId: job.workspaceId, processId: job.processId, threadId: job.origin.threadId };
         const process = await this.deps.store.getProcess(job.processId, job.workspaceId);
         const workspace = (await this.deps.store.getWorkspaces()).find(ws => ws.id === job.workspaceId);
+        if (job.autoCompact) {
+            return {
+                workspaceId: job.workspaceId, processId: job.processId, operation: 'compact', auto: true,
+                repo: workspace?.name ?? job.workspaceId,
+                title: process?.title ?? process?.customTitle ?? job.processId.slice(0, 8),
+                status, detail: autoCompactionDetail(job, status, process),
+            };
+        }
+        if (status === 'running') throw new Error('Only automatic compaction records a start notice');
         const turns = process?.conversationTurns ?? [];
         const lastUser = turns.map(turn => turn.role).lastIndexOf('user');
         return {
@@ -457,7 +582,10 @@ export class MessagingJobNotices {
         if (!Array.isArray(rows) || rows.some(row => !row || row.workspaceId !== workspaceId
             || typeof row.processId !== 'string' || !row.processId || !isMessagingJobOrigin(row.origin)
             || typeof row.createdAt !== 'string' || !Array.isArray(row.done) || !Array.isArray(row.pending)
-            || !Array.isArray(row.noticeIds) || row.pending.some(entry => !isTerminalStatus(entry?.status))
+            || !Array.isArray(row.noticeIds) || row.pending.some(entry => !isTerminalStatus(entry?.status)
+                && !(entry?.status === 'running' && row.autoCompact && entry.taskId === startKey(row.taskId!)))
+            || (row.autoCompact !== undefined && (!row.taskId || !row.autoCompact || !Number.isSafeInteger(row.autoCompact.turnIndex)
+                || (row.autoCompact.started !== undefined && row.autoCompact.started !== true)))
             || (row.result !== undefined && (!row.taskId || typeof row.result.body !== 'string'
                 || typeof row.result.repo !== 'string' || typeof row.result.title !== 'string' || !isTerminalStatus(row.result.status)))
             || (row.sending !== undefined && typeof row.sending !== 'string')
@@ -475,4 +603,30 @@ export class MessagingJobNotices {
     private save(workspaceId: string): void {
         atomicWriteJsonUnique(getRepoDataPath(this.deps.dataDir, workspaceId, FILE), this.load(workspaceId));
     }
+}
+
+/**
+ * User-facing outcome only: fixed wording plus the removed-message and
+ * freed-token counts. Never the compaction summary, errors or history.
+ */
+function autoCompactionDetail(job: NoticeJob, status: JobNotice['status'], process: AIProcess | undefined): string {
+    if (status === 'running') return AUTO_COMPACT_TEXT.started;
+    if (status === 'cancelled') return job.autoCompact?.started ? AUTO_COMPACT_TEXT.cancelled : AUTO_COMPACT_TEXT.cancelledBeforeStart;
+    const compaction = process?.metadata?.compaction?.taskId === job.taskId ? process?.metadata?.compaction : undefined;
+    const state = readAutoCompact(process?.metadata);
+    const result = state?.lastResult?.turnIndex === job.autoCompact?.turnIndex ? state?.lastResult : undefined;
+    if (status === 'failed') {
+        if (result?.outcome === 'unsupported') return AUTO_COMPACT_TEXT.unsupported;
+        return AUTO_COMPACT_TEXT.failed + (result?.outcome === 'failed' && state?.paused?.reason === 'failures' ? AUTO_COMPACT_TEXT.paused : '');
+    }
+    const count = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+    const messages = count(compaction?.messagesRemoved);
+    const tokens = count(compaction?.tokensRemoved);
+    const parts = [
+        ...(messages !== undefined ? [`removed ${messages} message${messages === 1 ? '' : 's'}`] : []),
+        ...(tokens !== undefined ? [`freed ~${tokens} tokens`] : []),
+    ];
+    return `Context compacted automatically${parts.length ? ` — ${parts.join(', ')}` : ''}.`
+        + (result?.outcome === 'insufficient' ? AUTO_COMPACT_TEXT.insufficient
+            + (state?.paused?.reason === 'failures' ? AUTO_COMPACT_TEXT.paused : '') : '');
 }

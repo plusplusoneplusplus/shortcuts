@@ -42,7 +42,6 @@ import { snapshotConversation, embedMathCssForCopy } from '../../utils/snapshot-
 import { toClientConversationTurns } from './nativeConversationTurns';
 import {
     buildNativeSessionMetadataExtraRows,
-    deriveNativeSessionModel,
     nativeSessionTitle,
     toNativeSessionHeaderTask,
     toNativeSessionMetadataProcess,
@@ -550,7 +549,6 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliS
     const headerTask = useMemo(() => toNativeSessionHeaderTask(detail), [detail]);
     const metadataProcess = useMemo(() => toNativeSessionMetadataProcess(detail), [detail]);
     const metadataExtraRows = useMemo(() => buildNativeSessionMetadataExtraRows(detail), [detail]);
-    const sessionModel = useMemo(() => deriveNativeSessionModel(detail), [detail]);
     const title = nativeSessionTitle(detail);
 
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -661,9 +659,6 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliS
                 resumeLaunching={false}
                 resumeSessionId={undefined}
                 isPending={false}
-                sessionTokenLimit={undefined}
-                sessionCurrentTokens={undefined}
-                sessionModel={sessionModel}
                 copied={copied}
                 setCopied={setCopied}
                 taskId={detail.id}

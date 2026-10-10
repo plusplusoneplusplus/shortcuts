@@ -38,9 +38,8 @@ describe('local messaging Git status', () => {
         ], dir, read);
         expect(read.mock.calls).toEqual([[a.rootPath], [b.rootPath]]);
         expect(reply).toContain('local repos (2)');
-        expect(reply).toContain('alpha - main\nclean; 0 conflicts; origin/main: 8 ahead, 2 behind');
+        expect(reply).toBe('Git status - local repos (2)\n\nalpha - clean\nbeta - clean');
         expect(reply).not.toMatch(/private-repo|remote:|Alias|global|group-one|group-two/);
-        expect(reply).toContain('local tracking refs; remote state may be stale. No fetch.');
     });
 
     it('reports counts separately from unresolved conflicts, without filenames or tables', async () => {
@@ -54,19 +53,26 @@ describe('local messaging Git status', () => {
             ],
         });
         const reply = await localGitStatusReply([workspace('alpha')], dir, read);
-        expect(reply).toContain('2 staged, 1 unstaged, 1 untracked; 2 conflicts');
+        expect(reply).toContain('alpha - 2 staged, 1 unstaged, 1 untracked, 2 conflicts');
         expect(reply).not.toMatch(/both.txt|old.txt|\|/);
     });
 
-    it('handles detached HEAD, unborn/no upstream and missing tracking refs explicitly', async () => {
+    it('renders one row per repo: clean without branch/tracking clutter, otherwise only nonzero counts', async () => {
         const read = vi.fn()
             .mockResolvedValueOnce({ ...clean(), branch: { ...clean().branch, isDetached: true, trackingBranch: undefined } })
             .mockResolvedValueOnce({ ...clean(), branch: { ...clean().branch, unborn: true, trackingBranch: undefined } })
-            .mockResolvedValueOnce({ ...clean(), trackingAvailable: false });
-        const reply = await localGitStatusReply(['detached', 'unborn', 'gone'].map(id => workspace(id)), dir, read);
-        expect(reply).toContain('detached - detached HEAD\nclean; 0 conflicts; no upstream');
-        expect(reply).toContain('unborn - main (unborn)\nclean; 0 conflicts; no upstream');
-        expect(reply).toContain('gone - main\nclean; 0 conflicts; origin/main: ahead/behind unavailable');
+            .mockResolvedValueOnce({ ...clean(), trackingAvailable: false })
+            .mockResolvedValueOnce({ ...clean(), entries: [{ path: 'a', status: 'untracked', stage: 'untracked' }] })
+            .mockResolvedValueOnce({ ...clean(), conflicts: 1 })
+            .mockResolvedValueOnce({ ...clean(), conflicts: 3, entries: [{ path: 'b', status: 'modified', stage: 'unstaged' }] });
+        const reply = await localGitStatusReply(
+            ['detached', 'unborn', 'gone', 'dirty', 'conflicted', 'mixed'].map(id => workspace(id)), dir, read);
+        expect(reply).toBe([
+            'Git status - local repos (6)', '',
+            'detached - clean', 'unborn - clean', 'gone - clean', 'dirty - 1 untracked',
+            'conflicted - 1 conflict', 'mixed - 1 unstaged, 3 conflicts',
+        ].join('\n'));
+        expect(reply).not.toMatch(/main|ahead|behind|upstream|0 |fetch/);
     });
 
     it('isolates status failures and reports missing paths, non-Git roots and unreadable groups', async () => {
@@ -83,7 +89,7 @@ describe('local messaging Git status', () => {
         expect(reply).toContain('plain: not a Git repository');
         expect(reply).toContain('missing: repository unavailable');
         expect(reply).toContain('failed: status failed');
-        expect(reply).toContain('good - main\nclean');
+        expect(reply).toContain('good - clean');
         expect(reply).toContain('no-path: repository path unavailable');
         expect(reply).toContain('group-broken: group membership unavailable');
         expect(reply).not.toContain('sensitive');
@@ -130,7 +136,8 @@ describe('local messaging Git status', () => {
         const addon = loadNativeGit();
         const exec = vi.spyOn(addon, 'execGit');
         const reply = await localGitStatusReply([repo]);
-        expect(reply).toContain('1 staged, 1 unstaged, 2 untracked; 0 conflicts; origin/main: 1 ahead, 0 behind');
+        expect(reply).toContain('repo - 1 staged, 1 unstaged, 2 untracked');
+        expect(reply).not.toMatch(/conflict|ahead|behind/);
         expect(exec.mock.calls.map(call => call[0])).toEqual([
             ['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=all'],
             ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all'],
@@ -167,7 +174,7 @@ describe('local messaging Git status', () => {
         const reply = await localGitStatusReply([plain, missing, unborn]);
         expect(reply).toContain('plain: not a Git repository');
         expect(reply).toContain('missing: repository unavailable');
-        expect(reply).toContain('unborn - main (unborn)\nclean; 0 conflicts; no upstream');
+        expect(reply).toContain('unborn - clean');
     });
 
     it('counts staged and unstaged type changes rather than reporting a dirty repo as clean', async () => {
@@ -178,6 +185,6 @@ describe('local messaging Git status', () => {
         const status = await readMessagingGitStatus(dir);
         expect(status.entries.map(entry => entry.stage)).toEqual(['staged', 'unstaged']);
         expect(await localGitStatusReply([workspace('types')], dir, async () => status))
-            .toContain('1 staged, 1 unstaged, 0 untracked; 0 conflicts; no upstream');
+            .toContain('types - 1 staged, 1 unstaged');
     });
 });

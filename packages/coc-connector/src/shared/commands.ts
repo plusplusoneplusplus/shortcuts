@@ -17,12 +17,16 @@
  *   - `list topics <ref>` lists a remote repo's chats read-only; `<ref>` is a
  *     `n.m` number from `list remotes` or `name@server`. Bare `list topics`
  *     lists local repos together (last24hours, top5). A trailing `-v` on either form also shows topic ids.
+ *   - Platform-limited commands (`list todos`, WhatsApp only) parse and show in
+ *     help only when the caller names that platform; elsewhere the text keeps
+ *     its old meaning, so no connector advertises a command it cannot handle.
  */
 
 export type MessagingChatMode = 'ask' | 'autopilot' | 'ralph' | 'sentinel';
+export type MessagingPlatform = 'teams' | 'whatsapp';
 
 export type MessagingCommand =
-    | { type: 'list-repos' | 'list-remotes' | 'create-topic' | 'help' | 'quota' | 'git-status'; args: '' }
+    | { type: 'list-repos' | 'list-remotes' | 'create-topic' | 'help' | 'quota' | 'git-status' | 'list-todos'; args: '' }
     | { type: 'select-repo' | 'select-topic'; args: string }
     /**
      * `args` is an optional remote repo ref (`n.m` or `name@server`); empty lists
@@ -36,7 +40,7 @@ export type MessagingCommand =
     | { type: 'chat-explicit'; chatId: string; args: string; mode?: MessagingChatMode }
     | { type: 'invalid'; args: string };
 
-export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'git-status' | 'select-repo' | 'select-topic' | 'compact' }>;
+export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'git-status' | 'select-repo' | 'select-topic' | 'compact' | 'list-todos' }>;
 
 export interface MessagingHelpCommandSpec {
     group: string;
@@ -52,6 +56,8 @@ interface CommandSpec extends MessagingHelpCommandSpec {
      * argument, group 2 (list-topics only) the `-v` flag.
      */
     pattern: RegExp;
+    /** Only these connectors parse and advertise the command; all when unset. */
+    platforms?: readonly MessagingPlatform[];
 }
 
 export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
@@ -63,6 +69,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'create-topic', group: 'Topics', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'Next message starts a new chat' },
     { type: 'select-topic', group: 'Topics', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'Continue an existing chat', example: 'select topic 1' },
     { type: 'compact', group: 'Topics', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: 'Summarize context: replied-to chat, else selected topic' },
+    { type: 'list-todos', group: 'Topics', pattern: /^(?:list\s+)?todos?$/i, platforms: ['whatsapp'], usage: 'list todos', summary: 'Not-done to-do items of the replied-to Sentinel chat, else the selected topic (alias: todo; read-only)' },
     { type: 'help', group: 'Tools', pattern: /^help$/i, usage: 'help', summary: 'Show this help' },
     { type: 'quota', group: 'Tools', pattern: /^quota$/i, usage: 'quota', summary: 'Show AI provider quota' },
 ];
@@ -78,11 +85,18 @@ export const MESSAGING_MODE_SPECS: readonly { mode: MessagingChatMode; summary: 
 const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
 const MODE_PATTERN = new RegExp(`^/(${MESSAGING_MODE_SPECS.map(spec => spec.mode).join('|')})(?:\\s+(.*))?$`, 'is');
 const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|remotes?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$|^git\s+status\b/i;
+const TODO_COMMAND_LIKE_PATTERN = /^list\s+todos?\b/i;
+
+function supports(spec: { platforms?: readonly MessagingPlatform[] }, platform: MessagingPlatform | undefined): boolean {
+    return !spec.platforms || (!!platform && spec.platforms.includes(platform));
+}
 
 export interface MessagingHelpFormat {
     strong?: (text: string) => string;
     code?: (text: string) => string;
     escape?: (text: string) => string;
+    /** Includes this connector's platform-limited commands. */
+    platform?: MessagingPlatform;
 }
 
 /** Reusable grouped layout for consumers with their own command grammar. */
@@ -111,7 +125,7 @@ export function formatMessagingHelp(format: MessagingHelpFormat = {}): string {
     const escape = format.escape ?? plain;
     const sections = [
         `${strong('CoC help')}\nCommands ignore case; leading / is optional.\n<...> required · [...] optional · n = list number`,
-        formatMessagingHelpCommands(MESSAGING_COMMAND_SPECS, format),
+        formatMessagingHelpCommands(MESSAGING_COMMAND_SPECS.filter(spec => supports(spec, format.platform)), format),
         [
             strong('Chat'),
             'Send plain text to continue the selected chat in its current mode.',
@@ -138,10 +152,12 @@ function parseChat(text: string, mode?: MessagingChatMode): MessagingCommand {
     return { type: 'chat', args: text, mode };
 }
 
-export function parseMessagingCommand(text: string): MessagingCommand {
+export function parseMessagingCommand(text: string, platform?: MessagingPlatform): MessagingCommand {
     const value = text.trim();
     const body = value.replace(/^\//, '').trim();
-    for (const { pattern, type } of MESSAGING_COMMAND_SPECS) {
+    for (const spec of MESSAGING_COMMAND_SPECS) {
+        if (!supports(spec, platform)) continue;
+        const { pattern, type } = spec;
         const match = pattern.exec(body);
         if (!match) continue;
         const args = (match[1] ?? '').trim();
@@ -154,7 +170,8 @@ export function parseMessagingCommand(text: string): MessagingCommand {
         // An empty body stays a chat so callers can ask for the message.
         return message ? parseChat(message, mode) : { type: 'chat', args: '', mode };
     }
-    if (value.startsWith('/') || COMMAND_LIKE_PATTERN.test(body)) return { type: 'invalid', args: value };
+    if (value.startsWith('/') || COMMAND_LIKE_PATTERN.test(body)
+        || (platform === 'whatsapp' && TODO_COMMAND_LIKE_PATTERN.test(body))) return { type: 'invalid', args: value };
     return parseChat(value);
 }
 

@@ -889,7 +889,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.sentinelDesktopMirror', default: false, runtime: 'live', runtimeFlag: 'sentinelDesktopMirrorEnabled',
         ui: {
             tab: 'integrations', group: 'dashboard', order: 61.8, label: 'Sentinel desktop messaging mirror', badge: 'experimental',
-            hint: 'Mirror newly accepted dashboard messages and final answers to their active local Sentinel messaging binding. Delivery failures appear in the chat; uncertain sends require manual reconciliation. Existing history is not replayed.',
+            hint: 'Mirror newly accepted dashboard messages and final answers to their active local Sentinel messaging binding. WhatsApp uploads allow up to 10 files and 10 MiB total; invalid or oversized uploads reject submission. Delivery failures appear in the chat; uncertain sends require manual reconciliation. Existing history is not replayed.',
             testId: 'toggle-sentinel-desktop-mirror-enabled',
         },
     }),
@@ -931,6 +931,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'dashboard', order: 66.5, label: 'Pinned scope segments', badge: 'experimental',
             hint: 'Pin repos and repo groups from the workspace picker so they get their own persistent segments in the scope slide switcher, between My Work / My Life and the workspace chip. Requires the scope slide switcher. Enabled by default.',
             testId: 'toggle-pinned-scopes-enabled',
+        },
+    }),
+    bool({
+        key: 'features.repoGroupExclusiveWriter', default: false, runtime: 'live', runtimeFlag: 'repoGroupExclusiveWriterEnabled',
+        ui: {
+            group: 'dashboard', order: 67, label: 'Exclusive repo-group writer', badge: 'experimental',
+            hint: 'Shared repos default to read-only in additional groups. Revoke the existing group writer before granting another. Existing conflicts remain unchanged.',
+            testId: 'toggle-repo-group-exclusive-writer-enabled',
         },
     }),
     bool({

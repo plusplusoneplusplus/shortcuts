@@ -9,8 +9,8 @@
  * `up` (bottom-left sidebar dock): panel opens above the trigger with its left
  * edge aligned to the trigger's left edge.
  *
- * Both directions are clamped to the viewport (with a margin) and flip to the
- * opposite side when there isn't enough room, so the panel is never cut off.
+ * Both directions are clamped to the visual viewport and flip when needed.
+ * Constrained panels receive width and height limits for internal scrolling.
  */
 
 import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
@@ -40,6 +40,7 @@ export interface AnchoredPanelPosition {
     top: number;
     left: number;
     maxHeight?: number;
+    maxWidth?: number;
 }
 
 export function useAnchoredPanelPosition({
@@ -61,38 +62,48 @@ export function useAnchoredPanelPosition({
 
         const t = trigger.getBoundingClientRect();
         const p = panel.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const viewport = window.visualViewport;
+        const viewportLeft = viewport?.offsetLeft ?? 0;
+        const viewportTop = viewport?.offsetTop ?? 0;
+        const vw = viewport?.width ?? window.innerWidth;
+        const vh = viewport?.height ?? window.innerHeight;
+        const right = viewportLeft + vw - margin;
+        const bottom = viewportTop + vh - margin;
+        const maxWidth = Math.max(0, vw - 2 * margin);
+        const width = Math.min(p.width, maxWidth);
 
         // Horizontal anchor: `up` left-aligns, `down` right-aligns.
-        let left = (align ?? (placement === 'up' ? 'left' : 'right')) === 'left' ? t.left : t.right - p.width;
-        if (left + p.width > vw - margin) left = vw - p.width - margin;
-        if (left < margin) left = margin;
+        let left = (align ?? (placement === 'up' ? 'left' : 'right')) === 'left' ? t.left : t.right - width;
+        if (left + width > right) left = right - width;
+        if (left < viewportLeft + margin) left = viewportLeft + margin;
 
         // Vertical anchor: `up` opens above, `down` opens below — flip if it
         // doesn't fit, then clamp to keep the whole panel on-screen.
         if (constrainHeight) {
-            const above = Math.max(0, t.top - gap - margin);
-            const below = Math.max(0, vh - margin - t.bottom - gap);
-            const height = Math.max(p.height, panel.scrollHeight);
+            const aboveEnd = Math.min(bottom, Math.max(viewportTop + margin, t.top - gap));
+            const belowStart = Math.max(viewportTop + margin, Math.min(bottom, t.bottom + gap));
+            const above = aboveEnd - viewportTop - margin;
+            const below = bottom - belowStart;
+            // scrollHeight excludes borders; placement must fit the outer box too.
+            const height = Math.max(p.height, panel.scrollHeight + p.height - panel.clientHeight);
             const preferred = placement === 'up' ? above : below;
             const opposite = placement === 'up' ? below : above;
             const side = height > preferred && opposite > preferred
                 ? (placement === 'up' ? 'down' : 'up') : placement;
             const maxHeight = side === 'up' ? above : below;
-            const top = side === 'up' ? t.top - gap - Math.min(height, maxHeight) : t.bottom + gap;
-            setPos(prev => prev.top === top && prev.left === left && prev.maxHeight === maxHeight
-                ? prev : { top, left, maxHeight });
+            const top = side === 'up' ? aboveEnd - Math.min(height, maxHeight) : belowStart;
+            setPos(prev => prev.top === top && prev.left === left && prev.maxHeight === maxHeight && prev.maxWidth === maxWidth
+                ? prev : { top, left, maxHeight, maxWidth });
             return;
         }
         let top = placement === 'up' ? t.top - p.height - gap : t.bottom + gap;
-        if (placement === 'up' && top < margin) {
+        if (placement === 'up' && top < viewportTop + margin) {
             top = t.bottom + gap;
-        } else if (placement === 'down' && top + p.height > vh - margin) {
+        } else if (placement === 'down' && top + p.height > bottom) {
             top = t.top - p.height - gap;
         }
-        if (top + p.height > vh - margin) top = vh - p.height - margin;
-        if (top < margin) top = margin;
+        if (top + p.height > bottom) top = bottom - p.height;
+        if (top < viewportTop + margin) top = viewportTop + margin;
 
         setPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }));
     }, [placement, triggerRef, panelRef, gap, margin, align, constrainHeight]);
@@ -103,13 +114,19 @@ export function useAnchoredPanelPosition({
         window.addEventListener('resize', recompute);
         // Capture-phase so we react to scrolls in any ancestor scroll container.
         window.addEventListener('scroll', recompute, true);
+        const viewport = window.visualViewport;
+        viewport?.addEventListener('resize', recompute);
+        viewport?.addEventListener('scroll', recompute);
         const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(recompute);
-        if (triggerRef.current) observer?.observe(triggerRef.current);
+        // Split resizing can move a fixed-size trigger without resizing the button.
+        for (let anchor = triggerRef.current; anchor; anchor = anchor.parentElement) observer?.observe(anchor);
         if (panelRef.current) observer?.observe(panelRef.current);
         return () => {
             observer?.disconnect();
             window.removeEventListener('resize', recompute);
             window.removeEventListener('scroll', recompute, true);
+            viewport?.removeEventListener('resize', recompute);
+            viewport?.removeEventListener('scroll', recompute);
         };
     }, [open, recompute]);
 

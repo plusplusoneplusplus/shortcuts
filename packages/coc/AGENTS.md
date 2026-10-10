@@ -77,6 +77,13 @@ references before editing. Paths are package-relative.
   Promote buffered turns before the boundary; later arrivals cannot steer across it.
   Cancel removes queued compaction only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
+  Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
+  checks `currentTokens > thresholdTokens` after a persisted response, one attempt per
+  response, always queued; model limits never rescale the absolute threshold. The default
+  is OFF with a 700k input matching the mock design. Both context popovers use one switch/k
+  input row, Enter/blur auto-save and one status line; owner-bound drafts survive failures.
+  Unknown or at/above-limit thresholds warn without capping. It adds no deadline or abort
+  to running compactions. Only its own endpoints write `metadata.autoCompact`.
 
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
@@ -121,21 +128,50 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+  LLM-tool settings and chat retrieval checks share
+  `configCacheKey.llmToolsConfig(workspaceId, baseUrl)` for reads, warm seeds and
+  invalidation; identical workspace IDs on different servers stay isolated.
+  SPA Git-info and queue readers share concurrent requests through
+  `api/workspaceReads.ts`, keyed by routed client and workspace. Queue task
+  hydration is distinct from stats-only placeholders; loaded empty queues are valid
+  only for their recorded server/API source.
+  SPA repo preferences use `api/repoPreferences.ts` for shared reads and writes,
+  with a 30-second server/API-prefix/workspace cache. Successful preference and
+  skill/tool mutations invalidate it; superseded reads cannot repopulate the cache.
 - Sentinel to-do ledgers (`src/server/sentinel-todos/`) are bookkeeping only: REST and AI
   tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
   read/write and emits only after the atomic write commits. Item revisions reject stale
-  writers (`409` with the current item); there is no hard delete. Never let ledger edits
+  writers (`409` with the current item). Item `type` is immutable (`normal` or `manual`):
+  creation defaults to normal, and untyped stored items read as normal without rewriting.
+  Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
+  including evidence-based Done with a reason; Notes and Done when are optional.
+  Archive/restore are user-only, enforced for manual items in the shared store.
+  Manual items never authorize execution, delegation, job links, or automatic result
+  reviews. Execution requests require clarification; never create a normal-item copy,
+  convert, or hand off a manual item. Never let ledger edits
   start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability (undefined while the flag is off).
-  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived
-  `todoItemId` before launch and links the admitted job afterwards (link failures are
+  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived normal
+  `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local
-  terminal results reach the item through `createSentinelTodoDelegationHooks` (first result
+  terminal results reach normal items through `createSentinelTodoDelegationHooks` (first result
   per link wins; failed/cancelled/capped → Needs attention unless a later user edit or a
   newer completed attempt supersedes it). Completion never marks Done: only an explicit
-  Sentinel/user verdict does. Job execution status is derived on read, separate from item
-  status; remote links are always `unavailable`.
+  Sentinel/user verdict does. Guidance tracks the intended final outcome on one item across
+  grilling/implementation/review, with milestones/spec links in notes. Successful grilling
+  returns feature work to Todo awaiting implementation approval; only explicitly
+  design-only/interview-only requests finish at their agreed artifact. Parent reviews
+  select overall-outcome status, re-read revisions, honor manual user verdicts, and require
+  user authorization before implementation/retry. Local assessment is durable per terminal result:
+  `reviewedJobs` names exact process/event evidence with a status verdict and reason in one
+  revision-checked write. Unrelated edits and delivery completion never acknowledge results.
+  Explicit user status/reason/outcome/archive decisions supersede already-linked work
+  without claiming its evidence was assessed; acknowledgment requires exact `reviewedJobs`.
+  Review updates cannot overwrite those verdicts or reopen archived/Done items.
+  Job execution/delivery/assessment are derived on read with exact parent/child workspace,
+  process and session identity; remote links are always `unavailable`. Committed delivery
+  transitions invalidate linked ledgers without advancing their revisions.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
@@ -202,6 +238,15 @@ references before editing. Paths are package-relative.
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 
 ## Chat and Provider Safety
+
+- Pause and delay menus use body portals and `useAnchoredPanelPosition` with
+  constrained height, viewport-bounded width, and contained vertical scrolling.
+  Outside-click checks include the portal; Escape returns focus to the owning trigger.
+
+- `AskUserInline` reply fields share batch submission with the button: Enter submits,
+  Shift+Enter preserves multiline Need context notes, and IME/229 never submits.
+  Keep optional deferred notes, required-answer validation, clone routing, synchronous
+  in-flight/accepted duplicate guards, and retryable drafts intact.
 
 - Monaco selection attachments target a visible follow-up composer or seed the
   new-chat input in their workspace. Hidden or inert composers decline before
@@ -270,6 +315,16 @@ references before editing. Paths are package-relative.
 - Canonicalize live group roots; reject writable/read-only overlap.
   Pass both sets every turn; unsupported providers fail before session creation.
   See `src/server/workspaces/repo-group-access-policy.ts`.
+  `features.repoGroupExclusiveWriter` defaults off. Owning-server group saves serialize
+  admission and persistence. Omitted new defaults close read-only protection across
+  overlapping roots; saved/explicit writers are never reassigned. New mixed overlapping
+  policies return 409 `REPO_GROUP_ACCESS_POLICY_CONFLICT`; competing writers return 409
+  with group links. Preserve saved conflicts and allow revocation, including retained
+  stale members. Unresolved memberships cannot silently admit a new writer.
+  `/api/repo-groups/access` shares admission identity and returns the owner's live flag,
+  sharing state and every saved writer. Dialog/settings links qualify remote group IDs
+  with the owning server ID. Dialog automatic choices remain omitted at save time;
+  saved/user choices stay explicit. Saves are authoritative and rejected drafts stay intact.
 - Notes root authority is `src/server/notes/notes-root-resolver.ts`, not client paths.
   Task roots are opaque/protected, never user-root config or counted against its limit.
   Native Notes I/O owns containment/symlinks, atomic writes, sidecars, and order.
@@ -367,7 +422,15 @@ references before editing. Paths are package-relative.
   explicit resume. Echo guards verify self/account/scope and exact attempted content.
   Desktop delegation pins stay in private ledgers, not child/process provenance;
   results use the existing notice worker after original user/assistant confirmation.
-  Keep legacy origins unchanged. Unsupported attachments use path-free markers;
+  WhatsApp mirrors request-upload bytes only: PNG/JPEG/GIF/WebP images use native
+  images; other valid MIME files, including audio/video, use documents. Limit batches
+  to 10 attachments and 10 MiB decoded total. Snapshot bytes/integrity metadata in
+  the owning outbox before admission, independent of executor temporary files.
+  Send text first, then ordered filename captions through the same per-part receipts;
+  discard acknowledged bytes and all remaining bytes on delivery/cancellation.
+  Reject malformed/unsupported/oversize uploads before forwarding any part.
+  Never read SDK paths, paste references, generated artifacts or another server's files.
+  Teams and reference-only inputs retain path-free unsupported markers;
   mirror receipts are machine-local, excluded from export/import and included in wipe.
   See [server architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#desktop-sentinel-mirror).
 - `src/server/messaging/incoming-images.ts` prepares admitted image batches only
@@ -406,9 +469,17 @@ references before editing. Paths are package-relative.
   and Teams channel/thread commands, report every finite snapshot with `5h`/`7d` window
   labels and `% left`, and preserve unknown values and limit-id prefixes.
   `git status` uses `messaging/git-status.ts` to read every accessible registered local
-  repo, expanding groups within the supplied registry and deduplicating roots.
+  repo, expanding groups within the supplied registry and deduplicating roots; one row per
+  repo (`name - clean`, else only nonzero change/conflict counts).
   Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
   this command bypasses pending question answers and never changes selection or invokes AI.
+  WhatsApp-only `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`) lists the
+  not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
+  `SentinelTodoService.list` (non-Sentinel → explicit reply; ledger flag off → off reply;
+  non-local workspace → unsupported reply). Status labels come from the client's
+  dependency-free `sentinelTodoStatusModel.ts`; Manual tracking is grouped separately; at most
+  100 items, the rest counted; replies chunk via `chunkWhatsAppText`. Read-only: no ledger
+  write, enqueue, selection change or result acknowledgement.
   Git reads reuse native parsers and forge's WSL runner with optional locks disabled,
   without safe-directory writes or fetch. Replies report changes/conflicts, detached/unborn
   HEAD, missing upstream and per-repo failures; local tracking refs may be stale.
@@ -465,7 +536,10 @@ references before editing. Paths are package-relative.
   wait for matching parent delegation at the same connector/group/thread. Suppress only
   with durable parent result outbox coverage; failed parent delivery releases a safe child
   fallback. Review admission/settlement reconciles held notices. Later child turns and
-  compaction retain direct notices. Receipt states persist per workspace; interrupted sends
+  compaction retain direct notices. Automatic Sentinel compaction posts WhatsApp start
+  (on execution) and outcome notices only to the triggering request's own receipt or
+  enabled desktop-mirror capture (`auto-compaction-origins.ts`), after its answer is relayed.
+  Outcomes report counts only, never summaries or errors. Receipt states persist per workspace; interrupted sends
   are quarantined. WhatsApp binds replies to the notice's chat; Teams uses the captured
   parent thread for results or binds a top-level child notice. Selection remains unchanged.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection

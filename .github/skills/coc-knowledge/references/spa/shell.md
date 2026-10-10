@@ -288,20 +288,38 @@ endpoint; the wins are client caching, re-keying, deferral, and cache headers.
 - `peekConfig(key)` — synchronous seed, so a warm reopen paints with no loading flash.
 - `invalidateConfig(key)` — drops one key.
 - `configCacheKey` — `.models` / `.reasoningEfforts` / `.effortTiers(provider)` per
-  **provider**, `.llmToolsConfig(workspaceId)` per **workspace**.
+  **provider**, `.llmToolsConfig(workspaceId, baseUrl)` and `.repoPreferences(workspaceId, owner)`
+  per **server and workspace**. Invalidation revokes pending cache publication without
+  cancelling existing callers.
 
 Readers: `hooks/useModels.ts`, `useProviderModels.ts`, `useProviderReasoningEfforts.ts`,
 `useProviderEffortTiers.ts`, `features/repo-settings/LlmToolsPanel.tsx` `loadConfig`, and
-`features/chat/sessionContextDrop.ts` `useConversationRetrievalCapability` — so an
-already-seen provider+workspace triggers **zero** config calls. `test/setup.ts` clears the
-singleton in a global `beforeEach`.
+`features/chat/sessionContextDrop.ts` `useConversationRetrievalCapability`. The tool
+settings and retrieval check share the selected server's key, including synchronous
+warm seeds; identical workspace IDs on different servers stay isolated.
+`test/setup.ts` clears the singleton in a global `beforeEach`.
 
 Each mutation drops only its own key: `setEnabledModels` → `models:<provider>`,
 `setReasoningEffort` → `reasoning-efforts:<provider>`, `effortTiers.save()` →
-`effort-tiers:<provider>`, `LlmToolsPanel`'s toggle → `llm-tools-config:<workspaceId>`
-after a successful `updateLlmToolsConfig`.
+`effort-tiers:<provider>`, `LlmToolsPanel`'s toggle → the selected server/workspace's
+LLM-tools key after a successful `updateLlmToolsConfig`.
 
 ### Workspace-scoped data is not refetched per conversation
+
+`api/workspaceReads.ts` shares concurrent Git-info and queue reads by routed
+client and workspace, releasing requests on success or failure. It retains no
+settled snapshots. Explicit queue refreshes supersede pending snapshots; older
+readers receive the replacement result. `RepoDetail` seeds queue task data only when it is absent;
+`QueueContext.repoQueueMap.taskDataLoaded` distinguishes loaded empty queues
+from stats-only placeholders, and `taskDataSource` records the server/API owner.
+`RepoChatTab` refreshes queue data on each mount.
+
+`api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
+server origin, API prefix and workspace. `useRepoPreferences` supplies the same
+response to provider and model selection; provider availability and choice
+changes derive locally without refetching. All SPA preference writes and
+skill/tool mutations invalidate the affected owner/workspace after success.
+Failed reads are not cached, and invalidated reads cannot overwrite newer data.
 
 `features/chat/hooks/useCrons.ts` keys `crons.list` on `[workspaceId, cloneClient]` only —
 processId is not a fetch dep; the per-process view is a `useMemo([allCrons, processId])`.
@@ -457,7 +475,8 @@ copy action and no save or dirty-state registration. With
 `features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos`; only the descriptor
-persists. The full contract lives in
+persists. Normal tracking comes first, then an always-visible Manual tracking
+section with its own add form and separate Done/Archived groups. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

@@ -46,9 +46,11 @@ visual layer.
 
 ## Clone routing
 
-`RepoDetail.tsx` runs its workspace-scoped calls (work-items badge, queue seed,
-Resume Queue) through `getCocClientForWorkspace(ws.id)` so a remote clone hits its
-own server. Work-item commit reviews receive the repo’s concrete selection id
+`RepoDetail.tsx` routes the queue seed through `useCocClient(sourceSelectionId)`
+and `api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
+Queue hydration accepts an empty task list only from its recorded server/API
+source; stats-only placeholders still require a seed. Work-items badge and
+Resume Queue use `getCocClientForWorkspace(ws.id)`. Work-item commit reviews receive the repo’s concrete selection id
 through `WorkItemsTab` and `WorkItemCommitReviewPane` as
 `attachmentDestinationId`; diff payloads keep the plain workspace id.
 `/chat/launch-terminal` deliberately stays on the local-origin

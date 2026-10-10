@@ -7,6 +7,7 @@
  */
 
 export type SentinelTodoStatus = 'todo' | 'in_progress' | 'needs_attention' | 'done';
+export type SentinelTodoType = 'normal' | 'manual';
 /** Ledger metadata only, independent of status and of job queue priority. */
 export type SentinelTodoPriority = 'high' | 'regular';
 export type SentinelTodoActor = 'user' | 'sentinel' | 'system';
@@ -29,7 +30,13 @@ export type SentinelTodoJobExecution =
     state: 'completed' | 'failed' | 'cancelled' | 'capped';
     reason?: string;
     /** Delivery of the result review to the Sentinel chat, not a verdict. */
-    review?: { state: 'pending' | 'queued' | 'delivered' | 'failed'; reason?: string };
+    review?: {
+      state: 'pending' | 'queued' | 'delivered' | 'failed';
+      /** Explicit ledger verdict, independent of result transport/parent turn completion. */
+      assessment?: 'pending' | 'reviewed' | 'superseded' | 'not_required';
+      terminalEventId?: string;
+      reason?: string;
+    };
   };
 
 export interface SentinelTodoJobLink {
@@ -46,6 +53,8 @@ export interface SentinelTodoJobLink {
 
 export interface SentinelTodoItem {
   id: string;
+  /** Immutable tracking kind; stored items without a type read as `normal`. */
+  type: SentinelTodoType;
   title: string;
   completionCondition: string;
   notes: string;
@@ -70,6 +79,8 @@ export interface SentinelTodoLedgerResponse {
 }
 
 export interface CreateSentinelTodoRequest {
+  /** Defaults to `normal`; updates cannot change it. */
+  type?: SentinelTodoType;
   title: string;
   completionCondition?: string;
   notes?: string;
@@ -94,6 +105,8 @@ export interface UpdateSentinelTodoRequest {
   priority?: SentinelTodoPriority;
   outcome?: string | null;
   archived?: boolean;
+  /** Exact local terminal results assessed by an explicit status verdict. */
+  reviewedJobs?: { processId: string; terminalEventId: string }[];
 }
 
 /** A write's committed item (without derived job execution) and ledger revision. */

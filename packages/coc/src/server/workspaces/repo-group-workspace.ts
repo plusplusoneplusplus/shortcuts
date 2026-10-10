@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { admitRepoGroupWriters, withRepoGroupMutation } from './repo-group-exclusive-writer';
 
 /** Prefix identifying repo-group workspace IDs without a registry lookup. */
 export const REPO_GROUP_ID_PREFIX = 'group-';
@@ -97,7 +98,11 @@ function slugify(name: string): string {
  * arbitrary paths and other virtual workspaces (including groups) are
  * rejected. Duplicates are collapsed, preserving first occurrence order.
  */
-async function normalizeMembers(store: ProcessStore, members: string[]): Promise<string[]> {
+async function normalizeMembers(
+    store: ProcessStore,
+    members: string[],
+    retained: readonly string[] = [],
+): Promise<string[]> {
     const registered = new Map((await store.getWorkspaces()).map(w => [w.id, w]));
     const seen = new Set<string>();
     const normalized: string[] = [];
@@ -106,6 +111,10 @@ async function normalizeMembers(store: ProcessStore, members: string[]): Promise
         seen.add(id);
         const ws = registered.get(id);
         if (!ws) {
+            if (retained.includes(id)) {
+                normalized.push(id);
+                continue;
+            }
             throw new RepoGroupValidationError(`Repo group member "${id}" is not a registered workspace`);
         }
         if (ws.virtual) {
@@ -233,7 +242,11 @@ function parseReadOnlyMembers(value: unknown, members: readonly string[]): strin
  * Read the membership file for a group. Returns `undefined` when the ID is
  * not a well-formed group ID or the file does not exist / cannot be parsed.
  */
-export function readRepoGroup(dataDir: string, groupId: string): RepoGroupFile | undefined {
+export function readRepoGroup(
+    dataDir: string,
+    groupId: string,
+    options: { strictMembers?: boolean } = {},
+): RepoGroupFile | undefined {
     if (!isRepoGroupWorkspaceId(groupId)) return undefined;
     const filePath = groupFilePath(dataDir, groupId);
     let raw: string;
@@ -245,6 +258,7 @@ export function readRepoGroup(dataDir: string, groupId: string): RepoGroupFile |
     try {
         const parsed = JSON.parse(raw) as Partial<RepoGroupFile>;
         if (typeof parsed?.name !== 'string' || !Array.isArray(parsed.members)) return undefined;
+        if (options.strictMembers && !parsed.members.every(member => typeof member === 'string')) return undefined;
         const members = parsed.members.filter((m): m is string => typeof m === 'string');
         const descriptions = parseDescriptions((parsed as { descriptions?: unknown }).descriptions);
         const readOnlyMembers = parseReadOnlyMembers(
@@ -290,13 +304,26 @@ export async function createRepoGroup(
         descriptions?: Record<string, string>;
         readOnly?: Record<string, boolean>;
     },
+    options: { exclusiveWriter?: boolean } = {},
+): Promise<WorkspaceInfo> {
+    return withRepoGroupMutation(dataDir, () => createRepoGroupUnlocked(dataDir, store, input, options));
+}
+
+async function createRepoGroupUnlocked(
+    dataDir: string,
+    store: ProcessStore,
+    input: { name: string; members: string[]; descriptions?: Record<string, string>; readOnly?: Record<string, boolean> },
+    options: { exclusiveWriter?: boolean },
 ): Promise<WorkspaceInfo> {
     const name = normalizeName(input.name);
     const members = await normalizeMembers(store, input.members);
     const descriptions = input.descriptions ? normalizeDescriptions(input.descriptions, members) : undefined;
-    const readOnlyMembers = input.readOnly
+    let readOnlyMembers = input.readOnly
         ? applyReadOnlyPatch(undefined, input.readOnly, members)
         : undefined;
+    if (options.exclusiveWriter) {
+        readOnlyMembers = await admitRepoGroupWriters(dataDir, store, members, readOnlyMembers ?? [], input.readOnly);
+    }
     const groupId = await mintGroupId(dataDir, store, name);
     writeGroupFile(dataDir, groupId, { name, members, descriptions, readOnlyMembers });
     const ws: WorkspaceInfo = {
@@ -325,10 +352,23 @@ export async function updateRepoGroup(
         descriptions?: Record<string, string>;
         readOnly?: Record<string, boolean>;
     },
+    options: { exclusiveWriter?: boolean } = {},
+): Promise<RepoGroupFile | undefined> {
+    return withRepoGroupMutation(dataDir, () => updateRepoGroupUnlocked(dataDir, store, groupId, updates, options));
+}
+
+async function updateRepoGroupUnlocked(
+    dataDir: string,
+    store: ProcessStore,
+    groupId: string,
+    updates: { name?: string; members?: string[]; descriptions?: Record<string, string>; readOnly?: Record<string, boolean> },
+    options: { exclusiveWriter?: boolean },
 ): Promise<RepoGroupFile | undefined> {
     const current = readRepoGroup(dataDir, groupId);
     if (!current) return undefined;
-    const members = updates.members !== undefined ? await normalizeMembers(store, updates.members) : current.members;
+    const members = updates.members !== undefined
+        ? await normalizeMembers(store, updates.members, options.exclusiveWriter ? current.members : [])
+        : current.members;
     // A supplied map is a partial patch: it replaces only the keys it names,
     // and an empty string clears that member's description.
     let descriptions = pruneDescriptions(current.descriptions, members);
@@ -337,9 +377,14 @@ export async function updateRepoGroup(
         for (const key of Object.keys(updates.descriptions)) delete descriptions[key];
         descriptions = { ...descriptions, ...patch };
     }
-    const readOnlyMembers = updates.readOnly !== undefined
+    let readOnlyMembers = updates.readOnly !== undefined
         ? applyReadOnlyPatch(current.readOnlyMembers, updates.readOnly, members)
         : pruneReadOnlyMembers(current.readOnlyMembers, members);
+    if (options.exclusiveWriter) {
+        readOnlyMembers = await admitRepoGroupWriters(
+            dataDir, store, members, readOnlyMembers, updates.readOnly, groupId, current,
+        );
+    }
     const next: RepoGroupFile = {
         name: updates.name !== undefined ? normalizeName(updates.name) : current.name,
         members,

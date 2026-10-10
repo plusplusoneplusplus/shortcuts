@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { getRepoPreferences, patchRepoPreferences } from '../../../api/repoPreferences';
 
 export interface RecentSkillEntry {
     type: 'prompt' | 'skill';
@@ -40,7 +41,7 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
             try {
                 const client = getCocClientForWorkspace(wsId);
                 const prefs = wsId
-                    ? await client.preferences.getRepo(wsId)
+                    ? await getRepoPreferences(client, wsId)
                     : await client.preferences.getGlobal();
                 // Read from legacy key for backwards compatibility
                 if (!cancelled && Array.isArray(prefs.recentFollowPrompts)) {
@@ -78,7 +79,7 @@ export function useRecentSkills(wsId?: string): UseRecentSkillsResult {
             const client = getCocClientForWorkspace(wsId);
             const patchData = { recentFollowPrompts: updated } as any;
             (wsId
-                ? client.preferences.patchRepo(wsId, patchData)
+                ? patchRepoPreferences(client, wsId, patchData)
                 : client.preferences.patchGlobal(patchData)
             ).catch(() => {});
 

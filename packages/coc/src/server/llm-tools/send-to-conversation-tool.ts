@@ -352,7 +352,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 ...(todoTracking ? {
                     todoItemId: {
                         type: 'string',
-                        description: 'Create mode: required ID of the unarchived to-do item this new chat or Ralph session serves.',
+                        description: 'Create mode: required ID of an unarchived normal to-do item. Manual items are prohibited; ask for clarification, never create a normal-item copy.',
                     },
                 } : {}),
             },
@@ -792,8 +792,12 @@ async function createNewConversation(params: {
 }
 
 const TODO_TRACKING_DESCRIPTION =
-    ' This Sentinel chat tracks handoffs: create mode requires `todoItemId` of an existing, unarchived to-do item ' +
-    '(create one with `sentinel_todos` first). The result\'s `tracking` reports whether the job link was saved; ' +
+    ' This Sentinel chat tracks handoffs: create mode requires `todoItemId` of an existing, unarchived normal to-do item ' +
+    '(create one with `sentinel_todos` first for authorized normal work). Manual items never authorize execution or delegation. ' +
+    'Requests to execute a manual item require clarification from the user; never bypass this by creating a normal-item copy. ' +
+    'Conversion and handoff are not supported. Reuse the same feature/outcome item across grilling, implementation, ' +
+    'and review; tracking an item or completing a phase does not authorize implementation. Do not launch implementation ' +
+    'without user authorization. The result\'s `tracking` reports whether the job link was saved; ' +
     'if it failed, tell the user the job runs but is not tracked, and never relaunch it to repair tracking.';
 
 /** Link an admitted job to its to-do item; launch errors pass through untouched. */

@@ -359,13 +359,14 @@ describe('registerAllRoutes', () => {
         expect(routes.length).toBeGreaterThan(30);
     });
 
-    it('subscribes delegated results/reviews, job notices, answer relays and desktop mirrors to queue terminal events', () => {
+    it('subscribes delegated results/reviews, job notices, answer relays and desktop mirrors to queue lifecycle events', () => {
         const queueFacade = makeQueueFacade();
         const opts = makeOpts({ queueFacade });
         registerAllRoutes([], opts);
 
         expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
             'taskCompleted', 'taskFailed', 'taskCancelled',
+            'taskAdded', 'taskStarted',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'ralphSessionComplete',

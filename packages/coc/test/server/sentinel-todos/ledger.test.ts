@@ -166,6 +166,102 @@ describe('SentinelTodoStore', () => {
     });
 });
 
+describe('SentinelTodoStore item type', () => {
+    let dataDir: string;
+    beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-type-')); });
+    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+
+    it('persists title-only manual items with To do and Regular defaults', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { type: 'manual', title: 'Check release' }, { actor: 'user' });
+        expect(item).toMatchObject({
+            type: 'manual', title: 'Check release', status: 'todo', priority: 'regular',
+            completionCondition: '', notes: '', archived: false, jobs: [], revision: 1,
+        });
+        store.update(owner, item.id, 1, { notes: 'Read the release notes', priority: 'high' }, 'user');
+        expect(new SentinelTodoStore(dataDir).get(owner)).toMatchObject({
+            revision: 2, items: [{ type: 'manual', notes: 'Read the release notes', priority: 'high', revision: 2 }],
+        });
+        expect(store.create(owner, { title: 'Normal' }, { actor: 'user' }).item.type).toBe('normal');
+    });
+
+    it('reads untyped job-linked items as normal without rewriting their revisions or links', () => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { title: 'Tracked job' }, { actor: 'user' });
+        const linked = store.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-a', kind: 'local', openLink: '#repos/ws-a/chats/child',
+        });
+        const { type: _type, ...untyped } = linked.item;
+        const file = getRepoDataPath(dataDir, owner.workspaceId, SENTINEL_TODOS_FILE);
+        atomicWriteJsonUnique(file, { version: 1, ledgers: { [owner.processId]: { revision: 2, items: [untyped] } } });
+        const before = fs.readFileSync(file, 'utf8');
+        expect(store.get(owner)).toMatchObject({
+            revision: 2, items: [{ ...untyped, type: 'normal' }],
+        });
+        expect(fs.readFileSync(file, 'utf8')).toBe(before);
+        expect(store.update(owner, item.id, 2, { notes: 'Checked' }, 'user').item).toMatchObject({
+            type: 'normal', revision: 3, jobs: linked.item.jobs,
+        });
+    });
+
+    it('rejects invalid creation types and every type patch without a write', () => {
+        const store = new SentinelTodoStore(dataDir);
+        for (const type of ['other', null]) {
+            expectTodoError(() => store.create(owner, { type, title: 'Invalid' } as never, { actor: 'user' }), 'invalid');
+        }
+        for (const type of ['manual', 'normal'] as const) {
+            const { item } = store.create(owner, { type, title: type }, { actor: 'user' });
+            const before = store.get(owner);
+            for (const replacement of ['manual', 'normal', null]) {
+                expectTodoError(() => store.update(owner, item.id, 1, { type: replacement } as never, 'user'), 'invalid');
+                expect(store.get(owner)).toEqual(before);
+            }
+        }
+    });
+
+    it.each(['sentinel', 'system'] as const)('rejects manual archive/restore by %s at the shared store boundary', actor => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor });
+        const before = store.get(owner);
+        for (const archived of [true, false]) {
+            expectTodoError(() => store.update(owner, item.id, 1, { archived, notes: 'forged' }, actor), 'invalid');
+            expect(store.get(owner)).toEqual(before);
+        }
+        const archived = store.update(owner, item.id, 1, { archived: true }, 'user');
+        expectTodoError(() => store.update(owner, item.id, archived.item.revision, { archived: false }, actor), 'invalid');
+        expect(store.get(owner).items[0]).toEqual(archived.item);
+        expect(store.update(owner, item.id, archived.item.revision, { archived: false }, 'user').item)
+            .toMatchObject({ type: 'manual', archived: false, revision: 3 });
+    });
+
+    it.each(['sentinel', 'system'] as const)('requires manual Done evidence from %s even without the AI tool', actor => {
+        const store = new SentinelTodoStore(dataDir);
+        const { item } = store.create(owner, { type: 'manual', title: 'Review checklist' }, { actor });
+        for (const statusReason of [undefined, null, '  ']) {
+            expectTodoError(() => store.update(owner, item.id, 1, { status: 'done', statusReason }, actor), 'invalid');
+        }
+        expectTodoError(() => store.create(owner, { type: 'manual', title: 'Unreviewed', status: 'done' }, { actor }), 'invalid');
+        expect(store.get(owner)).toMatchObject({ revision: 1, items: [{ revision: 1, status: 'todo' }] });
+        expect(store.update(owner, item.id, 1, { status: 'done', statusReason: 'Read every checklist entry' }, actor).item)
+            .toMatchObject({ status: 'done', statusReason: 'Read every checklist entry' });
+    });
+
+    it.each(['local', 'remote', 'ralph'] as const)('rejects direct %s job links on manual items without writes', kind => {
+        const write = vi.fn(atomicWriteJsonUnique);
+        const store = new SentinelTodoStore(dataDir, write);
+        const { item } = store.create(owner, { type: 'manual', title: 'Check rollout' }, { actor: 'user' });
+        const before = store.get(owner);
+        write.mockClear();
+        expectTodoError(() => store.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-child', kind, openLink: '#/process/queue_child',
+            ...(kind === 'remote' ? { serverId: 'srv-a' } : {}),
+            ...(kind === 'ralph' ? { sessionId: 'ralph-a' } : {}),
+        }), 'invalid');
+        expect(store.get(owner)).toEqual(before);
+        expect(write).not.toHaveBeenCalled();
+    });
+});
+
 describe('SentinelTodoStore priority', () => {
     let dataDir: string;
     beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sentinel-todo-priority-')); });

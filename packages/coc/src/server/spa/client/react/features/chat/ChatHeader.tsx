@@ -3,7 +3,6 @@ import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '..
 import { BottomSheet } from '../../ui/BottomSheet';
 import { type MetaRow } from './conversation/ConversationMetadataPopover';
 import { ChatMetadataButton } from './conversation/ChatMetadataButton';
-import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
 import { ChatStatusPill } from './ChatStatusPill';
 import { chatMarkdownToHtml } from './conversation/markdownHtml';
@@ -67,15 +66,6 @@ export interface ChatHeaderProps {
     resumeLaunching: boolean;
     resumeSessionId: string | null | undefined;
     isPending: boolean;
-    sessionTokenLimit: number | undefined;
-    sessionCurrentTokens: number | undefined;
-    sessionModel: string | undefined;
-    /** System-prompt token count (Copilot SDK only) */
-    sessionSystemTokens?: number;
-    /** Tool-definition token count (Copilot SDK only) */
-    sessionToolTokens?: number;
-    /** Conversation-history token count (Copilot SDK only) */
-    sessionConversationTokens?: number;
     copied: boolean;
     setCopied: (v: boolean) => void;
     taskId: string;
@@ -149,12 +139,6 @@ export function buildOverflowItems(
         planPath: string;
         createdFiles: { filePath: string }[];
         wsId?: string;
-        sessionTokenLimit: number | undefined;
-        sessionCurrentTokens: number | undefined;
-        sessionModel: string | undefined;
-        sessionSystemTokens?: number;
-        sessionToolTokens?: number;
-        sessionConversationTokens?: number;
         variant: 'inline' | 'floating';
         isPopOut: boolean;
         isMobile: boolean;
@@ -227,7 +211,7 @@ export function buildOverflowItems(
     // Metadata lives inline next to the title (see ChatHeader identity group), not in overflow.
 
     // At wide tier, only Pin and the simplified buttons (HTML / PDF / Select) live in overflow.
-    // All other items (references, resume CLI, context window, etc.) remain inline at wide.
+    // All other items (references, resume CLI, etc.) remain inline at wide.
     if (tier !== 'wide') {
         // References
         const dedupedFiles = deduplicateReferenceFiles(props.planPath, props.createdFiles);
@@ -335,27 +319,6 @@ export function buildOverflowItems(
                 onClick: () => {},
             });
         }
-
-        // Context window — read-only model/context usage
-        if (props.sessionTokenLimit && props.sessionTokenLimit > 0) {
-            info.push({
-                key: 'context-window',
-                label: 'Context window',
-                info: true,
-                onClick: () => {},
-                render: () => (
-                    <ContextWindowIndicator
-                        tokenLimit={props.sessionTokenLimit}
-                        currentTokens={props.sessionCurrentTokens}
-                        modelName={props.sessionModel}
-                        className="flex w-full"
-                        systemTokens={props.sessionSystemTokens}
-                        toolDefinitionsTokens={props.sessionToolTokens}
-                        conversationTokens={props.sessionConversationTokens}
-                    />
-                ),
-            });
-        }
     }
 
     const grouped = (group: string, list: OverflowMenuItem[]) => list.map(item => ({ ...item, group }));
@@ -382,12 +345,6 @@ export function ChatHeader({
     resumeLaunching,
     resumeSessionId,
     isPending,
-    sessionTokenLimit,
-    sessionCurrentTokens,
-    sessionModel,
-    sessionSystemTokens,
-    sessionToolTokens,
-    sessionConversationTokens,
     copied,
     setCopied,
     taskId,
@@ -485,13 +442,7 @@ export function ChatHeader({
         planPath,
         createdFiles,
         wsId,
-        sessionTokenLimit,
-        sessionCurrentTokens,
-        sessionModel,
-        sessionSystemTokens,
-        sessionToolTokens,
-        sessionConversationTokens,
-        variant,
+                                variant,
         isPopOut,
         isMobile,
         isFloatingChat: isFloating(taskId),
@@ -513,7 +464,7 @@ export function ChatHeader({
         isPinned,
         pinPending,
         onTogglePin,
-    }), [isPinned, pinPending, onTogglePin, tier, task, loading, turns, isPending, resumeSessionId, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
+    }), [isPinned, pinPending, onTogglePin, tier, task, loading, turns, isPending, resumeSessionId, planPath, createdFiles, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, onCopyResumeCommand, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking, onStartFreshSameContext, startingFreshSameContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div

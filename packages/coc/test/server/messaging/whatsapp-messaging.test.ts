@@ -23,6 +23,7 @@ function fakeBot() {
         start: vi.fn(async () => { options.onStatusChange?.('connected'); }),
         stop: vi.fn(async () => {}),
         send: vi.fn(async () => 'sent-1'),
+        sendMedia: vi.fn(async () => 'media-1'),
         react: vi.fn(async () => {}),
         listGroups: vi.fn(async () => [{ jid: '123@g.us', name: 'General' }]),
         createGroup: vi.fn(async () => '456@g.us'),
@@ -77,6 +78,15 @@ describe('WhatsAppMessagingManager', () => {
         expect(received).toHaveBeenCalledWith(message, expect.any(AbortSignal));
         expect(await manager.sendTo('123@g.us', 'hello', 'm1')).toBe('sent-1');
         expect(fake.bot.send).toHaveBeenCalledWith('123@g.us', 'hello', { replyToId: 'm1' });
+        const media = { bytes: Buffer.from('uploaded document'), filename: 'notes.txt', mimeType: 'text/plain', caption: 'caption' };
+        expect(await manager.sendMediaTo('123@g.us', media, 'm1')).toBe('media-1');
+        expect(fake.bot.sendMedia).toHaveBeenLastCalledWith('123@g.us', media, { replyToId: 'm1' });
+        expect(await manager.sendMediaTo('123@g.us', media)).toBe('media-1');
+        expect(fake.bot.sendMedia).toHaveBeenLastCalledWith('123@g.us', media, undefined);
+        const uncertain = new Error('uncertain media outcome');
+        fake.bot.sendMedia.mockRejectedValueOnce(uncertain);
+        await expect(manager.sendMediaTo('123@g.us', media)).rejects.toBe(uncertain);
+        expect(fake.bot.sendMedia).toHaveBeenCalledTimes(3);
         await manager.reactTo('123@g.us', 'm1', '👍');
         expect(fake.bot.react).toHaveBeenCalledWith('123@g.us', 'm1', '👍');
         await expect(manager.send('hello')).rejects.toThrow('not configured');
@@ -94,6 +104,8 @@ describe('WhatsAppMessagingManager', () => {
         await fake.options().onMessage(message);
         expect(received).toHaveBeenCalledTimes(1);
         await expect(manager.send('hello')).rejects.toBeInstanceOf(WhatsAppNotConnectedError);
+        await expect(manager.sendMediaTo('123@g.us', media)).rejects.toBeInstanceOf(WhatsAppNotConnectedError);
+        expect(fake.bot.sendMedia).toHaveBeenCalledTimes(3);
         expect(fake.bot.send).toHaveBeenCalledTimes(3);
     });
 

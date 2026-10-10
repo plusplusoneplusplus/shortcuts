@@ -63,7 +63,7 @@ const { mockQueueDispatch, mockInheritDraftPanelTabs, mockAppState, mockFetch, m
     mockChatStyleEnabled: { value: false },
     mockDefaultChatStyle: { value: 'default' as string },
     mockPatchRepo: vi.fn(),
-    mockRepoPrefs: { value: {} as Record<string, unknown> },
+    mockRepoPrefs: { value: {} as Record<string, unknown>, reads: vi.fn() },
     mockEffortTiers: { value: {} as Record<string, { model: string; reasoningEffort?: string | null }> },
     mockGetLlmToolsConfig: vi.fn(),
     mockAgentProvidersResponse: {
@@ -144,6 +144,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
     const makeClient = (baseUrl?: string) => ({
+        options: { baseUrl: baseUrl ?? '', apiBasePath: '/api' },
         queue: {
             // Record which server each enqueue went to so remote-routing tests can
             // assert the chat landed on the clone's own host, not the page origin.
@@ -154,7 +155,10 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
         },
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
-            getRepo: vi.fn().mockImplementation(() => Promise.resolve(mockRepoPrefs.value)),
+            getRepo: (workspaceId: string) => {
+                mockRepoPrefs.reads(workspaceId, baseUrl);
+                return Promise.resolve(mockRepoPrefs.value);
+            },
             patchRepo: mockPatchRepo,
             getLlmToolsConfig: mockGetLlmToolsConfig,
         },
@@ -422,6 +426,25 @@ afterEach(() => {
 });
 
 describe('NewChatArea', () => {
+    it('reuses workspace preferences after provider availability arrives and on warm reopen', async () => {
+        mockRepoPrefs.value = { lastChatProvider: 'codex' };
+        mockAgentProvidersResponse.providers = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+        ];
+        const view = render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        expect(mockRepoPrefs.reads).toHaveBeenCalledTimes(1);
+        view.unmount();
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        expect(mockRepoPrefs.reads).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-copilot'));
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+        expect(mockRepoPrefs.reads).toHaveBeenCalledTimes(1);
+    });
+
     it('renders hero text and input elements', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         expect(screen.getByText('Start a new conversation')).toBeTruthy();

@@ -22,6 +22,8 @@ export type QueueTerminalOutcome =
 
 /** Narrow, typed view of the queue-manager events schedule execution consumes. */
 export interface ScheduleQueueEvents {
+    taskAdded: (task: QueuedTask) => void;
+    taskStarted: (task: QueuedTask) => void;
     taskCompleted: (task: QueuedTask, result?: unknown) => void;
     taskFailed: (task: QueuedTask, error: Error) => void;
     taskCancelled: (task: QueuedTask) => void;

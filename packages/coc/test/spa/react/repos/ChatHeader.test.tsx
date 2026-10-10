@@ -86,11 +86,6 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/ui/ContextWindowIndicator', () => ({
-    ContextWindowIndicator: ({ tokenLimit }: any) =>
-        tokenLimit ? <span data-testid="context-window">ctx</span> : null,
-}));
-
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     copyToClipboard: vi.fn().mockResolvedValue(undefined),
     copyHtmlToClipboard: vi.fn().mockResolvedValue(undefined),
@@ -149,9 +144,6 @@ function defaultProps(overrides: Partial<ChatHeaderProps> = {}): ChatHeaderProps
         resumeLaunching: false,
         resumeSessionId: 'session-1',
         isPending: false,
-        sessionTokenLimit: 128000,
-        sessionCurrentTokens: 50000,
-        sessionModel: 'gpt-4',
         copied: false,
         setCopied: vi.fn(),
         taskId: 'task-1',
@@ -219,8 +211,6 @@ describe('ChatHeader', () => {
             expect(pill.getAttribute('data-icon-only')).toBe('false');
             expect(pill.textContent).toContain('5000ms');
             expect(screen.getByTestId('references-dropdown')).toBeTruthy();
-            // Context window indicator no longer rendered in the header (moved to composer)
-            expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.getByTestId('copy-conversation-btn')).toBeTruthy();
             // HTML and PDF are now in the overflow menu at all tiers
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
@@ -285,7 +275,6 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('references-dropdown')).toBeNull();
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
-            expect(screen.queryByTestId('context-window')).toBeNull();
         });
 
         it('shows the cron badge for paused non-cancelled crons', () => {
@@ -339,7 +328,6 @@ describe('ChatHeader', () => {
             render(<ChatHeader {...defaultProps()} />);
             expect(screen.queryByTestId('references-dropdown')).toBeNull();
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
-            expect(screen.queryByTestId('context-window')).toBeNull();
             expect(screen.queryByTestId('copy-conversation-html-btn')).toBeNull();
             expect(screen.queryByTestId('export-conversation-pdf-btn')).toBeNull();
             // Metadata "i" button stays inline beside the title at every tier
@@ -406,9 +394,20 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('badge')).toBeNull();
         });
 
-        it('does not render context window in header even when token limit set', () => {
-            render(<ChatHeader {...defaultProps()} />);
-            expect(screen.queryByTestId('context-window')).toBeNull();
+        it.each([
+            ['wide', {}],
+            ['medium', {}],
+            ['narrow', {}],
+            ['narrow', { isPopOut: true }],
+            ['narrow', { variant: 'floating' as const }],
+        ] as const)('keeps context usage out of the header and overflow menu (%s %o)', (tier, overrides) => {
+            setTier(tier);
+            render(<ChatHeader {...defaultProps(overrides)} />);
+            const menu = screen.getByTestId('overflow-menu');
+            expect(menu.getAttribute('data-keys')?.split(',')).not.toContain('context-window');
+            expect(menu.getAttribute('data-labels')).not.toContain('Context window');
+            expect(menu.getAttribute('data-keys')?.split(',')).toContain('copy-html');
+            expect(screen.queryByTestId('context-window-indicator')).toBeNull();
         });
 
         it('hides metadata when isPending', () => {
@@ -561,7 +560,6 @@ describe('ChatHeader', () => {
                 createdFiles: [],
                 resumeSessionId: null,
                 isPending: true,
-                sessionTokenLimit: undefined,
             })} />);
             const menu = screen.getByTestId('overflow-menu');
             // copy-html and export-pdf always shown in overflow at < 700px
@@ -626,7 +624,6 @@ describe('ChatHeader', () => {
                 createdFiles: [],
                 resumeSessionId: null,
                 isPending: true,
-                sessionTokenLimit: undefined,
                 showScratchpadButton: true,
                 onOpenScratchpad,
             })} />);
@@ -645,7 +642,6 @@ describe('ChatHeader', () => {
                 createdFiles: [],
                 resumeSessionId: null,
                 isPending: true,
-                sessionTokenLimit: undefined,
                 showScratchpadButton: false,
             })} />);
             const menu = screen.getByTestId('overflow-menu');
@@ -690,7 +686,6 @@ describe('ChatHeader', () => {
                 createdFiles: [],
                 resumeSessionId: null,
                 isPending: true,
-                sessionTokenLimit: undefined,
                 onFork: undefined,
             })} />);
             const menu = screen.getByTestId('overflow-menu');
@@ -709,7 +704,6 @@ describe('ChatHeader', () => {
                 createdFiles: [],
                 resumeSessionId: null,
                 isPending: true,
-                sessionTokenLimit: undefined,
                 onFork,
                 forking: false,
             })} />);

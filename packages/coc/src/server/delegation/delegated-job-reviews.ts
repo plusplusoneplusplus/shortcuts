@@ -7,7 +7,7 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import {
     emitDeliveryEvents, ProcessMessageDeliveryService, ReviewDeliveryRejectedError,
 } from '../processes/process-message-delivery-service';
-import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
+import { DelegatedJobStore, type DelegatedJob, type DelegatedJobDelivery } from './delegated-job-store';
 
 export function delegatedReviewReceipt(job: DelegatedJob): string {
     const identity = [job.parent.workspaceId, job.parent.processId, job.id,
@@ -26,7 +26,9 @@ export interface DelegatedReviewTodo {
 }
 
 const TODO_REVIEW_INSTRUCTIONS = `
-This job is linked to the to-do item in the "todo" field. Receiving this result is not a verdict: judge the evidence against its completion condition, then record your verdict with \`sentinel_todos\` (\`update\` with \`expectedRevision\`): \`done\` with a short reason only if the condition is satisfied, otherwise \`needs_attention\` with the reason. Do not launch a retry unless the user already authorized it.`;
+This job is linked to the to-do item in the "todo" field. Receiving this result is not a verdict: judge the evidence against the intended feature/outcome's final completion condition, not just linked job completion. Re-read the item with \`sentinel_todos\` before updating; honor manual user verdicts and latest instructions, use its current \`expectedRevision\`, and reconcile conflicts rather than overwriting user edits.
+After judging this result, include \`reviewedJobs\` with this \`jobId\` as \`processId\` and the exact \`terminalEventId\` from the result data, with the overall \`status\` verdict and a short \`reason\` in the same update. A completed parent turn or delivered result is not assessment evidence. Acknowledge only assessed results; leave unrelated results and running follow-ups alone. If a newer user verdict supersedes this job, preserve it and do not overwrite it to acknowledge a stale result.
+Reuse the same item across grilling, implementation, and review; preserve existing notes and record phase milestones and spec/artifact links in \`notes\`. Choose status from the overall outcome: \`done\` with a short reason only if the final completion condition is satisfied; \`todo\` for pending next steps or approval; \`in_progress\` while authorized work continues; \`needs_attention\` with a reason for failed, cancelled, blocked, or incomplete final work. Successful intermediate phases are neither \`done\` nor failures. After successful grilling, leave/return the feature item to \`todo\` with reason "Spec ready; awaiting implementation approval". Explicitly design-only/interview-only requests can finish after their agreed artifact. Ledger updates are bookkeeping only. Do not launch implementation or a retry without user authorization.`;
 
 function reviewPrompt(job: DelegatedJob, repository?: WorkspaceInfo, todo?: DelegatedReviewTodo): string {
     return `Review this delegated job result in the originating conversation. Identify the job and repository, summarize the outcome, include the log/artifact links, and suggest a useful next step.
@@ -57,6 +59,7 @@ export class DelegatedJobReviews {
         recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
         /** The linked Sentinel to-do item, when to-do tracking is enabled. */
         findTodo?: (job: DelegatedJob) => DelegatedReviewTodo | undefined;
+        onDeliveryChange?: (job: DelegatedJob) => void;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
             void this.settleTask({ ...task, payload: { ...task.payload } }).then(() => this.reconcileNotices()).catch(error =>
@@ -102,8 +105,8 @@ export class DelegatedJobReviews {
                 );
                 if (delivered === 'delivered') {
                     this.queueMessagingResult(job, receiptId, text, 'cancelled', repository);
-                    this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'pending', { state: 'queued', receiptId });
-                    this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued', { state: 'delivered', receiptId });
+                    this.updateDelivery(job, 'pending', { state: 'queued', receiptId });
+                    this.updateDelivery(job, 'queued', { state: 'delivered', receiptId });
                 }
                 return;
             }
@@ -114,7 +117,7 @@ export class DelegatedJobReviews {
             );
             // Reused receipts carry no intents, even when the ledger acknowledgement failed.
             emitDeliveryEvents(this.deps.store, job.parent.processId, result.events);
-            this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'pending', { state: 'queued', receiptId });
+            this.updateDelivery(job, 'pending', { state: 'queued', receiptId });
             if (result.path === 'buffered') {
                 await this.deps.recoverPendingMessages?.(job.parent.workspaceId, job.parent.processId);
             }
@@ -122,7 +125,7 @@ export class DelegatedJobReviews {
             if (task && isTerminalStatus(task.status)) await this.settle(job, task, receiptId);
         } catch (error) {
             if (!(error instanceof ReviewDeliveryRejectedError)) throw error;
-            this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, job.terminal!.delivery.state,
+            this.updateDelivery(job, job.terminal!.delivery.state,
                 { state: 'failed', reason: error.message.slice(0, 2_000) });
         }
     }
@@ -136,6 +139,12 @@ export class DelegatedJobReviews {
         }
     }
 
+    private updateDelivery(job: DelegatedJob, expected: DelegatedJobDelivery['state'], next: DelegatedJobDelivery): void {
+        if (!this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, expected, next)) return;
+        try { this.deps.onDeliveryChange?.(job); }
+        catch (error) { console.error('[delegated-job-reviews] Could not notify review delivery:', error); }
+    }
+
     private async settle(job: DelegatedJob, task: QueuedTask, receiptId: string): Promise<void> {
         if (task.type !== 'chat' || task.processId !== job.parent.processId
             || task.payload.processId !== job.parent.processId
@@ -144,7 +153,7 @@ export class DelegatedJobReviews {
         if (task.status === 'completed' && job.messagingOrigin && this.deps.queueMessagingResult) {
             const parent = await this.deps.store.getProcess(job.parent.processId, job.parent.workspaceId);
             if (!parent || parent.metadata?.workspaceId !== job.parent.workspaceId) {
-                this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued',
+                this.updateDelivery(job, 'queued',
                     { state: 'failed', reason: 'Parent unavailable when returning the review answer.' });
                 return;
             }
@@ -155,7 +164,7 @@ export class DelegatedJobReviews {
             this.queueMessagingResult(job, receiptId, answer?.content?.trim() || RELAY_ANSWER_TEXT.empty,
                 job.terminal?.result.outcome === 'failed' ? 'failed' : 'completed', repository);
         }
-        this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued', task.status === 'completed'
+        this.updateDelivery(job, 'queued', task.status === 'completed'
             ? { state: 'delivered', receiptId }
             : { state: 'failed', reason: `Parent result review ${task.status}.` });
     }

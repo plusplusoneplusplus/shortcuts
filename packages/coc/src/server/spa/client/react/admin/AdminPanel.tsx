@@ -196,20 +196,38 @@ export function AdminPanel() {
         addToast,
         activityActive: activeDashboardTab === 'dreams-admin' && !isContainerMode(),
     });
+    const serverRuntime = useServerRuntime({ addToast, onSaved: setConfig });
 
-    // Ctrl/Cmd+S saves the visible Settings section. Integrations and
-    // Providers persist on change, so they only suppress the browser dialog.
-    const saveShortcutTargets: Partial<Record<SettingsSubTab, AdminSaveShortcutTarget>> = {
-        ai: { dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec },
-        chat: { dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat },
-        'chat-style': { dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave },
-        appearance: { dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance },
-        features: { dirty: features.isTabDirty('features'), saving: features.savingTab === 'features', onSave: () => features.handleSaveTab('features') },
+    // Ctrl/Cmd+S saves every dirty draft card on the visible admin page: a
+    // Settings section card plus its registry feature card, Server display
+    // name, and the embedded Dreams config. AI Provider and Prompts own their
+    // nested targets. Link handlers persist on change
+    // and provider credentials save per item, so Providers only suppresses the
+    // browser dialog. Advanced (read-only) and action/immediate-save pages are
+    // left to the browser.
+    const featureTarget = (tab: FeatureSettingTab): AdminSaveShortcutTarget => ({
+        dirty: features.isTabDirty(tab),
+        saving: features.savingTab === tab,
+        onSave: () => features.handleSaveTab(tab),
+    });
+    const settingsSaveTargets: Record<Exclude<SettingsSubTab, 'advanced'>, AdminSaveShortcutTarget[]> = {
+        ai: [{ dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec }, featureTarget('ai')],
+        chat: [{ dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat }, featureTarget('chat')],
+        'chat-style': [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }],
+        appearance: [{ dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance }, featureTarget('appearance')],
+        features: [featureTarget('features')],
+        integrations: [featureTarget('integrations')],
+        providers: [],
     };
-    useAdminSaveShortcut(
-        activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced',
-        saveShortcutTargets[settingsSubTab] ?? null,
-    );
+    const saveShortcutTargets: AdminSaveShortcutTarget[] | null =
+        activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced'
+            ? settingsSaveTargets[settingsSubTab]
+            : activeTab === 'server' && !isToolEmbedded
+                ? [{ dirty: serverRuntime.serverNameDirty, saving: serverRuntime.serverNameSaving, onSave: serverRuntime.handleSaveServerName }]
+                : activeToolItem?.tab === 'dreams-admin'
+                    ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
+                    : null;
+    useAdminSaveShortcut(saveShortcutTargets !== null, saveShortcutTargets ?? []);
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
@@ -288,11 +306,6 @@ export function AdminPanel() {
         } catch { /* ignore */ }
     }, [prefsCtl.hydrateFromPreferences]);
 
-    // Server display-name + lifecycle (rebuild/restart). Restart state is shared
-    // with the sidebar restart button, so it lives in this hook rather than the
-    // Server tab panel. Save reloads config to reflect the change.
-    const serverRuntime = useServerRuntime({ addToast, reloadConfig: loadConfig });
-
     useEffect(() => {
         loadStats();
         loadConfig();
@@ -304,8 +317,9 @@ export function AdminPanel() {
 
     // Hydrate the server display-name field whenever the config (re)loads.
     useEffect(() => {
-        serverRuntime.setServerName(config?.resolved?.serve?.serverName ?? '');
-    }, [config, serverRuntime.setServerName]);
+        if (config === null) return;
+        serverRuntime.hydrateServerName(config?.resolved?.serve?.serverName ?? '');
+    }, [config, serverRuntime.hydrateServerName]);
 
     const handleRelaunchWelcome = useCallback(async () => {
         setRelaunchingWelcome(true);
@@ -780,6 +794,8 @@ export function AdminPanel() {
                                     isDefaultValue={isDefaultValue}
                                     addToast={addToast}
                                     serverName={serverRuntime.serverName}
+                                    serverNameDirty={serverRuntime.serverNameDirty}
+                                    serverNameSaving={serverRuntime.serverNameSaving}
                                     setServerName={serverRuntime.setServerName}
                                     handleSaveServerName={serverRuntime.handleSaveServerName}
                                     restarting={serverRuntime.restarting}

@@ -4,7 +4,7 @@
  * Tests for ModalJobAiControls and its shared modal job AI-selection hook.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const mockClient = vi.hoisted(() => () => ({
+    options: { baseUrl: '', apiBasePath: '/api' },
     agentProviders: {
         list: mocks.listProviders,
         listModels: mocks.listModels,
@@ -181,6 +182,34 @@ describe('ModalJobAiControls', () => {
 
         expect(mocks.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'copilot' });
         await waitFor(() => expect(readResolved().provider).toBe('copilot'));
+        expect(mocks.getRepo).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares the provider/model preference read and reuses it after provider availability and reopen', async () => {
+        mocks.effortLevelsEnabled = false;
+        let resolveProviders!: (value: { providers: AgentProviderStatus[] }) => void;
+        mocks.listProviders.mockReturnValueOnce(new Promise(resolve => { resolveProviders = resolve; }));
+        const view = render(<Harness />);
+        await waitFor(() => expect(mocks.getRepo).toHaveBeenCalledTimes(1));
+        await act(async () => { resolveProviders({ providers: PROVIDERS }); });
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        expect(mocks.getRepo).toHaveBeenCalledTimes(1);
+        view.unmount();
+        render(<Harness />);
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        expect(mocks.getRepo).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not overwrite a user provider pick when the initial preference read settles late', async () => {
+        let resolvePreferences!: (value: { lastChatProvider: 'codex' }) => void;
+        mocks.getRepo.mockReturnValueOnce(new Promise(resolve => { resolvePreferences = resolve; }));
+        render(<Harness />);
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').hasAttribute('disabled')).toBe(false));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-copilot'));
+        await act(async () => { resolvePreferences({ lastChatProvider: 'codex' }); });
+        expect(readResolved().provider).toBe('copilot');
+        expect(mocks.getRepo).toHaveBeenCalledTimes(1);
     });
 
     it('restores Auto and resolves to an effort tier without provider or model overrides', async () => {

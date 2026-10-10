@@ -29,10 +29,12 @@ export function repoGroupRootsOverlap(
     const pathApi = platform === 'win32' ? path.win32 : path.posix;
     const leftKey = normalizeForCompare(left, platform);
     const rightKey = normalizeForCompare(right, platform);
+    const leftPrefix = leftKey.endsWith(pathApi.sep) ? leftKey : leftKey + pathApi.sep;
+    const rightPrefix = rightKey.endsWith(pathApi.sep) ? rightKey : rightKey + pathApi.sep;
     return (
         leftKey === rightKey
-        || leftKey.startsWith(rightKey + pathApi.sep)
-        || rightKey.startsWith(leftKey + pathApi.sep)
+        || leftKey.startsWith(rightPrefix)
+        || rightKey.startsWith(leftPrefix)
     );
 }
 
