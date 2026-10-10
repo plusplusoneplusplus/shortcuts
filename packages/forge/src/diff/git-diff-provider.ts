@@ -6,12 +6,12 @@
 
 import type {
     CommitDiffSource,
-    GetFileDiffOptions,
     IDiffProvider,
     RangeDiffSource,
     WorkingTreeDiffSource,
 } from './types';
 import { loadCommitPatch, loadRangePatch, loadWorkingTreePatch } from './local-patch';
+import { createPatchDiffProvider } from './diff-utils';
 
 // ── Commit diff provider─────────────────────────────────────
 
@@ -28,7 +28,7 @@ export function createCommitDiffProvider(
         commitHash,
     };
 
-    return localPatchProvider(source, (file, options) => loadCommitPatch(repositoryRoot, commitHash, file, options));
+    return createPatchDiffProvider(source, (file, options) => loadCommitPatch(repositoryRoot, commitHash, file, options));
 }
 
 // ── Range diff provider ──────────────────────────────────────
@@ -49,22 +49,7 @@ export function createRangeDiffProvider(
         headRef,
     };
 
-    return localPatchProvider(source, (file, options) => loadRangePatch(repositoryRoot, baseRef, headRef, file, options));
-}
-
-/** Public operations share one transport/conversion boundary for local patches. */
-function localPatchProvider(
-    source: CommitDiffSource | RangeDiffSource | WorkingTreeDiffSource,
-    load: (file?: string, options?: GetFileDiffOptions) => ReturnType<typeof loadCommitPatch>,
-): IDiffProvider {
-    return {
-        source,
-        async listFiles() { return (await load()).files; },
-        async getFileDiff(file, options) { return (await load(file, options)).content; },
-        async getFullDiff() { return (await load()).content; },
-        async prefetchAll() { return (await load()).contentByPath; },
-        async getSummary() { return (await load()).summary; },
-    };
+    return createPatchDiffProvider(source, (file, options) => loadRangePatch(repositoryRoot, baseRef, headRef, file, options));
 }
 
 // ── Working tree diff provider ───────────────────────────────
@@ -79,5 +64,5 @@ export function createWorkingTreeDiffProvider(
         scope,
     };
 
-    return localPatchProvider(source, (file, options) => loadWorkingTreePatch(repositoryRoot, scope, file, options));
+    return createPatchDiffProvider(source, (file, options) => loadWorkingTreePatch(repositoryRoot, scope, file, options));
 }

@@ -1,11 +1,26 @@
 /** Wire conversion for Rust-owned patch processing. */
 import { loadNativeGit, type NativeGitPatchFile } from '@plusplusoneplusplus/coc-native';
 import type { GitChangeStatus } from '../git/types';
-import type { DiffContent, DiffFileEntry } from './types';
+import type { DiffContent, DiffFileEntry, DiffSource, DiffSummary, GetFileDiffOptions, IDiffProvider } from './types';
 
 interface ParsedDiff {
     files: DiffFileEntry[];
     contentByPath: Map<string, DiffContent>;
+}
+
+/** Shared public operations; loaders retain transport and per-file rendering semantics. */
+export function createPatchDiffProvider(
+    source: DiffSource,
+    load: (file?: string, options?: GetFileDiffOptions) => Promise<ParsedDiff & { content: DiffContent; summary: DiffSummary }>,
+): IDiffProvider {
+    return {
+        source,
+        async listFiles() { return (await load()).files; },
+        async getFileDiff(file, options) { return (await load(file, options)).content; },
+        async getFullDiff() { return (await load()).content; },
+        async prefetchAll() { return (await load()).contentByPath; },
+        async getSummary() { return (await load()).summary; },
+    };
 }
 
 /** Worker-backed parsing for asynchronous patch consumers. */
