@@ -40,7 +40,7 @@ function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return {
         id: `item-${seq}`, title: `Item ${seq}`, completionCondition: '', notes: '', status: 'todo', archived: false,
         revision: 1, createdAt: stamp, updatedAt: stamp, createdBy: 'user', updatedBy: 'user', jobs: [],
-        priority: 'regular', ...overrides,
+        type: 'normal', priority: 'regular', ...overrides,
     };
 }
 

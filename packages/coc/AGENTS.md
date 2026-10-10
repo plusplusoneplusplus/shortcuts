@@ -124,7 +124,9 @@ references before editing. Paths are package-relative.
 - Sentinel to-do ledgers (`src/server/sentinel-todos/`) are bookkeeping only: REST and AI
   tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
   read/write and emits only after the atomic write commits. Item revisions reject stale
-  writers (`409` with the current item); there is no hard delete. Never let ledger edits
+  writers (`409` with the current item). Item `type` is immutable (`normal` or `manual`):
+  creation defaults to normal, and untyped stored items read as normal without rewriting.
+  Type patches are invalid; items have no hard delete. Never let ledger edits
   start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability (undefined while the flag is off).

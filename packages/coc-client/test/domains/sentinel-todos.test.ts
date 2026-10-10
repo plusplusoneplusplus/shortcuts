@@ -31,6 +31,24 @@ describe('SentinelTodosClient', () => {
     expect(adapter.calls[1].options).toEqual(expect.objectContaining({ method: 'PATCH', body: { expectedRevision: 1, priority: 'regular' } }));
   });
 
+  it('round-trips manual item type through create, edit, and ledger reads', async () => {
+    const item = { id: 'i1', type: 'manual', title: 'Check release', status: 'todo', priority: 'regular' };
+    const adapter = createMockAdapter({ item, ledgerRevision: 1 });
+    const client = new SentinelTodosClient(adapter);
+    const created = await client.create('ws', 'p', { type: 'manual', title: item.title, idempotencyKey: 'manual-k1' });
+    expect(created.item.type).toBe('manual');
+    expect(adapter.calls[0].options).toMatchObject({
+      method: 'POST', body: { type: 'manual', title: item.title, idempotencyKey: 'manual-k1' },
+    });
+    const edited = await client.update('ws', 'p', 'i1', { expectedRevision: 1, notes: 'Read notes' });
+    expect(edited.item.type).toBe('manual');
+    expect(adapter.calls[1].options).toMatchObject({
+      method: 'PATCH', body: { expectedRevision: 1, notes: 'Read notes' },
+    });
+    const readAdapter = createMockAdapter({ revision: 2, items: [item] });
+    expect((await new SentinelTodosClient(readAdapter).get('ws', 'p')).items[0].type).toBe('manual');
+  });
+
   it('is exposed on CocClient', () => {
     expect(new CocClient({ baseUrl: 'http://localhost:4000' }).sentinelTodos).toBeInstanceOf(SentinelTodosClient);
   });

@@ -198,8 +198,8 @@ Bookkeeping per Sentinel chat in the parent workspace's `sentinel-todos.json` (p
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId` | Ledger → `{ revision, items }`; each item's `jobs[]` link carries a derived `execution` (remote → `unavailable`) |
-| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`); a repeated `idempotencyKey` returns the original (`200`) |
-| PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`), optional immutable `type: 'normal' \| 'manual'` defaults to normal; untyped stored items read as normal without rewriting; a repeated `idempotencyKey` returns the original (`200`) |
+| PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `type` patches → `400 invalid`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
 
 REST writes are always actor `user` (no caller-supplied actor; unknown keys → `400`). A person may set `done` without a reason; newly marking Done without `outcome` drops the earlier outcome. Non-user actors (Sentinel tool) setting `done`/`needs_attention` without `statusReason` → `invalid`.
 

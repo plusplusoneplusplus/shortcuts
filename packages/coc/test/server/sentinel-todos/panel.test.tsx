@@ -58,7 +58,7 @@ function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return {
         id: 'i1', title: 'Fix login', completionCondition: 'Login test passes', notes: 'Check SSO too', status: 'todo',
         archived: false, revision: 1, createdAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:00:00.000Z',
-        createdBy: 'sentinel', updatedBy: 'sentinel', jobs: [], priority: 'regular', ...overrides,
+        createdBy: 'sentinel', updatedBy: 'sentinel', jobs: [], type: 'normal', priority: 'regular', ...overrides,
     };
 }
 

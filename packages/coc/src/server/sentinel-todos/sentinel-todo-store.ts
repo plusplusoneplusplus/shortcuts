@@ -9,6 +9,7 @@ export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
 
 const id = z.string().min(1).max(200);
+export const todoTypeSchema = z.enum(['normal', 'manual']);
 export const todoStatusSchema = z.enum(['todo', 'in_progress', 'needs_attention', 'done']);
 /** Ledger metadata only, independent of status; it never affects job queue priority. */
 export const todoPrioritySchema = z.enum(['high', 'regular']);
@@ -47,6 +48,8 @@ const jobLinkSchema = z.object({
 });
 const itemSchema = z.object({
     id,
+    /** Immutable tracking kind; stored items without a type remain normal. */
+    type: todoTypeSchema.default('normal'),
     title: z.string().trim().min(1).max(200),
     completionCondition: z.string().max(1_000),
     notes: z.string().max(8_000),
@@ -71,6 +74,7 @@ const ledgerSchema = z.object({ revision: z.number().int().min(0), items: z.arra
 const fileSchema = z.object({ version: z.literal(1), ledgers: z.record(z.string(), ledgerSchema) });
 
 export type SentinelTodoItem = z.infer<typeof itemSchema>;
+export type SentinelTodoType = z.infer<typeof todoTypeSchema>;
 export type SentinelTodoStatus = z.infer<typeof todoStatusSchema>;
 export type SentinelTodoPriority = z.infer<typeof todoPrioritySchema>;
 export type SentinelTodoActor = z.infer<typeof actorSchema>;
@@ -81,6 +85,7 @@ export type SentinelTodoJobResult = z.infer<typeof jobResultSchema>;
 export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'result'>;
 
 export const todoCreateSchema = z.object({
+    type: todoTypeSchema.optional(),
     title: itemSchema.shape.title,
     completionCondition: itemSchema.shape.completionCondition.optional(),
     notes: itemSchema.shape.notes.optional(),
@@ -157,6 +162,7 @@ export class SentinelTodoStore {
         assertReviewReason(opts.actor, fields.status, fields.statusReason);
         const item = parse(itemSchema, {
             id: randomUUID(),
+            type: fields.type ?? 'normal',
             title: fields.title,
             completionCondition: fields.completionCondition ?? '',
             notes: fields.notes ?? '',

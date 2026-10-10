@@ -7,6 +7,7 @@
  */
 
 export type SentinelTodoStatus = 'todo' | 'in_progress' | 'needs_attention' | 'done';
+export type SentinelTodoType = 'normal' | 'manual';
 /** Ledger metadata only, independent of status and of job queue priority. */
 export type SentinelTodoPriority = 'high' | 'regular';
 export type SentinelTodoActor = 'user' | 'sentinel' | 'system';
@@ -46,6 +47,8 @@ export interface SentinelTodoJobLink {
 
 export interface SentinelTodoItem {
   id: string;
+  /** Immutable tracking kind; stored items without a type read as `normal`. */
+  type: SentinelTodoType;
   title: string;
   completionCondition: string;
   notes: string;
@@ -70,6 +73,8 @@ export interface SentinelTodoLedgerResponse {
 }
 
 export interface CreateSentinelTodoRequest {
+  /** Defaults to `normal`; updates cannot change it. */
+  type?: SentinelTodoType;
   title: string;
   completionCondition?: string;
   notes?: string;
