@@ -503,6 +503,20 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
                     })}
                 </ul>
             )}
+            {/* Reference-only conversations: navigation links with no execution or review state. */}
+            {(item.references?.length ?? 0) > 0 && (
+                <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Referenced conversations for ${item.title}`}>
+                    {item.references!.map(ref => (
+                        <li key={ref.processId} className="flex min-w-0 items-center gap-1" data-testid={`sentinel-todo-reference-${item.id}-${ref.processId}`}>
+                            <span className="shrink-0 rounded bg-black/[0.06] px-1 text-[10px] font-medium uppercase tracking-wide text-[#616161] dark:bg-white/[0.08] dark:text-[#a0a0a0]">Ref</span>
+                            <a href={ref.openLink} title={ref.title ?? ref.processId}
+                                className="min-w-0 truncate text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
+                                {ref.title ?? ref.processId}
+                            </a>
+                        </li>
+                    ))}
+                </ul>
+            )}
             {expanded && (
                 <div id={`sentinel-todo-${item.id}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">
                     {error && (

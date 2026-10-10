@@ -179,6 +179,10 @@ references before editing. Paths are package-relative.
   Explicit user status/reason/outcome/archive decisions supersede already-linked work
   without claiming its evidence was assessed; acknowledgment requires exact `reviewedJobs`.
   Review updates cannot overwrite those verdicts or reopen archived/Done items.
+  Conversation references (`attachReference`, REST `.../items/:itemId/references`, tool
+  `attach_reference`) live in `sentinel_todo_references`, apart from job links: normal items
+  only, the chat must exist in the named local workspace, duplicates are no-ops, and they never
+  change status, create execution/review state, or message the referenced chat.
   Job execution/delivery/assessment are derived on read with exact parent/child workspace,
   process and session identity; remote links are always `unavailable`. Committed delivery
   transitions invalidate linked ledgers without advancing their revisions.

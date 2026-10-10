@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
+export const MAX_TODO_REFERENCES = 20;
 
 const id = z.string().min(1).max(200);
 export const todoTypeSchema = z.enum(['normal', 'manual']);
@@ -45,6 +46,19 @@ const jobLinkSchema = z.object({
     linkedRevision: z.number().int().min(1),
     result: jobResultSchema.optional(),
 });
+/**
+ * A reference-only link from an item to an existing local conversation
+ * (design notes, specs, prior discussion). It carries no execution state, is
+ * never reviewed, and never changes the item's status.
+ */
+const referenceSchema = z.object({
+    processId: id,
+    workspaceId: id,
+    openLink: z.string().min(1).max(2_000),
+    title: z.string().max(200).optional(),
+    attachedAt: z.iso.datetime(),
+    attachedBy: actorSchema,
+});
 const itemSchema = z.object({
     id,
     type: todoTypeSchema,
@@ -64,6 +78,7 @@ const itemSchema = z.object({
     updatedBy: actorSchema,
     idempotencyKey: id.optional(),
     jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS),
+    references: z.array(referenceSchema).max(MAX_TODO_REFERENCES),
     /** Last user edit; job outcomes recorded before it must not override it. */
     userEditedAt: z.iso.datetime().optional(),
     /** Explicit user verdicts protect against reviews of already-linked work. */
@@ -81,6 +96,8 @@ export type SentinelTodoOwner = { workspaceId: string; processId: string };
 export type SentinelTodoJobLink = z.infer<typeof jobLinkSchema>;
 export type SentinelTodoJobResult = z.infer<typeof jobResultSchema>;
 export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'linkedRevision' | 'result'>;
+export type SentinelTodoReference = z.infer<typeof referenceSchema>;
+export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt' | 'attachedBy'>;
 
 export const todoCreateSchema = z.object({
     type: todoTypeSchema.optional(),
@@ -193,6 +210,22 @@ export class SentinelTodoStore {
             );
             CREATE INDEX IF NOT EXISTS sentinel_todo_jobs_process
                 ON sentinel_todo_jobs (workspace_id, parent_process_id, process_id, server_key);
+            CREATE TABLE IF NOT EXISTS sentinel_todo_references (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                process_id TEXT NOT NULL,
+                reference_order INTEGER NOT NULL CHECK (reference_order >= 0),
+                reference_workspace_id TEXT NOT NULL,
+                open_link TEXT NOT NULL,
+                title TEXT,
+                attached_at TEXT NOT NULL,
+                attached_by TEXT NOT NULL CHECK (attached_by IN ('user', 'sentinel')),
+                PRIMARY KEY (workspace_id, parent_process_id, item_id, process_id),
+                UNIQUE (workspace_id, parent_process_id, item_id, reference_order),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+            );
         `))();
     }
 
@@ -237,6 +270,7 @@ export class SentinelTodoStore {
                 createdBy: opts.actor,
                 updatedBy: opts.actor,
                 jobs: [],
+                references: [],
                 ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
             });
             this.db.prepare(`INSERT INTO sentinel_todo_ledgers (workspace_id, parent_process_id, revision)
@@ -366,6 +400,46 @@ export class SentinelTodoStore {
     }
 
     /**
+     * Attaches a reference-only conversation link. Unlike {@link linkJob} it
+     * never changes status, records no execution, and creates nothing to
+     * review. Re-attaching the same conversation is an idempotent no-op;
+     * otherwise `expectedRevision` must match the accepted item.
+     */
+    attachReference(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        expectedRevision: number,
+        input: SentinelTodoReferenceInput,
+        actor: SentinelTodoActor,
+    ): { item: SentinelTodoItem; ledgerRevision: number; changed: boolean } {
+        assertCaller(actor);
+        const reference = parse(referenceSchema.omit({ attachedAt: true, attachedBy: true }).strict(), input);
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
+            const current = ledger.items[index];
+            if (current.type === 'manual') {
+                throw new SentinelTodoError('invalid', 'Conversation references attach to normal items only');
+            }
+            if (current.references.some(ref => ref.processId === reference.processId)) {
+                return { item: current, ledgerRevision: ledger.revision, changed: false };
+            }
+            if (current.revision !== expectedRevision) {
+                throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
+            }
+            if (current.references.length >= MAX_TODO_REFERENCES) {
+                throw new SentinelTodoError('limit', `An item references at most ${MAX_TODO_REFERENCES} conversations`);
+            }
+            const now = new Date().toISOString();
+            const next: Record<string, unknown> = {
+                ...current, references: [...current.references, { ...reference, attachedAt: now, attachedBy: actor }],
+            };
+            return { ...this.commit(owner, ledger, index, next, actor, now), changed: true };
+        });
+    }
+
+    /**
      * Records a local job's first terminal outcome on its link. Failed,
      * cancelled, and capped outcomes move the item to Needs attention unless
      * the item is archived or done, the user edited it after the job was
@@ -423,6 +497,7 @@ export class SentinelTodoStore {
             .run({ ...row, expected_revision: ledger.items[index].revision }).changes;
         if (changed !== 1) throw new SentinelTodoError('conflict', 'The item changed since it was loaded');
         this.writeJobs(owner, item);
+        this.writeReferences(owner, item);
         this.advanceLedger(owner, ledger.revision);
         return { item, ledgerRevision: ledger.revision + 1 };
     }
@@ -445,6 +520,14 @@ export class SentinelTodoStore {
             }));
             byItem.set(row.item_id, links);
         }
+        const references = new Map<string, SentinelTodoReference[]>();
+        for (const row of this.db.prepare(`SELECT * FROM sentinel_todo_references
+            WHERE workspace_id = ? AND parent_process_id = ? ORDER BY reference_order`).all<ReferenceRow>(...scope)) {
+            references.set(row.item_id, [...references.get(row.item_id) ?? [], parse(referenceSchema, {
+                processId: row.process_id, workspaceId: row.reference_workspace_id, openLink: row.open_link,
+                attachedAt: row.attached_at, attachedBy: row.attached_by, ...optional('title', row.title),
+            })]);
+        }
         const items = this.db.prepare(`SELECT * FROM sentinel_todo_items
             WHERE workspace_id = ? AND parent_process_id = ? ORDER BY item_order`).all<ItemRow>(...scope);
         return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
@@ -452,6 +535,7 @@ export class SentinelTodoStore {
             notes: row.notes, status: row.status, priority: row.priority, archived: row.archived === 1,
             revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
             createdBy: row.created_by, updatedBy: row.updated_by, jobs: byItem.get(row.id) ?? [],
+            references: references.get(row.id) ?? [],
             ...jsonField('targetRepo', row.target_repo), ...jsonField('outcome', row.outcome),
             ...optional('statusReason', row.status_reason), ...optional('idempotencyKey', row.idempotency_key),
             ...optional('userEditedAt', row.user_edited_at), ...optional('userVerdictRevision', row.user_verdict_revision),
@@ -476,6 +560,18 @@ export class SentinelTodoStore {
             owner.workspaceId, owner.processId, item.id, job.serverId ?? '', job.processId, order,
             job.workspaceId, job.serverId ?? null, job.kind, job.sessionId ?? null, job.openLink,
             job.title ?? null, job.linkedAt, job.linkedRevision, encode(job.result),
+        ));
+    }
+
+    private writeReferences(owner: SentinelTodoOwner, item: SentinelTodoItem): void {
+        const statement = this.db.prepare(`INSERT INTO sentinel_todo_references (
+            workspace_id, parent_process_id, item_id, process_id, reference_order,
+            reference_workspace_id, open_link, title, attached_at, attached_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (workspace_id, parent_process_id, item_id, process_id) DO NOTHING`);
+        item.references.forEach((ref, order) => statement.run(
+            owner.workspaceId, owner.processId, item.id, ref.processId, order,
+            ref.workspaceId, ref.openLink, ref.title ?? null, ref.attachedAt, ref.attachedBy,
         ));
     }
 
@@ -509,6 +605,11 @@ interface ItemRow {
     outcome: string | null; archived: number; revision: number; created_at: string; updated_at: string;
     created_by: string; updated_by: string; idempotency_key: string | null; user_edited_at: string | null;
     user_verdict_revision: number | null;
+}
+
+interface ReferenceRow {
+    item_id: string; process_id: string; reference_workspace_id: string; open_link: string;
+    title: string | null; attached_at: string; attached_by: string;
 }
 
 interface JobRow {

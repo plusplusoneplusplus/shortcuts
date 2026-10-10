@@ -545,6 +545,42 @@ describe('UnifiedTodoTab', () => {
         expect(remote.getAttribute('target')).toBe('_blank');
         expect(within(row).getByRole('link', { name: 'Patch API' }).getAttribute('target')).toBeNull();
     });
+
+    it('shows referenced conversations as compact links on a collapsed card, apart from jobs and status', async () => {
+        get.mockResolvedValue(ledger([item({
+            jobs: [],
+            references: [{
+                processId: 'queue_design', workspaceId: 'ws-other', openLink: '#repos/ws-other/chats/queue_design',
+                title: 'Browser control design interview with a long title', attachedAt: '2026-10-09T00:00:00.000Z', attachedBy: 'user',
+            }, {
+                processId: 'queue_untitled', workspaceId: 'ws-1', openLink: '#repos/ws-1/chats/queue_untitled',
+                attachedAt: '2026-10-09T00:00:00.000Z', attachedBy: 'sentinel',
+            }],
+        })]));
+        render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(within(row).getByRole('button', { expanded: false })).toBeTruthy();
+        expect(within(row).getByTestId('sentinel-todo-status-todo')).toBeTruthy();
+        expect(within(row).queryByRole('list', { name: 'Jobs for Fix login' })).toBeNull();
+        const refs = within(row).getByRole('list', { name: 'Referenced conversations for Fix login' });
+        const link = within(refs).getByRole('link', { name: /Browser control design/ });
+        expect(link.getAttribute('href')).toBe('#repos/ws-other/chats/queue_design');
+        expect(link.getAttribute('target')).toBeNull();
+        expect(link.getAttribute('title')).toBe('Browser control design interview with a long title');
+        expect(link.className).toMatch(/truncate/);
+        expect(link.className).toMatch(/min-w-0/);
+        expect(within(refs).getByRole('link', { name: 'queue_untitled' }).getAttribute('href')).toBe('#repos/ws-1/chats/queue_untitled');
+        expect(refs.textContent).not.toMatch(/Queued|Running|Status|Review|Job /);
+    });
+
+    it('renders items from servers without references unchanged', async () => {
+        const legacy = item();
+        delete (legacy as Partial<SentinelTodoItem>).references;
+        get.mockResolvedValue(ledger([legacy]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(within(row).queryByRole('list', { name: /Referenced conversations/ })).toBeNull();
+    });
 });
 
 describe('UnifiedTodoTab Manual tracking', () => {

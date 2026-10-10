@@ -4,6 +4,8 @@
  *   GET   /api/workspaces/:workspaceId/sentinel-todos/:processId                — ledger
  *   POST  /api/workspaces/:workspaceId/sentinel-todos/:processId/items          — create
  *   PATCH /api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId  — edit
+ *   POST  /api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/references
+ *         — attach an existing local conversation as a reference-only link
  *
  * `workspaceId` is the parent Sentinel chat's workspace (a repo or repo group)
  * on this server; clients route remote-owned chats to their owning server.
@@ -20,6 +22,7 @@ import type { SentinelTodoService } from './sentinel-todo-service';
 const LEDGER = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)$/;
 const ITEMS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items$/;
 const ITEM = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)$/;
+const REFERENCES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/references$/;
 
 export function registerSentinelTodoRoutes(opts: {
     routes: Route[];
@@ -89,6 +92,26 @@ export function registerSentinelTodoRoutes(opts: {
             if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
             try {
                 sendJSON(res, 200, await service.update(target, decodeURIComponent(match![3]), expectedRevision, patch, 'user'));
+            } catch (error) {
+                fail(res, error);
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: REFERENCES,
+        handler: async (req, res, match) => {
+            const target = owner(res, match);
+            if (!target) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const { expectedRevision, processId, workspaceId, ...rest } = body ?? {};
+            if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
+            if (Object.keys(rest).length) return sendError(res, 400, `Unknown fields: ${Object.keys(rest).join(', ')}`);
+            try {
+                sendJSON(res, 200, await service.attachReference(target, decodeURIComponent(match![3]), expectedRevision,
+                    { processId, workspaceId }, 'user'));
             } catch (error) {
                 fail(res, error);
             }

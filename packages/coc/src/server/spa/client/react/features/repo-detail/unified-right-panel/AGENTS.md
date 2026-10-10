@@ -678,7 +678,9 @@ Done sends `statusReason: null` and records no outcome, a supplied one is also t
 (Regular default, High); a High row draws an `aria-hidden` red leading band over the card's
 reserved `pl-1` gutter (every row reserves it, so priority changes never shift content) plus a
 visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
-missing value (older owning server) as Regular. Priority never reorders sections. Job links only navigate; nothing in
+missing value (older owning server) as Regular. Priority never reorders sections. Referenced conversations
+(`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
+below jobs, with no execution or review label. Job links only navigate; nothing in
 the tab starts, retries, or cancels a job. Tests live in
 `test/server/sentinel-todos/panel.test.tsx` and `panel-model.test.ts`.
 
