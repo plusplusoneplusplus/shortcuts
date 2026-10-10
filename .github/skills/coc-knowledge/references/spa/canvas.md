@@ -171,6 +171,14 @@ Shift/Ctrl/Cmd+Enter in the editor also runs (`isRunShortcut`). When linked to a
 not compact or read-only), the Ask AI toggle opens a one-line prompt that sends a follow-up
 naming `kusto_query`.
 
+Results use `shared/InteractiveTable`, shared with markdown tables. Unwrapped tables
+with more than twelve visible columns grow past the pane to retain readable
+content-proportional widths; the table's own scroll container handles overflow.
+Hidden columns are excluded from width normalization. Header and numeric-summary
+overflow is clipped, with full text in tooltips. Resizing uses measured pixel widths;
+wrapping remains controlled by the host. These display settings do not mutate query
+results or canvas revisions.
+
 Authentication belongs to the owning server's `kusto-client-runtime.ts`, shared by
 Run and tools through `getKustoRuntime`. Authentication always
 uses native `MicrosoftTokenProvider` with Azure CLI/auto refresh. Host file settings

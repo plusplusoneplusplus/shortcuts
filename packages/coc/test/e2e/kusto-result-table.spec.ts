@@ -65,7 +65,7 @@ function kustoContent(): string {
 }
 
 /** Write the descriptor + artifact the canvas record repository reads. */
-function seedKustoCanvas(dataDir: string): void {
+function seedKustoCanvas(dataDir: string, content = kustoContent()): void {
     const dir = path.join(dataDir, 'repos', WS_ID, 'canvases', CANVAS_ID);
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date().toISOString();
@@ -87,7 +87,7 @@ function seedKustoCanvas(dataDir: string): void {
             2,
         ),
     );
-    fs.writeFileSync(path.join(dir, 'artifact.md'), kustoContent());
+    fs.writeFileSync(path.join(dir, 'artifact.md'), content);
 }
 
 /** Open the pop-out canvas window on the (default) Table view. */
@@ -115,6 +115,64 @@ async function px(page: Page, selector: string, prop: string, nth = 0): Promise<
 }
 
 test.describe('Kusto result table (real browser)', () => {
+    test('156 columns stay readable and scroll inside the results pane', async ({ page, serverUrl, dataDir }) => {
+        const pageErrors: string[] = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+        await seedWorkspace(serverUrl, WS_ID, 'kusto-table-repo');
+        const columns = Array.from({ length: 156 }, (_, i) => ({
+            name: `CapacityMetric_${i}_${'long_header_'.repeat(i === 0 ? 12 : 1)}`,
+            type: 'long',
+        }));
+        seedKustoCanvas(dataDir, JSON.stringify({
+            query: 'Capacity | take 1',
+            clusterUrl: 'https://help.kusto.windows.net',
+            database: 'Samples',
+            columns,
+            rows: [columns.map((_, i) => i === 0 ? 2147483647 : 0)],
+            truncated: false,
+        }));
+        await page.setViewportSize({ width: 1100, height: 720 });
+        await openTable(page, serverUrl);
+
+        const headers = page.locator('.interactive-md-table thead th');
+        await expect(headers).toHaveCount(156);
+        const widths = await headers.evaluateAll(els => els.map(el => el.getBoundingClientRect().width));
+        expect(Math.min(...widths)).toBeGreaterThanOrEqual(159);
+        const scroll = page.locator('.interactive-table-scroll');
+        const metrics = await scroll.evaluate(el => ({
+            width: el.clientWidth,
+            scrollWidth: el.scrollWidth,
+            pageWidth: document.documentElement.clientWidth,
+            pageScrollWidth: document.documentElement.scrollWidth,
+        }));
+        expect(metrics.scrollWidth).toBeGreaterThan(metrics.width * 10);
+        expect(metrics.pageScrollWidth).toBeLessThanOrEqual(metrics.pageWidth + 1);
+
+        const firstHeader = headers.first();
+        await expect(firstHeader).toHaveAttribute('title', columns[0].name);
+        const headerText = firstHeader.locator('.interactive-table-header-content > span').first();
+        expect(await headerText.evaluate(el => getComputedStyle(el).textOverflow)).toBe('ellipsis');
+        expect(await headerText.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+        const footer = page.locator('.interactive-md-table tfoot td').first();
+        expect(await footer.evaluate(el => getComputedStyle(el).overflow)).toBe('hidden');
+        await expect(footer).toHaveAttribute('title', /2,147,483,647/);
+
+        await scroll.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+        await expect.poll(() => scroll.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+        const lastBox = (await headers.last().boundingBox())!;
+        const scrollBox = (await scroll.boundingBox())!;
+        expect(lastBox.x).toBeGreaterThanOrEqual(scrollBox.x - 1);
+        expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(scrollBox.x + scrollBox.width + 1);
+        await expect(page.locator('.interactive-md-table tbody td').last()).toHaveText('0');
+
+        await page.setViewportSize({ width: 520, height: 720 });
+        const narrowWidths = await headers.evaluateAll(els => els.map(el => el.getBoundingClientRect().width));
+        expect(Math.min(...narrowWidths)).toBeGreaterThanOrEqual(159);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth))
+            .toBeLessThanOrEqual(521);
+        expect(pageErrors).toEqual([]);
+    });
+
     test('cells are padded, bordered and compact with no .markdown-body ancestor', async ({ page, serverUrl, dataDir }) => {
         await seedWorkspace(serverUrl, WS_ID, 'kusto-table-repo');
         seedKustoCanvas(dataDir);

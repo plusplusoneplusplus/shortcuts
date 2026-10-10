@@ -347,6 +347,9 @@ references before editing. Paths are package-relative.
   `src/server/canvas/canvas-file-sandbox.ts` checks encoded/decoded shape, resolved
   containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
   file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
+- Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
+  horizontal scrolling; column hiding, resizing and wrapping are display-only.
+  Cover actual column widths and overflow with the Kusto browser regression suite.
 - Native CLI stores are read-only with parameterized filters/path-safe IDs.
   Only explicit import bridges to chats; unavailable stores return typed states.
   Descriptors/factories share one registry; file-backed providers
