@@ -16,22 +16,32 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 
-const mocks = vi.hoisted(() => ({
-    addToast: vi.fn(),
-    preferences: {
+const mocks = vi.hoisted(() => {
+    const preferences = {
         getLlmToolsConfig: vi.fn(),
         updateLlmToolsConfig: vi.fn(),
-    },
-}));
+    };
+    const remotePreferences = {
+        getLlmToolsConfig: vi.fn(),
+        updateLlmToolsConfig: vi.fn(),
+    };
+    return {
+        addToast: vi.fn(),
+        preferences,
+        remotePreferences,
+        client: { preferences },
+        remoteClient: { preferences: remotePreferences },
+        baseUrl: undefined as string | undefined,
+    };
+});
 
-// LlmToolsPanel reads via the default origin client.
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ preferences: mocks.preferences }),
+    getSpaCocClient: () => mocks.client,
 }));
 
-// useConversationRetrievalCapability reads via the selected clone's client.
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
-    useCocClient: () => ({ preferences: mocks.preferences }),
+    useCocClient: () => mocks.baseUrl ? mocks.remoteClient : mocks.client,
+    useCloneBaseUrl: () => mocks.baseUrl,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
@@ -55,8 +65,11 @@ function availableConfig(disabled: string[] = []) {
 
 beforeEach(() => {
     _clearConfigCache();
+    mocks.baseUrl = undefined;
     mocks.preferences.getLlmToolsConfig.mockReset();
     mocks.preferences.updateLlmToolsConfig.mockReset();
+    mocks.remotePreferences.getLlmToolsConfig.mockReset();
+    mocks.remotePreferences.updateLlmToolsConfig.mockReset();
     mocks.addToast.mockReset();
 });
 afterEach(() => { vi.clearAllMocks(); });
@@ -124,6 +137,25 @@ describe('llm-tools-config consumers share the per-workspace static-config cache
         expect(result.current).toBe(false);
         expect(mocks.preferences.getLlmToolsConfig).not.toHaveBeenCalled();
     });
+
+    it('shares the remote cache without reusing the same workspace ID from the local server', async () => {
+        mocks.preferences.getLlmToolsConfig.mockResolvedValue(availableConfig());
+        mocks.remotePreferences.getLlmToolsConfig.mockResolvedValue(availableConfig(['get_conversation']));
+
+        const local = renderHook(() => useConversationRetrievalCapability('ws-shared', true));
+        await waitFor(() => expect(local.result.current).toBe(true));
+        local.unmount();
+
+        mocks.baseUrl = 'https://clone.example';
+        const panel = render(<LlmToolsPanel workspaceId="ws-shared" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-get_conversation')).not.toBeChecked());
+        panel.unmount();
+
+        const remote = renderHook(() => useConversationRetrievalCapability('ws-shared', true));
+        expect(remote.result.current).toBe(false);
+        expect(mocks.preferences.getLlmToolsConfig).toHaveBeenCalledTimes(1);
+        expect(mocks.remotePreferences.getLlmToolsConfig).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('the LlmToolsPanel toggle invalidates the per-workspace cache (AC-05)', () => {
@@ -148,5 +180,34 @@ describe('the LlmToolsPanel toggle invalidates the per-workspace cache (AC-05)',
         const hook = renderHook(() => useConversationRetrievalCapability('ws-5', true));
         await waitFor(() => expect(hook.result.current).not.toBeNull());
         expect(mocks.preferences.getLlmToolsConfig).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates only the remote owner and refetches its changed retrieval capability', async () => {
+        mocks.preferences.getLlmToolsConfig.mockResolvedValue(availableConfig());
+        mocks.remotePreferences.getLlmToolsConfig.mockResolvedValue(availableConfig());
+        mocks.remotePreferences.updateLlmToolsConfig.mockResolvedValue(availableConfig(['get_conversation']));
+
+        const local = renderHook(() => useConversationRetrievalCapability('ws-shared', true));
+        await waitFor(() => expect(local.result.current).toBe(true));
+        local.unmount();
+
+        mocks.baseUrl = 'https://clone.example';
+        const panel = render(<LlmToolsPanel workspaceId="ws-shared" />);
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-get_conversation')).toBeChecked());
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-get_conversation'));
+        });
+        expect(peekConfig(configCacheKey.llmToolsConfig('ws-shared', mocks.baseUrl))).toBeUndefined();
+        expect(peekConfig(configCacheKey.llmToolsConfig('ws-shared'))).toEqual(availableConfig());
+        panel.unmount();
+
+        mocks.remotePreferences.getLlmToolsConfig.mockResolvedValue(availableConfig(['get_conversation']));
+        const remote = renderHook(() => useConversationRetrievalCapability('ws-shared', true));
+        await waitFor(() => expect(remote.result.current).toBe(false));
+        expect(mocks.remotePreferences.updateLlmToolsConfig).toHaveBeenCalledWith('ws-shared', {
+            disabledLlmTools: ['get_conversation'],
+        });
+        expect(mocks.remotePreferences.getLlmToolsConfig).toHaveBeenCalledTimes(2);
+        expect(mocks.preferences.getLlmToolsConfig).toHaveBeenCalledTimes(1);
     });
 });

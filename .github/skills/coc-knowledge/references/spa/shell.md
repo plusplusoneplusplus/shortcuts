@@ -288,20 +288,21 @@ endpoint; the wins are client caching, re-keying, deferral, and cache headers.
 - `peekConfig(key)` — synchronous seed, so a warm reopen paints with no loading flash.
 - `invalidateConfig(key)` — drops one key.
 - `configCacheKey` — `.models` / `.reasoningEfforts` / `.effortTiers(provider)` per
-  **provider**, `.llmToolsConfig(workspaceId)` and `.repoPreferences(workspaceId, owner)` per
-  **workspace**. Invalidation revokes pending cache publication without cancelling
-  existing callers.
+  **provider**, `.llmToolsConfig(workspaceId, baseUrl)` and `.repoPreferences(workspaceId, owner)`
+  per **server and workspace**. Invalidation revokes pending cache publication without
+  cancelling existing callers.
 
 Readers: `hooks/useModels.ts`, `useProviderModels.ts`, `useProviderReasoningEfforts.ts`,
 `useProviderEffortTiers.ts`, `features/repo-settings/LlmToolsPanel.tsx` `loadConfig`, and
-`features/chat/sessionContextDrop.ts` `useConversationRetrievalCapability` — so an
-already-seen provider+workspace triggers **zero** config calls. `test/setup.ts` clears the
-singleton in a global `beforeEach`.
+`features/chat/sessionContextDrop.ts` `useConversationRetrievalCapability`. The tool
+settings and retrieval check share the selected server's key, including synchronous
+warm seeds; identical workspace IDs on different servers stay isolated.
+`test/setup.ts` clears the singleton in a global `beforeEach`.
 
 Each mutation drops only its own key: `setEnabledModels` → `models:<provider>`,
 `setReasoningEffort` → `reasoning-efforts:<provider>`, `effortTiers.save()` →
-`effort-tiers:<provider>`, `LlmToolsPanel`'s toggle → `llm-tools-config:<workspaceId>`
-after a successful `updateLlmToolsConfig`.
+`effort-tiers:<provider>`, `LlmToolsPanel`'s toggle → the selected server/workspace's
+LLM-tools key after a successful `updateLlmToolsConfig`.
 
 ### Workspace-scoped data is not refetched per conversation
 

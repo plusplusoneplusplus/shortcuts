@@ -48,7 +48,8 @@ vi.mock('../../../src/server/streaming/sse-handler', () => ({
     emitMessageSteering: vi.fn(),
 }));
 
-vi.mock('../../../src/server/core/attachment-utils', () => ({
+vi.mock('../../../src/server/core/attachment-utils', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../src/server/core/attachment-utils')>(),
     processMessageAttachments: vi.fn().mockReturnValue({
         sdkAttachments: [],
         validatedImages: undefined,
@@ -58,7 +59,8 @@ vi.mock('../../../src/server/core/attachment-utils', () => ({
     hasAttachments: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../../../src/server/core/image-utils', () => ({
+vi.mock('../../../src/server/core/image-utils', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../src/server/core/image-utils')>(),
     saveImagesToTempFiles: vi.fn(),
     cleanupTempDir: vi.fn(),
     isImageDataUrl: vi.fn().mockReturnValue(false),

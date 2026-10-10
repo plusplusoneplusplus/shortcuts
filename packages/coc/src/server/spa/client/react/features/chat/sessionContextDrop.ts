@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { LlmToolsConfig } from '@plusplusoneplusplus/coc-client';
-import { useCocClient } from '../../repos/cloneRouting';
+import { useCocClient, useCloneBaseUrl } from '../../repos/cloneRouting';
 import { getOrFetchConfig, peekConfig, configCacheKey } from '../../api/staticConfigCache';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
@@ -814,12 +814,13 @@ function deriveRetrievalAvailable(config: LlmToolsConfig): boolean {
 export function useConversationRetrievalCapability(workspaceId: string | undefined, enabled: boolean): boolean | null {
     // AC-07: read the LLM-tools config from the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    const baseUrl = useCloneBaseUrl(workspaceId);
     // Seed from a warm workspace-config cache hit so a reopen resolves without a
     // transient null (AC-01: llm-tools-config is cached per workspace, so
     // switching conversations in the same workspace issues no refetch).
     const [available, setAvailable] = useState<boolean | null>(() => {
         if (!enabled || !workspaceId) return false;
-        const cached = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId));
+        const cached = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId, baseUrl));
         return cached !== undefined ? deriveRetrievalAvailable(cached) : null;
     });
 
@@ -829,7 +830,7 @@ export function useConversationRetrievalCapability(workspaceId: string | undefin
             return;
         }
 
-        const key = configCacheKey.llmToolsConfig(workspaceId);
+        const key = configCacheKey.llmToolsConfig(workspaceId, baseUrl);
         // Warm cache hit — resolve synchronously, no network round-trip (AC-01).
         const cached = peekConfig<LlmToolsConfig>(key);
         if (cached !== undefined) {
@@ -849,7 +850,7 @@ export function useConversationRetrievalCapability(workspaceId: string | undefin
             });
 
         return () => { cancelled = true; };
-    }, [enabled, workspaceId, cloneClient]);
+    }, [enabled, workspaceId, cloneClient, baseUrl]);
 
     return available;
 }

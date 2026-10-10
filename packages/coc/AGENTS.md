@@ -128,6 +128,9 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+  LLM-tool settings and chat retrieval checks share
+  `configCacheKey.llmToolsConfig(workspaceId, baseUrl)` for reads, warm seeds and
+  invalidation; identical workspace IDs on different servers stay isolated.
   SPA Git-info and queue readers share concurrent requests through
   `api/workspaceReads.ts`, keyed by routed client and workspace. Queue task
   hydration is distinct from stats-only placeholders; loaded empty queues are valid
