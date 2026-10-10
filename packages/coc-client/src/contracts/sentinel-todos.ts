@@ -30,7 +30,13 @@ export type SentinelTodoJobExecution =
     state: 'completed' | 'failed' | 'cancelled' | 'capped';
     reason?: string;
     /** Delivery of the result review to the Sentinel chat, not a verdict. */
-    review?: { state: 'pending' | 'queued' | 'delivered' | 'failed'; reason?: string };
+    review?: {
+      state: 'pending' | 'queued' | 'delivered' | 'failed';
+      /** Explicit ledger verdict, independent of result transport/parent turn completion. */
+      assessment?: 'pending' | 'reviewed' | 'superseded' | 'not_required';
+      terminalEventId?: string;
+      reason?: string;
+    };
   };
 
 export interface SentinelTodoJobLink {
@@ -99,6 +105,8 @@ export interface UpdateSentinelTodoRequest {
   priority?: SentinelTodoPriority;
   outcome?: string | null;
   archived?: boolean;
+  /** Exact local terminal results assessed by an explicit status verdict. */
+  reviewedJobs?: { processId: string; terminalEventId: string }[];
 }
 
 /** A write's committed item (without derived job execution) and ledger revision. */

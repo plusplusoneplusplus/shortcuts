@@ -149,8 +149,15 @@ references before editing. Paths are package-relative.
   returns feature work to Todo awaiting implementation approval; only explicitly
   design-only/interview-only requests finish at their agreed artifact. Parent reviews
   select overall-outcome status, re-read revisions, honor manual user verdicts, and require
-  user authorization before implementation/retry. Job execution status is derived on read, separate from item
-  status; remote links are always `unavailable`.
+  user authorization before implementation/retry. Local assessment is durable per terminal result:
+  `reviewedJobs` names exact process/event evidence with a status verdict and reason in one
+  revision-checked write. Unrelated edits and delivery completion never acknowledge results.
+  Explicit user status/reason/outcome/archive decisions supersede already-linked work
+  without claiming its evidence was assessed; acknowledgment requires exact `reviewedJobs`.
+  Review updates cannot overwrite those verdicts or reopen archived/Done items.
+  Job execution/delivery/assessment are derived on read with exact parent/child workspace,
+  process and session identity; remote links are always `unavailable`. Committed delivery
+  transitions invalidate linked ledgers without advancing their revisions.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the

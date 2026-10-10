@@ -111,6 +111,31 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'GET', ledger)).body.items[0].title).toBe('First');
     });
 
+    it('accepts exact user review evidence through the revision-checked client API', async () => {
+        const s = await track(await startServer());
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const { item } = await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Feature' });
+        const todos = new SentinelTodoStore(s.dataDir);
+        const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
+        todos.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
+        });
+        todos.recordJobResult(owner, 'queue_child', { terminalEventId: 'event', outcome: 'completed' }, () => 'Completed');
+        const current = (await client.sentinelTodos.get('ws-a', 'queue_s1')).items[0];
+        expect(current.jobs[0].execution).toMatchObject({ review: { assessment: 'pending' } });
+        const reviewedJobs = [{ processId: 'queue_child', terminalEventId: 'event' }];
+        await expect(client.sentinelTodos.update('ws-a', 'queue_s1', item.id, {
+            expectedRevision: 1, status: 'todo', reviewedJobs,
+        })).rejects.toMatchObject({ status: 409 });
+        await client.sentinelTodos.update('ws-a', 'queue_s1', item.id, {
+            expectedRevision: current.revision, status: 'todo', reviewedJobs,
+        });
+        const assessed = (await client.sentinelTodos.get('ws-a', 'queue_s1')).items[0];
+        expect(assessed.status).toBe('todo');
+        expect(assessed.jobs[0].execution).toMatchObject({ review: { assessment: 'reviewed', terminalEventId: 'event' } });
+        expect(s.onChange).toHaveBeenCalledTimes(2);
+    });
+
     it('round-trips manual items through the client and API with replay and revision protection', async () => {
         const s = await track(await startServer());
         const client = new CocClient({ baseUrl: s.baseUrl });

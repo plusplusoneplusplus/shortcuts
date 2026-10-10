@@ -33,9 +33,12 @@ export interface SentinelTodoOwner {
     processId: string;
 }
 
-export const SENTINEL_TODO_STATUS_LABELS: Readonly<Record<SentinelTodoStatus, string>> = {
+export type SentinelTodoDisplayStatus = SentinelTodoStatus | 'in_review';
+
+export const SENTINEL_TODO_STATUS_LABELS: Readonly<Record<SentinelTodoDisplayStatus, string>> = {
     todo: 'To do',
     in_progress: 'In progress',
+    in_review: 'In review',
     needs_attention: 'Needs attention',
     done: 'Done',
 };
@@ -68,12 +71,27 @@ export function sentinelTodoType(item: Pick<SentinelTodoItem, 'type'>): Sentinel
 }
 
 /** Active items needing a person first, then work in flight, then queued work. */
-const ACTIVE_ORDER: Readonly<Record<SentinelTodoStatus, number>> = {
+const ACTIVE_ORDER: Readonly<Record<SentinelTodoDisplayStatus, number>> = {
     needs_attention: 0,
-    in_progress: 1,
-    todo: 2,
-    done: 3,
+    in_review: 1,
+    in_progress: 2,
+    todo: 3,
+    done: 4,
 };
+
+/** Presentation only: durable assessment evidence never changes fulfillment or authorizes execution. */
+export function sentinelTodoDisplayStatus(item: SentinelTodoItem): SentinelTodoDisplayStatus {
+    if (item.archived || item.status === 'done' || sentinelTodoType(item) === 'manual') return item.status;
+    const pending = item.jobs.filter(job => !job.serverId && job.kind !== 'remote' && 'review' in job.execution
+        && job.execution.review?.assessment === 'pending');
+    if (!pending.length) return item.status;
+    // New/parallel work stays visible; its older pending assessments remain on their job rows.
+    if (item.jobs.some(job => job.execution.state === 'running' || job.execution.state === 'queued')) return 'in_progress';
+    const latest = item.jobs[item.jobs.length - 1];
+    if (latest && (latest.execution.state === 'unknown' || latest.execution.state === 'unavailable')) return item.status;
+    return pending.some(job => 'review' in job.execution && job.execution.review?.state === 'failed')
+        ? 'needs_attention' : 'in_review';
+}
 
 export interface SentinelTodoSections {
     active: SentinelTodoItem[];
@@ -95,7 +113,7 @@ export function sentinelTodoSections(items: readonly SentinelTodoItem[], type: S
     const live = ofType.filter(item => !item.archived);
     return {
         active: live.filter(item => item.status !== 'done')
-            .sort((a, b) => ACTIVE_ORDER[a.status] - ACTIVE_ORDER[b.status] || byCreated(a, b)),
+            .sort((a, b) => ACTIVE_ORDER[sentinelTodoDisplayStatus(a)] - ACTIVE_ORDER[sentinelTodoDisplayStatus(b)] || byCreated(a, b)),
         done: live.filter(item => item.status === 'done').sort(newestFirst),
         archived: ofType.filter(item => item.archived).sort(newestFirst),
     };
@@ -134,10 +152,16 @@ export function sentinelTodoJobStateLabel(job: SentinelTodoJobLink): string {
 export function sentinelTodoReviewLabel(job: SentinelTodoJobLink): string | null {
     const execution = job.execution;
     if (!('review' in execution) || !execution.review) return null;
+    if (execution.review.assessment === 'reviewed') return 'Reviewed';
+    if (execution.review.assessment === 'superseded') return 'User verdict retained';
+    if (execution.review.assessment === 'not_required') {
+        if (execution.review.state === 'failed') return `Notice failed${execution.review.reason ? `: ${execution.review.reason}` : ''}`;
+        return execution.review.state === 'delivered' ? 'Notice delivered' : 'Notice pending';
+    }
     switch (execution.review.state) {
         case 'pending':
         case 'queued': return 'Review pending';
-        case 'delivered': return 'Review delivered';
+        case 'delivered': return execution.review.assessment === 'pending' ? 'Review pending (result delivered)' : 'Review delivered';
         case 'failed': return `Review failed${execution.review.reason ? `: ${execution.review.reason}` : ''}`;
     }
 }

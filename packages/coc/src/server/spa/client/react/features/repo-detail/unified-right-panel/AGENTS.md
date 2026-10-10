@@ -655,8 +655,13 @@ The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
 and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` splits the ledger by item type
 (`sentinelTodoType`; a missing type reads as normal) through
-`sentinelTodoSections(items, type)`. Normal tracking lists active items (Needs
-attention, In progress, To do; oldest first within a status), then collapsed Done
+`sentinelTodoSections(items, type)`. `sentinelTodoDisplayStatus` derives In review
+from local pending assessment evidence, independently of persisted fulfillment status
+and result delivery. Running/queued follow-ups stay In progress, and each job retains
+its own assessment label. New unavailable/unknown follow-ups keep the stored status.
+Done, archived, manual and user-superseded items retain their verdicts; failed delivery
+needs attention. Normal tracking lists active items (Needs attention, In review,
+In progress, To do; oldest first within a display status), then collapsed Done
 and Archived sections. Manual tracking follows as a labelled region whose
 `aria-expanded` toggle, named `Manual tracking (<active> active)`, starts
 expanded. It stays visible when empty (`No manual items yet.`), has its own

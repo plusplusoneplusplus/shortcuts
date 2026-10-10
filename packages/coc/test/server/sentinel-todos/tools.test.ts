@@ -99,6 +99,33 @@ describe('sentinel_todos tool', () => {
         expect(todos.get(owner).items[0].revision).toBe(1);
     });
 
+    it('acknowledges exact result evidence through the verdict tool without treating unrelated edits as review', async () => {
+        const item = await createItem();
+        await service.linkJob(owner, item.id, {
+            processId: 'queue_child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
+        });
+        expect(await call({
+            action: 'update', itemId: item.id, expectedRevision: todos.get(owner).items[0].revision,
+            status: 'todo', reason: 'No result yet',
+            reviewedJobs: [{ processId: 'queue_child', terminalEventId: 'event' }],
+        })).toMatchObject({ code: 'invalid' });
+        todos.recordJobResult(owner, 'queue_child', { terminalEventId: 'event', outcome: 'completed' }, () => 'Completed');
+        const current = todos.get(owner).items[0];
+        expect((await call({ action: 'update', itemId: item.id, expectedRevision: current.revision,
+            notes: 'Unrelated edit' })).item.jobs[0].result.reviewed).toBeUndefined();
+        const revision = todos.get(owner).items[0].revision;
+        const reviewedJobs = [{ processId: 'queue_child', terminalEventId: 'event' }];
+        expect(await call({ action: 'update', itemId: item.id, expectedRevision: revision, reviewedJobs }))
+            .toMatchObject({ code: 'invalid' });
+        expect(await call({ action: 'update', itemId: item.id, expectedRevision: revision, reviewedJobs, status: 'todo' }))
+            .toMatchObject({ code: 'invalid' });
+        expect(await call({ action: 'update', itemId: item.id, expectedRevision: revision, reviewedJobs,
+            status: 'todo', reason: 'Spec ready; awaiting implementation approval' }))
+            .toMatchObject({ item: { status: 'todo', jobs: [{ result: { reviewed: { recordedBy: 'sentinel' } } }] } });
+        expect((await call({ action: 'list' })).items[0].jobs[0].execution)
+            .toMatchObject({ review: { assessment: 'reviewed', terminalEventId: 'event' } });
+    });
+
     it('records the reviewed reason as the outcome with sentinel provenance when marking done', async () => {
         const item = await createItem();
         const result = await call({

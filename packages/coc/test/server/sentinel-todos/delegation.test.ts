@@ -187,6 +187,31 @@ describe('Sentinel to-do job links', () => {
         expect(recorded?.jobs.map(job => job.result?.outcome)).toEqual(['failed', 'completed']);
     });
 
+    it('preserves user verdicts and newer successful phases even when writes share one timestamp', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-10-10T00:00:00.000Z'));
+        try {
+            const accepted = await createItem();
+            const { item: linked } = await link(accepted.id, 'queue_user');
+            await service.update(owner, accepted.id, linked.revision, { status: 'todo' }, 'user');
+            expect(service.recordJobResult(terminalJob('queue_user', 'failed'))?.status).toBe('todo');
+
+            const phase = await createItem();
+            await link(phase.id, 'queue_old');
+            await link(phase.id, 'queue_new');
+            service.recordJobResult(terminalJob('queue_new', 'completed'));
+            await service.update(owner, phase.id, current(phase.id).revision, {
+                status: 'todo', statusReason: 'Spec assessed; awaiting implementation approval',
+                reviewedJobs: [{ processId: 'queue_new', terminalEventId: 'queue_new:terminal' }],
+            }, 'sentinel');
+            const late = service.recordJobResult(terminalJob('queue_old', 'failed'));
+            expect(late?.status).toBe('todo');
+            expect(late?.statusReason).toBe('Spec assessed; awaiting implementation approval');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('flags needs attention while another linked job stays active, retaining both links', async () => {
         const item = await createItem();
         await link(item.id, 'queue_a');
@@ -213,6 +238,32 @@ describe('Sentinel to-do job links', () => {
             child: { workspaceId: 'w', processId: 'queue_remote', serverId: 'srv-1' } })).toBeUndefined();
         expect(service.recordJobResult(terminalJob('queue_remote', 'failed', undefined, other))).toBeUndefined();
         expect(current(item.id).status).toBe('in_progress');
+    });
+
+    it('borrows review evidence only from the exact parent, child workspace/process, server and session', async () => {
+        const item = await createItem();
+        await link(item.id, 'queue_a');
+        const valid = terminalJob('queue_a', 'completed');
+        const foreign = [
+            { ...valid, parent: { ...owner, workspaceId: 'ws-other' } },
+            { ...valid, parent: { ...owner, processId: 'queue_other' } },
+            { ...valid, child: { ...valid.child, workspaceId: 'ws-other' } },
+            { ...valid, child: { ...valid.child, processId: 'queue_other' } },
+            { ...valid, child: { ...valid.child, serverId: 'srv-2' } },
+            { ...valid, child: { ...valid.child, sessionId: 'other-session' } },
+        ];
+        for (const row of foreign) {
+            const scoped = new SentinelTodoService({
+                todos, store: { getProcess: async id => processes.get(id) }, jobs: { list: () => [row] },
+            });
+            expect((await scoped.list(owner)).items[0].jobs[0].execution).toEqual({ state: 'unknown' });
+            expect(scoped.recordJobResult(row)).toBeUndefined();
+        }
+        const scoped = new SentinelTodoService({
+            todos, store: { getProcess: async id => processes.get(id) }, jobs: { list: () => [valid] },
+        });
+        expect((await scoped.list(owner)).items[0].jobs[0].execution)
+            .toMatchObject({ state: 'completed', review: { state: 'pending', assessment: 'pending' } });
     });
 
     describe('send_to_conversation tracking', () => {

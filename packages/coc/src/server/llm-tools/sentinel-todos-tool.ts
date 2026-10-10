@@ -51,6 +51,7 @@ export interface SentinelTodosArgs {
     priority?: SentinelTodoPriority;
     reason?: string;
     outcome?: string;
+    reviewedJobs?: { processId: string; terminalEventId: string }[];
     idempotencyKey?: string;
 }
 
@@ -80,7 +81,11 @@ const DESCRIPTION =
     'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"; do not launch ' +
     'implementation without user authorization. Re-read before review updates and honor manual user verdicts and latest instructions. ' +
     'Linked `jobs` show each job\'s `execution` separately: a completed job is evidence to review, not a ' +
-    'verdict; inspect `unavailable` (remote) jobs in their owning chat and record the reviewed state explicitly. ' +
+    'verdict. After assessing a local result, pass `reviewedJobs: [{processId, terminalEventId}]` from its ' +
+    '`execution.review` together with the overall `status` and a short `reason`. Delivery alone never acknowledges ' +
+    'assessment; acknowledge only the results you actually judged, not running follow-ups. Unrelated edits do not ' +
+    'clear pending reviews. A newer user verdict supersedes stale job reviews; preserve it. ' +
+    'For remote evidence, inspect `unavailable` (remote) jobs in their owning chat and record the reviewed state explicitly. ' +
     MANUAL_TRACKING_GUIDANCE + ' Create manual items with `type: manual`; Notes and Done when are optional. ' +
     'Item type is immutable; existing items remain normal. If a call fails, tell the user the item is not tracked.';
 
@@ -162,6 +167,15 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 },
                 reason: { type: 'string', description: 'Required with status `done` or `needs_attention`.' },
                 outcome: { type: 'string', description: 'update: the reviewed outcome to record.' },
+                reviewedJobs: {
+                    type: 'array',
+                    description: 'update: exact local terminal evidence assessed; requires status and reason. Never acknowledge unrelated/running jobs.',
+                    items: {
+                        type: 'object',
+                        properties: { processId: { type: 'string' }, terminalEventId: { type: 'string' } },
+                        required: ['processId', 'terminalEventId'],
+                    },
+                },
                 idempotencyKey: { type: 'string', description: 'create: stable key that makes retries safe.' },
             },
             required: ['action'],
@@ -223,6 +237,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         if (reason) patch.statusReason = reason;
                         const outcome = args.outcome?.trim() || (args.status === 'done' ? reason : undefined);
                         if (outcome) patch.outcome = outcome;
+                        if (args.reviewedJobs !== undefined) patch.reviewedJobs = args.reviewedJobs;
                         if (Object.keys(patch).length === 0) {
                             return { error: 'update needs at least one field to change.', code: 'invalid' };
                         }

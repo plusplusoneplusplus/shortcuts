@@ -31,7 +31,12 @@ export type SentinelTodoJobExecution =
         state: 'completed' | 'failed' | 'cancelled' | 'capped';
         reason?: string;
         /** Delivery of the result review to this chat (not a fulfillment verdict). */
-        review?: { state: 'pending' | 'queued' | 'delivered' | 'failed'; reason?: string };
+        review?: {
+            state: 'pending' | 'queued' | 'delivered' | 'failed';
+            assessment: 'pending' | 'reviewed' | 'superseded' | 'not_required';
+            terminalEventId: string;
+            reason?: string;
+        };
     };
 export type SentinelTodoJobLinkView = SentinelTodoJobLink & { execution: SentinelTodoJobExecution };
 export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & { jobs: SentinelTodoJobLinkView[] };
@@ -58,7 +63,7 @@ export class SentinelTodoService {
         await this.assertOwner(owner);
         const ledger: SentinelTodoLedger = this.deps.todos.get(owner);
         let delegated: DelegatedJob[] = [];
-        if (ledger.items.some(item => item.jobs.some(job => !job.serverId))) {
+        if (ledger.items.some(item => item.jobs.some(job => !job.serverId && job.kind !== 'remote'))) {
             try { delegated = this.deps.jobs?.list(owner.workspaceId) ?? []; }
             catch { /* Execution status degrades to the recorded link result. */ }
         }
@@ -66,7 +71,7 @@ export class SentinelTodoService {
             revision: ledger.revision,
             items: ledger.items.map(item => ({
                 ...item,
-                jobs: item.jobs.map(link => ({ ...link, execution: this.execution(link, owner, delegated) })),
+                jobs: item.jobs.map(link => ({ ...link, execution: this.execution(link, owner, delegated, item.userVerdictRevision) })),
             })),
         };
     }
@@ -90,7 +95,7 @@ export class SentinelTodoService {
      */
     recordJobResult(job: DelegatedJob): SentinelTodoItem | undefined {
         const terminal = job.terminal?.result;
-        if (!terminal || job.child.serverId) return undefined;
+        if (!terminal || job.child.serverId || !this.findLinkedItem(job)) return undefined;
         const owner = { workspaceId: job.parent.workspaceId, processId: job.parent.processId };
         const result = this.deps.todos.recordJobResult(owner, job.id, {
             terminalEventId: terminal.terminalEventId,
@@ -105,27 +110,44 @@ export class SentinelTodoService {
     /** The item linking a local delegated job, for its parent review prompt. */
     findLinkedItem(job: DelegatedJob): SentinelTodoItem | undefined {
         return this.deps.todos.get(job.parent).items
-            .find(item => item.type === 'normal' && item.jobs.some(link => link.processId === job.id && !link.serverId));
+            .find(item => item.type === 'normal' && item.jobs.some(link => link.processId === job.id
+                && link.processId === job.child.processId && link.workspaceId === job.child.workspaceId
+                && link.sessionId === job.child.sessionId && link.kind !== 'remote' && !link.serverId && !job.child.serverId));
     }
 
-    private execution(link: SentinelTodoJobLink, owner: SentinelTodoOwner, delegated: DelegatedJob[]): SentinelTodoJobExecution {
-        if (link.serverId) return { state: 'unavailable' };
+    /** Invalidate derived delivery state only after the delegation receipt commits. */
+    notifyReviewDelivery(job: DelegatedJob): void {
+        const item = this.findLinkedItem(job);
+        if (!item) return;
+        const owner = job.parent;
+        this.emit({ owner, item, ledgerRevision: this.deps.todos.get(owner).revision });
+    }
+
+    private execution(link: SentinelTodoJobLink, owner: SentinelTodoOwner, delegated: DelegatedJob[],
+        userVerdictRevision?: number): SentinelTodoJobExecution {
+        if (link.serverId || link.kind === 'remote') return { state: 'unavailable' };
         const terminal = delegated.find(job => job.id === link.processId
-            && job.parent.processId === owner.processId)?.terminal;
-        if (terminal) {
-            const delivery = terminal.delivery;
+            && job.parent.processId === owner.processId && job.parent.workspaceId === owner.workspaceId
+            && job.child.workspaceId === link.workspaceId && job.child.processId === link.processId
+            && job.child.sessionId === link.sessionId && !job.child.serverId)?.terminal;
+        const result = terminal?.result ?? link.result;
+        if (result) {
+            const delivery = terminal?.delivery ?? { state: 'pending' as const };
+            const assessment = result.outcome === 'cancelled' ? 'not_required'
+                : link.result?.terminalEventId === result.terminalEventId && link.result.reviewed
+                    ? 'reviewed' : (userVerdictRevision ?? 0) > (link.linkedRevision ?? 0) ? 'superseded' : 'pending';
             return {
-                state: terminal.result.outcome,
-                ...(terminal.result.reason ? { reason: terminal.result.reason } : {}),
-                review: { state: delivery.state, ...(delivery.state === 'failed' ? { reason: delivery.reason } : {}) },
+                state: result.outcome,
+                ...(result.reason ? { reason: result.reason } : {}),
+                review: { state: delivery.state, assessment, terminalEventId: result.terminalEventId,
+                    ...(delivery.state === 'failed' ? { reason: delivery.reason } : {}) },
             };
-        }
-        if (link.result) {
-            return { state: link.result.outcome, ...(link.result.reason ? { reason: link.result.reason } : {}) };
         }
         // A Ralph session spans many queue tasks; only its whole-session result settles it.
         if (link.kind === 'ralph') return { state: 'running' };
         const task = isQueueProcessId(link.processId) ? this.deps.getTask?.(toTaskId(link.processId)) : undefined;
+        const taskWorkspaceId = task?.payload?.workspaceId ?? task?.repoId;
+        if (taskWorkspaceId !== undefined && taskWorkspaceId !== link.workspaceId) return { state: 'unknown' };
         if (task?.status === 'queued' || task?.status === 'running') return { state: task.status };
         return { state: 'unknown' };
     }

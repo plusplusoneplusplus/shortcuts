@@ -29,6 +29,7 @@ const jobResultSchema = z.object({
     outcome: jobOutcomeSchema,
     reason: z.string().max(2_000).optional(),
     recordedAt: z.iso.datetime(),
+    reviewed: z.object({ recordedAt: z.iso.datetime(), recordedBy: actorSchema }).optional(),
 });
 /**
  * An explicit link from an item to one delegated job. `processId` is the
@@ -44,6 +45,7 @@ const jobLinkSchema = z.object({
     openLink: z.string().min(1).max(2_000),
     title: z.string().max(200).optional(),
     linkedAt: z.iso.datetime(),
+    linkedRevision: z.number().int().min(1).optional(),
     result: jobResultSchema.optional(),
 });
 const itemSchema = z.object({
@@ -69,6 +71,8 @@ const itemSchema = z.object({
     jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS).default([]),
     /** Last user edit; job outcomes recorded before it must not override it. */
     userEditedAt: z.iso.datetime().optional(),
+    /** Explicit user verdicts protect against reviews of already-linked work. */
+    userVerdictRevision: z.number().int().min(1).optional(),
 });
 const ledgerSchema = z.object({ revision: z.number().int().min(0), items: z.array(itemSchema) });
 const fileSchema = z.object({ version: z.literal(1), ledgers: z.record(z.string(), ledgerSchema) });
@@ -82,7 +86,7 @@ export type SentinelTodoLedger = z.infer<typeof ledgerSchema>;
 export type SentinelTodoOwner = { workspaceId: string; processId: string };
 export type SentinelTodoJobLink = z.infer<typeof jobLinkSchema>;
 export type SentinelTodoJobResult = z.infer<typeof jobResultSchema>;
-export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'result'>;
+export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'linkedRevision' | 'result'>;
 
 export const todoCreateSchema = z.object({
     type: todoTypeSchema.optional(),
@@ -105,6 +109,8 @@ export const todoPatchSchema = z.object({
     priority: todoPrioritySchema.optional(),
     outcome: z.string().min(1).max(4_000).nullable().optional(),
     archived: z.boolean().optional(),
+    /** Exact terminal evidence assessed by this verdict; unrelated edits never acknowledge results. */
+    reviewedJobs: z.array(z.object({ processId: id, terminalEventId: id }).strict()).min(1).max(MAX_TODO_JOB_LINKS).optional(),
 }).strict();
 export type SentinelTodoCreate = z.infer<typeof todoCreateSchema>;
 /**
@@ -206,6 +212,34 @@ export class SentinelTodoStore {
         if (current.type === 'manual' && actor !== 'user' && fields.archived !== undefined) {
             throw new SentinelTodoError('invalid', 'Only the user may archive or restore manual items');
         }
+        const latestLinkedRevision = Math.max(0, ...current.jobs.map(link => link.linkedRevision ?? 0));
+        const changesVerdict = (fields.status !== undefined && fields.status !== current.status)
+            || fields.statusReason !== undefined || fields.outcome !== undefined
+            || (fields.archived !== undefined && fields.archived !== current.archived);
+        if (actor !== 'user' && current.type === 'normal' && changesVerdict
+            && current.jobs.some(link => !link.serverId && link.result)
+            && (current.userVerdictRevision ?? 0) > latestLinkedRevision) {
+            throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this work; preserve it rather than applying a stale review');
+        }
+        const reviewedLinks = fields.reviewedJobs?.map(evidence => {
+            const link = current.jobs.find(job => !job.serverId && job.kind !== 'remote' && job.processId === evidence.processId
+                && job.result?.terminalEventId === evidence.terminalEventId);
+            if (current.type !== 'normal' || !link) {
+                throw new SentinelTodoError('invalid', 'Review evidence must match a local terminal result on this item');
+            }
+            return link;
+        }) ?? [];
+        if (reviewedLinks.length && (fields.status === undefined || (actor !== 'user' && !fields.statusReason?.trim()))) {
+            throw new SentinelTodoError('invalid', 'Acknowledging results requires an explicit status verdict and a short reason');
+        }
+        if (actor !== 'user' && reviewedLinks.some(link =>
+            (current.userVerdictRevision ?? 0) > (link.linkedRevision ?? 0))) {
+            throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this job; preserve it rather than applying a stale review');
+        }
+        if (actor !== 'user' && reviewedLinks.length && (current.archived || current.status === 'done')
+            && fields.status !== current.status) {
+            throw new SentinelTodoError('invalid', 'A result review cannot reopen an archived or Done item');
+        }
         const now = new Date().toISOString();
         const next: Record<string, unknown> = { ...current };
         for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
@@ -229,6 +263,14 @@ export class SentinelTodoStore {
         if (actor === 'user' && Object.keys(fields).some(key => key !== 'priority' && fields[key as keyof SentinelTodoPatch] !== undefined)) {
             next.userEditedAt = now;
         }
+        if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
+            || fields.outcome !== undefined || fields.archived !== undefined)) {
+            next.userVerdictRevision = current.revision + 1;
+        }
+        next.jobs = current.jobs.map(link => link.result && !link.result.reviewed
+            && reviewedLinks.includes(link)
+            ? { ...link, result: { ...link.result, reviewed: { recordedAt: now, recordedBy: actor } } }
+            : link);
         return this.commit(owner, data, ledger, index, next, actor, now);
     }
 
@@ -257,7 +299,8 @@ export class SentinelTodoStore {
         }
         const now = new Date().toISOString();
         const next: Record<string, unknown> = {
-            ...current, status: 'in_progress', jobs: [...current.jobs, { ...input, linkedAt: now }],
+            ...current, status: 'in_progress',
+            jobs: [...current.jobs, { ...input, linkedAt: now, linkedRevision: current.revision + 1 }],
         };
         delete next.statusReason;
         return { ...this.commit(owner, data, ledger, index, next, 'sentinel', now), changed: true };
@@ -289,9 +332,10 @@ export class SentinelTodoStore {
         const next: Record<string, unknown> = {
             ...current, jobs: current.jobs.map(job => job === link ? recorded : job),
         };
-        const supersededByUser = !!current.userEditedAt && current.userEditedAt > link.linkedAt;
-        const supersededByAttempt = current.jobs.some(job =>
-            job !== link && job.linkedAt > link.linkedAt && job.result?.outcome === 'completed');
+        const supersededByUser = (current.userVerdictRevision ?? 0) > (link.linkedRevision ?? 0)
+            || (!!current.userEditedAt && current.userEditedAt > link.linkedAt);
+        const supersededByAttempt = current.jobs.slice(current.jobs.indexOf(link) + 1)
+            .some(job => job.result?.outcome === 'completed');
         if (result.outcome !== 'completed' && !current.archived && current.status !== 'done'
             && !supersededByUser && !supersededByAttempt) {
             next.status = 'needs_attention';

@@ -522,6 +522,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
         findTodo: job => sentinelTodoHooks.findTodo(job),
+        onDeliveryChange: job => sentinelTodoHooks.deliveryChanged(job),
     });
     const delegatedJobResults = new DelegatedJobResults({
         jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),

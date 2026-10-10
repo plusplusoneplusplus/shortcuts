@@ -89,6 +89,56 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
+    it('renders an accessible derived In review badge and refreshes assessment from the exact remote owner', async () => {
+        const pending = item({
+            status: 'in_progress', revision: 4, jobs: [{
+                processId: 'queue_child', workspaceId: 'ws-child', kind: 'local',
+                openLink: '#repos/ws-child/chats/queue_child', linkedAt: item().createdAt,
+                execution: { state: 'completed', review: { state: 'delivered', assessment: 'pending' } },
+            }],
+        });
+        const owner = { ...OWNER, ownerRoutingRef: 'remote:srv-2:ws-1' };
+        get.mockResolvedValue(ledger([pending], 4));
+        render(<UnifiedTodoTab owner={owner} />);
+        const badge = await screen.findByTestId('sentinel-todo-status-in_review');
+        expect(badge.textContent).toContain('In review');
+        expect(badge.querySelector('[aria-hidden="true"]')?.textContent).toBe('◇');
+        expect(clientRefs).toContain(owner.ownerRoutingRef);
+        const row = screen.getByTestId('sentinel-todo-row-i1');
+        expect(row.textContent).toContain('Review pending (result delivered)');
+        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        // Derived phases are not stored statuses or new user execution actions.
+        const status = within(row).getByLabelText('Status') as HTMLSelectElement;
+        expect(status.value).toBe('in_progress');
+        expect([...status.options].map(option => option.textContent)).not.toContain('In review');
+        expect(within(row).getByRole('button', { name: 'Edit' })).toBeTruthy();
+        const { onMessage } = connect.mock.calls[0][0];
+        act(() => onMessage({ type: 'sentinel-todos-changed', workspaceId: 'ws-2', processId: OWNER.processId, ledgerRevision: 5 }));
+        expect(get).toHaveBeenCalledTimes(1);
+        get.mockResolvedValue(ledger([item({ ...pending, status: 'todo', revision: 5,
+            jobs: [{ ...pending.jobs[0], execution: { state: 'completed', review: { state: 'delivered', assessment: 'reviewed' } } }],
+        })], 5));
+        act(() => onMessage({ type: 'sentinel-todos-changed', workspaceId: OWNER.ownerWorkspaceId, processId: OWNER.processId, ledgerRevision: 5 }));
+        await screen.findByTestId('sentinel-todo-status-todo');
+        expect(screen.queryByTestId('sentinel-todo-status-in_review')).toBeNull();
+        expect(row.textContent).toContain('Reviewed');
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('discards old-server review evidence after changing only the clone route', async () => {
+        const slow = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(slow.promise).mockResolvedValue(ledger([item({ status: 'todo' })]));
+        const { rerender } = render(<UnifiedTodoTab owner={{ ...OWNER, ownerRoutingRef: 'remote:srv-1:ws-1' }} />);
+        rerender(<UnifiedTodoTab owner={{ ...OWNER, ownerRoutingRef: 'remote:srv-2:ws-1' }} />);
+        await screen.findByTestId('sentinel-todo-status-todo');
+        await act(async () => slow.resolve(ledger([item({ status: 'in_progress', jobs: [{
+            processId: 'queue_child', workspaceId: 'ws-child', kind: 'local', openLink: '#', linkedAt: item().createdAt,
+            execution: { state: 'completed', review: { state: 'delivered', assessment: 'pending' } },
+        }] })])));
+        expect(screen.queryByTestId('sentinel-todo-status-in_review')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-status-todo')).toBeTruthy();
+    });
+
     it('shows loading, never the empty state, until the ledger arrives', async () => {
         const pending = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValue(pending.promise);

@@ -79,8 +79,14 @@ Tracking grants no implementation/retry authority; bookkeeping failures are repo
 Manual guidance requires clarification before execution and prohibits delegation, job links,
 automatic result reviews, normal-item copies, conversion and handoff. AI may maintain manual
 items; Done reasons explain available evidence against Done when, or title/notes if omitted.
-`list` items carry `jobs[]` links with a derived `execution` (`queued`/`running`/`unknown`,
-terminal outcome plus result-review delivery state, or `unavailable` for remote links).
+`list` items carry `jobs[]` links with derived `execution`: live queue state, terminal
+outcome with independent delivery and assessment, or `unavailable` for remote links.
+Local verdict updates pass `reviewedJobs` with exact process/terminal-event identities,
+`status` and a reason; the store atomically acknowledges only that evidence under the
+item revision. Notes/priority edits and delivered parent turns never prove assessment.
+User status/reason/outcome/archive decisions supersede already-linked jobs without
+declaring their evidence reviewed; acknowledgment requires exact `reviewedJobs`. Reviewed markers
+survive reload/replay. Delivery commits invalidate the linked ledger without changing its revision.
 
 With the flag on, the Sentinel's `send_to_conversation` gains `todoItemId` (via the optional
 `todoTracking` tool option): create mode rejects a missing, foreign, archived, or manual item with

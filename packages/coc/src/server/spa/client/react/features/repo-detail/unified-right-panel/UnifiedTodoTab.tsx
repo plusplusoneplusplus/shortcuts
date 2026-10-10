@@ -30,6 +30,7 @@ import {
     SENTINEL_TODO_STATUS_LABELS,
     SENTINEL_TODO_STATUSES,
     sentinelTodoJobStateLabel,
+    sentinelTodoDisplayStatus,
     sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
@@ -37,6 +38,7 @@ import {
     sentinelTodoStatusReason,
     sentinelTodoType,
     type SentinelTodoOwner,
+    type SentinelTodoDisplayStatus,
 } from './sentinelTodoPanelModel';
 
 export interface UnifiedTodoTabProps {
@@ -47,9 +49,10 @@ export interface UnifiedTodoTabProps {
 type Draft = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', priority: 'regular' };
 
-const STATUS_STYLES: Readonly<Record<SentinelTodoStatus, { dot: string; badge: string; mark: string }>> = {
+const STATUS_STYLES: Readonly<Record<SentinelTodoDisplayStatus, { dot: string; badge: string; mark: string }>> = {
     todo: { dot: 'border border-current', badge: 'bg-[#848484]/15 text-[#616161] dark:text-[#bbbbbb]', mark: '○' },
     in_progress: { dot: 'bg-current', badge: 'bg-[#0078d4]/15 text-[#0078d4] dark:text-[#3794ff]', mark: '◐' },
+    in_review: { dot: 'border border-current', badge: 'bg-[#8764b8]/15 text-[#7150a2] dark:text-[#c5a5ed]', mark: '◇' },
     needs_attention: { dot: 'bg-current', badge: 'bg-[#e8912d]/15 text-[#b5650f] dark:text-[#cca700]', mark: '!' },
     done: { dot: 'bg-current', badge: 'bg-[#16825d]/15 text-[#16825d] dark:text-[#89d185]', mark: '✓' },
 };
@@ -72,7 +75,7 @@ function HighPriorityBadge({ itemId }: { itemId: string }) {
     );
 }
 
-function StatusBadge({ status }: { status: SentinelTodoStatus }) {
+function StatusBadge({ status }: { status: SentinelTodoDisplayStatus }) {
     const style = STATUS_STYLES[status];
     return (
         <span className={cn('inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium', style.badge)}
@@ -461,7 +464,7 @@ function TodoRow({ item, expanded, onToggle, onSave }: {
             )}
             <button type="button" aria-expanded={expanded} aria-controls={`sentinel-todo-${item.id}-details`} onClick={onToggle}
                 className="flex w-full items-start gap-2 px-2 py-1.5 text-left hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
-                <StatusBadge status={item.status} />
+                <StatusBadge status={sentinelTodoDisplayStatus(item)} />
                 {high && <HighPriorityBadge itemId={item.id} />}
                 <span id={titleId} className={cn('min-w-0 flex-1 break-words', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 {item.targetRepo && (

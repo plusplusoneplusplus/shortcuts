@@ -11,6 +11,7 @@ import {
     SENTINEL_TODO_PRIORITIES,
     SENTINEL_TODO_PRIORITY_LABELS,
     sentinelTodoJobStateLabel,
+    sentinelTodoDisplayStatus,
     sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
@@ -129,11 +130,76 @@ describe('priority', () => {
 });
 
 describe('job and review labels', () => {
+    it('keeps transport delivery separate from assessment and passive cancellation', () => {
+        expect(sentinelTodoReviewLabel(job({ state: 'completed', review: { state: 'delivered', assessment: 'pending' } })))
+            .toBe('Review pending (result delivered)');
+        expect(sentinelTodoReviewLabel(job({ state: 'completed', review: { state: 'queued', assessment: 'reviewed' } })))
+            .toBe('Reviewed');
+        expect(sentinelTodoReviewLabel(job({ state: 'cancelled', review: { state: 'delivered', assessment: 'not_required' } })))
+            .toBe('Notice delivered');
+    });
+    it.each(['pending', 'queued', 'delivered', 'failed'] as const)('retains superseding user verdicts for %s delivery', state => {
+        const link = job({ state: 'failed', review: { state, assessment: 'superseded' } });
+        expect(sentinelTodoReviewLabel(link)).toBe('User verdict retained');
+        expect(sentinelTodoDisplayStatus(item({ status: 'todo', jobs: [link] }))).toBe('todo');
+    });
+
     it('words job execution apart from fulfillment and marks remote jobs unavailable', () => {
         expect(sentinelTodoJobStateLabel(job({ state: 'completed' }))).toBe('Job completed');
         expect(sentinelTodoJobStateLabel(job({ state: 'failed', reason: 'boom' }))).toBe('Job failed');
         expect(sentinelTodoJobStateLabel(job({ state: 'running' }))).toBe('Running');
         expect(sentinelTodoJobStateLabel(job({ state: 'unavailable' }, { kind: 'remote', serverId: 'srv-2' }))).toBe('Status unavailable');
+    });
+
+    describe('derived item review phase', () => {
+        const pending = () => job({ state: 'completed', review: { state: 'queued', assessment: 'pending' } });
+        it.each(['pending', 'queued', 'delivered'] as const)('shows In review for %s but not assessed evidence', state => {
+            const linked = job({ state: 'completed', review: { state, assessment: 'pending' } });
+            expect(sentinelTodoDisplayStatus(item({ status: 'in_progress', jobs: [linked] }))).toBe('in_review');
+            expect(sentinelTodoDisplayStatus(item({ status: 'todo',
+                jobs: [job({ state: 'completed', review: { state, assessment: 'reviewed' } })] }))).toBe('todo');
+        });
+        it('does not resurrect Done/archived/manual items or invent assessment from transport-only evidence', () => {
+            for (const extra of [{ status: 'done' as const }, { archived: true }, { type: 'manual' as const }]) {
+                const row = item({ status: 'todo', jobs: [pending()], ...extra });
+                expect(sentinelTodoDisplayStatus(row)).toBe(row.status);
+            }
+            expect(sentinelTodoDisplayStatus(item({ status: 'in_progress',
+                jobs: [job({ state: 'completed', review: { state: 'delivered' } })] }))).toBe('in_progress');
+            expect(sentinelTodoDisplayStatus(item({ status: 'needs_attention',
+                jobs: [job({ state: 'cancelled', review: { state: 'delivered', assessment: 'not_required' } })] })))
+                .toBe('needs_attention');
+        });
+        it('distinguishes running/queued/new unavailable follow-ups from their older pending result', () => {
+            for (const state of ['running', 'queued'] as const) {
+                expect(sentinelTodoDisplayStatus(item({ status: 'in_progress', jobs: [pending(), job({ state })] })))
+                    .toBe('in_progress');
+            }
+            for (const state of ['unknown', 'unavailable'] as const) {
+                expect(sentinelTodoDisplayStatus(item({ status: 'in_progress', jobs: [pending(), job({ state })] })))
+                    .toBe('in_progress');
+            }
+            expect(sentinelTodoDisplayStatus(item({ status: 'in_progress', jobs: [
+                job({ state: 'unavailable' }), pending(),
+            ] }))).toBe('in_review');
+        });
+        it('does not borrow local assessment for remote links and surfaces delivery failure', () => {
+            expect(sentinelTodoDisplayStatus(item({ jobs: [job(pending().execution, { serverId: 'srv-2', kind: 'remote' })] })))
+                .toBe('todo');
+        expect(sentinelTodoDisplayStatus(item({ jobs: [job(pending().execution, { kind: 'remote' })] }))).toBe('todo');
+            expect(sentinelTodoDisplayStatus(item({ jobs: [
+                job({ state: 'completed', review: { state: 'failed', assessment: 'pending' } }),
+            ] }))).toBe('needs_attention');
+        });
+        it('counts review items as active and orders attention, review, work, and todo', () => {
+            const attention = item({ status: 'needs_attention' });
+            const review = item({ status: 'in_progress', jobs: [pending()] });
+            const work = item({ status: 'in_progress' });
+            const todo = item();
+            const sections = sentinelTodoSections([todo, work, review, attention], 'normal');
+            expect(sections.active.map(row => row.id)).toEqual([attention.id, review.id, work.id, todo.id]);
+            expect(sections.done).toEqual([]);
+        });
     });
 
     it('reports review delivery, including a visible failure, but never a verdict', () => {
