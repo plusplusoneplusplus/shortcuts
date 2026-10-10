@@ -136,6 +136,7 @@ export interface AdminResolvedConfig {
     quickAskSidenotes?: boolean;
     arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
+    repoGroupExclusiveWriter?: boolean;
     chatProviderSwitching?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
@@ -297,6 +298,7 @@ export interface RuntimeDashboardConfig {
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;
     singleRowShellEnabled: boolean;
+    repoGroupExclusiveWriterEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
     /** Whether user-created chat folders are enabled in the chat list (feature flag, default off). */
     chatFoldersEnabled: boolean;

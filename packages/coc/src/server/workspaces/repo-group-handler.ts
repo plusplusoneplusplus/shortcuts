@@ -52,6 +52,8 @@ interface TopologyBroadcaster {
 }
 
 export interface RepoGroupRouteDeps {
+    /** Live owning-server policy; missing means disabled. */
+    getExclusiveWriterEnabled?: () => boolean;
     /** Broadcast workspace topology changes to connected dashboard clients. */
     getWsServer?: () => TopologyBroadcaster | undefined;
     /**
@@ -332,7 +334,7 @@ export function registerRepoGroupRoutes(
                     members: body.members,
                     descriptions: body.descriptions,
                     readOnly: body.readOnly,
-                });
+                }, { exclusiveWriter: deps.getExclusiveWriterEnabled?.() === true });
                 await deps.onGroupRegistered?.(ws);
                 broadcast(ws.id, 'added');
                 const members = await resolveRepoGroupMembers(dataDir, store, ws.id);
@@ -392,7 +394,7 @@ export function registerRepoGroupRoutes(
                     members: body.members,
                     descriptions: body.descriptions,
                     readOnly: body.readOnly,
-                });
+                }, { exclusiveWriter: deps.getExclusiveWriterEnabled?.() === true });
                 if (!updated) {
                     return handleAPIError(res, notFound('Repo group'));
                 }

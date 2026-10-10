@@ -934,6 +934,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.repoGroupExclusiveWriter', default: false, runtime: 'live', runtimeFlag: 'repoGroupExclusiveWriterEnabled',
+        ui: {
+            group: 'dashboard', order: 67, label: 'Exclusive repo-group writer', badge: 'experimental',
+            hint: 'Shared repos default to read-only in additional groups. Revoke the existing group writer before granting another. Existing conflicts remain unchanged.',
+            testId: 'toggle-repo-group-exclusive-writer-enabled',
+        },
+    }),
+    bool({
         key: 'features.schedulesInScheduledSlide', default: true, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',

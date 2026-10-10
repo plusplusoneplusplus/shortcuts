@@ -80,6 +80,7 @@ describe('Repo Group Handler', () => {
     let repoTreeService: RepoTreeService;
     let broadcastEvents: Array<{ type: string; workspaceId: string; action: string }>;
     let registeredGroups: WorkspaceInfo[];
+    let exclusiveWriterEnabled: boolean;
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'repo-group-handler-test-'));
@@ -95,6 +96,7 @@ describe('Repo Group Handler', () => {
 
         broadcastEvents = [];
         registeredGroups = [];
+        exclusiveWriterEnabled = false;
         const routes: Route[] = [];
         registerRepoGroupRoutes(routes, store, dataDir, {
             getWsServer: () => ({
@@ -102,6 +104,7 @@ describe('Repo Group Handler', () => {
             }),
             onGroupRegistered: async (ws) => { registeredGroups.push(ws); },
             repoTreeService,
+            getExclusiveWriterEnabled: () => exclusiveWriterEnabled,
         });
         const handler = createRequestHandler({ routes, spaHtml: () => '<html></html>' });
         server = http.createServer(handler);
@@ -121,6 +124,42 @@ describe('Repo Group Handler', () => {
         expect(res.status).toBe(201);
         return JSON.parse(res.body) as { workspace: WorkspaceInfo; members: any[] };
     }
+
+    it('enforces live exclusive-writer policy on POST/PATCH without mutating rejected drafts', async () => {
+        exclusiveWriterEnabled = true;
+        const first = await createGroup('First', [repoA.id]);
+        const second = await createGroup('Second', [repoA.id]);
+        expect(second.members[0].readOnly).toBe(true);
+        const eventsBefore = broadcastEvents.length;
+        const rejected = await patchJSON(`${baseUrl}/api/repo-groups/${second.workspace.id}`, {
+            name: 'Rejected name', descriptions: { [repoA.id]: 'Rejected note' }, readOnly: { [repoA.id]: false },
+        });
+        expect(rejected.status).toBe(409);
+        expect(JSON.parse(rejected.body)).toMatchObject({
+            code: 'REPO_GROUP_WRITER_CONFLICT',
+            details: { conflicts: [expect.objectContaining({
+                workspaceId: repoA.id, writerGroupId: first.workspace.id,
+                writerGroupLink: `#repos/${first.workspace.id}/settings`,
+            })] },
+        });
+        expect(broadcastEvents).toHaveLength(eventsBefore);
+        const saved = JSON.parse((await request(`${baseUrl}/api/repo-groups/${second.workspace.id}`)).body);
+        expect(saved.name).toBe('Second');
+        expect(saved.members[0]).toMatchObject({ readOnly: true });
+        expect(saved.members[0].description).toBeUndefined();
+        expect((await postJSON(`${baseUrl}/api/repo-groups`, {
+            name: 'Third', members: [repoA.id], readOnly: { [repoA.id]: false },
+        })).status).toBe(409);
+        expect((await patchJSON(`${baseUrl}/api/repo-groups/${first.workspace.id}`, {
+            readOnly: { [repoA.id]: true },
+        })).status).toBe(200);
+        expect((await patchJSON(`${baseUrl}/api/repo-groups/${second.workspace.id}`, {
+            readOnly: { [repoA.id]: false },
+        })).status).toBe(200);
+        exclusiveWriterEnabled = false;
+        const third = await createGroup('Third', [repoA.id]);
+        expect(third.members[0].readOnly).toBe(false);
+    });
 
     // ------------------------------------------------------------------
     // POST /api/repo-groups

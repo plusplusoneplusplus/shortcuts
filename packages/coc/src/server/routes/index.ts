@@ -913,6 +913,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRepoGroupRoutes(routes, store, dataDir, {
         getWsServer,
         repoTreeService,
+        getExclusiveWriterEnabled: () =>
+            (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.repoGroupExclusiveWriter === true,
         onGroupRegistered: async (ws) => {
             // Match the startup workspace sweep so a freshly created group can
             // enqueue chats and host schedules without a server restart.

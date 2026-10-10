@@ -75,6 +75,10 @@ describe('repo-group-chat-context', () => {
         it('uses path boundaries for POSIX roots', () => {
             expect(repoGroupRootsOverlap('/work/repo', '/work/repo/src', 'linux')).toBe(true);
             expect(repoGroupRootsOverlap('/work/repo', '/work/repository', 'linux')).toBe(false);
+            expect(repoGroupRootsOverlap('/', '/work/repo', 'linux')).toBe(true);
+            expect(repoGroupRootsOverlap('/work/repo', '/', 'linux')).toBe(true);
+            expect(repoGroupRootsOverlap('C:\\', 'C:\\repo', 'win32')).toBe(true);
+            expect(repoGroupRootsOverlap('C:\\', 'D:\\repo', 'win32')).toBe(false);
         });
     });
 

@@ -301,6 +301,10 @@ references before editing. Paths are package-relative.
 - Canonicalize live group roots; reject writable/read-only overlap.
   Pass both sets every turn; unsupported providers fail before session creation.
   See `src/server/workspaces/repo-group-access-policy.ts`.
+  `features.repoGroupExclusiveWriter` defaults off. Owning-server group saves serialize
+  admission and persistence; shared additions default read-only and new writer conflicts
+  return 409 with group links. Preserve saved conflicts and allow revocation, including
+  retained stale members. Unresolved memberships cannot silently admit a new writer.
 - Notes root authority is `src/server/notes/notes-root-resolver.ts`, not client paths.
   Task roots are opaque/protected, never user-root config or counted against its limit.
   Native Notes I/O owns containment/symlinks, atomic writes, sidecars, and order.

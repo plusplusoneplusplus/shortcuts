@@ -264,6 +264,22 @@ that same registry.
 - A 404 from create/save means a remote predating the feature; there is no GET-list
   endpoint to probe with, so the message is reworded rather than retried.
 
+### Writable membership admission
+
+`features.repoGroupExclusiveWriter` is live and defaults off (runtime
+`repoGroupExclusiveWriterEnabled`). The owning server's POST/PATCH routes pass the
+policy into `repo-group-workspace.ts`; `repo-group-exclusive-writer.ts` serializes
+check and save per data directory. New shared memberships default read-only;
+explicit competing writers return 409 `REPO_GROUP_WRITER_CONFLICT` with
+`details.conflicts` naming the member, writer group and relative settings link.
+
+Identity is workspace ID or overlapping realpath roots within that server's
+registry, not Git remote. Saved conflicts remain writable; unchanged policies and
+revocations stay editable, including retained removed members. Missing roots,
+unregistered members and unreadable group files conservatively reserve potential
+writers. New grants require resolved roots. Standalone chats are independent, and
+membership saves neither interrupt running turns nor reject queued work.
+
 **View.** A `group-<slug>` id renders `repos/RepoGroupView.tsx`, a branch in `ReposView`
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
 feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,
