@@ -69,6 +69,28 @@ describe('execGit marshalling', () => {
         await expect(gitAddon.execGit(['log', '--format=%s'], repo)).resolves.toBe('initial commit');
     });
 
+    describe('CLI history host/supplied boundary', () => {
+        it('shares one DTO and preserves absent ahead flags for host and supplied reads', async () => {
+            const args = gitAddon.prepareGitHistory({ maxCount: 10, skip: 0 });
+            const host = await gitAddon.gitHistory(repo, args);
+            const supplied = await gitAddon.processGitHistory(await gitAddon.execGit(args, repo));
+            expect(host).toEqual(supplied);
+            expect(host).toHaveLength(1);
+            expect(host[0]).toMatchObject({ subject: 'initial commit', parentHashes: '', body: '' });
+            expect(host[0]).not.toHaveProperty('isAheadOfRemote');
+        });
+
+        it('parses large supplied histories off the event-loop thread', async () => {
+            const args = gitAddon.prepareGitHistory({ maxCount: 1, skip: 0 });
+            const raw = await gitAddon.execGit(args, repo);
+            const turns = await eventLoopTurnsDuring(async () => {
+                const commits = await gitAddon.processGitHistory(raw.repeat(2000));
+                expect(commits).toHaveLength(2000);
+            });
+            expect(turns).toBeGreaterThan(0);
+        });
+    });
+
     it('accepts an omitted options object', async () => {
         const head = await gitAddon.execGit(['rev-parse', 'HEAD'], repo);
         expect(head).toMatch(/^[0-9a-f]{40}$/);

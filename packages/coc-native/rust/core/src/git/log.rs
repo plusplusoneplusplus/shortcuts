@@ -1,25 +1,85 @@
-//! Reading commit history with `gix`, so a page of the Git tab costs no
-//! processes at all.
-//!
-//! This is the first read path that leaves the `git` CLI behind entirely. The
-//! TypeScript `GitLogService.getCommits` spawned three children for one page —
-//! `git log`, `git rev-parse --abbrev-ref @{upstream}` and a second `git log`
-//! for the unpushed set — and the spawn overhead, not the reading, is what this
-//! move exists to remove.
-//!
-//! The cost of dropping the CLI is that `--pretty=format:` no longer formats
-//! anything for us, so the three placeholders the UI actually renders are
-//! reimplemented here: `%aI` (delegated to `gix`), `%ar` (a literal port of
-//! git's `show_date_relative`) and `%D` (ref decoration). Each is covered by a
-//! differential test that compares this module against the real `git log` on a
-//! temp repository, because "close enough" in a commit list is a visible bug.
+//! Shared history DTOs for gix reads and Git-owned CLI traversal/search.
+//! Differential tests pin formatting, paging, parent ordering and message bodies.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use gix::prelude::ObjectIdExt;
 
-use super::{GitError, GitErrorKind};
+use super::{run_git, GitCommandOptions, GitError, GitErrorKind};
+
+/// CLI history retains Git's traversal, regular-expression and revision semantics.
+pub fn history_args(
+    max_count: u32,
+    skip: u32,
+    search: Option<&str>,
+    rev: Option<&str>,
+    fixed_search: bool,
+    include_details: bool,
+) -> Vec<String> {
+    let details = if include_details { "%ar%n%D" } else { "%n" };
+    let mut args = vec![
+        "log".into(),
+        format!("--format=%H%n%h%n%s%n%an%n%ae%n%aI%n%P%n{details}%n%b"),
+        "-z".into(),
+    ];
+    if !include_details {
+        args.push("--no-decorate".into());
+    }
+    if let Some(rev) = rev {
+        args.extend(["--max-count=1".into(), "--end-of-options".into(), rev.into()]);
+    } else if let Some(hash) = search.filter(|text| {
+        !fixed_search
+            && (7..=40).contains(&text.len())
+            && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+    }) {
+        args.extend(["--end-of-options".into(), format!("{hash}^!")]);
+    } else {
+        args.extend([format!("--skip={skip}"), format!("--max-count={max_count}")]);
+        if let Some(search) = search.filter(|text| !text.is_empty()) {
+            args.extend([format!("--grep={search}"), "--regexp-ignore-case".into()]);
+            if fixed_search {
+                args.push("--fixed-strings".into());
+            }
+        }
+    }
+    args
+}
+
+/// Host execution and supplied WSL output share the same commit DTO/parser.
+pub fn read_history(root: &Path, args: &[String]) -> Result<Vec<Commit>, GitError> {
+    Ok(parse_history(&run_git(root, args, &GitCommandOptions::default())?))
+}
+
+pub fn parse_history(output: &str) -> Vec<Commit> {
+    output
+        .split('\0')
+        .filter_map(|entry| {
+            let fields: Vec<_> = entry.splitn(10, '\n').collect();
+            if fields.len() < 10 {
+                return None;
+            }
+            Some(Commit {
+                hash: fields[0].into(),
+                short_hash: fields[1].into(),
+                subject: fields[2].into(),
+                author_name: fields[3].into(),
+                author_email: fields[4].into(),
+                date: fields[5].into(),
+                parent_hashes: fields[6].into(),
+                relative_date: fields[7].into(),
+                refs: fields[8]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+                body: fields[9].trim().into(),
+                is_ahead_of_remote: None,
+            })
+        })
+        .collect()
+}
 
 /// One commit, field-for-field the `GitCommit` the Git tab renders.
 ///

@@ -10,6 +10,12 @@ use std::path::Path;
 pub struct PatchFile {
     pub path: String,
     pub original_path: Option<String>,
+    #[cfg_attr(
+        feature = "napi",
+        napi(
+            ts_type = "'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'"
+        )
+    )]
     pub status: String,
     pub additions: u32,
     pub deletions: u32,

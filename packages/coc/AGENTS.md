@@ -318,26 +318,22 @@ references before editing. Paths are package-relative.
   Commit, branch-range, working-tree and combined/per-file PR patch routes share
   `withPatchRequest`; `createLocalPatchRoute` adapts local routes. Request abort or
   unfinished response close cancels only that read; normal GET-body close does not.
+  Pass per-file display limits into Rust; use `git/git-response.ts` for patch response
+  metadata and status-letter conversion. PR scope opening and supplied-read lifetimes
+  use Forge `diff/remote-patch.ts`; routes own disposal, providers retain their scope.
   Retire listeners on every outcome and guard response delivery after awaits.
-  Working-tree patches use Rust planning, processing and truncation; native-load
-  errors return HTTP 500 with rebuild instructions. PR combined/per-file hunks and list statistics use
-  `repos/pr-patch.ts` request-owned Rust remote stores with explicit workspace/root,
-  provider host/repository and PR identity. Capture continuations before patch I/O;
-  cancel tickets immediately on abandonment and retire/dispose on every outcome.
-  Remote-only selections without a root use stateless Rust processing with
-  pre/post-await signal checks. Required-native
-  failures remain visible. PR full-context patches use Forge loadComparisonPatch with
-  direct base/head Rust planning and host/WSL execution; TypeScript orchestrates commit
-  fetch/retry and provider-hunk fallback. Authenticated I/O and shared commit fetches
-  finish independently; abandoned reads cannot publish detail caches or start
-  fallback/retry work. List refreshes fetch current provider bytes
-  and map Rust summaries directly to diffStats; only the list response cache retains
-  enriched rows. Patch transport and source identity use the same provider config;
-  ADO identity includes its effective configured organization. Combined and per-file
-  hunk routes fetch current bytes through the selected clone; full-context fallback
-  uses that same transport. PR snapshot
-  fallback metadata uses Forge parseFullDiffAsync
-  for decoded paths and file existence; full-text loading and its cache remain separate.
+  Working-tree native-load errors return HTTP 500 with rebuild instructions.
+  `repos/pr-patch.ts` supplies explicit workspace/root, provider host/repository and
+  PR identity; transport and scope use the same provider config, including ADO's
+  effective organization. Capture continuations before I/O and cancel on abandonment.
+  Rootless selections use stateless Rust with pre/post-await signal checks.
+  PR full-context patches use Forge `loadComparisonPatch`; TypeScript owns missing-commit
+  fetch/retry and provider-hunk fallback through the selected clone. Authenticated I/O
+  and shared commit fetches finish independently; abandoned reads cannot publish detail
+  caches or start fallback/retry work. List refreshes map current provider bytes'
+  Rust summaries to diffStats; only the list response cache retains enriched rows.
+  PR snapshot fallback metadata uses Forge `parseFullDiffAsync` for decoded paths
+  and file existence; full-text loading and its cache remain separate.
 
 ## Messaging and Secrets
 

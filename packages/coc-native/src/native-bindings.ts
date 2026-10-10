@@ -421,6 +421,8 @@ export declare function gitGlobalConfigAdd(key: string, value: string, options?:
  */
 export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOptions | undefined | null): Promise<string[]>
 
+export declare function gitHistory(repoRoot: string, args: Array<string>): Promise<GitLogCommit[]>
+
 /**
  * Read a page of the branch list, in git's own `refname` order.
  *
@@ -494,6 +496,8 @@ export interface GitLogOptions {
   skip: number
   /** Case-insensitive substring the commit message must contain. */
   search?: string
+  /** Include relative dates and ref decoration in CLI history reads. */
+  includeDetails?: boolean
 }
 
 /** One page of history, plus whether asking for the next one is worthwhile. */
@@ -1002,6 +1006,8 @@ export declare function parseGitStatusPorcelain(output: string): Promise<GitStat
 /** Metadata batch for WSL, sharing the host plan. */
 export declare function prepareGitCommitFiles(commit: string): Promise<string[][]>
 
+export declare function prepareGitHistory(options: GitLogOptions, rev?: string | undefined | null, fixedSearch?: boolean | undefined | null): Array<string>
+
 /** Shared host/WSL revision command plan, preserving each comparison mode. */
 export declare function prepareGitRevisionPatch(mode: string, base: string, head?: string | undefined | null, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
 
@@ -1009,6 +1015,8 @@ export declare function prepareGitWorkingTreePatch(scope: string, path?: string 
 
 /** Join transported NUL metadata and resolve its comparison parent on a worker. */
 export declare function processGitCommitMetadata(nameStatus: string, numstat: string, parents: string): Promise<GitCommitFiles>
+
+export declare function processGitHistory(output: string): Promise<GitLogCommit[]>
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
@@ -1163,7 +1171,7 @@ export interface GitCommitFile {
   path: string
   /** Source path of a rename or copy; `None` for everything else. */
   originalPath?: string
-  status: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'
   /**
    * Binary files and missing numstat rows have absent counts, not zero.
    * JavaScript omits these fields so the UI renders a blank column.
@@ -1188,7 +1196,7 @@ export interface PatchContent {
 export interface PatchFile {
   path: string
   originalPath?: string
-  status: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'
   additions: number
   deletions: number
   isBinary: boolean

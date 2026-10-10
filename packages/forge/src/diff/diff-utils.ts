@@ -1,6 +1,5 @@
 /** Wire conversion for Rust-owned patch processing. */
 import { loadNativeGit, type NativeGitPatchFile } from '@plusplusoneplusplus/coc-native';
-import type { GitChangeStatus } from '../git/types';
 import type { DiffContent, DiffFileEntry, DiffSource, DiffSummary, GetFileDiffOptions, IDiffProvider } from './types';
 
 interface ParsedDiff {
@@ -31,9 +30,9 @@ export async function parseFullDiffAsync(fullDiff: string): Promise<ParsedDiff> 
 /** Native entry-array conversion shared by supplied and local patch consumers. */
 export function nativePatchToDiff(entries: NativeGitPatchFile[]): ParsedDiff {
     const contentByPath = new Map<string, DiffContent>();
-    const files: DiffFileEntry[] = entries.map(({ raw, totalLines, status, ...metadata }) => {
+    const files: DiffFileEntry[] = entries.map(({ raw, totalLines, ...metadata }) => {
         contentByPath.set(metadata.path, { raw, totalLines, truncated: false });
-        return { ...metadata, status: status as GitChangeStatus };
+        return metadata;
     });
     files.sort((a, b) => a.path.localeCompare(b.path));
     return { files, contentByPath };

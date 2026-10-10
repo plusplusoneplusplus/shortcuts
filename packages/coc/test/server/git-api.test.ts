@@ -69,6 +69,19 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadGitHistory: async (root: string, options: import('@plusplusoneplusplus/coc-native').NativeGitLogOptions, rev?: string) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const raw: string = await mockForgeExecGit(native.prepareGitHistory(options, rev), root, {});
+            // Fixtures use the REST-only format; native DTOs reserve two display fields.
+            const supplied = raw.split('\0').map(entry => {
+                const fields = entry.split('\n');
+                if (fields.length < 7) return entry;
+                fields.splice(7, 0, '', '');
+                return fields.join('\n');
+            }).join('\0');
+            return native.processGitHistory(supplied);
+        },
         loadCommitFiles: async (root: string, commit: string, timeout: number) =>
             (await mockGitCommitFiles(root, commit, { timeout })).files,
         loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {

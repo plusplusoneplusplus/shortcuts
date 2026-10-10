@@ -20,6 +20,7 @@ vi.mock('@plusplusoneplusplus/forge', async importOriginal => {
         ...actual,
         loadCommitShowPatch: mocks.show,
         loadWorkingTreePatch: mocks.working,
+        loadRangePatch: mocks.file,
         GitRangeService: class {
             detectCommitRange = mocks.detect;
             getRangeDiff = mocks.range;
@@ -150,7 +151,7 @@ describe('local patch HTTP route cancellation', () => {
             const signal = value instanceof AbortSignal ? value : (value as { signal: AbortSignal }).signal;
             if (root === roots[1]) {
                 liveSignal = signal;
-                return Promise.resolve(boundary === mocks.show || boundary === mocks.working
+                return Promise.resolve(boundary === mocks.show || boundary === mocks.working || boundary === mocks.file
                     ? { content: { raw: 'live' } } : boundary === mocks.detect ? { baseRef: 'origin/main', files: [] } : 'live');
             }
             ready.resolve(signal);

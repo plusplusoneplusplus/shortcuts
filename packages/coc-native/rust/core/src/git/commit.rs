@@ -42,7 +42,12 @@ pub struct CommitFile {
     pub path: String,
     /// Source path of a rename or copy; `None` for everything else.
     pub original_path: Option<String>,
-    #[cfg_attr(feature = "napi", napi(ts_type = "string"))]
+    #[cfg_attr(
+        feature = "napi",
+        napi(
+            ts_type = "'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'ignored' | 'conflict'"
+        )
+    )]
     pub status: ChangeStatus,
     /// Binary files and missing numstat rows have absent counts, not zero.
     /// JavaScript omits these fields so the UI renders a blank column.

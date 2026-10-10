@@ -36,6 +36,10 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
+        loadRangePatch: async (root: string, base: string, head: string, file: string, options?: { maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            return loadNativeGit().processGitPatch(await mockGetFileDiff(root, base, head, file, options), options?.maxLines);
+        },
         GitRangeService: vi.fn().mockImplementation(function () { return ({
             detectCommitRange: mockDetectCommitRange,
             getRangeDiff: mockGetRangeDiff,
@@ -310,7 +314,9 @@ describe('Git Branch Range API endpoints', () => {
             const data = res.json();
             expect(data.diff).toBe(MOCK_FILE_DIFF);
             expect(data.path).toBe('src/index.ts');
-            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/index.ts', expect.any(AbortSignal));
+            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/index.ts', {
+                contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal),
+            });
         });
 
         it('returns empty diff when on default branch', async () => {
@@ -346,7 +352,9 @@ describe('Git Branch Range API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.path).toBe('src/utils/helper.ts');
-            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/utils/helper.ts', expect.any(AbortSignal));
+            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/utils/helper.ts', {
+                contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal),
+            });
         });
 
         it('handles URL-encoded file paths', async () => {
@@ -358,7 +366,9 @@ describe('Git Branch Range API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.path).toBe('src/my file.ts');
-            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/my file.ts', expect.any(AbortSignal));
+            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/my file.ts', {
+                contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal),
+            });
         });
     });
 
@@ -409,7 +419,9 @@ describe('Git Branch Range API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range/files/src/index.ts/diff?base=upstream`);
             expect(res.status).toBe(200);
             expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'upstream', signal: expect.any(AbortSignal) });
-            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/feature/foo', 'HEAD', 'src/index.ts', expect.any(AbortSignal));
+            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/feature/foo', 'HEAD', 'src/index.ts', {
+                contextLines: 99999, maxLines: 100000, signal: expect.any(AbortSignal),
+            });
         });
 
         it('falls back to default-branch for an unknown base value', async () => {

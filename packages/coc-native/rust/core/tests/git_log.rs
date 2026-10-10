@@ -10,7 +10,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use coc_native_core::git::log::{get_commit, get_commits, relative_date};
+use coc_native_core::git::log::{
+    get_commit, get_commits, history_args, parse_history, read_history, relative_date,
+};
 use tempfile::TempDir;
 
 /// The exact format string `GitLogService` passed to `git log`.
@@ -145,6 +147,59 @@ fn canonical_utc(date: &str) -> String {
         Some(rest) => format!("{rest}+00:00"),
         None => date.to_string(),
     }
+}
+
+#[test]
+fn cli_history_and_supplied_output_share_body_parents_and_search_semantics() {
+    let repo = interesting_repo();
+    let args = history_args(50, 0, None, None, false, false);
+    assert!(args.iter().all(|arg| !arg.contains("%D") && !arg.contains("%ar")));
+    assert!(args.iter().any(|arg| arg == "--no-decorate"));
+    let commits = read_history(repo.path(), &args).expect("history");
+    let borrowed: Vec<_> = args.iter().map(String::as_str).collect();
+    assert_eq!(commits, parse_history(&git_stdout(repo.path(), &borrowed)));
+    assert_eq!(commits.len(), 5);
+    assert_eq!(commits[0].parent_hashes.split(' ').count(), 2);
+    assert!(commits.last().unwrap().parent_hashes.is_empty());
+    assert!(commits.iter().all(|row| row.refs.is_empty() && row.relative_date.is_empty()));
+    let rich = read_history(repo.path(), &history_args(50, 0, None, None, false, true)).unwrap();
+    assert!(rich.iter().any(|row| !row.refs.is_empty()));
+    assert!(rich.iter().all(|row| !row.relative_date.is_empty()));
+    assert_eq!(
+        commits.iter().find(|row| row.subject == "second commit").unwrap().body,
+        "with a body paragraph"
+    );
+    let page = read_history(repo.path(), &history_args(2, 1, None, None, false, false)).unwrap();
+    assert_eq!(page, commits[1..3]);
+    let filtered = read_history(
+        repo.path(),
+        &history_args(50, 0, Some("^SECOND.*commit$"), None, false, false),
+    )
+    .unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].subject, "second commit");
+    assert!(read_history(
+        repo.path(),
+        &history_args(50, 0, Some("^SECOND.*commit$"), None, true, false)
+    )
+    .unwrap()
+    .is_empty());
+    for commit in [&commits[0], commits.last().unwrap()] {
+        let found = read_history(
+            repo.path(),
+            &history_args(1, 200, Some(&commit.hash), None, false, false),
+        )
+        .unwrap();
+        assert_eq!(found, vec![commit.clone()]);
+        let detail = read_history(
+            repo.path(),
+            &history_args(1, 0, None, Some(&commit.short_hash), false, false),
+        )
+        .unwrap();
+        assert_eq!(detail, found);
+    }
+    assert!(parse_history("").is_empty());
+    assert!(parse_history("incomplete\0").is_empty());
 }
 
 /// Ask the real git for a page, parsed exactly as the TypeScript parsed it.
@@ -509,7 +564,8 @@ fn a_repository_without_commits_reads_as_empty_rather_than_failing() {
 #[test]
 fn a_path_that_is_not_a_repository_fails_with_the_shared_error_text() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let error = get_commits(dir.path(), 10, 0, None, now()).expect_err("not a repository");
+    let error =
+        get_commits(&dir.path().join("missing"), 10, 0, None, now()).expect_err("not a repository");
     assert!(error.to_string().starts_with("git log failed: "), "unexpected error text: {error}",);
 }
 

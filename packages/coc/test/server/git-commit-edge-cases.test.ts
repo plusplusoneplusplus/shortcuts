@@ -60,6 +60,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadGitHistory: async (root: string, options: { maxCount: number; skip: number; search?: string }, rev?: string) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            return native.processGitHistory(await mockExecGit(native.prepareGitHistory(options, rev), root, {}));
+        },
         loadCommitFiles: async (root: string, commit: string) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
             const native = loadNativeGit();
@@ -342,7 +347,7 @@ describe('Git Commit Edge Cases', () => {
         it('returns exactly 5 commits with ?limit=5', async () => {
             // Build 5 commit entries separated by NUL
             const commits = Array.from({ length: 5 }, (_, i) =>
-                `hash${String(i).padStart(15, '0')}\nhash${i}ab\nCommit ${i}\nDev\ndev@t.com\n2026-01-0${i + 1}T00:00:00Z\n\n`,
+                `hash${String(i).padStart(15, '0')}\nhash${i}ab\nCommit ${i}\nDev\ndev@t.com\n2026-01-0${i + 1}T00:00:00Z\n\n1 day ago\n\n`,
             ).join('\0');
 
             mockExecGit.mockImplementation((args: string[]) => {
@@ -417,7 +422,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('handles git log returning commits with multi-line body', async () => {
-            const logOutput = 'abc1234def567890\nabc1234\nFix bug\nDev\ndev@t.com\n2026-01-01T00:00:00Z\nparent1\nFixes #123\nAdditional details on line 2\n';
+            const logOutput = 'abc1234def567890\nabc1234\nFix bug\nDev\ndev@t.com\n2026-01-01T00:00:00Z\nparent1\n1 day ago\n\nFixes #123\nAdditional details on line 2\n';
 
             mockExecGit.mockImplementation((args: string[]) => {
                 if (args[0] === 'log') return logOutput;

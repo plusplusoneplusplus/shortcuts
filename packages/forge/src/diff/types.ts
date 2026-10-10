@@ -1,4 +1,5 @@
 import type { GitChangeStatus } from '../git/types';
+import type { NativeGitPatchContent, NativeGitPatchSummary } from '@plusplusoneplusplus/coc-native';
 
 // ── Diff source discriminant ─────────────────────────────────
 
@@ -44,25 +45,11 @@ export interface DiffFileEntry {
 /**
  * The diff content for a single file, returned by `getFileDiff()`.
  */
-export interface DiffContent {
-    /** Raw unified diff string (git diff format). */
-    raw: string;
-    /** Whether the diff was truncated (e.g. by server-side limits). */
-    truncated: boolean;
-    /** Total line count of the raw diff before truncation. */
-    totalLines: number;
-}
+export type DiffContent = NativeGitPatchContent;
 
 // ── Diff summary (aggregate stats) ───────────────────────────
 
-export interface DiffSummary {
-    /** Total files changed. */
-    filesChanged: number;
-    /** Total lines added across all files. */
-    additions: number;
-    /** Total lines deleted across all files. */
-    deletions: number;
-}
+export type DiffSummary = NativeGitPatchSummary;
 
 // ── Source descriptors (discriminated union) ──────────────────
 

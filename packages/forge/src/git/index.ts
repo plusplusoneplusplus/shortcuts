@@ -44,6 +44,7 @@ export {
 } from './exec';
 
 export { GitLogService } from './git-log-service';
+export { loadGitHistory } from './git-history';
 export { GitRangeService } from './git-range-service';
 export { BranchService, parsePorcelainV2BranchStatus } from './branch-service';
 export { WorkingTreeService } from './working-tree-service';

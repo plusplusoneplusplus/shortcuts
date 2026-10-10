@@ -8,6 +8,7 @@ import { WorkingTreeService, BranchService, loadWorkingTreePatch } from '@pluspl
 import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { internalError, badRequest, handleAPIError, missingFields, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
+import { gitStatusToChar, patchContentResponse } from '../git/git-response';
 import {
     WORKING_TREE_CONTENT_STAGES,
     createWorkingTreeContentIO,
@@ -31,14 +32,10 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     // are inherently bounded by real edits and are never capped.
     const MAX_UNTRACKED_FILES = 500;
 
-    const STATUS_WORD_TO_CHAR: Record<string, string> = {
-        added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', conflict: 'U', untracked: '?',
-    };
-
     function normalizeChanges(changes: Array<{ filePath: string; originalPath?: string; status: string; stage: string; repositoryRoot: string; repositoryName: string }>) {
         return changes.map(c => ({
             ...c,
-            status: STATUS_WORD_TO_CHAR[c.status] ?? c.status,
+            status: gitStatusToChar(c.status),
             ...(c.originalPath ? { oldPath: c.originalPath } : {}),
         }));
     }
@@ -219,10 +216,7 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
                 const { content } = await loadWorkingTreePatch(ws.rootPath, staged ? 'staged' : 'unstaged', filePath, {
                     contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT, signal,
                 });
-                return {
-                    diff: content.raw, path: filePath,
-                    ...(content.truncated ? { truncated: true, totalLines: content.totalLines } : {}),
-                };
+                return { ...patchContentResponse(content), path: filePath };
             } catch (error) {
                 signal.throwIfAborted();
                 if (error instanceof NativeAddonLoadError) {
