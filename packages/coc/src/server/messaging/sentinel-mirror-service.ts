@@ -7,7 +7,7 @@ import { normalizeChatMode } from '../tasks/task-types';
 import { onTaskTerminal } from './chat-target';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { isTerminalStatus, RELAY_ANSWER_TEXT, relayFailureText } from './relay-answer';
-import { mirrorAttachmentPartIndex, mirrorDestinationKey, SentinelMirrorOutbox, type SentinelMirrorEntry } from './sentinel-mirror-outbox';
+import { mirrorAttachmentPartIndex, mirrorDestinationKey, SentinelMirrorOutbox, type SentinelMirrorEntry, type SentinelMirrorHeader } from './sentinel-mirror-outbox';
 import { mirrorChunkEchoMatches, mirrorEchoText, mirrorRetryAfterMs, mirrorSendOutcome, sameMirrorDestination, type SentinelMirrorAdapter } from './sentinel-mirror-adapters';
 import type { QuestionRelayLocation } from './ask-user-relay';
 import type { MessagingJobOrigin, MessagingOriginAuthority } from './job-notices';
@@ -78,6 +78,8 @@ export class SentinelMirrorService {
     private readonly unsubscribe: () => void;
     private retryTimer?: NodeJS.Timeout;
     private retryAt?: number;
+    private nextActionableRetryAt?: number;
+    private generation = 0;
     private disposed = false;
     private draining?: Promise<void>;
     private dirty = false;
@@ -99,6 +101,11 @@ export class SentinelMirrorService {
         this.wake();
     }
 
+    /** Synchronous final dispatch gate for captured-origin notice transports. */
+    canSendCapturedOrigin(): boolean {
+        return !this.disposed && this.deps.enabled();
+    }
+
     private ensureReady(): Promise<void> {
         return this.ready ??= Promise.all(this.deps.enabled() ? this.deps.adapters.map(adapter => adapter.ready?.()) : [])
             .then(() => this.restore()).finally(() => {
@@ -109,6 +116,7 @@ export class SentinelMirrorService {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.generation++;
         this.clearRetryTimer();
         this.unsubscribe();
         // In-flight acknowledgements persist before the owned connection closes.
@@ -132,15 +140,20 @@ export class SentinelMirrorService {
     private async captureBound(
         workspaceId: string, processId: string, content: string, attachmentCount: number | MirrorUploadSource, requestId: string,
     ): Promise<SentinelMirrorEntry | undefined> {
-        if (!this.deps.enabled()) return;
+        const generation = this.generation;
+        const active = () => this.canSendCapturedOrigin() && this.generation === generation;
+        if (!active()) return;
         await this.ensureReady();
-        if (!this.deps.enabled()) return;
+        if (!active()) return;
         if (!workspaceId || !processId || !(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) return;
+        if (!active()) return;
         if (!this.recoveredOwners.has(workspaceId)) {
             await this.ensureReady();
+            if (!active()) return;
             if (!this.recoveredOwners.has(workspaceId)) throw new Error('Mirror owner hydration is unavailable');
         }
         const owner = await this.deps.store.getProcessOwnerProjection(processId, workspaceId);
+        if (!active()) return;
         const task = owner ? undefined : this.queuedOriginalOwner(workspaceId, processId);
         if (owner ? owner.id !== processId || owner.workspaceId !== workspaceId
             || normalizeChatMode(owner.mode) !== 'sentinel'
@@ -256,7 +269,7 @@ export class SentinelMirrorService {
     }
 
     locateCapturedOrigin(request: QuestionRelayLocation): MessagingJobOrigin | undefined {
-        if (!this.deps.enabled() || !request.workspaceId) return;
+        if (!this.canSendCapturedOrigin() || !request.workspaceId) return;
         try {
             const receipts = this.outbox.request(request.workspaceId, request.processId, request.requestId);
             if (receipts.some(row => row.cancelRequested || row.state === 'cancelled')) return;
@@ -287,18 +300,25 @@ export class SentinelMirrorService {
         const pin = origin.desktopMirror;
         if (!pin) return 'ready';
         // A paused mirror also pauses delegated results bound to its captured origin.
-        if (!this.deps.enabled()) return 'wait';
+        const generation = this.generation;
+        const authorized = () => !this.disposed && this.deps.enabled() && this.generation === generation;
+        if (!authorized()) return 'wait';
         let row: SentinelMirrorEntry | undefined;
         try {
             if (parent && (parent.workspaceId !== pin.workspaceId || parent.processId !== pin.processId)) return 'suppress';
             await Promise.all(this.deps.adapters.map(adapter => adapter.ready?.()));
+            if (!authorized()) return 'wait';
             await this.ensureReady();
-            if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === pin.workspaceId)) return 'suppress';
+            if (!authorized()) return 'wait';
+            const workspaces = await this.deps.store.getWorkspaces();
+            if (!authorized()) return 'wait';
+            if (!workspaces.some(ws => ws.id === pin.workspaceId)) return 'suppress';
             const receipts = this.outbox.request(pin.workspaceId, pin.processId, pin.requestId);
             const users = receipts.filter(receipt => receipt.role === 'user');
             if (users.length !== 1) return 'suppress';
             row = users[0];
             const owner = await this.deps.store.getProcessOwnerProjection(pin.processId, pin.workspaceId);
+            if (!authorized()) return 'wait';
             const destinations = this.deps.adapters.flatMap(adapter => adapter.destinations(row!));
             if (owner?.id !== pin.processId || owner.workspaceId !== pin.workspaceId
                 || normalizeChatMode(owner.mode) !== 'sentinel'
@@ -318,7 +338,8 @@ export class SentinelMirrorService {
                 return 'wait';
             }
             const adapter = this.deps.adapters.find(adapter => adapter.connector === origin.connector);
-            return adapter?.availability(row) === 'ready' ? 'ready' : 'wait';
+            const available = adapter?.availability(row) === 'ready';
+            return available && authorized() ? 'ready' : 'wait';
         } catch {
             if (row) await this.reportStorageFailure(row);
             else this.logFailure();
@@ -364,7 +385,7 @@ export class SentinelMirrorService {
 
     /** Re-arm one connector's echo guards from the receipt index after it (re)connects. */
     connectorReady(connector: SentinelMirrorAdapter['connector']): void {
-        if (this.disposed || !this.deps.enabled()) return;
+        if (this.disposed) return;
         this.echoRestoreNeeded.add(connector);
         this.wake();
     }
@@ -377,6 +398,7 @@ export class SentinelMirrorService {
     wake(): void {
         if (this.disposed) return;
         if (!this.deps.enabled()) {
+            this.generation++;
             this.clearRetryTimer();
             return;
         }
@@ -412,25 +434,24 @@ export class SentinelMirrorService {
         this.retryAt = undefined;
     }
 
-    /** One timer for the earliest durable retry; none when no retry is due. */
+    /** Offline/quarantined heads wait for a wake; overdue runnable heads use a safe delay. */
     private armRetryTimer(): void {
         if (this.disposed || !this.deps.enabled()) return this.clearRetryTimer();
-        let at: number | undefined;
-        try { at = this.outbox.nextRetryAt(); }
-        catch { this.logFailure(); }
+        const at = this.nextActionableRetryAt;
         if (at === undefined) return this.clearRetryTimer();
         if (this.retryTimer && this.retryAt === at) return;
         this.clearRetryTimer();
         this.retryAt = at;
+        const delay = at - Date.now();
         this.retryTimer = setTimeout(() => {
             this.retryTimer = undefined;
             this.retryAt = undefined;
             this.wake();
-        }, Math.min(Math.max(0, at - Date.now()), 2_147_483_647));
+        }, Math.min(delay > 0 ? delay : 1_000, 2_147_483_647));
         this.retryTimer.unref();
     }
 
-    private async reportStorageFailure(row: SentinelMirrorEntry): Promise<void> {
+    private async reportStorageFailure(row: SentinelMirrorHeader): Promise<void> {
         this.logFailure();
         await this.storageNotice(row).catch(() => this.logFailure());
     }
@@ -440,7 +461,7 @@ export class SentinelMirrorService {
         return owner && owner.id === row.processId && owner.workspaceId === row.workspaceId ? owner : undefined;
     }
 
-    private async storageNotice(row: SentinelMirrorEntry): Promise<void> {
+    private async storageNotice(row: SentinelMirrorHeader): Promise<void> {
         const id = `sentinel-mirror-storage:${row.eventId}`;
         if (!await this.ownedProjection(row) || await this.deps.store.hasRelayReceiptTurn(row.processId, id, row.workspaceId)) return;
         await this.deps.store.appendConversationTurn(row.processId, turnIndex => ({
@@ -449,20 +470,20 @@ export class SentinelMirrorService {
         }), { additionalUpdates: current => this.noticeOwnerGuard(row, current) });
     }
 
-    private noticeOwnerGuard(row: SentinelMirrorEntry, current: AIProcess): Partial<AIProcess> {
+    private noticeOwnerGuard(row: SentinelMirrorHeader, current: AIProcess): Partial<AIProcess> {
         if (current.id !== row.processId || current.metadata?.workspaceId !== row.workspaceId) {
             throw new Error('Mirror notice owner is unavailable');
         }
         return {};
     }
 
-    private async isAdmitted(row: SentinelMirrorEntry): Promise<boolean> {
+    private async isAdmitted(row: SentinelMirrorHeader): Promise<boolean> {
         if (this.requestTask(row)) return true;
         return !!await this.ownedProjection(row)
             && await this.deps.store.hasRelayRequestAdmission(row.processId, row.requestId, row.workspaceId);
     }
 
-    private requestTask(row: SentinelMirrorEntry): QueuedTask | undefined {
+    private requestTask(row: SentinelMirrorHeader): QueuedTask | undefined {
         return this.deps.queue.getAll().find(task => task.repoId === row.workspaceId
             && task.processId === row.processId && task.type === 'chat'
             && task.payload.workspaceId === row.workspaceId && task.payload.relayRequestId === row.requestId);
@@ -475,14 +496,14 @@ export class SentinelMirrorService {
             && toQueueProcessId(task.id) === processId);
     }
 
-    private awaitsQueuedOwner(row: SentinelMirrorEntry): boolean {
+    private awaitsQueuedOwner(row: SentinelMirrorHeader): boolean {
         const task = this.requestTask(row);
         return row.role === 'user' && (task?.status === 'queued' || task?.status === 'running')
             && !!this.queuedOriginalOwner(row.workspaceId, row.processId);
     }
 
     /** Queued resume evidence is separate from the parent's possibly stale terminal status. */
-    private async awaitsResumeActivation(row: SentinelMirrorEntry, owner: ProcessOwnerProjection): Promise<boolean> {
+    private async awaitsResumeActivation(row: SentinelMirrorHeader, owner: ProcessOwnerProjection): Promise<boolean> {
         const task = this.requestTask(row);
         if (!(row.role === 'user' && row.state !== 'cancelled' && !row.cancelRequested
             && owner.status === 'cancelled' && (task?.status === 'queued' || task?.status === 'running')
@@ -490,8 +511,8 @@ export class SentinelMirrorService {
         return !(await this.deps.store.getRelayRequestProjection(row.processId, row.requestId, row.workspaceId)).found;
     }
 
-    private activeUserRows(): SentinelMirrorEntry[] {
-        const rows: SentinelMirrorEntry[] = [];
+    private activeUserRows(): SentinelMirrorHeader[] {
+        const rows: SentinelMirrorHeader[] = [];
         for (let after = 0; ;) {
             const page = this.outbox.activeRequests(after, SENTINEL_MIRROR_LIMITS.requestBatch);
             rows.push(...page);
@@ -534,11 +555,20 @@ export class SentinelMirrorService {
                 throw new Error('Sentinel mirror admission reconciliation is unavailable');
             }
         }
+        for (const id of recovered) {
+            for (let afterRowId = 0; !this.disposed && this.deps.enabled();) {
+                const page = this.outbox.recoverStagedAnswers(id, afterRowId, SENTINEL_MIRROR_LIMITS.requestBatch);
+                if (page.count < SENTINEL_MIRROR_LIMITS.requestBatch) break;
+                afterRowId = page.afterRowId;
+                await yieldToEventLoop();
+            }
+        }
+        if (this.disposed || !this.deps.enabled()) return;
         if (!this.recoveredOwners.size) await this.restoreEchoGuards();
         for (const id of recovered) this.recoveredOwners.add(id);
     }
 
-    private safeSending(workspaceId: string): SentinelMirrorEntry[] {
+    private safeSending(workspaceId: string): SentinelMirrorHeader[] {
         try { return this.outbox.sending().filter(row => row.workspaceId === workspaceId); }
         catch { this.logFailure(); return []; }
     }
@@ -568,7 +598,7 @@ export class SentinelMirrorService {
         }
     }
 
-    private async finalAnswer(row: SentinelMirrorEntry, owner: ProcessOwnerProjection): Promise<void> {
+    private async finalAnswer(row: SentinelMirrorHeader, owner: ProcessOwnerProjection): Promise<void> {
         const evidence = await this.deps.store.getRelayRequestProjection(row.processId, row.requestId, row.workspaceId);
         if (evidence.pending || !evidence.found) return;
         const task = this.requestTask(row);
@@ -587,7 +617,7 @@ export class SentinelMirrorService {
     }
 
     /** A delivered user receipt still owns a future reply; cancellation must survive reconnect/resume. */
-    private cancelCapture(row: SentinelMirrorEntry, reason: 'cancelled' | 'unbound'): void {
+    private cancelCapture(row: SentinelMirrorHeader, reason: 'cancelled' | 'unbound'): void {
         if (row.role === 'user' && row.state === 'delivered'
             && !this.outbox.find(row.workspaceId, row.processId, row.requestId, 'assistant')) {
             this.outbox.stage({
@@ -598,7 +628,7 @@ export class SentinelMirrorService {
         this.outbox.cancel(row.workspaceId, row.processId, reason, row.destination.bindingId, row.requestId);
     }
 
-    private async report(row: SentinelMirrorEntry): Promise<void> {
+    private async report(row: SentinelMirrorHeader): Promise<void> {
         if (!row.failure || row.failure === 'admission-rejected') return;
         const id = `sentinel-mirror-status:${row.eventId}:${row.failure}`;
         if (!await this.ownedProjection(row) || await this.deps.store.hasRelayReceiptTurn(row.processId, id, row.workspaceId)) return;
@@ -615,7 +645,7 @@ export class SentinelMirrorService {
     }
 
     /** Reconcile one unfinished request: admission, ownership, cancellation, then answer materialization. */
-    private async reconcileRequest(row: SentinelMirrorEntry): Promise<void> {
+    private async reconcileRequest(row: SentinelMirrorHeader): Promise<void> {
         if (this.activeAdmissions.has(row.eventId)) return;
         if (row.state === 'admitting') {
             if (await this.isAdmitted(row)) this.outbox.accept(row.workspaceId, row.eventId);
@@ -639,6 +669,7 @@ export class SentinelMirrorService {
     }
 
     private async drain(): Promise<void> {
+        this.nextActionableRetryAt = undefined;
         if (this.disposed || !this.deps.enabled()) return;
         const workspaceIds = (await this.deps.store.getWorkspaces()).map(ws => ws.id)
             .filter(id => this.recoveredOwners.has(id));
@@ -676,25 +707,41 @@ export class SentinelMirrorService {
         }
         if (this.disposed || !this.deps.enabled()) return;
         // One shared worker orders physical destinations across workspaces; a few destinations run concurrently.
-        const heads = this.outbox.headsAcrossWorkspaces(workspaceIds)
-            .filter(row => !blocked.has(mirrorDestinationKey(row.destination)));
         let sourceSettled = false;
-        const workers = Array.from({ length: Math.min(SENTINEL_MIRROR_LIMITS.destinations, heads.length) }, async () => {
-            for (let head = heads.shift(); head; head = heads.shift()) {
-                // The worker owning a destination continues with its next head once the current one settles.
-                for (let row: SentinelMirrorEntry | undefined = head; row && !this.disposed && this.deps.enabled();) {
-                    try {
-                        if (await this.deliverHead(row, workspaceIds)) sourceSettled = true;
-                    } catch {
-                        await this.reportStorageFailure(row);
-                        break;
+        for (let afterKey = ''; !this.disposed && this.deps.enabled();) {
+            const page = this.outbox.headPage(workspaceIds, afterKey, SENTINEL_MIRROR_LIMITS.requestBatch);
+            const heads = page.filter(row => !blocked.has(mirrorDestinationKey(row.destination)));
+            const workers = Array.from({ length: Math.min(SENTINEL_MIRROR_LIMITS.destinations, heads.length) }, async () => {
+                for (let head = heads.shift(); head; head = heads.shift()) {
+                    // The worker owning a destination continues with its next head once the current one settles.
+                    for (let row: SentinelMirrorHeader | undefined = head; row && !this.disposed && this.deps.enabled();) {
+                        try {
+                            if (await this.deliverHead(row, workspaceIds, blocked)) sourceSettled = true;
+                        } catch {
+                            blocked.add(mirrorDestinationKey(row.destination));
+                            await this.reportStorageFailure(row);
+                            break;
+                        }
+                        const next = this.outbox.destinationHead(mirrorDestinationKey(row.destination), workspaceIds);
+                        row = next && next.eventId !== row.eventId ? next : undefined;
                     }
-                    const next = this.outbox.destinationHead(mirrorDestinationKey(row.destination), workspaceIds);
-                    row = next && next.eventId !== row.eventId ? next : undefined;
                 }
+            });
+            await Promise.all(workers);
+            for (const head of page) {
+                const key = mirrorDestinationKey(head.destination);
+                if (blocked.has(key)) continue;
+                const row = this.outbox.destinationHead(key, workspaceIds);
+                if (row?.state !== 'retryable' || !row.nextAttemptAt || this.activeAdmissions.has(row.eventId)) continue;
+                const adapter = this.deps.adapters.find(adapter => adapter.connector === row.destination.connector);
+                if (adapter?.availability(row) !== 'ready') continue;
+                const at = Date.parse(row.nextAttemptAt);
+                this.nextActionableRetryAt = Math.min(this.nextActionableRetryAt ?? at, at);
             }
-        });
-        await Promise.all(workers);
+            if (page.length < SENTINEL_MIRROR_LIMITS.requestBatch) break;
+            afterKey = mirrorDestinationKey(page[page.length - 1].destination);
+            await yieldToEventLoop();
+        }
         const notices = this.outbox.unreported(SENTINEL_MIRROR_LIMITS.notices);
         let reported = 0;
         for (const row of notices) {
@@ -714,7 +761,7 @@ export class SentinelMirrorService {
     }
 
     /** Sends one destination head's remaining parts, serialized; returns true when a source delivery settled. */
-    private async deliverHead(head: SentinelMirrorEntry, workspaceIds: readonly string[]): Promise<boolean> {
+    private async deliverHead(head: SentinelMirrorHeader, workspaceIds: readonly string[], blocked: Set<string>): Promise<boolean> {
         if (this.activeAdmissions.has(head.eventId) || head.state === 'admitting') return false;
         const adapter = this.deps.adapters.find(adapter => adapter.connector === head.destination.connector);
         if (!adapter) return false;
@@ -724,6 +771,7 @@ export class SentinelMirrorService {
             return false;
         }
         if (availability !== 'ready' || (head.state !== 'pending' && head.state !== 'retryable')) return false;
+        if (head.nextAttemptAt && Date.parse(head.nextAttemptAt) > Date.now()) return false;
         // Payload bytes are read only for the row about to send.
         let current = this.outbox.get(head.workspaceId, head.eventId);
         const remainingMedia = (current.attachments ?? []).slice(current.chunks.length
@@ -747,7 +795,10 @@ export class SentinelMirrorService {
         let settled = false;
         while (!this.disposed && this.deps.enabled() && adapter.availability(current) === 'ready') {
             const owner = await this.ownedProjection(current);
-            if (owner && await this.awaitsResumeActivation(current, owner)) break;
+            if (owner && await this.awaitsResumeActivation(current, owner)) {
+                blocked.add(mirrorDestinationKey(current.destination));
+                break;
+            }
             const raw = owner ? undefined : await this.deps.store.getProcessOwnerProjection(current.processId, current.workspaceId);
             if (this.requestTask(current)?.status === 'cancelled'
                 || owner?.status === 'cancelled' || owner?.status === 'cancelling') {

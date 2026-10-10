@@ -23,6 +23,26 @@ fn database_handles_can_cross_worker_threads() {
 }
 
 #[test]
+fn diagnostic_reads_count_and_reset_real_statement_work() {
+    let database = Database::open(":memory:", false).unwrap();
+    database
+        .exec("CREATE TABLE work (id INTEGER PRIMARY KEY); INSERT INTO work VALUES (1), (2), (3)")
+        .unwrap();
+    let seek = database.prepare("SELECT id FROM work WHERE id = ?");
+    let parameters = positional([Value::Integer(2)]);
+    let (rows, steps, scans) = seek.all_with_stats(&parameters).unwrap();
+    assert_eq!(rows[0]["id"], Value::Integer(2));
+    assert!(steps > 0);
+    assert_eq!(scans, 0);
+    assert_eq!(seek.all_with_stats(&parameters).unwrap(), (rows, steps, scans));
+    let (_, _, scans) = database
+        .prepare("SELECT id FROM work")
+        .all_with_stats(&Parameters::None)
+        .unwrap();
+    assert_eq!(scans, 2);
+}
+
+#[test]
 fn executes_queries_and_preserves_sqlite_value_types() {
     let database = Database::open(":memory:", false).unwrap();
     database

@@ -79,6 +79,9 @@ describe('sqlite-schema', () => {
             'idx_sentinel_mirror_deliveries_seq',
             'idx_sentinel_mirror_deliveries_request',
             'idx_sentinel_mirror_deliveries_heads',
+            'idx_sentinel_mirror_deliveries_sending',
+            'idx_sentinel_mirror_deliveries_workspace_heads',
+            'idx_sentinel_mirror_deliveries_staged_answers',
             'idx_sentinel_mirror_deliveries_retry',
             'idx_sentinel_mirror_deliveries_unreported',
             'idx_sentinel_mirror_receipts_outbound',
@@ -92,6 +95,19 @@ describe('sqlite-schema', () => {
     });
 
     describe('PRAGMAs', () => {
+        it('adds workload indexes to an existing V40 database without changing its typed layout', () => {
+            initializeDatabase(db);
+            db.exec(`DROP INDEX idx_sentinel_mirror_deliveries_sending;
+                DROP INDEX idx_sentinel_mirror_deliveries_workspace_heads;
+                DROP INDEX idx_sentinel_mirror_deliveries_staged_answers`);
+            expect(getSchemaVersion(db)).toBe(40);
+            initializeDatabase(db);
+            const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all<{ name: string }>();
+            expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_sending');
+            expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_workspace_heads');
+            expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_staged_answers');
+            expect(getSchemaVersion(db)).toBe(40);
+        });
         it('enables foreign_keys', () => {
             initializeDatabase(db);
             const fk = db.pragma('foreign_keys', { simple: true });

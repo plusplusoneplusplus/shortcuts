@@ -31,6 +31,18 @@ function open(file = ':memory:', options?: { readonly?: boolean }): NativeDataba
 }
 
 describe('NativeDatabase statements', () => {
+    it('reports per-execution VM and scan work for cached diagnostic reads', () => {
+        const database = open();
+        database.exec('CREATE TABLE work (id INTEGER PRIMARY KEY); INSERT INTO work VALUES (1), (2), (3)');
+        const indexed = database.prepare('SELECT id FROM work WHERE id = ?');
+        const first = indexed.allWithStats(2);
+        expect(first.rows).toEqual([{ id: 2 }]);
+        expect(first.vmSteps).toBeGreaterThan(0);
+        expect(first.fullScanSteps).toBe(0);
+        expect(indexed.allWithStats(2)).toEqual(first);
+        expect(database.prepare('SELECT id FROM work').allWithStats().fullScanSteps).toBe(2);
+        expect(() => database.prepare('SELECT missing FROM work').allWithStats()).toThrow();
+    });
     it('executes batches and exposes run, get, all, and iterable results', () => {
         const database = open();
         expect(database.exec('CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)')).toBe(database);

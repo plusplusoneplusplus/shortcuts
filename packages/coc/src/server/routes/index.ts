@@ -517,6 +517,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir, store, queue: queueFacade, delegatedJobs,
         authorizeDesktopOrigin: (origin, parent) => sentinelMirror?.authorizeCapturedOrigin(origin, parent)
             ?? Promise.resolve('wait'),
+        canSendDesktopOrigin: () => sentinelMirror?.canSendCapturedOrigin() === true,
         locateAutoCompactionOrigin: async (proc, turnIndex) => autoCompactionOrigins?.locate(proc, turnIndex),
         authorizeAutoCompactionOrigin: async (origin, owner) => autoCompactionOrigins?.authorize(origin, owner) ?? 'wait',
     });

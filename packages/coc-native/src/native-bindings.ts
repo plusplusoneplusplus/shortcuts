@@ -60,6 +60,7 @@ export declare class NativeDatabaseHandle {
 }
 
 export declare class NativeStatementHandle {
+  allWithStats(values?: Array<number | string | Buffer | null>, names?: string[]): NativeSqliteReadStats
   run(values?: Array<number | string | Buffer | null>, names?: string[]): NativeRunResult
   get(values?: Array<number | string | Buffer | null>, names?: string[]): Record<string, number | string | Buffer | null> | null
   all(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
@@ -790,6 +791,12 @@ export interface NativeRecentProcessFilter {
 export interface NativeRunResult {
   changes: number
   lastInsertRowid: number
+}
+
+export interface NativeSqliteReadStats {
+  rows: Array<Record<string, number | string | Buffer | null>>
+  vmSteps: number
+  fullScanSteps: number
 }
 
 /** Which regime a content read or write runs under. */

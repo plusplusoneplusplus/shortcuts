@@ -232,26 +232,45 @@ from the loaded owning workspace.
 admitted request until its answer is materialized or suppressed (answer state is
 independent of user delivery state); `sentinel_mirror_deliveries` tracks physical
 parts per role with attempt tokens, retry deadlines and captured binding;
-`sentinel_mirror_receipts` keeps compact confirmed outbound IDs. Partial indexes
-cover only unfinished requests, destination heads, retry deadlines and unreported
-failures, so finished history never enters active work. Every transition is one
-SQLite transaction with its precondition checked inside it; failed writes never
-advance state. Legacy `repos/<workspaceId>/sentinel-mirror-outbox.json` ledgers
+`sentinel_mirror_receipts` keeps compact confirmed outbound IDs.
+
+Scheduler listings
+return typed headers without content, chunks, attachments or receipt hydration.
+Partial indexes cover unfinished requests, per-workspace destination heads,
+in-flight attempts, retries and unreported failures. Loose index seeks page physical
+destinations and select one head per workspace; multipart admission seeks only that
+destination. Additive indexes install idempotently on the existing table layout.
+Every transition is one SQLite transaction with its precondition checked inside
+it; failed writes never advance state.
+
+Legacy `repos/<workspaceId>/sentinel-mirror-outbox.json` ledgers
 import once per workspace (`sentinel_mirror_imports` marker) before scheduling:
 unresolved sends become ambiguous, delivered users without answers stay active,
-corrupt files fail visibly and stay intact, and JSON is never read again. Downgrade
-to the JSON-only runtime is unsupported after import. Ledger rows are machine-local:
+and staged assistants require a matching captured user. Indexed recovery batches
+atomically admit their durable answer after user acceptance, retaining receipts and quarantining
+attempt evidence. Corrupt files fail visibly and stay intact; JSON is never read
+again. Downgrade to the JSON-only runtime is unsupported after import.
+Ledger rows are machine-local:
 excluded from export/import, cleared (with legacy files) by wipe.
 
 Scheduling is event-driven, with no polling timer: admission, queue terminal events,
 cancellation, connector readiness (`connectorReady`), runtime setting changes,
-workspace removal and one timer for the earliest durable retry deadline. Wakes
-coalesce into a single-flight drain with a dirty marker. Each drain reconciles
+workspace removal and one timer for the earliest actionable head retry deadline.
+Offline, quarantined and resume-blocked heads wait for a relevant wake; a due head
+that cannot advance uses bounded backoff, never a zero-delay timer.
+
+Wakes coalesce into a single-flight drain with a dirty marker. Each drain reconciles
 active requests in batches of 32 (yielding between batches) and delivers up to
 four physical destinations concurrently; parts within a destination stay serialized
-and ordered across workspaces. Disabled workers do nothing (no reads, timers or
+and ordered across workspaces.
+
+Disabled workers do nothing (no reads, timers or
 sends) and leave work paused; an already issued send still persists its
-acknowledgement. Captured-origin authorization returns `wait` while disabled.
+acknowledgement. Captured-origin authorization checks enablement, disposal and
+generation after asynchronous waits and before granting authority. Teams and
+WhatsApp notice transports check the synchronous lifecycle gate immediately before
+each physical dispatch.
+
 Restore pages receipts into connector echo guards; a failed guard re-arms from the
 index on the next drain. Definite failures use durable exponential
 backoff/Retry-After; unknown or unrecorded sends quarantine. Fixed display-only

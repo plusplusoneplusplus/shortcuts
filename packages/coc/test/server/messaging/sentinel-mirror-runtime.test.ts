@@ -949,6 +949,54 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         } finally { notices.dispose(); }
     });
 
+    it.each(['authorization', 'part-evidence'] as const)('blocks a new notice send when disabled after %s resolves', async suspended => {
+        const f = await fixture(connector);
+        await f.deliver('desktop result delegation');
+        const user = f.mirror.outbox.list('workspace-a').find(row => row.role === 'user')!;
+        const origin = f.mirror.locateCapturedOrigin({
+            workspaceId: user.workspaceId, processId: user.processId, requestId: user.requestId,
+        })!;
+        await f.finish('Delegated helper.');
+        f.sends.splice(0);
+        const transport = connector === 'teams' ? f.relay!.noticeTransport()
+            : createWhatsAppNoticeTransport({
+                bindings: f.bindings, connected: () => true, groupJid: () => user.destination.chatKey,
+                send: (text, root) => f.send(text, root),
+            });
+        const authority = f.mirror.authorizeCapturedOrigin.bind(f.mirror);
+        let armed = false;
+        const notices = new MessagingJobNotices({
+            dataDir: f.directory, store: f.store, queue: f.queue,
+            authorizeDesktopOrigin: async (...args) => {
+                const result = await authority(...args);
+                if (armed && suspended === 'authorization') f.setEnabled(false);
+                return result;
+            },
+            canSendDesktopOrigin: f.mirror.canSendCapturedOrigin.bind(f.mirror),
+        });
+        const write = vi.mocked(fs.writeFileSync);
+        const original = write.getMockImplementation()!;
+        write.mockImplementation((file, data, options) => {
+            const result = original(file, data, options);
+            if (armed && suspended === 'part-evidence' && String(file).includes('messaging-job-notices')
+                && /"resultAttemptedPartCount"\s*:\s*1/.test(String(data))) f.setEnabled(false);
+            return result;
+        });
+        notices.register({
+            ...transport,
+            post: async (chatKey, notice) => {
+                armed = true;
+                return transport.post(chatKey, notice);
+            },
+        });
+        try {
+            notices.queueResult({ workspaceId: user.workspaceId, processId: user.processId, origin,
+                receiptId: 'paused-result', repo: 'Helper', title: 'Helper', body: 'Result', status: 'completed' });
+            await notices.reconcile();
+            expect(f.sends).toEqual([]);
+        } finally { notices.dispose(); write.mockImplementation(original); }
+    });
+
     it('does not dispatch a desktop result before durable part evidence can be stored and retries safely after repair', async () => {
         const f = await fixture(connector);
         await f.deliver('desktop result delegation');

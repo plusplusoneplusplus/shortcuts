@@ -574,6 +574,17 @@ export function initializeDatabase(db: NativeDatabase): void {
         if (versionBefore < 40) {
             createRelayAndMirrorSchema(db);
         }
+        // Additive indexes preserve the V40 table/read-pool contract.
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_sending
+                ON sentinel_mirror_deliveries(seq) WHERE state = 'sending';
+            CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_workspace_heads
+                ON sentinel_mirror_deliveries(workspace_id, destination_key, seq)
+                WHERE state NOT IN ('delivered', 'cancelled');
+            CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_staged_answers
+                ON sentinel_mirror_deliveries(workspace_id)
+                WHERE role = 'assistant' AND state = 'admitting';
+        `);
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });

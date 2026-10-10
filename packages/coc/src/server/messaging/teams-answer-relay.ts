@@ -1316,7 +1316,8 @@ export class TeamsAnswerRelay {
                         : [`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`]);
                     for (const [index, body] of bodies.entries()) {
                         if (!connected(chatKey) || (notice.desktopResult
-                            ? !await notice.desktopResult.beforePart(index) : notice.beforeSend && !await notice.beforeSend())) {
+                            ? !await notice.desktopResult.beforePart(index) : notice.beforeSend && !await notice.beforeSend())
+                            || notice.canSend && !notice.canSend()) {
                             if (!id) return undefined;
                             throw new Error('Teams route unavailable after partial result delivery');
                         }

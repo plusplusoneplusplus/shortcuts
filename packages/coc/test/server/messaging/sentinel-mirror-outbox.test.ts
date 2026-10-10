@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRepoDataPath } from '../../../src/server/paths';
-import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
+import { NativeDatabase, type NativeSqliteParameters } from '@plusplusoneplusplus/coc-native';
 import {
     SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorImportError, SentinelMirrorOutbox, type SentinelMirrorEntry, type SentinelMirrorIntent,
 } from '../../../src/server/messaging/sentinel-mirror-outbox';
@@ -17,6 +17,28 @@ function failNextWrite(outbox: SentinelMirrorOutbox) {
         mutation();
         throw new Error('disk failure');
     }));
+}
+
+/** Measure the exact SQL issued by production methods, including rows crossing N-API. */
+function queryWork(operation: () => void) {
+    const reads: Array<{ sql: string; args: NativeSqliteParameters[]; vmSteps: number; fullScanSteps: number;
+        rows: Array<Record<string, number | string | Buffer | null>> }> = [];
+    const prepare = NativeDatabase.prototype.prepare;
+    const spy = vi.spyOn(NativeDatabase.prototype, 'prepare').mockImplementation(function (sql) {
+        const statement = prepare.call(this, sql);
+        if (!/^\s*(SELECT|WITH)\b/i.test(sql)) return statement;
+        for (const method of ['all', 'get'] as const) {
+            const execute = statement[method].bind(statement);
+            vi.spyOn(statement, method).mockImplementation((...args) => {
+                const result = execute(...args);
+                reads.push({ sql, args, ...statement.allWithStats(...args) });
+                return result;
+            });
+        }
+        return statement;
+    });
+    try { operation(); } finally { spy.mockRestore(); }
+    return reads;
 }
 
 describe('SentinelMirrorOutbox', () => {
@@ -350,6 +372,56 @@ describe('SentinelMirrorOutbox', () => {
             expect(outbox.activeRequests(0, 32)).toEqual([]);
         });
 
+        it('requires the accepted captured owner before assistant admission or materialization', () => {
+            const input = intent();
+            const user = outbox.stage(input);
+            const answer = outbox.stage({ ...input, role: 'assistant', content: 'Answer' });
+            expect(() => outbox.accept(input.workspaceId, answer.eventId)).toThrow('accepted captured user');
+            expect(() => outbox.materializeAnswer(input, 'Answer')).toThrow('accepted captured user');
+            outbox.accept(input.workspaceId, user.eventId);
+            expect(() => outbox.materializeAnswer({
+                ...input, destination: { ...input.destination, bindingId: 'replacement' },
+            }, 'Answer')).toThrow('accepted captured user');
+            expect(outbox.get(input.workspaceId, answer.eventId).state).toBe('admitting');
+            expect(outbox.materializeAnswer(input, 'Repeated completion').content).toBe('Answer');
+            expect(outbox.get(input.workspaceId, answer.eventId).state).toBe('pending');
+            expect(outbox.requestState(input.workspaceId, input.processId, input.requestId)?.answer).toBe('materialized');
+        });
+
+        it('never materializes an answer after suppression or against a mismatched durable request binding', () => {
+            const input = intent();
+            admitted(input, ['user']);
+            sql("UPDATE sentinel_mirror_requests SET binding_id = 'other-binding' WHERE request_id = ?", input.requestId);
+            expect(() => outbox.materializeAnswer(input, 'Answer')).toThrow('accepted captured user');
+            sql("UPDATE sentinel_mirror_requests SET binding_id = 'binding' WHERE request_id = ?", input.requestId);
+            outbox.cancel(input.workspaceId, input.processId, 'cancelled', input.destination.bindingId, input.requestId);
+            expect(() => outbox.materializeAnswer(input, 'Answer')).toThrow('accepted captured user');
+            expect(outbox.find(input.workspaceId, input.processId, input.requestId, 'assistant')).toBeUndefined();
+            expect(outbox.requestState(input.workspaceId, input.processId, input.requestId)?.answer).toBe('suppressed');
+        });
+
+        it('recovers staged answers in bounded rowid pages without skipping tied sequence values', () => {
+            for (let index = 0; index < 5; index++) {
+                const input = intent({ requestId: `staged-answer-${index}` });
+                admitted(input, ['user']);
+                outbox.stage({ ...input, role: 'assistant', content: 'Durable answer' });
+            }
+            sql("UPDATE sentinel_mirror_deliveries SET seq = 1 WHERE role = 'assistant'");
+            const counts: number[] = [];
+            for (let afterRowId = 0; ;) {
+                let next: ReturnType<SentinelMirrorOutbox['recoverStagedAnswers']> | undefined;
+                const reads = queryWork(() => { next = outbox.recoverStagedAnswers('workspace-a', afterRowId, 2); });
+                expect(reads.find(read => read.sql.includes('idx_sentinel_mirror_deliveries_staged_answers'))?.rows.length)
+                    .toBeLessThanOrEqual(2);
+                counts.push(next!.count);
+                if (next!.count < 2) break;
+                afterRowId = next!.afterRowId;
+            }
+            expect(counts).toEqual([2, 2, 1]);
+            expect(outbox.list('workspace-a').filter(row => row.role === 'assistant').every(row => row.state === 'pending')).toBe(true);
+            expect(outbox.activeRequests(0, 32)).toEqual([]);
+        });
+
         it('pages active requests and omits attachment bytes from scheduler listings', () => {
             for (let index = 0; index < 5; index++) admitted(intent({ requestId: `request-${index}` }));
             const first = outbox.activeRequests(0, 2);
@@ -358,7 +430,7 @@ describe('SentinelMirrorOutbox', () => {
             const withBytes = outbox.stage(intent({
                 requestId: 'bytes', attachments: [{ name: 'a.txt', mimeType: 'text/plain', size: 1, sha256: 'a'.repeat(64), data: 'YQ==' }],
             }));
-            expect(outbox.activeRequests(0, 32).find(row => row.requestId === 'bytes')!.attachments![0].data).toBeUndefined();
+            expect(outbox.activeRequests(0, 32).find(row => row.requestId === 'bytes')).not.toHaveProperty('attachments');
             expect(outbox.get('workspace-a', withBytes.eventId).attachments![0].data).toBe('YQ==');
         });
 
@@ -463,6 +535,63 @@ describe('SentinelMirrorOutbox', () => {
             expect(outbox.isImported('workspace-a')).toBe(true);
         });
 
+        it.each(['accepted', 'staged'] as const)('recovers a staged assistant crash after %s user admission atomically', admission => {
+            const rows = legacyRows().slice(1, 3);
+            rows[1] = { ...rows[1], state: 'admitting', attemptId: undefined, failure: undefined, attemptedPartCount: 0 };
+            if (admission === 'staged') rows[0] = {
+                ...rows[0], state: 'admitting', chunks: [], nextPart: 0, outboundIds: [], attemptedPartCount: 0,
+            };
+            fs.mkdirSync(path.dirname(ledger()), { recursive: true });
+            fs.writeFileSync(ledger(), JSON.stringify(rows));
+            outbox.importLegacy('workspace-a');
+            expect(outbox.requestState('workspace-a', 'sentinel', 'answered')?.answer).toBe('awaiting');
+            if (admission === 'staged') {
+                outbox.recoverStagedAnswers('workspace-a');
+                expect(outbox.get('workspace-a', rows[1].eventId).state).toBe('admitting');
+                outbox.accept('workspace-a', rows[0].eventId);
+            }
+            failNextWrite(outbox);
+            expect(() => outbox.recoverStagedAnswers('workspace-a')).toThrow('disk failure');
+            expect(outbox.get('workspace-a', rows[1].eventId).state).toBe('admitting');
+            expect(outbox.requestState('workspace-a', 'sentinel', 'answered')?.answer).toBe('awaiting');
+            reopen();
+            outbox.recoverStagedAnswers('workspace-a');
+            expect(outbox.get('workspace-a', rows[1].eventId)).toMatchObject({ state: 'pending', content: 'Reply' });
+            expect(outbox.requestState('workspace-a', 'sentinel', 'answered')?.answer).toBe('materialized');
+            outbox.recoverStagedAnswers('workspace-a');
+            expect(outbox.list('workspace-a')).toHaveLength(2);
+            expect(outbox.receipts(0, 10).map(row => row.outboundId)).toEqual(admission === 'accepted' ? ['out-2'] : []);
+        });
+
+        it('quarantines staged assistant attempt evidence and never repeats a confirmed prefix', () => {
+            const rows = legacyRows().slice(1, 3);
+            rows[1] = { ...rows[1], state: 'admitting', attemptId: undefined,
+                chunks: ['confirmed', 'uncertain'], nextPart: 1, outboundIds: ['confirmed-id'], attemptedPartCount: 2 };
+            fs.mkdirSync(path.dirname(ledger()), { recursive: true });
+            fs.writeFileSync(ledger(), JSON.stringify(rows));
+            outbox.importLegacy('workspace-a');
+            outbox.recoverStagedAnswers('workspace-a');
+            expect(outbox.get('workspace-a', rows[1].eventId)).toMatchObject({
+                state: 'ambiguous', failure: 'unknown', nextPart: 1, outboundIds: ['confirmed-id'],
+            });
+            expect(outbox.beginPart('workspace-a', rows[1].eventId)).toBeUndefined();
+            expect(outbox.requestState('workspace-a', 'sentinel', 'answered')?.answer).toBe('materialized');
+        });
+
+        it.each(['orphan', 'binding'] as const)('rejects %s staged assistant ownership without importing partial state', kind => {
+            const rows = legacyRows().slice(1, 3);
+            rows[1] = { ...rows[1], state: 'admitting', attemptId: undefined };
+            if (kind === 'orphan') rows.shift();
+            else rows[1].destination = { ...rows[1].destination, bindingId: 'other-binding' };
+            fs.mkdirSync(path.dirname(ledger()), { recursive: true });
+            const raw = JSON.stringify(rows);
+            fs.writeFileSync(ledger(), raw);
+            expect(() => outbox.importLegacy('workspace-a')).toThrow(SentinelMirrorImportError);
+            expect(outbox.isImported('workspace-a')).toBe(false);
+            expect(outbox.list('workspace-a')).toEqual([]);
+            expect(fs.readFileSync(ledger(), 'utf8')).toBe(raw);
+        });
+
         it.each(['malformed-json', 'wrong-owner', 'duplicate', 'invalid-progress', 'extra-routing'] as const)(
             'fails visibly on %s input and preserves the source file', corruption => {
                 const rows = legacyRows();
@@ -482,5 +611,86 @@ describe('SentinelMirrorOutbox', () => {
                 expect(outbox.isImported('workspace-a')).toBe(false);
                 expect(outbox.list('workspace-a')).toEqual([]);
             });
+    });
+
+    describe('production scheduler query workload', () => {
+        it('bounds exact sending and scoped head query work with 100k settled deliveries', () => {
+            const db = new NativeDatabase(path.join(dataDir, 'processes.db'));
+            try {
+                const workloads: number[] = [];
+                for (const total of [1_000, 100_000]) {
+                    db.prepare(`
+                        WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+                        INSERT OR IGNORE INTO sentinel_mirror_deliveries
+                            (event_id, workspace_id, process_id, request_id, role, connector, chat_key, binding_id,
+                             destination_key, content, chunks, state, seq, created_at)
+                        SELECT 'settled-' || i, 'workspace-a', 'sentinel', 'settled-' || i, 'user', 'whatsapp',
+                            'group', 'binding', '["whatsapp","group",null]', 'old', '[]', 'cancelled', i,
+                            '2020-01-01T00:00:00.000Z' FROM n
+                    `).run(total);
+                    const reads = queryWork(() => {
+                        expect(outbox.sending()).toEqual([]);
+                        expect(outbox.headsAcrossWorkspaces(['workspace-a'])).toEqual([]);
+                        expect(outbox.headsAcrossWorkspaces()).toEqual([]);
+                        expect(outbox.destinationHead('["whatsapp","group",null]', ['workspace-a'])).toBeUndefined();
+                        expect(outbox.destinationHead('["whatsapp","group",null]')).toBeUndefined();
+                        expect(outbox.recoverStagedAnswers('workspace-a').count).toBe(0);
+                    });
+                    workloads.push(reads.reduce((sum, read) => sum + read.vmSteps, 0));
+                    expect(workloads.at(-1)).toBeLessThan(400);
+                    expect(reads.every(read => read.fullScanSteps === 0)).toBe(true);
+                    const plans = reads.map(read => db.prepare(`EXPLAIN QUERY PLAN ${read.sql}`)
+                        .all<{ detail: string }>(...read.args).map(row => row.detail).join('\n')).join('\n');
+                    expect(plans).toContain('idx_sentinel_mirror_deliveries_sending');
+                    expect(plans).toContain('idx_sentinel_mirror_deliveries_workspace_heads');
+                    expect(plans).toContain('idx_sentinel_mirror_deliveries_heads');
+                    expect(plans).toContain('idx_sentinel_mirror_deliveries_staged_answers');
+                    expect(plans).not.toMatch(/USING INDEX idx_sentinel_mirror_deliveries_seq\b|sqlite_autoindex_sentinel_mirror_deliveries/);
+                }
+                expect(workloads[1]).toBe(workloads[0]);
+            } finally { db.close(); }
+        });
+
+        it('never transfers or parses upload payloads and seeks one head through large multipart backlogs', () => {
+            const payload = Buffer.alloc(64 * 1024, 97).toString('base64');
+            const totals: number[] = [];
+            const first = admitted(intent({ requestId: 'upload-0', attachments: [{
+                name: 'upload.txt', mimeType: 'text/plain', size: 64 * 1024, sha256: 'a'.repeat(64), data: payload,
+            }] }), ['one', 'two', 'three', 'upload']);
+            for (const count of [40, 400]) {
+                for (let index = count === 40 ? 1 : 40; index < count; index++) admitted(intent({
+                    requestId: `upload-${index}`, workspaceId: index % 2 ? 'workspace-b' : 'workspace-a',
+                    attachments: [{ name: 'upload.txt', mimeType: 'text/plain', size: 64 * 1024, sha256: 'a'.repeat(64), data: payload }],
+                }), ['one', 'two', 'three', 'upload']);
+                const parse = vi.spyOn(JSON, 'parse');
+                const reads = queryWork(() => {
+                    expect(outbox.activeRequests(0, 32)).toHaveLength(32);
+                    expect(outbox.headsAcrossWorkspaces(['workspace-a', 'workspace-b'])).toHaveLength(1);
+                    expect(outbox.destinationHead('["whatsapp","group",null]', ['workspace-a', 'workspace-b'])?.eventId).toBe(first);
+                });
+                expect(parse.mock.calls.some(([text]) => text.includes(payload))).toBe(false);
+                parse.mockRestore();
+                expect(reads.every(read => read.rows.every(row =>
+                    !('attachments' in row) && !('content' in row) && !('chunks' in row)))).toBe(true);
+                expect(JSON.stringify(reads.flatMap(read => read.rows)).length).toBeLessThan(30_000);
+                totals.push(reads.reduce((sum, read) => sum + read.vmSteps, 0));
+                expect(totals.at(-1)).toBeLessThan(3_000);
+                const seek = reads.filter(read => read.sql.includes('ORDER BY seq, rowid LIMIT 1'));
+                expect(seek.every(read => read.rows.length === 1 && read.fullScanSteps === 0 && read.vmSteps < 100)).toBe(true);
+            }
+            expect(totals[1]).toBe(totals[0]);
+            // Each part performs the same bounded head seek, regardless of remaining backlog.
+            for (let part = 0; part < 4; part++) {
+                const reads = queryWork(() => {
+                    const attempt = begin(first);
+                    outbox.acknowledgePart('workspace-a', first, attempt, `part-${part}`);
+                });
+                const seeks = reads.filter(read => read.sql.includes('ORDER BY seq, rowid LIMIT 1'));
+                expect(seeks).toHaveLength(1);
+                expect(seeks[0].rows).toHaveLength(1);
+                expect(seeks[0].vmSteps).toBeLessThan(100);
+                expect(seeks[0].fullScanSteps).toBe(0);
+            }
+        });
     });
 });

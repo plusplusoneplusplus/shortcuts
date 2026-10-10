@@ -358,6 +358,21 @@ pub struct Statement {
 }
 
 impl Statement {
+    /// Execute a diagnostic read with per-execution SQLite workload counters.
+    pub fn all_with_stats(&self, parameters: &Parameters) -> Result<(Vec<Row>, i32, i32)> {
+        self.database.with_writer(|connection| {
+            let mut statement = connection.prepare_cached(&self.sql)?;
+            statement.reset_status(rusqlite::StatementStatus::VmStep);
+            statement.reset_status(rusqlite::StatementStatus::FullscanStep);
+            let rows = query_statement(&mut statement, parameters)?;
+            Ok((
+                rows,
+                statement.get_status(rusqlite::StatementStatus::VmStep),
+                statement.get_status(rusqlite::StatementStatus::FullscanStep),
+            ))
+        })
+    }
+
     pub fn run(&self, parameters: &Parameters) -> Result<RunResult> {
         self.database.with_writer(|connection| {
             let mut statement = connection.prepare_cached(&self.sql)?;

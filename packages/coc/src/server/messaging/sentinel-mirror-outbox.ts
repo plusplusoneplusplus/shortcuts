@@ -57,6 +57,7 @@ export type SentinelMirrorIntent = z.infer<typeof intentSchema>;
 export type SentinelMirrorEntry = z.infer<typeof entrySchema>;
 export type SentinelMirrorDestination = z.infer<typeof destinationSchema>;
 export type SentinelMirrorFailure = z.infer<typeof failureSchema>;
+export type SentinelMirrorHeader = Omit<SentinelMirrorEntry, 'content' | 'attachments' | 'chunks' | 'outboundIds'>;
 
 /** Physical outbound receipt, used to restore connector echo ownership. */
 export interface SentinelMirrorReceipt {
@@ -123,6 +124,16 @@ interface DeliveryRow {
     seq: number;
     created_at: string;
 }
+type HeaderRow = Omit<DeliveryRow, 'content' | 'attachments' | 'chunks'>;
+const HEADER_COLUMNS = `event_id, workspace_id, process_id, request_id, role,
+    connector, chat_key, thread_id, binding_id, state, next_part, attempt_id,
+    attempted_part_count, cancel_requested, failure, retry_count, next_attempt_at, seq, created_at`;
+const headerSchema = intentSchema.omit({ content: true, attachments: true }).extend({
+    eventId: id, createdAt: z.iso.datetime(), state: z.enum(['admitting', 'pending', 'sending', 'retryable', 'delivered', 'ambiguous', 'cancelled']),
+    nextPart: z.number().int().nonnegative(), attemptId: id.optional(), cancelRequested: z.boolean(),
+    failure: failureSchema.optional(), retryCount: z.number().int().nonnegative().optional(),
+    nextAttemptAt: z.iso.datetime().optional(), attemptedPartCount: z.number().int().nonnegative(),
+});
 
 /**
  * Durable, owning-server mirror ledger in the shared `processes.db`.
@@ -193,40 +204,42 @@ export class SentinelMirrorOutbox {
 
     /**
      * Unfinished requests (staged admission or awaiting answer), oldest first,
-     * as their user entries without attachment bytes. Finished requests never appear.
+     * as payload-free user headers. Finished requests never appear.
      */
-    activeRequests(afterSeq: number, limit: number): Array<SentinelMirrorEntry & { seq: number }> {
+    activeRequests(afterSeq: number, limit: number): Array<SentinelMirrorHeader & { seq: number }> {
         const rows = this.db.prepare(`
-            SELECT d.* FROM sentinel_mirror_requests r
+            SELECT ${HEADER_COLUMNS.split(',').map(column => `d.${column.trim()}`).join(',')} FROM sentinel_mirror_requests r
             JOIN sentinel_mirror_deliveries d
               ON d.workspace_id = r.workspace_id AND d.process_id = r.process_id
              AND d.request_id = r.request_id AND d.role = 'user'
             WHERE (r.admission = 'staged' OR (r.admission = 'accepted' AND r.answer = 'awaiting')) AND r.seq > ?
             ORDER BY r.seq LIMIT ?
-        `).all(afterSeq, limit) as DeliveryRow[];
-        return rows.map(row => Object.assign(this.toEntry(row, false), { seq: row.seq }));
+        `).all(afterSeq, limit) as HeaderRow[];
+        return rows.map(row => Object.assign(this.toHeader(row), { seq: row.seq }));
     }
 
     /** Unfinished deliveries with an unrecorded network attempt. */
-    sending(): SentinelMirrorEntry[] {
+    sending(): SentinelMirrorHeader[] {
         const rows = this.db.prepare(`
-            SELECT * FROM sentinel_mirror_deliveries WHERE ${UNFINISHED} AND state = 'sending' ORDER BY seq
-        `).all() as DeliveryRow[];
-        return rows.map(row => this.toEntry(row, false));
+            SELECT ${HEADER_COLUMNS} FROM sentinel_mirror_deliveries INDEXED BY idx_sentinel_mirror_deliveries_sending
+            WHERE state = 'sending' ORDER BY seq
+        `).all() as HeaderRow[];
+        return rows.map(row => this.toHeader(row));
     }
 
     /** Every unfinished delivery on one connector (binding removal). */
-    unfinished(connector: SentinelMirrorDestination['connector']): SentinelMirrorEntry[] {
-        const rows = this.db.prepare(`SELECT * FROM sentinel_mirror_deliveries WHERE ${UNFINISHED} AND connector = ? ORDER BY seq`)
-            .all(connector) as DeliveryRow[];
-        return rows.map(row => this.toEntry(row, false));
+    unfinished(connector: SentinelMirrorDestination['connector']): SentinelMirrorHeader[] {
+        const rows = this.db.prepare(`SELECT ${HEADER_COLUMNS} FROM sentinel_mirror_deliveries
+            INDEXED BY idx_sentinel_mirror_deliveries_heads WHERE ${UNFINISHED} AND connector = ? ORDER BY seq`)
+            .all(connector) as HeaderRow[];
+        return rows.map(row => this.toHeader(row));
     }
 
     /** Failures whose fixed chat notice has not been recorded yet. */
-    unreported(limit: number): SentinelMirrorEntry[] {
-        const rows = this.db.prepare(`SELECT * FROM sentinel_mirror_deliveries WHERE ${UNREPORTED} ORDER BY seq LIMIT ?`)
-            .all(limit) as DeliveryRow[];
-        return rows.map(row => this.toEntry(row, false));
+    unreported(limit: number): SentinelMirrorHeader[] {
+        const rows = this.db.prepare(`SELECT ${HEADER_COLUMNS} FROM sentinel_mirror_deliveries WHERE ${UNREPORTED} ORDER BY seq LIMIT ?`)
+            .all(limit) as HeaderRow[];
+        return rows.map(row => this.toHeader(row));
     }
 
     markReported(workspaceId: string, identity: string, failure: SentinelMirrorFailure): void {
@@ -289,7 +302,6 @@ export class SentinelMirrorOutbox {
             const seq = this.nextSeq();
             this.insert(intent, identity, seq, 'admitting');
             if (intent.role === 'user') this.insertRequest(intent, seq, 'staged', 'awaiting');
-            else this.materialize(intent);
             return this.toEntry(this.row(intent.workspaceId, identity)!, true);
         });
     }
@@ -305,8 +317,22 @@ export class SentinelMirrorOutbox {
         });
         const identity = eventId(intent);
         return this.transact(() => {
+            this.assertAnswerOwner(intent);
             const existing = this.row(intent.workspaceId, identity);
-            if (existing) return this.toEntry(existing, false);
+            if (existing) {
+                if (existing.state === 'admitting') {
+                    if (existing.next_part || existing.attempted_part_count || existing.attempt_id
+                        || existing.failure === 'unknown') throw new Error('Staged assistant has uncertain delivery progress');
+                    const staged = this.toEntry(existing, true);
+                    if (JSON.stringify(staged.destination) !== JSON.stringify(intent.destination)) {
+                        throw new Error('Staged assistant conflicts with its captured owner');
+                    }
+                    staged.state = 'pending';
+                    this.update(staged);
+                }
+                this.materialize(intent);
+                return this.toEntry(this.row(intent.workspaceId, identity)!, false);
+            }
             this.insert(intent, identity, this.nextSeq(), 'pending');
             this.materialize(intent);
             return this.toEntry(this.row(intent.workspaceId, identity)!, false);
@@ -316,9 +342,13 @@ export class SentinelMirrorOutbox {
     accept(workspaceId: string, identity: string): boolean {
         return this.change(workspaceId, identity, row => {
             if (row.state !== 'admitting') return false;
+            if (row.role === 'assistant') this.assertAnswerOwner(row);
             row.state = 'pending';
             return true;
-        }, row => this.setAdmission(row, 'accepted'));
+        }, row => {
+            this.setAdmission(row, 'accepted');
+            if (row.role === 'assistant') this.materialize(row);
+        });
     }
 
     reject(workspaceId: string, identity: string): boolean {
@@ -358,22 +388,52 @@ export class SentinelMirrorOutbox {
     }
 
     /** One unresolved head per destination; ambiguous/admitting heads block later sends. */
-    heads(workspaceId: string): SentinelMirrorEntry[] {
+    heads(workspaceId: string): SentinelMirrorHeader[] {
         return this.headsAcrossWorkspaces([workspaceId]);
     }
 
     /**
      * A physical messaging conversation can hold intents from multiple workspaces.
-     * Returns one unfinished head per destination, oldest first, without attachment bytes.
+     * Diagnostic listing of one unfinished header per destination, oldest first.
+     * Production scheduling uses bounded headPage() calls.
      */
-    headsAcrossWorkspaces(workspaceIds?: readonly string[]): SentinelMirrorEntry[] {
-        return this.headRows(workspaceIds).map(row => this.toEntry(row, false));
+    headsAcrossWorkspaces(workspaceIds?: readonly string[]): SentinelMirrorHeader[] {
+        return this.headPage(workspaceIds, '', 2_147_483_647)
+            .sort((a, b) => a.seq - b.seq).map(({ seq: _seq, ...row }) => row);
+    }
+
+    /** Loose index seeks enumerate destinations, not every queued delivery. */
+    headPage(workspaceIds: readonly string[] | undefined, afterKey: string, limit: number):
+        Array<SentinelMirrorHeader & { seq: number }> {
+        const scopes = workspaceIds ? [...new Set(workspaceIds)] : [undefined];
+        const keys = new Set<string>();
+        for (const workspaceId of scopes) {
+            const index = workspaceId === undefined ? 'idx_sentinel_mirror_deliveries_heads'
+                : 'idx_sentinel_mirror_deliveries_workspace_heads';
+            const scope = workspaceId === undefined ? '' : 'AND workspace_id = ?';
+            const args = workspaceId === undefined ? [] : [workspaceId];
+            const rows = this.db.prepare(`
+                WITH RECURSIVE destinations(key) AS (
+                    SELECT MIN(destination_key) FROM sentinel_mirror_deliveries INDEXED BY ${index}
+                    WHERE ${UNFINISHED} AND destination_key > ? ${scope}
+                    UNION ALL
+                    SELECT (SELECT MIN(destination_key) FROM sentinel_mirror_deliveries INDEXED BY ${index}
+                        WHERE ${UNFINISHED} AND destination_key > destinations.key ${scope})
+                    FROM destinations WHERE key IS NOT NULL LIMIT ?
+                ) SELECT key FROM destinations WHERE key IS NOT NULL
+            `).all(afterKey, ...args, ...args, limit) as Array<{ key: string }>;
+            for (const row of rows) keys.add(row.key);
+        }
+        return [...keys].sort().slice(0, limit).flatMap(key => {
+            const row = this.headRows(workspaceIds, key)[0];
+            return row ? [{ ...this.toHeader(row), seq: row.seq }] : [];
+        });
     }
 
     /** The unfinished head of one physical destination, without attachment bytes. */
-    destinationHead(destinationKey: string, workspaceIds?: readonly string[]): SentinelMirrorEntry | undefined {
+    destinationHead(destinationKey: string, workspaceIds?: readonly string[]): SentinelMirrorHeader | undefined {
         const row = this.headRows(workspaceIds, destinationKey)[0];
-        return row ? this.toEntry(row, false) : undefined;
+        return row ? this.toHeader(row) : undefined;
     }
 
     beginPart(workspaceId: string, identity: string, activeWorkspaceIds?: readonly string[]): string | undefined {
@@ -492,6 +552,46 @@ export class SentinelMirrorOutbox {
         });
     }
 
+    /** Recover one indexed batch; only an accepted captured user admits its staged answer. */
+    recoverStagedAnswers(workspaceId: string, afterRowId = 0, limit = 32): { afterRowId: number; count: number } {
+        return this.transact(() => {
+            const rows = this.db.prepare(`
+                SELECT ${HEADER_COLUMNS}, rowid FROM sentinel_mirror_deliveries
+                INDEXED BY idx_sentinel_mirror_deliveries_staged_answers
+                WHERE workspace_id = ? AND role = 'assistant' AND state = 'admitting' AND rowid > ?
+                ORDER BY rowid LIMIT ?
+            `).all(workspaceId, afterRowId, limit) as Array<HeaderRow & { rowid: number }>;
+            for (const row of rows) {
+                const storedUser = this.headerRow(workspaceId, eventId({
+                    workspaceId, processId: row.process_id, requestId: row.request_id, role: 'user',
+                }));
+                const user = storedUser ? this.toHeader(storedUser) : undefined;
+                if (!user || JSON.stringify(user.destination) !== JSON.stringify(this.toHeader(row).destination)) {
+                    throw new Error('Staged assistant captured ownership is invalid');
+                }
+                const request = this.requestState(workspaceId, row.process_id, row.request_id);
+                if (request?.admission === 'rejected' || request?.answer === 'suppressed'
+                    || user.cancelRequested || user.state === 'cancelled') {
+                    this.cancel(workspaceId, user.processId, 'cancelled', user.destination.bindingId, user.requestId);
+                    continue;
+                }
+                if (request?.admission !== 'accepted') continue;
+                const answer = this.get(workspaceId, row.event_id);
+                this.assertAnswerOwner(answer);
+                if (answer.nextPart || answer.attemptedPartCount || answer.failure === 'unknown') {
+                    answer.state = 'ambiguous';
+                    answer.attemptId = undefined;
+                    answer.failure = 'unknown';
+                    this.update(answer);
+                    this.materialize(answer);
+                } else {
+                    this.materializeAnswer(user, answer.content);
+                }
+            }
+            return { afterRowId: rows.at(-1)?.rowid ?? afterRowId, count: rows.length };
+        });
+    }
+
     /** True once a workspace's legacy JSON ledger was imported (or there was none to import). */
     isImported(workspaceId: string): boolean {
         return !!this.db.prepare('SELECT 1 FROM sentinel_mirror_imports WHERE workspace_id = ?').get(workspaceId);
@@ -523,6 +623,13 @@ export class SentinelMirrorOutbox {
                 || new Set(rows.map(row => row.eventId)).size !== rows.length) {
                 throw new SentinelMirrorImportError(workspaceId);
             }
+            for (const answer of rows.filter(row => row.role === 'assistant')) {
+                const user = rows.find(row => row.role === 'user' && row.processId === answer.processId
+                    && row.requestId === answer.requestId);
+                if (!user || JSON.stringify(user.destination) !== JSON.stringify(answer.destination)) {
+                    throw new SentinelMirrorImportError(workspaceId);
+                }
+            }
         }
         this.transact(() => {
             if (this.isImported(workspaceId)) return;
@@ -545,7 +652,8 @@ export class SentinelMirrorOutbox {
                 const admission = user.state === 'admitting' ? 'staged'
                     : user.failure === 'admission-rejected' ? 'rejected' : 'accepted';
                 // Do not infer final answers from delivery state: only a recorded answer closes the request.
-                const answerState = answer ? 'materialized' : user.cancelRequested ? 'suppressed' : 'awaiting';
+                const answerState = answer && answer.state !== 'admitting' ? 'materialized'
+                    : user.cancelRequested ? 'suppressed' : 'awaiting';
                 this.insertRequest(user, Math.max(Date.parse(user.createdAt), 1), admission, answerState, true);
             }
             this.db.prepare('INSERT INTO sentinel_mirror_imports (workspace_id, imported_at, row_count) VALUES (?, ?, ?)')
@@ -564,28 +672,25 @@ export class SentinelMirrorOutbox {
             .get(identity, workspaceId) as DeliveryRow | undefined;
     }
 
-    private headRows(workspaceIds?: readonly string[], destinationKey?: string): DeliveryRow[] {
-        const scopes = workspaceIds ? [...new Set(workspaceIds)] : undefined;
-        if (scopes && !scopes.length) return [];
-        const scope = scopes ? `AND workspace_id IN (${scopes.map(() => '?').join(',')})` : '';
-        const args = [...(destinationKey ? [destinationKey] : []), ...(scopes ?? [])];
-        const filter = destinationKey ? 'AND destination_key = ?' : '';
-        const rows = this.db.prepare(`
-            SELECT * FROM sentinel_mirror_deliveries
-            WHERE ${UNFINISHED} ${filter} ${scope}
-            ORDER BY seq, rowid
-        `).all(...args) as DeliveryRow[];
-        const seen = new Set<string>();
-        return rows.filter(row => {
-            const key = this.destinationKeyOf(row);
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
+    private headerRow(workspaceId: string, identity: string): HeaderRow | undefined {
+        return this.db.prepare(`
+            SELECT ${HEADER_COLUMNS} FROM sentinel_mirror_deliveries WHERE event_id = ? AND workspace_id = ?
+        `).get(identity, workspaceId) as HeaderRow | undefined;
     }
 
-    private destinationKeyOf(row: DeliveryRow): string {
-        return JSON.stringify([row.connector, row.chat_key, row.connector === 'teams' ? row.thread_id : null]);
+    private headRows(workspaceIds: readonly string[] | undefined, destinationKey: string): HeaderRow[] {
+        const scopes = workspaceIds ? [...new Set(workspaceIds)] : [undefined];
+        const rows = scopes.flatMap(workspaceId => {
+            const index = workspaceId === undefined ? 'idx_sentinel_mirror_deliveries_heads'
+                : 'idx_sentinel_mirror_deliveries_workspace_heads';
+            const scope = workspaceId === undefined ? '' : 'AND workspace_id = ?';
+            const row = this.db.prepare(`
+                SELECT ${HEADER_COLUMNS}, rowid FROM sentinel_mirror_deliveries INDEXED BY ${index}
+                WHERE ${UNFINISHED} AND destination_key = ? ${scope} ORDER BY seq, rowid LIMIT 1
+            `).get(destinationKey, ...(workspaceId === undefined ? [] : [workspaceId])) as (HeaderRow & { rowid: number }) | undefined;
+            return row ? [row] : [];
+        });
+        return rows.sort((a, b) => a.seq - b.seq || a.rowid - b.rowid).slice(0, 1);
     }
 
     private nextSeq(): number {
@@ -641,6 +746,21 @@ export class SentinelMirrorOutbox {
         `).run(intent.workspaceId, intent.processId, intent.requestId);
     }
 
+    private assertAnswerOwner(intent: Pick<SentinelMirrorIntent, 'workspaceId' | 'processId' | 'requestId' | 'destination'>): void {
+        const user = this.headerRow(intent.workspaceId, eventId({ ...intent, role: 'user' }));
+        const request = this.db.prepare(`
+            SELECT 1 FROM sentinel_mirror_requests
+            WHERE workspace_id = ? AND process_id = ? AND request_id = ?
+              AND admission = 'accepted' AND answer <> 'suppressed'
+              AND connector = ? AND chat_key = ? AND thread_id IS ? AND binding_id = ?
+        `).get(intent.workspaceId, intent.processId, intent.requestId, intent.destination.connector,
+            intent.destination.chatKey, intent.destination.threadId ?? null, intent.destination.bindingId);
+        if (!user || user.cancel_requested || user.state === 'cancelled' || !request
+            || JSON.stringify(this.toHeader(user).destination) !== JSON.stringify(intent.destination)) {
+            throw new Error('Assistant answer requires its accepted captured user owner');
+        }
+    }
+
     private setAdmission(row: SentinelMirrorEntry, admission: 'accepted' | 'rejected'): void {
         if (row.role !== 'user') return;
         this.db.prepare(`
@@ -694,29 +814,33 @@ export class SentinelMirrorOutbox {
                 : (JSON.parse(row.attachments) as NonNullable<SentinelMirrorEntry['attachments']>)
                     .map(attachment => withPayload ? attachment : (({ data: _data, ...meta }) => meta)(attachment));
             const entry: SentinelMirrorEntry = {
-                workspaceId: row.workspace_id, processId: row.process_id, requestId: row.request_id,
-                role: row.role as SentinelMirrorEntry['role'],
-                destination: {
-                    connector: row.connector as SentinelMirrorDestination['connector'], chatKey: row.chat_key,
-                    ...(row.thread_id !== null ? { threadId: row.thread_id } : {}), bindingId: row.binding_id,
-                },
+                ...this.toHeader(row),
                 content: row.content,
                 ...(attachments ? { attachments } : {}),
-                eventId: row.event_id, createdAt: row.created_at,
-                state: row.state as SentinelMirrorEntry['state'],
                 chunks: JSON.parse(row.chunks) as string[],
-                outboundIds, nextPart: row.next_part,
-                ...(row.attempt_id !== null ? { attemptId: row.attempt_id } : {}),
-                cancelRequested: row.cancel_requested === 1,
-                ...(row.failure !== null ? { failure: row.failure as SentinelMirrorFailure } : {}),
-                ...(row.retry_count !== null ? { retryCount: row.retry_count } : {}),
-                ...(row.next_attempt_at !== null ? { nextAttemptAt: row.next_attempt_at } : {}),
-                attemptedPartCount: row.attempted_part_count,
+                outboundIds,
             };
-            if (entry.eventId !== eventId(entry)) throw new Error('identity');
             return entrySchema.parse(entry);
         } catch {
             throw new Error('Invalid Sentinel mirror outbox');
         }
+
+    }
+
+    private toHeader(row: HeaderRow): SentinelMirrorHeader {
+        const header = headerSchema.parse({
+            workspaceId: row.workspace_id, processId: row.process_id, requestId: row.request_id,
+            role: row.role, destination: { connector: row.connector, chatKey: row.chat_key,
+                ...(row.thread_id !== null ? { threadId: row.thread_id } : {}), bindingId: row.binding_id },
+            eventId: row.event_id, createdAt: row.created_at, state: row.state, nextPart: row.next_part,
+            ...(row.attempt_id !== null ? { attemptId: row.attempt_id } : {}),
+            cancelRequested: row.cancel_requested === 1,
+            ...(row.failure !== null ? { failure: row.failure } : {}),
+            ...(row.retry_count !== null ? { retryCount: row.retry_count } : {}),
+            ...(row.next_attempt_at !== null ? { nextAttemptAt: row.next_attempt_at } : {}),
+            attemptedPartCount: row.attempted_part_count,
+        });
+        if (header.eventId !== eventId(header)) throw new Error('Invalid Sentinel mirror header identity');
+        return header;
     }
 }

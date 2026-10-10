@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QueuedTask, RelayRequestProjection } from '@plusplusoneplusplus/forge';
 import { SENTINEL_MIRROR_LIMITS, SentinelMirrorService, type SentinelMirrorProcessStore } from '../../../src/server/messaging/sentinel-mirror-service';
@@ -32,7 +33,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    for (const harness of harnesses.splice(0)) harness.mirror.dispose();
+    for (const harness of harnesses.splice(0)) {
+        harness.mirror.dispose();
+        harness.outbox.close();
+    }
     vi.useRealTimers();
     vi.restoreAllMocks();
     fs.rmSync(directory, { recursive: true, force: true });
@@ -152,6 +156,23 @@ describe('Sentinel mirror scheduler', () => {
         expect(h.adapter.sends.map(send => send.chunk)).toEqual(['paused work']);
     });
 
+    it('retains a disabled connector wake and restores confirmed echo guards on re-enable', async () => {
+        const h = harness();
+        await h.capture('chat/1', 'confirmed');
+        await h.mirror.flush();
+        vi.mocked(h.adapter.record).mockClear();
+        h.setEnabled(false);
+        h.mirror.connectorReady('whatsapp');
+        await h.mirror.flush();
+        expect(h.adapter.record).not.toHaveBeenCalled();
+        h.setEnabled(true);
+        await h.mirror.flush();
+        expect(h.adapter.record).toHaveBeenCalledWith(
+            expect.objectContaining({ connector: 'whatsapp', chatKey: 'chat' }), 'out-1',
+        );
+        expect(h.adapter.sends).toHaveLength(1);
+    });
+
     it('persists a late acknowledgement after disable and schedules no further parts', async () => {
         let release!: (id: string) => void;
         const h = harness({
@@ -204,6 +225,96 @@ describe('Sentinel mirror scheduler', () => {
         await h.mirror.flush();
         expect(h.adapter.sends.map(send => send.chunk)).toEqual(['retry me']);
         expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each(['offline', 'ambiguous', 'disabled'] as const)('parks an overdue retry when %s without timer scans or lost connector wakes', async kind => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] });
+        const h = harness();
+        h.adapter.availability = () => 'offline';
+        const first = await h.capture('shared/1', 'oldest', 'workspace-b');
+        const later = await h.capture('shared/2', 'retry', 'workspace-a');
+        await h.mirror.flush();
+        h.outbox.prepare(first.workspaceId, first.eventId, ['oldest']);
+        h.outbox.prepare(later.workspaceId, later.eventId, ['retry']);
+        const db = new NativeDatabase(path.join(directory, 'processes.db'));
+        try {
+            db.prepare(`UPDATE sentinel_mirror_deliveries SET state = 'retryable', next_attempt_at = ?
+                WHERE event_id = ?`).run(new Date(Date.now() - 10_000).toISOString(), kind === 'ambiguous' ? later.eventId : first.eventId);
+            if (kind === 'ambiguous') {
+                db.prepare(`UPDATE sentinel_mirror_deliveries SET state = 'ambiguous', failure = 'unknown',
+                    attempted_part_count = 1, chunks = '["oldest"]' WHERE event_id = ?`).run(first.eventId);
+                h.adapter.availability = () => 'ready';
+            }
+        } finally { db.close(); }
+        if (kind === 'disabled') h.setEnabled(false);
+        await h.mirror.flush();
+        const scans = vi.spyOn(h.outbox, 'activeRequests');
+        expect(vi.getTimerCount()).toBe(0);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(scans).not.toHaveBeenCalled();
+        expect(h.adapter.sends).toEqual([]);
+        if (kind === 'ambiguous') h.outbox.cancel('workspace-b', first.processId, 'cancelled', first.destination.bindingId, first.requestId);
+        h.setEnabled(true);
+        h.adapter.availability = () => 'ready';
+        h.mirror.connectorReady('whatsapp');
+        await h.mirror.flush();
+        expect(h.adapter.sends.map(send => send.chunk)).toEqual(kind === 'ambiguous' ? ['retry'] : ['oldest', 'retry']);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each(['readiness', 'ownership', 'generation', 'dispose'] as const)('holds captured authority when lifecycle changes during %s await', async suspended => {
+        const h = harness();
+        const entry = await h.capture('chat/1', 'hello');
+        await h.mirror.flush();
+        const origin = h.mirror.locateCapturedOrigin({
+            workspaceId: entry.workspaceId, processId: entry.processId, requestId: entry.requestId,
+        })!;
+        let release!: () => void;
+        let entered!: () => void;
+        const waiting = new Promise<void>(resolve => { entered = resolve; });
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        if (suspended === 'ownership') {
+            h.store.getProcessOwnerProjection.mockImplementationOnce(async () => {
+                entered();
+                await gate;
+                return { id: entry.processId, workspaceId: entry.workspaceId, mode: 'sentinel', status: 'running' };
+            });
+        } else {
+            h.adapter.ready = async () => { entered(); await gate; };
+        }
+        const authority = h.mirror.authorizeCapturedOrigin(origin);
+        await waiting;
+        if (suspended === 'dispose') h.mirror.dispose();
+        else {
+            h.setEnabled(false);
+            h.mirror.wake();
+            if (suspended === 'generation') h.setEnabled(true);
+        }
+        release();
+        expect(await authority).toBe('wait');
+        expect(h.adapter.sends).toHaveLength(1);
+    });
+
+    it('recovers an imported staged assistant in the real startup drain without resending its user', async () => {
+        const h = harness();
+        h.adapter.availability = () => 'offline';
+        const user = await h.capture('chat/1', 'hello');
+        await h.mirror.flush();
+        h.outbox.prepare(user.workspaceId, user.eventId, ['hello']);
+        h.outbox.acknowledgePart(user.workspaceId, user.eventId, h.outbox.beginPart(user.workspaceId, user.eventId)!, 'confirmed-user');
+        h.outbox.stage({ workspaceId: user.workspaceId, processId: user.processId, requestId: user.requestId,
+            destination: user.destination, role: 'assistant', content: 'Durable answer' });
+        h.mirror.dispose();
+        const restarted = new SentinelMirrorService({
+            dataDir: directory, store: h.store, queue: h.queue, enabled: () => true, adapters: [h.adapter], outbox: h.outbox,
+        });
+        h.mirror = restarted;
+        h.adapter.availability = () => 'ready';
+        await restarted.flush();
+        expect(h.adapter.sends.map(send => send.chunk)).toEqual(['Durable answer']);
+        expect(h.outbox.activeRequests(0, 32)).toEqual([]);
+        expect(h.outbox.list('workspace-a').map(row => row.state)).toEqual(['delivered', 'delivered']);
+        expect(h.outbox.receipts(0, 10).map(row => row.outboundId)).toEqual(['confirmed-user', 'out-1']);
     });
 
     it('coalesces wakes during a drain into exactly one more pass', async () => {
