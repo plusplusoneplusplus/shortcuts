@@ -145,8 +145,8 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/GIT STATUS', { messageId: 'root-command' }));
         await router.handle(makeMsg('git status', { replyToMessageId: 'bound-root' }));
         expect(readGitStatus).toHaveBeenCalledTimes(6);
-        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectA - main\nclean; 0 conflicts; origin/main: 8 ahead, 0 behind'), 'root-command');
-        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectB - main'), 'bound-root');
+        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectA - clean\n'), 'root-command');
+        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectB - clean'), 'bound-root');
         expect(recordThreadCommand).toHaveBeenCalledTimes(1);
         expect(selectThreadTarget).not.toHaveBeenCalled();
         expect(resolveThreadReply).not.toHaveBeenCalled();
@@ -166,8 +166,8 @@ describe('TeamsCommandRouter', () => {
     });
 
     it('sends every repo in ordered phone-sized chunks, preserving escaping and thread routing', async () => {
-        vi.mocked(deps.store.getWorkspaces).mockResolvedValue(Array.from({ length: 90 }, (_, i) => ({
-            id: `repo-${i}`, name: `Repo <${i}>`, rootPath: path.join(tmpDir, `repo-${i}`),
+        vi.mocked(deps.store.getWorkspaces).mockResolvedValue(Array.from({ length: 400 }, (_, i) => ({
+            id: `repo-${i}`, name: `Repo_* <${i}>`, rootPath: path.join(tmpDir, `repo-${i}`),
         })));
         router = new TeamsCommandRouter({
             ...deps, isAnswerRelayEnabled: () => true, recordThreadCommand: vi.fn(),
@@ -179,10 +179,10 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('git status', { replyToMessageId: 'root' }));
         expect(sendReplySpy.mock.calls.length).toBeGreaterThan(1);
         const text = sendReplySpy.mock.calls.map(([part]) => part).join('');
-        for (let i = 0; i < 90; i++) expect(text).toContain(`Repo <${i}> - feature\\_\\*`);
+        for (let i = 0; i < 400; i++) expect(text).toContain(`Repo\\_\\* <${i}> - clean`);
         const html = sendReplySpy.mock.calls.map(([part]) => formatTeamsOutbound(part)).join('');
-        expect(html).toContain('Repo &lt;0&gt;');
-        expect(html).not.toContain('Repo <0>');
+        expect(html).toContain('&lt;0&gt;');
+        expect(html).not.toContain('<0>');
         for (const [part, root] of sendReplySpy.mock.calls) {
             expect(part.length).toBeLessThanOrEqual(3000);
             expect(root).toBe('root');

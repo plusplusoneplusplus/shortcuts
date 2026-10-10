@@ -35,21 +35,14 @@ export const readMessagingGitStatus: MessagingGitStatusReader = async rootPath =
     };
 };
 
-function statusSummary(status: MessagingGitStatus, escape: (text: string) => string): string {
-    const { branch, entries, conflicts } = status;
-    const counts = { staged: 0, unstaged: 0, untracked: 0 };
+/** One concise segment: `clean`, or only the nonzero change/conflict counts. */
+function statusSummary({ entries, conflicts }: MessagingGitStatus): string {
+    const counts = { staged: 0, unstaged: 0, untracked: 0, conflicts };
     for (const entry of entries) {
         if (entry.stage === 'staged' || entry.stage === 'unstaged' || entry.stage === 'untracked') counts[entry.stage]++;
     }
-    const changes = Object.values(counts).some(Boolean)
-        ? `${counts.staged} staged, ${counts.unstaged} unstaged, ${counts.untracked} untracked`
-        : conflicts ? 'unmerged' : 'clean';
-    const tracking = branch.trackingBranch
-        ? `${escape(branch.trackingBranch)}: ${status.trackingAvailable
-            ? `${branch.ahead} ahead, ${branch.behind} behind` : 'ahead/behind unavailable'}`
-        : 'no upstream';
-    return `${branch.isDetached ? 'detached HEAD' : escape(branch.branch)}${branch.unborn ? ' (unborn)' : ''}\n`
-        + `${changes}; ${conflicts} conflicts; ${tracking}`;
+    const parts = Object.entries(counts).filter(([, n]) => n).map(([name, n]) => `${n} ${n === 1 && name === 'conflicts' ? 'conflict' : name}`);
+    return parts.length ? parts.join(', ') : 'clean';
 }
 
 /** The supplied registry is the caller's access scope; group membership never widens it. */
@@ -85,7 +78,7 @@ export async function localGitStatusReply(
         const label = escape(ws.name || ws.id);
         if (!ws.rootPath) { lines.push(`${label}: repository path unavailable`); continue; }
         try {
-            lines.push(`${label} - ${statusSummary(await readStatus(ws.rootPath), escape)}`);
+            lines.push(`${label} - ${statusSummary(await readStatus(ws.rootPath))}`);
         } catch (error) {
             console.error('[messaging] Git status failed:', ws.id, error);
             const message = error instanceof Error ? error.message : '';
@@ -94,10 +87,9 @@ export async function localGitStatusReply(
             lines.push(`${label}: ${reason}`);
         }
     }
+    const rows = [...lines, ...notices];
     return [
         `Git status - local repos (${repos.size})`,
-        ...lines, ...notices,
-        ...(!repos.size && !notices.length ? ['No accessible local repos registered.'] : []),
-        'Ahead/behind uses local tracking refs; remote state may be stale. No fetch.',
+        rows.length ? rows.join('\n') : 'No accessible local repos registered.',
     ].join('\n\n');
 }

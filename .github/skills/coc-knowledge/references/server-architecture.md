@@ -361,8 +361,9 @@ other virtual workspaces are excluded. `git status` bypasses pending question an
 without changing selections or invoking AI. Native branch/change parsers and forge's
 WSL runner serve fixed status argv with optional locks disabled; safe-directory config,
 Git state and network remain untouched. Per-repo errors remain visible alongside
-successful summaries. Replies disclose local-tracking-ref freshness and use lossless
-connector text chunking.
+successful summaries. Each repo is one row: `name - clean`, or only the nonzero
+staged/unstaged/untracked/conflict counts (no branch or ahead/behind). Replies use
+lossless connector text chunking.
 
 ### Messaging ask_user question relay
 
