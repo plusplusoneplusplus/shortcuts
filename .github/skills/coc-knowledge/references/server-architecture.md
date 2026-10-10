@@ -239,7 +239,20 @@ unrecorded sends quarantine. Fixed display-only notices report known-owner failu
 Every part carries the full logical request ID, Desktop role and part number.
 Inbound guards verify self/account/destination/thread/owner and exact attempted
 content before commands/admission/reactions, including after cancellation/restart.
-Unsupported attachments receive a path-free marker. Final answers are bounded by
+WhatsApp captures only raw request uploads via `sentinel-mirror-attachments.ts`,
+never SDK paths, prompt references, paste cards or generated artifacts. PNG/JPEG/GIF/WebP
+use native images; other valid MIME files, including audio/video, use documents.
+Batches allow 10 attachments and 10 MiB decoded total; malformed, unsupported or
+oversize uploads reject admission before any part sends. Teams/reference-only inputs
+retain path-free unsupported markers.
+
+Upload bytes, filenames, MIME, sizes and integrity hashes persist inside the existing
+owning outbox's atomic receipt, independently of executor temporary files. Text parts
+precede ordered media filename captions; every part shares stable identity, confirmation
+and retry policy. Confirmed media discard their bytes; delivered/cancelled receipts
+discard remaining bytes. Offline/ambiguous receipts retain unsent bytes for recovery
+or explicit cancellation. Transport uncertainty is not exactly-once delivery and
+never triggers automatic replay. Final answers are bounded by
 their request; pending drain and stale parent terminal state cannot settle them.
 Empty completions require the exact completed task; taskless failures require local evidence.
 

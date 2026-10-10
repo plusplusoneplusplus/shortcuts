@@ -1,4 +1,5 @@
 import { decodeGraphHtmlEntities, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
+import { validateWhatsAppMedia, WhatsAppMediaError, type WhatsAppOutboundMedia } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { formatLabeledWhatsAppChunks, formatWhatsAppAnswer } from './whatsapp-answer-format';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { formatTeamsOutbound } from './teams-outbound-format';
@@ -6,6 +7,7 @@ import { TeamsMessageNotSentError, type TeamsMessagingManager } from './teams-me
 import { WhatsAppNotConnectedError, type WhatsAppMessagingManager } from './whatsapp-messaging-manager';
 import type { WhatsAppBindings } from './whatsapp-bindings';
 import type { SentinelMirrorDestination, SentinelMirrorEntry } from './sentinel-mirror-outbox';
+import { mirrorAttachmentBytes, MirrorAttachmentError, type MirrorAttachment } from './sentinel-mirror-attachments';
 
 export interface SentinelMirrorOwner { workspaceId: string; processId: string }
 export interface SentinelMirrorAdapter {
@@ -15,6 +17,8 @@ export interface SentinelMirrorAdapter {
     availability(entry: SentinelMirrorEntry): 'ready' | 'offline' | 'unbound';
     format(entry: SentinelMirrorEntry): string[];
     send(destination: SentinelMirrorDestination, chunk: string): Promise<string>;
+    validateAttachments?(attachments: MirrorAttachment[]): void;
+    sendAttachment?(destination: SentinelMirrorDestination, attachment: MirrorAttachment, caption: string): Promise<string>;
     record(destination: SentinelMirrorDestination, messageId: string): void;
 }
 
@@ -26,6 +30,8 @@ export function sameMirrorDestination(a: SentinelMirrorDestination, b: SentinelM
 export function mirrorSendOutcome(error: unknown): 'not-attempted' | 'rejected' | 'unknown' {
     if (error instanceof WhatsAppNotConnectedError || error instanceof TeamsMessageNotSentError) return 'not-attempted';
     if (error instanceof TeamsOperationError) return error.outcome;
+    if (error instanceof WhatsAppMediaError || error instanceof MirrorAttachmentError) return error instanceof WhatsAppMediaError
+        ? error.outcome : 'not-attempted';
     return 'unknown';
 }
 
@@ -52,7 +58,19 @@ export function mirrorChunkEchoMatches(connector: SentinelMirrorAdapter['connect
 function whatsappMirrorChunks(entry: SentinelMirrorEntry): string[] {
     const header = (part: number, total: number) =>
         `CoC · Desktop ${entry.role} · Request ${entry.requestId} · Part ${part}/${total}\n\n`;
-    return formatLabeledWhatsAppChunks(formatWhatsAppAnswer(entry.content), header);
+    const attachments = entry.attachments ?? [];
+    if (!attachments.length) return formatLabeledWhatsAppChunks(formatWhatsAppAnswer(entry.content), header);
+    const text = entry.content.trim() ? formatLabeledWhatsAppChunks(formatWhatsAppAnswer(entry.content),
+        (part, total) => header(part, total + attachments.length)) : [];
+    const total = text.length + attachments.length;
+    return [
+        ...text,
+        ...attachments.map((attachment, index) => header(text.length + index + 1, total) + attachment.name),
+    ];
+}
+
+function whatsappAttachment(attachment: MirrorAttachment, caption?: string): WhatsAppOutboundMedia {
+    return { bytes: mirrorAttachmentBytes(attachment), filename: attachment.name, mimeType: attachment.mimeType, caption };
 }
 
 export function createWhatsAppMirrorAdapter(
@@ -84,6 +102,16 @@ export function createWhatsAppMirrorAdapter(
         },
         format: whatsappMirrorChunks,
         send: (dest, chunk) => manager.sendTo(dest.chatKey, chunk, dest.threadId),
+        validateAttachments: attachments => {
+            for (const attachment of attachments) {
+                try { validateWhatsAppMedia(whatsappAttachment(attachment)); }
+                catch (error) {
+                    if (error instanceof WhatsAppMediaError) throw new MirrorAttachmentError(error.message);
+                    throw error;
+                }
+            }
+        },
+        sendAttachment: (dest, attachment, caption) => manager.sendMediaTo(dest.chatKey, whatsappAttachment(attachment, caption), dest.threadId),
         record: (_dest, id) => bindings.recordOutbound(id),
     };
 }

@@ -23,6 +23,7 @@ import { handleAPIError, missingFields, notFound, badRequest, internalError, API
 import { handleProcessStream, emitPendingMessageAdded } from '../streaming/sse-handler';
 import { saveImagesToTempFiles, isImageDataUrl } from '../core/image-utils';
 import { processMessageAttachments } from '../core/attachment-utils';
+import { MirrorAttachmentError } from '../messaging/sentinel-mirror-attachments';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
@@ -1280,6 +1281,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const deliveryInput: FollowUpMessageInput = {
                 content: messageContent,
                 mirrorContent: body.content as string,
+                mirrorUploads: { attachments: body.attachments, images: body.images },
                 displayContent,
                 ...(messageContentWithContext ? { contentWithContext: applyStyle(messageContentWithContext) } : {}),
                 ...(attachments ? { attachments } : {}),
@@ -1311,6 +1313,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             try {
                 result = await deliveryService.deliver(proc, deliveryInput);
             } catch (err) {
+                if (err instanceof MirrorAttachmentError) {
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                    return handleAPIError(res, badRequest(err.message));
+                }
                 if (err instanceof ProviderSwitchRequiresIdleError) {
                     fs.rmSync(tempDir, { recursive: true, force: true });
                     recordProviderSwitchServerTelemetry({

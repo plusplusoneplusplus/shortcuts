@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { BotOptions, BotStatus, InboundWAMessage, WhatsAppBot } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import type { BotOptions, BotStatus, InboundWAMessage, WhatsAppBot, WhatsAppOutboundMedia } from '@plusplusoneplusplus/coc-connector/whatsapp';
 
 export interface WhatsAppMessagingConfig {
     enabled: boolean;
@@ -16,7 +16,7 @@ export interface WhatsAppMessagingStatus extends WhatsAppMessagingConfig {
 }
 
 type Bot = Pick<WhatsAppBot, 'start' | 'stop' | 'send' | 'react' | 'listGroups' | 'createGroup'>
-    & Partial<Pick<WhatsAppBot, 'getMirrorAccountKey'>>;
+    & Partial<Pick<WhatsAppBot, 'getMirrorAccountKey' | 'sendMedia'>>;
 type BotFactory = (options: BotOptions) => Promise<Bot>;
 
 const defaults: WhatsAppMessagingConfig = {
@@ -253,6 +253,12 @@ export class WhatsAppMessagingManager {
 
     async sendTo(jid: string, text: string, replyToId?: string): Promise<string> {
         return this.connectedBot().send(jid, text, replyToId ? { replyToId } : undefined);
+    }
+
+    async sendMediaTo(jid: string, media: WhatsAppOutboundMedia, replyToId?: string): Promise<string> {
+        const bot = this.connectedBot();
+        if (!bot.sendMedia) throw new WhatsAppNotConnectedError();
+        return bot.sendMedia(jid, media, replyToId ? { replyToId } : undefined);
     }
 
     async react(messageId: string): Promise<void> {

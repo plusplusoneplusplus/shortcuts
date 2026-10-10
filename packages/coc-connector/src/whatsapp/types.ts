@@ -39,6 +39,26 @@ export interface BotOptions {
 
 export type BotStatus = 'disconnected' | 'connecting' | 'qr-pending' | 'connected' | 'creating-group';
 
+/** Decoded attachment bytes; raster images send natively, other MIME types as documents. */
+export interface WhatsAppOutboundMedia {
+    bytes: Buffer;
+    filename: string;
+    mimeType: string;
+    caption?: string;
+}
+
+export type WhatsAppMediaContent = {
+    image: Buffer;
+    mimetype: string;
+    fileName: string;
+    caption?: string;
+} | {
+    document: Buffer;
+    mimetype: string;
+    fileName: string;
+    caption?: string;
+};
+
 /** Minimal socket interface consumed by WhatsAppBot (subset of Baileys). */
 export interface WASocket {
     user?: { id?: string };
@@ -48,9 +68,9 @@ export interface WASocket {
     };
     sendMessage(
         jid: string,
-        content: { text: string } | { react: { text: string; key: { remoteJid: string; id: string; fromMe: boolean } } },
+        content: { text: string } | WhatsAppMediaContent | { react: { text: string; key: { remoteJid: string; id: string; fromMe: boolean } } },
         options?: { quoted?: { key: { remoteJid?: string; id?: string; fromMe?: boolean }; message?: Record<string, unknown> } },
-    ): Promise<{ key: { id?: string } }>;
+    ): Promise<{ key: { id?: string }; message?: Record<string, unknown> }>;
     groupCreate(subject: string, participants: string[]): Promise<{ id: string; [k: string]: unknown }>;
     groupFetchAllParticipating(): Promise<Record<string, { subject?: string; [k: string]: unknown }>>;
     end(error?: Error): void;

@@ -34,6 +34,7 @@ import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { isInheritedLensChatMode, normalizeChatMode, resolveChatProvider, VALID_CHAT_PROVIDERS, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import { MirrorAttachmentError, type MirrorUploadSource } from '../messaging/sentinel-mirror-attachments';
 
 type ResolvedDefaultProviderResolution = AutoProviderResolutionResult & { provider: ChatProvider };
 
@@ -44,9 +45,9 @@ function sendPrepareTaskError(res: Parameters<Route['handler']>[1], error: unkno
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
-    const enqueueDesktopTask = async (input: CreateTaskInput, content?: string): Promise<string> => {
+    const enqueueDesktopTask = async (input: CreateTaskInput, content?: string, uploads?: MirrorUploadSource): Promise<string> => {
         const service = ctx.getSentinelMirror?.();
-        const mirror = await service?.captureTask(input, content);
+        const mirror = await service?.captureTask(input, content, uploads);
         let taskId: string;
         try {
             taskId = await enqueueViaBridge(input, bridge, state, globalWorkspaceRootPath, store);
@@ -158,26 +159,30 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         }
 
         const mirrorContent = (validation.input!.payload as Record<string, unknown>).prompt;
+        const uploadPayload = validation.input!.payload as Record<string, unknown>;
+        const mirrorUploads = { attachments: uploadPayload.attachments, images: uploadPayload.images };
         // For brand-new chat tasks, the SPA sends raw data-URL attachments on
         // payload.attachments. Decode them to temp files now so the executor
         // (which only knows how to read payload.images and SDK-form attachments)
         // and the lifecycle runner (which renders the initial user turn from
         // payload.images) both see the right shapes.
+        let decodedTempDir: string | undefined;
         try {
-            decodeChatPayloadAttachments(validation.input!.payload as Record<string, unknown>);
+            decodedTempDir = decodeChatPayloadAttachments(validation.input!.payload as Record<string, unknown>);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to process attachments';
             return sendError(res, 400, message);
         }
 
         try {
-            const taskId = await enqueueDesktopTask(validation.input!, typeof mirrorContent === 'string' ? mirrorContent : undefined);
+            const taskId = await enqueueDesktopTask(validation.input!, typeof mirrorContent === 'string' ? mirrorContent : undefined, mirrorUploads);
             const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
             const inp = validation.input!;
             process.stderr.write(`[Queue] enqueue task=${taskId} type=${inp.type} priority=${inp.priority} repoId=${inp.repoId || '-'}\n`);
             maybeBindNoteChat(inp, taskId);
             sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
         } catch (err) {
+            if (decodedTempDir && err instanceof MirrorAttachmentError) fs.rmSync(decodedTempDir, { recursive: true, force: true });
             const message = err instanceof Error ? err.message : 'Failed to enqueue task';
             return sendError(res, 400, message);
         }
@@ -419,7 +424,17 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 
                 try {
                     await prepareTaskForEnqueue(validation.input!, ctx);
-                    const taskId = await enqueueDesktopTask(validation.input!);
+                    const payload = validation.input!.payload as Record<string, unknown>;
+                    const content = typeof payload.prompt === 'string' ? payload.prompt : undefined;
+                    const uploads = { attachments: payload.attachments, images: payload.images };
+                    const decoded = decodeChatPayloadAttachments(payload);
+                    let taskId: string;
+                    try {
+                        taskId = await enqueueDesktopTask(validation.input!, content, uploads);
+                    } catch (error) {
+                        if (decoded && error instanceof MirrorAttachmentError) fs.rmSync(decoded, { recursive: true, force: true });
+                        throw error;
+                    }
                     const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
 
                     successResults.push({
@@ -872,7 +887,7 @@ export function resolveNoteChatBinding(
 /**
  * @internal exported for tests
  */
-export function decodeChatPayloadAttachments(payload: Record<string, unknown>): void {
+export function decodeChatPayloadAttachments(payload: Record<string, unknown>): string | undefined {
     if (payload.kind !== 'chat') return;
     if (!isWireAttachmentArray(payload.attachments)) return;
 
@@ -909,4 +924,5 @@ export function decodeChatPayloadAttachments(payload: Record<string, unknown>): 
         const existingPrompt = typeof payload.prompt === 'string' ? payload.prompt : '';
         payload.prompt = existingPrompt + result.textContext;
     }
+    return tempDir;
 }

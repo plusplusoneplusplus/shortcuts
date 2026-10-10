@@ -33,6 +33,7 @@ import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
 import type { SentinelMirrorService } from '../messaging/sentinel-mirror-service';
 import type { SentinelMirrorEntry } from '../messaging/sentinel-mirror-outbox';
+import type { MirrorUploadSource } from '../messaging/sentinel-mirror-attachments';
 
 /** Non-terminal statuses where a task may still be executing (mirrors the route). */
 const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'created']);
@@ -210,6 +211,7 @@ export interface FollowUpMessageInput {
     /** Assigned by trusted dashboard HTTP paths only, never copied from a request body. */
     origin?: 'desktop';
     mirrorContent?: string;
+    mirrorUploads?: MirrorUploadSource;
     /** AI-facing content (skill tokens preserved). */
     content: string;
     /** Content as shown in the conversation bubble (skills directive prepended). */
@@ -359,7 +361,7 @@ export class ProcessMessageDeliveryService {
             }
             const mirror = input.origin === 'desktop' && typeof currentProc.metadata?.workspaceId === 'string'
                 ? await this.sentinelMirror?.capture(currentProc.metadata.workspaceId, currentProc.id, input.mirrorContent ?? input.displayContent,
-                    input.fileAttachmentMeta?.length ?? input.attachments?.length ?? input.images?.length ?? 0)
+                    input.mirrorUploads ?? input.fileAttachmentMeta?.length ?? input.attachments?.length ?? input.images?.length ?? 0)
                 : undefined;
             const admittedInput = mirror ? { ...input, relayRequestId: mirror.requestId } : input;
             try {

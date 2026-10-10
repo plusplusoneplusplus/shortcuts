@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
+import { mirrorAttachmentSchema } from './sentinel-mirror-attachments';
+import { MAX_ATTACHMENT_SIZE } from '../core/attachment-utils';
 
 export const SENTINEL_MIRROR_OUTBOX_FILE = 'sentinel-mirror-outbox.json';
 const id = z.string().min(1).refine(value => value.trim().length > 0);
@@ -20,6 +22,7 @@ const intentSchema = z.object({
     role: z.enum(['user', 'assistant']),
     destination: destinationSchema,
     content: z.string(),
+    attachments: z.array(mirrorAttachmentSchema).max(10).optional(),
 }).strict();
 const entrySchema = intentSchema.extend({
     eventId: id,
@@ -30,7 +33,7 @@ const entrySchema = intentSchema.extend({
     nextPart: z.number().int().nonnegative(),
     attemptId: id.optional(),
     cancelRequested: z.boolean(),
-    failure: z.enum(['not-attempted', 'rejected', 'unknown', 'cancelled', 'unbound', 'admission-rejected']).optional(),
+    failure: z.enum(['not-attempted', 'rejected', 'unknown', 'cancelled', 'unbound', 'admission-rejected', 'attachment-invalid']).optional(),
     retryCount: z.number().int().nonnegative().optional(),
     nextAttemptAt: z.iso.datetime().optional(),
     attemptedPartCount: z.number().int().nonnegative().optional(),
@@ -40,12 +43,22 @@ const entrySchema = intentSchema.extend({
     && (row.attemptedPartCount === undefined || row.attemptedPartCount <= row.chunks.length)
     && (row.state === 'sending') === (row.attemptId !== undefined)
     && (row.state !== 'sending' || row.nextPart < row.chunks.length)
+    && (!(row.attachments?.length) || (row.role === 'user' && row.destination.connector === 'whatsapp'
+        && row.attachments.reduce((total, attachment) => total + attachment.size, 0) <= MAX_ATTACHMENT_SIZE
+        && (!row.chunks.length || row.chunks.length >= row.attachments.length)))
     && (row.state !== 'delivered' || (row.chunks.length > 0 && row.nextPart === row.chunks.length)),
 { message: 'Invalid Sentinel mirror delivery progress' });
 
 export type SentinelMirrorIntent = z.infer<typeof intentSchema>;
 export type SentinelMirrorEntry = z.infer<typeof entrySchema>;
 export type SentinelMirrorDestination = z.infer<typeof destinationSchema>;
+
+/** Immutable media captions form the final ordered parts; a negative index identifies text. */
+export function mirrorAttachmentPartIndex(
+    row: Pick<SentinelMirrorEntry, 'chunks' | 'attachments'>, partIndex: number,
+): number {
+    return partIndex - (row.chunks.length - (row.attachments?.length ?? 0));
+}
 
 function eventId(intent: SentinelMirrorIntent): string {
     return createHash('sha256').update(JSON.stringify([
@@ -107,6 +120,8 @@ export class SentinelMirrorOutbox {
         const existing = rows.find(row => row.eventId === identity);
         if (existing) {
             if (existing.content !== intent.content
+                || JSON.stringify(existing.attachments?.map(({ data: _data, ...meta }) => meta))
+                    !== JSON.stringify(intent.attachments?.map(({ data: _data, ...meta }) => meta))
                 || JSON.stringify(existing.destination) !== JSON.stringify(intent.destination)) {
                 throw new Error('Sentinel mirror event conflicts with its captured intent');
             }
@@ -140,6 +155,16 @@ export class SentinelMirrorOutbox {
             row.state = 'cancelled';
             row.failure = 'admission-rejected';
             row.cancelRequested = true;
+            return true;
+        });
+    }
+
+    invalidateAttachments(workspaceId: string, identity: string): void {
+        this.change(workspaceId, identity, row => {
+            if (row.state !== 'pending' && row.state !== 'retryable') return false;
+            row.state = 'cancelled';
+            row.cancelRequested = true;
+            row.failure = 'attachment-invalid';
             return true;
         });
     }
@@ -204,6 +229,8 @@ export class SentinelMirrorOutbox {
             if (row.state !== 'sending' || row.attemptId !== attempt) return false;
             row.outboundIds.push(outboundId);
             row.nextPart++;
+            const mediaIndex = mirrorAttachmentPartIndex(row, row.nextPart - 1);
+            if (mediaIndex >= 0 && row.attachments?.[mediaIndex]) delete row.attachments[mediaIndex].data;
             row.attemptId = undefined;
             row.state = row.cancelRequested ? 'cancelled'
                 : row.nextPart === row.chunks.length ? 'delivered' : 'pending';
@@ -277,6 +304,10 @@ export class SentinelMirrorOutbox {
     }
 
     private save(workspaceId: string, rows: SentinelMirrorEntry[]): void {
+        // Terminal receipts retain identity/part captions, not private upload bytes.
+        for (const row of rows) if (row.state === 'delivered' || row.state === 'cancelled') {
+            for (const attachment of row.attachments ?? []) delete attachment.data;
+        }
         z.array(entrySchema).parse(rows);
         atomicWriteJsonUnique(getRepoDataPath(this.dataDir, workspaceId, SENTINEL_MIRROR_OUTBOX_FILE), rows);
     }

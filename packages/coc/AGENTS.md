@@ -408,7 +408,15 @@ references before editing. Paths are package-relative.
   explicit resume. Echo guards verify self/account/scope and exact attempted content.
   Desktop delegation pins stay in private ledgers, not child/process provenance;
   results use the existing notice worker after original user/assistant confirmation.
-  Keep legacy origins unchanged. Unsupported attachments use path-free markers;
+  WhatsApp mirrors request-upload bytes only: PNG/JPEG/GIF/WebP images use native
+  images; other valid MIME files, including audio/video, use documents. Limit batches
+  to 10 attachments and 10 MiB decoded total. Snapshot bytes/integrity metadata in
+  the owning outbox before admission, independent of executor temporary files.
+  Send text first, then ordered filename captions through the same per-part receipts;
+  discard acknowledged bytes and all remaining bytes on delivery/cancellation.
+  Reject malformed/unsupported/oversize uploads before forwarding any part.
+  Never read SDK paths, paste references, generated artifacts or another server's files.
+  Teams and reference-only inputs retain path-free unsupported markers;
   mirror receipts are machine-local, excluded from export/import and included in wipe.
   See [server architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#desktop-sentinel-mirror).
 - `src/server/messaging/incoming-images.ts` prepares admitted image batches only
