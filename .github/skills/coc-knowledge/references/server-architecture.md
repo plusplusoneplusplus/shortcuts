@@ -473,6 +473,19 @@ top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots`
 replies route to the job by root (a reply inside the dispatcher's thread would route to the
 dispatcher) and user selection is untouched.
 
+Automatic Sentinel compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
+`taskAdded`. `messaging/auto-compaction-origins.ts` picks the destination from the request whose
+response triggered it: that request's own WhatsApp receipt (current group, not released or
+notice-only), else its desktop-mirror capture while the mirror is enabled. Nothing is sent
+for unbound, manual, non-Sentinel or other-workspace cases. `taskStarted` records one
+`<taskId>:start` notice only while the compaction record still names the task. The outcome
+follows on the existing terminal path: fixed wording plus removed-message/freed-token counts,
+never summaries, errors or history. Cancellation before start says it never ran. An unsent
+start is dropped once the outcome is pending. Every part rechecks the captured binding:
+released or moved bindings suppress, never retarget. Notices wait while the triggering answer
+is undelivered, and the answer relay's `onSettled` wakes them. Mirror origins use
+`authorizeCapturedOrigin(origin, owner)` instead.
+
 Parent Sentinel results use `MessagingJobNotices.queueResult` with the stable review receipt
 and the connector origin captured in `delegated-jobs.json` before admission. The owning
 parent workspace persists the bounded review answer or fixed cancellation notice before

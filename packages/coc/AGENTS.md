@@ -525,7 +525,10 @@ references before editing. Paths are package-relative.
   wait for matching parent delegation at the same connector/group/thread. Suppress only
   with durable parent result outbox coverage; failed parent delivery releases a safe child
   fallback. Review admission/settlement reconciles held notices. Later child turns and
-  compaction retain direct notices. Receipt states persist per workspace; interrupted sends
+  compaction retain direct notices. Automatic Sentinel compaction posts WhatsApp start
+  (on execution) and outcome notices only to the triggering request's own receipt or
+  enabled desktop-mirror capture (`auto-compaction-origins.ts`), after its answer is relayed.
+  Outcomes report counts only, never summaries or errors. Receipt states persist per workspace; interrupted sends
   are quarantined. WhatsApp binds replies to the notice's chat; Teams uses the captured
   parent thread for results or binds a top-level child notice. Selection remains unchanged.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection

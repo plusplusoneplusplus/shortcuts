@@ -17,6 +17,8 @@ export interface WhatsAppRelayDeps {
     connected: () => boolean;
     groupJid: () => string | null;
     send: (text: string, quotedId: string) => Promise<string>;
+    /** After an answer delivery attempt settles; held notices may now follow it. */
+    onSettled?: () => void;
 }
 
 export class WhatsAppAnswerRelay {
@@ -37,6 +39,11 @@ export class WhatsAppAnswerRelay {
         this.unsubscribeTerminal();
     }
 
+    /** Whether the answer for this request receipt is being sent right now. */
+    isDelivering(inboundId: string): boolean {
+        return this.active.has(inboundId);
+    }
+
     async reconnected(): Promise<void> {
         for (const binding of this.deps.bindings.entries()) await this.reconcileTask(binding.taskId);
     }
@@ -52,6 +59,7 @@ export class WhatsAppAnswerRelay {
                 await this.deliver(binding);
             } finally {
                 this.active.delete(binding.inboundId);
+                this.deps.onSettled?.();
             }
         }
     }
