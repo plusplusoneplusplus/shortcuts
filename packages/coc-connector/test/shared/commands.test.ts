@@ -119,12 +119,14 @@ describe('parseMessagingCommand', () => {
 
     it('documents every command and mode from the parser specs', () => {
         for (const spec of MESSAGING_COMMAND_SPECS) {
-            expect(MESSAGING_HELP_TEXT).toContain(`${spec.usage}\n${spec.summary}`);
+            const platform = spec.platforms?.[0];
+            const help = formatMessagingHelp({ platform });
+            expect(help).toContain(`${spec.usage}\n${spec.summary}`);
             const sample = spec.usage.replace(/\[[^\]]+\]/g, '').replace(/<[^>]+>/g, 'x');
-            expect(parseMessagingCommand(sample).type).toBe(spec.type);
+            expect(parseMessagingCommand(sample, platform).type).toBe(spec.type);
             if (spec.example) {
-                expect(MESSAGING_HELP_TEXT).toContain(`Example: ${spec.example}`);
-                expect(parseMessagingCommand(spec.example).type).toBe(spec.type);
+                expect(help).toContain(`Example: ${spec.example}`);
+                expect(parseMessagingCommand(spec.example, platform).type).toBe(spec.type);
             }
         }
         for (const spec of MESSAGING_MODE_SPECS) {
@@ -146,5 +148,34 @@ describe('parseMessagingCommand', () => {
         expect(MESSAGING_HELP_TEXT).toContain('replied-to chat, else selected topic');
         expect(MESSAGING_HELP_TEXT).toContain('current mode');
         expect(MESSAGING_HELP_TEXT).toContain('Unknown /commands');
+    });
+
+    describe('list todos (WhatsApp only)', () => {
+        it.each(['list todos', 'list todo', '/list todos', 'LIST TODOS', 'todos', '/todo', ' todo '])(
+            'parses %j as a read-only control command on WhatsApp', text => {
+                const command = parseMessagingCommand(text, 'whatsapp');
+                expect(command).toEqual({ type: 'list-todos', args: '' });
+                expect(isMessagingControlCommand(command)).toBe(true);
+            });
+
+        it('rejects malformed todo commands on WhatsApp instead of chatting them', () => {
+            expect(parseMessagingCommand('list todos now', 'whatsapp').type).toBe('invalid');
+            expect(parseMessagingCommand('/todo add milk', 'whatsapp').type).toBe('invalid');
+            expect(parseMessagingCommand('todo: buy milk', 'whatsapp')).toEqual({ type: 'chat', args: 'todo: buy milk' });
+        });
+
+        it('keeps the old meaning and help for other connectors', () => {
+            for (const platform of [undefined, 'teams'] as const) {
+                expect(parseMessagingCommand('list todos', platform)).toEqual({ type: 'chat', args: 'list todos' });
+                expect(parseMessagingCommand('todo', platform)).toEqual({ type: 'chat', args: 'todo' });
+                expect(parseMessagingCommand('/todo', platform).type).toBe('invalid');
+                expect(formatMessagingHelp({ platform })).not.toMatch(/todo/i);
+            }
+            expect(MESSAGING_HELP_TEXT).not.toMatch(/todo/i);
+            expect(formatMessagingHelp({ platform: 'whatsapp' })).toContain('list todos\n');
+            // Ordinary commands still parse on WhatsApp.
+            expect(parseMessagingCommand('list topics', 'whatsapp')).toEqual({ type: 'list-topics', args: '', verbose: false });
+            expect(parseMessagingCommand('help', 'whatsapp').type).toBe('help');
+        });
     });
 });

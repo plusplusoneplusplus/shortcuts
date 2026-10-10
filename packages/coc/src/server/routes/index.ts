@@ -1155,6 +1155,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         remotes: workspaceDirectory,
         questions: questionRelay,
         handOff: messagingHandOff,
+        getTodos: () => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined,
         getTask: taskId => queueFacade.getTask(taskId),
         enqueue: async (workspaceId, message, mode, processId, taskId, botControl, images, admissionHeld = false) => {
             const followUp = processId !== toQueueProcessId(taskId);
