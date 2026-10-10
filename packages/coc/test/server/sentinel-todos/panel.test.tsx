@@ -567,6 +567,38 @@ describe('UnifiedTodoTab Manual tracking', () => {
         expect(within(section).getByRole('button', { name: 'Add manual item' })).toBeTruthy();
     });
 
+    it('renders active normal items, then Manual tracking, then normal Done and Archived', async () => {
+        const follows = (a: HTMLElement, b: HTMLElement) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        get.mockResolvedValue(ledger([
+            item({ id: 'n-todo' }),
+            item({ id: 'n-done', status: 'done' }),
+            item({ id: 'n-arch', archived: true }),
+            manualItem({ id: 'm-todo' }),
+            manualItem({ id: 'm-done', status: 'done' }),
+        ]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const active = await screen.findByTestId('sentinel-todo-row-n-todo');
+        const section = manualSection();
+        const done = screen.getByTestId('sentinel-todo-done-section');
+        const archived = screen.getByTestId('sentinel-todo-archived-section');
+        expect(follows(active, section)).toBe(true);
+        expect(follows(section, done)).toBe(true);
+        expect(follows(done, archived)).toBe(true);
+        expect(section.contains(done)).toBe(false);
+        // The manual section keeps its own nested Done group.
+        expect(within(section).getByTestId('sentinel-todo-manual-done-section')).toBeTruthy();
+    });
+
+    it('keeps an empty Manual tracking section above normal Done', async () => {
+        get.mockResolvedValue(ledger([item({ id: 'n-done', status: 'done' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const noActive = await screen.findByTestId('sentinel-todo-no-active');
+        const section = manualSection();
+        expect(within(section).getByTestId('sentinel-todo-manual-empty').textContent).toBe('No manual items yet.');
+        expect(noActive.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(section.compareDocumentPosition(screen.getByTestId('sentinel-todo-done-section')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it('waits for the ledger before showing Manual tracking, and never shows it as empty on a load error', async () => {
         const pending = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValueOnce(pending.promise);

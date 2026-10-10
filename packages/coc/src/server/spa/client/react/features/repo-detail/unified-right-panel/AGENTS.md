@@ -661,8 +661,8 @@ and result delivery. Running/queued follow-ups stay In progress, and each job re
 its own assessment label. New unavailable/unknown follow-ups keep the stored status.
 Done, archived, manual and user-superseded items retain their verdicts; failed delivery
 needs attention. Normal tracking lists active items (Needs attention, In review,
-In progress, To do; oldest first within a display status), then collapsed Done
-and Archived sections. Manual tracking follows as a labelled region whose
+In progress, To do; oldest first within a display status), then the Manual
+tracking region, then normal collapsed Done and Archived sections. Manual tracking is a labelled region whose
 `aria-expanded` toggle, named `Manual tracking (<active> active)`, starts
 expanded. It stays visible when empty (`No manual items yet.`), has its own
 **Add manual item** form (required Title; optional Notes, Done when and Priority;

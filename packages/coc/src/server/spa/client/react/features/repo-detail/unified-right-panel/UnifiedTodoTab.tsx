@@ -5,8 +5,9 @@
  * refreshed by that server's `sentinel-todos-changed` events. Every write
  * carries the item revision it was based on; a conflict reloads the current
  * ledger and keeps whatever the user typed. Nothing here starts, retries, or
- * cancels a job — job links only navigate. Normal tracking comes first, then
- * the chat's Manual tracking section with its own add form and groups.
+ * cancels a job — job links only navigate. Active normal items come first, then
+ * the chat's Manual tracking section with its own add form and groups, then the
+ * normal Done and Archived sections.
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -326,16 +327,6 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
                     ) : sections.active.length > 0
                         ? renderList(sections.active)
                         : <span className={MUTED} data-testid="sentinel-todo-no-active">No active items.</span>}
-                    {sections.done.length > 0 && (
-                        <Section label="Done" count={sections.done.length} open={showDone} onToggle={() => setShowDone(v => !v)} testId="sentinel-todo-done-section">
-                            {renderList(sections.done)}
-                        </Section>
-                    )}
-                    {sections.archived.length > 0 && (
-                        <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => setShowArchived(v => !v)} testId="sentinel-todo-archived-section">
-                            {renderList(sections.archived)}
-                        </Section>
-                    )}
                     <section className="flex flex-col gap-1 border-t border-[#e0e0e0] pt-2 dark:border-[#3c3c3c]"
                         aria-labelledby={`${manualId}-heading`} data-testid="sentinel-todo-manual-section">
                         <div className="flex flex-wrap items-center justify-between gap-1">
@@ -373,6 +364,16 @@ export function UnifiedTodoTab({ owner, onErrorChange }: UnifiedTodoTabProps) {
                             </div>
                         )}
                     </section>
+                    {sections.done.length > 0 && (
+                        <Section label="Done" count={sections.done.length} open={showDone} onToggle={() => setShowDone(v => !v)} testId="sentinel-todo-done-section">
+                            {renderList(sections.done)}
+                        </Section>
+                    )}
+                    {sections.archived.length > 0 && (
+                        <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => setShowArchived(v => !v)} testId="sentinel-todo-archived-section">
+                            {renderList(sections.archived)}
+                        </Section>
+                    )}
                 </>
             )}
         </div>
