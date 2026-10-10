@@ -15,7 +15,7 @@ import { WhatsAppNotConnectedError, type WhatsAppMessagingManager } from '../../
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../../../src/server/processes/process-message-delivery-service';
 import { ProcessOperationAdmission } from '../../../src/server/processes/process-operation-admission';
 import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
-import { getRepoDataPath } from '../../../src/server/paths';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 
 vi.mock('node:fs', async importOriginal => {
     const actual = await importOriginal<typeof import('node:fs')>();
@@ -28,10 +28,13 @@ const upload = (name = 'notes.txt', mimeType = 'text/plain', bytes = Buffer.from
 });
 const header = (requestId: string, part: number, total: number, role = 'user') =>
     `CoC · Desktop ${role} · Request ${requestId} · Part ${part}/${total}`;
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-    for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-    vi.restoreAllMocks();
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+    try {
+        for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+    } finally {
+        vi.restoreAllMocks();
+    }
 });
 
 async function fixture() {
@@ -91,11 +94,17 @@ async function fixture() {
     adapter.destinations = owner => bound ? destinations(owner) : [];
     const availability = adapter.availability;
     adapter.availability = row => bound ? availability(row) : 'unbound';
-    const createMirror = () => new SentinelMirrorService({
-        dataDir: directory, store, queue, enabled: () => enabled, adapters: [adapter],
-    });
+    const createMirror = () => {
+        const instance = new SentinelMirrorService({
+            dataDir: directory, store, queue, enabled: () => enabled, adapters: [adapter],
+        });
+        cleanups.push(async () => {
+            instance.dispose();
+            await instance.flush();
+        });
+        return instance;
+    };
     let mirror = createMirror();
-    cleanups.push(() => mirror.dispose());
     const capture = (content = 'desktop text', uploads = [upload()], requestId = 'attachment-request') =>
         mirror.capture('workspace-a', processId, content, { attachments: uploads }, requestId);
     const admit = async (content = 'desktop text', uploads = [upload()], requestId = 'attachment-request') => {
@@ -139,11 +148,31 @@ async function fixture() {
         setAccount: (value: string) => { account = value; },
         restart: async () => {
             mirror.dispose();
+            await mirror.flush();
             mirror = createMirror();
             await mirror.flush();
         },
     };
 }
+
+describe('Sentinel attachment fixture cleanup', () => {
+    it.each([false, true])('closes owned databases before directory removal with restart (%s)', async restart => {
+        const f = await fixture();
+        const mirrors = [f.mirror];
+        await f.admit();
+        if (restart) {
+            await f.restart();
+            mirrors.push(f.mirror);
+        }
+        const remove = fs.rmSync;
+        vi.spyOn(fs, 'rmSync').mockImplementation((target, options) => {
+            if (String(target) === f.directory) {
+                for (const mirror of mirrors) expect(() => mirror.outbox.list('workspace-a')).toThrow(/closed/i);
+            }
+            return remove(target, options);
+        });
+    });
+});
 
 describe('Sentinel mirror upload authority and integrity', () => {
     it('captures actual raw bytes, names, MIME and digest without trusting a reported size', () => {
@@ -510,14 +539,19 @@ describe('Sentinel desktop WhatsApp attachment delivery', () => {
             await f.admit('desktop text', [upload('first.txt'), upload('second.txt')]);
             expect(f.row()).toMatchObject({ state: 'pending', nextPart: 2, outboundIds: ['sent-1', 'sent-2'] });
             expect(f.row().attachments![0].data).toBeUndefined();
-            const ledger = getRepoDataPath(f.directory, 'workspace-a', 'sentinel-mirror-outbox.json');
             const rows = f.mirror.outbox.list('workspace-a');
-            const attachment = rows[0].attachments![1];
+            const attachments = rows[0].attachments!;
+            const attachment = attachments[1];
             if (corruption === 'missing') delete attachment.data;
             if (corruption === 'base64') attachment.data = '!!!';
             if (corruption === 'digest') attachment.sha256 = '0'.repeat(64);
             if (corruption === 'size') attachment.size++;
-            fs.writeFileSync(ledger, JSON.stringify(rows));
+            // Corrupt the stored payload directly in the shared ledger database.
+            const db = new NativeDatabase(path.join(f.directory, 'processes.db'));
+            try {
+                db.prepare('UPDATE sentinel_mirror_deliveries SET attachments = ? WHERE event_id = ?')
+                    .run(JSON.stringify(attachments), rows[0].eventId);
+            } finally { db.close(); }
             f.setConnected(true);
             await f.restart();
             await f.mirror.flush();
@@ -629,6 +663,7 @@ describe('Sentinel desktop WhatsApp attachment delivery', () => {
         outbox.prepare('workspace-a', row.eventId, [header(row.requestId, 1, 1)]);
         expect(outbox.beginPart('workspace-a', row.eventId)).toBeDefined();
         const restored = new SentinelMirrorOutbox(f.directory);
+        cleanups.push(() => restored.close());
         restored.recover('workspace-a');
         expect(restored.list('workspace-a')[0]).toMatchObject({
             state: 'ambiguous', failure: 'unknown', nextPart: 0,

@@ -169,7 +169,8 @@ export function createWhatsAppNoticeTransport(
             let id: string | undefined;
             for (const [index, part] of (notice.desktopResult?.chunks ?? chunkWhatsAppText(text)).entries()) {
                 if (!connected(chatKey) || (notice.desktopResult
-                    ? !await notice.desktopResult.beforePart(index) : notice.beforeSend && !await notice.beforeSend())) {
+                    ? !await notice.desktopResult.beforePart(index) : notice.beforeSend && !await notice.beforeSend())
+                    || notice.canSend && !notice.canSend()) {
                     if (!id) return undefined;
                     throw new WhatsAppNotConnectedError();
                 }

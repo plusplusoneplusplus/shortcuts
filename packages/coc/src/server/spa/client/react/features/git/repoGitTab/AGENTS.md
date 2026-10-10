@@ -69,7 +69,8 @@ refresh, and the two layouts. Everything else lives here.
   `hydrateFromInitialLoad` (called by the data hook's `onInitialLoad`); a later
   link resolves in the routed-navigation effect. Both go through the single
   `applyRoute` resolver and fall back to `getCommit` only when `gitCommitLookup`
-  is on and the string is SHA-shaped (`isLookupCandidate`).
+  is on and the string is SHA-shaped (`isLookupCandidate`). Direct SHA lookups
+  select the detail view; the sidebar lists paginated history only.
 - **A route belongs to exactly one panel.** `state.gitRouteScope` must name both
   this page owner and this data member before the selection is consumed, and a
   consumed route is keyed on all four fields (page, member, revision, file) via

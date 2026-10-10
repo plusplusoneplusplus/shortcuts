@@ -122,7 +122,6 @@ export interface UseRepoGitSelectionReturn {
     /** Mobile "back to list" — clears the detail so the list shows again. */
     clearSelection: () => void;
     // Direct SHA lookup
-    openedCommit: GitCommitItem | null;
     commitLookupLoading: boolean;
     commitLookupError: string | null;
     clearCommitLookupError: () => void;
@@ -166,7 +165,6 @@ export function useRepoGitSelection({
 
     const [view, setView] = useState<RightPanelView | null>(null);
     const [hunkTarget, setHunkTarget] = useState<HunkTarget>();
-    const [openedCommit, setOpenedCommit] = useState<GitCommitItem | null>(null);
     const [commitLookupLoading, setCommitLookupLoading] = useState(false);
     const [commitLookupError, setCommitLookupError] = useState<string | null>(null);
     const [restoreNotFound, setRestoreNotFound] = useState<string | null>(null);
@@ -309,7 +307,6 @@ export function useRepoGitSelection({
             .then(result => {
                 if (!isCurrent()) return;
                 const commit = toCommitItem(result);
-                setOpenedCommit(commit);
                 // A deep-linked commit FILE keeps its file once the SHA resolves.
                 setView(options?.filePath
                     ? { type: 'commit-file', hash: commit.hash, filePath: options.filePath }
@@ -334,7 +331,6 @@ export function useRepoGitSelection({
             c.hash.startsWith(normalizedSha) || normalizedSha.startsWith(c.hash.slice(0, normalizedSha.length)));
         if (existing) {
             selectCommit(existing);
-            setOpenedCommit(null);
             setCommitLookupError(null);
             return;
         }
@@ -358,7 +354,6 @@ export function useRepoGitSelection({
         if (!commitHash) {
             // Back to plain history: drop the detail and any lookup state with it.
             setView(null);
-            setOpenedCommit(null);
             setCommitLookupError(null);
             return;
         }
@@ -401,7 +396,6 @@ export function useRepoGitSelection({
                 .then(result => {
                     if (lookupGenerationRef.current !== generation || viewRef.current) return;
                     const commit = toCommitItem(result);
-                    setOpenedCommit(commit);
                     setView(show(commit));
                 })
                 .catch(() => {
@@ -444,7 +438,6 @@ export function useRepoGitSelection({
         // A lookup still in flight belongs to the scope being left.
         lookupGenerationRef.current += 1;
         setHunkTarget(undefined);
-        setOpenedCommit(null);
         setCommitLookupLoading(false);
         setCommitLookupError(null);
         setRestoreNotFound(null);
@@ -495,7 +488,7 @@ export function useRepoGitSelection({
         selectBranchRange, selectBranchFile, navigateToBranchFile,
         selectWorkingTreeFile, navigateToWorkingTreeFile,
         selectWorkingTreeComments, selectBranchRangeComments, clearSelection,
-        openedCommit, commitLookupLoading, commitLookupError, clearCommitLookupError,
+        commitLookupLoading, commitLookupError, clearCommitLookupError,
         lookupCommit, initialCommitHash: routeCommitHash, hydrateFromInitialLoad, restoreNotFound,
         switchViewScope,
     };

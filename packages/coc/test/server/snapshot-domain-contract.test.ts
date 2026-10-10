@@ -25,7 +25,7 @@ import { createPreferencesDomain } from '../../src/server/storage/snapshot/prefe
 import { createScheduleDomain } from '../../src/server/storage/snapshot/schedule-domain';
 import { createGitOpsDomain } from '../../src/server/storage/snapshot/git-ops-domain';
 import { createSentinelMirrorOutboxDomain } from '../../src/server/storage/snapshot/delegated-jobs-domain';
-import { SENTINEL_MIRROR_OUTBOX_FILE } from '../../src/server/messaging/sentinel-mirror-outbox';
+import { SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox } from '../../src/server/messaging/sentinel-mirror-outbox';
 
 // ============================================================================
 // Helpers
@@ -221,6 +221,29 @@ describe('snapshot domain behavior', () => {
         await domain.executeWipe(ctx, plan.plan, result);
         expect(result.errors).toEqual([]);
         expect(fs.existsSync(file)).toBe(false);
+    });
+
+    it('sentinel-mirror-outbox: SQLite ledger rows are never exported and are cleared by wipe', async () => {
+        const domain = createSentinelMirrorOutboxDomain();
+        const outbox = new SentinelMirrorOutbox(dataDir);
+        try {
+            const row = outbox.stage({
+                workspaceId: 'repo-1', processId: 'sentinel', requestId: 'request', role: 'user', content: 'Private delivery intent',
+                destination: { connector: 'whatsapp', chatKey: 'group', bindingId: 'binding' },
+            });
+            outbox.accept('repo-1', row.eventId);
+            outbox.importLegacy('repo-1');
+            const ctx = { dataDir, store, includeWikis: false };
+            expect(await domain.collect(ctx)).toEqual({ data: {}, metadata: {}, warnings: [] });
+            await domain.restoreReplace(emptyPayload(), ctx, createImportResult());
+            expect(outbox.list('repo-1')).toHaveLength(1);
+            const result = { errors: [] as string[] };
+            await domain.executeWipe(ctx, (await domain.planWipe(ctx)).plan, result);
+            expect(result.errors).toEqual([]);
+            expect(outbox.list('repo-1')).toEqual([]);
+            expect(outbox.activeRequests(0, 10)).toEqual([]);
+            expect(outbox.isImported('repo-1')).toBe(false);
+        } finally { outbox.close(); }
     });
 
     it('queue: counts file + rows and executeWipe deletes the queue file', async () => {

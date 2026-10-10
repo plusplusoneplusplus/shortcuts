@@ -24,6 +24,7 @@ import {
     ProcessEvent
 } from './ai/process-types';
 import type { PendingMessage } from './ai/process-interfaces';
+import { projectRelayRequest, type ProcessOwnerProjection, type RelayRequestProjection } from './relay-request-projection';
 import { withRetry } from './runtime/retry';
 import { getLogger } from './logger';
 import { computeMessagePreview } from './utils/message-preview';
@@ -163,6 +164,40 @@ export class FileProcessStore implements ProcessStore {
     }
 
     async getProcess(id: string, workspaceId?: string): Promise<AIProcess | undefined> {
+        return this.readProcess(id, workspaceId);
+    }
+
+    // Relay projections share the private reader so callers never invoke public getProcess.
+    async getProcessOwnerProjection(id: string, workspaceId?: string): Promise<ProcessOwnerProjection | undefined> {
+        const proc = await this.readProcess(id, workspaceId);
+        if (!proc) return undefined;
+        const owner = proc.metadata?.workspaceId;
+        const mode = (proc.metadata as Record<string, unknown> | undefined)?.mode;
+        return {
+            id: proc.id, status: proc.status,
+            ...(typeof owner === 'string' ? { workspaceId: owner } : {}),
+            ...(typeof mode === 'string' ? { mode } : {}),
+            ...(proc.error !== undefined ? { error: proc.error } : {}),
+        };
+    }
+
+    async hasRelayRequestAdmission(processId: string, relayRequestId: string, workspaceId?: string): Promise<boolean> {
+        const proc = await this.readProcess(processId, workspaceId);
+        return !!proc && (!!proc.pendingMessages?.some(message => message.relayRequestId === relayRequestId)
+            || !!proc.conversationTurns?.some(turn => turn.role === 'user' && turn.relayRequestId === relayRequestId));
+    }
+
+    async hasRelayReceiptTurn(processId: string, relayRequestId: string, workspaceId?: string): Promise<boolean> {
+        const proc = await this.readProcess(processId, workspaceId);
+        return !!proc?.conversationTurns?.some(turn => turn.relayRequestId === relayRequestId);
+    }
+
+    async getRelayRequestProjection(processId: string, relayRequestId: string, workspaceId?: string): Promise<RelayRequestProjection> {
+        const proc = await this.readProcess(processId, workspaceId);
+        return projectRelayRequest(proc?.conversationTurns ?? [], relayRequestId, proc?.pendingMessages);
+    }
+
+    private async readProcess(id: string, workspaceId?: string): Promise<AIProcess | undefined> {
         if (workspaceId !== undefined) {
             // Direct path — workspaceId hint provided
             const entry = await this.readProcessFile(workspaceId, id);

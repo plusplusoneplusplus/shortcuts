@@ -73,6 +73,18 @@ describe('sqlite-schema', () => {
             'idx_task_groups_workspace_type',
             'idx_task_group_members_group',
             'idx_task_group_members_process',
+            'idx_turns_relay_request',
+            'idx_turns_process_role',
+            'idx_sentinel_mirror_requests_active',
+            'idx_sentinel_mirror_deliveries_seq',
+            'idx_sentinel_mirror_deliveries_request',
+            'idx_sentinel_mirror_deliveries_heads',
+            'idx_sentinel_mirror_deliveries_sending',
+            'idx_sentinel_mirror_deliveries_workspace_heads',
+            'idx_sentinel_mirror_deliveries_staged_answers',
+            'idx_sentinel_mirror_deliveries_retry',
+            'idx_sentinel_mirror_deliveries_unreported',
+            'idx_sentinel_mirror_receipts_outbound',
         ];
 
         for (const name of expected) {
@@ -83,6 +95,19 @@ describe('sqlite-schema', () => {
     });
 
     describe('PRAGMAs', () => {
+        it('adds workload indexes to an existing V40 database without changing its typed layout', () => {
+            initializeDatabase(db);
+            db.exec(`DROP INDEX idx_sentinel_mirror_deliveries_sending;
+                DROP INDEX idx_sentinel_mirror_deliveries_workspace_heads;
+                DROP INDEX idx_sentinel_mirror_deliveries_staged_answers`);
+            expect(getSchemaVersion(db)).toBe(40);
+            initializeDatabase(db);
+            const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all<{ name: string }>();
+            expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_sending');
+            expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_workspace_heads');
+            expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_staged_answers');
+            expect(getSchemaVersion(db)).toBe(40);
+        });
         it('enables foreign_keys', () => {
             initializeDatabase(db);
             const fk = db.pragma('foreign_keys', { simple: true });
@@ -110,7 +135,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(39);
+        expect(SCHEMA_VERSION).toBe(40);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1192,7 +1217,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(39);
+            expect(SCHEMA_VERSION).toBe(40);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1419,7 +1444,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(39);
+            expect(SCHEMA_VERSION).toBe(40);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1620,7 +1645,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(39);
+            expect(SCHEMA_VERSION).toBe(40);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1838,7 +1863,7 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
 
                 initializeDatabase(database);
                 initializeDatabase(database);
-                expect(getSchemaVersion(database)).toBe(39);
+                expect(getSchemaVersion(database)).toBe(SCHEMA_VERSION);
                 expect(database.prepare('SELECT id, repo_id, status, bot_control FROM queue_tasks ORDER BY id').all())
                     .toEqual([
                         { id: 'queued', repo_id: 'ws-a', status: 'queued', bot_control: null },
@@ -1858,6 +1883,7 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
         beforeEach(() => {
             db = new Database(':memory:');
             initializeDatabase(db);
+            db.exec('DROP INDEX idx_turns_relay_request');
             db.exec('ALTER TABLE conversation_turns DROP COLUMN relay_request_id');
             db.prepare('INSERT INTO processes (id, workspace_id, status, start_time) VALUES (?, ?, ?, ?)')
                 .run('old-process', 'old-workspace', 'completed', '2026-01-01T00:00:00.000Z');

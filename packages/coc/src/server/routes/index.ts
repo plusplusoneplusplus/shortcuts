@@ -8,7 +8,7 @@ import * as path from 'path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -184,7 +184,7 @@ import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
 import { WhatsAppAnswerRelay, createWhatsAppNoticeTransport, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
-import { SentinelMirrorService, type SentinelMirrorEcho } from '../messaging/sentinel-mirror-service';
+import { hasSentinelMirrorProjections, SentinelMirrorService, type SentinelMirrorEcho } from '../messaging/sentinel-mirror-service';
 import { createTeamsMirrorAdapter, createWhatsAppMirrorAdapter } from '../messaging/sentinel-mirror-adapters';
 import { MessagingJobNotices } from '../messaging/job-notices';
 import { createAutoCompactionOrigins } from '../messaging/auto-compaction-origins';
@@ -517,6 +517,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir, store, queue: queueFacade, delegatedJobs,
         authorizeDesktopOrigin: (origin, parent) => sentinelMirror?.authorizeCapturedOrigin(origin, parent)
             ?? Promise.resolve('wait'),
+        canSendDesktopOrigin: () => sentinelMirror?.canSendCapturedOrigin() === true,
         locateAutoCompactionOrigin: async (proc, turnIndex) => autoCompactionOrigins?.locate(proc, turnIndex),
         authorizeAutoCompactionOrigin: async (origin, owner) => autoCompactionOrigins?.authorize(origin, owner) ?? 'wait',
     });
@@ -1071,8 +1072,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     void ensureWhatsAppBindingsReady().catch(() =>
         console.error('[whatsapp-messaging] Failed to restore binding lifecycle'));
-    sentinelMirror = new SentinelMirrorService({
-        dataDir, store, queue: queueFacade,
+    const mirrorStore = hasSentinelMirrorProjections(store) ? store : undefined;
+    if (!mirrorStore) console.warn('[sentinel-mirror] Process store lacks relay projections; desktop mirroring is unavailable');
+    sentinelMirror = mirrorStore && new SentinelMirrorService({
+        dataDir, store: mirrorStore, queue: queueFacade,
+        db: store instanceof SqliteProcessStore ? store.getDatabase() : undefined,
         onSourceSettled: () => jobNotices.reconcile(undefined, true),
         enabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelDesktopMirror === true,
         adapters: [createTeamsMirrorAdapter(teamsMessagingManager),
@@ -1087,8 +1091,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
     };
     teamsMessagingManager.setMirrorDisconnectHandler(() => cancelMirrorConnector('teams'));
+    teamsMessagingManager.setMirrorConnectedHandler(() => sentinelMirror?.connectorReady('teams'));
     whatsappMessagingManager.setMirrorDisconnectHandler(() => cancelMirrorConnector('whatsapp'));
-    sentinelMirror.start();
+    sentinelMirror?.start();
     const whatsappRelay = new WhatsAppAnswerRelay({
         bindings: whatsappBindings,
         store,
@@ -1186,7 +1191,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         await restoreWhatsAppBindings();
         await whatsappRelay.reconnected();
         await jobNotices.reconcile('whatsapp');
-        sentinelMirror?.wake();
+        sentinelMirror?.connectorReady('whatsapp');
     });
     // Server shutdown: drop both queue subscriptions.
     whatsappMessagingManager.setDisposeHandler(() => {

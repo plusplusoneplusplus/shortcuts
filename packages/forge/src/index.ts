@@ -335,6 +335,12 @@ export {
 } from './file-process-store';
 
 export { createProcessEventBus, type ProcessEventBus } from './process-event-bus';
+export {
+    projectRelayRequest,
+    type ProcessOwnerProjection,
+    type RelayFailureEvidence,
+    type RelayRequestProjection,
+} from './relay-request-projection';
 
 export { SqliteProcessStore, SqliteProcessStoreOptions } from './sqlite-process-store';
 export { SqliteQueueStore, SqliteQueueStoreOptions } from './sqlite-queue-store';

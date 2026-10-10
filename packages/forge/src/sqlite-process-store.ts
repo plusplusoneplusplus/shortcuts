@@ -37,6 +37,7 @@ import {
 } from './ai/process-types';
 import type { BotControlMetadata, PendingMessage, ActiveProviderSession } from './ai/process-interfaces';
 import type { AIBackendType } from './ai/types';
+import type { ProcessOwnerProjection, RelayRequestProjection } from './relay-request-projection';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
 import { getLogger } from './logger';
@@ -2193,6 +2194,99 @@ export class SqliteProcessStore implements ProcessStore {
     async getConversationTurns(processId: string): Promise<ConversationTurn[]> {
         const turnRows = await this.db.getConversationTurns(processId);
         return turnRows.map(row => rowToTurn(row as unknown as TurnRow));
+    }
+
+    // ========================================================================
+    // Relay projections (bounded, transcript-free reads)
+    // ========================================================================
+
+    async getProcessOwnerProjection(id: string, _workspaceId?: string): Promise<ProcessOwnerProjection | undefined> {
+        const row = this.db.prepare(`
+            SELECT id, status, error,
+                   CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.workspaceId') END AS owner,
+                   CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.mode') END AS mode
+            FROM processes WHERE id = ?
+        `).get(id) as { id: string; status: string; error: string | null; owner: unknown; mode: unknown } | undefined;
+        if (!row) return undefined;
+        return {
+            id: row.id,
+            status: row.status as AIProcessStatus,
+            ...(typeof row.owner === 'string' ? { workspaceId: row.owner } : {}),
+            ...(typeof row.mode === 'string' ? { mode: row.mode } : {}),
+            ...(row.error !== null ? { error: row.error } : {}),
+        };
+    }
+
+    async hasRelayRequestAdmission(processId: string, relayRequestId: string, _workspaceId?: string): Promise<boolean> {
+        return this.hasRelayUserTurn(processId, relayRequestId) || this.hasRelayPendingMessage(processId, relayRequestId);
+    }
+
+    private hasRelayUserTurn(processId: string, relayRequestId: string): boolean {
+        return !!this.db.prepare(`
+            SELECT 1 FROM conversation_turns
+            WHERE process_id = ? AND relay_request_id = ? AND role = 'user' LIMIT 1
+        `).get(processId, relayRequestId);
+    }
+
+    private hasRelayPendingMessage(processId: string, relayRequestId: string): boolean {
+        return !!this.db.prepare(`
+            SELECT 1 FROM processes p,
+                json_each(CASE WHEN json_valid(p.metadata) THEN p.metadata ELSE '{}' END, '$.__pendingMessages') pending
+            WHERE p.id = ? AND json_extract(pending.value, '$.relayRequestId') = ? LIMIT 1
+        `).get(processId, relayRequestId);
+    }
+
+    async hasRelayReceiptTurn(processId: string, relayRequestId: string, _workspaceId?: string): Promise<boolean> {
+        return !!this.db.prepare(
+            'SELECT 1 FROM conversation_turns WHERE process_id = ? AND relay_request_id = ? LIMIT 1',
+        ).get(processId, relayRequestId);
+    }
+
+    async getRelayRequestProjection(processId: string, relayRequestId: string, _workspaceId?: string): Promise<RelayRequestProjection> {
+        // One read transaction keeps the boundary and answer decisions on a coherent snapshot.
+        return this.db.transaction((): RelayRequestProjection => {
+            const pending = this.hasRelayPendingMessage(processId, relayRequestId);
+            const start = this.db.prepare(`
+                SELECT turn_index FROM conversation_turns
+                WHERE process_id = ? AND relay_request_id = ? AND role = 'user'
+                ORDER BY turn_index LIMIT 1
+            `).get(processId, relayRequestId) as { turn_index: number } | undefined;
+            if (!start) return { found: false, pending, closed: false };
+            const next = this.db.prepare(`
+                SELECT turn_index FROM conversation_turns
+                WHERE process_id = ? AND role = 'user' AND turn_index > ?
+                ORDER BY turn_index LIMIT 1
+            `).get(processId, start.turn_index) as { turn_index: number } | undefined;
+            const end = next?.turn_index ?? Number.MAX_SAFE_INTEGER;
+            const settled = `process_id = ? AND turn_index > ? AND turn_index < ? AND role = 'assistant'
+                AND COALESCE(streaming, 0) = 0 AND COALESCE(display_only, 0) = 0`;
+            const answer = this.db.prepare(`
+                SELECT content FROM conversation_turns
+                WHERE ${settled} AND COALESCE(interrupted, 0) = 0
+                ORDER BY turn_index DESC LIMIT 1
+            `).get(processId, start.turn_index, end) as { content: string | null } | undefined;
+            const last = this.db.prepare(`
+                SELECT interrupted, interruption_reason, content FROM conversation_turns
+                WHERE ${settled}
+                ORDER BY turn_index DESC LIMIT 1
+            `).get(processId, start.turn_index, end) as
+                { interrupted: number | null; interruption_reason: string | null; content: string | null } | undefined;
+            const failed = last && (!!last.interrupted || last.interruption_reason !== null
+                || (last.content ?? '').startsWith('Error: '));
+            return {
+                found: true,
+                pending,
+                closed: !!next,
+                ...(answer ? { answer: answer.content ?? '' } : {}),
+                ...(failed ? {
+                    failure: {
+                        interrupted: !!last.interrupted,
+                        ...(last.interruption_reason !== null ? { interruptionReason: last.interruption_reason } : {}),
+                        content: last.content ?? '',
+                    },
+                } : {}),
+            };
+        })();
     }
 
     // ========================================================================

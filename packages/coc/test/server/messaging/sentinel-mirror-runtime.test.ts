@@ -8,7 +8,7 @@ import { FileProcessStore, toQueueProcessId, type AIProcess, type CreateTaskInpu
 import { decodeGraphHtmlEntities, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { ProcessOperationAdmission } from '../../../src/server/processes/process-operation-admission';
-import { SentinelMirrorService } from '../../../src/server/messaging/sentinel-mirror-service';
+import { SentinelMirrorService, type SentinelMirrorProcessStore } from '../../../src/server/messaging/sentinel-mirror-service';
 import { SentinelMirrorOutbox } from '../../../src/server/messaging/sentinel-mirror-outbox';
 import { WhatsAppCommandRouter } from '../../../src/server/messaging/whatsapp-command-router';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
@@ -51,13 +51,23 @@ async function invoke(route: Route, url: string, body: unknown): Promise<number>
 }
 
 const fixtures: Array<{ mirror: SentinelMirrorService; relay?: TeamsAnswerRelay; directory: string }> = [];
-afterEach(() => {
-    for (const fixture of fixtures.splice(0)) {
-        fixture.mirror.dispose();
-        fixture.relay?.dispose();
-        fs.rmSync(fixture.directory, { recursive: true, force: true });
+const outboxes: SentinelMirrorOutbox[] = [];
+afterEach(async () => {
+    const current = fixtures.splice(0);
+    try {
+        for (const fixture of current) {
+            fixture.mirror.dispose();
+            fixture.relay?.dispose();
+        }
+        // Disposal closes owned SQLite handles after drains finish, including restarted instances.
+        for (const fixture of current) await fixture.mirror.flush();
+        for (const outbox of outboxes.splice(0)) outbox.close();
+        for (const directory of new Set(current.map(fixture => fixture.directory))) {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    } finally {
+        vi.restoreAllMocks();
     }
-    vi.restoreAllMocks();
 });
 
 describe('Sentinel mirror typed retry hints', () => {
@@ -71,6 +81,41 @@ describe('Sentinel mirror typed retry hints', () => {
         expect(mirrorRetryAfterMs(new WhatsAppNotConnectedError())).toBe(0);
     });
 });
+
+/**
+ * Fails mirror ledger transactions whose resulting rows match `select`.
+ * The mutation runs inside the real SQLite transaction and the throw rolls it back,
+ * so a "failed write" never advances durable state.
+ */
+function failMirrorWrites(
+    outbox: SentinelMirrorOutbox, workspaceId: string,
+    select: (rows: ReturnType<SentinelMirrorOutbox['list']>) => boolean, message: string,
+) {
+    const seam = outbox as unknown as { transact<T>(mutation: () => T): T };
+    const original = seam.transact.bind(outbox);
+    let failing = true;
+    const spy = vi.spyOn(seam, 'transact').mockImplementation(mutation => original(() => {
+        const result = mutation();
+        if (failing && select(outbox.list(workspaceId))) throw new Error(message);
+        return result;
+    }));
+    return { stop: () => { failing = false; }, restore: () => spy.mockRestore() };
+}
+
+/**
+ * The mirror receives only its narrow store capabilities. Delegation is late-bound so test
+ * spies still apply, and full `getProcess`/`getConversationTurns` are unreachable from the mirror.
+ */
+function mirrorStoreView(store: FileProcessStore): SentinelMirrorProcessStore {
+    return {
+        getWorkspaces: () => store.getWorkspaces(),
+        appendConversationTurn: (...args) => store.appendConversationTurn(...args),
+        getProcessOwnerProjection: (...args) => store.getProcessOwnerProjection(...args),
+        hasRelayRequestAdmission: (...args) => store.hasRelayRequestAdmission(...args),
+        hasRelayReceiptTurn: (...args) => store.hasRelayReceiptTurn(...args),
+        getRelayRequestProjection: (...args) => store.getRelayRequestProjection(...args),
+    };
+}
 
 async function fixture(connector: 'whatsapp' | 'teams') {
     const directory = fs.mkdtempSync(path.join(process.cwd(), '.sentinel-mirror-test-'));
@@ -167,7 +212,7 @@ async function fixture(connector: 'whatsapp' | 'teams') {
     Object.assign(bridge, { enqueue: bridge.enqueueAdmitted });
     let onSourceSettled: (() => Promise<void>) | undefined;
     const sourceSettled = () => onSourceSettled?.() ?? Promise.resolve();
-    let mirror = new SentinelMirrorService({ dataDir: directory, store, queue, enabled: () => enabled,
+    let mirror = new SentinelMirrorService({ dataDir: directory, store: mirrorStoreView(store), queue, enabled: () => enabled,
         adapters: [adapter], onSourceSettled: sourceSettled });
     fixtures.push({ mirror, relay, directory });
     const deliver = async (content: string, input = {}) => {
@@ -202,7 +247,7 @@ async function fixture(connector: 'whatsapp' | 'teams') {
         setSourceSettled: (callback: () => Promise<void>) => { onSourceSettled = callback; },
         restart: async () => {
             mirror.dispose();
-            mirror = new SentinelMirrorService({ dataDir: directory, store, queue, enabled: () => enabled,
+            mirror = new SentinelMirrorService({ dataDir: directory, store: mirrorStoreView(store), queue, enabled: () => enabled,
                 adapters: [adapter], onSourceSettled: sourceSettled });
             fixtures.push({ mirror, directory });
             mirror.start();
@@ -210,6 +255,26 @@ async function fixture(connector: 'whatsapp' | 'teams') {
         },
     };
 }
+
+describe('Sentinel mirror fixture cleanup', () => {
+    it.each([false, true])('closes every owned database before directory removal with restart (%s)', async restart => {
+        const f = await fixture('whatsapp');
+        await f.deliver('cleanup regression');
+        if (restart) await f.restart();
+        const mirrors = fixtures.filter(fixture => fixture.directory === f.directory).map(fixture => fixture.mirror);
+        const extraOutbox = new SentinelMirrorOutbox(f.directory);
+        outboxes.push(extraOutbox);
+        const remove = fs.rmSync;
+        vi.spyOn(fs, 'rmSync').mockImplementation((target, options) => {
+            if (String(target) === f.directory) {
+                for (const outbox of [...mirrors.map(mirror => mirror.outbox), extraOutbox]) {
+                    expect(() => outbox.list('workspace-a')).toThrow(/closed/i);
+                }
+            }
+            return remove(target, options);
+        });
+    });
+});
 
 function pendingRoutes(f: Awaited<ReturnType<typeof fixture>>) {
     const routes: Route[] = [];
@@ -499,13 +564,13 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const log = vi.spyOn(console, 'error').mockImplementation(() => {});
         f.mirror.dispose();
         const restarted = new SentinelMirrorService({
-            dataDir: f.directory, store: f.store, queue: f.queue, adapters: [f.adapter], enabled: () => true,
+            dataDir: f.directory, store: mirrorStoreView(f.store), queue: f.queue, adapters: [f.adapter], enabled: () => true,
         });
         fixtures.push({ mirror: restarted, directory: f.directory });
         expect(() => restarted.locateCapturedOrigin(request)).toThrow('Delegation admission is paused');
         await restarted.flush();
         expect(restarted.locateCapturedOrigin(request)).toBeDefined();
-        const list = vi.spyOn(restarted.outbox, 'list').mockImplementation(() => { throw new Error('private storage contents'); });
+        const list = vi.spyOn(restarted.outbox, 'request').mockImplementation(() => { throw new Error('private storage contents'); });
         expect(() => restarted.locateCapturedOrigin(request)).toThrow('Delegation admission is paused');
         expect(JSON.stringify(log.mock.calls)).not.toContain('private storage contents');
         list.mockRestore();
@@ -833,7 +898,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             } finally { notices.dispose(); }
         });
 
-    it('retains the private pin across result outbox restart and retry reconnect without requiring the feature to remain enabled', async () => {
+    it('retains the private pin across result outbox restart and pauses delegated results while the mirror is disabled', async () => {
         const f = await fixture(connector);
         await f.deliver('desktop handoff');
         const user = f.mirror.outbox.list('workspace-a').find(row => row.role === 'user')!;
@@ -861,6 +926,10 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         notices.register({ platform: connector, connected: () => true, post });
         try {
             await notices.restore();
+            await notices.reconcile();
+            // Disabling the mirror pauses captured-origin results instead of letting them bypass the pause.
+            expect(post).not.toHaveBeenCalled();
+            f.setEnabled(true);
             await notices.reconcile();
             expect(post).toHaveBeenCalledTimes(1);
             expect(post.mock.calls[0][1]).not.toHaveProperty('desktopMirror');
@@ -908,6 +977,54 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             expect(f.sends).toHaveLength(1);
             expect(f.sends[0].text).not.toContain(user.destination.bindingId);
         } finally { notices.dispose(); }
+    });
+
+    it.each(['authorization', 'part-evidence'] as const)('blocks a new notice send when disabled after %s resolves', async suspended => {
+        const f = await fixture(connector);
+        await f.deliver('desktop result delegation');
+        const user = f.mirror.outbox.list('workspace-a').find(row => row.role === 'user')!;
+        const origin = f.mirror.locateCapturedOrigin({
+            workspaceId: user.workspaceId, processId: user.processId, requestId: user.requestId,
+        })!;
+        await f.finish('Delegated helper.');
+        f.sends.splice(0);
+        const transport = connector === 'teams' ? f.relay!.noticeTransport()
+            : createWhatsAppNoticeTransport({
+                bindings: f.bindings, connected: () => true, groupJid: () => user.destination.chatKey,
+                send: (text, root) => f.send(text, root),
+            });
+        const authority = f.mirror.authorizeCapturedOrigin.bind(f.mirror);
+        let armed = false;
+        const notices = new MessagingJobNotices({
+            dataDir: f.directory, store: f.store, queue: f.queue,
+            authorizeDesktopOrigin: async (...args) => {
+                const result = await authority(...args);
+                if (armed && suspended === 'authorization') f.setEnabled(false);
+                return result;
+            },
+            canSendDesktopOrigin: f.mirror.canSendCapturedOrigin.bind(f.mirror),
+        });
+        const write = vi.mocked(fs.writeFileSync);
+        const original = write.getMockImplementation()!;
+        write.mockImplementation((file, data, options) => {
+            const result = original(file, data, options);
+            if (armed && suspended === 'part-evidence' && String(file).includes('messaging-job-notices')
+                && /"resultAttemptedPartCount"\s*:\s*1/.test(String(data))) f.setEnabled(false);
+            return result;
+        });
+        notices.register({
+            ...transport,
+            post: async (chatKey, notice) => {
+                armed = true;
+                return transport.post(chatKey, notice);
+            },
+        });
+        try {
+            notices.queueResult({ workspaceId: user.workspaceId, processId: user.processId, origin,
+                receiptId: 'paused-result', repo: 'Helper', title: 'Helper', body: 'Result', status: 'completed' });
+            await notices.reconcile();
+            expect(f.sends).toEqual([]);
+        } finally { notices.dispose(); write.mockImplementation(original); }
     });
 
     it('does not dispatch a desktop result before durable part evidence can be stored and retries safely after repair', async () => {
@@ -1177,8 +1294,9 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             adapter = createWhatsAppMirrorAdapter(manager, f.bindings, ready);
         }
         const mirror = new SentinelMirrorService({
-            dataDir: f.directory, store: f.store, queue: f.queue, enabled: () => true, adapters: [adapter],
+            dataDir: f.directory, store: mirrorStoreView(f.store), queue: f.queue, enabled: () => true, adapters: [adapter],
         });
+        fixtures.push({ mirror, directory: f.directory });
         let completed = false;
         const capture = mirror.capture('workspace-a', f.processId, 'adapter readiness before admission')
             .then(entry => { completed = true; return entry; });
@@ -1265,22 +1383,16 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         await f.deliver('accepted durable request before write failure');
         await f.mirror.flush();
         const row = f.mirror.outbox.list('workspace-a')[0];
-        const write = vi.mocked(fs.writeFileSync).getMockImplementation()!;
         const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-        let failing = true;
-        vi.mocked(fs.writeFileSync).mockImplementation((file, data, options) => {
-            if (failing && String(file).includes('sentinel-mirror-outbox.json')) {
-                const rows = JSON.parse(String(data)) as Array<typeof row>;
-                const candidate = rows.find(entry => entry.eventId === row.eventId)!;
-                const selected = phase === 'prepare' ? candidate.state === 'pending' && candidate.chunks.length > 0
-                    : phase === 'begin' ? candidate.state === 'sending'
-                        : phase === 'acknowledge' ? candidate.nextPart === 1
-                            : phase === 'acknowledge-and-quarantine' ? candidate.nextPart === 1 || candidate.state === 'ambiguous'
-                                : candidate.state === 'ambiguous';
-                if (selected) throw new Error('private durable receipt storage diagnostic');
-            }
-            return write(file, data, options);
-        });
+        const failure = () => failMirrorWrites(f.mirror.outbox, 'workspace-a', rows => {
+            const candidate = rows.find(entry => entry.eventId === row.eventId)!;
+            return phase === 'prepare' ? candidate.state === 'pending' && candidate.chunks.length > 0
+                : phase === 'begin' ? candidate.state === 'sending'
+                    : phase === 'acknowledge' ? candidate.nextPart === 1
+                        : phase === 'acknowledge-and-quarantine' ? candidate.nextPart === 1 || candidate.state === 'ambiguous'
+                            : candidate.state === 'ambiguous';
+        }, 'private durable receipt storage diagnostic');
+        let injected = failure();
         if (phase === 'fail') f.send.mockImplementation(async (text, threadId) => {
             f.sends.push({ text, threadId, chatKey: row.destination.chatKey });
             throw new Error('private unknown transport diagnostic');
@@ -1303,11 +1415,14 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             await f.deliver('later same destination must not overtake');
             await f.mirror.flush();
             expect(f.send).toHaveBeenCalledTimes(attempted ? 1 : 0);
-            failing = false;
+            injected.stop();
             await f.mirror.flush();
             if (attempted) {
                 expect(f.mirror.outbox.list('workspace-a')[0].state).toBe('ambiguous');
+                injected.restore();
                 await f.restart();
+                injected = failure();
+                injected.stop();
                 await f.mirror.flush();
                 expect(f.send).toHaveBeenCalledTimes(1);
                 expect(f.mirror.outbox.list('workspace-a')[0].state).toBe('ambiguous');
@@ -1328,7 +1443,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             expect((await f.store.getProcess(f.processId))!.conversationTurns!.filter(turn =>
                 turn.relayRequestId === `sentinel-mirror-storage:${row.eventId}`)).toHaveLength(1);
         } finally {
-            vi.mocked(fs.writeFileSync).mockImplementation(write);
+            injected.restore();
         }
     });
 
@@ -1361,17 +1476,21 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const row = f.mirror.outbox.list('workspace-a')[0];
         f.mirror.outbox.prepare(row.workspaceId, row.eventId, f.adapter.format(row));
         f.mirror.outbox.beginPart(row.workspaceId, row.eventId);
-        const write = vi.mocked(fs.writeFileSync).getMockImplementation()!;
         const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        // Restart opens a new ledger connection, so fail the recovered state write on every outbox instance.
+        type Seam = { transact<T>(mutation: () => T): T };
+        const transact = (SentinelMirrorOutbox.prototype as unknown as Seam).transact;
         let failing = true;
-        vi.mocked(fs.writeFileSync).mockImplementation((file, data, options) => {
-            if (failing && String(file).includes('sentinel-mirror-outbox.json')
-                && (JSON.parse(String(data)) as Array<typeof row>).some(entry =>
-                    entry.eventId === row.eventId && entry.state === 'ambiguous')) {
-                throw new Error('private recovered state write diagnostic');
-            }
-            return write(file, data, options);
-        });
+        const spy = vi.spyOn(SentinelMirrorOutbox.prototype as unknown as Seam, 'transact')
+            .mockImplementation(function (this: SentinelMirrorOutbox, mutation) {
+                return transact.call(this, () => {
+                    const result = mutation();
+                    if (failing && this.list('workspace-a').some(entry => entry.eventId === row.eventId && entry.state === 'ambiguous')) {
+                        throw new Error('private recovered state write diagnostic');
+                    }
+                    return result;
+                });
+            });
         try {
             f.setConnected(true);
             await f.restart();
@@ -1385,7 +1504,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             expect(f.mirror.outbox.list('workspace-a')[0].state).toBe('ambiguous');
             expect(f.sends).toHaveLength(0);
         } finally {
-            vi.mocked(fs.writeFileSync).mockImplementation(write);
+            spy.mockRestore();
         }
     });
 
@@ -1408,9 +1527,9 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         f.setConnected(false);
         await f.deliver('removed during worker read');
         await f.mirror.flush();
-        const read = f.store.getProcess.bind(f.store);
+        const read = f.store.getProcessOwnerProjection.bind(f.store);
         let reads = 0;
-        vi.spyOn(f.store, 'getProcess').mockImplementation(async (...args) => {
+        vi.spyOn(f.store, 'getProcessOwnerProjection').mockImplementation(async (...args) => {
             if (++reads === 2) await f.store.removeProcess(f.processId);
             return read(...args);
         });
@@ -2055,6 +2174,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const destination = f.adapter.destinations({ workspaceId: 'workspace-a', processId: f.processId })[0];
         const clock = vi.spyOn(Date, 'now').mockReturnValue(2_000_000_000_000);
         const priorOutbox = new SentinelMirrorOutbox(f.directory);
+        outboxes.push(priorOutbox);
         const prior = priorOutbox.stage({
             workspaceId: 'workspace-b', processId: 'queue_prior-owner', requestId: 'prior-admission',
             role: 'user', destination, content: 'previous owning workspace',
@@ -2073,6 +2193,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const destination = f.adapter.destinations({ workspaceId: 'workspace-a', processId: f.processId })[0];
         const clock = vi.spyOn(Date, 'now').mockReturnValue(2_000_000_000_000);
         const priorOutbox = new SentinelMirrorOutbox(f.directory);
+        outboxes.push(priorOutbox);
         const prior = priorOutbox.stage({ workspaceId: 'workspace-c', processId: 'queue_prior-c',
             requestId: 'prior-c-admission', role: 'user', destination, content: 'new owner prior admission' });
         priorOutbox.accept(prior.workspaceId, prior.eventId);
@@ -2154,9 +2275,9 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
     it('rechecks captured account authority after the last awaited read before a send', async () => {
         const f = await fixture(connector);
         const entry = (await f.mirror.capture('workspace-a', f.processId, 'pinned before asynchronous read'))!;
-        const read = f.store.getProcess.bind(f.store);
+        const read = f.store.getProcessOwnerProjection.bind(f.store);
         let reads = 0;
-        vi.spyOn(f.store, 'getProcess').mockImplementation(async (...args) => {
+        vi.spyOn(f.store, 'getProcessOwnerProjection').mockImplementation(async (...args) => {
             const proc = await read(...args);
             if (++reads === 2) f.setAccount('rebound-account');
             return proc;

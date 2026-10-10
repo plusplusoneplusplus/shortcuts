@@ -32,7 +32,7 @@ vi.mock('node:child_process', () => ({ execFile: exec }));
 const signal = () => new AbortController().signal;
 let dir: string;
 let path: string;
-beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'copilot-credential-')); path = join(dir, 'config.json'); exec.mockReset(); windowsCredential.mockReset().mockResolvedValue(null); fileRace.enabled = false; });
+beforeEach(async () => { platform('linux'); dir = await mkdtemp(join(tmpdir(), 'copilot-credential-')); path = join(dir, 'config.json'); exec.mockReset(); windowsCredential.mockReset().mockResolvedValue(null); fileRace.enabled = false; });
 afterEach(async () => { Object.defineProperty(process, 'platform', originalPlatform); vi.unstubAllEnvs(); await rm(dir, { recursive: true, force: true }); });
 const config = (): CopilotCredentialConfig => ({ source: 'cli-config', account: 'active-cli-account', configPath: path });
 async function write(data: unknown) { await writeFile(path, JSON.stringify(data)); }
@@ -98,10 +98,96 @@ describe('explicit read-only credential acquisition', () => {
             expect(exec).not.toHaveBeenCalled();
         } finally { client.dispose(); }
     });
-    it.each(['darwin', 'linux'])('does not access Windows credentials on %s', async os => {
-        platform(os); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue('gho_vault');
+    it('does not access secure credentials on Linux', async () => {
+        platform('linux'); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue('gho_vault');
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(windowsCredential).not.toHaveBeenCalled(); expect(exec).not.toHaveBeenCalled();
+    });
+    it('prefers the file token on macOS without accessing Keychain', async () => {
+        platform('darwin'); await write(stored());
+        expect((await readCopilotCredential(config(), signal())).token).toBe('gho_right');
+        expect(exec).not.toHaveBeenCalled(); expect(windowsCredential).not.toHaveBeenCalled();
+    });
+    it.each([undefined, null, ''])('reads the exact macOS account when the config token is %j', async token => {
+        platform('darwin');
+        await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },
+            copilotTokens: { 'https://github.com:active': token, 'github.com:active': 'gho_wrong' } });
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, 'gho_keychain\n'));
+        const abortSignal = signal();
+        expect(await readCopilotCredential(config(), abortSignal)).toEqual({ host: 'github.com', login: 'active', token: 'gho_keychain' });
+        expect(exec).toHaveBeenCalledExactlyOnceWith('/usr/bin/security',
+            ['find-generic-password', '-s', 'copilot-cli', '-a', 'https://github.com:active', '-w'],
+            { signal: abortSignal, timeout: 10_000, maxBuffer: 16_384 }, expect.any(Function));
+        expect(windowsCredential).not.toHaveBeenCalled();
+    });
+    it('reads the pinned macOS account without changing the config', async () => {
+        platform('darwin'); await write(stored());
+        const before = await readFile(path, 'utf8');
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, 'gho_pinned'));
+        expect(await readCopilotCredential({ ...config(), account: { host: 'github.com', login: 'pinned' } }, signal()))
+            .toEqual({ host: 'github.com', login: 'pinned', token: 'gho_pinned' });
+        expect(exec.mock.calls[0][1]).toEqual(['find-generic-password', '-s', 'copilot-cli', '-a', 'github.com:pinned', '-w']);
+        expect(await readFile(path, 'utf8')).toBe(before);
+    });
+    it.each(['ghp_invalid', 'invalid', 123, {}])('does not replace an invalid macOS file token %j', async token => {
+        platform('darwin'); await write({ ...stored(), copilotTokens: { 'github.com:active': token } });
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(exec).not.toHaveBeenCalled();
+    });
+    it.each(['', 'ghp_invalid', 'invalid'])('rejects missing or invalid Keychain tokens %j', async token => {
+        platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, token));
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(exec).toHaveBeenCalledTimes(1);
+    });
+    it.each([44, 36, 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'])('sanitizes Keychain failure %s without another source', async code => {
+        platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        vi.stubEnv('GH_TOKEN', 'gho_other'); vi.stubEnv('GITHUB_TOKEN', 'gho_another');
+        exec.mockImplementation((_file, _args, _options, cb) => cb(Object.assign(new Error('gho_secret'), { code }), 'gho_secret'));
+        const error = await readCopilotCredential(config(), signal()).catch(e => e);
+        expect(error).toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE', message: 'Selected Copilot macOS Keychain credential could not be read.' });
+        expect(exec).toHaveBeenCalledTimes(1); expect(windowsCredential).not.toHaveBeenCalled();
+    });
+    it('cancels a pending Keychain read through the child process signal', async () => {
+        platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        const controller = new AbortController();
+        exec.mockImplementation((_file, _args, options, cb) => {
+            options.signal.addEventListener('abort', () => cb(new Error('Aborted'), ''), { once: true });
+            controller.abort();
+        });
+        await expect(readCopilotCredential(config(), controller.signal)).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(exec).toHaveBeenCalledTimes(1);
+    });
+    it('does not access Keychain for an already aborted request', async () => {
+        platform('darwin'); const controller = new AbortController(); controller.abort();
+        await expect(readCopilotCredential(config(), controller.signal)).rejects.toBeDefined();
+        expect(exec).not.toHaveBeenCalled();
+    });
+    it.each([null, {}, { lastLoggedInUser: { host: 'http://github.com', login: 'active' } },
+        { lastLoggedInUser: { host: 'github.com', login: 'invalid login' } }])('does not access Keychain for invalid config %#', async data => {
+        platform('darwin'); await write(data);
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(exec).not.toHaveBeenCalled();
+    });
+    it('generates a direct HTTP title using macOS Keychain credentials without a Copilot CLI process', async () => {
+        platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, 'gho_keychain'));
+        const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith('/models')
+            ? { data: [{ id: 'gpt-6-luna', supported_endpoints: ['/responses'] }] }
+            : { model: 'gpt-6-luna', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed',
+                content: [{ type: 'output_text', text: 'Software Release Preparation' }] }] })));
+        const client = new CopilotHttpClient({ credential: config(), fetch: fetcher });
+        try {
+            expect(await client.isAvailable('gpt-6-luna')).toEqual({ available: true });
+            const result = await client.complete({ model: 'gpt-6-luna', api: 'responses',
+                messages: [{ role: 'user', content: 'Generate a title for preparing a software release' }] });
+            expect(result.text).toBe('Software Release Preparation');
+            expect(result.effectiveModel).toBe('gpt-6-luna');
+            expect(fetcher).toHaveBeenCalledTimes(2);
+            expect(exec).toHaveBeenCalledTimes(2);
+            expect(exec.mock.calls.every(call => call[0] === '/usr/bin/security')).toBe(true);
+            expect(windowsCredential).not.toHaveBeenCalled();
+        } finally { client.dispose(); }
     });
     it.each(['ghp_invalid', 'invalid', 123, {}])('does not replace an invalid file token %j with a Windows credential', async token => {
         platform('win32'); await write({ ...stored(), copilotTokens: { 'github.com:active': token } });

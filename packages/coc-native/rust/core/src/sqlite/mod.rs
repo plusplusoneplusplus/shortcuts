@@ -108,8 +108,9 @@ pub mod process_writes;
 
 pub(super) fn check_process_schema(connection: &Connection) -> Result<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    // Queue-only provenance in v39 leaves the typed process layout unchanged.
-    if !matches!(version, 38 | 39) {
+    // Queue-only provenance in v39 and relay indexes/mirror tables in v40 leave
+    // the typed process layout unchanged.
+    if !matches!(version, 38..=40) {
         return Err(Error::UnsupportedVersion(version));
     }
     Ok(())
@@ -357,6 +358,21 @@ pub struct Statement {
 }
 
 impl Statement {
+    /// Execute a diagnostic read with per-execution SQLite workload counters.
+    pub fn all_with_stats(&self, parameters: &Parameters) -> Result<(Vec<Row>, i32, i32)> {
+        self.database.with_writer(|connection| {
+            let mut statement = connection.prepare_cached(&self.sql)?;
+            statement.reset_status(rusqlite::StatementStatus::VmStep);
+            statement.reset_status(rusqlite::StatementStatus::FullscanStep);
+            let rows = query_statement(&mut statement, parameters)?;
+            Ok((
+                rows,
+                statement.get_status(rusqlite::StatementStatus::VmStep),
+                statement.get_status(rusqlite::StatementStatus::FullscanStep),
+            ))
+        })
+    }
+
     pub fn run(&self, parameters: &Parameters) -> Result<RunResult> {
         self.database.with_writer(|connection| {
             let mut statement = connection.prepare_cached(&self.sql)?;

@@ -10,7 +10,7 @@ classification, composer PR chips, and the Pull Requests tab.
 | Controller | Owns |
 |---|---|
 | `useRepoGitData` | Commits, branch range, repo state, caches, `refreshAll` |
-| `useRepoGitSelection` | Right-panel routing, URL hash + AppContext sync, deep links, direct SHA lookup |
+| `useRepoGitSelection` | Right-panel routing, URL hash + AppContext sync, deep links, direct SHA lookup into the detail view; sidebar history stays paginated |
 | `useGitOperationActions` | Every mutation plus all four job pollers |
 | `useGitAutoPullController` | Automatic pull scheduling |
 | `useGitAutoRefresh` | Timed `refreshAll` every 5 min while the tab is `active` and the page visible |

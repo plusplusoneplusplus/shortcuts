@@ -40,6 +40,39 @@ afterEach(() => {
 // buildCreateTaskPrompt
 // ============================================================================
 
+describe('saved plan links', () => {
+    it.each([
+        '/data/repos/ws-a/notes/Plans',
+        'D:\\Plan Files\\repos\\ws-b\\notes\\Plans',
+        '\\\\server\\share\\repos\\ws-c\\notes\\Plans',
+    ])('preserves the absolute save root in every plan prompt: %s', (tasksRoot) => {
+        const normalizedRoot = tasksRoot.replace(/\\/g, '/');
+        const context = { tasksRoot, existingFolders: ['feature'] };
+        const prompts = [
+            buildCreateTaskPrompt('task', tasksRoot),
+            buildCreateTaskPromptWithName('task', 'description', tasksRoot),
+            buildCreateTaskPromptWithName(undefined, 'description', tasksRoot),
+            buildCreateTaskPromptWithName('task', 'description', tasksRoot, context),
+            buildCreateTaskPromptWithName(undefined, 'description', tasksRoot, context),
+            buildCreateFromFeaturePrompt({}, 'task', 'task', tasksRoot),
+            buildDeepModePrompt({}, 'task', undefined, tasksRoot, '/workspace'),
+            buildPlanGenerationSystemPrompt({ targetPath: tasksRoot }),
+            buildPlanGenerationSystemPrompt({ targetPath: tasksRoot, autoFolder: true, ...context }),
+            buildAutoFolderLocationBlock(normalizedRoot, context.existingFolders),
+        ];
+
+        for (const prompt of prompts) {
+            expect(prompt).toContain(normalizedRoot);
+            expect(prompt).toContain('use its exact absolute file path as the Markdown link destination');
+            expect(prompt).toContain('Do NOT rewrite it as a repository-relative path or add ../ segments');
+            expect(prompt).toContain('forward slashes');
+            expect(prompt).toContain('[plan](<FULL_PATH>)');
+            expect(prompt).toContain('replace FULL_PATH with the saved file path');
+            expect(prompt.match(/use its exact absolute file path/g)).toHaveLength(1);
+        }
+    });
+});
+
 describe('buildCreateTaskPrompt', () => {
     it('should include description in prompt', () => {
         const prompt = buildCreateTaskPrompt('Implement OAuth2 auth', '/tmp/tasks');

@@ -3,7 +3,7 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 export { NativeDatabase as Database };
 export type DatabaseType = NativeDatabase;
 
-export const SCHEMA_VERSION = 39;
+export const SCHEMA_VERSION = 40;
 
 /**
  * Read the current schema version from the database.
@@ -571,6 +571,20 @@ export function initializeDatabase(db: NativeDatabase): void {
         if (versionBefore < 39) {
             migrateV38toV39(db);
         }
+        if (versionBefore < 40) {
+            createRelayAndMirrorSchema(db);
+        }
+        // Additive indexes preserve the V40 table/read-pool contract.
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_sending
+                ON sentinel_mirror_deliveries(seq) WHERE state = 'sending';
+            CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_workspace_heads
+                ON sentinel_mirror_deliveries(workspace_id, destination_key, seq)
+                WHERE state NOT IN ('delivered', 'cancelled');
+            CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_staged_answers
+                ON sentinel_mirror_deliveries(workspace_id)
+                WHERE role = 'assistant' AND state = 'admitting';
+        `);
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
@@ -1033,6 +1047,125 @@ function migrateV37toV38(db: NativeDatabase): void {
 
 function migrateV38toV39(db: NativeDatabase): void {
     ensureColumn(db, 'queue_tasks', 'bot_control', 'TEXT');
+}
+
+/**
+ * V39 -> V40: indexed relay lookups plus the desktop Sentinel mirror ledger.
+ *
+ * - `idx_turns_relay_request` / `idx_turns_process_role` answer request
+ *   admission, receipt-notice and next-user-boundary questions without
+ *   reading transcripts.
+ * - `sentinel_mirror_requests` tracks one admitted request until its answer
+ *   is materialized or suppressed; finished requests leave the active index.
+ * - `sentinel_mirror_deliveries` tracks physical message delivery per role.
+ *   Partial indexes cover unfinished destination heads, retry deadlines and
+ *   unreported failures only.
+ * - `sentinel_mirror_receipts` keeps compact confirmed outbound IDs for
+ *   replay prevention and echo suppression.
+ * - `sentinel_mirror_imports` marks completed one-time JSON ledger imports.
+ *
+ * Runs after the `relay_request_id` column exists (V38); every statement is
+ * idempotent so fresh databases and upgrades share it.
+ */
+function createRelayAndMirrorSchema(db: NativeDatabase): void {
+    const turnColumns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+    if (turnColumns.some(column => column.name === 'relay_request_id')) {
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_turns_relay_request
+                ON conversation_turns(process_id, relay_request_id)
+                WHERE relay_request_id IS NOT NULL;
+        `);
+    }
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_turns_process_role
+            ON conversation_turns(process_id, role, turn_index);
+
+        CREATE TABLE IF NOT EXISTS sentinel_mirror_requests (
+            workspace_id  TEXT NOT NULL,
+            process_id    TEXT NOT NULL,
+            request_id    TEXT NOT NULL,
+            connector     TEXT NOT NULL,
+            chat_key      TEXT NOT NULL,
+            thread_id     TEXT,
+            binding_id    TEXT NOT NULL,
+            admission     TEXT NOT NULL CHECK (admission IN ('staged', 'accepted', 'rejected')),
+            answer        TEXT NOT NULL CHECK (answer IN ('awaiting', 'materialized', 'suppressed')),
+            seq           INTEGER NOT NULL,
+            created_at    TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, process_id, request_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_requests_active
+            ON sentinel_mirror_requests(seq)
+            WHERE admission = 'staged' OR (admission = 'accepted' AND answer = 'awaiting');
+
+        CREATE TABLE IF NOT EXISTS sentinel_mirror_deliveries (
+            event_id              TEXT PRIMARY KEY,
+            workspace_id          TEXT NOT NULL,
+            process_id            TEXT NOT NULL,
+            request_id            TEXT NOT NULL,
+            role                  TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+            connector             TEXT NOT NULL,
+            chat_key              TEXT NOT NULL,
+            thread_id             TEXT,
+            binding_id            TEXT NOT NULL,
+            destination_key       TEXT NOT NULL,
+            content               TEXT NOT NULL,
+            attachments           TEXT,
+            chunks                TEXT NOT NULL DEFAULT '[]',
+            state                 TEXT NOT NULL,
+            next_part             INTEGER NOT NULL DEFAULT 0,
+            attempt_id            TEXT,
+            attempted_part_count  INTEGER NOT NULL DEFAULT 0,
+            cancel_requested      INTEGER NOT NULL DEFAULT 0,
+            failure               TEXT,
+            reported_failure      TEXT,
+            retry_count           INTEGER,
+            next_attempt_at       TEXT,
+            seq                   INTEGER NOT NULL,
+            created_at            TEXT NOT NULL,
+            UNIQUE (workspace_id, process_id, request_id, role)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_seq
+            ON sentinel_mirror_deliveries(seq);
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_request
+            ON sentinel_mirror_deliveries(request_id, role);
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_heads
+            ON sentinel_mirror_deliveries(destination_key, seq)
+            WHERE state NOT IN ('delivered', 'cancelled');
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_retry
+            ON sentinel_mirror_deliveries(next_attempt_at)
+            WHERE state = 'retryable' AND next_attempt_at IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_unreported
+            ON sentinel_mirror_deliveries(seq)
+            WHERE failure IS NOT NULL AND failure <> 'admission-rejected'
+                AND (reported_failure IS NULL OR reported_failure <> failure);
+
+        CREATE TABLE IF NOT EXISTS sentinel_mirror_receipts (
+            event_id         TEXT NOT NULL,
+            part_index       INTEGER NOT NULL,
+            outbound_id      TEXT NOT NULL,
+            connector        TEXT NOT NULL,
+            chat_key         TEXT NOT NULL,
+            thread_id        TEXT,
+            acknowledged_at  TEXT NOT NULL,
+            PRIMARY KEY (event_id, part_index)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_receipts_outbound
+            ON sentinel_mirror_receipts(connector, chat_key, thread_id, outbound_id);
+
+        CREATE TABLE IF NOT EXISTS sentinel_mirror_imports (
+            workspace_id  TEXT PRIMARY KEY,
+            imported_at   TEXT NOT NULL,
+            row_count     INTEGER NOT NULL
+        );
+    `);
 }
 
 /**

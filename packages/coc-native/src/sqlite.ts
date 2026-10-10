@@ -113,6 +113,12 @@ function restoreJsonSqliteValues(row: NativeSqliteRow): void {
 export class NativeStatement {
     public constructor(private readonly handle: Bindings.NativeStatementHandle) {}
 
+    /** Diagnostic read; counters reset for each execution, including cached statements. */
+    public allWithStats(...parameters: NativeSqliteParameters[]): Bindings.NativeSqliteReadStats {
+        const { values, names } = normalizeParameters(parameters);
+        return withSqliteError(() => this.handle.allWithStats(values, names));
+    }
+
     public run(...parameters: NativeSqliteParameters[]): NativeRunResult {
         const { values, names } = normalizeParameters(parameters);
         return withSqliteError(() => {

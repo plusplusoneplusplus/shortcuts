@@ -430,8 +430,19 @@ references before editing. Paths are package-relative.
   discard acknowledged bytes and all remaining bytes on delivery/cancellation.
   Reject malformed/unsupported/oversize uploads before forwarding any part.
   Never read SDK paths, paste references, generated artifacts or another server's files.
-  Teams and reference-only inputs retain path-free unsupported markers;
-  mirror receipts are machine-local, excluded from export/import and included in wipe.
+  Teams and reference-only inputs retain path-free unsupported markers.
+  The ledger lives in `processes.db` (requests/deliveries/receipts; answer state is
+  separate from delivery state); legacy JSON ledgers import once and are never read
+  again. Staged assistant recovery requires an accepted user with the same captured
+  owner; uncertain progress quarantines and confirmed receipts remain intact.
+  Scheduling reads payload-free headers and uses bounded, indexed per-workspace
+  destination seeks. One timer covers actionable head retries; offline and blocked
+  work waits for a relevant wake. At most four destinations run concurrently.
+  Disabled workers do no reads or sends; captured-origin authority rechecks lifecycle
+  after awaits, and notice transports check a synchronous gate before dispatch.
+  The mirror only gets narrow relay projections, never
+  full `getProcess`/`getConversationTurns`. Ledger rows are machine-local, excluded
+  from export/import and cleared by wipe.
   See [server architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#desktop-sentinel-mirror).
 - `src/server/messaging/incoming-images.ts` prepares admitted image batches only
   after local workspace resolution. It reuses chat attachment processing, stores

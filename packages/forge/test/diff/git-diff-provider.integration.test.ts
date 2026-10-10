@@ -1,12 +1,16 @@
 /**
- * Integration tests for git-diff-provider running against the real repository.
+ * Integration tests for git-diff-provider using real Git.
  *
  * These tests use known commits from this repo's history to verify that
- * the diff providers correctly parse real git output. They require the
- * test to be run from within a git repository.
+ * the revision providers correctly parse real git output. Working-tree tests
+ * use isolated repositories so caller checkout state cannot affect them.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { execGitAsync } from '../../src/git/exec';
 import {
     createCommitDiffProvider,
@@ -240,65 +244,98 @@ describe('createRangeDiffProvider (integration)', () => {
 // ── Working tree diff provider integration ───────────────────
 
 describe('createWorkingTreeDiffProvider (integration)', () => {
-    // Working tree tests are inherently non-deterministic (depend on local state)
-    // so we just verify the API contract is met, not specific file content.
+    let workingTreeRoot: string;
+    const git = (...args: string[]) =>
+        execFileSync('git', ['-C', workingTreeRoot, ...args], { encoding: 'utf8' });
+
+    beforeEach(() => {
+        workingTreeRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'forge-working-tree-diff-')));
+        git('init', '-q');
+        git('config', 'user.name', 'Test');
+        git('config', 'user.email', 'test@example.com');
+        git('config', 'commit.gpgsign', 'false');
+        git('config', 'core.autocrlf', 'false');
+        for (const file of ['staged.txt', 'unstaged.txt', 'shared.txt']) {
+            fs.writeFileSync(path.join(workingTreeRoot, file), 'before\n');
+        }
+        git('add', '.');
+        git('commit', '-qm', 'fixture');
+        fs.writeFileSync(path.join(workingTreeRoot, 'staged.txt'), 'staged-only\n');
+        fs.writeFileSync(path.join(workingTreeRoot, 'shared.txt'), 'shared-staged\n');
+        git('add', 'staged.txt', 'shared.txt');
+        fs.writeFileSync(path.join(workingTreeRoot, 'unstaged.txt'), 'unstaged-only\n');
+        fs.writeFileSync(path.join(workingTreeRoot, 'shared.txt'), 'shared-unstaged\n');
+    });
+
+    afterEach(() => {
+        fs.rmSync(workingTreeRoot, { recursive: true, force: true });
+    });
 
     it('should create a provider with default scope "all"', () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot);
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot);
         expect(provider.source.kind).toBe('working-tree');
         if (provider.source.kind === 'working-tree') {
             expect(provider.source.scope).toBe('all');
+            expect(provider.source.repositoryRoot).toBe(workingTreeRoot);
         }
     });
 
-    it('should list files without error (staged)', async () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot, 'staged');
+    it('lists only staged fixture changes', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot, 'staged');
         const files = await provider.listFiles();
-        expect(Array.isArray(files)).toBe(true);
+        expect(files.map(file => file.path)).toEqual(['shared.txt', 'staged.txt']);
         for (const f of files) {
-            expect(f.path).toBeTruthy();
-            expect(f.status).toBeTruthy();
+            expect(f).toMatchObject({ status: 'modified', additions: 1, deletions: 1 });
         }
     });
 
-    it('should list files without error (unstaged)', async () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot, 'unstaged');
+    it('lists only unstaged fixture changes', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot, 'unstaged');
         const files = await provider.listFiles();
-        expect(Array.isArray(files)).toBe(true);
+        expect(files.map(file => file.path)).toEqual(['shared.txt', 'unstaged.txt']);
     });
 
-    it('should list files without error (all)', async () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot, 'all');
+    it('lists the union of fixture changes without duplicate paths', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot, 'all');
         const files = await provider.listFiles();
-        expect(Array.isArray(files)).toBe(true);
+        expect(files.map(file => file.path)).toEqual(['shared.txt', 'staged.txt', 'unstaged.txt']);
     });
 
-    it('should compute summary without error', async () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot);
+    it('computes the exact fixture summary', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot);
         const summary = await provider.getSummary();
-        expect(summary.filesChanged).toBeGreaterThanOrEqual(0);
-        expect(summary.additions).toBeGreaterThanOrEqual(0);
-        expect(summary.deletions).toBeGreaterThanOrEqual(0);
+        expect(summary).toEqual({ filesChanged: 3, additions: 3, deletions: 3 });
     });
 
-    it('should getFullDiff without error', async () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot);
+    it('returns both index and disk patches from the fixture', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot);
         const content = await provider.getFullDiff();
-        expect(typeof content.raw).toBe('string');
+        expect(content.raw).toContain('+staged-only');
+        expect(content.raw).toContain('+unstaged-only');
+        expect(content.raw).toContain('+shared-staged');
+        expect(content.raw).toContain('+shared-unstaged');
         expect(content.truncated).toBe(false);
     });
 
-    it('should prefetchAll without error', async () => {
-        if (!repoRoot) return;
-        const provider = createWorkingTreeDiffProvider(repoRoot);
+    it('prefetches all fixture file patches', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot);
         const map = await provider.prefetchAll();
-        expect(map instanceof Map).toBe(true);
+        expect([...map.keys()].sort()).toEqual(['shared.txt', 'staged.txt', 'unstaged.txt']);
+        expect(map.get('staged.txt')?.raw).toContain('+staged-only');
+        expect(map.get('unstaged.txt')?.raw).toContain('+unstaged-only');
+        expect(map.get('shared.txt')?.raw).toContain('+shared-staged');
+        expect(map.get('shared.txt')?.raw).toContain('+shared-unstaged');
+    });
+
+    it('returns empty results after the fixture changes are committed', async () => {
+        const provider = createWorkingTreeDiffProvider(workingTreeRoot);
+        expect(await provider.listFiles()).toHaveLength(3);
+        git('add', '.');
+        git('commit', '-qm', 'clean fixture');
+        expect(await provider.listFiles()).toEqual([]);
+        expect(await provider.getSummary()).toEqual({ filesChanged: 0, additions: 0, deletions: 0 });
+        expect((await provider.getFullDiff()).raw).toBe('');
+        expect(await provider.prefetchAll()).toEqual(new Map());
     });
 });
 

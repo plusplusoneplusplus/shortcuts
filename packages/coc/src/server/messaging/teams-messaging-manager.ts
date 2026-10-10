@@ -102,6 +102,7 @@ export class TeamsMessagingManager {
     private getAnswerRelayEnabled: () => boolean = () => false;
     private imageLifecycle?: { start: () => void; stop: () => void };
     private mirrorDisconnectHandler?: () => void | Promise<void>;
+    private mirrorConnectedHandler?: () => void;
 
     setImageLifecycle(lifecycle: { start: () => void; stop: () => void }): void {
         this.imageLifecycle?.stop();
@@ -131,6 +132,9 @@ export class TeamsMessagingManager {
     }
 
     setMirrorDisconnectHandler(handler: () => void | Promise<void>): void { this.mirrorDisconnectHandler = handler; }
+
+    /** Desktop mirror wake source: called once each time a connection becomes ready. */
+    setMirrorConnectedHandler(handler: () => void): void { this.mirrorConnectedHandler = handler; }
 
     recordMirrorOutbound(chatKey: string, rootId: string, messageId: string): void {
         const [teamId, channelId] = chatKey.split('\0');
@@ -407,6 +411,8 @@ export class TeamsMessagingManager {
                         if (!connectedRecorded) {
                             connectedRecorded = true;
                             if (attemptId && this.attemptId === attemptId) history?.phase(attemptId, 'connected');
+                            try { this.mirrorConnectedHandler?.(); }
+                            catch { console.error('[teams-messaging] Mirror connection wake failed'); }
                         }
                     } else if (connectedRecorded && (s === 'disconnected' || s === 'error')) {
                         this.imageLifecycle?.stop();

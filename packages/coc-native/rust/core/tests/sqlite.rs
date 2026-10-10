@@ -23,6 +23,24 @@ fn database_handles_can_cross_worker_threads() {
 }
 
 #[test]
+fn diagnostic_reads_count_and_reset_real_statement_work() {
+    let database = Database::open(":memory:", false).unwrap();
+    database
+        .exec("CREATE TABLE work (id INTEGER PRIMARY KEY); INSERT INTO work VALUES (1), (2), (3)")
+        .unwrap();
+    let seek = database.prepare("SELECT id FROM work WHERE id = ?");
+    let parameters = positional([Value::Integer(2)]);
+    let (rows, steps, scans) = seek.all_with_stats(&parameters).unwrap();
+    assert_eq!(rows[0]["id"], Value::Integer(2));
+    assert!(steps > 0);
+    assert_eq!(scans, 0);
+    assert_eq!(seek.all_with_stats(&parameters).unwrap(), (rows, steps, scans));
+    let (_, _, scans) =
+        database.prepare("SELECT id FROM work").all_with_stats(&Parameters::None).unwrap();
+    assert_eq!(scans, 2);
+}
+
+#[test]
 fn executes_queries_and_preserves_sqlite_value_types() {
     let database = Database::open(":memory:", false).unwrap();
     database
@@ -265,12 +283,12 @@ fn process_search_uses_pooled_reads_and_rejects_unsupported_versions() {
     assert_eq!(page.results.len(), 1);
     assert!(page.results[0].snippet.contains("<mark>search</mark>"));
     assert!(page.results[0].rank.is_finite());
-    database.pragma("user_version = 39").unwrap();
-    assert_eq!(search_conversations(&database, "search", &filter).unwrap().total, 1);
     database.pragma("user_version = 40").unwrap();
+    assert_eq!(search_conversations(&database, "search", &filter).unwrap().total, 1);
+    database.pragma("user_version = 41").unwrap();
     assert!(matches!(
         search_conversations(&database, "search", &filter),
-        Err(Error::UnsupportedVersion(40))
+        Err(Error::UnsupportedVersion(41))
     ));
 }
 
@@ -519,7 +537,7 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     )
     .unwrap()
     .is_empty());
-    database.pragma("user_version = 39").unwrap();
+    database.pragma("user_version = 40").unwrap();
     assert!(get_conversation_turns(&database, "one").is_ok());
     assert!(get_conversation_turns_json(&database, "one").is_ok());
     assert!(get_all_processes(&database, &filter).is_ok());
@@ -535,31 +553,31 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
         &RecentFilter { limit: 10, ..RecentFilter::default() }
     )
     .is_ok());
-    database.pragma("user_version = 40").unwrap();
-    assert!(matches!(get_conversation_turns(&database, "one"), Err(Error::UnsupportedVersion(40))));
+    database.pragma("user_version = 41").unwrap();
+    assert!(matches!(get_conversation_turns(&database, "one"), Err(Error::UnsupportedVersion(41))));
     assert!(matches!(
         get_conversation_turns_json(&database, "one"),
-        Err(Error::UnsupportedVersion(40))
+        Err(Error::UnsupportedVersion(41))
     ));
-    assert!(matches!(get_all_processes(&database, &filter), Err(Error::UnsupportedVersion(40))));
+    assert!(matches!(get_all_processes(&database, &filter), Err(Error::UnsupportedVersion(41))));
     assert!(matches!(
         get_process_summaries(&database, &filter),
-        Err(Error::UnsupportedVersion(40))
+        Err(Error::UnsupportedVersion(41))
     ));
     assert!(matches!(
         get_process_summaries_json(&database, &filter),
-        Err(Error::UnsupportedVersion(40))
+        Err(Error::UnsupportedVersion(41))
     ));
     assert!(matches!(
         list_recent_processes(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }),
-        Err(Error::UnsupportedVersion(40))
+        Err(Error::UnsupportedVersion(41))
     ));
     assert!(matches!(
         list_recent_processes_json(
             &database,
             &RecentFilter { limit: 10, ..RecentFilter::default() }
         ),
-        Err(Error::UnsupportedVersion(40))
+        Err(Error::UnsupportedVersion(41))
     ));
 }
 
@@ -724,10 +742,10 @@ fn streaming_turn_write_is_atomic_and_uses_the_writer_transaction() {
     assert!(matches!(err, Err(Error::Closed)));
     assert_eq!(get_conversation_turns(&database, "one").unwrap().len(), 2);
 
-    database.pragma("user_version = 39").unwrap();
-    assert!(upsert_streaming_turn(&database, &input).is_ok());
     database.pragma("user_version = 40").unwrap();
-    assert!(matches!(upsert_streaming_turn(&database, &input), Err(Error::UnsupportedVersion(40))));
+    assert!(upsert_streaming_turn(&database, &input).is_ok());
+    database.pragma("user_version = 41").unwrap();
+    assert!(matches!(upsert_streaming_turn(&database, &input), Err(Error::UnsupportedVersion(41))));
     database.pragma("user_version = 38").unwrap();
     input.process_id = "missing".into();
     assert!(upsert_streaming_turn(&database, &input).is_err());

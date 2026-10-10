@@ -6,7 +6,7 @@ import { formatTeamsOutbound } from './teams-outbound-format';
 import { TeamsMessageNotSentError, type TeamsMessagingManager } from './teams-messaging-manager';
 import { WhatsAppNotConnectedError, type WhatsAppMessagingManager } from './whatsapp-messaging-manager';
 import type { WhatsAppBindings } from './whatsapp-bindings';
-import type { SentinelMirrorDestination, SentinelMirrorEntry } from './sentinel-mirror-outbox';
+import type { SentinelMirrorDestination, SentinelMirrorEntry, SentinelMirrorHeader } from './sentinel-mirror-outbox';
 import { mirrorAttachmentBytes, MirrorAttachmentError, type MirrorAttachment } from './sentinel-mirror-attachments';
 
 export interface SentinelMirrorOwner { workspaceId: string; processId: string }
@@ -14,12 +14,13 @@ export interface SentinelMirrorAdapter {
     connector: 'whatsapp' | 'teams';
     ready?(): Promise<void>;
     destinations(owner: SentinelMirrorOwner): SentinelMirrorDestination[];
-    availability(entry: SentinelMirrorEntry): 'ready' | 'offline' | 'unbound';
+    availability(entry: SentinelMirrorHeader): 'ready' | 'offline' | 'unbound';
     format(entry: SentinelMirrorEntry): string[];
     send(destination: SentinelMirrorDestination, chunk: string): Promise<string>;
     validateAttachments?(attachments: MirrorAttachment[]): void;
     sendAttachment?(destination: SentinelMirrorDestination, attachment: MirrorAttachment, caption: string): Promise<string>;
-    record(destination: SentinelMirrorDestination, messageId: string): void;
+    /** Arms the connector's own-message guard for one confirmed outbound ID. */
+    record(destination: Pick<SentinelMirrorDestination, 'connector' | 'chatKey' | 'threadId'>, messageId: string): void;
 }
 
 export function sameMirrorDestination(a: SentinelMirrorDestination, b: SentinelMirrorDestination): boolean {

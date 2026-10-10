@@ -204,6 +204,13 @@ unauthorized links are omitted without discarding valid provenance.
   The queued chat payload carries the same opaque ID through execution; a deferred
   `PendingMessage` carries it into the drained user turn. It contains no sender or
   message content and survives SQLite, file-backed serialization, and fork copies.
+- **Relay projections** — optional `getProcessOwnerProjection`, `hasRelayRequestAdmission`,
+  `hasRelayReceiptTurn` and `getRelayRequestProjection` answer request-correlated relay
+  questions without hydrating a process. `projectRelayRequest` (forge
+  `relay-request-projection.ts`) is the reference semantics; SQLite answers with bounded
+  reads on `idx_turns_relay_request` and `idx_turns_process_role` in one read transaction,
+  selecting only the settled answer text and failure evidence between a request's user
+  turn and the next user turn. The Rust process reader accepts schema versions 38–40.
 - **Active provider/session binding** — `AIProcess.activeProviderSession` (`active_provider_session`,
   JSON) holds `{ provider, sessionId?, segmentId, firstTurnIndex }` as one value, so the provider
   that owns the conversation and the native session id that continues it can only ever be written

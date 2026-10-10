@@ -51,6 +51,14 @@ pub struct NativeRunResult {
 }
 
 #[napi(object)]
+pub struct NativeSqliteReadStats {
+    #[napi(ts_type = "Array<Record<string, number | string | Buffer | null>>")]
+    pub rows: Vec<JsSqliteRow>,
+    pub vm_steps: i32,
+    pub full_scan_steps: i32,
+}
+
+#[napi(object)]
 pub struct NativeConversationSearchFilter {
     pub workspace_id: Option<String>,
     pub statuses: Option<Vec<String>>,
@@ -401,6 +409,17 @@ pub struct NativeStatementHandle {
 
 #[napi]
 impl NativeStatementHandle {
+    #[napi(ts_args_type = "values?: Array<number | string | Buffer | null>, names?: string[]")]
+    pub fn all_with_stats(
+        &self,
+        values: Option<Vec<JsSqliteValue>>,
+        names: Option<Vec<String>>,
+    ) -> Result<NativeSqliteReadStats> {
+        let (rows, vm_steps, full_scan_steps) =
+            self.statement.all_with_stats(&parameters(values, names)?).map_err(to_napi_error)?;
+        Ok(NativeSqliteReadStats { rows: to_js_rows(rows), vm_steps, full_scan_steps })
+    }
+
     #[napi(
         ts_args_type = "values?: Array<number | string | Buffer | null>, names?: string[]",
         ts_return_type = "NativeRunResult"

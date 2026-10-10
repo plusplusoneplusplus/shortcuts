@@ -142,6 +142,17 @@ export async function readCopilotCredential(config: CopilotCredentialConfig, sig
                         throw unavailable('Selected Copilot Windows credential could not be read.');
                     }
                 }
+                if ((token === undefined || token === null || token === '') && process.platform === 'darwin') {
+                    signal.throwIfAborted();
+                    token = await new Promise<string>((resolveToken, reject) => {
+                        execFile('/usr/bin/security', [
+                            'find-generic-password', '-s', 'copilot-cli', '-a', `${account.host}:${account.login}`, '-w',
+                        ], { signal, timeout: 10_000, maxBuffer: 16_384 },
+                        (error, stdout) => error
+                            ? reject(unavailable('Selected Copilot macOS Keychain credential could not be read.'))
+                            : resolveToken(stdout.trim()));
+                    });
+                }
                 snapshot = { host, login: account.login, token };
                 break;
             }

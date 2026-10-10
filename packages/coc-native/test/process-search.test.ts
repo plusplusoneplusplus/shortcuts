@@ -39,10 +39,10 @@ describe('typed async process search', () => {
                     processType: 'chat', workspaceId: 'ws-a', startTime: '2026-01-01',
                 }],
             });
-            db.pragma('user_version = 39');
-            expect((await db.searchConversations('native')).total).toBe(1);
             db.pragma('user_version = 40');
-            await expect(db.searchConversations('native')).rejects.toThrow('unsupported process database user_version: 40');
+            expect((await db.searchConversations('native')).total).toBe(1);
+            db.pragma('user_version = 41');
+            await expect(db.searchConversations('native')).rejects.toThrow('unsupported process database user_version: 41');
         } finally {
             db.close();
         }

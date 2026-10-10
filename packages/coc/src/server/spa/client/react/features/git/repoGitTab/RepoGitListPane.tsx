@@ -3,8 +3,7 @@
  *
  * Header slot, commit search, the behind-warning banner, refresh/action error
  * banners, the repo sections (branch changes, working tree, worktrees), the
- * conflict and reorder bars, the "opened by ID" row, the commit list, and the
- * load-more footer.
+ * conflict and reorder bars, the commit list, and the load-more footer.
  *
  * Presentational: every value and callback arrives as a prop, so the same
  * subtree serves both the standalone layout and the split-workspace list slot —
@@ -81,9 +80,6 @@ export interface RepoGitListPaneProps {
     onApplyReorder: () => void;
     onCancelReorder: () => void;
 
-    // Opened-by-ID row
-    openedCommit: GitCommitItem | null;
-
     // Commit list
     commits: GitCommitItem[];
     unpushedCount: number;
@@ -138,7 +134,7 @@ export function RepoGitListPane(props: RepoGitListPaneProps) {
         searchVisible, searchQuery, searchInputRef, onSearchQueryChange, onHideSearch, onCommitLookup,
         commitLookupLoading, commitLookupError, onDismissCommitLookupError,
         behind, onDefaultBranch, refreshError, onDismissRefreshError, actionError, onDismissActionError,
-        repoState, pendingReorder, openedCommit, commits, unpushedCount, hasMore, isLoadingMore, onLoadMore,
+        repoState, pendingReorder, commits, unpushedCount, hasMore, isLoadingMore, onLoadMore,
     } = props;
 
     // The compact ahead/behind badge in GitPanelHeader already shows the ahead
@@ -386,25 +382,6 @@ export function RepoGitListPane(props: RepoGitListPaneProps) {
                     >
                         ×
                     </button>
-                </div>
-            )}
-            {openedCommit && (
-                <div className="border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-opened-commit-section">
-                    <div className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold text-[#0078d4] dark:text-[#3794ff] tracking-wide uppercase">
-                        Opened commit
-                    </div>
-                    <div
-                        role="button"
-                        tabIndex={0}
-                        className={`flex items-center gap-2 px-2.5 py-2 text-[13px] cursor-pointer select-none hover:bg-[#e8f0fe] dark:hover:bg-[#1a2744] focus:outline-none focus:bg-[#e8f0fe] dark:focus:bg-[#1a2744]${props.selectedHashes.has(openedCommit.hash) ? ' bg-[#e8f0fe] dark:bg-[#1a2744] border-l-2 border-[#0078d4]' : ''}`}
-                        onClick={() => props.onSelect(openedCommit)}
-                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); props.onSelect(openedCommit); } }}
-                        data-testid="git-opened-commit-row"
-                    >
-                        <span className="font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] shrink-0">{openedCommit.shortHash}</span>
-                        <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#ccc]">{openedCommit.subject}</span>
-                        <span className="shrink-0 text-[10px] px-1 py-px rounded border border-[#0078d4]/40 text-[#0078d4] dark:text-[#3794ff] bg-[#0078d4]/5 leading-tight">by ID</span>
-                    </div>
                 </div>
             )}
             {commitListPanel}

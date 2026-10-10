@@ -78,6 +78,8 @@ export interface JobNotice {
     detail?: string;
     /** Ephemeral authority recheck before each physical part; never persisted or formatted. */
     beforeSend?: () => Promise<boolean>;
+    /** Final synchronous lifecycle gate after asynchronous authority checks. */
+    canSend?: () => boolean;
     /** Immutable private desktop result parts and durable before-dispatch evidence. */
     desktopResult?: { chunks: readonly string[]; beforePart: (index: number) => Promise<boolean> };
 }
@@ -163,6 +165,7 @@ export class MessagingJobNotices {
         authorizeDesktopOrigin?: (
             origin: MessagingJobOrigin, parent?: { workspaceId: string; processId: string },
         ) => Promise<MessagingOriginAuthority>;
+        canSendDesktopOrigin?: () => boolean;
         /** The triggering request's own bound origin for an automatic compaction, if any. */
         locateAutoCompactionOrigin?: (proc: AIProcess, turnIndex: number) => Promise<MessagingJobOrigin | undefined>;
         /** Rechecks that origin before each send; `wait` holds notices behind the triggering answer. */
@@ -433,6 +436,7 @@ export class MessagingJobNotices {
                     continue;
                 }
                 if (job.origin.desktopMirror || job.autoCompact) {
+                    if (job.origin.desktopMirror) notice.canSend = this.deps.canSendDesktopOrigin;
                     notice.beforeSend = async () => !this.disposed
                         && await this.desktopAuthority(job) === 'ready' && !this.disposed;
                     if (job.result) {

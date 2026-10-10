@@ -19,6 +19,8 @@ import type { CreateTaskInput, ProcessStore, QueuedTask } from '@plusplusoneplus
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
+import { WhatsAppMessagingManager } from '../../src/server/messaging/whatsapp-messaging-manager';
+import { SentinelMirrorService } from '../../src/server/messaging/sentinel-mirror-service';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
 import { MessagingJobNotices } from '../../src/server/messaging/job-notices';
@@ -359,22 +361,39 @@ describe('registerAllRoutes', () => {
         expect(routes.length).toBeGreaterThan(30);
     });
 
-    it('subscribes delegated results/reviews, job notices, answer relays and desktop mirrors to queue lifecycle events', () => {
+    it.each([true, false])('subscribes messaging workers to queue lifecycle events with mirror projections (%s)', async hasMirrorProjections => {
         const queueFacade = makeQueueFacade();
-        const opts = makeOpts({ queueFacade });
+        const store = makeStore();
+        if (hasMirrorProjections) {
+            store.getProcessOwnerProjection = vi.fn().mockResolvedValue(undefined);
+            store.hasRelayRequestAdmission = vi.fn().mockResolvedValue(false);
+            store.hasRelayReceiptTurn = vi.fn().mockResolvedValue(false);
+            store.getRelayRequestProjection = vi.fn().mockResolvedValue({ found: false, pending: false, closed: false });
+        }
+        const start = vi.spyOn(SentinelMirrorService.prototype, 'start');
+        const dispose = vi.spyOn(SentinelMirrorService.prototype, 'dispose');
+        const shutdown = vi.spyOn(WhatsAppMessagingManager.prototype, 'setDisposeHandler');
+        const opts = makeOpts({ queueFacade, store, dataDir: tmpDir });
         registerAllRoutes([], opts);
 
-        expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
-            'taskCompleted', 'taskFailed', 'taskCancelled',
-            'taskAdded', 'taskStarted',
-            'taskCompleted', 'taskFailed', 'taskCancelled',
-            'taskCompleted', 'taskFailed', 'taskCancelled',
-            'ralphSessionComplete',
-            'taskCompleted', 'taskFailed', 'taskCancelled',
-            'taskCompleted', 'taskFailed', 'taskCancelled',
-            'taskCompleted', 'taskFailed', 'taskCancelled',
-        ]);
-        expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
+        try {
+            expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                'taskAdded', 'taskStarted',
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                'ralphSessionComplete',
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                ...(hasMirrorProjections ? ['taskCompleted', 'taskFailed', 'taskCancelled'] : []),
+            ]);
+            expect(start).toHaveBeenCalledTimes(hasMirrorProjections ? 1 : 0);
+            expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
+        } finally {
+            shutdown.mock.calls[0][0]();
+            await Promise.resolve();
+        }
+        expect(dispose).toHaveBeenCalledTimes(hasMirrorProjections ? 1 : 0);
     });
 
     it('restores outbound receipts before result recovery can schedule connector sends', async () => {
