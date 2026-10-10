@@ -7,13 +7,19 @@ import { createMultiCommitRepo } from './fixtures/git-fixtures';
 import { createE2EMockSDKService } from './fixtures/mock-ai';
 
 const { createExecutionServer } = require('../../dist/server/index');
-const { FileProcessStore } = require('@plusplusoneplusplus/forge');
+const { SqliteProcessStore } = require('@plusplusoneplusplus/forge');
+
+test.use({ processStoreBackend: 'sqlite' });
 
 test('exclusive writer create/edit/settings, authoritative rejection, handoff and saved-conflict warning', async ({ page, serverUrl, dataDir }, testInfo) => {
     test.setTimeout(90_000);
     const errors: string[] = [];
+    const consoleErrors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    const memberId = 'writer-fixture-member';
+    page.on('console', message => {
+        if (message.type() === 'error') consoleErrors.push(`${message.text()} (${message.location().url})`);
+    });
+    const memberId = 'ws-v2-writer-fixture-member';
     const checkout = createMultiCommitRepo(path.join(dataDir, 'checkout'));
     await seedWorkspace(serverUrl, memberId, 'Shared fixture repo', checkout);
     const flag = async (enabled: boolean) => {
@@ -34,6 +40,7 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     const firstId = await create('First writer');
     await page.goto(`${serverUrl}/#repos/${firstId}/settings`);
     await expect(page.getByTestId(`repo-group-member-row-${memberId}`)).toContainText('Writer');
+    await page.screenshot({ path: testInfo.outputPath('initial-writer.png') });
     await page.goto(`${serverUrl}/#repos/${memberId}/chats`);
     await openAddRepoOption(page, 'remote-new-repo-group-option');
     await page.getByTestId('repo-group-name-input').fill('Second group');
@@ -128,6 +135,7 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     expect(dialogWidth.scroll).toBeLessThanOrEqual(dialogWidth.client + 1);
     await page.screenshot({ path: testInfo.outputPath('narrow-edit-conflicts.png') });
     expect(errors).toEqual([]);
+    expect(consoleErrors.filter(message => !/^Failed to load resource: the server responded with a status of (404|409)\b/.test(message))).toEqual([]);
 });
 
 test('remote owner capability, authoritative save and writer links stay separate from the flag-off page origin', async ({ page, serverUrl, dataDir }) => {
@@ -140,19 +148,24 @@ test('remote owner capability, authoritative save and writer links stay separate
     fs.mkdirSync(memoryDir);
     fs.writeFileSync(path.join(remoteDir, 'memory-config.json'), JSON.stringify({ storageDir: memoryDir }));
     const remote = await createExecutionServer({
-        store: new FileProcessStore({ dataDir: remoteDir }),
+        store: new SqliteProcessStore({ dbPath: path.join(remoteDir, 'processes.db') }),
         port: 0, host: '127.0.0.1', dataDir: remoteDir, configPath,
         aiService: createE2EMockSDKService().service,
     });
     const errors: string[] = [];
+    const consoleErrors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+        if (message.type() === 'error') consoleErrors.push(`${message.text()} (${message.location().url})`);
+    });
     try {
-        const memberId = 'remote-writer-fixture';
-        await seedWorkspace(serverUrl, memberId, 'Local fixture', createMultiCommitRepo(path.join(dataDir, 'local-checkout')));
+        const memberId = 'ws-v2-remote-writer-fixture';
+        const localMemberId = 'ws-v2-local-writer-fixture';
+        await seedWorkspace(serverUrl, localMemberId, 'Local fixture', createMultiCommitRepo(path.join(dataDir, 'local-checkout')));
         await seedWorkspace(remote.url, memberId, 'Remote fixture', createMultiCommitRepo(path.join(remoteDir, 'checkout')));
         const create = async (baseUrl: string, name: string) => {
             const response = await request(`${baseUrl}/api/repo-groups`, {
-                method: 'POST', body: JSON.stringify({ name, members: [memberId] }),
+                method: 'POST', body: JSON.stringify({ name, members: [baseUrl === serverUrl ? localMemberId : memberId] }),
             });
             expect(response.status).toBe(201);
             return JSON.parse(response.body).workspace.id as string;
@@ -164,7 +177,7 @@ test('remote owner capability, authoritative save and writer links stay separate
             contentType: 'application/json',
             body: JSON.stringify([{ id: 'fixture-owner', label: 'Fixture owner', status: 'online', effectiveUrl: remote.url }]),
         }));
-        await page.goto(`${serverUrl}/#repos/${memberId}/chats`);
+        await page.goto(`${serverUrl}/#repos/${localMemberId}/chats`);
         await openAddRepoOption(page, 'remote-new-repo-group-option');
         await page.getByTestId('repo-group-server-select').selectOption('fixture-owner');
         await page.getByTestId('repo-group-name-input').fill('Remote second');
@@ -195,6 +208,7 @@ test('remote owner capability, authoritative save and writer links stay separate
         await expect(page).toHaveURL(new RegExp(`remote%3Afixture-owner%3A${remoteOwnerId}/settings$`));
         await expect(row).toContainText('Writer');
         expect(errors).toEqual([]);
+        expect(consoleErrors.filter(message => !/^Failed to load resource: the server responded with a status of (404|409)\b/.test(message))).toEqual([]);
     } finally {
         await remote.close();
     }
