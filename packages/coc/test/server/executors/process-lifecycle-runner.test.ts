@@ -2489,6 +2489,31 @@ describe('ProcessLifecycleRunner — post-response hook', () => {
         expect(calls).toEqual(['drain', `response:queue_${task.id}`]);
     });
 
+    it('waits for persisted response and absolute usage before firing, never during execution', async () => {
+        let finish!: (result: { response: string }) => void;
+        const response = new Promise<{ response: string }>(resolve => { finish = resolve; });
+        const task = makeTask({ payload: { kind: 'chat', mode: 'sentinel', prompt: 'watch', workspaceId: 'ws-abc' } });
+        const processId = `queue_${task.id}`;
+        const hook = vi.fn(async (id: string) => {
+            const proc = (await store.getProcess(id))!;
+            expect(proc.status).toBe('completed');
+            expect(proc.currentTokens).toBe(700001);
+            expect(proc.tokenLimit).toBeUndefined();
+            expect(proc.conversationTurns?.at(-1)).toMatchObject({ role: 'assistant', content: 'persisted reply' });
+        });
+        const execute = vi.fn(async () => {
+            await store.updateProcess(processId, { currentTokens: 700001, tokenLimit: undefined });
+            return response;
+        });
+        const running = runner.run(task, makeOpts({ executeByTypeFn: execute, onResponseCompleted: hook }));
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        expect((await store.getProcess(processId))?.status).toBe('running');
+        expect(hook).not.toHaveBeenCalled();
+        finish({ response: 'persisted reply' });
+        expect((await running).success).toBe(true);
+        expect(hook).toHaveBeenCalledExactlyOnceWith(processId);
+    });
+
     it('does not fire when the task fails or is cancelled', async () => {
         const hook = vi.fn().mockResolvedValue(undefined);
         await runner.run(makeTask(), makeOpts({ onResponseCompleted: hook, executeByTypeFn: vi.fn().mockRejectedValue(new Error('boom')) }));

@@ -14,8 +14,7 @@
  * A breakdown popover appears on hover (desktop) or tap (mobile) when breakdown data
  * is present, listing each category's token count and percentage of the limit.
  *
- * Hidden when tokenLimit is not yet known. Sentinel chats pass `autoCompact`,
- * which adds a threshold marker, a status badge and the auto-compact section.
+ * Sentinel controls remain available when the context limit is unknown.
  */
 
 import React from 'react';
@@ -55,10 +54,11 @@ export function ContextWindowIndicator({
 }: ContextWindowIndicatorProps) {
     const popover = useContextUsagePopover();
 
-    if (!tokenLimit || tokenLimit <= 0) return null;
+    const limit = typeof tokenLimit === 'number' && Number.isFinite(tokenLimit) && tokenLimit > 0 ? tokenLimit : undefined;
+    if (!limit && !autoCompact) return null;
 
     const used = currentTokens ?? 0;
-    const pct = Math.min(100, (used / tokenLimit) * 100);
+    const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
 
     const hasBreakdown =
         systemTokens != null && toolDefinitionsTokens != null && conversationTokens != null;
@@ -70,16 +70,16 @@ export function ContextWindowIndicator({
                    'bg-green-500 dark:bg-green-400';
 
     // Segment widths as percentage of tokenLimit
-    const sysPct    = hasBreakdown ? Math.min(100, (systemTokens!           / tokenLimit) * 100) : 0;
-    const toolPct   = hasBreakdown ? Math.min(100, (toolDefinitionsTokens!  / tokenLimit) * 100) : 0;
-    const convPct   = hasBreakdown ? Math.min(100, (conversationTokens!     / tokenLimit) * 100) : 0;
+    const sysPct    = hasBreakdown && limit ? Math.min(100, (systemTokens!           / limit) * 100) : 0;
+    const toolPct   = hasBreakdown && limit ? Math.min(100, (toolDefinitionsTokens!  / limit) * 100) : 0;
+    const convPct   = hasBreakdown && limit ? Math.min(100, (conversationTokens!     / limit) * 100) : 0;
     const knownPct  = sysPct + toolPct + convPct;
     const otherTokens = hasBreakdown
         ? Math.max(0, used - systemTokens! - toolDefinitionsTokens! - conversationTokens!)
         : 0;
     const otherPct  = hasBreakdown ? Math.max(0, pct - knownPct) : 0;
 
-    const ariaLabel = `Context window: ${formatTokenCount(used)} / ${formatTokenCount(tokenLimit)} tokens (${pct.toFixed(1)}%)${autoCompact ? ` · ${autoCompact.label}` : ''}`;
+    const ariaLabel = `Context window: ${formatTokenCount(used)} / ${limit ? `${formatTokenCount(limit)} tokens (${pct.toFixed(1)}%)` : 'limit unknown'}${autoCompact ? ` · ${autoCompact.label}` : ''}`;
 
     const breakdownRows = hasBreakdown ? [
         { label: 'System prompt',    tokens: systemTokens!,          dotClass: 'bg-purple-500 dark:bg-purple-400' },
@@ -139,11 +139,11 @@ export function ContextWindowIndicator({
                         data-testid="context-window-bar"
                     />
                 )}
-                <ContextThresholdMarker autoCompact={autoCompact} testId="ctx-threshold-marker" />
+                <ContextThresholdMarker autoCompact={autoCompact} tokenLimit={limit} testId="ctx-threshold-marker" />
             </div>
 
             <span className="shrink-0 whitespace-nowrap tabular-nums" data-testid="context-window-label">
-                {formatTokenCount(used)}/{formatTokenCount(tokenLimit)}
+                {formatTokenCount(used)}/{limit ? formatTokenCount(limit) : '?'}
             </span>
             <ContextAutoCompactBadge autoCompact={autoCompact} testId="ctx-autocompact-badge" />
             </button>
@@ -151,14 +151,14 @@ export function ContextWindowIndicator({
             {/* Breakdown popover — hover previews, click/Enter pins; full breakdown when available, simple total otherwise */}
             {popover.open && (
                 <div
-                    className={cn(CONTEXT_POPOVER_CLASS, autoCompact && 'w-[300px] max-w-[calc(100vw-1rem)]')}
+                    className={cn(CONTEXT_POPOVER_CLASS, autoCompact && 'w-[260px] max-w-[calc(100vw-1rem)]')}
                     data-testid="ctx-breakdown-popover"
                     role={autoCompact ? 'dialog' : undefined}
                     aria-label={autoCompact ? 'Context usage' : undefined}
                     {...popover.popoverProps}
                 >
-                    <ContextUsageBreakdown used={used} limit={tokenLimit} pct={pct} rows={breakdownRows} />
-                    {autoCompact?.panel}
+                    <ContextUsageBreakdown used={used} limit={limit} pct={limit ? pct : undefined} rows={breakdownRows}
+                        compact={!!autoCompact} modelName={modelName} modelTestId="ctx-model-name">{autoCompact?.panel}</ContextUsageBreakdown>
                 </div>
             )}
         </div>

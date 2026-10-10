@@ -147,7 +147,7 @@ describe('toProcessSummary — field completeness for notifications', () => {
     });
 
     it('forwards Sentinel auto-compact state and omits it when unset', () => {
-        const autoCompact = { enabled: true, thresholdPercent: 85, taskId: 'auto-1' };
+        const autoCompact = { enabled: true, thresholdTokens: 700000, taskId: 'auto-1' };
         expect(toProcessSummary(makeAIProcess({ metadata: { type: 'chat', autoCompact } })).autoCompact).toEqual(autoCompact);
         expect('autoCompact' in toProcessSummary(makeAIProcess({ metadata: { type: 'chat' } }))).toBe(false);
     });

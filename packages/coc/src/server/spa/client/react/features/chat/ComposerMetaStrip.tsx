@@ -92,13 +92,14 @@ export function ComposerMetaStrip({
     const showProvider = activeProvider === 'codex' || activeProvider === 'claude';
     const providerLabel = activeProvider === 'claude' ? 'Claude' : 'Codex';
 
-    const ctxLimit = sessionTokenLimit ?? 0;
+    const ctxLimit = typeof sessionTokenLimit === 'number' && Number.isFinite(sessionTokenLimit) && sessionTokenLimit > 0 ? sessionTokenLimit : 0;
     const ctxUsed = sessionCurrentTokens ?? 0;
-    const showCtx = ctxLimit > 0;
-    const ctxPctRaw = showCtx ? (ctxUsed / ctxLimit) * 100 : 0;
+    const knownLimit = ctxLimit > 0;
+    const showCtx = knownLimit || !!autoCompact;
+    const ctxPctRaw = knownLimit ? (ctxUsed / ctxLimit) * 100 : 0;
     const ctxPct = Math.min(100, Math.max(0, ctxPctRaw));
     const ctxPctRounded = Math.round(ctxPct);
-    const fillWidth = showCtx ? Math.max(2, ctxPct) : 0;
+    const fillWidth = knownLimit ? Math.max(2, ctxPct) : 0;
     const ctxFillColor =
         ctxPct > 80 ? 'bg-[#f14c4c] dark:bg-[#f48771]' :
         ctxPct > 60 ? 'bg-[#e8912d] dark:bg-[#cca700]' :
@@ -107,9 +108,9 @@ export function ComposerMetaStrip({
         ctxPct > 80 ? 'text-[#f14c4c] dark:text-[#f48771]' :
         ctxPct > 60 ? 'text-[#e8912d] dark:text-[#cca700]' :
                       'text-[#16825d] dark:text-[#89d185]';
-    const ctxTitle = showCtx
+    const ctxTitle = knownLimit
         ? `Context window: ${formatTokenCount(ctxUsed)} / ${formatTokenCount(ctxLimit)} (${ctxPct.toFixed(1)}%)${sessionModel ? ` · ${sessionModel}` : ''}${autoCompact ? ` · ${autoCompact.label}` : ''}`
-        : 'Context window: not yet known';
+        : `Context window: limit unknown${autoCompact ? ` · ${autoCompact.label}` : ''}`;
 
     // Breakdown availability (when the active provider reports it)
     const hasBreakdown =
@@ -118,9 +119,9 @@ export function ComposerMetaStrip({
         sessionConversationTokens != null;
 
     // Segment widths as percentage of ctxLimit (only computed when breakdown present)
-    const sysPct   = hasBreakdown && showCtx ? Math.min(100, (sessionSystemTokens!       / ctxLimit) * 100) : 0;
-    const toolPct  = hasBreakdown && showCtx ? Math.min(100, (sessionToolTokens!         / ctxLimit) * 100) : 0;
-    const convPct  = hasBreakdown && showCtx ? Math.min(100, (sessionConversationTokens! / ctxLimit) * 100) : 0;
+    const sysPct   = hasBreakdown && knownLimit ? Math.min(100, (sessionSystemTokens!       / ctxLimit) * 100) : 0;
+    const toolPct  = hasBreakdown && knownLimit ? Math.min(100, (sessionToolTokens!         / ctxLimit) * 100) : 0;
+    const convPct  = hasBreakdown && knownLimit ? Math.min(100, (sessionConversationTokens! / ctxLimit) * 100) : 0;
     const knownPct = sysPct + toolPct + convPct;
     const otherTokens = hasBreakdown
         ? Math.max(0, ctxUsed - sessionSystemTokens! - sessionToolTokens! - sessionConversationTokens!)
@@ -241,13 +242,13 @@ export function ComposerMetaStrip({
                                 style={{ width: `${fillWidth}%` }}
                             />
                         )}
-                        <ContextThresholdMarker autoCompact={autoCompact} testId="composer-ctx-threshold-marker" />
+                        <ContextThresholdMarker autoCompact={autoCompact} tokenLimit={ctxLimit} testId="composer-ctx-threshold-marker" />
                     </span>
                     <span
                         data-testid="composer-ctx-pct"
                         className={cn('font-mono text-[10.5px] tabular-nums min-w-[28px] text-right', ctxTextColor)}
                     >
-                        {ctxPctRounded}%
+                        {knownLimit ? `${ctxPctRounded}%` : '?'}
                     </span>
 
                     <ContextAutoCompactBadge autoCompact={autoCompact} testId="composer-ctx-autocompact-badge" />
@@ -256,15 +257,14 @@ export function ComposerMetaStrip({
                     {/* Breakdown popover — hover previews, click/Enter pins; full breakdown when available, simple total otherwise */}
                     {ctxPopover.open && (
                         <div
-                            className={cn(CONTEXT_POPOVER_CLASS, autoCompact && 'w-[300px] max-w-[calc(100vw-1rem)]')}
+                            className={cn(CONTEXT_POPOVER_CLASS, autoCompact && 'w-[260px] max-w-[calc(100vw-1rem)]')}
                             data-testid="composer-ctx-breakdown-popover"
                             role={autoCompact ? 'dialog' : undefined}
                             aria-label={autoCompact ? 'Context usage' : undefined}
                             {...ctxPopover.popoverProps}
                         >
-                            <ContextUsageBreakdown used={ctxUsed} limit={ctxLimit} pct={ctxPct} rows={breakdownRows}
-                                modelName={sessionModel} modelTestId="composer-ctx-model-name" />
-                            {autoCompact?.panel}
+                            <ContextUsageBreakdown used={ctxUsed} limit={ctxLimit || undefined} pct={knownLimit ? ctxPct : undefined} rows={breakdownRows}
+                                compact={!!autoCompact} modelName={sessionModel} modelTestId="composer-ctx-model-name">{autoCompact?.panel}</ContextUsageBreakdown>
                         </div>
                     )}
                 </span>

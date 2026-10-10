@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CompactUnsupportedError, TaskQueueManager, type AIProcess, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CompactUnsupportedError, getLogger, TaskQueueManager, type AIProcess, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import { cancelQueuedCompaction, compactProcess } from '../../../src/server/processes/compact-process';
 import {
     autoCompactCancelledMetadata, maybeAutoCompactAfterResponse, parseAutoCompactSettings, readAutoCompact,
-    resumeAutoCompact, saveAutoCompactSettings,
+    resumeAutoCompact, saveAutoCompactSettings, settleAutoCompaction,
 } from '../../../src/server/processes/auto-compact';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -53,11 +53,12 @@ describe('Sentinel auto-compact lifecycle', () => {
             await opts.onResponseCompleted?.(proc.id);
             return { success: true, durationMs: 0 };
         });
+        afterEach(() => vi.restoreAllMocks());
     });
 
     const current = async () => (await store.getProcess(proc.id))!;
     const autoState = async () => readAutoCompact((await current()).metadata);
-    const enable = (thresholdPercent = 80) => saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: true, thresholdPercent });
+    const enable = (thresholdTokens = 800) => saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: true, thresholdTokens });
 
     async function run(task: QueuedTask) {
         queue.markStarted(task.id);
@@ -82,7 +83,7 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect(compactTasks()).toHaveLength(0);
         await enable();
         expect(compactTasks()).toHaveLength(0);
-        expect(await autoState()).toMatchObject({ enabled: true, thresholdPercent: 80, consecutiveFailures: 0 });
+        expect(await autoState()).toMatchObject({ enabled: true, thresholdTokens: 800, consecutiveFailures: 0 });
     });
 
     it('queues one background compaction after a response strictly exceeds the threshold, then succeeds', async () => {
@@ -105,19 +106,157 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).toEqual({ action: 'skipped', reason: 'already-evaluated' });
     });
 
-    it('skips non-Sentinel chats, unknown usage, and recomputes the percent when the limit changes', async () => {
+    it('skips non-Sentinel chats and unknown usage, independently of model limits', async () => {
         await enable();
-        await respond({ currentTokens: 900 });
-        await store.updateProcess(proc.id, { tokenLimit: undefined });
+        await respond({});
         expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).toEqual({ action: 'skipped', reason: 'unknown-usage' });
-        // Same usage on a smaller model limit crosses the threshold.
         await respond({ currentTokens: 700, tokenLimit: 2000 });
         expect(compactTasks()).toHaveLength(0);
         await respond({ currentTokens: 700, tokenLimit: 800 });
+        expect(compactTasks()).toHaveLength(0);
+        await respond({ currentTokens: 900, tokenLimit: undefined });
         expect(compactTasks()).toHaveLength(1);
 
         await store.updateProcess(proc.id, { metadata: { ...(await current()).metadata!, mode: 'ask' } });
         expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).toEqual({ action: 'skipped', reason: 'not-sentinel' });
+    });
+
+    it.each([undefined, 0, -1, NaN, Infinity, 100, 100000])('queues known usage with any model limit (%s)', async tokenLimit => {
+        await enable();
+        await respond({ currentTokens: 801, tokenLimit });
+        expect(compactTasks()).toHaveLength(1);
+        expect(compactSession).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, NaN, Infinity, -1])('does not compact unknown or invalid usage (%s)', async currentTokens => {
+        await enable();
+        await respond({ currentTokens, tokenLimit: LIMIT });
+        expect(compactTasks()).toHaveLength(0);
+        expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id))
+            .toEqual({ action: 'skipped', reason: 'unknown-usage' });
+    });
+
+    it('never checks an in-progress assistant response', async () => {
+        await enable();
+        await store.appendConversationTurn(proc.id, turnIndex => ({
+            role: 'assistant', content: 'partial', timestamp: new Date(), turnIndex, timeline: [], streaming: true,
+        }), { additionalUpdates: { currentTokens: 950, tokenLimit: LIMIT } });
+        expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id))
+            .toEqual({ action: 'skipped', reason: 'no-response' });
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect((await autoState())?.lastEvaluatedTurnIndex).toBeUndefined();
+    });
+
+    it.each([false, true])('fails closed for persisted percentage settings (enabled=%s) until explicit reconfiguration', async enabled => {
+        const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+        const unsupported = { enabled, thresholdPercent: 80, taskId: 'obsolete', consecutiveFailures: 2 };
+        await store.updateProcess(proc.id, { metadata: { ...(await current()).metadata!, autoCompact: unsupported } });
+        expect(await autoState()).toBeUndefined();
+        await respond();
+        expect(compactTasks()).toHaveLength(0);
+        expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id))
+            .toMatchObject({ action: 'failed', error: expect.stringContaining('Unsupported auto-compact settings') });
+        expect(warn).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('Unsupported auto-compact settings'));
+        await expect(resumeAutoCompact(store as any, proc.id, 'ws-a'))
+            .rejects.toMatchObject({ statusCode: 409, code: 'AUTO_COMPACT_UNSUPPORTED_STATE' });
+        expect((await current()).metadata?.autoCompact).toEqual(unsupported);
+        expect(await autoState()).toBeUndefined();
+
+        await saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: false, thresholdTokens: 800 });
+        expect(await autoState()).toEqual({ enabled: false, thresholdTokens: 800, consecutiveFailures: 0, updatedAt: expect.any(String) });
+        expect(compactTasks()).toHaveLength(0);
+        await respond();
+        expect(compactTasks()).toHaveLength(0);
+        await enable();
+        expect(compactTasks()).toHaveLength(0);
+        await respond();
+        expect(compactTasks()).toHaveLength(1);
+    });
+
+    it.each([0, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])('fails closed for invalid persisted token threshold (%s)', async thresholdTokens => {
+        await store.updateProcess(proc.id, { metadata: { ...(await current()).metadata!, autoCompact: { enabled: true, thresholdTokens } } });
+        await respond();
+        expect(await autoState()).toBeUndefined();
+        expect(compactTasks()).toHaveLength(0);
+    });
+
+    it('surfaces a failed response-claim write without admitting compaction', async () => {
+        await enable();
+        await respond({ currentTokens: 700 });
+        await store.updateProcess(proc.id, { currentTokens: 900 });
+        vi.mocked(store.updateProcess).mockRejectedValueOnce(new Error('claim write failed'));
+        await expect(maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).rejects.toThrow('claim write failed');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect((await autoState())?.lastEvaluatedTurnIndex).toBeUndefined();
+    });
+
+    it.each([false, true])('preserves admission error and surfaces settlement persistence failure (%s)', async settlementFails => {
+        await enable();
+        await respond({ currentTokens: 700 });
+        await store.updateProcess(proc.id, { currentTokens: 900 });
+        bridge.enqueue.mockRejectedValueOnce(new Error('admission rejected'));
+        const originalUpdate = vi.mocked(store.updateProcess).getMockImplementation()!;
+        vi.mocked(store.updateProcess).mockImplementation(async (id, updates) => {
+            if (settlementFails && (updates.metadata?.autoCompact as any)?.lastResult) throw new Error('settlement write failed');
+            return originalUpdate(id, updates);
+        });
+        const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+        const result = await maybeAutoCompactAfterResponse(store as any, bridge, proc.id);
+        expect(result).toEqual({ action: 'failed', error: 'admission rejected',
+            ...(settlementFails ? { settlementError: 'settlement write failed' } : {}) });
+        if (settlementFails) {
+            expect(warn).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('settlement write failed; original compaction error: admission rejected'));
+            expect((await autoState())?.lastResult).toBeUndefined();
+        } else {
+            expect(await autoState()).toMatchObject({ consecutiveFailures: 1, lastResult: { outcome: 'failed', error: 'admission rejected' } });
+        }
+        expect(compactTasks()).toHaveLength(0);
+        expect(compactSession).not.toHaveBeenCalled();
+    });
+
+    it('does not publish settings or resume when persistence fails', async () => {
+        vi.mocked(store.updateProcess).mockRejectedValueOnce(new Error('settings write failed'));
+        await expect(enable()).rejects.toThrow('settings write failed');
+        expect(await autoState()).toBeUndefined();
+        await enable();
+        await store.updateProcess(proc.id, { metadata: { ...(await current()).metadata!,
+            autoCompact: { ...(await autoState())!, consecutiveFailures: 2, paused: { reason: 'failures', at: '' } },
+        } });
+        vi.mocked(store.updateProcess).mockRejectedValueOnce(new Error('resume write failed'));
+        await expect(resumeAutoCompact(store as any, proc.id, 'ws-a')).rejects.toThrow('resume write failed');
+        expect(await autoState()).toMatchObject({ consecutiveFailures: 2, paused: { reason: 'failures' } });
+        expect(compactTasks()).toHaveLength(0);
+    });
+
+    it.each([799, 800, 801])('settles absolute usage independently of unknown or changed model limits (%s)', async currentTokens => {
+        await enable();
+        await respond({ currentTokens: 900 });
+        const task = queuedCompact()!;
+        await store.updateProcess(proc.id, { currentTokens, tokenLimit: undefined,
+            metadata: { ...(await current()).metadata!, compaction: { ...(await current()).metadata!.compaction!, state: 'completed' } },
+        });
+        const state = await settleAutoCompaction(store as any, proc.id, task.id, {});
+        expect(state?.lastResult?.outcome).toBe(currentTokens > 800 ? 'insufficient' : 'succeeded');
+    });
+
+    it('propagates a settlement write failure without publishing a successful outcome', async () => {
+        await enable();
+        await respond();
+        const task = queuedCompact()!;
+        await store.updateProcess(proc.id, { currentTokens: 300,
+            metadata: { ...(await current()).metadata!, compaction: { ...(await current()).metadata!.compaction!, state: 'completed' } },
+        });
+        vi.mocked(store.updateProcess).mockRejectedValueOnce(new Error('outcome write failed'));
+        await expect(settleAutoCompaction(store as any, proc.id, task.id, {})).rejects.toThrow('outcome write failed');
+        expect(await autoState()).toMatchObject({ taskId: task.id, consecutiveFailures: 0 });
+        expect((await autoState())?.lastResult).toBeUndefined();
+    });
+
+    it('rejects unsupported direct settings writes without persisting or compacting', async () => {
+        await expect(saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: true, thresholdPercent: 80 } as any))
+            .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_AUTO_COMPACT_SETTINGS' });
+        expect(await autoState()).toBeUndefined();
+        expect(compactTasks()).toHaveLength(0);
     });
 
     it('admits at most one attempt per response across concurrent checks', async () => {
@@ -182,7 +321,7 @@ describe('Sentinel auto-compact lifecycle', () => {
         await respond({ currentTokens: 900, tokenLimit: LIMIT });
         await run(queuedCompact()!);
         expect(await autoState()).toMatchObject({ paused: { reason: 'unsupported' }, lastResult: { outcome: 'unsupported' } });
-        await saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: true, thresholdPercent: 85 });
+        await saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: true, thresholdTokens: 850 });
         expect((await autoState())?.paused).toBeUndefined();
     });
 
@@ -197,7 +336,7 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect(state?.consecutiveFailures).toBe(0);
         expect(state?.taskId).not.toBe(task.id);
         expect(queuedCompact()).toBeDefined();
-        expect(autoCompactCancelledMetadata({ type: 'chat', autoCompact: { enabled: true, thresholdPercent: 80, taskId: 'x' } }, 'x').autoCompact)
+        expect(autoCompactCancelledMetadata({ type: 'chat', autoCompact: { enabled: true, thresholdTokens: 800, taskId: 'x' } }, 'x').autoCompact)
             .toMatchObject({ lastResult: { outcome: 'cancelled' } });
     });
 
@@ -215,11 +354,16 @@ describe('Sentinel auto-compact lifecycle', () => {
     });
 
     it('validates settings', () => {
-        expect(parseAutoCompactSettings({ enabled: true, thresholdPercent: 80 })).toEqual({ enabled: true, thresholdPercent: 80 });
-        for (const thresholdPercent of [45, 100, 82, 80.5, '80']) {
-            expect(typeof parseAutoCompactSettings({ enabled: true, thresholdPercent })).toBe('string');
+        for (const thresholdTokens of [1, 700000, Number.MAX_SAFE_INTEGER]) {
+            expect(parseAutoCompactSettings({ enabled: true, thresholdTokens })).toEqual({ enabled: true, thresholdTokens });
+        }
+        for (const thresholdTokens of [0, -1, 80.5, '80', NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, undefined, null]) {
+            expect(typeof parseAutoCompactSettings({ enabled: true, thresholdTokens })).toBe('string');
         }
         expect(typeof parseAutoCompactSettings({ thresholdPercent: 80 })).toBe('string');
+        expect(typeof parseAutoCompactSettings({ enabled: true, thresholdPercent: 80 })).toBe('string');
+        expect(typeof parseAutoCompactSettings({ enabled: true, thresholdPercent: 80, thresholdTokens: 700000 })).toBe('string');
+        for (const body of [null, [], 'bad', false]) expect(typeof parseAutoCompactSettings(body)).toBe('string');
     });
 });
 
@@ -235,7 +379,7 @@ describe('auto-compact queued cancellation through the workspace router', () => 
                 conversationTurns: [{ role: 'assistant', content: 'r', timestamp: new Date(), turnIndex: 0, timeline: [] }],
                 metadata: { type: 'chat', workspaceId: 'ws-a', mode: 'sentinel' } });
             router.registerRepoId('ws-a', process.cwd());
-            await saveAutoCompactSettings(store as any, 'queue_s', 'ws-a', { enabled: true, thresholdPercent: 80 });
+            await saveAutoCompactSettings(store as any, 'queue_s', 'ws-a', { enabled: true, thresholdTokens: 800 });
             const result = await maybeAutoCompactAfterResponse(store as any, router, 'queue_s');
             expect(result.action).toBe('queued');
             const taskId = (result as { taskId: string }).taskId;

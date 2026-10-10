@@ -418,11 +418,8 @@ export interface CompactResult {
   summaryContent?: string;
 }
 
-/** Sentinel auto-compact threshold bounds, in percent of the model context limit. */
-export const AUTO_COMPACT_THRESHOLD_MIN = 50;
-export const AUTO_COMPACT_THRESHOLD_MAX = 95;
-export const AUTO_COMPACT_THRESHOLD_STEP = 5;
-export const AUTO_COMPACT_THRESHOLD_DEFAULT = 80;
+/** Default absolute context-token threshold; auto-compact is off until explicitly enabled. */
+export const AUTO_COMPACT_THRESHOLD_DEFAULT = 700000;
 /** Consecutive failed or insufficient automatic compactions before auto-compact pauses. */
 export const AUTO_COMPACT_MAX_CONSECUTIVE_FAILURES = 2;
 
@@ -436,8 +433,8 @@ export type AutoCompactOutcome = 'succeeded' | 'insufficient' | 'failed' | 'unsu
  */
 export interface ProcessAutoCompactState {
   enabled: boolean;
-  /** Compact once total context usage strictly exceeds this percent of the limit. */
-  thresholdPercent: number;
+  /** Compact once total context usage strictly exceeds this positive safe-integer token count. */
+  thresholdTokens: number;
   updatedAt?: string;
   /** Latest assistant turn already evaluated; one automatic attempt per response. */
   lastEvaluatedTurnIndex?: number;
@@ -460,7 +457,7 @@ export interface ProcessAutoCompactState {
 /** Body of `PUT /processes/:id/auto-compact`. */
 export interface AutoCompactSettingsRequest {
   enabled: boolean;
-  thresholdPercent: number;
+  thresholdTokens: number;
 }
 
 /** Response from the auto-compact settings and resume endpoints. */

@@ -19,8 +19,8 @@ export type ContextAutoCompactStatus = 'off' | 'enabled' | 'queued' | 'running' 
 
 export interface ContextAutoCompact {
     status: ContextAutoCompactStatus;
-    /** Saved threshold percent; drawn as a marker on the bar when status is not `off`. */
-    thresholdPercent: number;
+    /** Absolute saved token threshold, independent of the model's context limit. */
+    thresholdTokens: number;
     /** Short status phrase appended to the gauge's accessible label. */
     label: string;
     /** The popover section (Sentinel chats only). */
@@ -97,23 +97,27 @@ export interface ContextBreakdownRow {
     dotClass: string;
 }
 
-export function ContextUsageBreakdown({ used, limit, pct, rows, modelName, modelTestId }: {
+export function ContextUsageBreakdown({ used, limit, pct, rows, modelName, modelTestId, children, compact = false }: {
     used: number;
-    limit: number;
-    pct: number;
+    limit: number | undefined;
+    pct: number | undefined;
     rows: ContextBreakdownRow[];
     modelName?: string;
     modelTestId?: string;
+    children?: React.ReactNode;
+    compact?: boolean;
 }) {
     const hasBreakdown = rows.length > 0;
+    const categoryPadding = compact ? 'pr-0' : 'pr-3';
+    const tokenPadding = compact ? 'pr-1' : 'pr-2';
     return (
         <>
             <table className="w-full border-collapse">
                 {hasBreakdown && (
                     <thead>
                         <tr className="text-[#848484] dark:text-[#999999]">
-                            <th className="text-left font-medium pb-1.5 pr-3">Category</th>
-                            <th className="text-right font-medium pb-1.5 pr-2">Tokens</th>
+                            <th className={cn('text-left font-medium pb-1.5', categoryPadding)}>Category</th>
+                            <th className={cn('text-right font-medium pb-1.5', tokenPadding)}>Tokens</th>
                             <th className="text-right font-medium pb-1.5">% of limit</th>
                         </tr>
                     </thead>
@@ -122,17 +126,17 @@ export function ContextUsageBreakdown({ used, limit, pct, rows, modelName, model
                     <tbody>
                         {rows.map(row => (
                             <tr key={row.label}>
-                                <td className="py-0.5 pr-3">
+                                <td className={cn('py-0.5', categoryPadding)}>
                                     <div className="flex items-center gap-1.5">
                                         <span className={cn('inline-block w-2 h-2 rounded-sm flex-shrink-0', row.dotClass)} />
                                         <span className="text-[#1e1e1e] dark:text-[#cccccc]">{row.label}</span>
                                     </div>
                                 </td>
-                                <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] py-0.5 pr-2">
+                                <td className={cn('text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] py-0.5', tokenPadding)}>
                                     {formatTokenCount(row.tokens)}
                                 </td>
                                 <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] py-0.5">
-                                    {((row.tokens / limit) * 100).toFixed(1)}%
+                                    {limit ? `${((row.tokens / limit) * 100).toFixed(1)}%` : '—'}
                                 </td>
                             </tr>
                         ))}
@@ -141,15 +145,16 @@ export function ContextUsageBreakdown({ used, limit, pct, rows, modelName, model
                 <tfoot>
                     <tr className={cn('font-medium', hasBreakdown && 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]')}>
                         <td className="pt-1.5 text-[#1e1e1e] dark:text-[#cccccc]">Total</td>
-                        <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] pt-1.5 pr-2">
-                            {formatTokenCount(used)}&nbsp;/&nbsp;{formatTokenCount(limit)}
+                        <td className={cn('text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] pt-1.5', tokenPadding)}>
+                            {formatTokenCount(used)}&nbsp;/&nbsp;{limit ? formatTokenCount(limit) : 'unknown'}
                         </td>
                         <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] pt-1.5">
-                            {pct.toFixed(1)}%
+                            {pct !== undefined ? `${pct.toFixed(1)}%` : '—'}
                         </td>
                     </tr>
                 </tfoot>
             </table>
+            {children}
             {modelName && (
                 <div className="mt-1.5 pt-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[#848484] dark:text-[#999999] truncate" data-testid={modelTestId}>
                     {modelName}
@@ -160,14 +165,14 @@ export function ContextUsageBreakdown({ used, limit, pct, rows, modelName, model
 }
 
 /** Threshold tick drawn over a gauge bar. */
-export function ContextThresholdMarker({ autoCompact, testId }: { autoCompact?: ContextAutoCompact; testId: string }) {
-    if (!autoCompact || autoCompact.status === 'off') return null;
+export function ContextThresholdMarker({ autoCompact, tokenLimit, testId }: { autoCompact?: ContextAutoCompact; tokenLimit?: number; testId: string }) {
+    if (!autoCompact || autoCompact.status === 'off' || !tokenLimit || !Number.isFinite(tokenLimit) || autoCompact.thresholdTokens >= tokenLimit) return null;
     return (
         <span
             aria-hidden="true"
             data-testid={testId}
             className="absolute inset-y-0 w-px bg-[#1e1e1e] dark:bg-[#ffffff] opacity-70"
-            style={{ left: `${autoCompact.thresholdPercent}%` }}
+            style={{ left: `${autoCompact.thresholdTokens / tokenLimit * 100}%` }}
         />
     );
 }

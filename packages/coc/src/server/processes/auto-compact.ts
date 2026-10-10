@@ -14,11 +14,9 @@
  */
 
 import type { AIProcess, ConversationTurn, GenericProcessMetadata, ProcessStore } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import {
     AUTO_COMPACT_MAX_CONSECUTIVE_FAILURES,
-    AUTO_COMPACT_THRESHOLD_MAX,
-    AUTO_COMPACT_THRESHOLD_MIN,
-    AUTO_COMPACT_THRESHOLD_STEP,
     type AutoCompactOutcome,
     type AutoCompactSettingsRequest,
     type ProcessAutoCompactState,
@@ -26,6 +24,7 @@ import {
 import { normalizeChatMode } from '../tasks/task-types';
 import { compactProcess, type CompactionQueueBridge } from './compact-process';
 import { processOperationAdmission } from './process-operation-admission';
+import { APIError } from '../errors';
 
 export type AutoCompactSkipReason =
     | 'not-sentinel' | 'disabled' | 'paused' | 'no-response' | 'already-evaluated'
@@ -34,7 +33,9 @@ export type AutoCompactSkipReason =
 export type AutoCompactCheckResult =
     | { action: 'skipped'; reason: AutoCompactSkipReason }
     | { action: 'queued'; taskId?: string }
-    | { action: 'failed'; error: string };
+    | { action: 'failed'; error: string; settlementError?: string };
+
+const UNSUPPORTED_STATE_ERROR = 'Unsupported auto-compact settings. Explicitly configure enabled and thresholdTokens with PUT before resuming.';
 
 export function isSentinelProcess(proc: Pick<AIProcess, 'metadata'> | undefined): boolean {
     return normalizeChatMode(proc?.metadata?.mode) === 'sentinel';
@@ -42,28 +43,27 @@ export function isSentinelProcess(proc: Pick<AIProcess, 'metadata'> | undefined)
 
 export function readAutoCompact(metadata: GenericProcessMetadata | undefined): ProcessAutoCompactState | undefined {
     const value = metadata?.autoCompact as ProcessAutoCompactState | undefined;
-    return value && typeof value === 'object' && typeof value.enabled === 'boolean' ? value : undefined;
+    return value && typeof parseAutoCompactSettings(value) !== 'string' ? value : undefined;
 }
 
 /** Validates a settings body; returns an error message when invalid. */
 export function parseAutoCompactSettings(body: unknown): AutoCompactSettingsRequest | string {
     const value = body as Partial<AutoCompactSettingsRequest> | undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return 'auto-compact settings must be an object';
     if (typeof value?.enabled !== 'boolean') return 'enabled must be a boolean';
-    const pct = value.thresholdPercent;
-    if (typeof pct !== 'number' || !Number.isInteger(pct) || pct < AUTO_COMPACT_THRESHOLD_MIN
-        || pct > AUTO_COMPACT_THRESHOLD_MAX || pct % AUTO_COMPACT_THRESHOLD_STEP !== 0) {
-        return `thresholdPercent must be ${AUTO_COMPACT_THRESHOLD_MIN}–${AUTO_COMPACT_THRESHOLD_MAX} in steps of ${AUTO_COMPACT_THRESHOLD_STEP}`;
+    if ('thresholdPercent' in value) return 'thresholdPercent is unsupported; explicitly configure thresholdTokens';
+    const tokens = value.thresholdTokens;
+    if (typeof tokens !== 'number' || !Number.isSafeInteger(tokens) || tokens <= 0) {
+        return 'thresholdTokens must be a finite positive safe integer';
     }
-    return { enabled: value.enabled, thresholdPercent: pct };
+    return { enabled: value.enabled, thresholdTokens: tokens };
 }
 
-/** Total context usage as a percent of the limit, or `undefined` when either is unknown. */
-export function contextUsagePercent(proc: Pick<AIProcess, 'currentTokens' | 'tokenLimit'>): number | undefined {
+/** Total context-token usage, independent of the model's reported limit. */
+export function contextUsageTokens(proc: Pick<AIProcess, 'currentTokens'>): number | undefined {
     const used = proc.currentTokens;
-    const limit = proc.tokenLimit;
     if (typeof used !== 'number' || !Number.isFinite(used) || used < 0) return undefined;
-    if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) return undefined;
-    return (used / limit) * 100;
+    return used;
 }
 
 function latestResponseTurn(turns: ConversationTurn[] | undefined): ConversationTurn | undefined {
@@ -85,12 +85,14 @@ function withAutoCompact(metadata: GenericProcessMetadata | undefined, autoCompa
 export async function saveAutoCompactSettings(
     store: ProcessStore, processId: string, workspaceId: string | undefined, settings: AutoCompactSettingsRequest,
 ): Promise<ProcessAutoCompactState | undefined> {
+    const parsed = parseAutoCompactSettings(settings);
+    if (typeof parsed === 'string') throw new APIError(400, parsed, 'INVALID_AUTO_COMPACT_SETTINGS');
     return processOperationAdmission.runExclusive(processId, async () => {
         const proc = await store.getProcess(processId, workspaceId);
         if (!proc) return undefined;
         const prior = readAutoCompact(proc.metadata);
-        const changed = !prior || prior.enabled !== settings.enabled || prior.thresholdPercent !== settings.thresholdPercent;
-        const next: ProcessAutoCompactState = { ...prior, ...settings, updatedAt: new Date().toISOString() };
+        const changed = !prior || prior.enabled !== parsed.enabled || prior.thresholdTokens !== parsed.thresholdTokens;
+        const next: ProcessAutoCompactState = { ...prior, ...parsed, updatedAt: new Date().toISOString() };
         if (changed) {
             next.consecutiveFailures = 0;
             delete next.paused;
@@ -107,6 +109,9 @@ export async function resumeAutoCompact(
     return processOperationAdmission.runExclusive(processId, async () => {
         const proc = await store.getProcess(processId, workspaceId);
         const prior = readAutoCompact(proc?.metadata);
+        if (proc?.metadata?.autoCompact !== undefined && !prior) {
+            throw new APIError(409, UNSUPPORTED_STATE_ERROR, 'AUTO_COMPACT_UNSUPPORTED_STATE');
+        }
         if (!proc || !prior) return prior;
         const next: ProcessAutoCompactState = { ...prior, consecutiveFailures: 0 };
         delete next.paused;
@@ -177,6 +182,10 @@ export async function maybeAutoCompactAfterResponse(
         const proc = await store.getProcess(processId, workspaceId);
         if (!proc || !isSentinelProcess(proc)) return { action: 'skipped', reason: 'not-sentinel' };
         const stored = readAutoCompact(proc.metadata);
+        if (proc.metadata?.autoCompact !== undefined && !stored) {
+            getLogger().warn(LogCategory.AI, `[AutoCompact] Check failed for ${proc.id}: ${UNSUPPORTED_STATE_ERROR}`);
+            return { action: 'failed', error: UNSUPPORTED_STATE_ERROR };
+        }
         if (!stored?.enabled) return { action: 'skipped', reason: 'disabled' };
         const state = reconcileStaleAttempt(proc, stored, bridge);
         const persist = (next: ProcessAutoCompactState) => store.updateProcess(proc.id, { metadata: withAutoCompact(proc.metadata, next) });
@@ -185,9 +194,9 @@ export async function maybeAutoCompactAfterResponse(
         const response = latestResponseTurn(proc.conversationTurns);
         if (!response) return { action: 'skipped', reason: 'no-response' };
         if ((state.lastEvaluatedTurnIndex ?? -1) >= response.turnIndex) return { action: 'skipped', reason: 'already-evaluated' };
-        const pct = contextUsagePercent(proc);
-        if (pct === undefined) return { action: 'skipped', reason: 'unknown-usage' };
-        if (pct <= state.thresholdPercent) return { action: 'skipped', reason: 'below-threshold' };
+        const tokens = contextUsageTokens(proc);
+        if (tokens === undefined) return { action: 'skipped', reason: 'unknown-usage' };
+        if (tokens <= state.thresholdTokens) return { action: 'skipped', reason: 'below-threshold' };
         const compaction = proc.metadata?.compaction;
         if (state.taskId || compaction?.state === 'queued' || compaction?.state === 'running' || bridge.findCompactionTask?.(proc.id)) {
             await persist({ ...state, lastEvaluatedTurnIndex: response.turnIndex });
@@ -203,7 +212,13 @@ export async function maybeAutoCompactAfterResponse(
         return { action: 'queued', taskId: outcome.taskId };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await settleAutoCompaction(store, claim.id, undefined, { error: message }).catch(() => {});
+        try {
+            await settleAutoCompaction(store, claim.id, undefined, { error: message });
+        } catch (settleError) {
+            const settlementError = settleError instanceof Error ? settleError.message : String(settleError);
+            getLogger().warn(LogCategory.AI, `[AutoCompact] Failed to record admission outcome for ${claim.id}: ${settlementError}; original compaction error: ${message}`);
+            return { action: 'failed', error: message, settlementError };
+        }
         return { action: 'failed', error: message };
     }
 }
@@ -225,11 +240,11 @@ export async function settleAutoCompaction(
         const state = readAutoCompact(proc?.metadata);
         if (!proc || !state || (taskId !== undefined && state.taskId !== taskId)) return undefined;
         const compaction = proc.metadata?.compaction;
-        const pct = contextUsagePercent(proc);
+        const tokens = contextUsageTokens(proc);
         const succeeded = !result.unsupported && !result.error && compaction?.taskId === taskId && compaction?.state === 'completed';
         const outcome: AutoCompactOutcome = result.unsupported ? 'unsupported'
             : !succeeded ? 'failed'
-            : pct !== undefined && pct > state.thresholdPercent ? 'insufficient' : 'succeeded';
+            : tokens !== undefined && tokens > state.thresholdTokens ? 'insufficient' : 'succeeded';
         const error = result.error ?? (outcome === 'failed' ? compaction?.error : undefined);
         const next = settleAutoCompactState(state, outcome, {
             turnIndex: state.lastEvaluatedTurnIndex,

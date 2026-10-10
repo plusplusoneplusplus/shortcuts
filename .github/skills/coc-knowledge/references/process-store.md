@@ -320,19 +320,30 @@ provider cleanup settles, including cancellation and timeout. Compaction uses a 
 queue task with provider-owned timeout and queued-only cancellation. Queued compactions
 recover on restart; interrupted running compactions settle as failed without replay.
 
-Sentinel auto-compact (`processes/auto-compact.ts`, state at `metadata.autoCompact`, default
-off) runs from the lifecycle runner's `onResponseCompleted` hook after a completed,
-persisted response and pending-message drain. Under process admission it claims the
-latest non-display-only assistant turn (`lastEvaluatedTurnIndex`, one attempt per
-response) when usage strictly exceeds `thresholdPercent` of `tokenLimit`; unknown usage,
-pauses and pending manual or automatic compactions skip. It admits the ordinary durable
-compaction task with `payload.trigger: 'auto'`, always queued, so ordering, restart and
-queued-only cancellation match `/compact`; running compactions keep the provider's own
-lifecycle (Codex 120s timeout, no CoC deadline for Copilot/Claude). The compact executor
-settles the attempt: still above threshold → `insufficient`; failures and insufficient
-results pause after two in a row; `COMPACT_UNSUPPORTED` pauses at once; queued
-cancellation is recorded without counting. A stale recorded task (for example, interrupted
-by restart) settles from its compaction record on the next check.
+### Sentinel auto-compact
+
+`processes/auto-compact.ts` owns `metadata.autoCompact`, default off per conversation.
+The default `thresholdTokens` is 700000, a finite positive safe integer. The lifecycle
+runner's `onResponseCompleted` hook checks after a completed, persisted response and
+pending-message drain. Under process admission it claims the latest non-display-only
+assistant turn (`lastEvaluatedTurnIndex`, one attempt per response) only when
+`currentTokens > thresholdTokens`, independently of `tokenLimit`. Unknown usage, pauses
+and pending manual or automatic compactions skip; settings saves and resume never trigger.
+
+Automatic attempts admit ordinary durable compaction tasks with `payload.trigger: 'auto'`,
+always queued. Ordering, restart recovery and queued-only cancellation match `/compact`;
+running compactions keep provider-owned lifecycle (Codex 120s timeout, no CoC deadline for
+Copilot/Claude). Usage still above the absolute threshold settles as `insufficient`;
+failed/insufficient attempts pause after two consecutively, unsupported providers pause
+immediately, cancellation does not count. Stale tasks reconcile from their compaction
+records on the next check.
+
+Unsupported persisted settings, including `thresholdPercent`, fail closed without
+migration, enabling or mutation. Checks return explicit failure diagnostics and log
+warnings; resume returns `409 AUTO_COMPACT_UNSUPPORTED_STATE`. An explicit valid PUT
+replaces unsupported state, including an OFF configuration. Admission errors retain
+their original compaction error; settlement persistence failures also return
+`settlementError` and log both errors.
 
 ## Process Lifecycle
 

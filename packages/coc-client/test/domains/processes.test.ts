@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CocClient, ProcessesClient } from '../../src';
+import { AUTO_COMPACT_THRESHOLD_DEFAULT, CocClient, ProcessesClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
@@ -14,16 +14,41 @@ describe('ProcessesClient', () => {
   });
 
   it('scopes auto-compact settings and resume to the owning workspace', async () => {
-    const autoCompact = { enabled: true, thresholdPercent: 85 };
+    const autoCompact = { enabled: true, thresholdTokens: 700000 };
     const adapter = createMockAdapter({ autoCompact });
     const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
-    await expect(client.updateAutoCompact('proc/1', { enabled: true, thresholdPercent: 85 }, { workspace: 'remote/ws' }))
+    await expect(client.updateAutoCompact('proc/1', { enabled: true, thresholdTokens: 700000 }, { workspace: 'remote/ws' }))
       .resolves.toEqual({ autoCompact });
     await client.resumeAutoCompact('proc/1', { workspace: 'remote/ws' });
     expect(adapter.calls[0]).toMatchObject({ path: '/processes/proc%2F1/auto-compact',
-      options: { method: 'PUT', query: { workspace: 'remote/ws' }, body: { enabled: true, thresholdPercent: 85 } } });
+      options: { method: 'PUT', query: { workspace: 'remote/ws' }, body: { enabled: true, thresholdTokens: 700000 } } });
     expect(adapter.calls[1]).toMatchObject({ path: '/processes/proc%2F1/auto-compact/resume',
       options: { method: 'POST', query: { workspace: 'remote/ws' } } });
+  });
+
+  it('uses a 700000-token default without enabling auto-compact', async () => {
+    expect(AUTO_COMPACT_THRESHOLD_DEFAULT).toBe(700000);
+    const adapter = createMockAdapter({ autoCompact: { enabled: false, thresholdTokens: AUTO_COMPACT_THRESHOLD_DEFAULT } });
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    await client.updateAutoCompact('s', { enabled: false, thresholdTokens: AUTO_COMPACT_THRESHOLD_DEFAULT });
+    expect(adapter.calls[0].options?.body).toEqual({ enabled: false, thresholdTokens: 700000 });
+  });
+
+  it('surfaces unsupported-state and persistence errors without fallback requests', async () => {
+    const calls: string[] = [];
+    const client = new CocClient({ fetch: (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      const resume = url.endsWith('/resume');
+      return new Response(JSON.stringify({
+        error: resume ? 'Explicitly configure thresholdTokens with PUT' : 'Internal server error',
+        code: resume ? 'AUTO_COMPACT_UNSUPPORTED_STATE' : 'INTERNAL_ERROR',
+      }), { status: resume ? 409 : 500, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch });
+    await expect(client.processes.resumeAutoCompact('s')).rejects.toMatchObject({ code: 'AUTO_COMPACT_UNSUPPORTED_STATE' });
+    await expect(client.processes.updateAutoCompact('s', { enabled: false, thresholdTokens: 700000 }))
+      .rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(calls).toHaveLength(2);
   });
 
   it('serializes list filters and gets process details', async () => {

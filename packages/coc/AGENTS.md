@@ -78,8 +78,12 @@ references before editing. Paths are package-relative.
   Cancel removes queued compaction only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
   Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
-  checked after a persisted response, one attempt per response, always queued; it adds no
-  deadline or abort to running compactions. Only its own endpoints write `metadata.autoCompact`.
+  checks `currentTokens > thresholdTokens` after a persisted response, one attempt per
+  response, always queued; model limits never rescale the absolute threshold. The default
+  is OFF with a 700k input matching the mock design. Both context popovers use one switch/k
+  input row, Enter/blur auto-save and one status line; owner-bound drafts survive failures.
+  Unknown or at/above-limit thresholds warn without capping. It adds no deadline or abort
+  to running compactions. Only its own endpoints write `metadata.autoCompact`.
 
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.

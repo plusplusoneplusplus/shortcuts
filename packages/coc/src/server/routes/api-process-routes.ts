@@ -696,7 +696,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     }));
 
     // PUT /api/processes/:id/auto-compact — Save a Sentinel chat's auto-compact
-    // setting ({ enabled, thresholdPercent }). Sentinel conversations only; the
+    // setting ({ enabled, thresholdTokens }). Sentinel conversations only; the
     // workspace query scopes the write to the owning workspace. Saving never
     // compacts — the server checks usage after each persisted response.
     routes.push(createRoute({

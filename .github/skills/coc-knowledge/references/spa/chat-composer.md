@@ -174,13 +174,18 @@ breakdown table + model footer, and `useContextUsagePopover` (hover previews, cl
 pins, focus inside keeps it open, Escape closes and refocuses the trigger button, outside
 press unpins). Sentinel chats pass `autoCompact` from `useSentinelAutoCompact`
 (`features/chat/AutoCompactPanel.tsx`, owned by `ChatDetail` so drafts survive closing
-the popover): a threshold marker, a status badge (`enabled | queued | running | paused`),
-and an "Auto-compact · this Sentinel chat" section (switch, 50–95% slider + number input
-with the token equivalent, Save/Discard for a dirty draft, separate `role="status"` lines
-for settings saves and runtime outcomes, Cancel while the automatic task is queued,
-Resume when paused). Saves go through the clone-routed `processes.updateAutoCompact`
-with the owning workspace; live state arrives as `autoCompact` on `process-updated`
-summaries via `useBotControlUpdates`.
+the popover). Its single row contains a switch and numeric k-token input; the switch
+saves immediately and the input commits on Enter/blur. One status line includes queued
+Cancel or paused Resume. The per-chat default is OFF, with 700k matching the mock design.
+The absolute `thresholdTokens` survives model changes; unknown limits and thresholds
+at/above the context limit show warnings without capping or disabling the setting.
+
+Saves serialize through clone-routed `processes.updateAutoCompact`; drafts, in-flight
+results and actions belong to the exact client/workspace/process owner. Enter plus
+blur deduplicates, newer drafts survive earlier saves, and failed saves retain edits.
+Live state arrives through `useBotControlUpdates`. Both popovers preserve the usage
+breakdown and model footer and expose Sentinel settings when the context limit is
+unknown; gauge ticks derive from absolute tokens only when below a known limit.
 
 `WarmIndicatorDot` reflects this conversation process's backend warm-client state, with
 display and side effect split (`features/chat/hooks/`):

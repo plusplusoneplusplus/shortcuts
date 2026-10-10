@@ -27,7 +27,7 @@ describe('owning-server bot control updates', () => {
     it('forwards Sentinel auto-compact state from the owning remote server only', () => {
         const update = vi.fn();
         renderHook(() => useBotControlUpdates(remote, 'ws-example', update));
-        const autoCompact = { enabled: true, thresholdPercent: 85, taskId: 'auto' };
+        const autoCompact = { enabled: true, thresholdTokens: 850_000, taskId: 'auto' };
         const autoMessage = { ...message, process: { ...process, autoCompact } };
         emit('coc-remote-ws-message', { baseUrl: 'https://other.example.test', message: autoMessage });
         expect(update).not.toHaveBeenCalled();

@@ -355,7 +355,9 @@ export class ProcessesClient {
 
   /**
    * Save a Sentinel conversation's auto-compact setting. Saving never compacts
-   * immediately; the owning server checks usage after each persisted response.
+   * immediately; the owning server checks absolute token usage after each
+   * persisted response, independently of the model context limit. An explicit
+   * PUT replaces unsupported persisted settings without migrating them.
    */
   updateAutoCompact(
     processId: string,
@@ -369,7 +371,7 @@ export class ProcessesClient {
     });
   }
 
-  /** Clear a paused auto-compact state. Does not compact immediately. */
+  /** Clear a paused auto-compact state. Unsupported settings reject with 409; does not compact immediately. */
   resumeAutoCompact(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<AutoCompactSettingsResponse> {
     return this.transport.request<AutoCompactSettingsResponse>(`/processes/${encodePathSegment(processId)}/auto-compact/resume`, {
       method: 'POST',
