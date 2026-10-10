@@ -70,6 +70,12 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- Admitted chat image files stay at their existing per-turn paths after success,
+  error or cancellation so local delegated children can read them. This temporary
+  policy preserves rejected/unadmitted and non-image cleanup, including mixed uploads.
+  OS temp cleanup is environment-dependent, not guaranteed under disk pressure;
+  remote paths and native delegated image forwarding remain unsupported.
+
 - Memory V2 tools `save_memory` and `recall_memory` default off in `LLM_TOOL_REGISTRY`.
   Honor explicit workspace `disabledLlmTools` lists; keep memory scope gates and prompt context independent.
 
@@ -471,7 +477,8 @@ references before editing. Paths are package-relative.
   after local workspace resolution. It reuses chat attachment processing, stores
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
   batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
-  Callers own temporary-directory cleanup until delivery transfers it to executors. Teams/WhatsApp
+  Callers own rejected/unadmitted temporary-directory cleanup; accepted turns follow
+  the chat image lifetime policy above. Teams/WhatsApp
   image preparation runs inside durable binding admission; queue payloads
   carry SDK attachments, image history and the temporary directory together. Teams prepares
   initial, active and pending follow-ups inside relay receipts, including admission-only

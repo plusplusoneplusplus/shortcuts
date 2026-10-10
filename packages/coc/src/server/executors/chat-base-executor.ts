@@ -46,7 +46,7 @@ import {
 import { advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatMode, ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatMode, normalizeChatModeOrDefault } from '../tasks/task-types';
-import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
+import { saveImagesToTempFiles, rehydrateImagesIfNeeded } from './image-store';
 import { BaseExecutor } from './base-executor';
 import {
     assertNoAskUserConflict,
@@ -69,7 +69,7 @@ import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
-import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, getChatImageAttachments } from './chat-image-policy';
+import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, cleanupChatAttachmentTempDir, getChatImageAttachments } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
@@ -660,6 +660,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             workspaceId?: string;
             /** Temp dir holding decoded image attachments, if this turn made one. */
             imageTempDir?: string;
+            attachments?: readonly Attachment[];
+            images?: readonly string[];
             /** Cleanup for a prompt rewritten to a paste file, if any. */
             pasteCleanup?: () => void;
             logLabel: string;
@@ -672,7 +674,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // Background tasks cannot outlive the turn; drop the replay snapshot
         // on every exit path, including a drain-cap abort that never settles.
         this.backgroundTasks.clear(processId);
-        if (opts.imageTempDir) { cleanupTempDir(opts.imageTempDir); }
+        cleanupChatAttachmentTempDir(opts.imageTempDir, opts.attachments, opts.images);
         if (opts.pasteCleanup) { opts.pasteCleanup(); }
         opts.dispose?.();
         // Cancel any pending ask-user questions before cleanup
@@ -1089,7 +1091,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * 7. Set up tool-call capture
      * 8. Send message via AI SDK with streaming callbacks
      * 9. Return { response, sessionId, toolCalls }
-     * 10. In finally: cleanup images, session, flush handler, persist output
+     * 10. In finally: retain images, cleanup other attachments/session, persist output
      */
     async execute(task: QueuedTask, prompt: string): Promise<ChatModeExecutionResult> {
         const processId = toQueueProcessId(task.id);
@@ -1442,6 +1444,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 dispose: modeDispose,
                 workspaceId: payload.workspaceId,
                 imageTempDir,
+                attachments,
+                images: payload.images,
                 pasteCleanup,
                 logLabel: CHAT_EXECUTOR_LOG_LABEL,
             });

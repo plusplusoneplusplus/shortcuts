@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { downloadInboundImage } from '@plusplusoneplusplus/coc-connector';
-import { MAX_IMAGE_BYTES, parseDataUrl } from '../core/image-utils';
+import { cleanupTempDir, MAX_IMAGE_BYTES, parseDataUrl } from '../core/image-utils';
 import { getRepoDataPath } from '../paths';
 import type { Attachment, ModelInfo } from '@plusplusoneplusplus/forge';
-import { isWithinDirectory, resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
+import { getLogger, isWithinDirectory, LogCategory, resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
 import type { ChatProvider } from '../tasks/task-types';
 
 /** Fixed messages safe to send through either messaging answer relay. */
@@ -19,6 +19,42 @@ export const CHAT_IMAGE_FAILURE_TEXT = {
 export function getChatImageAttachments(attachments: readonly Attachment[] | undefined): Attachment[] {
     return attachments?.filter(attachment => attachment.type === 'file'
         && /\.(?:png|jpe?g|gif|webp)$/i.test(attachment.path)) ?? [];
+}
+
+/** Keep admitted image paths readable by local children after their owning turn settles. */
+export function cleanupChatAttachmentTempDir(
+    tempDir: string | undefined,
+    attachments?: readonly Attachment[],
+    images?: readonly string[],
+): void {
+    if (!tempDir) return;
+    const imageExtensions = new Set(images?.flatMap(image => {
+        const parsed = parseDataUrl(image);
+        return parsed ? [`.${parsed.extension}`] : [];
+    }));
+    const imagePaths = new Set([
+        ...getChatImageAttachments(attachments),
+        ...(attachments?.filter(attachment => attachment.type === 'file'
+            && imageExtensions.has(path.extname(attachment.path).toLowerCase())) ?? []),
+    ].map(attachment => path.resolve(attachment.path))
+        .filter(filePath => path.dirname(filePath) === path.resolve(tempDir)));
+    if (!imagePaths.size) {
+        cleanupTempDir(tempDir);
+        return;
+    }
+    let names: string[];
+    try {
+        names = fs.readdirSync(tempDir);
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return;
+        getLogger().warn(LogCategory.AI, '[ChatImages] Could not list temporary attachments for non-image cleanup');
+        return;
+    }
+    // Upload directories can also contain text/binary attachments; keep their cleanup.
+    for (const name of names) {
+        const filePath = path.join(tempDir, name);
+        if (!imagePaths.has(path.resolve(filePath))) cleanupTempDir(filePath);
+    }
 }
 
 /** Copilot's catalog advertises vision; provider-default identity is unknown. */

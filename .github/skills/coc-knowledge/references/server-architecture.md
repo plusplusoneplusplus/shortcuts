@@ -121,6 +121,16 @@ Sentinel request, including existing/native-resumed, provider-switched and post-
 turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
 review recipients receive the same contract inline. Cancellation remains display-only.
 
+### Temporary chat image lifetime
+
+Admitted initial and follow-up turns retain image files at their existing managed
+per-turn paths on success, error and cancellation, including queued cancellation and
+direct follow-up delivery. `chat-image-policy.ts` preserves images while cleaning
+non-image uploads; rejected/unadmitted inputs still use immediate cleanup. This is a
+temporary local-delegation workaround, without a sweeper or durable attachment IDs.
+OS temp cleanup is environment-dependent and not guaranteed under disk pressure;
+remote paths and native delegated image forwarding remain unsolved.
+
 ### Runtime capability wiring
 
 `executors/executor-runtime-contracts.ts` is the single declaration home for
@@ -355,8 +365,8 @@ consumption and reject control commands. Normal managers enable image reception.
 instructions consume pending images in the same resolved context, with overflow preserving
 the retained batch. WhatsApp forwards a connection signal through route initialization;
 Teams pins per-arrival signals through serialized dispatch and receipt callbacks.
-Unsupported image transports fail before SDK execution; cancelled initial/follow-up
-tasks clean prepared directories.
+Unsupported image transports fail before SDK execution; admitted files follow the
+[temporary chat image lifetime](#temporary-chat-image-lifetime) policy.
 Captionless Teams roots seed an instruction thread without an AI task, retaining queued
 targets and linking grouped roots to the admitted chat. WhatsApp image/prompt references
 preserve captured routing and transfer `sourceMessageIds` into durable receipts;

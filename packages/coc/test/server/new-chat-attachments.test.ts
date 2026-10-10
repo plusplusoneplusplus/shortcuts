@@ -8,7 +8,7 @@
  *
  *   - payload.attachments is rewritten to SDK Attachment[] (file-path refs)
  *   - payload.images carries the data URLs (for the user-turn bubble)
- *   - payload.imageTempDir carries the temp dir (for executor cleanup)
+ *   - payload.imageTempDir carries the per-turn dir (images remain after admission)
  *   - payload.fileAttachmentMeta carries per-attachment display meta
  *   - text-file content is appended to payload.prompt
  *
@@ -71,7 +71,7 @@ describe('decodeChatPayloadAttachments', () => {
         // images preserved as data URLs (for initial-turn rendering)
         expect(payload.images).toEqual([TINY_PNG_DATA_URL]);
 
-        // imageTempDir set (so the executor's finally block cleans it)
+        // imageTempDir identifies the managed per-turn upload directory
         expect(typeof payload.imageTempDir).toBe('string');
         expect(fs.existsSync(payload.imageTempDir as string)).toBe(true);
         tempDirsToCleanup.push(payload.imageTempDir as string);
