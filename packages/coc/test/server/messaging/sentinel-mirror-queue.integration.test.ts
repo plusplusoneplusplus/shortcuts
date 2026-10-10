@@ -239,7 +239,9 @@ describe.each(['whatsapp', 'teams'] as const)('Sentinel mirror real queue integr
             teamsRelay?.dispose();
             whatsappRelay?.dispose();
             queue.dispose();
+            await mirror?.flush();
             vi.restoreAllMocks();
+            if (mirror) expect(() => mirror.outbox.list('workspace-a')).toThrow(/closed/i);
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });

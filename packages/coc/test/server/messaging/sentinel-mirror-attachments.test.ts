@@ -28,10 +28,13 @@ const upload = (name = 'notes.txt', mimeType = 'text/plain', bytes = Buffer.from
 });
 const header = (requestId: string, part: number, total: number, role = 'user') =>
     `CoC · Desktop ${role} · Request ${requestId} · Part ${part}/${total}`;
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-    for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-    vi.restoreAllMocks();
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+    try {
+        for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+    } finally {
+        vi.restoreAllMocks();
+    }
 });
 
 async function fixture() {
@@ -91,11 +94,17 @@ async function fixture() {
     adapter.destinations = owner => bound ? destinations(owner) : [];
     const availability = adapter.availability;
     adapter.availability = row => bound ? availability(row) : 'unbound';
-    const createMirror = () => new SentinelMirrorService({
-        dataDir: directory, store, queue, enabled: () => enabled, adapters: [adapter],
-    });
+    const createMirror = () => {
+        const instance = new SentinelMirrorService({
+            dataDir: directory, store, queue, enabled: () => enabled, adapters: [adapter],
+        });
+        cleanups.push(async () => {
+            instance.dispose();
+            await instance.flush();
+        });
+        return instance;
+    };
     let mirror = createMirror();
-    cleanups.push(() => mirror.dispose());
     const capture = (content = 'desktop text', uploads = [upload()], requestId = 'attachment-request') =>
         mirror.capture('workspace-a', processId, content, { attachments: uploads }, requestId);
     const admit = async (content = 'desktop text', uploads = [upload()], requestId = 'attachment-request') => {
@@ -139,11 +148,31 @@ async function fixture() {
         setAccount: (value: string) => { account = value; },
         restart: async () => {
             mirror.dispose();
+            await mirror.flush();
             mirror = createMirror();
             await mirror.flush();
         },
     };
 }
+
+describe('Sentinel attachment fixture cleanup', () => {
+    it.each([false, true])('closes owned databases before directory removal with restart (%s)', async restart => {
+        const f = await fixture();
+        const mirrors = [f.mirror];
+        await f.admit();
+        if (restart) {
+            await f.restart();
+            mirrors.push(f.mirror);
+        }
+        const remove = fs.rmSync;
+        vi.spyOn(fs, 'rmSync').mockImplementation((target, options) => {
+            if (String(target) === f.directory) {
+                for (const mirror of mirrors) expect(() => mirror.outbox.list('workspace-a')).toThrow(/closed/i);
+            }
+            return remove(target, options);
+        });
+    });
+});
 
 describe('Sentinel mirror upload authority and integrity', () => {
     it('captures actual raw bytes, names, MIME and digest without trusting a reported size', () => {
@@ -634,6 +663,7 @@ describe('Sentinel desktop WhatsApp attachment delivery', () => {
         outbox.prepare('workspace-a', row.eventId, [header(row.requestId, 1, 1)]);
         expect(outbox.beginPart('workspace-a', row.eventId)).toBeDefined();
         const restored = new SentinelMirrorOutbox(f.directory);
+        cleanups.push(() => restored.close());
         restored.recover('workspace-a');
         expect(restored.list('workspace-a')[0]).toMatchObject({
             state: 'ambiguous', failure: 'unknown', nextPart: 0,

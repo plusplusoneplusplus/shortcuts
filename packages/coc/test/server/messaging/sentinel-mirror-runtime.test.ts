@@ -51,13 +51,23 @@ async function invoke(route: Route, url: string, body: unknown): Promise<number>
 }
 
 const fixtures: Array<{ mirror: SentinelMirrorService; relay?: TeamsAnswerRelay; directory: string }> = [];
-afterEach(() => {
-    for (const fixture of fixtures.splice(0)) {
-        fixture.mirror.dispose();
-        fixture.relay?.dispose();
-        fs.rmSync(fixture.directory, { recursive: true, force: true });
+const outboxes: SentinelMirrorOutbox[] = [];
+afterEach(async () => {
+    const current = fixtures.splice(0);
+    try {
+        for (const fixture of current) {
+            fixture.mirror.dispose();
+            fixture.relay?.dispose();
+        }
+        // Disposal closes owned SQLite handles after drains finish, including restarted instances.
+        for (const fixture of current) await fixture.mirror.flush();
+        for (const outbox of outboxes.splice(0)) outbox.close();
+        for (const directory of new Set(current.map(fixture => fixture.directory))) {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    } finally {
+        vi.restoreAllMocks();
     }
-    vi.restoreAllMocks();
 });
 
 describe('Sentinel mirror typed retry hints', () => {
@@ -245,6 +255,26 @@ async function fixture(connector: 'whatsapp' | 'teams') {
         },
     };
 }
+
+describe('Sentinel mirror fixture cleanup', () => {
+    it.each([false, true])('closes every owned database before directory removal with restart (%s)', async restart => {
+        const f = await fixture('whatsapp');
+        await f.deliver('cleanup regression');
+        if (restart) await f.restart();
+        const mirrors = fixtures.filter(fixture => fixture.directory === f.directory).map(fixture => fixture.mirror);
+        const extraOutbox = new SentinelMirrorOutbox(f.directory);
+        outboxes.push(extraOutbox);
+        const remove = fs.rmSync;
+        vi.spyOn(fs, 'rmSync').mockImplementation((target, options) => {
+            if (String(target) === f.directory) {
+                for (const outbox of [...mirrors.map(mirror => mirror.outbox), extraOutbox]) {
+                    expect(() => outbox.list('workspace-a')).toThrow(/closed/i);
+                }
+            }
+            return remove(target, options);
+        });
+    });
+});
 
 function pendingRoutes(f: Awaited<ReturnType<typeof fixture>>) {
     const routes: Route[] = [];
@@ -1266,6 +1296,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const mirror = new SentinelMirrorService({
             dataDir: f.directory, store: mirrorStoreView(f.store), queue: f.queue, enabled: () => true, adapters: [adapter],
         });
+        fixtures.push({ mirror, directory: f.directory });
         let completed = false;
         const capture = mirror.capture('workspace-a', f.processId, 'adapter readiness before admission')
             .then(entry => { completed = true; return entry; });
@@ -2143,6 +2174,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const destination = f.adapter.destinations({ workspaceId: 'workspace-a', processId: f.processId })[0];
         const clock = vi.spyOn(Date, 'now').mockReturnValue(2_000_000_000_000);
         const priorOutbox = new SentinelMirrorOutbox(f.directory);
+        outboxes.push(priorOutbox);
         const prior = priorOutbox.stage({
             workspaceId: 'workspace-b', processId: 'queue_prior-owner', requestId: 'prior-admission',
             role: 'user', destination, content: 'previous owning workspace',
@@ -2161,6 +2193,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         const destination = f.adapter.destinations({ workspaceId: 'workspace-a', processId: f.processId })[0];
         const clock = vi.spyOn(Date, 'now').mockReturnValue(2_000_000_000_000);
         const priorOutbox = new SentinelMirrorOutbox(f.directory);
+        outboxes.push(priorOutbox);
         const prior = priorOutbox.stage({ workspaceId: 'workspace-c', processId: 'queue_prior-c',
             requestId: 'prior-c-admission', role: 'user', destination, content: 'new owner prior admission' });
         priorOutbox.accept(prior.workspaceId, prior.eventId);
