@@ -483,7 +483,8 @@ references before editing. Paths are package-relative.
   labels and `% left`, and preserve unknown values and limit-id prefixes.
   `git status` uses `messaging/git-status.ts` to read every accessible registered local
   repo, expanding groups within the supplied registry and deduplicating roots; one row per
-  repo (`name - clean`, else only nonzero change/conflict counts).
+  repo (`name - clean`, else only nonzero change/conflict counts), plus `<N> ahead` when tracking
+  metadata is reliable (no branch names, upstream labels or behind counts).
   Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
   this command bypasses pending question answers and never changes selection or invokes AI.
   WhatsApp-only `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`) lists the

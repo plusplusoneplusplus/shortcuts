@@ -35,14 +35,16 @@ export const readMessagingGitStatus: MessagingGitStatusReader = async rootPath =
     };
 };
 
-/** One concise segment: `clean`, or only the nonzero change/conflict counts. */
-function statusSummary({ entries, conflicts }: MessagingGitStatus): string {
+/** One concise segment: `clean` or nonzero change/conflict counts, plus a reliable positive ahead count. */
+function statusSummary({ branch, entries, conflicts, trackingAvailable }: MessagingGitStatus): string {
     const counts = { staged: 0, unstaged: 0, untracked: 0, conflicts };
     for (const entry of entries) {
         if (entry.stage === 'staged' || entry.stage === 'unstaged' || entry.stage === 'untracked') counts[entry.stage]++;
     }
     const parts = Object.entries(counts).filter(([, n]) => n).map(([name, n]) => `${n} ${n === 1 && name === 'conflicts' ? 'conflict' : name}`);
-    return parts.length ? parts.join(', ') : 'clean';
+    const summary = parts.length ? parts.join(', ') : 'clean';
+    const reliable = trackingAvailable && !branch.isDetached && !branch.unborn && !!branch.trackingBranch;
+    return reliable && Number.isInteger(branch.ahead) && branch.ahead > 0 ? `${summary}, ${branch.ahead} ahead` : summary;
 }
 
 /** The supplied registry is the caller's access scope; group membership never widens it. */

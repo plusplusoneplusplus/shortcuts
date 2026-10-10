@@ -145,8 +145,8 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/GIT STATUS', { messageId: 'root-command' }));
         await router.handle(makeMsg('git status', { replyToMessageId: 'bound-root' }));
         expect(readGitStatus).toHaveBeenCalledTimes(6);
-        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectA - clean\n'), 'root-command');
-        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectB - clean'), 'bound-root');
+        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectA - clean, 8 ahead\n'), 'root-command');
+        expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('ProjectB - clean, 8 ahead'), 'bound-root');
         expect(recordThreadCommand).toHaveBeenCalledTimes(1);
         expect(selectThreadTarget).not.toHaveBeenCalled();
         expect(resolveThreadReply).not.toHaveBeenCalled();

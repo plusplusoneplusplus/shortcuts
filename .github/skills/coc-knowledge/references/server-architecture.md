@@ -413,7 +413,9 @@ without changing selections or invoking AI. Native branch/change parsers and for
 WSL runner serve fixed status argv with optional locks disabled; safe-directory config,
 Git state and network remain untouched. Per-repo errors remain visible alongside
 successful summaries. Each repo is one row: `name - clean`, or only the nonzero
-staged/unstaged/untracked/conflict counts (no branch or ahead/behind). Replies use
+staged/unstaged/untracked/conflict counts, then `<N> ahead` only when the ahead count is
+positive and tracking is reliable (`branch.ab` present, upstream set, not detached/unborn);
+no branch names, upstream labels or behind counts. Replies use
 lossless connector text chunking.
 
 ### Messaging ask_user question relay
