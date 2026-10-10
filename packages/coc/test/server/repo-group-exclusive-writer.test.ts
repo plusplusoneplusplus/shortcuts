@@ -3,9 +3,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
-import { createRepoGroup, readRepoGroup, updateRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
+import { createRepoGroup, readRepoGroup, resolveRepoGroupMembers, updateRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
 import { APIError } from '../../src/server/errors';
 import { getRepoGroupAccess } from '../../src/server/workspaces/repo-group-exclusive-writer';
+import { buildRepoGroupAccessPolicy } from '../../src/server/workspaces/repo-group-access-policy';
 
 describe('repo-group exclusive writer admission', () => {
     let dataDir: string;
@@ -26,6 +27,135 @@ describe('repo-group exclusive writer admission', () => {
         createRepoGroup(dataDir, store, { name, members, readOnly }, enabled);
     const update = (id: string, readOnly: Record<string, boolean>) =>
         updateRepoGroup(dataDir, store, id, { readOnly }, enabled);
+    const register = async (id: string, rootPath: string) => {
+        fs.mkdirSync(rootPath, { recursive: true });
+        await store.registerWorkspace({ id, name: id, rootPath });
+    };
+
+    it.each([['repo', 'c'], ['c', 'repo']])(
+        'closes new defaults for parent/nested siblings in order %j', async (...members) => {
+            await register('a', path.join(root, 'a'));
+            await register('c', path.join(root, 'c'));
+            const owner = await create('Owner', undefined, ['a']);
+            const group = await create('New', undefined, members);
+            expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(members);
+            const policy = buildRepoGroupAccessPolicy(await resolveRepoGroupMembers(dataDir, store, group.id));
+            expect(policy.writableDirectories).toEqual([]);
+            expect(policy.readOnlyDirectories).toHaveLength(2);
+            expect(readRepoGroup(dataDir, owner.id)?.readOnlyMembers).toBeUndefined();
+        },
+    );
+
+    it('propagates omitted defaults transitively without protecting distinct prefix siblings', async () => {
+        await register('a', path.join(root, 'a'));
+        await register('c', path.join(root, 'c'));
+        await register('clone', root + '-clone');
+        const group = await create('New', { a: true }, ['c', 'repo', 'a', 'clone']);
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['c', 'repo', 'a']);
+        const policy = buildRepoGroupAccessPolicy(await resolveRepoGroupMembers(dataDir, store, group.id));
+        expect(policy.writableDirectories).toEqual([fs.realpathSync.native(root + '-clone')]);
+    });
+
+    it.each([{ repo: true, c: false }, { repo: false, c: true }])(
+        'rejects explicit mixed overlapping creation %j without saving', async readOnly => {
+            await register('c', path.join(root, 'c'));
+            await expect(create('Mixed', readOnly, ['repo', 'c'])).rejects.toMatchObject({
+                statusCode: 409, code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT',
+            });
+            expect(fs.existsSync(path.join(dataDir, 'repos', 'group-mixed'))).toBe(false);
+            expect((await store.getWorkspaces()).filter(ws => ws.virtual)).toEqual([]);
+        },
+    );
+
+    it('rejects the UI explicit parent-default/nested-writer payload even without a direct nested writer match', async () => {
+        await register('a', path.join(root, 'a'));
+        await register('c', path.join(root, 'c'));
+        await create('Owner', undefined, ['a']);
+        await expect(create('Mixed', { repo: true, c: false }, ['repo', 'c'])).rejects.toMatchObject({
+            statusCode: 409, code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT',
+            details: { writableWorkspaceId: 'c', readOnlyWorkspaceId: 'repo' },
+        });
+    });
+
+    it.each(['same-root', 'symlink'] as const)('rejects mixed %s aliases after canonicalization', async kind => {
+        const aliasRoot = kind === 'same-root' ? root : path.join(dataDir, 'alias');
+        if (kind === 'symlink') fs.symlinkSync(root, aliasRoot, process.platform === 'win32' ? 'junction' : 'dir');
+        await store.registerWorkspace({ id: 'alias', name: 'Alias', rootPath: aliasRoot });
+        await expect(create('Mixed', { repo: true, alias: false }, ['repo', 'alias']))
+            .rejects.toMatchObject({ code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT' });
+        const group = await create('Safe', { repo: true }, ['repo', 'alias']);
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['repo', 'alias']);
+        expect(buildRepoGroupAccessPolicy(await resolveRepoGroupMembers(dataDir, store, group.id)).writableDirectories).toEqual([]);
+    });
+
+    it.each(['new-writer', 'new-read-only', 'automatic-read-only'] as const)(
+        'rejects incompatible %s additions and preserves file and registry', async kind => {
+            await register('c', path.join(root, 'c'));
+            const group = await create('Saved', { repo: kind === 'new-writer' });
+            if (kind === 'automatic-read-only') await create('Shared', { c: true }, ['c']);
+            const before = fs.readFileSync(path.join(group.rootPath, 'group.json'), 'utf8');
+            await expect(updateRepoGroup(dataDir, store, group.id, {
+                members: ['repo', 'c'], name: 'Rejected', descriptions: { repo: 'Draft' },
+                readOnly: kind === 'automatic-read-only' ? {} : { c: kind === 'new-read-only' },
+            }, enabled)).rejects.toMatchObject({ code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT' });
+            expect(fs.readFileSync(path.join(group.rootPath, 'group.json'), 'utf8')).toBe(before);
+            expect((await store.getWorkspaces()).find(ws => ws.id === group.id)?.name).toBe('Saved');
+        },
+    );
+
+    it('defaults additions consistently against saved protected roots without changing saved writers', async () => {
+        await register('a', path.join(root, 'a'));
+        await register('c', path.join(root, 'c'));
+        const group = await create('Saved', { repo: true });
+        await updateRepoGroup(dataDir, store, group.id, { members: ['repo', 'a', 'c'] }, enabled);
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['repo', 'a', 'c']);
+        expect(buildRepoGroupAccessPolicy(await resolveRepoGroupMembers(dataDir, store, group.id)).writableDirectories).toEqual([]);
+    });
+
+    it('rejects a mixed grant to an existing protected member but allows a compatible simultaneous grant', async () => {
+        await register('c', path.join(root, 'c'));
+        const group = await create('Saved', { repo: true, c: true }, ['repo', 'c']);
+        const before = readRepoGroup(dataDir, group.id);
+        await expect(update(group.id, { c: false })).rejects.toMatchObject({ code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT' });
+        expect(readRepoGroup(dataDir, group.id)).toEqual(before);
+        await update(group.id, { repo: false, c: false });
+        expect(buildRepoGroupAccessPolicy(await resolveRepoGroupMembers(dataDir, store, group.id)).writableDirectories).toHaveLength(2);
+    });
+
+    it.each(['repo', 'c'])('always allows revoking saved overlapping writer %s, then the other', async id => {
+        await register('c', path.join(root, 'c'));
+        const group = await create('Saved', { repo: false, c: false }, ['repo', 'c']);
+        await update(group.id, { [id]: true });
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual([id]);
+        await updateRepoGroup(dataDir, store, group.id, { name: 'Renamed', readOnly: { [id]: true } }, enabled);
+        await update(group.id, { repo: true, c: true });
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['repo', 'c']);
+    });
+
+    it('preserves saved mixed conflicts, unrelated additions and reductions without reassigning writers', async () => {
+        await register('c', path.join(root, 'c'));
+        await register('clone', root + '-clone');
+        const group = await createRepoGroup(dataDir, store, { name: 'Saved', members: ['repo', 'c'], readOnly: { repo: true } });
+        await updateRepoGroup(dataDir, store, group.id, {
+            name: 'Renamed', descriptions: { c: 'Note' }, members: ['repo', 'c', 'clone'],
+            readOnly: { repo: true, c: false, clone: false },
+        }, enabled);
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['repo']);
+        await update(group.id, { c: true });
+        await updateRepoGroup(dataDir, store, group.id, { members: ['c', 'clone'] }, enabled);
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['c']);
+    });
+
+    it('preserves mixed policies created by root re-registration and allows stale revocation', async () => {
+        await register('clone', root + '-clone');
+        const group = await create('Saved', { repo: true, clone: false }, ['repo', 'clone']);
+        await store.updateWorkspace('clone', { rootPath: root });
+        await updateRepoGroup(dataDir, store, group.id, { descriptions: { clone: 'Note' } }, enabled);
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['repo']);
+        fs.rmSync(root, { recursive: true });
+        await update(group.id, { clone: true });
+        expect(readRepoGroup(dataDir, group.id)?.readOnlyMembers).toEqual(['repo', 'clone']);
+    });
 
     it('diagnoses every saved writer, including unchanged conflicts and canonical aliases, without mutation', async () => {
         const first = await create('First');
@@ -254,5 +384,8 @@ describe('repo-group exclusive writer admission', () => {
         const second = await createRepoGroup(dataDir, store, { name: 'Second', members: ['repo'] });
         expect(readRepoGroup(dataDir, second.id)?.readOnlyMembers).toBeUndefined();
         await updateRepoGroup(dataDir, store, second.id, { readOnly: { repo: false } });
+        await register('c', path.join(root, 'c'));
+        const mixed = await createRepoGroup(dataDir, store, { name: 'Mixed', members: ['repo', 'c'], readOnly: { repo: true, c: false } });
+        expect(readRepoGroup(dataDir, mixed.id)?.readOnlyMembers).toEqual(['repo']);
     });
 });

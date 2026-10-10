@@ -43,7 +43,7 @@ import {
 import { getRepositoryApiErrorMessage } from './repositoryService';
 import type { RepoGroupWriterConflict } from '@plusplusoneplusplus/coc-client';
 import { useRepoGroupAccess } from './useRepoGroupAccess';
-import { getRepoGroupWriterConflicts } from './repoGroupAccess';
+import { getRepoGroupReadOnlyDefaults, getRepoGroupWriterConflicts } from './repoGroupAccess';
 import { RepoGroupAccessStatus } from './RepoGroupAccessStatus';
 
 export interface RepoGroupDialogProps {
@@ -207,17 +207,19 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, groupServerId, re
         return opts;
     }, [repos, staleMembers, selectedServerId]);
 
+    const effectiveReadOnly = useMemo(() => sharing.access?.enabled
+        ? getRepoGroupReadOnlyDefaults(options.filter(option => checked.has(option.workspaceId)), readOnly,
+            new Set(sharing.access.members.filter(member => member.shared).map(member => member.workspaceId)))
+        : readOnly, [options, checked, readOnly, sharing.access]);
+
     const toggleMember = useCallback((workspaceId: string) => {
-        if (!checked.has(workspaceId) && readOnly[workspaceId] === undefined && sharing.access?.enabled) {
-            setReadOnly(prev => ({ ...prev, [workspaceId]: accessById.get(workspaceId)?.shared === true }));
-        }
         setChecked(prev => {
             const next = new Set(prev);
             if (next.has(workspaceId)) next.delete(workspaceId);
             else next.add(workspaceId);
             return next;
         });
-    }, [checked, readOnly, sharing.access, accessById]);
+    }, []);
 
     // Switching servers drops the previous server's picks outright: their ids mean
     // nothing in the new server's registry, so carrying them over could only
@@ -238,10 +240,9 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, groupServerId, re
         const memberDescriptions = Object.fromEntries(
             members.map(id => [id, (descriptions[id] ?? '').trim()]),
         );
-        // Same rule for the flag: an explicit `false` is what makes unticking the
-        // box clear a previously saved entry server-side.
+        // Saved/user choices are explicit; new automatic defaults are resolved at save time.
         const memberReadOnly = Object.fromEntries(
-            members.filter(id => sharing.access || readOnly[id] !== undefined)
+            members.filter(id => sharing.access?.enabled === false || readOnly[id] !== undefined)
                 .map(id => [id, readOnly[id] === true]),
         );
         setSaving(true);
@@ -381,7 +382,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, groupServerId, re
                                 {(sharing.access?.enabled || conflicts.some(conflict => conflict.workspaceId === option.workspaceId)) && (
                                     <RepoGroupAccessStatus
                                         access={accessById.get(option.workspaceId)}
-                                        readOnly={checked.has(option.workspaceId) ? readOnly[option.workspaceId] === true : undefined}
+                                        readOnly={checked.has(option.workspaceId) ? effectiveReadOnly[option.workspaceId] === true : undefined}
                                         conflicts={conflicts.filter(conflict => conflict.workspaceId === option.workspaceId)}
                                         serverId={selectedServerId}
                                     />
@@ -410,7 +411,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, groupServerId, re
                                         <input
                                             type="checkbox"
                                             id={`repo-group-member-read-only-${option.workspaceId}`}
-                                            checked={readOnly[option.workspaceId] === true}
+                                            checked={effectiveReadOnly[option.workspaceId] === true}
                                             disabled={saving}
                                             aria-label={`Read-only for ${option.name}`}
                                             data-testid={`repo-group-member-read-only-${option.workspaceId}`}

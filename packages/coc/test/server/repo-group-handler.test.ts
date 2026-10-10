@@ -178,6 +178,33 @@ describe('Repo Group Handler', () => {
         expect(third.members[0].readOnly).toBe(false);
     });
 
+    it('closes overlapping defaults and returns atomic mixed-policy API errors on POST/PATCH', async () => {
+        exclusiveWriterEnabled = true;
+        const parent = { id: 'parent', name: 'Parent', rootPath: path.dirname(repoA.rootPath) };
+        await store.registerWorkspace(parent);
+        await createGroup('Owner', [repoA.id]);
+        const group = await createGroup('Protected', [parent.id, repoB.id]);
+        expect(group.members.map(member => member.readOnly)).toEqual([true, true]);
+        const events = broadcastEvents.length;
+        const before = (await request(`${baseUrl}/api/repo-groups/${group.workspace.id}`)).body;
+        const rejected = await patchJSON(`${baseUrl}/api/repo-groups/${group.workspace.id}`, {
+            name: 'Rejected', descriptions: { [repoB.id]: 'Draft' }, readOnly: { [repoB.id]: false },
+        });
+        expect(rejected.status).toBe(409);
+        expect(JSON.parse(rejected.body)).toMatchObject({
+            code: 'REPO_GROUP_ACCESS_POLICY_CONFLICT',
+            details: { writableWorkspaceId: repoB.id, readOnlyWorkspaceId: parent.id },
+        });
+        const rejectedCreate = await postJSON(`${baseUrl}/api/repo-groups`, {
+            name: 'Mixed', members: [parent.id, repoB.id], readOnly: { [parent.id]: true, [repoB.id]: false },
+        });
+        expect(rejectedCreate.status).toBe(409);
+        expect(JSON.parse(rejectedCreate.body).code).toBe('REPO_GROUP_ACCESS_POLICY_CONFLICT');
+        expect(broadcastEvents).toHaveLength(events);
+        expect((await request(`${baseUrl}/api/repo-groups/${group.workspace.id}`)).body).toBe(before);
+        expect((await store.getWorkspaces()).find(ws => ws.id === group.workspace.id)?.name).toBe('Protected');
+    });
+
     // ------------------------------------------------------------------
     // POST /api/repo-groups
     // ------------------------------------------------------------------

@@ -111,8 +111,8 @@ export async function getRepoGroupAccess(
 }
 
 /**
- * Resolve defaults and reject only newly granted writers. Unchanged conflicting
- * memberships remain editable, and revoking access never requires resolved roots.
+ * Resolve new defaults and reject new writers or incompatible overlapping additions.
+ * Saved conflicts remain editable, and revoking access never requires resolved roots.
  */
 export async function admitRepoGroupWriters(
     dataDir: string,
@@ -126,18 +126,34 @@ export async function admitRepoGroupWriters(
     const { root, matches: matchingMemberships } = await membershipSnapshot(dataDir, store);
     const protectedIds = new Set(readOnlyMembers);
     const conflicts: RepoGroupWriterConflict[] = [];
+    const automaticMembers = members.filter(id => !current?.members.includes(id) && explicit?.[id] === undefined);
+
+    for (const id of automaticMembers) {
+        if (matchingMemberships(id, groupId).length > 0) protectedIds.add(id);
+    }
+    // Propagate protection only through omitted new defaults, never saved or explicit writers.
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const id of automaticMembers) {
+            const candidateRoot = root(id);
+            if (protectedIds.has(id) || !candidateRoot) continue;
+            if ([...protectedIds].some(protectedId => {
+                const protectedRoot = root(protectedId);
+                return protectedRoot && repoGroupRootsOverlap(candidateRoot, protectedRoot);
+            })) {
+                protectedIds.add(id);
+                changed = true;
+            }
+        }
+    }
 
     for (const workspaceId of members) {
         const existed = current?.members.includes(workspaceId) ?? false;
-        const newMember = !existed;
         // Preserve saved policies, including stale members, without reassigning a writer.
         if (protectedIds.has(workspaceId) || (existed && !current?.readOnlyMembers?.includes(workspaceId))) continue;
         const candidateRoot = root(workspaceId);
         const matches = matchingMemberships(workspaceId, groupId);
-        if (newMember && explicit?.[workspaceId] === undefined && matches.length > 0) {
-            protectedIds.add(workspaceId);
-            continue;
-        }
         for (const match of matches.filter(match => match.writable)) {
             conflicts.push(writerConflict(workspaceId, match));
         }
@@ -150,6 +166,19 @@ export async function admitRepoGroupWriters(
     if (conflicts.length > 0) {
         throw new APIError(409, 'Another repo group has write access; set it read-only first',
             'REPO_GROUP_WRITER_CONFLICT', { conflicts });
+    }
+    for (const writableId of members.filter(id => !protectedIds.has(id))) {
+        const writableRoot = root(writableId);
+        if (!writableRoot) continue;
+        for (const readOnlyId of protectedIds) {
+            const readOnlyRoot = root(readOnlyId);
+            if (!readOnlyRoot || !repoGroupRootsOverlap(writableRoot, readOnlyRoot)) continue;
+            const savedWriter = current?.members.includes(writableId) && !current.readOnlyMembers?.includes(writableId);
+            // Existing-writer revocations can introduce a mixed overlap; they must remain possible.
+            if (savedWriter && current?.members.includes(readOnlyId)) continue;
+            throw new APIError(409, 'Overlapping repo group members must have compatible read-only settings',
+                'REPO_GROUP_ACCESS_POLICY_CONFLICT', { writableWorkspaceId: writableId, readOnlyWorkspaceId: readOnlyId });
+        }
     }
     return members.filter(id => protectedIds.has(id));
 }
