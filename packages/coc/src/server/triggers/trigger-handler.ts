@@ -20,7 +20,7 @@ import type {
     TriggerEvent,
     TriggerChangeEvent,
 } from './trigger-types';
-import { DEFAULT_CI_POLL_INTERVAL_MS } from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS, isTriggerExpired } from './trigger-types';
 import { createTrigger, CreateTriggerError, type CreateTriggerContext } from './create-trigger-service';
 export { validateCreateTriggerBody, buildTriggerFromCreateRequest, type CreateTriggerValidation } from './create-trigger-service';
 
@@ -73,6 +73,11 @@ function serializeTrigger(trigger: Trigger): Record<string, unknown> {
         expiresAt: trigger.expiresAt,
         lastTickAt: trigger.lastTickAt,
         nextTickAt: trigger.nextTickAt,
+        revision: trigger.revision,
+        ...(trigger.binding ? { binding: trigger.binding } : {}),
+        ...(trigger.outcome ? { outcome: trigger.outcome } : {}),
+        ...(trigger.outcomeReason ? { outcomeReason: trigger.outcomeReason } : {}),
+        ...(trigger.delivery ? { delivery: trigger.delivery } : {}),
     };
 }
 
@@ -185,7 +190,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
                 safeEmit(emit, { type: 'trigger-disarmed', trigger });
             } else {
                 // Resume (→ active). Reject if the TTL already elapsed.
-                if (now() >= new Date(trigger.expiresAt).getTime()) {
+                if (isTriggerExpired(trigger, now())) {
                     manager.disarm(triggerId);
                     trigger.status = 'expired';
                     trigger.nextTickAt = null;

@@ -5,11 +5,14 @@
  * works even when the schema migration has not been applied (e.g. in-memory
  * test databases).
  *
- * `event` and `action` are discriminated unions, persisted as JSON TEXT.
+ * `event` and `action` are discriminated unions, persisted as JSON TEXT. The
+ * Sentinel To-do columns (`revision`, `binding`, `outcome`, `delivery`) are
+ * added idempotently to older tables. A never-expiring trigger (`expiresAt:
+ * null`) is stored as an empty `expires_at` so the NOT NULL column survives.
  */
 
 import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
-import type { Trigger, TriggerStatus, TriggerEvent, TriggerAction } from './trigger-types';
+import type { Trigger, TriggerStatus, TriggerEvent, TriggerAction, TriggerOutcome } from './trigger-types';
 import { MAX_ACTIVE_TRIGGERS } from './trigger-types';
 
 // ============================================================================
@@ -21,6 +24,7 @@ export class TriggerStore {
 
     private readonly stmtInsert: NativeStatement;
     private readonly stmtUpdate: NativeStatement;
+    private readonly stmtUpdateIfRevision: NativeStatement;
     private readonly stmtGetById: NativeStatement;
     private readonly stmtGetByProcess: NativeStatement;
     private readonly stmtGetByWorkspace: NativeStatement;
@@ -37,16 +41,17 @@ export class TriggerStore {
             INSERT INTO triggers (
                 id, workspace_id, process_id, status,
                 event, action, in_flight,
-                created_at, expires_at, last_tick_at, next_tick_at
+                created_at, expires_at, last_tick_at, next_tick_at,
+                revision, binding, outcome, outcome_reason, delivery
             ) VALUES (
                 @id, @workspaceId, @processId, @status,
                 @event, @action, @inFlight,
-                @createdAt, @expiresAt, @lastTickAt, @nextTickAt
+                @createdAt, @expiresAt, @lastTickAt, @nextTickAt,
+                @revision, @binding, @outcome, @outcomeReason, @delivery
             )
         `);
 
-        this.stmtUpdate = db.prepare(`
-            UPDATE triggers SET
+        const setColumns = `
                 workspace_id = @workspaceId,
                 process_id = @processId,
                 status = @status,
@@ -55,9 +60,15 @@ export class TriggerStore {
                 in_flight = @inFlight,
                 expires_at = @expiresAt,
                 last_tick_at = @lastTickAt,
-                next_tick_at = @nextTickAt
-            WHERE id = @id
-        `);
+                next_tick_at = @nextTickAt,
+                revision = @revision,
+                binding = @binding,
+                outcome = @outcome,
+                outcome_reason = @outcomeReason,
+                delivery = @delivery`;
+        this.stmtUpdate = db.prepare(`UPDATE triggers SET ${setColumns} WHERE id = @id`);
+        this.stmtUpdateIfRevision = db.prepare(
+            `UPDATE triggers SET ${setColumns} WHERE id = @id AND revision = @expectedRevision`);
 
         this.stmtGetById = db.prepare('SELECT * FROM triggers WHERE id = ?');
         this.stmtGetByProcess = db.prepare('SELECT * FROM triggers WHERE process_id = ? ORDER BY created_at DESC');
@@ -86,6 +97,14 @@ export class TriggerStore {
     /** Update an existing trigger (by id). */
     update(trigger: Trigger): void {
         this.stmtUpdate.run(toRow(trigger));
+    }
+
+    /**
+     * Write `trigger` only if the stored revision still equals
+     * `expectedRevision`. Returns false (nothing written) on a lost race.
+     */
+    updateIfRevision(trigger: Trigger, expectedRevision: number): boolean {
+        return this.stmtUpdateIfRevision.run({ ...toRow(trigger), expectedRevision }).changes > 0;
     }
 
     /** Get a trigger by id, or null if not found. */
@@ -149,6 +168,18 @@ export class TriggerStore {
             CREATE INDEX IF NOT EXISTS idx_triggers_workspace_id ON triggers(workspace_id);
             CREATE INDEX IF NOT EXISTS idx_triggers_status ON triggers(status);
         `);
+        const columns = new Set((this.db.prepare('PRAGMA table_info(triggers)').all() as { name: string }[])
+            .map(column => column.name));
+        const added: Array<[string, string]> = [
+            ['revision', 'INTEGER NOT NULL DEFAULT 1'],
+            ['binding', 'TEXT'],
+            ['outcome', 'TEXT'],
+            ['outcome_reason', 'TEXT'],
+            ['delivery', 'TEXT'],
+        ];
+        for (const [name, type] of added) {
+            if (!columns.has(name)) this.db.exec(`ALTER TABLE triggers ADD COLUMN ${name} ${type}`);
+        }
     }
 }
 
@@ -168,6 +199,11 @@ interface TriggerRow {
     expires_at: string;
     last_tick_at: string | null;
     next_tick_at: string | null;
+    revision: number;
+    binding: string | null;
+    outcome: string | null;
+    outcome_reason: string | null;
+    delivery: string | null;
 }
 
 function rowToTrigger(row: TriggerRow): Trigger {
@@ -180,9 +216,14 @@ function rowToTrigger(row: TriggerRow): Trigger {
         action: JSON.parse(row.action) as TriggerAction,
         inFlight: row.in_flight !== 0,
         createdAt: row.created_at,
-        expiresAt: row.expires_at,
+        expiresAt: row.expires_at || null,
         lastTickAt: row.last_tick_at,
         nextTickAt: row.next_tick_at,
+        revision: row.revision,
+        ...(row.binding ? { binding: JSON.parse(row.binding) } : {}),
+        ...(row.outcome ? { outcome: row.outcome as TriggerOutcome } : {}),
+        ...(row.outcome_reason ? { outcomeReason: row.outcome_reason } : {}),
+        ...(row.delivery ? { delivery: JSON.parse(row.delivery) } : {}),
     };
 }
 
@@ -196,8 +237,13 @@ function toRow(trigger: Trigger): Record<string, unknown> {
         action: JSON.stringify(trigger.action),
         inFlight: trigger.inFlight ? 1 : 0,
         createdAt: trigger.createdAt,
-        expiresAt: trigger.expiresAt,
+        expiresAt: trigger.expiresAt ?? '',
         lastTickAt: trigger.lastTickAt ?? null,
         nextTickAt: trigger.nextTickAt ?? null,
+        revision: trigger.revision ?? 1,
+        binding: trigger.binding ? JSON.stringify(trigger.binding) : null,
+        outcome: trigger.outcome ?? null,
+        outcomeReason: trigger.outcomeReason ?? null,
+        delivery: trigger.delivery ? JSON.stringify(trigger.delivery) : null,
     };
 }

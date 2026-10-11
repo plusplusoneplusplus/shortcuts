@@ -2,26 +2,52 @@
  * Trigger API contract types — mirrors server-side Trigger serialization.
  *
  * A trigger binds an `event` (watched condition) to an `action` (what fires).
- * Only the `condition-monitor` / `ci-failure` event and the `send-message`
- * action are implemented; the shape is left open for future event types.
+ * Events: the `condition-monitor` `ci-failure` CI auto-fix monitor and the
+ * one-shot `pr-merged` watch bound to a Sentinel To-do item. Action:
+ * `send-message`.
  */
 
 export type TriggerStatus = 'active' | 'paused' | 'disarmed' | 'expired';
 
-export type ConditionMonitorKind = 'ci-failure';
+export type ConditionMonitorKind = 'ci-failure' | 'pr-merged';
 
 export interface ConditionMonitorEvent {
   type: 'condition-monitor';
-  monitor: ConditionMonitorKind;
+  monitor: 'ci-failure';
   originId: string;
   prId: string;
   pollIntervalMs: number;
   lastSeenChecks: Record<string, string>;
 }
 
-export type TriggerEvent = ConditionMonitorEvent;
+/** Provider-qualified pull request watched by URL with server credentials. */
+export interface PrIdentity {
+  provider: 'github' | 'ado';
+  host: string;
+  repoPath: string;
+  number: number;
+  url: string;
+  workspaceId?: string;
+  originId?: string;
+}
 
-export type TriggerActionMode = 'autopilot';
+export type WatchedPrStatus = 'open' | 'draft' | 'merged' | 'closed';
+
+export interface PrMergedMonitorEvent {
+  type: 'condition-monitor';
+  monitor: 'pr-merged';
+  pr: PrIdentity;
+  pollIntervalMs: number;
+  lastSeenStatus?: WatchedPrStatus;
+  /** Provider PR title (untrusted display text). */
+  lastSeenTitle?: string;
+  lastError?: { message: string; at: string };
+  consecutiveErrors: number;
+}
+
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent;
+
+export type TriggerActionMode = 'autopilot' | 'inherit';
 
 export interface SendMessageAction {
   type: 'send-message';
@@ -32,6 +58,25 @@ export interface SendMessageAction {
 
 export type TriggerAction = SendMessageAction;
 
+export interface SentinelTodoTriggerBinding {
+  kind: 'sentinel-todo';
+  itemId: string;
+  instruction?: string;
+  armedBy: 'user' | 'sentinel';
+  armedAt: string;
+}
+
+export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
+
+export interface TriggerDelivery {
+  deliveryId: string;
+  firedAt: string;
+  reason: 'merged' | 'run-now';
+  state: 'pending' | 'delivered';
+  deliveredAt?: string;
+  itemRevision?: number;
+}
+
 export interface Trigger {
   id: string;
   workspaceId: string;
@@ -41,9 +86,15 @@ export interface Trigger {
   action: TriggerAction;
   inFlight: boolean;
   createdAt: string;
-  expiresAt: string;
+  /** `null` for rules that never expire (PR-merge wake rules). */
+  expiresAt: string | null;
   lastTickAt: string | null;
   nextTickAt: string | null;
+  revision: number;
+  binding?: SentinelTodoTriggerBinding;
+  outcome?: TriggerOutcome;
+  outcomeReason?: string;
+  delivery?: TriggerDelivery;
 }
 
 /** Request body for creating (and arming) a `ci-failure` condition monitor. */

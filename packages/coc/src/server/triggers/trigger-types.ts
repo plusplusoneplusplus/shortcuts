@@ -33,7 +33,7 @@ export type TriggerStatus = 'active' | 'paused' | 'disarmed' | 'expired';
 // ============================================================================
 
 /** The kind of condition a `condition-monitor` event watches. */
-export type ConditionMonitorKind = 'ci-failure';
+export type ConditionMonitorKind = 'ci-failure' | 'pr-merged';
 
 /**
  * A server-side polling monitor. While the owning trigger is `active`, the
@@ -44,7 +44,7 @@ export type ConditionMonitorKind = 'ci-failure';
  */
 export interface ConditionMonitorEvent {
     type: 'condition-monitor';
-    monitor: ConditionMonitorKind;
+    monitor: 'ci-failure';
     /** Origin (provider account/repo) that owns the PR. */
     originId: string;
     /** Pull-request identifier (provider-specific id/number as string). */
@@ -80,15 +80,56 @@ export interface ConditionMonitorEvent {
 // export interface ScheduleEvent { type: 'schedule'; cron: string; }
 // export interface IntervalEvent { type: 'interval'; intervalMs: number; }
 
+/**
+ * A provider-qualified pull request, watched by URL with this server's own
+ * credentials (no clone or workspace needed). `workspaceId`/`originId` are
+ * recorded only when the PR was picked from a local workspace.
+ */
+export interface PrIdentity {
+    provider: 'github' | 'ado';
+    /** `github.com`, `dev.azure.com`, or `<org>.visualstudio.com`. */
+    host: string;
+    /** `owner/repo` (GitHub) or `org/project/repo` (ADO). */
+    repoPath: string;
+    number: number;
+    /** Canonical web URL of the PR. */
+    url: string;
+    workspaceId?: string;
+    originId?: string;
+}
+
+/** Last PR state the merge watch observed. */
+export type WatchedPrStatus = 'open' | 'draft' | 'merged' | 'closed';
+
+/**
+ * One-shot watch that wakes the owning Sentinel when a PR merges. Read and
+ * login failures never fire: they are recorded in `lastError` and retried with
+ * backoff (`consecutiveErrors`) while the trigger stays active.
+ */
+export interface PrMergedMonitorEvent {
+    type: 'condition-monitor';
+    monitor: 'pr-merged';
+    pr: PrIdentity;
+    pollIntervalMs: number;
+    lastSeenStatus?: WatchedPrStatus;
+    /** PR title last read from the provider (untrusted display data). */
+    lastSeenTitle?: string;
+    lastError?: { message: string; at: string };
+    consecutiveErrors: number;
+}
+
 /** Discriminated union of all event variants. */
-export type TriggerEvent = ConditionMonitorEvent;
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent;
 
 // ============================================================================
 // Action (discriminated union — only `send-message` built this iteration)
 // ============================================================================
 
-/** Mode a `send-message` action delivers its prompt in. */
-export type TriggerActionMode = 'autopilot';
+/**
+ * Mode a `send-message` action delivers its prompt in. `inherit` runs the
+ * follow-up in the target conversation's own mode (e.g. a Sentinel chat).
+ */
+export type TriggerActionMode = 'autopilot' | 'inherit';
 
 /**
  * Deliver a message (follow-up) into a conversation. The `processId` is the
@@ -104,6 +145,45 @@ export interface SendMessageAction {
 
 /** Discriminated union of all action variants. */
 export type TriggerAction = SendMessageAction;
+
+// ============================================================================
+// Sentinel To-do binding (one-shot PR-merge wake rules)
+// ============================================================================
+
+/**
+ * Binds a one-shot trigger to an item of its owning Sentinel's to-do ledger.
+ * The Sentinel chat is `trigger.processId`; the trigger never writes the item.
+ */
+export interface SentinelTodoTriggerBinding {
+    kind: 'sentinel-todo';
+    itemId: string;
+    /** Optional "When it fires" guidance passed to the Sentinel verbatim. */
+    instruction?: string;
+    armedBy: 'user' | 'sentinel';
+    armedAt: string;
+}
+
+/**
+ * Terminal result of a one-shot trigger. `fired` posted (or is posting) the
+ * wake message; `closed-unmerged` and `skipped` posted nothing; `error` is a
+ * terminal failure such as a missing Sentinel chat.
+ */
+export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
+
+/**
+ * Durable record of a wake message. Saved with the terminal outcome before any
+ * queue work, so a crash between fire and enqueue is re-delivered once at
+ * startup; `deliveryId` rides on the queued/buffered message for dedupe.
+ */
+export interface TriggerDelivery {
+    deliveryId: string;
+    firedAt: string;
+    reason: 'merged' | 'run-now';
+    state: 'pending' | 'delivered';
+    deliveredAt?: string;
+    /** Item revision captured when the fire committed. */
+    itemRevision?: number;
+}
 
 // ============================================================================
 // Trigger
@@ -138,8 +218,11 @@ export interface Trigger {
     /** ISO timestamp of creation. */
     createdAt: string;
 
-    /** ISO timestamp when the trigger auto-expires (createdAt + TTL). */
-    expiresAt: string;
+    /**
+     * ISO timestamp when the trigger auto-expires (createdAt + TTL), or `null`
+     * for rules that never expire (PR-merge wake rules).
+     */
+    expiresAt: string | null;
 
     /** ISO timestamp of last tick (null if never ticked). */
     lastTickAt: string | null;
@@ -149,6 +232,19 @@ export interface Trigger {
      * so active triggers can be re-armed across server restarts.
      */
     nextTickAt: string | null;
+
+    /** Optimistic-concurrency revision; bumped on every edit/state change. */
+    revision: number;
+
+    /** Present on Sentinel To-do wake rules. */
+    binding?: SentinelTodoTriggerBinding;
+
+    /** Terminal one-shot result (set together with a terminal status). */
+    outcome?: TriggerOutcome;
+    outcomeReason?: string;
+
+    /** Durable wake-message delivery (one-shot rules only). */
+    delivery?: TriggerDelivery;
 }
 
 // ============================================================================
@@ -172,6 +268,17 @@ export interface TriggerChangeEvent {
 
 /** Default TTL for triggers (3 days), mirroring crons. */
 export const DEFAULT_TRIGGER_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Whether a trigger's TTL has elapsed; never-expiring triggers never do. */
+export function isTriggerExpired(trigger: Pick<Trigger, 'expiresAt'>, nowMs: number): boolean {
+    return trigger.expiresAt !== null && nowMs >= new Date(trigger.expiresAt).getTime();
+}
+
+/** Default PR-merge watch cadence (5 min). */
+export const DEFAULT_PR_MERGE_POLL_INTERVAL_MS = 5 * 60_000;
+
+/** Maximum backoff for a PR-merge watch after read/login errors (30 min). */
+export const MAX_PR_MERGE_BACKOFF_MS = 30 * 60_000;
 
 /** Default CI-failure poll cadence (~60s). */
 export const DEFAULT_CI_POLL_INTERVAL_MS = 60_000;

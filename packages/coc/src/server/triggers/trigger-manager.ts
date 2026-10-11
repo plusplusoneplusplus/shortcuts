@@ -25,7 +25,7 @@ import type {
     TriggerChangeEvent,
     TriggerStatus,
 } from './trigger-types';
-import { DEFAULT_CI_POLL_INTERVAL_MS } from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS, isTriggerExpired } from './trigger-types';
 
 // ============================================================================
 // Pluggable interfaces
@@ -175,7 +175,7 @@ export class TriggerManager {
         if (trigger.status !== 'active') return;
 
         // TTL expiry → terminal auto-disarm.
-        if (this.now() >= new Date(trigger.expiresAt).getTime()) {
+        if (isTriggerExpired(trigger, this.now())) {
             this.terminate(trigger, 'expired', 'TTL exceeded');
             return;
         }
