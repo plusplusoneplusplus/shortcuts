@@ -20,6 +20,7 @@ import type {
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
@@ -645,15 +646,12 @@ function TodoRow({ item, owner, expanded, onToggle, onSave, onFollowLink }: {
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Jobs for ${item.title}`}>
                     {shownJobs.map(job => {
                         const review = sentinelTodoReviewLabel(job);
-                        const external = /^https?:\/\//i.test(job.openLink);
                         const jobLink = linkKey(`job:${job.serverId ?? ''}:${job.processId}`);
                         return (
                             <li key={`${job.serverId ?? ''}:${job.processId}`} className="flex flex-wrap items-center gap-1">
-                                <a href={job.openLink} className="text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]"
-                                    data-todo-link={jobLink} onClick={event => onFollowLink(event, jobLink)}
-                                    {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
-                                    {job.title ?? job.processId}
-                                </a>
+                                <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
+                                    job={job} owner={owner} linkKey={jobLink} onFollowLink={onFollowLink}
+                                    repoLabel={item.targetRepo?.workspaceId === job.workspaceId ? item.targetRepo.label : undefined} />
                                 {/* Remote links retain their transport kind and the Ralph launch's sessionId. */}
                                 {(job.kind === 'ralph' || job.sessionId) && (
                                     <span title="Ralph session" className="inline-flex shrink-0 items-center rounded bg-[#8764b8]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#7150a2] dark:text-[#c5a5ed]">

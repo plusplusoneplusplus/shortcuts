@@ -36,6 +36,8 @@ export interface AnchoredPanelPositionOptions {
     constrainHeight?: boolean;
     /** Reposition when a shared panel changes its active anchor or content. */
     anchorKey?: string;
+    /** Optional pane whose edges constrain the preview, intersected with the viewport. */
+    boundaryRef?: RefObject<HTMLElement | null>;
 }
 
 export interface AnchoredPanelPosition {
@@ -55,6 +57,7 @@ export function useAnchoredPanelPosition({
     align,
     constrainHeight = false,
     anchorKey,
+    boundaryRef,
 }: AnchoredPanelPositionOptions): AnchoredPanelPosition {
     const [pos, setPos] = useState<AnchoredPanelPosition>({ top: 0, left: 0 });
 
@@ -66,10 +69,11 @@ export function useAnchoredPanelPosition({
         const t = trigger.getBoundingClientRect();
         const p = panel.getBoundingClientRect();
         const viewport = window.visualViewport;
-        const viewportLeft = viewport?.offsetLeft ?? 0;
-        const viewportTop = viewport?.offsetTop ?? 0;
-        const vw = viewport?.width ?? window.innerWidth;
-        const vh = viewport?.height ?? window.innerHeight;
+        const pane = boundaryRef?.current?.getBoundingClientRect();
+        const viewportLeft = Math.max(viewport?.offsetLeft ?? 0, pane?.left ?? 0);
+        const viewportTop = Math.max(viewport?.offsetTop ?? 0, pane?.top ?? 0);
+        const vw = Math.max(0, Math.min((viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth), pane?.right ?? Infinity) - viewportLeft);
+        const vh = Math.max(0, Math.min((viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight), pane?.bottom ?? Infinity) - viewportTop);
         const right = viewportLeft + vw - margin;
         const bottom = viewportTop + vh - margin;
         const maxWidth = Math.max(0, vw - 2 * margin);
@@ -121,7 +125,7 @@ export function useAnchoredPanelPosition({
         if (top < viewportTop + margin) top = viewportTop + margin;
 
         setPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }));
-    }, [placement, triggerRef, panelRef, gap, margin, align, constrainHeight]);
+    }, [placement, triggerRef, panelRef, gap, margin, align, constrainHeight, boundaryRef]);
 
     useLayoutEffect(() => {
         if (!open) return;

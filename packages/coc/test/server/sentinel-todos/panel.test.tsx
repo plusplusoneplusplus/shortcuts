@@ -192,7 +192,7 @@ describe('UnifiedTodoTab', () => {
         const row = await screen.findByTestId('sentinel-todo-row-i1');
         expect(within(row).getByTestId('sentinel-todo-earlier-jobs-i1').textContent).toBe('+2 earlier jobs');
         expect(within(row).queryByRole('link', { name: 'Writer' })).toBeNull();
-        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
         expect(within(row).queryByTestId('sentinel-todo-earlier-jobs-i1')).toBeNull();
         await screen.findByText('Ralph', { exact: true });
         expect(screen.getAllByText('Ralph', { exact: true })).toHaveLength(1);
@@ -218,7 +218,7 @@ describe('UnifiedTodoTab', () => {
         expect(clientRefs).toContain(owner.ownerRoutingRef);
         const row = screen.getByTestId('sentinel-todo-row-i1');
         expect(row.textContent).toContain('Review pending (result delivered)');
-        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
         // Derived phases are not stored statuses or new user execution actions.
         const status = within(row).getByRole('group', { name: 'Status' });
         expect(within(status).getByRole('button', { pressed: true }).textContent).toContain('In progress');
@@ -594,7 +594,7 @@ describe('UnifiedTodoTab', () => {
         render(<UnifiedTodoTab owner={OWNER} />);
         const row = await screen.findByTestId('sentinel-todo-row-i1');
         expect(within(row).getByTestId('sentinel-todo-status-in_progress')).toBeTruthy();
-        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
         expect(row.textContent).toContain('Job completed');
         expect(row.textContent).toContain('Review delivered');
         expect(row.textContent).toContain('Status unavailable');

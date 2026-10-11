@@ -97,9 +97,10 @@ export class ProcessesClient {
     return this.transport.request<AIProcess>('/processes', { method: 'POST', body: request });
   }
 
-  get(processId: string, query?: Pick<ProcessListQuery, 'workspace' | 'exclude' | 'include'>): Promise<ProcessDetailResponse> {
+  get(processId: string, query?: Pick<ProcessListQuery, 'workspace' | 'exclude' | 'include'> & { preview?: boolean }, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessDetailResponse> {
     return this.transport.request<ProcessDetailResponse>(`/processes/${encodePathSegment(processId)}`, {
       query: serializeListQuery(query),
+      signal: options?.signal,
     });
   }
 

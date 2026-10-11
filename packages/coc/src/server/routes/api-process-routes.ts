@@ -43,7 +43,7 @@ import {
 import type { FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
-import { buildMetadataProcess } from '../processes/process-metadata-read-model';
+import { buildMetadataProcess, buildJobPreviewProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
@@ -435,6 +435,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const id = decodeURIComponent(match[1]);
             const filter = parseQueryParams(req.url || '/');
             const include = parseIncludeFields(req.url || '/');
+            const preview = url.parse(req.url || '/', true).query.preview === 'true';
+            if (preview && !filter.workspaceId) return void handleAPIError(res, badRequest('workspace is required for job previews'));
             const proc = await resolveProcess(store, id, filter.workspaceId);
             if (!proc) {
                 // Synthesize a response for queued tasks that don't yet have a process record
@@ -442,12 +444,13 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     const task = bridge.getTask?.(toTaskId(id));
                     if (task && (!filter.workspaceId || task.repoId === filter.workspaceId)) {
                         const synthetic = queuedTaskToProcess(task);
-                        const result = filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
+                        const result = preview ? buildJobPreviewProcess(synthetic) : filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
                         return { process: projectProcess(result), children: [], total: 0 };
                     }
                 }
                 return void handleAPIError(res, notFound('Process'));
             }
+            if (preview) return { process: buildJobPreviewProcess(proc), children: [], total: 0 };
             const projected = dataDir ? await projectRalphGrillingMetadata(proc, dataDir) : proc;
             const result = projectProcess(filter.exclude ? stripExcludedFields(projected, filter.exclude) : buildMetadataProcess(projected));
 

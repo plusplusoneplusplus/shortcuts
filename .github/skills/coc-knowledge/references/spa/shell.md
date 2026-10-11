@@ -510,7 +510,11 @@ copy action and no save or dirty-state registration. With
 `features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos`; only the descriptor
-persists. Normal tracking comes first, then an always-visible Manual tracking
+persists. Job-title previews use owner-scoped compact process reads or Ralph
+whole-session task-group summaries, with abortable lazy loading and bounded
+per-reference caching. Execution/review labels never write item verdicts;
+reference-only conversations keep navigation without job badges. Normal tracking
+comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
 bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is

@@ -64,6 +64,8 @@ export interface AIProcess {
   title?: string;
   customTitle?: string;
   lastMessagePreview?: string;
+  /** Bounded job progress/result projection requested with `preview=true`. */
+  jobPreview?: { excerpt: string; source: 'progress' | 'result' | 'error' | 'empty'; updatedAt?: string };
   [key: string]: unknown;
 }
 

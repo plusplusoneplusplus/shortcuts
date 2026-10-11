@@ -40,18 +40,22 @@ function Harness({
     panelRect,
     constrainHeight = false,
     contentHeight,
+    boundaryRect,
 }: {
     placement: AnchoredPanelPlacement;
     triggerRect: DOMRect;
     panelRect: DOMRect;
     constrainHeight?: boolean;
     contentHeight?: number;
+    boundaryRect?: DOMRect;
 }) {
     const triggerRef = useRef<HTMLDivElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const pos = useAnchoredPanelPosition({ open: true, placement, triggerRef, panelRef, constrainHeight });
+    const boundaryRef = useRef<HTMLDivElement | null>(null);
+    const pos = useAnchoredPanelPosition({ open: true, placement, triggerRef, panelRef, constrainHeight, boundaryRef: boundaryRect ? boundaryRef : undefined });
     return (
         <>
+            <div ref={el => { boundaryRef.current = el; if (el && boundaryRect) el.getBoundingClientRect = () => boundaryRect; }} />
             <div
                 ref={el => {
                     triggerRef.current = el;
@@ -199,4 +203,15 @@ describe('useAnchoredPanelPosition', () => {
         expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
         expect(remove).toHaveBeenCalledWith('scroll', expect.any(Function));
     });
+});
+
+it('intersects narrow pane bounds with the viewport and flips a bounded scrolling panel', () => {
+    render(<Harness placement="down" constrainHeight
+        boundaryRect={rect({ left: 40, top: 30, width: 230, height: 300 })}
+        triggerRect={rect({ left: 220, top: 280, width: 40, height: 20 })}
+        panelRect={rect({ left: 0, top: 0, width: 330, height: 320 })} contentHeight={600} />);
+    const panel = screen.getByTestId('panel');
+    expect(readPos()).toEqual({ left: 48, top: 38 });
+    expect(Number(panel.dataset.maxWidth)).toBe(214);
+    expect(Number(panel.dataset.maxHeight)).toBe(238);
 });

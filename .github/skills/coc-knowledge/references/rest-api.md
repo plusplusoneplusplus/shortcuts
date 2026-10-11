@@ -153,7 +153,7 @@ Disabled-by-default `features.gitWorktreeExecution`. The target server creates i
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/processes` | List processes (search/filter) |
-| GET | `/api/processes/:id` | Detail; queued `queue_<taskId>` returns a synthetic process with launch metadata |
+| GET | `/api/processes/:id` | Owner-scoped detail (`workspace`); queued `queue_<taskId>` returns launch metadata. `preview=true` returns only job identity/state and an 800-character recorded assistant/result/error excerpt with freshness, excludes prompts/transcripts/children |
 | PATCH | `/api/processes/:id` | Partial update. `metadata` replaces the stored object; `metadataPatch: { set?: object, unset?: string[] }` merges into current metadata. The two are mutually exclusive |
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up with delivery/AI/style overrides. Style changes buffer a new turn, never steer in-flight output. Provider switch requires idle (`409 PROVIDER_SWITCH_REQUIRES_IDLE`); cancelled chats require strict resumable SDK binding (`409 SESSION_NOT_RESUMABLE`), never fresh fallback |
