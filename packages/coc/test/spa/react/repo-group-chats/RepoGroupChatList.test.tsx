@@ -78,9 +78,10 @@ describe('buildRepoGroupOwnerLabels', () => {
             { workspaceId: 'b', role: 'member', name: long + '-beta', available: true },
             { workspaceId: 'c', role: 'member', name: 'y'.repeat(OWNER_PREFIX_MAX_LENGTH + 2), available: true },
         ]);
-        // a and b shorten to the same text, so both keep their full names.
-        expect(labels.get('a')!.prefix).toBe(long + '-alpha');
-        expect(labels.get('b')!.prefix).toBe(long + '-beta');
+        expect(labels.get('a')!.prefix).not.toBe(labels.get('b')!.prefix);
+        expect(labels.get('a')!.prefix!.length).toBeLessThanOrEqual(OWNER_PREFIX_MAX_LENGTH);
+        expect(labels.get('a')!.full).toBe(long + '-alpha');
+        expect(labels.get('b')!.full).toBe(long + '-beta');
         expect(labels.get('c')!.prefix).toHaveLength(OWNER_PREFIX_MAX_LENGTH);
         expect(labels.get('c')!.prefix!.endsWith('…')).toBe(true);
         expect(labels.get('c')!.full).toBe('y'.repeat(OWNER_PREFIX_MAX_LENGTH + 2));
@@ -97,6 +98,15 @@ describe('buildRepoGroupOwnerLabels', () => {
 });
 
 describe('partitionPinnedRows / isUnseenGroupChat', () => {
+    it('normalizes native numeric completion timestamps against ISO seen-state and hides archived unread dots', () => {
+        const endTime = Date.parse('2026-10-10T00:00:00Z');
+        const m = model({ history: [
+            hist('read', 'ws-a', { endTime, seenAt: '2026-10-10T00:00:00.000Z' }),
+            hist('unread', 'ws-a', { endTime, seenAt: undefined }),
+            hist('archived', 'ws-a', { endTime, seenAt: undefined, archived: true }),
+        ] });
+        expect(m.history.map(isUnseenGroupChat)).toEqual([false, true, false]);
+    });
     it('lifts pinned, unarchived history newest pin first and keeps the rest in order', () => {
         const m = model({
             history: [

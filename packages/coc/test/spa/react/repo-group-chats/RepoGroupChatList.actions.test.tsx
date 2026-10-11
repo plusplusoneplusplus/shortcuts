@@ -11,12 +11,12 @@ vi.mock('../../../../src/server/spa/client/react/repos/repoGroupChatActions', as
 }));
 afterEach(() => { cleanup(); action.mockReset(); });
 
-function renderList(grouped = false) {
+function renderList(grouped = false, unavailable = false) {
     const model = buildRepoGroupChatFeedModel({
         groupId: 'group-ai', membershipKey: 'm1',
         sources: [
             { workspaceId: 'a', role: 'member', name: 'Repo A', available: true },
-            { workspaceId: 'b', role: 'member', name: 'Repo B', available: true },
+            { workspaceId: 'b', role: 'member', name: 'Repo B', available: !unavailable },
         ],
         running: [], queued: [],
         history: [
@@ -32,6 +32,19 @@ function renderList(grouped = false) {
     return refresh;
 }
 describe('group list bulk actions', () => {
+    it('lets healthy owners succeed in a mixed unavailable selection without enabling an unavailable-only action', async () => {
+        renderList(false, true);
+        fireEvent.click(screen.getByText('Select chats'));
+        const rows = screen.getAllByTestId('repo-group-chat-row');
+        fireEvent.click(rows[1]);
+        expect(screen.getByText('archive').hasAttribute('disabled')).toBe(true);
+        fireEvent.click(rows[0]);
+        expect(screen.getByText('archive').hasAttribute('disabled')).toBe(false);
+        action.mockResolvedValueOnce({ succeeded: ['local|a|same'], failed: [{ key: 'local|b|same', ownerWorkspaceId: 'b', error: 'unavailable' }] });
+        await act(async () => { fireEvent.click(screen.getByText('archive')); });
+        expect(rows[0].getAttribute('aria-selected')).toBe('false');
+        expect(rows[1].getAttribute('aria-selected')).toBe('true');
+    });
     it('preserves successful changes and selects only failed owner rows for retry', async () => {
         const refresh = renderList();
         action.mockResolvedValueOnce({ succeeded: ['local|a|same'], failed: [{ key: 'local|b|same', ownerWorkspaceId: 'b', error: 'denied' }] });
@@ -50,7 +63,7 @@ describe('group list bulk actions', () => {
 
     it('requires explicit delete confirmation and retains expandable owner-local trees without duplicates', async () => {
         renderList(true);
-        const toggle = screen.getByText('Ralph / r (2)');
+        const toggle = screen.getByText('Repo A / Ralph / r (2)');
         fireEvent.click(toggle);
         expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(1);
         fireEvent.click(toggle);

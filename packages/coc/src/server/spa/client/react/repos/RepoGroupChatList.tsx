@@ -249,7 +249,7 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
             {selecting && <div className="flex flex-wrap gap-2 px-2 py-1 text-xs" aria-label="Selected chat actions">
                 <span>{selectedRows.length} selected</span>
                 {(['pin', 'unpin', 'archive', 'unarchive', 'delete', 'cancel'] as const).map(action =>
-                    <button key={action} disabled={busy || !selectedRows.length || !selectedRows.every(row =>
+                    <button key={action} disabled={busy || !selectedRows.length || !selectedRows.some(row =>
                         groupChatActionAllowed(row, action, model?.sources ?? []))}
                         onClick={() => action === 'delete' || action === 'cancel' ? setPendingAction(action) : void perform(action)}>
                         {action}
@@ -326,12 +326,15 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
                             {open && section.containers.map(container => (
                                 <div key={container.key}>
                                 {container.label && <button type="button" className="px-3 text-xs text-[#848484]"
+                                    title={`${owners.get(container.rows[0].ownerWorkspaceId)?.full ?? container.rows[0].ownerWorkspaceId} · ${serverLabel}`}
                                     aria-expanded={!containersCollapsed.has(container.key)}
                                     onClick={() => setContainersCollapsed(prev => {
                                         const next = new Set(prev);
                                         if (next.has(container.key)) next.delete(container.key); else next.add(container.key);
                                         return next;
-                                    })}>{container.label} ({container.rows.length})</button>}
+                                    })}>{owners.get(container.rows[0].ownerWorkspaceId)?.prefix
+                                        ? `${owners.get(container.rows[0].ownerWorkspaceId)!.prefix} / ` : ''}
+                                        {container.label} ({container.rows.length})</button>}
                                 {(!container.label || !containersCollapsed.has(container.key)) && container.rows.map(row => (
                                 <GroupChatRow
                                     key={row.key}

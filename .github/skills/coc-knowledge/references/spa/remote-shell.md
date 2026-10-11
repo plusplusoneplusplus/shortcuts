@@ -235,15 +235,14 @@ that same registry.
   or shortcut owner.
 - Behind `features.repoGroupAggregatedChats` (default off) the group's Workspace chat
   list is `repos/RepoGroupChatList.tsx`, fed by `useRepoGroupChatFeed` from the owning
-  server's `GET /api/repo-groups/:id/chats` (group + explicit members). `RepoGroupView`
-  passes it to the group's `RepoChatTab` through `renderList`, so the tab keeps the
-  group's selection, hash and detail pane. Rows are keyed
-  `serverKey|ownerWorkspaceId|canonicalId` (`local` or the remote server id) and use the
-  shared `features/chat/chat-row-style.ts` look; member rows add a muted `repo /` prefix
-  (`buildRepoGroupOwnerLabels`, shortened only while unique), group-owned rows show only
-  the title, and the owner/server lives in the row tooltip/aria label and list header.
-  Sections are Running, Queued, Pinned (loaded history with `pinnedAt`, newest pin
-  first) and History in the feed's global activity order, with one Load more.
+  server's `GET /api/repo-groups/:id/chats` (group + explicit members). Rows use
+  `serverKey|ownerWorkspaceId|canonicalId`, native styling and compact, distinguishable
+  muted member prefixes; group rows omit the prefix. Running, Queued and Pinned
+  precede globally ordered history and one Load more. Search/filter/count behavior
+  and owner-qualified group navigation live in [shell.md](shell.md).
+  `RepoChatTab.renderList` hosts the combined list; `detailOverride` shows member
+  conversations while retaining group navigation. Concrete reads and mutations
+  follow [clone-routing.md](clone-routing.md), not the active workspace alias.
  from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.

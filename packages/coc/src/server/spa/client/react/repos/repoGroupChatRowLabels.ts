@@ -22,9 +22,8 @@ function shorten(name: string): string {
 
 /**
  * Owner labels keyed by workspace id. Group-owned chats get no prefix. Member
- * prefixes use the registered name, shortened only when no two members would
- * then read the same; members sharing a registered name are told apart by their
- * workspace id.
+ * prefixes use compact registered names; collisions gain deterministic short
+ * aliases, while full hover/focus labels include the workspace identity.
  */
 export function buildRepoGroupOwnerLabels(
     sources: readonly RepoGroupChatSource[],
@@ -42,14 +41,27 @@ export function buildRepoGroupOwnerLabels(
     }));
     const shortCount = new Map<string, number>();
     for (const name of full.values()) shortCount.set(shorten(name), (shortCount.get(shorten(name)) ?? 0) + 1);
+    const prefixes = new Map<string, string>();
+    const used = new Set([...full.values()].map(shorten).filter(short => shortCount.get(short) === 1));
+    for (const member of [...members].sort((a, b) => a.workspaceId.localeCompare(b.workspaceId))) {
+        const short = shorten(full.get(member.workspaceId)!);
+        if (shortCount.get(short) === 1) { prefixes.set(member.workspaceId, short); continue; }
+        let ordinal = 1;
+        let alias: string;
+        do {
+            const suffix = `#${ordinal++}`;
+            alias = short.slice(0, OWNER_PREFIX_MAX_LENGTH - suffix.length - 1) + '…' + suffix;
+        } while (used.has(alias));
+        used.add(alias);
+        prefixes.set(member.workspaceId, alias);
+    }
     for (const source of sources) {
         if (source.role === 'group') {
             labels.set(source.workspaceId, { full: source.name || source.workspaceId });
             continue;
         }
         const name = full.get(source.workspaceId)!;
-        const short = shorten(name);
-        labels.set(source.workspaceId, { prefix: (shortCount.get(short) ?? 0) > 1 ? name : short, full: name });
+        labels.set(source.workspaceId, { prefix: prefixes.get(source.workspaceId), full: name });
     }
     return labels;
 }
@@ -78,8 +90,9 @@ export function partitionPinnedRows(history: readonly RepoGroupChatRow[]): {
 /** Same rule as the owner's unread badge: finished, and not seen since it ended. */
 export function isUnseenGroupChat(row: RepoGroupChatRow): boolean {
     const item = row.item;
-    if (row.section !== 'history' || !item) return false;
+    if (row.section !== 'history' || !item || item.archived) return false;
     if (item.status !== 'completed' && item.status !== 'failed') return false;
     if (!item.endTime) return false;
-    return item.seenAt !== item.endTime;
+    if (item.seenAt === item.endTime) return false;
+    return !item.seenAt || new Date(item.seenAt).getTime() !== new Date(item.endTime).getTime();
 }
