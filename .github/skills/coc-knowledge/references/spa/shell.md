@@ -344,6 +344,11 @@ from stats-only placeholders, and `taskDataSource` records the server/API owner.
 the selected group's queue stays independent of its members. Owner-aware readers
 exclude mismatched sources and unresolved remote selections. `RailHoverPreview`
 provides anchored pointer/focus previews for running, queued and pinned controls.
+`RailJobMetadata` shares status/type and execution-mode presentation. Queue and
+pinned reads use `shared/queue-job-mode.ts` to batch current process modes without
+transcripts, verify each execution workspace, preserve Ralph identity and omit
+unknown modes. Committed mode changes invalidate active queue snapshots through
+the existing WebSocket channel; pills add no browser reads or polling.
 Pinned rows use the owner's complete pinned-process endpoint plus the chat list's
 live pin/archive state and visibility rules; group scope does not aggregate member
 pins. Scope or transport changes dispose previews. Icon clicks retain sidebar

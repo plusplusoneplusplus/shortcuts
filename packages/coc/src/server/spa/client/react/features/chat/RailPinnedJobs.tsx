@@ -11,10 +11,9 @@ import { useApp } from '../../contexts/AppContext';
 import { useOptionalChatPrefs } from '../../contexts/chatPrefsConsumer';
 import { workspaceReadSource } from '../../api/workspaceReads';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
-import { getTaskDef } from '../../../../../tasks/task-types';
 import { queueJobHash } from '../../queue/queueJobRoute';
 import { RailControlsContext, RailHoverPreview, RailPreviewRow } from '../repo-detail/RailHoverPreview';
-import { ChatStatusPill } from './ChatStatusPill';
+import { RailJobMetadata } from './RailJobMetadata';
 import { getChatRowTitle } from './latestSentinelChat';
 import { loadedPinKeys, selectRailPinnedJobs, type PinnedSnapshot, type RailPinnedTab } from './rail-pinned-jobs';
 
@@ -96,7 +95,6 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
                 ),
                 renderRows: dismiss => rows.map(row => {
                     const title = getChatRowTitle(row);
-                    const typeLabel = getTaskDef(row.type ?? '')?.label || row.type;
                     return (
                         <RailPreviewRow
                             key={String(row.id)}
@@ -107,10 +105,7 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
                                 dismiss();
                                 onOpen(row);
                             }}
-                            meta={<>
-                                {row.status && <ChatStatusPill status={row.status} type={row.type} showDuration={false} className="!h-[18px] !text-[10px]" />}
-                                {typeLabel && <span>{typeLabel}</span>}
-                            </>}
+                            meta={<RailJobMetadata job={row} />}
                         />
                     );
                 }),

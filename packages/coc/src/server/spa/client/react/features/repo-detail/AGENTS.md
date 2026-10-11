@@ -83,9 +83,12 @@ resize handles, and the middle pane's 360px reserve from the dock maximum. The
 left column applies the matching reserve for the dock minimum. Both resizable
 panels keep their persisted pixel widths when a narrow viewport temporarily
 clamps them, so widening restores the user's chosen sizes. `RepoDetail` and
-`RepoGroupView` pass workspace-scoped `useRepoQueueStats` counts into the
-collapsed rail. Separate running and queued controls appear only for nonzero
-counts and expand the left column when selected. With `features.railGitSummary`
+`RepoGroupView` pass workspace-scoped `useRepoQueueJobs` snapshots into the
+collapsed rail. Running and queued previews share `RailJobMetadata` with pinned
+previews: status, current execution mode and task type remain distinct. Modes
+come from owner-verified compact snapshots; unknown modes are omitted and Ralph
+session identity is preserved. Nonzero count controls expand the left column
+when selected. With `features.railGitSummary`
 on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;
 `railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the

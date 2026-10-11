@@ -19,7 +19,8 @@ export interface QueueJob {
     displayName?: string;
     processId?: string;
     workItemId?: string;
-    payload?: { processId?: string; workItemId?: string; mode?: string };
+    executionMode?: string | null;
+    payload?: { processId?: string; workItemId?: string; mode?: string; context?: unknown };
 }
 
 export interface RepoQueueStats {
