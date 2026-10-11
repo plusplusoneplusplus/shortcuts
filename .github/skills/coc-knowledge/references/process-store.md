@@ -38,10 +38,12 @@ retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 `ConversationSearchResult` and reports malformed FTS syntax as an empty result.
 
 The repo-group chat feed reads the same `conversation_search` index with literal
-AND-token matching and plain-text excerpts, including archives when requested.
-It intersects matches with the existing eligible process read before projecting
-rows or snippets. Its activity-ordered metadata snapshot supplies both counts
-and pagination; it creates no aggregate process records or search index.
+AND-token matching and plain excerpts, including requested archives. It excludes
+non-visible task definitions and internal Dream steps before projecting rows,
+counts or snippets. Its activity-ordered metadata snapshot supplies counts and
+pagination without aggregate records or a new index. Group unread uses each
+owner's existing seen map against eligible completed/failed, unarchived chats,
+independently of list filters.
 
 `getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
 `listRecentProcesses` use typed Rust read-pool tasks with the same schema check.

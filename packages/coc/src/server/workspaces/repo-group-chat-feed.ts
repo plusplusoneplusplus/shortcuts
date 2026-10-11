@@ -27,6 +27,7 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { toProcessHistoryItem, type ProcessHistoryItem } from '../shared/process-history-item';
 import type { RepoGroupMember } from './repo-group-workspace';
+import { getTaskDef } from '../tasks/task-types';
 
 export const REPO_GROUP_CHAT_STATUSES: readonly RepoGroupChatStatus[] = ['running', 'queued', 'completed', 'failed', 'cancelled'];
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'] as const;
@@ -149,6 +150,11 @@ function matchesArchived(archived: boolean | undefined, filter: RepoGroupChatArc
     return filter === 'only' ? archived === true : archived !== true;
 }
 
+function eligibleProcess(type: unknown, metadata: unknown): boolean {
+    if (typeof type === 'string' && getTaskDef(type)?.visible === false) return false;
+    return !metadata || typeof metadata !== 'object' || !('dreamStep' in metadata);
+}
+
 function activeProcessId(task: Record<string, unknown>): string | undefined {
     if (typeof task.processId === 'string') return task.processId;
     return typeof task.id === 'string' ? toQueueProcessId(task.id) : undefined;
@@ -256,6 +262,7 @@ export async function buildRepoGroupChatFeed(
             const tag = (task: Record<string, unknown>): OwnedTask => ({ ...task, ownerWorkspaceId: source.workspaceId });
             const represented = new Set<string>();
             const unique = (items: Record<string, unknown>[]) => items.filter(item => {
+                if (!eligibleProcess(item.type, item.metadata)) return false;
                 const id = activeProcessId(item);
                 if (!id || represented.has(id)) return false;
                 represented.add(id);
@@ -296,17 +303,22 @@ export async function buildRepoGroupChatFeed(
                 exclude: ['conversation'],
                 ...(query.type ? { type: query.type as AIProcess['type'] } : {}),
             }) : [];
-            for (const proc of state.history) parentOwners.set(proc.id, state.source.workspaceId);
+            for (const proc of state.history) if (eligibleProcess(proc.type, proc.metadata)) {
+                parentOwners.set(proc.id, state.source.workspaceId);
+            }
             state.history = state.history
-                .filter(proc => matchesArchived(proc.archived, query.archived)
+                .filter(proc => eligibleProcess(proc.type, proc.metadata) && matchesArchived(proc.archived, query.archived)
                     && !state.activeIds.has(proc.id) && (!state.hits || state.hits.has(proc.id)))
                 .sort((a, b) => activityMs(b) - activityMs(a) || a.id.localeCompare(b.id));
             if (query.q) {
                 const matches = (task: OwnedTask) => {
                     const id = activeProcessId(task);
                     if (id && state.hits?.has(id)) return true;
-                    const text = JSON.stringify(task).toLocaleLowerCase();
-                    return query.q!.toLocaleLowerCase().split(/\s+/).every(term => text.includes(term));
+                    const payload = task.payload && typeof task.payload === 'object' ? task.payload as Record<string, unknown> : {};
+                    const text = [task.title, task.promptPreview, task.fullPrompt, payload.prompt, payload.promptContent]
+                        .filter((value): value is string => typeof value === 'string').join('\n').toLocaleLowerCase();
+                    const terms = query.q!.toLocaleLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [];
+                    return terms.length > 0 && terms.every(term => text.includes(term));
                 };
                 state.running = state.running.filter(matches);
                 state.queued = state.queued.filter(matches);
@@ -478,11 +490,16 @@ async function countFeed(
     }
     // The group badge: unread chats across the group and its current members,
     // independent of the list filters, in each owner's own read state.
-    let unread: number | undefined = typeof store.getUnseenCount === 'function' ? 0 : undefined;
+    let unread: number | undefined = typeof store.getSeenMap === 'function' ? 0 : undefined;
     for (const state of all) {
         if (unread === undefined || !state.source.available) continue;
         try {
-            unread += store.getUnseenCount!(state.source.workspaceId);
+            const seen = store.getSeenMap!(state.source.workspaceId);
+            const rows = await store.getAllProcesses({
+                workspaceId: state.source.workspaceId, status: ['completed', 'failed'], exclude: ['conversation'],
+            });
+            unread += new Set(rows.filter(proc => !proc.archived && eligibleProcess(proc.type, proc.metadata)
+                && proc.endTime && seen[proc.id] !== new Date(proc.endTime).toISOString()).map(proc => proc.id)).size;
         } catch (err) {
             state.source.available = false;
             state.source.error = errorMessage(err);

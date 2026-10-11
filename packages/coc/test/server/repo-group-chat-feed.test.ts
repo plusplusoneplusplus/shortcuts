@@ -261,6 +261,21 @@ describe('buildRepoGroupChatFeed', () => {
         expect(feed.history[0].seenAt).toBeDefined();
     });
 
+    it('hides internal processes and excludes archived or hidden chats from unread counts', async () => {
+        await addChat('visible', A, 1);
+        await addChat('archived', A, 2, { archived: true });
+        await addChat('classification', A, 3, { type: 'pr-classification' });
+        await addChat('internal', B, 4);
+        await store.updateProcess('internal', { metadata: { workspaceId: B, dreamStep: { kind: 'analyzer' } } });
+        queues[A] = { running: [{ id: 'hidden-active', type: 'pr-classification' }], queued: [] };
+        const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query());
+        expect(feed.history.map(row => row.id)).toEqual(['visible']);
+        expect(feed.running).toEqual([]);
+        expect(feed.counts).toMatchObject({ total: 1, unread: 1 });
+        const archived = await buildRepoGroupChatFeed(deps, GROUP, members, query({ archived: 'only' }));
+        expect(archived.counts).toMatchObject({ total: 1, unread: 1 });
+    });
+
     it('marks an unreadable source unavailable and counts as partial instead of failing the feed', async () => {
         await addChat('a1', A, 1);
         await addChat('b1', B, 2);
