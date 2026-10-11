@@ -247,6 +247,12 @@ WhatsApp reserves recognized control-command IDs in its bounded own/known-messag
 guard before best-effort 👍 acknowledgement and command dispatch. Teams' enabled
 channel Likes include commands and skip recorded thread-command IDs. Reaction
 failures preserve command handling; acknowledgements use native reactions.
+Unhandled WhatsApp inbound failures reply with fixed text and log only the parsed
+command type, the failing stage (`command`, `send-reply`, `record-reply`,
+`chat-routing`, `chat-admission`, …) and `messaging/safe-error-diagnostics.ts`
+fields: class, custom name, symbolic/short numeric code, HTTP-like status and one
+`cause` level (`WhatsAppBindingAdmissionError` carries the rejected enqueue as
+`cause`). Messages, stacks, chat text, JIDs and paths are never logged.
 
 `messaging/chat-target.ts` shares workspace/topic lookup (`resolveWorkspace`,
 bounded `listRecentTopics`, `resolveTopic`) and terminal queue subscriptions

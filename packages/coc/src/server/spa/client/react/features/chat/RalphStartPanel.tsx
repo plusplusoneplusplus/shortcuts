@@ -17,7 +17,7 @@
  * - Otherwise, posts to `/api/processes/:id/ralph-start` (continues a
  *   completed grilling-phase process).
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { RalphSessionRecord } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { cn } from '../../ui/cn';
@@ -56,6 +56,9 @@ export interface RalphLaunchedSession {
 }
 
 export interface RalphStartPanelProps {
+    approvedGoalSpec?: string;
+    approvedTargetKey?: string;
+    goalRevision?: string;
     processId: string;
     workspaceId?: string;
     /** Clone-qualified dashboard identity for the source workspace. */
@@ -125,6 +128,9 @@ function renderRalphGlyph() {
 }
 
 export function RalphStartPanel({
+    goalRevision,
+    approvedGoalSpec,
+    approvedTargetKey,
     processId,
     workspaceId,
     sourceSelectionId,
@@ -144,8 +150,17 @@ export function RalphStartPanel({
     const repoSelection = useRalphExecutionRepoTargets({ open, source });
     const selectedWorkspaceId = repoSelection.selectedTarget?.workspaceId ?? workspaceId;
     const aiSelection = useModalJobAiSelection({ workspaceId: selectedWorkspaceId, mode: 'ralph' });
+    useEffect(() => {
+        if (open && approvedTargetKey && repoSelection.targets.some(target => target.key === approvedTargetKey)) {
+            repoSelection.setSelectedKey(approvedTargetKey);
+        }
+    }, [open, approvedTargetKey, repoSelection.targets]);
     const [goalSpec, setGoalSpec] = useState('');
     const [starting, setStarting] = useState(false);
+    const admissionInFlight = useRef(false);
+    const ownerKey = JSON.stringify([processId, workspaceId, sourceSelectionId, sourceBaseUrl]);
+    const ownerRef = useRef(ownerKey);
+    ownerRef.current = ownerKey;
     const [error, setError] = useState<string | null>(null);
     const [loadingFile, setLoadingFile] = useState(false);
     const worktreeFeatureEnabled = isGitWorktreeExecutionEnabled();
@@ -171,6 +186,13 @@ export function RalphStartPanel({
     // persisted prop so the banner is correct even before metadata round-trips
     // and regardless of whether navigation later happens). Latest launch only.
     const [localLaunched, setLocalLaunched] = useState<RalphLaunchedSession | undefined>(undefined);
+    useEffect(() => {
+        setLocalLaunched(undefined);
+        setOpen(false);
+        setGoalSpec('');
+        setError(null);
+        setLoadingFile(false);
+    }, [ownerKey]);
     const effectiveLaunched = localLaunched ?? launchedSession;
     // Read the launched session's live state from the TARGET repo's server,
     // routed remote-safely inside the hook via getCocClientForWorkspace.
@@ -182,7 +204,9 @@ export function RalphStartPanel({
     async function handleOpen() {
         setError(null);
         setOpen(true);
-        if (goalFilePath) {
+        if (approvedGoalSpec) {
+            setGoalSpec(approvedGoalSpec);
+        } else if (goalFilePath) {
             // File-based flow: fetch goal content from disk
             setLoadingFile(true);
             try {
@@ -198,12 +222,14 @@ export function RalphStartPanel({
                 );
                 if (!resp.ok) throw new Error(`Failed to read goal file (HTTP ${resp.status})`);
                 const data = await resp.json();
-                setGoalSpec(typeof data.content === 'string' ? data.content : '');
+                if (ownerRef.current === ownerKey) setGoalSpec(typeof data.content === 'string' ? data.content : '');
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to read goal file');
-                setGoalSpec('');
+                if (ownerRef.current === ownerKey) {
+                    setError(err instanceof Error ? err.message : 'Failed to read goal file');
+                    setGoalSpec('');
+                }
             } finally {
-                setLoadingFile(false);
+                if (ownerRef.current === ownerKey) setLoadingFile(false);
             }
         } else {
             // Turn-based flow: extract from last assistant turn
@@ -212,10 +238,12 @@ export function RalphStartPanel({
     }
 
     async function handleConfirm() {
+        if (admissionInFlight.current) return;
         const trimmed = goalSpec.trim();
         if (!trimmed) { setError('Goal spec cannot be empty.'); return; }
         const selectedTarget = repoSelection.selectedTarget;
         if (!selectedTarget) { setError('Choose a repository before starting Ralph.'); return; }
+        admissionInFlight.current = true;
         setStarting(true);
         setError(null);
         try {
@@ -234,10 +262,39 @@ export function RalphStartPanel({
             if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
             if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
             const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId: selectedTarget.workspaceId };
+            if (goalRevision) body.goalRevision = goalRevision;
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
             if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
             if (Object.keys(config).length > 0) body.config = config;
             if (worktree.request) body.worktree = worktree.request;
+            const crossOwnerApproval = goalRevision && !useLaunchEndpoint && !sameSourceTarget;
+            const sourceApiBase = crossOwnerApproval
+                ? getRalphExecutionRepoSourceApiBase(source, repoSelection.sourceTarget) : undefined;
+            const approvalUrl = sourceApiBase
+                ? `${sourceApiBase}/processes/${encodeURIComponent(processId)}/ralph-start/approval` : undefined;
+            if (crossOwnerApproval) {
+                if (!approvalUrl) throw new Error('The grilling owner is unavailable; reconnect before Start');
+                const capability = await fetch(`${targetApiBase}/ralph-launch/capabilities`);
+                const support = capability.ok ? await capability.json() : undefined;
+                if (support?.version !== 1 || support.approvedStart !== true) {
+                    throw new Error('The execution server does not support native Ralph Start admission; no launch was attempted');
+                }
+                if (ownerRef.current !== ownerKey) return;
+                const approval = await fetch(approvalUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetKey: selectedTarget.key, goalSpec: trimmed, goalRevision }) });
+                const receipt = await approval.json();
+                if (!approval.ok) throw new Error(receipt.error ?? 'Start approval rejected');
+                if (receipt.execution) {
+                    if (ownerRef.current === ownerKey) {
+                        onStarted(receipt.execution.processId, receipt.execution.workspaceId);
+                        setOpen(false);
+                    }
+                    return;
+                }
+                body.requestId = receipt.requestId;
+                if (selectedTarget.serverId === repoSelection.sourceTarget?.serverId) body.spawnedFromProcessId = processId;
+            }
+            if (ownerRef.current !== ownerKey) return;
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -253,6 +310,15 @@ export function RalphStartPanel({
                 throw new Error(msg || `HTTP ${resp.status}`);
             }
             const result = await resp.json();
+            if (crossOwnerApproval && approvalUrl) {
+                const accepted = await fetch(approvalUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'admitted', requestId: body.requestId, execution: {
+                        workspaceId: selectedTarget.workspaceId, sessionId: result.sessionId,
+                        processId: result.processId, remote: selectedTarget.serverId !== repoSelection.sourceTarget?.serverId,
+                    } }) });
+                if (!accepted.ok) throw new Error('Execution was admitted, but source tracking could not be saved. Reopen this review to recover the same admission; do not launch another job.');
+            }
+
             // Any launch that hits `/ralph-launch` mints a fresh session and
             // returns its id — this covers both the direct launch path
             // (`useLaunchEndpoint`) and a grilling-phase launch into a target
@@ -277,13 +343,16 @@ export function RalphStartPanel({
                         console.warn('Failed to persist ralphLaunchedSession pointer:', persistErr);
                     }
                 }
-                setLocalLaunched(pointer);
+                if (ownerRef.current === ownerKey) setLocalLaunched(pointer);
             }
-            onStarted(result.processId, selectedTarget.workspaceId);
-            setOpen(false);
+            if (ownerRef.current === ownerKey) {
+                onStarted(result.processId, selectedTarget.workspaceId);
+                setOpen(false);
+            }
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to start Ralph');
+            if (ownerRef.current === ownerKey) setError(err instanceof Error ? err.message : 'Failed to start Ralph');
         } finally {
+            admissionInFlight.current = false;
             setStarting(false);
         }
     }
@@ -297,12 +366,10 @@ export function RalphStartPanel({
             ? `Goal spec: ${goalFileName}`
             : 'Goal spec ready for execution';
 
-        // Status variant: a launched session exists AND its record is readable.
-        // If the record is missing/unreadable (deleted, target unreachable,
-        // clone not registered → view is null/undefined) we fall through to the
-        // plain "Ralph ready" banner — no error spew, Start Ralph still shown.
-        if (effectiveLaunched && launchedView?.record) {
-            const status = deriveLaunchedStatus(launchedView.record);
+        // Native admissions retain their identity even when the target is
+        // unreachable. Legacy goal launches can still open another review.
+        if (effectiveLaunched && (launchedView?.record || approvedGoalSpec)) {
+            const status = launchedView?.record ? deriveLaunchedStatus(launchedView.record) : { label: 'Ralph admitted', iteration: undefined };
             return (
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2" data-testid="ralph-start-banner">
                     <div className="flex items-center gap-2 text-xs text-[#1f2328] dark:text-[#c9d1d9]">
@@ -319,14 +386,14 @@ export function RalphStartPanel({
                                 {status.iteration ? ` — iteration ${status.iteration}` : ''}
                             </span>
                         </button>
-                        <button
+                        {!approvedGoalSpec && <button
                             type="button"
                             data-testid="ralph-start-btn"
                             onClick={handleOpen}
                             className="shrink-0 inline-flex h-[22px] items-center rounded-md bg-purple-600 px-2 text-[11px] font-medium text-white hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40"
                         >
                             Start Ralph
-                        </button>
+                        </button>}
                     </div>
                 </div>
             );
@@ -390,7 +457,7 @@ export function RalphStartPanel({
                         sourceWarning={repoSelection.sourceWarning}
                         selectedKey={repoSelection.selectedKey}
                         onSelectedKeyChange={repoSelection.setSelectedKey}
-                        disabled={starting || loadingFile}
+                        disabled={starting || loadingFile || !!approvedTargetKey}
                         testIdPrefix="ralph-start"
                     />
                 </div>

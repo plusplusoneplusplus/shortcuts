@@ -9,6 +9,8 @@ import * as os from 'os';
 import * as pathMod from 'path';
 import { execFileSync } from 'child_process';
 import { createRouter } from '../../../src/server/shared/router';
+import { prepareRalphGrilling, reconcileRalphGoal, RalphGrillingStore } from '../../../src/server/ralph/grilling-state';
+import { registerRalphGrillingApprovalRoutes } from '../../../src/server/routes/ralph-grilling-approval-routes';
 import { registerRalphRoutes } from '../../../src/server/routes/queue-ralph-routes';
 import type { Route } from '../../../src/server/types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -85,6 +87,7 @@ describe('POST /api/processes/:id/ralph-start', () => {
 
         const routes: Route[] = [];
         registerRalphRoutes(routes, { bridge: mockBridge, store, dataDir });
+        registerRalphGrillingApprovalRoutes(routes, { store, dataDir });
 
         const router = createRouter({ routes, spaHtml: '' });
         server = http.createServer(router);
@@ -106,6 +109,83 @@ describe('POST /api/processes/:id/ralph-start', () => {
     beforeEach(() => {
         store.processes.clear();
         mockEnqueue.mockClear();
+    });
+
+    async function nativeGoal() {
+        const sessionId = `ralph-native-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const id = `queue_native-${sessionId}`;
+        await prepareRalphGrilling({ id: id.slice(6), type: 'chat', priority: 'normal',
+            payload: { kind: 'chat', workspaceId: 'ws-native', mode: 'ask', prompt: 'Build',
+                context: { ralph: { phase: 'grilling', sessionId } } } },
+        { dataDir, enabled: true, store: { getWorkspaces: async () => [{ id: 'ws-native' } as any] } });
+        const process = { id, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'Build',
+            metadata: { type: 'chat', workspaceId: 'ws-native', mode: 'ask', ralph: { phase: 'grilling', sessionId } },
+            conversationTurns: [{ role: 'user', content: 'Build', turnIndex: 0, timestamp: new Date() },
+                { role: 'assistant', content: '## Goal\nBuild it', turnIndex: 1, timestamp: new Date() }] } as any;
+        await store.addProcess(process);
+        const state = (await reconcileRalphGoal(process, { dataDir, store }))!;
+        return { process, state, url: `/api/processes/${id}/ralph-start`,
+            body: { goalSpec: '## Goal\nReviewed implementation', workspaceId: 'ws-native', goalRevision: state.goal!.revision } };
+    }
+
+    it('requires native goal revision and rejects stale files before execution admission', async () => {
+        const fixture = await nativeGoal();
+        const missing = await post(baseUrl, fixture.url, { ...fixture.body, goalRevision: undefined });
+        expect(missing.status).toBe(409);
+        fs.writeFileSync(fixture.state.goal!.path, '## Goal\nEdited elsewhere');
+        expect((await post(baseUrl, fixture.url, fixture.body)).status).toBe(409);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('reuses the same native session and one execution child across concurrent Start approvals', async () => {
+        const fixture = await nativeGoal();
+        const responses = await Promise.all([post(baseUrl, fixture.url, fixture.body), post(baseUrl, fixture.url, fixture.body)]);
+        expect(responses.map(result => result.status)).toEqual([200, 200]);
+        expect(responses[0].json().processId).toBe(responses[1].json().processId);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const state = await new RalphGrillingStore(dataDir).read('ws-native', fixture.state.sessionId);
+        expect(state?.start?.status).toBe('admitted');
+        expect(mockEnqueue.mock.calls[0][0].payload.context.ralph.sessionId).toBe(fixture.state.sessionId);
+    });
+
+    it('rejects owner mismatch, pending questions and invalid reviewed goals', async () => {
+        const fixture = await nativeGoal();
+        expect((await post(baseUrl, fixture.url, { ...fixture.body, workspaceId: 'ws-other' })).status).toBe(409);
+        expect((await post(baseUrl, fixture.url, { ...fixture.body, goalSpec: 'Just execute' })).status).toBe(400);
+        await store.updateProcess(fixture.process.id, { pendingAskUser: [{ question: 'Choose' }] as any });
+        expect((await post(baseUrl, fixture.url, fixture.body)).status).toBe(409);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('queue rejection restores grilling and permits an explicit retry without starting a child', async () => {
+        const fixture = await nativeGoal();
+        mockEnqueue.mockRejectedValueOnce(new Error('queue rejected'));
+        expect((await post(baseUrl, fixture.url, fixture.body)).status).toBe(500);
+        const state = await new RalphGrillingStore(dataDir).read('ws-native', fixture.state.sessionId);
+        expect(state?.start?.status).toBe('rejected');
+        expect(JSON.parse(fs.readFileSync(pathMod.join(dataDir, 'repos', 'ws-native', 'ralph-sessions', fixture.state.sessionId, 'session.json'), 'utf8')).phase).toBe('grilling');
+        expect((await post(baseUrl, fixture.url, fixture.body)).status).toBe(200);
+    });
+
+    it('reserves cross-owner approval durably without queueing execution and reuses the receipt', async () => {
+        const fixture = await nativeGoal();
+        const body = { ...fixture.body, targetKey: 'remote-server:ws-other' };
+        const first = await post(baseUrl, `${fixture.url}/approval`, body);
+        const replay = await post(baseUrl, `${fixture.url}/approval`, body);
+        expect(first.status).toBe(200); expect(replay.status).toBe(200);
+        expect(first.json().requestId).toBe(replay.json().requestId);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+        expect((await post(baseUrl, `${fixture.url}/approval`, { ...body, targetKey: 'different-owner' })).status).toBe(409);
+        expect((await post(baseUrl, fixture.url, fixture.body)).status).toBe(409);
+    });
+
+    it('does not recover an unadmitted cross-owner Start after the interview is cancelled', async () => {
+        const fixture = await nativeGoal();
+        const body = { ...fixture.body, targetKey: 'remote-server:ws-other' };
+        expect((await post(baseUrl, `${fixture.url}/approval`, body)).status).toBe(200);
+        await store.updateProcess(fixture.process.id, { status: 'cancelled' });
+        expect((await post(baseUrl, `${fixture.url}/approval`, body)).status).toBe(409);
+        expect(mockEnqueue).not.toHaveBeenCalled();
     });
 
     // -----------------------------------------------------------------------

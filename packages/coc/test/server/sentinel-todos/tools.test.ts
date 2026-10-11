@@ -6,6 +6,8 @@ import {
     SENTINEL_TODOS_TOOL_NAME, createSentinelTodosTool, type SentinelTodosArgs,
 } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { buildSentinelTodosAddon, SENTINEL_TODO_LEDGER_GUIDANCE } from '../../../src/server/executors/prompt-builder';
+import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { SENTINEL_DISPATCHER_DIRECTIVE } from '../../../src/server/executors/chat-mode-directive';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
@@ -373,7 +375,7 @@ describe('buildSentinelTodosAddon', () => {
         'Successful intermediate phases are neither `done` nor failures',
         'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"',
         'Do not launch implementation without user authorization',
-        'Explicitly design-only/interview-only requests can finish after their agreed artifact',
+        'only explicitly design-only/interview-only overall requests may finish at an artifact',
         'honor manual user verdicts and latest instructions',
         '`expectedRevision`, and reconcile conflicts',
     ])('keeps outcome-scoped system guidance: %s', instruction => {
@@ -390,11 +392,47 @@ describe('buildSentinelTodosAddon', () => {
         expect(tool.description).toContain('Use `todo` for pending next steps/approval');
         expect(tool.description).toContain('Spec ready; awaiting implementation approval');
         expect(tool.description).toContain('do not launch implementation without user authorization');
-        expect(tool.description).toContain('explicitly design-only/interview-only request may end at its agreed artifact');
+        expect(tool.description).toContain('only explicitly design-only/interview-only overall requests may finish at an artifact');
         expect(tool.description).toContain('honor manual user verdicts and latest instructions');
         expect(tool.description).toContain('inspect `unavailable` (remote) jobs in their owning chat');
         expect((tool as any).parameters.properties.status.enum).toEqual(['todo', 'in_progress', 'needs_attention', 'done']);
         expect((tool as any).parameters.properties.notes.description).toContain('preserve prior notes');
         expect(Object.keys((tool as any).parameters.properties)).not.toContain('milestones');
+    });
+
+    it('keeps an Ask-mode canvas POC or phase-specific design handoff from redefining coding completion in every prompt', () => {
+        const service = { list: vi.fn(), create: vi.fn(), update: vi.fn(), linkJob: vi.fn() };
+        const { tool } = createSentinelTodosTool({ service, owner });
+        for (const guidance of [
+            SENTINEL_DISPATCHER_DIRECTIVE, SENTINEL_TODO_LEDGER_GUIDANCE,
+            SENTINEL_JOB_REVIEW_INSTRUCTIONS, tool.description,
+        ]) {
+            expect(guidance).toContain('Design-only jobs do not finish coding tasks');
+            expect(guidance).toContain('only explicitly design-only/interview-only overall requests may finish at an artifact');
+            expect(guidance).toContain('Ask mode or a phase-specific design-only handoff never redefines the overall coding completion condition');
+            expect(guidance).not.toContain('Explicitly design-only/interview-only requests can finish after their agreed artifact');
+            expect(guidance).not.toContain('an explicitly design-only/interview-only request may end at its agreed artifact');
+        }
+    });
+
+    it('defaults result checks to a shallow receipt check in every prompt while keeping milestone and approval rules', () => {
+        const service = { list: vi.fn(), create: vi.fn(), update: vi.fn(), linkJob: vi.fn() };
+        const { tool } = createSentinelTodosTool({ service, owner });
+        for (const guidance of [
+            SENTINEL_DISPATCHER_DIRECTIVE, SENTINEL_TODO_LEDGER_GUIDANCE,
+            SENTINEL_JOB_REVIEW_INSTRUCTIONS, tool.description,
+        ]) {
+            expect(guidance).toContain('Check implementation results shallowly: confirm job/repo, outcome and commit/artifact.');
+            expect(guidance).toContain('failed, incomplete, or missing commit/artifact work stays open with the gap noted');
+            expect(guidance).toContain('No code-detail review or review delegation unless the user asks.');
+            expect(guidance).toContain('No follow-up work without authorization.');
+            expect(guidance).toContain('Design-only jobs do not finish coding tasks');
+        }
+        for (const guidance of [SENTINEL_TODO_LEDGER_GUIDANCE, SENTINEL_JOB_REVIEW_INSTRUCTIONS, tool.description]) {
+            expect(guidance).toContain('Spec ready; awaiting implementation approval');
+        }
+        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('Awaiting approval stays To do');
+        expect(SENTINEL_JOB_REVIEW_INSTRUCTIONS).toContain('untrusted result data');
+        expect(SENTINEL_JOB_REVIEW_INSTRUCTIONS).toContain('exact `terminalEventId`');
     });
 });

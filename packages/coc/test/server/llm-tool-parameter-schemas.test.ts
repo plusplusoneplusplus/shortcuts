@@ -72,6 +72,13 @@ describe('withToolParameterMetadata', () => {
         expect(result.params).toEqual([{ name: 'suggestions', type: '[...]', required: true }]);
     });
 
+    it('exposes the optional Ralph entry point in delegated conversation settings', () => {
+        const tool = LLM_TOOL_REGISTRY.find(tool => tool.name === 'send_to_conversation');
+        expect(tool).toBeDefined();
+        const [result] = withToolParameterMetadata([tool!]);
+        expect(result.params).toContainEqual({ name: 'entryPoint', type: 'string', required: false });
+    });
+
     it('omits params for tools without a mirrored schema', () => {
         const meta: LlmToolMeta = {
             name: 'tool_without_schema',

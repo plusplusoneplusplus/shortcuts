@@ -223,6 +223,8 @@ async function fetchOneGitInfo(workspaceId: string, store: ProcessStore) {
             dirty: status.dirty,
             ahead: status.ahead,
             behind: status.behind,
+            upstream: status.trackingBranch ?? null,
+            detached: status.isDetached,
             isGitRepo: true,
             remoteUrl,
         } satisfies GitInfoResult,

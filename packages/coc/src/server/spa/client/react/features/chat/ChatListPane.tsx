@@ -97,6 +97,7 @@ import { isRalphTask } from '../../../../../tasks/task-types';
 import { getTaskChatProvider } from './ProviderBadge';
 import { CHAT_ROW_LAYOUT_CLASSES, CHAT_ROW_SELECTED_CLASSES, getChatRowDotClasses, getChatRowModeBadgeClasses } from './chat-row-style';
 import { normalizeChatMode } from '../../repos/modeConfig';
+import { getSessionCategory, isChatTask, taskMatchesFilter } from './task-type-filter';
 import { compareChatRecency, getChatRowTitle } from './latestSentinelChat';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
 import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
@@ -157,6 +158,8 @@ const EMPTY_GROUP_PINS: ProcessGroupPin[] = [];
 /** localStorage key for the Frozen Tasks section's expanded state (collapsed by default). */
 export const FROZEN_SECTION_EXPANDED_KEY = 'coc.chatList.frozenSectionExpanded';
 
+export { getSessionCategory, isChatTask, taskMatchesFilter };
+
 /** Session category labels for display and filtering. */
 export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
     'generating-code': { label: 'Generating Code', icon: '⚙️', color: 'text-blue-600 dark:text-blue-400' },
@@ -164,18 +167,6 @@ export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: stri
     'resolve-commit-comments': { label: 'Resolve Commit', icon: '🔺', color: 'text-amber-600 dark:text-amber-400' },
 };
 
-export function getSessionCategory(task: any): string | undefined {
-    return task.payload?.sessionCategory as string | undefined;
-}
-
-/** Returns true if a task belongs to the Chats tab (any chat mode, not a work-item execution). */
-export function isChatTask(task: any): boolean {
-    if (task.type !== 'chat') return false;
-    // Work-item executions historically used type:'chat' — exclude them from the Chats tab.
-    // Queue items carry workItemId on payload; history items carry it at the top level.
-    if (task.workItemId || task.payload?.workItemId) return false;
-    return true;
-}
 const isChat = isChatTask;
 
 /** Returns true if a task is an automation (run-script or run-workflow).
@@ -254,21 +245,6 @@ function getChatTitle(task: any): string {
         return text.length > 50 ? text.substring(0, 47) + '…' : text;
     }
     return 'Chat';
-}
-
-export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolean {
-    if (excludedTypes.size === 0) return true;
-    // Session category exclusion
-    const cat = getSessionCategory(task);
-    if (cat && excludedTypes.has(`cat:${cat}`)) return false;
-    // Parent 'chat' exclusion hides all chat tasks (including those with modes)
-    if (task.type === 'chat') {
-        if (excludedTypes.has('chat')) return false;
-        const mode = normalizeChatMode(task.payload?.mode ?? task.mode);
-        if (mode) return !excludedTypes.has(mode);
-        return true;
-    }
-    return !excludedTypes.has(task.type);
 }
 
 export function taskMatchesSearch(task: any, query: string): boolean {

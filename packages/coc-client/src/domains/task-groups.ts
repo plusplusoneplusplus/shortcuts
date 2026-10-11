@@ -25,9 +25,10 @@ export class TaskGroupsClient {
     return response.groups ?? [];
   }
 
-  async get(workspaceId: string, groupId: string): Promise<TaskGroupSummary> {
+  async get(workspaceId: string, groupId: string, options?: { signal?: AbortSignal }): Promise<TaskGroupSummary> {
     const response = await this.transport.request<TaskGroupResponse>(
       groupsPath(workspaceId, `/${encodePathSegment(groupId)}`),
+      options,
     );
     return response.group;
   }

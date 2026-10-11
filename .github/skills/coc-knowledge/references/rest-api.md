@@ -64,7 +64,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | POST | `/api/workspaces/active` | Report selected workspace by `clientId`; `workspaceId: null` clears it |
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
 | PATCH | `/api/workspaces/:id` | Update metadata; workspace mutations broadcast `workspace-topology-changed` |
-| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, upstream divergence and remote metadata |
+| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, detached flag, upstream name (null when none) with its ahead/behind, and remote metadata |
 | POST | `/api/git-info/batch` | Batched cached metadata for physical workspaces |
 | GET/PATCH | `/api/workspaces/:id/preferences` | Read/update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for modes `base`, `ask`, `autopilot` |
@@ -153,7 +153,7 @@ Disabled-by-default `features.gitWorktreeExecution`. The target server creates i
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/processes` | List processes (search/filter) |
-| GET | `/api/processes/:id` | Detail; queued `queue_<taskId>` returns a synthetic process with launch metadata; explicit `turnsLimit` (1–200) under live default-off `features.chatHistoryPaging` returns only the latest paired turn page plus `history` metadata; absent parameter or disabled gate retains the full detail shape |
+| GET | `/api/processes/:id` | Owner-scoped detail (`workspace`); queued `queue_<taskId>` returns launch metadata. `preview=true` requires `workspace` and returns only job identity/state and an 800-character recorded assistant/result/error excerpt with freshness, excluding prompts/transcripts/children and taking precedence over paging. Otherwise, explicit `turnsLimit` (1–200) under live default-off `features.chatHistoryPaging` returns the latest paired turn page plus `history` metadata; absent parameter or disabled gate retains full detail |
 | GET | `/api/processes/:id/turns` | Live `features.chatHistoryPaging` required (`404` off); owning `workspace`, exclusive nonnegative `beforeTurnIndex`, `limit` 1–200 (default 30); bounded chronological `{ turns, oldestTurnIndex, hasMore, totalTurns, historyRevision }`, invalid parameters → `400`, missing/foreign process → `404` |
 | PATCH | `/api/processes/:id` | Partial update. `metadata` replaces the stored object; `metadataPatch: { set?: object, unset?: string[] }` merges into current metadata. The two are mutually exclusive |
 | DELETE | `/api/processes/:id` | Delete process |
@@ -270,8 +270,10 @@ All launch/continue/resume bodies take [Provider overrides](#provider-overrides)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/processes/:id/ralph-start` | Start after grilling; optional worktree created before queue admission, reused for iterations/resume/final-check |
-| POST | `/api/ralph-launch` | Direct launch; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), custom `title` (trimmed, 80 chars), target-server worktree opt-in |
+| POST | `/api/processes/:id/ralph-start/approval` | Source-owned native cross-target approval reservation and admitted execution acknowledgment; stable request identity, goal revision validation |
+| GET | `/api/ralph-launch/capabilities` | Version-1 native grilling and approved-Start support; availability follows `ralph.enabled` |
+| POST | `/api/processes/:id/ralph-start` | Explicit Start after grilling; managed interviews require goalRevision; optional worktree created before queue admission, reused for iterations/resume/final-check |
+| POST | `/api/ralph-launch` | Optional entryPoint grill/execute (omitted means direct execute); native approved launches accept stable requestId; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), custom `title` (trimmed, 80 chars), target-server worktree opt-in |
 | GET | `/api/workspaces/:wsId/ralph-sessions/attention` | Awaiting-input count, independent of seen-state |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Journal, progress, files and recovered resume defaults |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend a completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |

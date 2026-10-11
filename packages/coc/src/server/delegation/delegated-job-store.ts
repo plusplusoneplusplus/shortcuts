@@ -34,12 +34,14 @@ const jobSchema = z.object({
     }).optional(),
     createdAt: z.iso.datetime(),
     terminal: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),
+    grilling: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),
+    boundary: z.literal('grill').optional(),
 });
 
 export type DelegatedJob = z.infer<typeof jobSchema>;
 export type DelegatedJobResult = z.infer<typeof resultSchema>;
 export type DelegatedJobDelivery = z.infer<typeof deliverySchema>;
-export type DelegatedJobRegistration = Omit<DelegatedJob, 'createdAt' | 'terminal'>;
+export type DelegatedJobRegistration = Omit<DelegatedJob, 'createdAt' | 'terminal' | 'grilling' | 'boundary'>;
 
 /**
  * One ledger per originating workspace, written synchronously with atomic rename.
@@ -90,11 +92,13 @@ export class DelegatedJobStore {
         jobId: string,
         result: DelegatedJobResult,
         initialDelivery: Extract<DelegatedJobDelivery, { state: 'pending' | 'failed' }> = { state: 'pending' },
+        boundary?: 'grill',
     ): boolean {
         const rows = this.list(workspaceId);
         const job = rows.find(row => row.id === jobId);
-        if (!job || job.terminal) return false;
-        job.terminal = {
+        const field = boundary === 'grill' ? 'grilling' : 'terminal';
+        if (!job || job[field]) return false;
+        job[field] = {
             result: resultSchema.parse({
                 ...result,
                 summary: result.summary.slice(0, MAX_RESULT_SUMMARY),
@@ -113,9 +117,10 @@ export class DelegatedJobStore {
         jobId: string,
         expected: DelegatedJobDelivery['state'],
         next: DelegatedJobDelivery,
+        boundary?: 'grill',
     ): boolean {
         const rows = this.list(workspaceId);
-        const terminal = rows.find(row => row.id === jobId)?.terminal;
+        const terminal = rows.find(row => row.id === jobId)?.[boundary === 'grill' ? 'grilling' : 'terminal'];
         if (!terminal || terminal.delivery.state !== expected) return false;
         const delivery = deliverySchema.parse(next);
         const allowed = expected === 'pending'
@@ -134,4 +139,9 @@ export class DelegatedJobStore {
     private save(workspaceId: string, rows: DelegatedJob[]): void {
         atomicWriteJsonUnique(getRepoDataPath(this.dataDir, workspaceId, DELEGATED_JOBS_FILE), rows);
     }
+}
+
+/** Reuse result delivery without consuming the whole execution-session receipt. */
+export function grillingResultJob(job: DelegatedJob): DelegatedJob | undefined {
+    return job.grilling ? { ...job, boundary: 'grill', terminal: job.grilling } : undefined;
 }

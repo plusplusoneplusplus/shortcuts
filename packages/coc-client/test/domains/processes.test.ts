@@ -3,6 +3,16 @@ import { AUTO_COMPACT_THRESHOLD_DEFAULT, CocClient, ProcessesClient } from '../.
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
+  it('preserves preview and paging options together on the owning cancellable detail request', async () => {
+    const adapter = createMockAdapter({});
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    const controller = new AbortController();
+    await client.get('proc/1', { workspace: 'owner', preview: true, turnsLimit: 30, include: ['children'] }, { signal: controller.signal });
+    expect(adapter.calls).toEqual([{ path: '/processes/proc%2F1', options: {
+      query: { workspace: 'owner', preview: true, turnsLimit: 30, include: 'children', status: undefined, exclude: undefined },
+      signal: controller.signal,
+    } }]);
+  });
   it('preserves unparameterized detail options and serializes bounded history with cancellation', async () => {
     const adapter = createMockAdapter({});
     const client = new ProcessesClient(adapter, new CocClient().options);

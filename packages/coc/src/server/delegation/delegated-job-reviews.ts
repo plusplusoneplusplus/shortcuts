@@ -7,7 +7,7 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import {
     emitDeliveryEvents, ProcessMessageDeliveryService, ReviewDeliveryRejectedError,
 } from '../processes/process-message-delivery-service';
-import { DelegatedJobStore, type DelegatedJob, type DelegatedJobDelivery } from './delegated-job-store';
+import { DelegatedJobStore, grillingResultJob, type DelegatedJob, type DelegatedJobDelivery } from './delegated-job-store';
 import { normalizeChatMode } from '../tasks/task-types';
 import { SENTINEL_JOB_REVIEW_INSTRUCTIONS, SENTINEL_JOB_REVIEW_PREFIX } from './sentinel-job-review-instructions';
 
@@ -28,7 +28,7 @@ export interface DelegatedReviewTodo {
 }
 
 function reviewPrompt(job: DelegatedJob, sentinel: boolean, repository?: WorkspaceInfo, todo?: DelegatedReviewTodo): string {
-    return `${sentinel ? '' : `${SENTINEL_JOB_REVIEW_INSTRUCTIONS}\n\n`}${SENTINEL_JOB_REVIEW_PREFIX}
+    return `${sentinel ? '' : `${SENTINEL_JOB_REVIEW_INSTRUCTIONS}\n\n`}${job.boundary === 'grill' ? 'This is the grilling milestone only. A validated goal is spec ready, awaiting explicit user implementation approval. Return pending feature work to Todo; only explicitly design-only work may finish. Do not start execution or mark implementation Done. Failed/cancelled grilling is not execution completion.\n' : ''}${SENTINEL_JOB_REVIEW_PREFIX}
 ${JSON.stringify({
         parent: job.parent, child: job.child, jobId: job.id, title: job.title,
         repository: { workspaceId: job.child.workspaceId, name: repository?.name, rootPath: repository?.rootPath },
@@ -69,7 +69,7 @@ export class DelegatedJobReviews {
     /** Called for newly recorded results and registered terminal rows during startup. */
     schedule(job: DelegatedJob): Promise<void> {
         if (this.disposed || !job.terminal || job.child.serverId
-            || (job.child.sessionId && job.terminal.result.terminalEventId !== `ralph:${job.child.workspaceId}:${job.child.sessionId}:terminal`)
+            || (job.child.sessionId && job.terminal.result.terminalEventId !== `ralph:${job.child.workspaceId}:${job.child.sessionId}:${job.boundary === 'grill' ? 'grill' : 'terminal'}`)
             || !['pending', 'queued'].includes(job.terminal.delivery.state)) return Promise.resolve();
         const receiptId = delegatedReviewReceipt(job);
         const existing = this.inFlight.get(receiptId);
@@ -137,7 +137,7 @@ export class DelegatedJobReviews {
     }
 
     private updateDelivery(job: DelegatedJob, expected: DelegatedJobDelivery['state'], next: DelegatedJobDelivery): void {
-        if (!this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, expected, next)) return;
+        if (!this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, expected, next, job.boundary)) return;
         try { this.deps.onDeliveryChange?.(job); }
         catch (error) { console.error('[delegated-job-reviews] Could not notify review delivery:', error); }
     }
@@ -180,7 +180,7 @@ export class DelegatedJobReviews {
         if (this.disposed || !isTerminalStatus(task.status)) return;
         const workspaceId = task.payload.workspaceId ?? task.repoId;
         if (typeof workspaceId !== 'string') return;
-        const rows = this.deps.jobs.list(workspaceId);
+        const rows = this.deps.jobs.list(workspaceId).flatMap(job => [job, ...(grillingResultJob(job) ? [grillingResultJob(job)!] : [])]);
         const processId = task.processId ?? toQueueProcessId(task.id);
         for (const row of rows) {
             if (row.parent.processId === processId && row.terminal?.result.outcome === 'cancelled') {
@@ -188,7 +188,7 @@ export class DelegatedJobReviews {
                     // A parent terminal event can race an admission that just deferred.
                     await this.inFlight.get(delegatedReviewReceipt(row))?.catch(() => {});
                     const current = this.deps.jobs.list(workspaceId).find(job => job.id === row.id);
-                    if (current) await this.schedule(current);
+                    if (current) await this.schedule(row.boundary === 'grill' ? grillingResultJob(current)! : current);
                 }
                 catch (error) { console.error('[delegated-job-reviews] Could not deliver cancellation:', error); }
             }

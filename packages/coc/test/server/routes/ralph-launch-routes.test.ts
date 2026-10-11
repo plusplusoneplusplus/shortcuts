@@ -100,6 +100,18 @@ describe('POST /api/ralph-launch', () => {
         mockEnqueue.mockClear();
     });
 
+    it('discloses native capability as disabled without an enabled Ralph flag', async () => {
+        const res = await request(baseUrl, '/api/ralph-launch/capabilities');
+        expect(res.json()).toEqual({ version: 1, grilling: false, approvedStart: false });
+        expect((await post(baseUrl, '/api/ralph-launch', { goalSpec: 'Interview', workspaceId: 'ws-1', entryPoint: 'grill' })).status).toBe(400);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it.each([{ processId: 'queue_existing' }, { action: 'cancel' }])('rejects create entryPoint for posts/cancellation: %s', async extra => {
+        expect((await post(baseUrl, '/api/ralph-launch', { goalSpec: 'Interview', entryPoint: 'grill', ...extra })).status).toBe(400);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
     // -----------------------------------------------------------------------
     // Happy path
     // -----------------------------------------------------------------------

@@ -213,22 +213,29 @@ descriptor and picks the renderer from the persisted `type`: Excalidraw a view-o
 `KustoView`, markdown/code a document preview. `.md-excalidraw-embed` placeholders in
 historical message HTML remain supported.
 
-With the unified right panel enabled for the embed's own chat, a loaded embed also
-renders an **Open in panel** action (`canvas-embed-open-in-panel`) above whichever
-body renders. The chat id reaches the embed through `ChatRenderContext.chatId` —
+All generic embeds share a title disclosure, initially expanded except for the
+existing Kusto group default. Collapse hides and makes the mounted body inert,
+preserving extension iframe state and editor drafts while reclaiming its layout
+space. Disclosure state is independent per occurrence and resets on workspace,
+chat or canvas identity changes. Loading and errors use the same wrapper.
+The existing `canvas.enabled` rendering gate controls availability.
+
+With the unified right panel enabled for the embed's own chat, a loaded embed
+retains a separate **Open in panel** action in its header, including while collapsed.
+The chat id reaches the embed through `ChatRenderContext.chatId` —
 `CanvasEmbed` is mounted by `MarkdownView` through a `createPortal` from a placeholder
 in pre-rendered HTML, and React context crosses portals where props cannot. The tab
 descriptor is built by the `+` menu's own builder, so the embed, the menu, and an AI
-update all reach one tab id for one canvas. Without a matching host the inline preview
-is byte-for-byte unchanged.
+update all reach one tab id for one canvas. Without a matching host, the action is
+omitted and the inline disclosure remains available.
 
 `KustoEmbedGroupProvider` (`shared/KustoEmbedGroup.tsx`, wrapping the turn list in
 `ConversationArea`) keeps only the last inline Kusto embed in document order expanded,
 picking it via each embed's registered wrapper element and `compareDocumentPosition`; a
 manual toggle overrides that, and an embed outside any provider stays expanded. Its
-expanded header exposes a `canvas-embed-kusto-connection-slot` into which `KustoView` —
+header retains a `canvas-embed-kusto-connection-slot` into which `KustoView` —
 given `connectionInHeader` + `connectionSlot` — `createPortal`s its cluster/database
-editors, which stay owned by `KustoView`.
+editors, which stay owned by `KustoView` and are hidden/inert while collapsed.
 
 The SPA client no-emit gate (`npx tsc -p tsconfig.client.json --noEmit`) is intentionally
 scoped to this Canvas/Kusto surface and its imported helpers.

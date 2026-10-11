@@ -91,7 +91,9 @@ describe('buildChatTurnSystemMessage', () => {
             '`needs_attention` with a reason for failed, cancelled, blocked, or incomplete final work',
             'Successful intermediate phases are neither `done` nor failures',
             'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"',
-            'Explicitly design-only/interview-only requests can finish after their agreed artifact',
+            'Design-only jobs do not finish coding tasks',
+            'only explicitly design-only/interview-only overall requests may finish at an artifact',
+            'Ask mode or a phase-specific design-only handoff never redefines the overall coding completion condition',
             'Ledger updates are bookkeeping only', 'Do not launch implementation or a retry without user authorization',
         ]) expect(SENTINEL_JOB_REVIEW_INSTRUCTIONS).toContain(requirement);
     });

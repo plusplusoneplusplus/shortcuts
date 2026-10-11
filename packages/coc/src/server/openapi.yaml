@@ -1859,6 +1859,15 @@ components:
         archived:
           type: boolean
           description: Whether the process is archived
+        mode:
+          type: string
+          description: Chat mode used by list visibility filters
+        workItemId:
+          type: string
+          description: Work-item owner for work-item chat processes
+        sessionCategory:
+          type: string
+          description: Purpose category used by Activity filters
         folderId:
           type: string
           nullable: true

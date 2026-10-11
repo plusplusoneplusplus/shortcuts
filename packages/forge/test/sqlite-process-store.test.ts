@@ -1552,7 +1552,16 @@ describe('SqliteProcessStore — Pin & Archive', () => {
 
     it('getPinnedProcesses returns only pinned processes for workspace', async () => {
         await store.addProcess(makeProcess('pp1', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
-        await store.addProcess(makeProcess('pp2', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('pp2', {
+            status: 'completed',
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws1',
+                mode: 'ask',
+                workItemId: 'work-42',
+                sessionCategory: 'generating-code',
+            },
+        }));
         await store.addProcess(makeProcess('pp3', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws2' } }));
 
         store.pinProcess('pp1', '2026-04-01T12:00:00.000Z');
@@ -1565,6 +1574,11 @@ describe('SqliteProcessStore — Pin & Archive', () => {
         expect(pinned[0].id).toBe('pp2');
         expect(pinned[1].id).toBe('pp1');
         expect(pinned[0].pinnedAt).toBe('2026-04-02T12:00:00.000Z');
+        expect(pinned[0]).toEqual(expect.objectContaining({
+            mode: 'ask',
+            workItemId: 'work-42',
+            sessionCategory: 'generating-code',
+        }));
     });
 
     it('setPinOrder rewrites pinned_at only for pinned processes in the workspace', async () => {

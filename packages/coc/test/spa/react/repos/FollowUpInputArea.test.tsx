@@ -11,7 +11,7 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 import React, { createRef } from 'react';
 
 // Hoist a call tracker so the mock factory can reference it before imports
-const { tracker, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig } = vi.hoisted(() => ({
+const { tracker, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockGetSentinelTodos } = vi.hoisted(() => ({
     tracker: {
         calls: [] as Array<[string, number?]>,
         domValue: '',
@@ -21,6 +21,7 @@ const { tracker, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachm
     mockForEachEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockGetLlmToolsConfig: vi.fn(),
+    mockGetSentinelTodos: vi.fn(),
 }));
 
 // Replace RichTextInput with a minimal stable test double that records setValue calls
@@ -57,6 +58,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        sentinelTodos: { get: mockGetSentinelTodos },
         preferences: {
             getLlmToolsConfig: mockGetLlmToolsConfig,
         },
@@ -73,6 +75,7 @@ import type { RichTextInputHandle } from '../../../../src/server/spa/client/reac
 import {
     FILE_PATH_DRAG_KIND,
     FILE_PATH_DRAG_MIME,
+    POINTER_CONTEXT_DRAG_MIME,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
@@ -80,6 +83,9 @@ import {
     type RalphSessionContextDragPayload,
     type SessionContextDragPayload,
 } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { createSentinelTodoContextPayload } from '../../../../src/server/spa/client/react/features/chat/sentinelTodoContext';
+import { useAttachedContext } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
+import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -92,6 +98,8 @@ beforeEach(() => {
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
+    mockGetSentinelTodos.mockReset();
+    resetActiveChatAttach();
     mockGetLlmToolsConfig.mockResolvedValue({
         tools: [{ name: 'get_conversation', label: 'Get Conversation', description: '', enabledByDefault: true }],
         disabledLlmTools: [],
@@ -420,6 +428,124 @@ describe('FollowUpInputArea — dismiss suggestions', () => {
 });
 
 describe('FollowUpInputArea — session context drops', () => {
+    const todoOwner = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'current-process' };
+    const todoPayload = createSentinelTodoContextPayload(todoOwner, { id: 'todo-1', title: 'Dragged title' });
+    function TodoComposer({ owner = todoOwner, ...overrides }: Partial<FollowUpInputAreaProps> & { owner?: typeof todoOwner }) {
+        const context = useAttachedContext();
+        return <FollowUpInputArea {...makeProps({
+            sentinelTodoOwner: owner, canRetrieveConversations: false,
+            getAttachedContext: context.getItems,
+            attachedContext: context.items, onAttachSessionContext: context.addSessionContext,
+            onRemoveAttachedContext: context.remove, ...overrides,
+        })} />;
+    }
+
+    it('resolves a drop without sending or changing text, deduplicates, removes and reattaches a native chip', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        mockGetSentinelTodos.mockResolvedValue({ items: [{ id: 'todo-1', title: 'Authoritative title' }] });
+        const onSend = vi.fn();
+        const setFollowUpInput = vi.fn();
+        render(<TodoComposer onSend={onSend} followUpInput="Keep my draft" setFollowUpInput={setFollowUpInput} />);
+        const transfer = makeSessionDataTransfer(todoPayload, POINTER_CONTEXT_DRAG_MIME);
+        fireEvent.dragEnter(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(screen.getByTestId('session-context-drop-hint')).toBeTruthy();
+        await act(async () => { fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer }); });
+        expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('Authoritative title');
+        expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('todo-1');
+        expect(screen.getByTestId('attached-sentinel-todo-context-chip').querySelector('[title="todo-1"]')?.className).toContain('shrink-0');
+        expect(mockGetSentinelTodos).toHaveBeenCalledWith('ws-1', 'current-process');
+        expect(onSend).not.toHaveBeenCalled();
+        expect(setFollowUpInput).not.toHaveBeenCalled();
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toContain('already attached');
+        expect(screen.getAllByTestId('attached-sentinel-todo-context-chip')).toHaveLength(1);
+        expect(mockGetSentinelTodos).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Remove context' }));
+        expect(screen.queryByTestId('attached-sentinel-todo-context-chip')).toBeNull();
+        await act(async () => { fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer }); });
+        expect(screen.getByTestId('attached-sentinel-todo-context-chip')).toBeTruthy();
+    });
+
+    it('supports the attach channel for the owning Sentinel without a new-chat fallback', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        mockGetSentinelTodos.mockResolvedValue({ items: [{ id: 'todo-1', title: 'From keyboard or touch' }] });
+        render(<TodoComposer />);
+        await act(async () => {
+            expect(attachSelectionToChat('ws-1', todoPayload)).toBe('active-chat');
+        });
+        expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('From keyboard or touch');
+    });
+
+    it('enforces the shared context cap when several authoritative drop reads finish together', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        let resolve!: (value: unknown) => void;
+        mockGetSentinelTodos.mockReturnValue(new Promise(r => { resolve = r; }));
+        render(<TodoComposer />);
+        for (let index = 1; index <= 4; index++) {
+            fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+                dataTransfer: makeSessionDataTransfer({ ...todoPayload, todoItemId: `todo-${index}` }, POINTER_CONTEXT_DRAG_MIME),
+            });
+        }
+        await act(async () => {
+            resolve({ items: [1, 2, 3, 4].map(index => ({ id: `todo-${index}`, title: `Item ${index}` })) });
+        });
+        expect(screen.getAllByTestId('attached-sentinel-todo-context-chip')).toHaveLength(3);
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toContain('up to 3');
+    });
+
+    it.each([
+        { ...todoPayload, sourceWorkspaceId: 'ws-other' },
+        { ...todoPayload, sourceProcessId: 'other-sentinel' },
+        { ...todoPayload, sourceRoutingRef: 'remote:other:ws-1' },
+    ])('rejects a wrong owner before any ledger read', async payload => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        render(<TodoComposer />);
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer(payload, POINTER_CONTEXT_DRAG_MIME),
+        });
+        expect(screen.getByTestId('follow-up-session-context-error')).toBeTruthy();
+        expect(mockGetSentinelTodos).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('attached-sentinel-todo-context-chip')).toBeNull();
+    });
+
+    it.each(['missing', 'error'])('reports %s items without attaching or sending', async failure => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        if (failure === 'missing') mockGetSentinelTodos.mockResolvedValue({ items: [] });
+        else mockGetSentinelTodos.mockRejectedValue(new Error('Ledger unavailable'));
+        const onSend = vi.fn();
+        render(<TodoComposer onSend={onSend} />);
+        await act(async () => {
+            fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+                dataTransfer: makeSessionDataTransfer(todoPayload, POINTER_CONTEXT_DRAG_MIME),
+            });
+        });
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toMatch(/missing|unavailable/);
+        expect(screen.queryByTestId('attached-sentinel-todo-context-chip')).toBeNull();
+        expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it('blocks send and duplicate drops during resolution and ignores a late response after an owner switch', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        let resolve!: (value: unknown) => void;
+        mockGetSentinelTodos.mockReturnValue(new Promise(r => { resolve = r; }));
+        const onSend = vi.fn();
+        const { rerender } = render(<TodoComposer onSend={onSend} />);
+        const transfer = makeSessionDataTransfer(todoPayload, POINTER_CONTEXT_DRAG_MIME);
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(screen.getByTestId('activity-chat-send-btn').hasAttribute('disabled')).toBe(true);
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
+        expect(mockGetSentinelTodos).toHaveBeenCalledTimes(1);
+        rerender(<TodoComposer owner={{ ...todoOwner, processId: 'next-sentinel' }} onSend={onSend} />);
+        await act(async () => { resolve({ items: [{ id: 'todo-1', title: 'Stale title' }] }); });
+        expect(screen.queryByTestId('attached-sentinel-todo-context-chip')).toBeNull();
+        expect(onSend).not.toHaveBeenCalled();
+        mockGetSentinelTodos.mockResolvedValue({ items: [{ id: 'todo-1', title: 'Next owner' }] });
+        await act(async () => { fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer({ ...todoPayload, sourceProcessId: 'next-sentinel' }, POINTER_CONTEXT_DRAG_MIME),
+        }); });
+        expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('Next owner');
+    });
+
     it('passes a valid dropped session to the parent when enabled', async () => {
         mockSessionContextAttachmentsEnabled.value = true;
         const onAttachSessionContext = vi.fn();

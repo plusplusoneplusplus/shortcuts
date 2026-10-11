@@ -45,6 +45,7 @@ const jobLinkSchema = z.object({
     linkedAt: z.iso.datetime(),
     linkedRevision: z.number().int().min(1),
     result: jobResultSchema.optional(),
+    specReady: z.object({ eventId: id, recordedAt: z.iso.datetime() }).optional(),
 });
 /**
  * A reference-only link from an item to an existing local conversation
@@ -95,7 +96,7 @@ export type SentinelTodoLedger = z.infer<typeof ledgerSchema>;
 export type SentinelTodoOwner = { workspaceId: string; processId: string };
 export type SentinelTodoJobLink = z.infer<typeof jobLinkSchema>;
 export type SentinelTodoJobResult = z.infer<typeof jobResultSchema>;
-export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'linkedRevision' | 'result'>;
+export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'linkedRevision' | 'result' | 'specReady'>;
 export type SentinelTodoReference = z.infer<typeof referenceSchema>;
 export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt' | 'attachedBy'>;
 
@@ -478,6 +479,34 @@ export class SentinelTodoStore {
         });
     }
 
+    /** A spec-ready milestone never consumes the execution outcome on the job link. */
+    recordGrillingResult(owner: SentinelTodoOwner, processId: string, eventId: string, links: string[]):
+        { item: SentinelTodoItem; ledgerRevision: number } | undefined {
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.type === 'normal'
+                && item.jobs.some(job => job.processId === processId && !job.serverId));
+            if (index < 0) return undefined;
+            const current = ledger.items[index];
+            const marker = `[${eventId}]`;
+            const link = current.jobs.find(job => job.processId === processId)!;
+            if (link.specReady) return undefined;
+            const note = `\n${marker} Spec ready; awaiting implementation approval. ${links.join(' ').slice(0, 2_000)}`;
+            const next: Record<string, unknown> = { ...current,
+                jobs: current.jobs.map(job => job === link ? { ...job, specReady: { eventId, recordedAt: new Date().toISOString() } } : job),
+                notes: current.notes.length + note.length <= 8_000 ? current.notes + note : current.notes,
+            };
+            const superseded = (current.userVerdictRevision ?? 0) > link.linkedRevision
+                || (!!current.userEditedAt && current.userEditedAt > link.linkedAt)
+                || current.jobs.indexOf(link) !== current.jobs.length - 1;
+            if (!current.archived && current.status !== 'done' && !superseded) {
+                next.status = 'todo';
+                next.statusReason = 'Spec ready; awaiting implementation approval';
+            }
+            return this.commit(owner, ledger, index, next, 'system', new Date().toISOString());
+        });
+    }
+
     private commit(
         owner: SentinelTodoOwner,
         ledger: SentinelTodoLedger,
@@ -516,7 +545,7 @@ export class SentinelTodoStore {
                 processId: row.process_id, workspaceId: row.job_workspace_id, kind: row.kind,
                 openLink: row.open_link, linkedAt: row.linked_at, linkedRevision: row.linked_revision,
                 ...optional('serverId', row.server_id), ...optional('sessionId', row.session_id),
-                ...optional('title', row.title), ...jsonField('result', row.result),
+                ...optional('title', row.title), ...jobReceipts(row.result),
             }));
             byItem.set(row.item_id, links);
         }
@@ -559,7 +588,7 @@ export class SentinelTodoStore {
         item.jobs.forEach((job, order) => statement.run(
             owner.workspaceId, owner.processId, item.id, job.serverId ?? '', job.processId, order,
             job.workspaceId, job.serverId ?? null, job.kind, job.sessionId ?? null, job.openLink,
-            job.title ?? null, job.linkedAt, job.linkedRevision, encode(job.result),
+            job.title ?? null, job.linkedAt, job.linkedRevision, encode(job.specReady ? { execution: job.result, specReady: job.specReady } : job.result),
         ));
     }
 
@@ -663,4 +692,10 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
             `${issue.path.join('.') || 'value'}: ${issue.message}`).join('; '));
     }
     return result.data;
+}
+
+function jobReceipts(value: string | null): Record<string, unknown> {
+    if (!value) return {};
+    const parsed = JSON.parse(value);
+    return parsed.specReady ? { result: parsed.execution, specReady: parsed.specReady } : { result: parsed };
 }

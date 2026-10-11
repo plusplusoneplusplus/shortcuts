@@ -8,6 +8,8 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import type { Canvas } from '@plusplusoneplusplus/coc-client';
 
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
@@ -32,6 +34,8 @@ vi.mock('@excalidraw/excalidraw', () => ({
 }));
 
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
+import { CanvasEmbed } from '../../../src/server/spa/client/react/shared/CanvasEmbed';
+import { ChatRenderContextProvider } from '../../../src/server/spa/client/react/features/chat/conversation/ChatRenderContext';
 import { KustoEmbedGroupProvider } from '../../../src/server/spa/client/react/shared/KustoEmbedGroup';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import { CANVAS_HOST_VERSION } from '../../../src/server/spa/client/react/features/canvas/canvas-host-contract';
@@ -280,11 +284,11 @@ describe('inline canvas:// embed', () => {
             expect(embeds[1].getAttribute('data-expanded')).toBe('true');
         });
 
-        // Only the expanded (last) embed mounts the interactive query editor.
-        expect(screen.getAllByTestId('kusto-query')).toHaveLength(1);
+        // Both editors stay mounted; the earlier one is hidden with its draft intact.
+        expect(screen.getAllByTestId('kusto-query')).toHaveLength(2);
         const embeds = screen.getAllByTestId('canvas-embed-kusto');
         expect(embeds[1].querySelector('[data-testid="kusto-query"]')).toBeTruthy();
-        expect(embeds[0].querySelector('[data-testid="kusto-query"]')).toBeNull();
+        expect(embeds[0].querySelector('[data-testid="kusto-query"]')).not.toBeVisible();
         // The collapsed embed still shows its header + summary so it can be reopened.
         expect(embeds[0].querySelector('[data-testid="canvas-embed-kusto-summary"]')?.textContent).toBe('1 row');
     });
@@ -329,5 +333,143 @@ describe('inline canvas:// embed', () => {
         // ...while the query editor remains in the body.
         const embed = screen.getByTestId('canvas-embed-kusto');
         expect(embed.querySelector('[data-testid="kusto-query"]')).toBeTruthy();
+    });
+
+    it.each(['markdown', 'code', 'excalidraw', 'extension', 'kusto'] as const)(
+        'collapses the entire %s body without unmounting it',
+        async type => {
+            mocks.get.mockResolvedValue({ ...kustoCanvas('one'), type, content: type === 'excalidraw' ? SCENE : kustoCanvas('one').content });
+            mocks.getExtension.mockResolvedValue(EXTENSION);
+            render(<CanvasEmbed workspaceId="ws-1" canvasId="one" />);
+            const toggle = await screen.findByRole('button', { name: 'Query one' });
+            const body = screen.getByTestId('canvas-embed-body');
+            await waitFor(() => expect(body.querySelector('pre, iframe, [data-testid="kusto-query"], [data-testid="mock-excalidraw"]')).toBeTruthy());
+            const child = body.firstElementChild;
+            expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            expect(toggle).toHaveAttribute('aria-controls', body.id);
+            fireEvent.click(toggle);
+            expect(body).not.toBeVisible();
+            expect(body).toHaveAttribute('inert');
+            expect(body.style.display).toBe('none');
+            expect(toggle).toBeVisible();
+            fireEvent.click(toggle);
+            expect(body).toBeVisible();
+            expect(body).not.toHaveAttribute('inert');
+            expect(body.firstElementChild).toBe(child);
+            expect(mocks.get).toHaveBeenCalledTimes(1);
+        },
+    );
+
+    it('uses native Enter and Space activation with independent state for repeated embeds', async () => {
+        mocks.get.mockResolvedValue({ ...kustoCanvas('same'), type: 'markdown' });
+        const user = userEvent.setup();
+        render(<><CanvasEmbed workspaceId="ws-1" canvasId="same" /><CanvasEmbed workspaceId="ws-1" canvasId="same" /></>);
+        const toggles = await screen.findAllByRole('button', { name: 'Query same' });
+        expect(toggles[0].getAttribute('aria-controls')).not.toBe(toggles[1].getAttribute('aria-controls'));
+        toggles[0].focus();
+        await user.keyboard('{Enter}');
+        expect(toggles[0]).toHaveAttribute('aria-expanded', 'false');
+        expect(toggles[1]).toHaveAttribute('aria-expanded', 'true');
+        await user.tab();
+        expect(toggles[1]).toHaveFocus();
+        toggles[0].focus();
+        await user.keyboard(' ');
+        expect(toggles[0]).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('preserves the extension frame and accepts saved state updates while collapsed', async () => {
+        const canvas = { ...kustoCanvas('extension'), type: 'extension', content: '{"pinned":false}' };
+        mocks.get.mockResolvedValue(canvas);
+        mocks.getExtension.mockResolvedValue(EXTENSION);
+        mocks.invokeCapability.mockResolvedValue({ ...canvas, title: 'Updated title', content: '{"pinned":true}', revision: 4 });
+        render(<CanvasEmbed workspaceId="ws-1" canvasId="extension" />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const frameWindow = iframe.contentWindow;
+        const srcDoc = iframe.srcdoc;
+        const postMessage = vi.fn();
+        Object.defineProperty(frameWindow, 'postMessage', { value: postMessage, configurable: true });
+        fireEvent.click(screen.getByRole('button', { name: 'Query extension' }));
+        const event = new MessageEvent('message', {
+            data: { __canvasHost: true, id: 8, type: 'invoke-capability', name: 'set_scope', params: {} },
+        });
+        Object.defineProperty(event, 'source', { value: frameWindow });
+        act(() => { window.dispatchEvent(event); });
+        const toggle = await screen.findByRole('button', { name: 'Updated title' });
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'response', id: 8, ok: true }), '*'));
+        fireEvent.click(toggle);
+        expect(screen.getByTestId('extension-canvas-iframe')).toBe(iframe);
+        expect(iframe.contentWindow).toBe(frameWindow);
+        expect(iframe.srcdoc).toBe(srcDoc);
+    });
+
+    it('keeps loading and error content behind the same disclosure', async () => {
+        let rejectLoad!: (reason: Error) => void;
+        mocks.get.mockReturnValue(new Promise((_resolve, reject) => { rejectLoad = reject; }));
+        render(<CanvasEmbed workspaceId="ws-1" canvasId="missing" />);
+        const toggle = screen.getByRole('button', { name: 'Loading canvas…' });
+        fireEvent.click(toggle);
+        expect(screen.getByTestId('canvas-embed-loading')).not.toBeVisible();
+        await act(async () => { rejectLoad(new Error('gone')); });
+        expect(screen.getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByTestId('canvas-embed-error')).not.toBeVisible();
+        fireEvent.click(toggle);
+        expect(screen.getByTestId('canvas-embed-error')).toBeVisible();
+    });
+
+    it('keeps a manual collapse when loading completes', async () => {
+        let resolveLoad!: (canvas: Canvas) => void;
+        mocks.get.mockReturnValue(new Promise(resolve => { resolveLoad = resolve; }));
+        render(<CanvasEmbed workspaceId="ws-1" canvasId="loading" />);
+        fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
+        await act(async () => { resolveLoad({ ...kustoCanvas('loading'), type: 'markdown' }); });
+        expect(screen.getByRole('button', { name: 'Query loading' })).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByTestId('canvas-embed-document')).not.toBeVisible();
+    });
+
+    it('leaves canvas-disabled references as links without mounting a disclosure', () => {
+        const html = chatMarkdownToHtml('canvas://disabled', 'ws-1', { canvasEmbedEnabled: false });
+        render(<MarkdownView html={html} />);
+        expect(screen.queryByTestId('canvas-embed-toggle')).toBeNull();
+        expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it.each(['workspace', 'chat', 'canvas'] as const)('resets disclosure and rejects stale loads on a %s switch', async scope => {
+        let resolveOld!: (canvas: Canvas) => void;
+        mocks.get.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
+        mocks.get.mockResolvedValue({ ...kustoCanvas('new'), type: 'markdown' });
+        const fixture = (workspaceId: string, chatId: string, canvasId: string) => (
+            <ChatRenderContextProvider value={{ wsId: workspaceId, chatId }}>
+                <CanvasEmbed workspaceId={workspaceId} canvasId={canvasId} />
+            </ChatRenderContextProvider>
+        );
+        const view = render(fixture('ws-1', 'chat-1', 'old'));
+        fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
+        view.rerender(fixture(scope === 'workspace' ? 'ws-2' : 'ws-1', scope === 'chat' ? 'chat-2' : 'chat-1', scope === 'canvas' ? 'new' : 'old'));
+        const toggle = await screen.findByRole('button', { name: 'Query new' });
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await act(async () => { resolveOld({ ...kustoCanvas('old'), type: 'markdown' }); });
+        expect(screen.queryByRole('button', { name: 'Query old' })).toBeNull();
+        fireEvent.click(toggle);
+        view.rerender(fixture(scope === 'workspace' ? 'ws-2' : 'ws-1', scope === 'chat' ? 'chat-2' : 'chat-1', scope === 'canvas' ? 'new' : 'old'));
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('preserves Kusto query and connection drafts through manual toggles', async () => {
+        mocks.get.mockResolvedValue(kustoCanvas('solo'));
+        render(<CanvasEmbed workspaceId="ws-1" canvasId="solo" />);
+        const query = await screen.findByTestId('kusto-query');
+        const cluster = await screen.findByTestId('kusto-cluster');
+        fireEvent.change(query, { target: { value: 'StormEvents | take 42' } });
+        fireEvent.change(cluster, { target: { value: 'https://example.com' } });
+        const toggle = screen.getByTestId('canvas-embed-kusto-toggle');
+        fireEvent.click(toggle);
+        expect(query).not.toBeVisible();
+        expect(cluster).not.toBeVisible();
+        expect(cluster.closest('[inert]')).toBeTruthy();
+        fireEvent.click(toggle);
+        expect(screen.getByTestId('kusto-query')).toBe(query);
+        expect(query).toHaveValue('StormEvents | take 42');
+        expect(cluster).toHaveValue('https://example.com');
     });
 });

@@ -42,6 +42,13 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
+- Collapsed workspace-rail job previews share `RailHoverPreview`. Pinned rows come
+  from the owning workspace's full pinned-process read, overlaid with the chat
+  list's live pin/archive state and tab/type visibility; do not derive them from
+  queue status arrays or aggregate member pins for a selected group.
+  Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
+  owner's git-info/working tree (groups: per-member git-info, never a group branch),
+  and never show unknown, no-upstream or detached state as clean or 0/0.
 - Terminal native paste is captured inside the focused `TerminalPanel`, consumes
   only `text/plain`, cancels parallel/default insertion, and uses xterm `paste()`.
   Clipboard shortcuts leave browser/Electron paste enabled without async reads;
@@ -195,8 +202,10 @@ references before editing. Paths are package-relative.
   Sentinel/user verdict does. Guidance tracks the intended final outcome on one item across
   grilling/implementation/review, with milestones/spec links in notes. Successful grilling
   returns feature work to Todo awaiting implementation approval; only explicitly
-  design-only/interview-only requests finish at their agreed artifact. Parent reviews
-  select overall-outcome status, re-read revisions, honor manual user verdicts, and require
+  design-only/interview-only overall requests finish at an artifact. Ask mode and
+  phase-specific design handoffs never redefine coding completion conditions. Parent reviews
+  are shallow by default (job/repo, outcome, commit/artifact; no code-detail review or review
+  delegation unless the user asks), select overall-outcome status, re-read revisions, honor manual user verdicts, and require
   user authorization before implementation/retry. Local assessment is durable per terminal result:
   `reviewedJobs` names exact process/event evidence with a status verdict and reason in one
   revision-checked write. Unrelated edits and delivery completion never acknowledge results.
@@ -212,6 +221,12 @@ references before editing. Paths are package-relative.
   transitions invalidate linked ledgers without advancing their revisions.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
+  To-do composer context reuses pointer attachments and resolves the owning ledger
+  on drop and explicit send (`spa/client/react/features/chat/sentinelTodoContext.ts`).
+  Bind workspace, parent Sentinel and concrete server identity; remote selections
+  never fall back locally. Serialize only user-facing tracking fields, not job links
+  or internal audit metadata. Attaching is read-only and grants no execution authority;
+  manual items remain tracking-only. See the composer knowledge reference for lifecycle rules.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are
@@ -222,7 +237,13 @@ references before editing. Paths are package-relative.
   processes win over queue metadata. Ralph registration identifies the session at launch
   only. Tool Ralph carries the captured connector origin into iteration 1 before registration
   for parent session-result return, without tracking direct iteration notices; connector Ralph
-  grilling requires separate session registration.
+  grilling requires separate session registration. Native delegated grilling uses create-only
+  `entryPoint: "grill"` and the composer/server shared contract, gated by existing `ralph.enabled`.
+  Initialize journal phase explicitly; readiness requires server-validated canonical ## Goal plus
+  revision. `grilling.json` owns process, synthesis and Start admission. Separate milestone and
+  terminal receipts; no completion/ledger state grants implementation authority. Same-owner Start
+  reuses the session; cross-owner approval records the actual execution pointer and deduplicates
+  target admission. Remote capability failures never fall back locally or forward source paths.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
   from scoped queue/process records at startup. Verify child process ID and stored workspace
@@ -379,6 +400,9 @@ references before editing. Paths are package-relative.
   `src/server/canvas/canvas-file-sandbox.ts` checks encoded/decoded shape, resolved
   containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
   file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
+  Inline `CanvasEmbed` disclosures keep hidden bodies and Kusto connection portals
+  mounted/inert to preserve drafts. State is per occurrence and resets by workspace,
+  chat and canvas identity; panel opening stays separate and owner-routed.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
   Cover actual column widths and overflow with the Kusto browser regression suite.
@@ -398,7 +422,10 @@ references before editing. Paths are package-relative.
   writes/reloads; retain
   state on scan failure. Wakeups persist before arming.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
-  the mode directive (`chat-mode-directive.ts`). Required review rules live in
+  the source-owned starting mode directive (`chat-mode-directive.ts`), which keeps coding
+  tasks pending through planning/POCs until implementation meets the completion condition.
+  The design-only completion boundary and shallow result-check rule are shared with ledger/tool guidance from
+  `delegation/sentinel-job-review-instructions.ts`. Required review rules live in
   `delegation/sentinel-job-review-instructions.ts` and are appended by
   `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
@@ -459,7 +486,9 @@ references before editing. Paths are package-relative.
   both relays resolve request-correlated answers and safe failure notices
   through `src/server/messaging/relay-answer.ts`. Session/usage-limit notices
   include recognized UTC/GMT reset times; other failures use fixed text. Never
-  relay raw exceptions or partial output, or borrow another request's error. Receipt files use
+  relay raw exceptions or partial output, or borrow another request's error.
+  WhatsApp inbound failure logs carry command type, failing stage and
+  `messaging/safe-error-diagnostics.ts` fields only, never raw errors. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - `features.sentinelDesktopMirror` is live/default-off under Admin → Configure →
   Integrations. Stage newly submitted dashboard messages before canonical admission;

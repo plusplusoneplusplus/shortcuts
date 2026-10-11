@@ -26,6 +26,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
+import { GroupRailGit } from '../features/repo-detail/RailGitSummary';
+import { useRailGitSummaryEnabled } from '../hooks/feature-flags/useRailGitSummaryEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from '../features/repo-detail/content-search/ContentSearchOverlay';
@@ -224,6 +226,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl,
         !aggregatedChats || !parseRemoteCloneKey(selectionId) || !!groupBaseUrl);
     const splitGitAvailable = isMobile || members === undefined || members.some(member => !member.stale);
+    const railGitEnabled = useRailGitSummaryEnabled();
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
@@ -338,6 +341,16 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     routeId: selectionId,
                                     scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:${activeTab}`,
                                 }}
+                                railGit={railGitEnabled && splitGitAvailable ? (
+                                    <GroupRailGit
+                                        key={`${selectionId}:${workspaceReadSource(queueClient)}`}
+                                        selectionId={selectionId}
+                                        routingRef={selectionId}
+                                        client={queueClient}
+                                        members={members}
+                                        scopeLabel={`${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group`}
+                                    />
+                                ) : undefined}
                                 chatHeaderExtra={
                                     <button
                                         disabled={aggregatedChats && !groupOwnerAvailable}
@@ -361,6 +374,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
                                         railShortcutContainer={splitRailShortcutNode}
+                                        railScopeLabel={`${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group`}
                                         detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}

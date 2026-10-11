@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
@@ -17,6 +17,9 @@ import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
 import type { MetaCommand } from '../slash-command-parser';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
+import { getSentinelTodoContextClient, resolveSentinelTodoContext } from '../sentinelTodoContext';
+import { SENTINEL_TODO_CONTEXT_DRAG_KIND } from '../sessionContextDrag';
+import { sentinelTodoOwnerKey, type SentinelTodoOwner } from '../../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -108,6 +111,7 @@ export interface UseSendMessageOptions {
     sessionContextAttachmentsEnabled?: boolean;
     /** Conversation retrieval capability for the active workspace/provider mode. */
     conversationRetrievalAvailable?: boolean | null;
+    sentinelTodoOwner?: SentinelTodoOwner | null;
     /** Optional multi-agent grill setup used when promoting an ask-mode chat to Ralph. */
     ralphGrillSetup?: RalphGrillSetup;
     /**
@@ -170,6 +174,7 @@ export function useSendMessage({
     draftKey = taskId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
+    sentinelTodoOwner,
     ralphGrillSetup,
     onPromotedToRalph,
     notifyCompact,
@@ -191,6 +196,16 @@ export function useSendMessage({
     const scopedClient = useCocClient(workspaceId);
     const getMessageClient = useCallback(() => scopedOwner
         ? scopedClient : getCocClientForWorkspace(workspaceId), [scopedOwner, scopedClient, workspaceId]);
+    const resolvingTodosRef = useRef(false);
+    const todoSendOwnerKey = sentinelTodoOwner ? sentinelTodoOwnerKey(sentinelTodoOwner) : '';
+    const todoSendOwnerRef = useRef(todoSendOwnerKey);
+    todoSendOwnerRef.current = todoSendOwnerKey;
+    const todoSendEpoch = useRef(0);
+    useEffect(() => {
+        todoSendOwnerRef.current = todoSendOwnerKey;
+        todoSendEpoch.current += 1;
+        return () => { todoSendOwnerRef.current = ''; todoSendEpoch.current += 1; };
+    }, [todoSendOwnerKey]);
 
     const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => {
         // An explicit override wins over the composer's own attachments; without
@@ -311,34 +326,74 @@ export function useSendMessage({
     }, [workspaceId, getMessageClient, notifyCompact, refreshConversation, setCompacting]);
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
+        if (resolvingTodosRef.current) return;
         const includeComposerContext = options.includeComposerContext !== false;
         const requestedProvider = options.providerOverride ?? providerOverride;
         const messageMode = options.modeOverride ?? selectedMode;
         const userText = (overrideContent ?? followUpInputRef.current).trim();
         const pastedContent = includeComposerContext ? (getPastedContent?.() ?? null) : null;
-        const contextItems = includeComposerContext ? (getAttachedContext?.() ?? []) : [];
+        let contextItems = includeComposerContext ? (getAttachedContext?.() ?? []) : [];
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
             currentProcessId: processId,
             items: contextItems,
             canRetrieveConversations: conversationRetrievalAvailable,
+            sentinelTodoOwner,
         });
         if (sessionContextSendError) {
             setError(sessionContextSendError);
             return;
         }
+        if (!processId || inputDisabled || (sending && !isActiveGeneration) || compactingRef.current) return;
+        const hasTodoContext = contextItems.some(item => item.kind === 'sentinel-todo');
+        if (hasTodoContext && sentinelTodoOwner) {
+            const originalItems = contextItems;
+            const originalDraft = followUpInputRef.current;
+            const capturedOwnerKey = todoSendOwnerKey;
+            const capturedEpoch = todoSendEpoch.current;
+            resolvingTodosRef.current = true;
+            setSending(true);
+            try {
+                contextItems = await Promise.all(contextItems.map(async item => {
+                    if (item.kind !== 'sentinel-todo') return item;
+                    const resolvedItem = await resolveSentinelTodoContext({
+                        ...item, kind: SENTINEL_TODO_CONTEXT_DRAG_KIND, version: 1,
+                    }, sentinelTodoOwner);
+                    return { ...item, title: resolvedItem.title, resolvedItem };
+                }));
+                if (todoSendEpoch.current !== capturedEpoch || todoSendOwnerRef.current !== capturedOwnerKey) return;
+                const currentItems = getAttachedContext?.() ?? [];
+                if (currentItems.length !== originalItems.length
+                    || currentItems.some((item, index) => item.id !== originalItems[index].id)
+                    || followUpInputRef.current !== originalDraft) {
+                    setError('The draft context changed while loading. Review it and send again.');
+                    return;
+                }
+            } catch (error) {
+                if (todoSendEpoch.current === capturedEpoch && todoSendOwnerRef.current === capturedOwnerKey) {
+                    setError(getSpaCocClientErrorMessage(error, 'Could not resolve the to-do context.'));
+                }
+                return;
+            } finally {
+                resolvingTodosRef.current = false;
+                if (todoSendEpoch.current === capturedEpoch && todoSendOwnerRef.current === capturedOwnerKey) setSending(false);
+            }
+        }
         const contextPrefix = formatAttachedContext(contextItems);
+        const messageClient = hasTodoContext && sentinelTodoOwner
+            ? getSentinelTodoContextClient(sentinelTodoOwner) : getMessageClient();
         const baseContent = pastedContent
             ? (userText ? userText + '\n\n' + pastedContent : pastedContent)
             : userText;
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!processId || inputDisabled) return;
-        if (!scopedOwner && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
+        if (!hasTodoContext && !scopedOwner && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
             setError('The owning server is unavailable. Reconnect it before sending this message.');
             return;
         }
-        const owner = messageOwnerWorkspaceId ?? workspaceId;
+        const owner = hasTodoContext && sentinelTodoOwner
+            ? sentinelTodoOwner.ownerWorkspaceId : messageOwnerWorkspaceId ?? workspaceId;
         const owningWorkspaceId = typeof owner === 'string'
             ? parseRemoteCloneKey(owner)?.workspaceId ?? owner : undefined;
         const ownerQuery = owningWorkspaceId ? { workspace: owningWorkspaceId } : undefined;
@@ -452,11 +507,18 @@ export function useSendMessage({
             // server steer, buffer, or enqueue as appropriate.  No local
             // pending queue entry — the server is the source of truth.
             // Routed to the chat's clone (AC-07).
-            void getMessageClient().processes.sendMessage(
-                processId,
-                buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
-                ownerQuery,
-            ).catch(() => {});
+            try {
+                await messageClient.processes.sendMessage(
+                    processId,
+                    buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
+                    ownerQuery,
+                );
+            } catch (error) {
+                setError(getSpaCocClientErrorMessage(error, 'Failed to send follow-up message.'));
+                lastFailedMessageRef.current = rawContent;
+                if (includeComposerContext) setFollowUpInput(userText);
+                return;
+            }
 
             if (includeComposerContext) {
                 clearImages();
@@ -485,7 +547,7 @@ export function useSendMessage({
 
         try {
             // Idle chat: start the streaming follow-up against the chat's clone (AC-07).
-            await getMessageClient().processes.sendMessage(
+            await messageClient.processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
                 ownerQuery,
@@ -507,13 +569,14 @@ export function useSendMessage({
                 setError(getSpaCocClientErrorMessage(err, 'Failed to send follow-up message.'));
             }
             lastFailedMessageRef.current = rawContent;
+            if (hasTodoContext && includeComposerContext) setFollowUpInput(userText);
             removeStreamingPlaceholder();
         } finally {
             setSending(false);
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation, scopedOwner, getMessageClient]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

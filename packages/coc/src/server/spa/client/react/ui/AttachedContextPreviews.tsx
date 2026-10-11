@@ -17,10 +17,11 @@ function formatCount(count: number, singular: string, plural: string): string {
 }
 
 function isPointerContextItem(item: AttachedContextItem): item is AttachedPointerContextItem {
-    return item.kind === 'work-item' || item.kind === 'commit' || item.kind === 'range' || item.kind === 'pull-request';
+    return item.kind === 'sentinel-todo' || item.kind === 'work-item' || item.kind === 'commit' || item.kind === 'range' || item.kind === 'pull-request';
 }
 
 function getPointerContextLabel(item: AttachedPointerContextItem): string {
+    if (item.kind === 'sentinel-todo') return 'To-do';
     if (item.kind === 'work-item') return 'Work Item';
     if (item.kind === 'commit') return 'Commit';
     if (item.kind === 'range') return 'Range';
@@ -28,6 +29,7 @@ function getPointerContextLabel(item: AttachedPointerContextItem): string {
 }
 
 function getPointerContextIcon(item: AttachedPointerContextItem): string {
+    if (item.kind === 'sentinel-todo') return '#';
     if (item.kind === 'work-item') return '▣';
     if (item.kind === 'commit') return '◇';
     if (item.kind === 'range') return '↔';
@@ -35,6 +37,7 @@ function getPointerContextIcon(item: AttachedPointerContextItem): string {
 }
 
 function getPointerContextMeta(item: AttachedPointerContextItem): string {
+    if (item.kind === 'sentinel-todo') return item.todoItemId;
     if (item.kind === 'work-item') {
         return [item.title, item.status, item.type, item.workItemId].filter(Boolean).join(' · ');
     }
@@ -158,6 +161,8 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                                 )}
                                 <span className="ml-1 text-indigo-700/80 dark:text-indigo-300/80 font-mono">{item.preview}</span>
                             </span>
+                        ) : item.kind === 'sentinel-todo' ? (
+                            <span className="font-medium" title={item.title ?? item.label}>{item.title ?? item.label}</span>
                         ) : isPointerContextItem(item) ? (
                             <>
                                 <span className="font-medium">{item.label}</span>
@@ -172,10 +177,16 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                             </>
                         ) : item.preview}
                     </span>
+                    {item.kind === 'sentinel-todo' && (
+                        <span className="shrink-0 font-mono text-[10px] text-[#848484]" title={item.todoItemId}>
+                            {shortenSessionProcessId(item.todoItemId)}
+                        </span>
+                    )}
                     <button
                         type="button"
                         onClick={() => onRemove(item.id)}
                         title="Remove context"
+                        aria-label="Remove context"
                         className="shrink-0 w-5 h-5 flex items-center justify-center rounded bg-transparent border-none text-[#848484] hover:text-[#f14c4c] cursor-pointer text-sm"
                         data-testid="attached-context-remove"
                     >

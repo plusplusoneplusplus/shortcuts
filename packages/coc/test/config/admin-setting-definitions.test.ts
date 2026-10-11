@@ -565,6 +565,20 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatFolders: true } }).chatFoldersEnabled).toBe(true);
     });
 
+    it('exposes the collapsed-rail Git summary as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railGitSummary');
+        expect(def, 'features.railGitSummary must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('railGitSummaryEnabled');
+        expect(def!.ui!.badge).toBe('experimental');
+        expect(def!.ui!.hint).toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features.railGitSummary).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).railGitSummaryEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { railGitSummary: true } }).railGitSummaryEnabled).toBe(true);
+    });
+
     // Explorer multi-tab editor: a default-off Features toggle with a live
     // runtime flag, so the SPA can gate the whole tab strip while the existing
     // single-preview Explorer stays the shipped behavior.
@@ -646,6 +660,7 @@ describe('feature toggle settings-tab placement', () => {
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
+        'features.railGitSummary': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.htmlPageTab': 'appearance',

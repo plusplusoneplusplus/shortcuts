@@ -8,7 +8,8 @@ import type { RalphSessionStore } from '../ralph/ralph-session-store';
 import { getRalphTaskKind } from '../ralph/task-kind';
 import { buildChatOpenLink } from '../servers/workspace-directory';
 import { isRalphFinalCheckRepairTurn, getRalphContext } from '../tasks/task-types';
-import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
+import { RalphGrillingStore, reconcileRalphGoal } from '../ralph/grilling-state';
+import { DelegatedJobStore, grillingResultJob, type DelegatedJob } from './delegated-job-store';
 
 function responseText(result: unknown): string | undefined {
     if (typeof result === 'string') return result;
@@ -53,7 +54,8 @@ export class DelegatedJobResults {
 
     constructor(private readonly deps: {
         jobs: DelegatedJobStore;
-        store: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'>;
+        dataDir?: string;
+        store: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'> & Partial<Pick<ProcessStore, 'updateProcess'>>;
         queue: Pick<ScheduleQueueEventBus, 'on' | 'off' | 'getTask'> & Pick<TaskQueueManager, 'getHistory' | 'getQueued' | 'getRunning'>;
         sessions?: Pick<RalphSessionStore, 'readSessionRecord' | 'getProgressPath' | 'recordCompletion'>;
         onResult?: (job: DelegatedJob) => Promise<void>;
@@ -85,6 +87,7 @@ export class DelegatedJobResults {
             try {
                 for (const job of this.deps.jobs.list(workspace.id)) {
                     try {
+                        if (job.grilling) await this.deps.onResult?.(grillingResultJob(job)!);
                         if (job.terminal) {
                             await this.deps.onResult?.(job);
                             continue;
@@ -127,18 +130,31 @@ export class DelegatedJobResults {
         }
     }
 
+    /** A fast cross-workspace child can finish before its source pointer is saved. */
+    async reconcileExecutionOwner(workspaceId: string, processId: string): Promise<void> {
+        for (const workspace of await this.deps.store.getWorkspaces()) {
+            if (this.disposed) return;
+            for (const job of this.deps.jobs.list(workspace.id)) {
+                if (job.child.workspaceId === workspaceId && job.child.processId === processId && job.child.sessionId) {
+                    await this.restoreSession(job);
+                }
+            }
+        }
+    }
+
     private async recordSessionTerminal(event: RalphSessionCompleteEvent): Promise<void> {
         if (!event.sessionId) return; // A process/step ID cannot identify the entire session.
         for (const workspace of await this.deps.store.getWorkspaces()) {
             if (this.disposed) return;
             try {
-                const job = this.deps.jobs.list(workspace.id).find(row => !row.child.serverId
-                    && row.child.workspaceId === event.workspaceId && row.child.sessionId === event.sessionId);
-                if (!job) continue;
-                const session = await this.deps.sessions?.readSessionRecord(event.workspaceId, event.sessionId);
-                if (this.disposed) return;
-                // The final process usually differs from the first registered iteration.
-                await this.saveSessionResult(job, event.reason, event.totalIterations, session ?? undefined, event.processId);
+                for (const job of this.deps.jobs.list(workspace.id)) {
+                    if (job.child.serverId || !job.child.sessionId) continue;
+                    const owner = await this.executionOwner(job);
+                    if (!owner || owner.workspaceId !== event.workspaceId || owner.sessionId !== event.sessionId) continue;
+                    const session = await this.deps.sessions?.readSessionRecord(owner.workspaceId, owner.sessionId);
+                    if (this.disposed) return;
+                    await this.saveSessionResult(job, event.reason, event.totalIterations, session ?? undefined, event.processId);
+                }
             } catch (error) {
                 console.error(`[delegated-job-results] Could not record Ralph workspace ${workspace.id}:`, error);
             }
@@ -147,9 +163,11 @@ export class DelegatedJobResults {
 
     private async restoreSession(job: DelegatedJob): Promise<void> {
         if (!this.deps.sessions) return;
-        const session = await this.deps.sessions.readSessionRecord(job.child.workspaceId, job.child.sessionId!);
+        const owner = await this.executionOwner(job);
+        if (!owner) return; // Remote execution retains the explicit unavailable result boundary.
+        const session = await this.deps.sessions.readSessionRecord(owner.workspaceId, owner.sessionId);
         if (this.disposed) return;
-        if (!session || session.workspaceId !== job.child.workspaceId || session.sessionId !== job.child.sessionId) {
+        if (!session || session.workspaceId !== owner.workspaceId || session.sessionId !== owner.sessionId) {
             this.deps.jobs.recordResult(job.parent.workspaceId, job.id, {
                 terminalEventId: this.sessionEventId(job), outcome: 'failed',
                 summary: 'The delegated Ralph session is unavailable after restart.',
@@ -157,7 +175,14 @@ export class DelegatedJobResults {
             }, { state: 'failed', reason: 'Delegated Ralph session unavailable during startup recovery.' });
             return;
         }
-        if (session.phase === 'awaiting-input' || session.phase === 'grilling') return;
+        if (session.phase === 'grilling') {
+            const process = await this.childProcess(job);
+            const task = this.deps.queue.getTask(toTaskId(job.child.processId));
+            if (task && !isTerminalStatus(task.status)) return;
+            if (process || task) await this.recordGrilling(job, process, task?.status);
+            return;
+        }
+        if (session.phase === 'awaiting-input') return;
         if (session.completion && session.terminalReason !== 'USER_STOPPED') {
             await this.saveSessionResult(job, session.completion.reason, session.completion.totalIterations,
                 session, session.completion.processId);
@@ -202,16 +227,18 @@ export class DelegatedJobResults {
     private async recordQueuedSessionCancellation(
         job: DelegatedJob, task: QueuedTask, storedSession?: RalphSessionRecord,
     ): Promise<boolean> {
+        const owner = await this.executionOwner(job);
+        if (!owner) return false;
         const ctx = getRalphContext(task);
         const repair = isRalphFinalCheckRepairTurn(task.payload);
         const kind = getRalphTaskKind(ctx ?? undefined);
         if (!this.deps.sessions || task.status !== 'cancelled' || task.startedAt !== undefined
             || task.type !== 'chat' || task.payload.mode !== 'ralph' || (task.payload.processId && !repair)
-            || !ctx?.sessionId || ctx.sessionId !== job.child.sessionId
-            || (task.payload.workspaceId ?? task.repoId) !== job.child.workspaceId
+            || !ctx?.sessionId || ctx.sessionId !== owner.sessionId
+            || (task.payload.workspaceId ?? task.repoId) !== owner.workspaceId
             || kind === 'submit' || ctx.phase === 'grilling') return false;
-        const session = storedSession ?? await this.deps.sessions.readSessionRecord(job.child.workspaceId, ctx.sessionId);
-        if (this.disposed || !session || session.workspaceId !== job.child.workspaceId
+        const session = storedSession ?? await this.deps.sessions.readSessionRecord(owner.workspaceId, ctx.sessionId);
+        if (this.disposed || !session || session.workspaceId !== owner.workspaceId
             || session.sessionId !== ctx.sessionId
             || !['executing', 'complete'].includes(session.phase)
             || session.terminalReason === 'USER_STOPPED') return false;
@@ -236,10 +263,10 @@ export class DelegatedJobResults {
         if ([...this.deps.queue.getQueued(), ...this.deps.queue.getRunning()].some(active => {
             const activeContext = getRalphContext(active);
             return active.id !== task.id && activeContext?.sessionId === ctx.sessionId
-                && (active.payload.workspaceId ?? active.repoId) === job.child.workspaceId
+                && (active.payload.workspaceId ?? active.repoId) === owner.workspaceId
                 && (activeContext?.currentIteration ?? 1) >= iteration;
         })) return false;
-        const record = await this.deps.sessions.recordCompletion(job.child.workspaceId, ctx.sessionId, {
+        const record = await this.deps.sessions.recordCompletion(owner.workspaceId, ctx.sessionId, {
             reason: 'user-stopped', processId,
             totalIterations: session.currentIteration, completedAt: new Date().toISOString(),
         });
@@ -247,6 +274,15 @@ export class DelegatedJobResults {
         const completion = record.completion!;
         await this.saveSessionResult(job, completion.reason, completion.totalIterations, record, completion.processId);
         return true;
+    }
+
+    private async executionOwner(job: DelegatedJob): Promise<{ workspaceId: string; sessionId: string } | undefined> {
+        if (!job.child.sessionId) return;
+        if (this.deps.dataDir) {
+            const state = await new RalphGrillingStore(this.deps.dataDir).read(job.child.workspaceId, job.child.sessionId);
+            if (state?.start?.execution) return state.start.execution.remote ? undefined : state.start.execution;
+        }
+        return { workspaceId: job.child.workspaceId, sessionId: job.child.sessionId };
     }
 
     private sessionEventId(job: DelegatedJob): string {
@@ -265,19 +301,43 @@ export class DelegatedJobResults {
             : reason === 'cap' && session?.terminalReason !== 'NO_SIGNAL' ? 'capped'
             : reason === 'signal' || reason === 'manual-verification-only' ? 'completed' : 'failed';
         const process = outcome !== 'cancelled' && processId
-            ? await this.deps.store.getProcess(processId, job.child.workspaceId) : undefined;
+            ? await this.deps.store.getProcess(processId, session?.workspaceId ?? job.child.workspaceId) : undefined;
         if (this.disposed) return;
-        const summary = process?.metadata?.workspaceId === job.child.workspaceId ? storedResponse(process) : undefined;
+        const summary = process?.metadata?.workspaceId === (session?.workspaceId ?? job.child.workspaceId) ? storedResponse(process) : undefined;
         this.deps.jobs.recordResult(job.parent.workspaceId, job.id, {
             terminalEventId: this.sessionEventId(job), outcome, reason,
             summary: outcome === 'cancelled' ? 'The user stopped the delegated Ralph session.'
                 : `The delegated Ralph session ${outcome} after ${iterations} iterations (${reason}).`
                     + (outcome === 'capped' ? ' The automation limit was reached; goal completion is not confirmed.' : '')
                     + (summary ? `\n${summary}` : ''),
-            links: this.sessionLinks(job),
+            links: session ? [
+                `/api/workspaces/${encodeURIComponent(session.workspaceId)}/ralph-sessions/${encodeURIComponent(session.sessionId)}`,
+                ...(this.deps.sessions ? [this.deps.sessions.getProgressPath(session.workspaceId, session.sessionId)] : []),
+            ] : this.sessionLinks(job),
         });
         const recorded = this.deps.jobs.list(job.parent.workspaceId).find(row => row.id === job.id);
         if (recorded && !this.disposed) await this.deps.onResult?.(recorded);
+    }
+
+    private async recordGrilling(job: DelegatedJob, process?: AIProcess, status?: string): Promise<void> {
+        if (!this.deps.dataDir || !job.child.sessionId) return;
+        const grilling = new RalphGrillingStore(this.deps.dataDir);
+        const state = process && this.deps.store.updateProcess
+            ? await reconcileRalphGoal(process, { dataDir: this.deps.dataDir, store: this.deps.store as Pick<ProcessStore, 'getProcess' | 'updateProcess'> })
+            : await grilling.read(job.child.workspaceId, job.child.sessionId);
+        const goal = state && await grilling.validatedGoal(state);
+        const outcome = status === 'cancelled' || process?.status === 'cancelled' ? 'cancelled'
+            : status === 'failed' || process?.status === 'failed' ? 'failed' : goal ? 'completed' : undefined;
+        if (!outcome) return;
+        this.deps.jobs.recordResult(job.parent.workspaceId, job.id, {
+            terminalEventId: `ralph:${job.child.workspaceId}:${job.child.sessionId}:grill`, outcome,
+            reason: goal && outcome === 'completed' ? 'spec-ready' : 'grilling-incomplete',
+            summary: outcome === 'completed' ? 'Goal spec ready; awaiting explicit user implementation approval. No execution has started.'
+                : `The grilling interview ${outcome}. No execution has started.`,
+            links: [...this.links(job), ...(goal && state?.goal ? [state.goal.path] : [])],
+        }, { state: 'pending' }, 'grill');
+        const recorded = this.deps.jobs.list(job.parent.workspaceId).find(row => row.id === job.id);
+        if (recorded?.grilling) await this.deps.onResult?.(grillingResultJob(recorded)!);
     }
 
     private isOrdinaryPending(job: DelegatedJob): boolean {
@@ -291,10 +351,15 @@ export class DelegatedJobResults {
             if (this.disposed) return;
             try {
                 if (ctx) {
-                    const sessionJob = this.deps.jobs.list(workspace.id).find(row => !row.child.serverId
-                        && row.child.workspaceId === (task.payload.workspaceId ?? task.repoId)
-                        && row.child.sessionId === ctx.sessionId);
-                    if (sessionJob) await this.recordQueuedSessionCancellation(sessionJob, task);
+                    for (const sessionJob of this.deps.jobs.list(workspace.id)) {
+                        if (sessionJob.child.serverId || !sessionJob.child.sessionId) continue;
+                        if (ctx.phase === 'grilling' && sessionJob.child.sessionId === ctx.sessionId
+                            && sessionJob.child.workspaceId === (task.payload.workspaceId ?? task.repoId)) {
+                            await this.recordGrilling(sessionJob, await this.childProcess(sessionJob), task.status);
+                        } else if (ctx.phase !== 'grilling') {
+                            await this.recordQueuedSessionCancellation(sessionJob, task);
+                        }
+                    }
                     continue;
                 }
                 const job = this.deps.jobs.list(workspace.id).find(row =>

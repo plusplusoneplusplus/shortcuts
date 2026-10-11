@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { inspect } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/server/messaging/whatsapp-command-router';
@@ -557,5 +558,83 @@ describe('WhatsApp workspace command routing', () => {
         expect(restored.selectedRepo).toBe('ws-b');
         expect(restored.findMessage('original')?.workspaceId).toBe('ws-b');
         expect(restored.isKnownMessage('outbound')).toBe(true);
+    });
+
+    describe('inbound failure diagnostics', () => {
+        const FAILURE_LOG = '[whatsapp-messaging] Unable to handle inbound message';
+        const GENERIC_REPLY = 'Could not queue the request. Please try again.';
+        const SECRET = 'private chat text from 15551234567 at someone@s.whatsapp.net in /home/private/repo with tok_secret';
+        let errors: ReturnType<typeof vi.spyOn>;
+        beforeEach(() => { errors = vi.spyOn(console, 'error').mockImplementation(() => {}); });
+        afterEach(() => errors.mockRestore());
+        const failureDetails = () => {
+            const calls = errors.mock.calls.filter(call => call[0] === FAILURE_LOG);
+            expect(calls).toHaveLength(1);
+            return calls[0][1];
+        };
+        const expectNothingSensitiveLogged = () => {
+            const logged = inspect(errors.mock.calls, { depth: 10 });
+            for (const value of ['private chat text', '15551234567', 'whatsapp.net', '/home/private', 'tok_secret']) {
+                expect(logged).not.toContain(value);
+            }
+        };
+
+        it('identifies a failing command handler, without its message, after the command was acknowledged', async () => {
+            getAllProcesses.mockRejectedValueOnce(Object.assign(new Error(SECRET), { code: 'SQLITE_BUSY', details: SECRET }));
+            await router.handle(inbound('List topics', 'list'));
+            expect(react).toHaveBeenCalledWith('list');
+            expect(send.mock.calls).toEqual([[GENERIC_REPLY, 'list']]);
+            expect(failureDetails()).toEqual({ command: 'list-topics', stage: 'command', errorClass: 'Error', errorCode: 'SQLITE_BUSY' });
+            expectNothingSensitiveLogged();
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+
+        it('identifies a failed reply send after the command succeeded', async () => {
+            class Boom extends Error { output = { statusCode: 408, payload: { message: SECRET } }; }
+            send.mockRejectedValueOnce(new Boom(SECRET));
+            await router.handle(inbound('list topics', 'list'));
+            expect(send.mock.calls).toEqual([[expect.stringContaining('Topic A'), 'list'], [GENERIC_REPLY, 'list']]);
+            expect(failureDetails()).toEqual({ command: 'list-topics', stage: 'send-reply', errorClass: 'Boom', statusCode: 408 });
+            expectNothingSensitiveLogged();
+            // The command stays reserved, so a redelivery is not answered twice.
+            await router.handle(inbound('list topics', 'list'));
+            expect(send).toHaveBeenCalledTimes(2);
+        });
+
+        it('identifies a failure to record a sent reply', async () => {
+            const record = bindings.recordOutbound.bind(bindings);
+            vi.spyOn(bindings, 'recordOutbound').mockImplementation(id => {
+                if (id === 'help-reply') throw Object.assign(new Error(SECRET), { code: 'ENOSPC' });
+                record(id);
+            });
+            send.mockResolvedValueOnce('help-reply');
+            await router.handle(inbound('help', 'help'));
+            expect(send).toHaveBeenLastCalledWith(GENERIC_REPLY, 'help');
+            expect(failureDetails()).toEqual({ command: 'help', stage: 'record-reply', errorClass: 'Error', errorCode: 'ENOSPC' });
+            expectNothingSensitiveLogged();
+        });
+
+        it('identifies a rejected chat admission and its sanitized cause, keeping admission rollback', async () => {
+            const { APIError } = await import('../../../src/server/errors');
+            enqueue.mockRejectedValueOnce(new APIError(409, SECRET, 'CONVERSATION_NOT_IDLE', { prompt: SECRET }));
+            await router.handle(inbound(SECRET, 'chat'));
+            expect(send).toHaveBeenLastCalledWith(GENERIC_REPLY, 'chat');
+            expect(failureDetails()).toEqual({
+                command: 'chat', stage: 'chat-admission', errorClass: 'WhatsAppBindingAdmissionError',
+                cause: { errorClass: 'APIError', errorCode: 'CONVERSATION_NOT_IDLE', statusCode: 409 },
+            });
+            expectNothingSensitiveLogged();
+            expect(bindings.findMessage('chat')).toBeUndefined();
+            expect(react).not.toHaveBeenCalled();
+        });
+
+        it('identifies a failing chat route lookup before admission', async () => {
+            vi.mocked(store.getWorkspaces).mockRejectedValueOnce(new TypeError(SECRET));
+            await router.handle(inbound('hello', 'route'));
+            expect(send).toHaveBeenLastCalledWith(GENERIC_REPLY, 'route');
+            expect(failureDetails()).toEqual({ command: 'chat', stage: 'chat-routing', errorClass: 'TypeError' });
+            expectNothingSensitiveLogged();
+            expect(enqueue).not.toHaveBeenCalled();
+        });
     });
 });

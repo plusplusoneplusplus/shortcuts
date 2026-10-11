@@ -683,16 +683,36 @@ missing value (older owning server) as Regular. Priority never reorders sections
 active normal count and, when nonzero, how many normal items display Needs attention (stored or derived).
 A collapsed row is the toggle (status, High, title, chevron), a muted meta line (target repo, Updated time),
 a one-line truncated reason preview for Needs attention, the latest job only (`+N earlier jobs`), and
-`Ref` links. Expanding lists every job (with its workspace), notes when the displayed status is derived
+`Ref` links. With session-context attachments enabled, rows are copy-drag sources
+and expose an accessible Attach action for their owning Sentinel composer. Payloads
+contain the stable item reference and owner, not notes or job data; attaching never
+writes the ledger or starts a job. The shared composer reads authoritative details
+on drop and send (see the composer knowledge reference). Expanding lists every job (with its workspace), notes when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
 start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
 `Tracked only · never run` tag. Referenced conversations
 (`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
-below jobs, with no execution or review label. Job links only navigate; nothing in
-the tab starts, retries, or cancels a job. Tests live in
-`test/server/sentinel-todos/panel.test.tsx`, `panel-model.test.ts` and `excursion.test.tsx`.
+below jobs, with no execution or review label. `SentinelTodoJobPreview` wraps every
+shown job title, including earlier jobs when expanded, with a delayed hover/focus
+preview and an explicit persistent info action. A bounded pane/viewport portal
+keeps the list layout stable. Escape/Close restore focus; outside presses and
+focus departure dismiss. Title and Open job anchors share excursion navigation
+and retain modifier clicks. The existing ledger flag gates this surface.
+
+Preview reads are lazy and abortable, pinned to the job's workspace and concrete
+server or ledger-owner route. Unresolved remote owners never fall through locally;
+validated external destinations remain navigable after failed reads. Ordinary jobs
+use `processes.get(..., { workspace, preview: true })` for a bounded recorded
+assistant/result/error excerpt, never a user-request snapshot or transcript. Ralph
+uses `taskGroups.get(workspace, sessionId)` for whole-session phase, iteration counts
+and terminal reason; child completion cannot settle the session. Each mounted
+reference caches one excerpt for 15 seconds, invalidated by client or execution
+changes; stale refresh failures stay explicit. Execution, review and recorded
+result reasons remain separate from the item verdict. The tab never starts,
+retries, or cancels jobs. Tests live in `test/server/sentinel-todos/` and the
+read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
 ### PR-merge triggers
 

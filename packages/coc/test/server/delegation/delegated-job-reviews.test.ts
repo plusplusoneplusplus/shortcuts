@@ -8,7 +8,7 @@ import { ProcessMessageDeliveryService } from '../../../src/server/processes/pro
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { MessagingJobNotices } from '../../../src/server/messaging/job-notices';
-import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
+import { DelegatedJobStore, grillingResultJob } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews, delegatedReviewReceipt } from '../../../src/server/delegation/delegated-job-reviews';
 import { SENTINEL_JOB_REVIEW_INSTRUCTIONS, SENTINEL_JOB_REVIEW_PREFIX } from '../../../src/server/delegation/sentinel-job-review-instructions';
@@ -66,6 +66,28 @@ describe('delegated success/failure review scheduling', () => {
         queueMessagingResult = vi.fn();
         reconcileMessagingNotices = vi.fn().mockResolvedValue(undefined);
         wire();
+    });
+
+    it('admits independent spec-ready and whole-session review receipts without treating a milestone as execution Done', async () => {
+        const id = 'queue_native-grill';
+        jobs.register({ id, title: 'Native interview', parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId: childWorkspace, processId: id, sessionId: 'ralph-native' } });
+        jobs.recordResult(parentWorkspace, id, { terminalEventId: `ralph:${childWorkspace}:ralph-native:grill`,
+            outcome: 'completed', reason: 'spec-ready', summary: 'Goal ready', links: ['#goal'] }, { state: 'pending' }, 'grill');
+        const milestone = grillingResultJob(jobs.list(parentWorkspace).find(job => job.id === id)!)!;
+        await reviews.schedule(milestone);
+        const specReceipt = delegatedReviewReceipt(milestone);
+        expect(queue.getTask(specReceipt)?.payload.prompt).toContain('awaiting explicit user implementation approval');
+        expect(queue.getTask(specReceipt)?.payload.processId).toBe(parentId);
+        jobs.recordResult(parentWorkspace, id, { terminalEventId: `ralph:${childWorkspace}:ralph-native:terminal`,
+            outcome: 'completed', summary: 'Execution completed', links: [] });
+        const execution = jobs.list(parentWorkspace).find(job => job.id === id)!;
+        await reviews.schedule(execution);
+        expect(delegatedReviewReceipt(execution)).not.toBe(specReceipt);
+        const stored = jobs.list(parentWorkspace).find(job => job.id === id)!;
+        expect(stored.grilling?.delivery.state).toBe('queued');
+        expect(stored.terminal?.delivery.state).toBe('queued');
+        expect(queue.getQueued().every(task => task.payload.processId === parentId)).toBe(true);
     });
 
     afterEach(() => {

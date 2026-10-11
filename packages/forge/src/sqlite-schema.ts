@@ -581,6 +581,16 @@ export function initializeDatabase(db: NativeDatabase): void {
         ensureColumn(db, 'processes', 'history_revision', 'INTEGER NOT NULL DEFAULT 0');
         createHistoryRevisionTriggers(db);
         // Additive indexes preserve the V40 table/read-pool contract.
+        // idx_processes_ws_seen covers the seen-state reads (getSeenMap,
+        // getUnseenCount) so they never load processes rows, whose large
+        // `result` values sit in overflow pages ahead of seen_at/end_time.
+        const processColumns = db.prepare('PRAGMA table_info(processes)').all() as Array<{ name: string }>;
+        if (processColumns.some(column => column.name === 'end_time')) {
+            db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_processes_ws_seen
+                    ON processes(workspace_id, status, end_time, seen_at, id)
+            `);
+        }
         db.exec(`
             CREATE INDEX IF NOT EXISTS idx_sentinel_mirror_deliveries_sending
                 ON sentinel_mirror_deliveries(seq) WHERE state = 'sending';

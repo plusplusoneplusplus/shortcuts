@@ -41,6 +41,8 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { useRepoQueueJobs } from '../../queue/hooks/useRepoQueueStats';
 import { getRepoGroupServerName } from '../../repos/repoGroupName';
 import { useGitInfo } from '../git/hooks/useGitInfo';
+import { RepoRailGit } from './RailGitSummary';
+import { useRailGitSummaryEnabled } from '../../hooks/feature-flags/useRailGitSummaryEnabled';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
@@ -141,8 +143,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const queueJobs = useRepoQueueJobs(ws.id, queueClient, sourceSelectionId);
     const queueRunningCount = queueJobs.running.length;
     const queueQueuedCount = queueJobs.queued.length;
+    const railScopeLabel = `${getRepoGroupServerName(ws)} / ${ws.name}`;
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
+    const railGitEnabled = useRailGitSummaryEnabled();
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
@@ -785,10 +789,19 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     queuedCount={queueQueuedCount}
                                     jobPreview={{
                                         ...queueJobs,
-                                        scopeLabel: `${getRepoGroupServerName(ws)} / ${ws.name}`,
+                                        scopeLabel: railScopeLabel,
                                         routeId: sourceSelectionId,
                                         scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${activeSubTab}`,
                                     }}
+                                    railGit={railGitEnabled && isGitRepo ? (
+                                        <RepoRailGit
+                                            key={`${sourceSelectionId}:${workspaceReadSource(queueClient)}`}
+                                            workspaceId={ws.id}
+                                            routingRef={sourceSelectionId}
+                                            client={queueClient}
+                                            scopeLabel={railScopeLabel}
+                                        />
+                                    ) : undefined}
                                     chatList={
                                         <RepoChatTab
                                             key={`${ws.id}-split-chat`}
@@ -797,6 +810,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             layout="split-workspace"
                                             detailContainer={splitDetailNode}
                                             railShortcutContainer={splitRailShortcutNode}
+                                            railScopeLabel={railScopeLabel}
                                             detailActive={dockAvailable || splitLastClicked === 'chat'}
                                             onActivateDetail={() => setSplitLastClicked('chat')}
                                         />

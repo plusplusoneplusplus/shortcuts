@@ -342,11 +342,23 @@ from stats-only placeholders, and `taskDataSource` records the server/API owner.
 
 `queue/hooks/useRepoQueueStats.ts` shares eligible rows through `useRepoQueueJobs`;
 the selected group's queue stays independent of its members. Owner-aware readers
-exclude mismatched sources and unresolved remote selections. `RailJobStatuses`
-portals status-specific previews beside the collapsed workspace rail using
-`useAnchoredPanelPosition`, with a pointer bridge and focus/outside/Escape dismissal.
-Scope or transport changes dispose previews. Icon clicks retain sidebar expansion;
-`queueJobHash` shares existing conversation/workflow selection routes with `RepoChatTab`.
+exclude mismatched sources and unresolved remote selections. `RailHoverPreview`
+provides anchored pointer/focus previews for running, queued and pinned controls.
+Pinned rows use the owner's complete pinned-process endpoint plus the chat list's
+live pin/archive state and visibility rules; group scope does not aggregate member
+pins. Scope or transport changes dispose previews. Icon clicks retain sidebar
+expansion, and `queueJobHash` preserves conversation/workflow owner routes.
+
+### Collapsed-rail Git tiles
+
+`features.railGitSummary` (default off) adds changes, sync and branch-spine tiles
+through `SplitWorkspacePanel`'s `railGit` slot, reusing `RailHoverPreview`.
+Repos read git-info plus working-tree changes from their owner; groups batch
+member git-info on the group's server and list each member's own branch.
+Changes count distinct paths with conflicts first; sync compares only against the
+reported `upstream`. Unknown, failed, detached and no-upstream states never render
+clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`
+git-info refreshes; tiles open the expanded Git half (branch overview or member).
 
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
@@ -509,7 +521,11 @@ copy action and no save or dirty-state registration. With
 `features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos`; only the descriptor
-persists. Normal tracking comes first, then an always-visible Manual tracking
+persists. Job-title previews use owner-scoped compact process reads or Ralph
+whole-session task-group summaries, with abortable lazy loading and bounded
+per-reference caching. Execution/review labels never write item verdicts;
+reference-only conversations keep navigation without job badges. Normal tracking
+comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
 bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is

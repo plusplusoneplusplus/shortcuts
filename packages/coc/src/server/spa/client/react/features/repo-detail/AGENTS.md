@@ -85,7 +85,12 @@ panels keep their persisted pixel widths when a narrow viewport temporarily
 clamps them, so widening restores the user's chosen sizes. `RepoDetail` and
 `RepoGroupView` pass workspace-scoped `useRepoQueueStats` counts into the
 collapsed rail. Separate running and queued controls appear only for nonzero
-counts and expand the left column when selected. The group supplies a compact
+counts and expand the left column when selected. With `features.railGitSummary`
+on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
+below them through the panel's `railGit` slot, mounted only while collapsed;
+`railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the
+owner-scoped reads (repo: git-info + working tree; group: one member git-info
+batch on the group's server). The group supplies a compact
 New Chat control through `chatHeaderExtra` and pins the sidebar status footer
 in the remote desktop shell. A null `gitList` removes the desktop Git section
 and lets chats fill the left column; group views pass null when membership is

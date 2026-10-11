@@ -8,6 +8,7 @@ import { useSendMessage } from '../../../../src/server/spa/client/react/features
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { AttachmentPayload } from '../../../../src/server/spa/client/react/types/attachments';
 import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import type { AttachedSentinelTodoContextItem } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -82,6 +83,130 @@ function makeOptions(overrides: Partial<UseSendMessageOptions> = {}): UseSendMes
 }
 
 describe('useSendMessage', () => {
+    const todoOwner = { ownerWorkspaceId: 'workspace-a', ownerRoutingRef: null, processId: 'pid-1' };
+    const todoChip: AttachedSentinelTodoContextItem = {
+        kind: 'sentinel-todo', id: 'context-1', sourceWorkspaceId: 'workspace-a', sourceRoutingRef: null,
+        sourceProcessId: 'pid-1', todoItemId: 'todo-1', label: 'To-do todo-1', title: 'Dropped title', preview: '',
+    };
+    const currentTodo = {
+        id: 'todo-1', title: 'Latest title', type: 'manual', status: 'done', archived: true,
+        completionCondition: 'Track only', notes: 'Latest notes', targetRepo: { workspaceId: 'target-repo' },
+        jobs: [{ openLink: 'private-job-link' }], createdBy: 'user',
+    };
+
+    it.each([false, true])('refreshes and sends authoritative to-do context only on explicit send (busy=%s)', async isActiveGeneration => {
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [currentTodo] }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        const clearAttachedContext = vi.fn();
+        const opts = makeOptions({
+            workspaceId: 'workspace-a', selectedMode: 'sentinel', isActiveGeneration,
+            sentinelTodoOwner: todoOwner, sessionContextAttachmentsEnabled: true,
+            conversationRetrievalAvailable: false, getAttachedContext: () => [todoChip], clearAttachedContext,
+        });
+        opts.followUpInputRef.current = 'Discuss this item';
+        const { result } = renderHook(() => useSendMessage(opts));
+        expect(fetchMock).not.toHaveBeenCalled();
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(String(fetchMock.mock.calls[0][0])).toContain('/workspaces/workspace-a/sentinel-todos/pid-1');
+        expect(fetchMock.mock.calls[0][1]?.method ?? 'GET').toBe('GET');
+        const content = JSON.parse(fetchMock.mock.calls[1][1].body).content;
+        expect(content).toContain('Latest title');
+        expect(content).toContain('Latest notes');
+        expect(content).toContain('todo_item_id="todo-1"');
+        expect(content).toContain('status="done"');
+        expect(content).toContain('target-repo');
+        expect(content).toContain('Manual items are tracking-only');
+        expect(content).toContain('Discuss this item');
+        expect(content).not.toContain('Dropped title');
+        expect(content).not.toContain('private-job-link');
+        expect(content).not.toContain('createdBy');
+        expect(clearAttachedContext).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['wrong-owner', 'missing', 'read-error', 'send-error'] as const)('retains the to-do draft for %s without ledger mutation', async failure => {
+        if (failure === 'read-error') fetchMock.mockRejectedValueOnce(new Error('Ledger unavailable'));
+        else fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ items: failure === 'missing' ? [] : [currentTodo] }) });
+        if (failure === 'send-error') fetchMock.mockRejectedValueOnce(new Error('Message unavailable'));
+        const clearAttachedContext = vi.fn();
+        const opts = makeOptions({
+            workspaceId: 'workspace-a', sentinelTodoOwner: todoOwner, sessionContextAttachmentsEnabled: true,
+            getAttachedContext: () => [{ ...todoChip, ...(failure === 'wrong-owner' ? { sourceProcessId: 'wrong' } : {}) }],
+            clearAttachedContext,
+        });
+        opts.followUpInputRef.current = 'Preserve draft';
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(opts.setError).toHaveBeenCalledWith(expect.stringMatching(/owning Sentinel|missing|unavailable/i));
+        expect(clearAttachedContext).not.toHaveBeenCalled();
+        if (failure === 'wrong-owner') expect(fetchMock).not.toHaveBeenCalled();
+        else if (failure !== 'send-error') expect(fetchMock).toHaveBeenCalledTimes(1);
+        else expect(opts.setFollowUpInput).toHaveBeenLastCalledWith('Preserve draft');
+        expect(fetchMock.mock.calls.every(call => call[1]?.method !== 'PATCH')).toBe(true);
+    });
+
+    it('reads and sends on the concrete Sentinel server even when the same workspace ID selects another server', async () => {
+        const routeA = 'remote:server-a:workspace-a';
+        const routeB = 'remote:server-b:workspace-a';
+        registerCloneBaseUrls([
+            { cloneKey: routeA, workspaceId: 'workspace-a', baseUrl: 'https://server-a.example.test' },
+            { cloneKey: routeB, workspaceId: 'workspace-a', baseUrl: 'https://server-b.example.test' },
+        ]);
+        setActiveCloneForRouting(routeB);
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [currentTodo] }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({
+            workspaceId: 'workspace-a', sentinelTodoOwner: { ...todoOwner, ownerRoutingRef: routeA },
+            sessionContextAttachmentsEnabled: true,
+            getAttachedContext: () => [{ ...todoChip, sourceRoutingRef: routeA }],
+        });
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('Discuss'); });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls.every(call => String(call[0]).startsWith('https://server-a.example.test/'))).toBe(true);
+        registerCloneBaseUrls([]);
+        setActiveCloneForRouting(null);
+    });
+
+    it('drops an obsolete authoritative send read after the Sentinel owner changes', async () => {
+        let resolve!: (response: unknown) => void;
+        fetchMock.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+        const opts = makeOptions({
+            workspaceId: 'workspace-a', sentinelTodoOwner: todoOwner, sessionContextAttachmentsEnabled: true,
+            getAttachedContext: () => [todoChip],
+        });
+        const { result, rerender } = renderHook(options => useSendMessage(options), { initialProps: opts });
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendFollowUp('Discuss'); });
+        rerender({ ...opts, sentinelTodoOwner: { ...todoOwner, processId: 'pid-2' } });
+        await act(async () => {
+            resolve({ ok: true, json: async () => ({ items: [currentTodo] }) });
+            await pending;
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+    });
+
+    it('does not submit a removed chip or double-send while authoritative context is loading', async () => {
+        let resolve!: (response: unknown) => void;
+        fetchMock.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+        let contexts: AttachedSentinelTodoContextItem[] = [todoChip];
+        const opts = makeOptions({
+            workspaceId: 'workspace-a', sentinelTodoOwner: todoOwner, sessionContextAttachmentsEnabled: true,
+            getAttachedContext: () => contexts,
+        });
+        const { result } = renderHook(() => useSendMessage(opts));
+        let sending!: Promise<void>;
+        act(() => { sending = result.current.sendFollowUp('Discuss'); });
+        await act(async () => { await result.current.sendFollowUp('Duplicate'); });
+        contexts = [];
+        await act(async () => {
+            resolve({ ok: true, json: async () => ({ items: [currentTodo] }) });
+            await sending;
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(opts.setError).toHaveBeenCalledWith(expect.stringContaining('draft context changed'));
+    });
+
     beforeEach(() => {
         fetchMock.mockReset();
         mockUnarchiveChat.mockReset();

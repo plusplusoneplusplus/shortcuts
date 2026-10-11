@@ -52,6 +52,8 @@ import {
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import { clearSentinelTodoExcursion } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
+import { POINTER_CONTEXT_DRAG_MIME } from '../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { resetActiveChatAttach, subscribeActiveChatAttach } from '../../../src/server/spa/client/react/features/chat/activeChatAttach';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
 
@@ -91,6 +93,7 @@ beforeEach(() => {
     clientRefs.length = 0;
     // Remembered views are per owner, and every case here shares OWNER.
     clearSentinelTodoExcursion();
+    resetActiveChatAttach();
 });
 
 afterEach(() => {
@@ -98,6 +101,40 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
+    it.each(['normal', 'manual'] as const)('copy-drags and attaches a %s row without ledger writes or execution', async type => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item({ type })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByText('Fix login');
+        const setData = vi.fn();
+        const dataTransfer = { setData, effectAllowed: 'none' };
+        fireEvent.dragStart(screen.getByTestId('sentinel-todo-row-i1'), { dataTransfer });
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        const payload = JSON.parse(setData.mock.calls.find(call => call[0] === POINTER_CONTEXT_DRAG_MIME)![1]);
+        expect(payload).toMatchObject({
+            kind: 'coc.sentinel-todo-context', sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'queue_sentinel', todoItemId: 'i1', title: 'Fix login', sourceRoutingRef: null,
+        });
+        expect(payload).not.toHaveProperty('notes');
+        expect(payload).not.toHaveProperty('jobs');
+        const receive = vi.fn();
+        subscribeActiveChatAttach('ws-1', receive);
+        fireEvent.click(screen.getByRole('button', { name: 'Attach Fix login as context' }));
+        expect(receive).toHaveBeenCalledWith(payload);
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('shows collapsed-row feedback when the owning Sentinel composer is unavailable', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByText('Fix login');
+        fireEvent.click(screen.getByRole('button', { name: 'Attach Fix login as context' }));
+        expect(screen.getByTestId('sentinel-todo-attach-error-i1').textContent).toContain('Open the owning Sentinel');
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it.each([
         { state: 'queued', label: 'Queued' },
         { state: 'running', label: 'Running' },
@@ -155,7 +192,7 @@ describe('UnifiedTodoTab', () => {
         const row = await screen.findByTestId('sentinel-todo-row-i1');
         expect(within(row).getByTestId('sentinel-todo-earlier-jobs-i1').textContent).toBe('+2 earlier jobs');
         expect(within(row).queryByRole('link', { name: 'Writer' })).toBeNull();
-        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
         expect(within(row).queryByTestId('sentinel-todo-earlier-jobs-i1')).toBeNull();
         await screen.findByText('Ralph', { exact: true });
         expect(screen.getAllByText('Ralph', { exact: true })).toHaveLength(1);
@@ -181,7 +218,7 @@ describe('UnifiedTodoTab', () => {
         expect(clientRefs).toContain(owner.ownerRoutingRef);
         const row = screen.getByTestId('sentinel-todo-row-i1');
         expect(row.textContent).toContain('Review pending (result delivered)');
-        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
         // Derived phases are not stored statuses or new user execution actions.
         const status = within(row).getByRole('group', { name: 'Status' });
         expect(within(status).getByRole('button', { pressed: true }).textContent).toContain('In progress');
@@ -557,7 +594,7 @@ describe('UnifiedTodoTab', () => {
         render(<UnifiedTodoTab owner={OWNER} />);
         const row = await screen.findByTestId('sentinel-todo-row-i1');
         expect(within(row).getByTestId('sentinel-todo-status-in_progress')).toBeTruthy();
-        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
         expect(row.textContent).toContain('Job completed');
         expect(row.textContent).toContain('Review delivered');
         expect(row.textContent).toContain('Status unavailable');

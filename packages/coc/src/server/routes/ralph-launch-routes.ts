@@ -1,7 +1,6 @@
 /**
- * POST /api/ralph-launch — launch a Ralph execution loop directly from a
- * goal spec (e.g. read from a goal.md file), skipping the grilling/synthesis
- * phase entirely. Thin HTTP adapter over {@link launchRalphSession}.
+ * POST /api/ralph-launch — create a native interview or direct execution.
+ * Omitting entryPoint preserves direct execution. Thin shared launch adapter.
  */
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
@@ -16,6 +15,10 @@ function optionalString(value: unknown): string | undefined {
 
 export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRouteContext): void {
     routes.push({
+        method: 'GET', pattern: /^\/api\/ralph-launch\/capabilities$/,
+        handler: async (_req, res) => sendJSON(res, 200, { grilling: ctx.getRalphEnabled?.() === true, version: 1, approvedStart: ctx.getRalphEnabled?.() === true }),
+    });
+    routes.push({
         method: 'POST',
         pattern: /^\/api\/ralph-launch$/,
         handler: async (req, res) => {
@@ -25,9 +28,15 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
             } catch {
                 return sendError(res, 400, 'Invalid JSON');
             }
+            if (body.entryPoint !== undefined && (body.processId !== undefined || body.action === 'cancel')) {
+                return sendError(res, 400, 'entryPoint is only valid for creating a Ralph conversation');
+            }
 
             const result = await launchRalphSession({
                 goalSpec: body.goalSpec,
+                entryPoint: body.entryPoint,
+                requestId: body.requestId,
+                spawnedFromProcessId: body.requestId ? optionalString(body.spawnedFromProcessId) : undefined,
                 workspaceId: optionalString(body.workspaceId),
                 folderPath: optionalString(body.folderPath),
                 workingDirectory: optionalString(body.workingDirectory),

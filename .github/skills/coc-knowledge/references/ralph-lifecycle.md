@@ -14,6 +14,13 @@ cancellation notice. Caps explicitly leave goal completion unconfirmed. Result d
 scoped final process summary, session API link and journal path; reviews retain authorization
 and Sentinel dispatcher constraints.
 
+Native grilling has an independent durable spec-ready receipt, never an iteration or whole-session
+terminal result. Validated synthesis informs the parent and leaves feature work awaiting explicit
+implementation approval. Start preserves the original job scope while a saved execution pointer
+resolves a different local owner; remote execution keeps automatic delivery unavailable. Milestone
+and final-result reviews have separate receipt and delivery state. See [ralph-launch.md](ralph-launch.md)
+for goal readiness and admission recovery.
+
 Startup recovery prefers the registered session's durable `completion` outcome, including
 reason, final process and iteration count. Caps, missing signals, rejected admission and
 final-check terminal publication require this independent record even when step metadata

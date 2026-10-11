@@ -100,7 +100,7 @@ export class ProcessesClient {
     return this.transport.request<AIProcess>('/processes', { method: 'POST', body: request });
   }
 
-  get(processId: string, query?: ProcessGetOptions, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessDetailResponse> {
+  get(processId: string, query?: ProcessGetOptions & { preview?: boolean }, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessDetailResponse> {
     return this.transport.request<ProcessDetailResponse>(`/processes/${encodePathSegment(processId)}`, {
       query: serializeListQuery(query),
       ...(options?.signal ? { signal: options.signal } : {}),

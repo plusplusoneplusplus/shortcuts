@@ -90,6 +90,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
                 dirty: true,
                 ahead: 1,
                 behind: 0,
+                trackingBranch: 'origin/main',
                 unborn: false,
             }); }),
         }); }),
@@ -152,6 +153,9 @@ describe('POST /api/git-info/batch', () => {
         expect(data.results['ws-1'].dirty).toBe(true);
         expect(data.results['ws-1'].isGitRepo).toBe(true);
         expect(data.results['ws-1'].remoteUrl).toBe(WORKSPACE_1.remoteUrl);
+        // ahead/behind name their comparison base so clients never guess 0/0.
+        expect(data.results['ws-1'].upstream).toBe('origin/main');
+        expect(data.results['ws-1'].detached).toBe(false);
         expect(data.results['ws-2']).toBeDefined();
         expect(gitServiceMocks.detectRemoteUrl).not.toHaveBeenCalled();
     });

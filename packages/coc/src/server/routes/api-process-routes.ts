@@ -5,6 +5,7 @@
  */
 
 import * as url from 'url';
+import { projectRalphGrillingMetadata } from '../ralph/grilling-state';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -42,7 +43,7 @@ import {
 import type { FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
-import { buildMetadataProcess } from '../processes/process-metadata-read-model';
+import { buildMetadataProcess, buildJobPreviewProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
@@ -456,7 +457,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const filter = parseQueryParams(req.url || '/');
             const include = parseIncludeFields(req.url || '/');
             const query = new URL(req.url || '/', 'http://localhost').searchParams;
-            const paging = ctx.getLiveFeatureFlags?.().chatHistoryPagingEnabled === true && query.has('turnsLimit');
+            const preview = query.get('preview') === 'true';
+            if (preview && !filter.workspaceId) return void handleAPIError(res, badRequest('workspace is required for job previews'));
+            // Job previews are a bounded projection of their own; they never page history.
+            const paging = !preview && ctx.getLiveFeatureFlags?.().chatHistoryPagingEnabled === true && query.has('turnsLimit');
             const history = paging
                 ? await readChatHistory(store, id, filter.workspaceId, parseChatHistoryQuery(query, true))
                 : undefined;
@@ -473,7 +477,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     const task = bridge.getTask?.(toTaskId(id));
                     if (task && (!filter.workspaceId || task.repoId === filter.workspaceId)) {
                         const synthetic = queuedTaskToProcess(task);
-                        const result = filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
+                        const result = preview ? buildJobPreviewProcess(synthetic) : filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
                         return { process: projectProcess(result), children: [], total: 0,
                             ...(paging ? { history: { oldestTurnIndex: null, hasMore: false, totalTurns: 0, historyRevision: 0 } } : {}),
                         };
@@ -481,7 +485,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 }
                 return void handleAPIError(res, notFound('Process'));
             }
-            const result = projectProcess(filter.exclude ? stripExcludedFields(proc, filter.exclude) : buildMetadataProcess(proc));
+            if (preview) return { process: buildJobPreviewProcess(proc), children: [], total: 0 };
+            const projected = dataDir ? await projectRalphGrillingMetadata(proc, dataDir) : proc;
+            const result = projectProcess(filter.exclude ? stripExcludedFields(projected, filter.exclude) : buildMetadataProcess(projected));
 
             if (!include.has('children')) {
                 return { process: result, children: [], total: 0, ...(historyMetadata ? { history: historyMetadata } : {}) };

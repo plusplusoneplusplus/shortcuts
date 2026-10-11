@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn, SegmentedControl } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import {
@@ -25,6 +25,7 @@ import {
 } from './WorkspaceLeftWidth';
 import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from './WorkspaceDockToggle';
 import { RailJobStatuses, type RailJobPreview } from './RailJobStatuses';
+import { RailControlsContext, type RailControls } from './RailHoverPreview';
 
 export { splitWorkspaceWidthStorageKey } from './WorkspaceLeftWidth';
 
@@ -101,6 +102,11 @@ export interface SplitWorkspacePanelProps {
     /** Group chat navigation keeps the list mounted and clears its member route on back. */
     mobileChatBackLabel?: string;
     onMobileChatBack?: () => void;
+    /**
+     * Git tiles below the job controls on the collapsed desktop rail (rendered
+     * only while collapsed, so their reads stop once the sidebar expands).
+     */
+    railGit?: ReactNode;
 }
 
 /** localStorage key for the chat/git divider ratio (chat half height), per workspace. */
@@ -277,6 +283,7 @@ export function SplitWorkspacePanel({
     jobPreview,
     mobileChatBackLabel,
     onMobileChatBack,
+    railGit,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
     const viewportWidth = useViewportWidth();
@@ -499,9 +506,26 @@ export function SplitWorkspacePanel({
     // during a hover-peek; otherwise it is hidden (display:none) but stays mounted
     // so chat/git scroll + per-section collapse survive a collapse round-trip
     // (keep-alive, mirroring the right dock).
+    // Portaled rail shortcuts (e.g. the chat list's pinned-jobs control) share
+    // the status controls' hover, expansion and peek behavior.
+    // Rail Git tiles expand the column with its Git half open.
+    const railControls = useMemo<RailControls>(() => ({
+        hoverEnabled: hasFinePointer,
+        onExpand: toggleLeftCollapsed,
+        onPreview: hoverPeek.close,
+        onOpenGit: target => {
+            if (leftCollapsed) toggleLeftCollapsed();
+            if (gitCollapsed) toggleGit();
+            if (target !== 'changes') return;
+            requestAnimationFrame(() => {
+                leftColRef.current?.querySelector('[data-testid="working-tree"]')?.scrollIntoView?.({ block: 'nearest' });
+            });
+        },
+    }), [hasFinePointer, toggleLeftCollapsed, hoverPeek.close, leftCollapsed, gitCollapsed, toggleGit]);
     const peeking = leftCollapsed && hoverPeek.isOpen;
 
     return (
+        <RailControlsContext.Provider value={railControls}>
         <div
             className="split-workspace-panel relative flex h-full w-full overflow-hidden"
             data-testid="split-workspace-panel"
@@ -515,7 +539,7 @@ export function SplitWorkspacePanel({
                     // (`z-30`): while hovering floats the column out, the `»` pin
                     // button stays uncovered and clickable at a fixed spot instead
                     // of being hidden behind the auto-expanded panel.
-                    className="relative z-40 w-9 flex-shrink-0 border-r border-[#e5e5e5] dark:border-[#333] flex flex-col items-center pt-2 gap-1"
+                    className="relative z-40 w-9 flex-shrink-0 min-h-0 overflow-y-auto overflow-x-hidden border-r border-[#e5e5e5] dark:border-[#333] flex flex-col items-center pt-2 pb-1 gap-1"
                     data-testid="split-workspace-left-rail"
                     onMouseEnter={event => {
                         if (event.target instanceof Element && event.target.closest('[data-rail-job-status], [data-rail-job-preview]')) return;
@@ -564,16 +588,21 @@ export function SplitWorkspacePanel({
                         runningCount={runningCount}
                         queuedCount={queuedCount}
                         preview={jobPreview}
-                        hoverEnabled={hasFinePointer}
-                        onExpand={toggleLeftCollapsed}
-                        onPreview={hoverPeek.close}
+                        {...railControls}
                     />
-                    <span
-                        className="mt-1 text-[10px] tracking-wide text-[#848484] select-none"
-                        style={{ writingMode: 'vertical-rl' }}
-                    >
-                        Workspace
-                    </span>
+                    {railGit != null ? (
+                        <>
+                            <span aria-hidden="true" className="my-1 h-px w-5 flex-shrink-0 bg-[#e5e5e5] dark:bg-[#3c3c3c]" />
+                            {railGit}
+                        </>
+                    ) : (
+                        <span
+                            className="mt-1 text-[10px] tracking-wide text-[#848484] select-none"
+                            style={{ writingMode: 'vertical-rl' }}
+                        >
+                            Workspace
+                        </span>
+                    )}
                 </div>
             )}
 
@@ -739,5 +768,6 @@ export function SplitWorkspacePanel({
                 {detail}
             </div>
         </div>
+        </RailControlsContext.Provider>
     );
 }

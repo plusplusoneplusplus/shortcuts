@@ -16,7 +16,7 @@
  * subscribe and attach; payload sourceWorkspaceId stays a plain workspace id.
  */
 
-import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
+import { SENTINEL_TODO_CONTEXT_DRAG_KIND, type SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import { pushNewChatSeedContext } from './newChatSeedContext';
 
 /**
@@ -56,7 +56,7 @@ export function subscribeActiveChatAttach(
 }
 
 /** Where an attached payload ended up. */
-export type ActiveChatAttachTarget = 'active-chat' | 'new-chat';
+export type ActiveChatAttachTarget = 'active-chat' | 'new-chat' | 'unavailable';
 
 /**
  * Route `payload` to the chat composer for its concrete `destinationId`.
@@ -76,6 +76,8 @@ export function attachSelectionToChat(
         }
         if (accepted !== false) return 'active-chat';
     }
+    // Ledger pointers can only enter their existing parent Sentinel, never a new chat.
+    if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) return 'unavailable';
     pushNewChatSeedContext([payload], destinationId);
     return 'new-chat';
 }

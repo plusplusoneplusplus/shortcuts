@@ -46,6 +46,7 @@ import {
     TaskDefs,
 } from '../tasks/task-types';
 import { tagBlock } from './prompt-tags';
+import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 
 /** Tag wrapping the per-turn mode directive on the user message. */
 export const CHAT_MODE_DIRECTIVE_TAG = 'coc-chat-mode';
@@ -96,6 +97,11 @@ export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
         'the target workspace/server routing rules; do not carry over this chat\'s provider, model, or effort. ' +
         'Honor explicit user provider/model/effort overrides.',
     '- After a hand-off, reply with one short line saying what was handed off and where (repo + title).',
+    '- For coding tasks, keep one To-do through planning, POCs and implementation. Mark Done only when the implemented ' +
+        'outcome meets its completion condition. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' ' +
+        'Awaiting approval stays To do; authorized work stays In progress. Never auto-archive. ' +
+        'Do not launch implementation without user authorization.',
+    '- ' + SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE,
     '- Do not try to edit files yourself; this chat is read-only.',
 ].join('\n'));
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import type { Canvas } from '@plusplusoneplusplus/coc-client';
 import { ExtensionCanvasView } from '../features/canvas/ExtensionCanvasView';
 import { KustoView, parseKustoContent } from '../features/canvas/KustoView';
@@ -27,94 +27,12 @@ function kustoSummary(canvas: Canvas): string {
     return 'Not run yet';
 }
 
-/**
- * Inline Kusto canvas embed. When several appear in one conversation the group
- * keeps only the most recent one expanded; earlier ones collapse to a header
- * the reader can click open. The reader's manual toggle wins over the default.
- */
-function KustoCanvasEmbed({
-    workspaceId,
-    canvas,
-    onCanvasSaved,
-}: {
-    workspaceId: string;
-    canvas: Canvas;
-    onCanvasSaved: (canvas: Canvas) => void;
-}) {
-    const group = useKustoEmbedGroup();
-    const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
-    // Header slot that hosts the cluster/database editors, keeping them out of
-    // the body so the embed stays compact.
-    const [connectionSlotEl, setConnectionSlotEl] = useState<HTMLDivElement | null>(null);
-    // `null` means "follow the group default"; a boolean is an explicit choice.
-    const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
-
-    // Depend on the stable `register`/`isLast` functions, not the whole context
-    // value: that object's identity changes on every version bump, so depending
-    // on it here would re-run this effect and re-register in an infinite loop.
-    const register = group?.register;
-    useEffect(() => {
-        if (!register || !wrapperEl) return;
-        return register(wrapperEl);
-    }, [register, wrapperEl]);
-
-    // Without a group every embed stays expanded (standalone preview behavior).
-    const isLast = group ? group.isLast(wrapperEl) : true;
-    const expanded = userExpanded ?? isLast;
-    const summary = useMemo(() => kustoSummary(canvas), [canvas]);
-
-    return (
-        <div
-            ref={setWrapperEl}
-            className="my-3 overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]"
-            data-testid="canvas-embed-kusto"
-            data-expanded={expanded ? 'true' : 'false'}
-        >
-            <div className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#172033] dark:text-[#cccccc] ${expanded ? 'border-b border-[#dce3ee] dark:border-[#3c3c3c]' : ''}`}>
-                <button
-                    type="button"
-                    className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-2 text-left hover:opacity-80"
-                    onClick={() => setUserExpanded(!expanded)}
-                    aria-expanded={expanded}
-                    data-testid="canvas-embed-kusto-toggle"
-                >
-                    <span className="text-[10px] text-[#848484]" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-                    <span className="min-w-0 truncate font-semibold">{canvas.title || 'Kusto query'}</span>
-                </button>
-                {/* When expanded, KustoView portals its cluster/database editors here. */}
-                {expanded && (
-                    <div
-                        ref={setConnectionSlotEl}
-                        className="flex flex-1 min-w-0 items-center gap-2"
-                        data-testid="canvas-embed-kusto-connection-slot"
-                    />
-                )}
-                <span className="ml-auto shrink-0 pl-1 text-[10px] text-[#657188] dark:text-[#a0a0a0]" data-testid="canvas-embed-kusto-summary">{summary}</span>
-            </div>
-            {expanded && (
-                <div className="h-[420px] overflow-hidden">
-                    <KustoView
-                        workspaceId={workspaceId}
-                        canvas={canvas}
-                        onCanvasSaved={onCanvasSaved}
-                        compact
-                        connectionInHeader
-                        connectionSlot={connectionSlotEl}
-                    />
-                </div>
-            )}
-        </div>
-    );
-}
-
 function CanvasDocumentPreview({ canvas }: { canvas: Canvas }) {
     const label = canvas.type === 'code' ? canvas.language || 'code' : 'markdown';
 
     return (
-        <section className="my-3 overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]" data-testid="canvas-embed-document">
-            <header className="border-b border-[#dce3ee] bg-[#f7f9fc] px-3 py-2 text-xs font-semibold text-[#172033] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]">
-                {canvas.title} <span className="font-normal text-[#657188] dark:text-[#a0a0a0]">({label})</span>
-            </header>
+        <section data-testid="canvas-embed-document">
+            <div className="px-3 pt-2 text-xs text-[#657188] dark:text-[#a0a0a0]">{label}</div>
             <pre className="m-0 max-h-96 overflow-auto whitespace-pre-wrap p-3 text-xs">{canvas.content}</pre>
         </section>
     );
@@ -124,8 +42,7 @@ function CanvasDocumentPreview({ canvas }: { canvas: Canvas }) {
  * The embed's "open in panel" action (AC-04).
  *
  * Rendered only when a unified right panel is on screen for THIS embed's chat:
- * elsewhere the inline preview is still the only surface, so there is nothing
- * to open into and the embed keeps exactly its current shape. The canvas is
+ * elsewhere the inline preview is still the only surface. The canvas is
  * filed against the chat it was embedded in and the clone it was fetched from,
  * so a background transcript can never repoint the visible panel.
  */
@@ -162,24 +79,44 @@ function CanvasEmbedOpenAction({
     if (host === null || input === null) return null;
 
     return (
-        <div className="mt-3 -mb-2 flex justify-end">
-            <button
-                type="button"
-                className="rounded px-1.5 py-0.5 text-[11px] text-[#657188] hover:bg-[#eef1f6] hover:text-[#172033] dark:text-[#a0a0a0] dark:hover:bg-[#2d2d2d] dark:hover:text-[#cccccc]"
-                onClick={() => openUnifiedPanelTab(host.workspaceId, input)}
-                data-testid="canvas-embed-open-in-panel"
-                title="Open this canvas as a tab in the right panel"
-            >
-                Open in panel ↗
-            </button>
-        </div>
+        <button
+            type="button"
+            className="shrink-0 rounded px-1.5 py-1 text-[11px] text-[#657188] hover:bg-[#eef1f6] hover:text-[#172033] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007acc] dark:text-[#a0a0a0] dark:hover:bg-[#2d2d2d] dark:hover:text-[#cccccc]"
+            onClick={() => openUnifiedPanelTab(host.workspaceId, input)}
+            data-testid="canvas-embed-open-in-panel"
+            title="Open this canvas as a tab in the right panel"
+        >
+            Open in panel ↗
+        </button>
     );
 }
 
 export function CanvasEmbed({ workspaceId, canvasId }: CanvasEmbedProps) {
+    const { chatId } = useChatRenderContext();
+    return <CanvasEmbedContent key={JSON.stringify([workspaceId, chatId, canvasId])} workspaceId={workspaceId} canvasId={canvasId} />;
+}
+
+function CanvasEmbedContent({ workspaceId, canvasId }: CanvasEmbedProps) {
     const client = useCocClient(workspaceId);
     const [canvas, setCanvas] = useState<Canvas | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const bodyId = useId();
+    const group = useKustoEmbedGroup();
+    const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
+    const [connectionSlotEl, setConnectionSlotEl] = useState<HTMLDivElement | null>(null);
+    // A manual choice overrides only this embed's existing Kusto group default.
+    const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+    const isKusto = canvas?.type === 'kusto';
+    const summary = useMemo(() => isKusto ? kustoSummary(canvas) : null, [canvas, isKusto]);
+    const register = group?.register;
+
+    useEffect(() => {
+        if (!isKusto || !register || !wrapperEl) return;
+        return register(wrapperEl);
+    }, [isKusto, register, wrapperEl]);
+
+    const expanded = userExpanded ?? (!isKusto || !group || group.isLast(wrapperEl));
+    const title = canvas?.title || (isKusto ? 'Kusto query' : canvas || error ? 'Canvas' : 'Loading canvas…');
 
     useEffect(() => {
         let cancelled = false;
@@ -199,39 +136,79 @@ export function CanvasEmbed({ workspaceId, canvasId }: CanvasEmbedProps) {
         return () => { cancelled = true; };
     }, [client, workspaceId, canvasId]);
 
-    if (error) {
-        return <div className="my-3 text-xs text-red-500" data-testid="canvas-embed-error">Failed to load canvas: {error}</div>;
-    }
-    if (!canvas) {
-        return <div className="my-3 text-xs text-[#848484]" data-testid="canvas-embed-loading">Loading canvas…</div>;
-    }
     return (
-        <>
-            {/* Every canvas type shares one open action, above its own chrome. */}
-            <CanvasEmbedOpenAction
-                workspaceId={workspaceId}
-                canvasId={canvasId}
-                title={canvas.title}
-            />
-            {canvas.type === 'excalidraw' ? (
-                <ExcalidrawPreview workspaceId={workspaceId} canvasId={canvasId} canvas={canvas} />
-            ) : canvas.type === 'kusto' ? (
-                <KustoCanvasEmbed
-                    workspaceId={workspaceId}
-                    canvas={canvas}
-                    onCanvasSaved={setCanvas}
-                />
-            ) : canvas.type === 'extension' ? (
-                <div className="my-3 h-[400px] overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]" data-testid="canvas-embed-extension">
-                    <ExtensionCanvasView
-                        workspaceId={workspaceId}
-                        canvas={canvas}
-                        onCanvasSaved={setCanvas}
-                    />
-                </div>
-            ) : (
-                <CanvasDocumentPreview canvas={canvas} />
-            )}
-        </>
+        <div
+            ref={setWrapperEl}
+            className="my-3 overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]"
+            data-testid={isKusto ? 'canvas-embed-kusto' : 'canvas-embed'}
+            data-expanded={expanded ? 'true' : 'false'}
+        >
+            <div className={`flex w-full items-center gap-2 bg-[#f7f9fc] px-3 py-1 text-xs text-[#172033] dark:bg-[#252526] dark:text-[#cccccc] ${expanded ? 'border-b border-[#dce3ee] dark:border-[#3c3c3c]' : ''}`}>
+                <button
+                    type="button"
+                    className={`flex min-w-0 items-center gap-2 rounded py-1 text-left hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007acc] ${isKusto && expanded ? 'max-w-[45%]' : 'flex-1'}`}
+                    onClick={() => setUserExpanded(!expanded)}
+                    aria-expanded={expanded}
+                    aria-controls={bodyId}
+                    data-testid={isKusto ? 'canvas-embed-kusto-toggle' : 'canvas-embed-toggle'}
+                    title={title}
+                >
+                    <span className="text-[10px] text-[#848484]" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                    <span className="min-w-0 truncate font-semibold">{title}</span>
+                </button>
+                {isKusto && (
+                    <>
+                        <div
+                            ref={setConnectionSlotEl}
+                            className="flex min-w-0 flex-1 items-center gap-2"
+                            style={expanded ? undefined : { display: 'none' }}
+                            {...(!expanded ? { inert: '' } : {})}
+                            data-testid="canvas-embed-kusto-connection-slot"
+                        />
+                        <span className="shrink-0 text-[10px] text-[#657188] dark:text-[#a0a0a0]" data-testid="canvas-embed-kusto-summary">{summary}</span>
+                    </>
+                )}
+                {canvas && (
+                    <CanvasEmbedOpenAction workspaceId={workspaceId} canvasId={canvasId} title={canvas.title} />
+                )}
+            </div>
+            {/* Keep iframe/editor state and the Kusto portal target alive across toggles. */}
+            <div
+                id={bodyId}
+                hidden={!expanded}
+                style={expanded ? undefined : { display: 'none' }}
+                {...(!expanded ? { inert: '' } : {})}
+                data-testid="canvas-embed-body"
+            >
+                {error ? (
+                    <div className="p-3 text-xs text-red-500" data-testid="canvas-embed-error">Failed to load canvas: {error}</div>
+                ) : !canvas ? (
+                    <div className="p-3 text-xs text-[#848484]" data-testid="canvas-embed-loading">Loading canvas…</div>
+                ) : canvas.type === 'excalidraw' ? (
+                    <ExcalidrawPreview workspaceId={workspaceId} canvasId={canvasId} canvas={canvas} />
+                ) : canvas.type === 'kusto' ? (
+                    <div className="h-[420px] overflow-hidden">
+                        <KustoView
+                            workspaceId={workspaceId}
+                            canvas={canvas}
+                            onCanvasSaved={setCanvas}
+                            compact
+                            connectionInHeader
+                            connectionSlot={connectionSlotEl}
+                        />
+                    </div>
+                ) : canvas.type === 'extension' ? (
+                    <div className="h-[400px] overflow-hidden" data-testid="canvas-embed-extension">
+                        <ExtensionCanvasView
+                            workspaceId={workspaceId}
+                            canvas={canvas}
+                            onCanvasSaved={setCanvas}
+                        />
+                    </div>
+                ) : (
+                    <CanvasDocumentPreview canvas={canvas} />
+                )}
+            </div>
+        </div>
     );
 }

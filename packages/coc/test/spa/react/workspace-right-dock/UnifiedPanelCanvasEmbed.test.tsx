@@ -84,13 +84,18 @@ describe('canvas embed → unified panel canvas tab', () => {
         localStorage.clear();
     });
 
-    it('opens the embedded canvas as a chat-owned tab in the hosting panel', async () => {
+    it('opens a collapsed embedded canvas as a chat-owned tab in the hosting panel', async () => {
         renderEmbed({ host: { workspaceId: 'ws-1', chatId: 'task-A' } });
         await screen.findByTestId('canvas-embed-document');
 
         await act(async () => {
+            screen.getByTestId('canvas-embed-toggle').click();
+        });
+        expect(screen.getByTestId('canvas-embed-body')).not.toBeVisible();
+        await act(async () => {
             screen.getByTestId('canvas-embed-open-in-panel').click();
         });
+        expect(screen.getByTestId('canvas-embed-toggle')).toHaveAttribute('aria-expanded', 'false');
 
         const tabs = visibleTabs(readUnifiedPanelState('ws-1'), 'task-A');
         expect(tabs).toHaveLength(1);
@@ -122,6 +127,7 @@ describe('canvas embed → unified panel canvas tab', () => {
         await screen.findByTestId('canvas-embed-document');
 
         await act(async () => {
+            screen.getByTestId('canvas-embed-toggle').click();
             screen.getByTestId('canvas-embed-open-in-panel').click();
         });
 

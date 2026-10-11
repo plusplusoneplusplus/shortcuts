@@ -26,6 +26,9 @@ export interface GitInfoResult {
     remoteUrl: string | null;
     ahead?: number;
     behind?: number;
+    /** Upstream that `ahead`/`behind` compare against; null when none is configured. */
+    upstream?: string | null;
+    detached?: boolean;
 }
 
 export type GitInfoCacheOutcome = 'hit' | 'miss' | 'stale' | 'invalidated' | 'inflight' | 'error-retry';

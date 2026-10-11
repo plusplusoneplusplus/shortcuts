@@ -69,6 +69,7 @@ export interface RalphSessionFile {
 }
 
 export interface InitSessionInput {
+    phase?: 'grilling' | 'executing';
     originalGoal: string;
     maxIterations: number;
     startedAt?: string;
@@ -141,7 +142,7 @@ export class RalphSessionStore {
                 originalGoal: init.originalGoal,
                 maxIterations: init.maxIterations,
                 currentIteration: 0,
-                phase: 'executing',
+                phase: init.phase ?? 'executing',
                 ...(init.baselineSha ? { baselineSha: init.baselineSha } : {}),
                 startedAt,
                 iterations: [],

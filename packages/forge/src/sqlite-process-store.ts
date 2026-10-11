@@ -1192,8 +1192,14 @@ export class SqliteProcessStore implements ProcessStore {
 
     getPinnedProcesses(workspaceId: string): ProcessIndexEntry[] {
         const rows = this.db.prepare(
-            "SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, json_extract(metadata, '$.compaction') AS compaction_json, metadata -> '$.botControl' AS bot_control_json FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC"
-        ).all(workspaceId) as (ProcessRow & { compaction_json?: string | null; bot_control_json?: string | null })[];
+            "SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, json_extract(metadata, '$.compaction') AS compaction_json, metadata -> '$.botControl' AS bot_control_json, json_extract(metadata, '$.mode') AS mode_json, json_extract(metadata, '$.workItemId') AS work_item_id_json, json_extract(metadata, '$.sessionCategory') AS session_category_json FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC"
+        ).all(workspaceId) as (ProcessRow & {
+            compaction_json?: string | null;
+            bot_control_json?: string | null;
+            mode_json?: unknown;
+            work_item_id_json?: unknown;
+            session_category_json?: unknown;
+        })[];
 
         return rows.map(row => {
             const startMs = new Date(row.start_time).getTime();
@@ -1215,6 +1221,9 @@ export class SqliteProcessStore implements ProcessStore {
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
                 pinnedAt: row.pinned_at ?? undefined,
                 archived: intToBool(row.archived) || undefined,
+                ...(typeof row.mode_json === 'string' ? { mode: row.mode_json } : {}),
+                ...(typeof row.work_item_id_json === 'string' ? { workItemId: row.work_item_id_json } : {}),
+                ...(typeof row.session_category_json === 'string' ? { sessionCategory: row.session_category_json } : {}),
                 compaction: jsonParse<ProcessCompactionState>(row.compaction_json ?? null),
                 botControl: jsonParse<BotControlMetadata>(row.bot_control_json ?? null),
             };

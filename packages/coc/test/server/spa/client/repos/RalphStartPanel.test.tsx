@@ -805,6 +805,60 @@ describe('RalphStartPanel', () => {
         expect(body.workspaceId).toBe('remote-ws');
     });
 
+    it('does not dispatch native Start after switching owner while a capability request is pending', async () => {
+        let resolveCapability!: (value: unknown) => void;
+        const fetchMock = vi.fn(() => new Promise(resolve => { resolveCapability = resolve; }));
+        vi.stubGlobal('fetch', fetchMock);
+        const props = { processId: 'queue_native', workspaceId: 'ws-1', turns: GRILLING_TURNS,
+            approvedGoalSpec: '## Goal\nApproved', goalRevision: 'revision', onStarted: mockOnStarted };
+        const view = render(<RalphStartPanel {...props} />);
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), { target: { value: 'local:ws-2' } });
+        fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+        view.rerender(<RalphStartPanel {...props} workspaceId="ws-2" />);
+        await act(async () => resolveCapability({ ok: true, json: async () => ({ version: 1, approvedStart: true }) }));
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(mockOnStarted).not.toHaveBeenCalled();
+    });
+
+    it('reserves native cross-workspace Start on the source, then admits exactly one target child and saves its owner', async () => {
+        const calls: Array<{ url: string; body?: any }> = [];
+        const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
+            const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+            calls.push({ url: String(url), body });
+            if (String(url).endsWith('/capabilities')) return { ok: true, json: async () => ({ version: 1, approvedStart: true }) };
+            if (String(url).endsWith('/approval')) return { ok: true, json: async () => body.action === 'admitted'
+                ? { admitted: true } : { requestId: '12345678-1234-4234-9234-123456789abc' } };
+            return { ok: true, json: async () => ({ processId: 'queue_native-execution', sessionId: 'ralph-native-execution' }) };
+        });
+        vi.stubGlobal('fetch', mockFetch);
+        render(<RalphStartPanel processId="queue_native" workspaceId="ws-1" turns={GRILLING_TURNS}
+            approvedGoalSpec="## Goal\nReviewed feature" goalRevision="revision" onStarted={mockOnStarted} />);
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), { target: { value: 'local:ws-2' } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+        await waitFor(() => expect(mockOnStarted).toHaveBeenCalledWith('queue_native-execution', 'ws-2'));
+        expect(calls.map(call => call.url)).toEqual([
+            'http://localhost:4000/api/ralph-launch/capabilities',
+            'http://localhost:4000/api/processes/queue_native/ralph-start/approval',
+            'http://localhost:4000/api/ralph-launch',
+            'http://localhost:4000/api/processes/queue_native/ralph-start/approval',
+        ]);
+        expect(calls[1].body).toMatchObject({ targetKey: 'local:ws-2', goalRevision: 'revision' });
+        expect(calls[2].body).toMatchObject({ workspaceId: 'ws-2', spawnedFromProcessId: 'queue_native',
+            requestId: '12345678-1234-4234-9234-123456789abc' });
+        expect(calls[2].body.folderPath).toBeUndefined();
+        expect(calls[2].body.workingDirectory).toBeUndefined();
+        expect(calls[3].body.execution).toEqual({ workspaceId: 'ws-2', sessionId: 'ralph-native-execution',
+            processId: 'queue_native-execution', remote: false });
+    });
+
     it('persists ralphLaunchedSession when a grilling launch targets a different remote repo', async () => {
         // Regression: a grilling-phase launch (useLaunchEndpoint unset) into a
         // DIFFERENT remote target hits the remote /ralph-launch and mints a
@@ -1308,6 +1362,17 @@ describe('RalphStartPanel', () => {
     });
 
     // -----------------------------------------------------------------------
+    it('shows the durable native admission after refresh without offering a duplicate Start when target is unreachable', () => {
+        mockUseRalphSessionView.mockReturnValue({ view: undefined, refresh: vi.fn() });
+        render(<RalphStartPanel processId="queue_source" workspaceId="ws-1" turns={[]}
+            approvedGoalSpec="## Goal\nApproved" launchedSession={{ workspaceId: 'ws-2', sessionId: 'ralph-approved', executionProcessId: 'queue_existing', launchedAt: '2026-06-30T00:00:00.000Z' }}
+            onStarted={mockOnStarted} />);
+        expect(screen.getByTestId('ralph-launched-status').textContent).toContain('Ralph admitted');
+        expect(screen.queryByTestId('ralph-start-btn')).toBeNull();
+        fireEvent.click(screen.getByTestId('ralph-launched-link'));
+        expect(mockOnStarted).toHaveBeenCalledWith('queue_existing', 'ws-2');
+    });
+
     // AC-02: render the launched session's live state in the banner
     // -----------------------------------------------------------------------
 

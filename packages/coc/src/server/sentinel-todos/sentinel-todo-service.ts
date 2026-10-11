@@ -1,5 +1,5 @@
 import { isQueueProcessId, toTaskId, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
-import type { DelegatedJob, DelegatedJobStore } from '../delegation/delegated-job-store';
+import { grillingResultJob, type DelegatedJob, type DelegatedJobStore } from '../delegation/delegated-job-store';
 import { buildChatOpenLink } from '../servers/workspace-directory';
 import { normalizeChatMode } from '../tasks/task-types';
 import {
@@ -86,7 +86,12 @@ export class SentinelTodoService {
         await this.assertOwner(owner);
         const result = this.deps.todos.linkJob(owner, itemId, link);
         if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
-        return { item: result.item, ledgerRevision: result.ledgerRevision };
+        const delegated = this.deps.jobs?.list(owner.workspaceId).find(job => job.id === link.processId);
+        const milestone = delegated && grillingResultJob(delegated);
+        if (milestone) this.recordJobResult(milestone);
+        if (delegated?.terminal) this.recordJobResult(delegated);
+        const current = this.deps.todos.get(owner);
+        return { item: current.items.find(item => item.id === itemId)!, ledgerRevision: current.revision };
     }
 
     /**
@@ -131,6 +136,12 @@ export class SentinelTodoService {
         const terminal = job.terminal?.result;
         if (!terminal || job.child.serverId || !this.findLinkedItem(job)) return undefined;
         const owner = { workspaceId: job.parent.workspaceId, processId: job.parent.processId };
+        if (job.boundary === 'grill') {
+            if (terminal.reason !== 'spec-ready') return undefined;
+            const milestone = this.deps.todos.recordGrillingResult(owner, job.id, terminal.terminalEventId, terminal.links);
+            if (milestone) this.emit({ owner, ...milestone });
+            return milestone?.item;
+        }
         const result = this.deps.todos.recordJobResult(owner, job.id, {
             terminalEventId: terminal.terminalEventId,
             outcome: terminal.outcome,

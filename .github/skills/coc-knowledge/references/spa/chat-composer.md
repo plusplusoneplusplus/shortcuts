@@ -230,6 +230,23 @@ avoid quota errors. The sidecar clears on successful send and Ralph direct-goal 
 resets when switching to a draft key with no saved attachments. Follow-up composers and
 `EnqueueDialog` do not use this path.
 
+### Sentinel to-do context
+
+Sentinel To-do rows share the pointer drag MIME, `useAttachedContext` and
+`AttachedContextPreviews`; their Attach action uses `activeChatAttach` without
+new-chat seed fallback. `sentinelTodoContext.ts` binds each pointer to the parent
+workspace, Sentinel process and concrete server route. Both the ledger and context
+attachment flags gate the surface. Remote reads require concrete clone identity;
+unresolved owners never fall through locally.
+
+`FollowUpInputArea` reads the owning ledger before adding a chip, blocks sends while
+reads are pending, and discards obsolete owner responses. `useSendMessage` re-reads
+on explicit send and serializes escaped, whitelisted item details in the existing
+pointer block: ID, title, type, status, archive state, completion condition, notes
+and target repo. Draft changes invalidate pending reads; failed sends retain chips
+and text. Context grants no execution/delegation authority, especially for manual
+tracking. Missing items and unavailable owners surface inline errors.
+
 ### Session-context attachments
 
 With `features.sessionContextAttachments` enabled, same-workspace chat/process rows, Ralph

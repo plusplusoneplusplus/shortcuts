@@ -112,6 +112,8 @@ interface DashboardConfig {
     chatFoldersEnabled?: boolean;
     /** Whether a repo group's Workspace chat list aggregates member chats. Default false. */
     repoGroupAggregatedChatsEnabled?: boolean;
+    /** Whether the collapsed workspace rail shows the Git summary. Default false. */
+    railGitSummaryEnabled?: boolean;
     /** Whether chat composers show the client-side English word hint. Default true. */
     composerWordHintEnabled?: boolean;
     /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */
@@ -578,6 +580,11 @@ export function isGitWorktreeExecutionEnabled(): boolean {
  */
 export function isChatFoldersEnabled(): boolean {
     return getConfig().chatFoldersEnabled === true;
+}
+
+/** Returns true when the collapsed workspace rail shows Git status (`features.railGitSummary`). */
+export function isRailGitSummaryEnabled(): boolean {
+    return getConfig().railGitSummaryEnabled === true;
 }
 
 /**

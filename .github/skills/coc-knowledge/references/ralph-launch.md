@@ -26,15 +26,40 @@ workspace/server; otherwise the multi-repo queue router resolves the execution r
 `workspaceId`. The route validates optional `provider` and `reasoningEffort` and carries
 them, with optional `config.model`, onto the first queued Ralph task.
 
-`POST /api/processes/:id/ralph-start` (`routes/queue-ralph-routes.ts`) starts execution from
-a completed grilling-phase session. `features/chat/RalphStartPanel.tsx` uses the same repo
-selector and AI controls. If the target matches the grilling process's workspace/server it
-posts here and reuses the grilling-phase session; otherwise it posts the reviewed `goalSpec`
-to that target's `/api/ralph-launch` and mints a fresh session. Any launch through
-`/api/ralph-launch` persists a `ralphLaunchedSession` pointer on the source chat's process
-metadata so the panel can recover and render that session's live status on reopen. The start
-route validates the resolved provider plus optional `config.model`/`config.reasoningEffort`
-overrides and applies them only to the first queued task.
+## Native Grilling and Start Approval
+
+Composer Ralph interviews and `send_to_conversation` create mode with
+`mode: "ralph", entryPoint: "grill"` share `buildRalphGrillingSubmission` and server-owned
+`prepareRalphGrilling` admission. They queue Ask with the `grill-me` skill and a real
+`context.ralph` grilling identity. Composer attachments, other skills, AI choices and optional
+multi-agent setup remain intact. Omitting `entryPoint`, or choosing `"execute"`, preserves
+direct iteration-1 launch. `entryPoint` is invalid for posts, cancellation and non-Ralph modes.
+Native admission uses the existing disabled-by-default `ralph.enabled` flag; it adds no gate
+and never enables config. Remote targets preflight `/api/ralph-launch/capabilities` version 1;
+unsupported/offline targets fail without local fallback. Uncertain acceptance is reported
+without relaunch. Target servers resolve their own paths, skills, preferences and Auto routing.
+
+The server initializes the journal explicitly in `grilling` and persists repo-scoped
+`ralph-sessions/<sessionId>/grilling.json` beside it. This small durable record owns interview
+process identity, synthesis turn, canonical `notes/Plans/<sessionId>.goal.md` path, SHA-256 goal
+revision and Start admission. Lifecycle completion validates a nonempty `## Goal` synthesis,
+not merely a completed interview turn. Pending questions, new interview requests, invalid or
+edited files clear readiness. Process reads project validated readiness and admitted execution
+identity without restoring edited artifacts or launching work, including after restart without
+any prior SPA visit. Native questions use existing AskUserInline answer/skip/need-context and
+saved history; goal review uses RalphStartPanel and its explicit Confirm & Start.
+
+`POST /api/processes/:id/ralph-start` requires the current goal revision for managed interviews,
+revalidates the artifact and records the reviewed goal before queue admission. A matching
+workspace/server reuses the session. A different target reserves approval through source-owned
+`POST /api/processes/:id/ralph-start/approval`, capability-checks the target, and launches reviewed
+text with a stable `requestId` on that target's `/api/ralph-launch`. It then records the admitted
+owner/session/process on the source. Source-machine paths never travel to another owner.
+Durable admission plus existing process locks deduplicate retries and concurrent approval;
+uncertain crash windows block a second child. Refresh restores the approved target/text and
+admitted pointer, never implicit execution authority. Remote automatic result delivery remains
+unavailable; this protocol adds no callbacks. Legacy direct launch and unmanaged Start behavior
+retain their existing contracts.
 
 Work Items can start a Ralph loop through
 `POST /api/workspaces/:workspaceId/work-items/:itemId/execute` with `executionMode='ralph'`,
