@@ -807,6 +807,15 @@ export function promoteTab(state: UnifiedPanelState, id: string): UnifiedPanelSt
  */
 export function activateTab(state: UnifiedPanelState, chatId: string | null, id: string): UnifiedPanelState {
     if (!visibleTabs(state, chatId).some(tab => tab.id === id)) return state;
+    return rememberActiveTab(state, chatId, id);
+}
+
+/**
+ * Remember `id` as a chat's selection without requiring it to be stored — for
+ * a transient tab a reader layers over the stored state. `activeTabId` still
+ * falls forward while the id is not visible, and the codec never writes it.
+ */
+export function rememberActiveTab(state: UnifiedPanelState, chatId: string | null, id: string): UnifiedPanelState {
     return withActive(state, chatId ?? WORKSPACE_SCOPE_KEY, id);
 }
 

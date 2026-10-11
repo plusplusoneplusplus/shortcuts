@@ -2,11 +2,11 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { getRepoDataPath } from '../../../src/server/paths';
-import { MAX_IMAGE_BYTES } from '../../../src/server/core/image-utils';
+import { cleanupTempDir, MAX_IMAGE_BYTES, saveImagesToTempFiles } from '../../../src/server/core/image-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Attachment, ModelInfo } from '@plusplusoneplusplus/forge';
-import { resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
-import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
+import { getLogger, resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
+import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, cleanupChatAttachmentTempDir, CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
 
 vi.mock('@plusplusoneplusplus/forge', async importOriginal => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -18,6 +18,64 @@ vi.mock('@plusplusoneplusplus/forge', async importOriginal => {
 });
 
 const image: Attachment = { type: 'file', path: '/attachments/incoming/image.png', displayName: 'image.png' };
+
+describe('admitted chat attachment cleanup', () => {
+    let tempDir: string;
+    beforeEach(() => { tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-')); });
+    afterEach(() => {
+        vi.restoreAllMocks();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it('keeps only admitted image files, including mixed-case extensions and data-URL image types', () => {
+        const names = ['image.PNG', 'image.jpeg', 'image.avif', 'context.txt', 'document.pdf', 'unadmitted.png'];
+        for (const name of names) fs.writeFileSync(path.join(tempDir, name), name);
+        const attachments: Attachment[] = names.slice(0, -1).map(name => ({ type: 'file', path: path.join(tempDir, name) }));
+        cleanupChatAttachmentTempDir(tempDir, attachments, ['data:image/avif;base64,aW1hZ2U=']);
+        expect(fs.readdirSync(tempDir).sort()).toEqual(['image.PNG', 'image.avif', 'image.jpeg']);
+        for (const name of names.slice(0, 3)) expect(fs.readFileSync(path.join(tempDir, name), 'utf8')).toBe(name);
+        cleanupChatAttachmentTempDir(tempDir, attachments, ['data:image/avif;base64,aW1hZ2U=']);
+        expect(fs.readdirSync(tempDir)).toHaveLength(3);
+    });
+
+    it('ignores damaged non-string image history instead of throwing', () => {
+        const imagePath = path.join(tempDir, 'image.png');
+        const documentPath = path.join(tempDir, 'document.txt');
+        fs.writeFileSync(imagePath, 'image');
+        fs.writeFileSync(documentPath, 'document');
+        expect(() => cleanupChatAttachmentTempDir(tempDir, [
+            { type: 'file', path: imagePath }, { type: 'file', path: documentPath },
+        ], [123, null])).not.toThrow();
+        expect(fs.readdirSync(tempDir)).toEqual(['image.png']);
+    });
+
+    it('removes document-only directories and unrelated contents', () => {
+        const documentPath = path.join(tempDir, 'document.txt');
+        fs.writeFileSync(documentPath, 'document');
+        cleanupChatAttachmentTempDir(tempDir, [{ type: 'file', path: documentPath }]);
+        expect(fs.existsSync(tempDir)).toBe(false);
+    });
+
+    it('preserves immediate cleanup for images rejected before admission', () => {
+        fs.writeFileSync(path.join(tempDir, 'image.png'), 'image');
+        cleanupTempDir(tempDir);
+        expect(fs.existsSync(tempDir)).toBe(false);
+    });
+
+    it('removes empty image directories when decoding admits no attachments', () => {
+        const saved = saveImagesToTempFiles(['invalid']);
+        cleanupChatAttachmentTempDir(saved.tempDir, saved.attachments);
+        expect(fs.existsSync(saved.tempDir)).toBe(false);
+    });
+
+    it('logs directory-read failures without interrupting turn resource cleanup', () => {
+        const warn = vi.spyOn(getLogger(), 'warn');
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.writeFileSync(tempDir, 'not a directory');
+        expect(() => cleanupChatAttachmentTempDir(tempDir, [{ type: 'file', path: path.join(tempDir, 'image.png') }])).not.toThrow();
+        expect(warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('non-image cleanup'));
+    });
+});
 
 describe('chat image transport policy', () => {
     beforeEach(() => {

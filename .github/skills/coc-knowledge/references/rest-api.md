@@ -202,12 +202,15 @@ Bookkeeping per Sentinel chat in native SQLite `processes.db`, keyed by workspac
 | GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId` | Ledger → `{ revision, items }`; each item's `jobs[]` link carries a derived `execution` (remote → `unavailable`) |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items` | Create (`201`), optional immutable `type: 'normal' \| 'manual'` defaults to normal; untyped stored items read as normal without rewriting; a repeated `idempotencyKey` returns the original (`200`) |
 | PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId` | Edit with required `expectedRevision`; `type` patches → `400 invalid`; `null` clears `targetRepo`/`statusReason`/`outcome`; stale → `409 { code: 'conflict', current }`; failed write → `500` with no event |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/references` | Attach an existing local conversation (`{ expectedRevision, processId, workspaceId }`) to a normal item as a reference-only link → `{ item, ledgerRevision, attached }`; server derives `openLink`/`title`; missing or workspace-mismatched chat → `404`; self/manual → `400`; already attached → `200 attached: false` (any revision); stale → `409` |
 
 REST writes are always actor `user` (no caller-supplied actor; unknown keys → `400`). A person may set `done` without a reason; newly marking Done without `outcome` drops the earlier outcome. Non-user actors (Sentinel tool) setting `done`/`needs_attention` without `statusReason` → `invalid`. Manual archive/restore are user-only in the shared store; direct manual job links reject, and result recording/review lookup select normal items only.
 
+Items carry `references[]` (`processId`, `workspaceId`, `openLink`, `title?`, `attachedAt`, `attachedBy`) separate from `jobs[]`: no execution, no review, no status change, no user-verdict bookkeeping, and nothing is sent to the referenced chat. Older servers omit the field.
+
 Items carry `priority: 'high' | 'regular'` (create defaults to `regular`; items stored without it read as `regular` with no rewrite or revision bump). It is ledger metadata only — independent of status, never job queue priority or list order. A priority-only `PATCH` leaves status, reason and outcome unchanged and does not count as a user edit that supersedes a linked job's result; other values → `400 invalid`.
 
-`coc-client` exposes these as `client.sentinelTodos.get/create/update` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
+`coc-client` exposes these as `client.sentinelTodos.get/create/update/attachReference` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
 
 ## Task Groups
 

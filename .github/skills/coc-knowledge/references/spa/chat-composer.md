@@ -170,9 +170,11 @@ breakdown when `useChatSSE` receives all three persisted snapshot values
 from live `token-usage`; otherwise it falls back to a single-colour bar.
 
 The gauge and `ContextWindowIndicator` share `ui/ContextUsagePopover.tsx`: the
-breakdown table + model footer, and `useContextUsagePopover` (hover previews, click/Enter
-pins, focus inside keeps it open, Escape closes and refocuses the trigger button, outside
-press unpins). Sentinel chats pass `autoCompact` from `useSentinelAutoCompact`
+breakdown table + model footer, and `useContextUsagePopover` (hover previews; trigger
+click/tap/Enter or any click inside pins, a second trigger click closes; focus inside keeps
+it open; Escape closes, refocusing the trigger when focus was inside; outside press unpins).
+`CONTEXT_POPOVER_CLASS` draws a transparent `after:` bridge over the `mb-2` gap so pointer
+travel from the gauge into a hover preview never leaves the container. Sentinel chats pass `autoCompact` from `useSentinelAutoCompact`
 (`features/chat/AutoCompactPanel.tsx`, owned by `ChatDetail` so drafts survive closing
 the popover). Its single row contains a switch and numeric k-token input; the switch
 saves immediately and the input commits on Enter/blur. One status line includes queued

@@ -7,6 +7,7 @@ import { createSentinelTodoDelegationHooks } from '../../../src/server/sentinel-
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../../../src/server/delegation/delegated-job-reviews';
+import { SENTINEL_JOB_REVIEW_PREFIX } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import { sentinelTodoDisplayStatus } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
@@ -306,21 +307,8 @@ describe('Sentinel to-do reviewed outcomes', () => {
         expect(item(linked.id)).toMatchObject({ status: 'in_progress', jobs: [{ result: { outcome: 'completed' } }] });
         expect(deliverOnce).toHaveBeenCalledTimes(1);
         const content: string = deliverOnce.mock.calls[0][3].content;
-        expect(content).toContain('Receiving this result is not a verdict');
-        expect(content).toContain('`sentinel_todos`');
-        expect(content).toContain('intended feature/outcome\'s final completion condition');
-        expect(content).toContain('`done` with a short reason only if the final completion condition is satisfied');
-        expect(content).toContain('`todo` for pending next steps or approval');
-        expect(content).toContain('`in_progress` while authorized work continues');
-        expect(content).toContain('`needs_attention` with a reason for failed, cancelled, blocked, or incomplete final work');
-        expect(content).toContain('Successful intermediate phases are neither `done` nor failures');
-        expect(content).toContain('Spec ready; awaiting implementation approval');
-        expect(content).toContain('Do not launch implementation or a retry without user authorization');
-        expect(content).toContain('honor manual user verdicts and latest instructions');
-        expect(content).toContain('current `expectedRevision`');
-        expect(content).toContain('preserve existing notes and record phase milestones and spec/artifact links');
-        expect(content).toContain('Explicitly design-only/interview-only requests can finish after their agreed artifact');
-        expect(content).not.toContain('otherwise `needs_attention`');
+        expect(content.split('\n')[0]).toBe(SENTINEL_JOB_REVIEW_PREFIX);
+        expect(content.split('\n')).toHaveLength(2);
         const data = JSON.parse(content.slice(content.indexOf('{')));
         expect(data.todo).toEqual({
             id: linked.id, revision: linked.revision + 1, title: 'Fix login',
@@ -353,7 +341,7 @@ describe('Sentinel to-do reviewed outcomes', () => {
         finish('completed', undefined, childId, 'Spec ready: notes/login-spec.md');
         await flush();
         const content: string = deliverOnce.mock.calls[0][3].content;
-        expect(content).toContain('leave/return the feature item to `todo`');
+        expect(content.split('\n')[0]).toBe(SENTINEL_JOB_REVIEW_PREFIX);
         const specReady = await service.update(owner, linked.id, item(linked.id).revision, {
             status: 'todo', statusReason: 'Spec ready; awaiting implementation approval',
             notes: 'Grilling complete: notes/login-spec.md',
@@ -394,7 +382,7 @@ describe('Sentinel to-do reviewed outcomes', () => {
         finish('completed', undefined, childId, condition);
         await flush();
         const content: string = deliverOnce.mock.calls[0][3].content;
-        expect(content).toContain('Explicitly design-only/interview-only requests can finish after their agreed artifact');
+        expect(content.split('\n')[0]).toBe(SENTINEL_JOB_REVIEW_PREFIX);
         await service.update(owner, linked.id, item(linked.id).revision, {
             status: 'done', statusReason: condition, outcome: condition,
         }, 'sentinel');

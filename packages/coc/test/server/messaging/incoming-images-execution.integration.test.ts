@@ -258,7 +258,8 @@ describe.each(['whatsapp', 'teams'] as const)('%s native images through executio
         expect(ctx.received[1].prompt).toContain('compare the image');
         for (const turn of ctx.received) {
             expect(path.dirname(path.dirname(turn.paths[0]))).toBe(getRepoDataPath(ctx.dataDir, 'ws-a', 'attachments'));
-            expect(fs.existsSync(turn.paths[0])).toBe(false);
+            // Accepted images stay readable for local delegated children.
+            expect(fs.readFileSync(turn.paths[0])).toEqual(PNG);
         }
         const userTurns = (await ctx.store.getProcess(initial.processId!))?.conversationTurns?.filter(turn => turn.role === 'user');
         expect(userTurns?.map(turn => turn.content)).toEqual([expect.stringContaining('describe the image'), 'compare the image']);

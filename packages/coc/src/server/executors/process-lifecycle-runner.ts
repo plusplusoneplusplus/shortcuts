@@ -56,7 +56,8 @@ import {
     applySkillContent,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
-import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
+import { rehydrateImagesIfNeeded } from './image-store';
+import { cleanupChatAttachmentTempDir } from './chat-image-policy';
 import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import { turnProviderAttribution } from '../processes/active-provider-session';
@@ -474,8 +475,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
-            const imageTempDir = isChatPayload(task.payload) ? task.payload.imageTempDir : undefined;
-            if (imageTempDir) { cleanupTempDir(imageTempDir); }
+            if (isChatPayload(task.payload)) {
+                cleanupChatAttachmentTempDir(task.payload.imageTempDir, task.payload.attachments, task.payload.images);
+            }
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
         }
 
@@ -510,7 +512,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 logger.warn(LogCategory.AI, `[QueueExecutor] Failed to mark follow-up process ${followUpPayload.processId} as running: ${errorMsg}`);
                 await notifyCronTickComplete(opts, ctx, false, logger);
                 await notifyTriggerActionComplete(opts, ctx, false, logger);
-                if (imageTempDir) { cleanupTempDir(imageTempDir); }
+                cleanupChatAttachmentTempDir(imageTempDir, followUpPayload.attachments, followUpPayload.images);
                 return { success: false, error: err instanceof Error ? err : new Error(errorMsg), durationMs: Date.now() - startTime };
             }
             try {
@@ -638,7 +640,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 await notifyTriggerActionComplete(opts, ctx, false, logger);
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
-                if (imageTempDir) { cleanupTempDir(imageTempDir); }
+                cleanupChatAttachmentTempDir(imageTempDir, followUpPayload.attachments, followUpPayload.images);
             }
         }
 

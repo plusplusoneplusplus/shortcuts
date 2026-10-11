@@ -1,4 +1,5 @@
 import type {
+  AttachSentinelTodoReferenceRequest,
   CreateSentinelTodoRequest,
   SentinelTodoLedgerResponse,
   SentinelTodoWriteResponse,
@@ -34,6 +35,15 @@ export class SentinelTodosClient {
     return this.transport.request<SentinelTodoWriteResponse>(
       ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}`),
       { method: 'PATCH', body: request },
+    );
+  }
+
+  attachReference(
+    workspaceId: string, processId: string, itemId: string, request: AttachSentinelTodoReferenceRequest,
+  ): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request<SentinelTodoWriteResponse>(
+      ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/references`),
+      { method: 'POST', body: request },
     );
   }
 }

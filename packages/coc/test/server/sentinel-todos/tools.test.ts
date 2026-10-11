@@ -55,7 +55,7 @@ describe('sentinel_todos tool', () => {
         expect(props).not.toContain('archived');
         expect(props).not.toContain('processId');
         expect(props).not.toContain('workspaceId');
-        expect((tool as any).parameters.properties.action.enum).toEqual(['list', 'create', 'update']);
+        expect((tool as any).parameters.properties.action.enum).toEqual(['list', 'create', 'update', 'attach_reference']);
     });
 
     it('creates an item as sentinel with a completion condition and lists it', async () => {

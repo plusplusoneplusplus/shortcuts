@@ -69,7 +69,7 @@ import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
-import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, getChatImageAttachments } from './chat-image-policy';
+import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, cleanupChatAttachmentTempDir, getChatImageAttachments } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
@@ -660,6 +660,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             workspaceId?: string;
             /** Temp dir holding decoded image attachments, if this turn made one. */
             imageTempDir?: string;
+            attachments?: readonly Attachment[];
+            images?: readonly unknown[];
+            /** False when the turn settled before its images passed the image policy. */
+            imagesAccepted?: boolean;
             /** Cleanup for a prompt rewritten to a paste file, if any. */
             pasteCleanup?: () => void;
             logLabel: string;
@@ -672,7 +676,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // Background tasks cannot outlive the turn; drop the replay snapshot
         // on every exit path, including a drain-cap abort that never settles.
         this.backgroundTasks.clear(processId);
-        if (opts.imageTempDir) { cleanupTempDir(opts.imageTempDir); }
+        // Rejected images never reached the provider, so no child can need them.
+        if (opts.imagesAccepted) cleanupChatAttachmentTempDir(opts.imageTempDir, opts.attachments, opts.images);
+        else if (opts.imageTempDir) cleanupTempDir(opts.imageTempDir);
         if (opts.pasteCleanup) { opts.pasteCleanup(); }
         opts.dispose?.();
         // Cancel any pending ask-user questions before cleanup
@@ -871,6 +877,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             workingDirectory: input.workingDirectory,
             provider: payload.provider ?? this.provider,
             globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+            sentinel: normalizeChatMode(payload.mode) === 'sentinel',
             forEachGeneration: (() => {
                 const context = getForEachContext({ payload });
                 return isForEachGenerationContext(context) ? context : null;
@@ -1088,7 +1095,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * 7. Set up tool-call capture
      * 8. Send message via AI SDK with streaming callbacks
      * 9. Return { response, sessionId, toolCalls }
-     * 10. In finally: cleanup images, session, flush handler, persist output
+     * 10. In finally: retain images, cleanup other attachments/session, persist output
      */
     async execute(task: QueuedTask, prompt: string): Promise<ChatModeExecutionResult> {
         const processId = toQueueProcessId(task.id);
@@ -1159,6 +1166,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // provider reports its session. Handed back with the result so the
         // lifecycle runner can attribute the assistant turn it appends.
         let turnSegmentId: string | undefined;
+        let imagesAccepted = false;
         try {
             await assertIncomingImageFiles(payloadRecord.attachments, payloadImages, preBuiltTempDir,
                 this.dataDir ?? path.join(os.homedir(), '.coc'), payload.workspaceId, turnAbort.signal);
@@ -1232,6 +1240,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             policyModelId = policy.modelId;
             policyReasoningEffort = policy.reasoningEffort;
             await this.assertChatImageModel(taskProvider, effectiveAiService, policy.modelId, attachments);
+            imagesAccepted = true;
 
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(
@@ -1441,6 +1450,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 dispose: modeDispose,
                 workspaceId: payload.workspaceId,
                 imageTempDir,
+                attachments,
+                images: payload.images,
+                imagesAccepted,
                 pasteCleanup,
                 logLabel: CHAT_EXECUTOR_LOG_LABEL,
             });

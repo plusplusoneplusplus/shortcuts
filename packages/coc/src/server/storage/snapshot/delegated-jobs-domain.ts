@@ -25,6 +25,10 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
         executeWipe(ctx, _plan, result) {
             try {
                 withLedgerDb(ctx, SENTINEL_TODO_TABLES, db => db.transaction(() => {
+                    // References arrived later; a database no newer server opened lacks the table.
+                    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sentinel_todo_references'").get()) {
+                        db.prepare('DELETE FROM sentinel_todo_references').run();
+                    }
                     for (const table of SENTINEL_TODO_TABLES) db.prepare(`DELETE FROM ${table}`).run();
                 })());
             } catch (error) {

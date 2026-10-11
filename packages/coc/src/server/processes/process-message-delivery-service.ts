@@ -29,7 +29,7 @@ import { pendingMessageTask } from './queued-pending-message';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
 import { emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
-import { cleanupTempDir } from '../core/image-utils';
+import { cleanupChatAttachmentTempDir } from '../executors/chat-image-policy';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
 import type { SentinelMirrorService } from '../messaging/sentinel-mirror-service';
 import type { SentinelMirrorEntry } from '../messaging/sentinel-mirror-outbox';
@@ -582,7 +582,7 @@ export class ProcessMessageDeliveryService {
             } else {
                 this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, { ...(input.provider ? { requestedProvider: input.provider } : {}), historyCutoffTurnIndex }).catch(() => {
                 }).finally(() => {
-                    if (input.imageTempDir) { cleanupTempDir(input.imageTempDir); }
+                    cleanupChatAttachmentTempDir(input.imageTempDir, input.attachments, input.images);
                 });
                 path = 'direct-executed';
             }

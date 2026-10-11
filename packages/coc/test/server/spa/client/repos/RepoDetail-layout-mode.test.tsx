@@ -65,7 +65,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
-    useRepoQueueStats: () => ({ running: 0, queued: 0 }),
+    useRepoQueueJobs: () => ({ running: [], queued: [] }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({
@@ -149,6 +149,7 @@ vi.mock('../../../../../src/server/spa/client/react/layout/MobileTabBar', () => 
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    getHostname: () => 'Local',
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,

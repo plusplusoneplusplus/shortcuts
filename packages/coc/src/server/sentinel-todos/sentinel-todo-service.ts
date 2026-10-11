@@ -1,5 +1,6 @@
 import { isQueueProcessId, toTaskId, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { DelegatedJob, DelegatedJobStore } from '../delegation/delegated-job-store';
+import { buildChatOpenLink } from '../servers/workspace-directory';
 import { normalizeChatMode } from '../tasks/task-types';
 import {
     SentinelTodoError,
@@ -86,6 +87,39 @@ export class SentinelTodoService {
         const result = this.deps.todos.linkJob(owner, itemId, link);
         if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
         return { item: result.item, ledgerRevision: result.ledgerRevision };
+    }
+
+    /**
+     * Attaches an existing local conversation as a reference-only link. The
+     * conversation must exist in the named workspace on this server; the link
+     * and title are server-derived. Nothing is sent to that conversation, and
+     * the item's status and job bookkeeping stay untouched.
+     */
+    async attachReference(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        expectedRevision: number,
+        conversation: { processId: string; workspaceId: string },
+        actor: SentinelTodoActor,
+    ): Promise<{ item: SentinelTodoItem; ledgerRevision: number; attached: boolean }> {
+        await this.assertOwner(owner);
+        const { processId, workspaceId } = conversation ?? {};
+        if (typeof processId !== 'string' || !processId || typeof workspaceId !== 'string' || !workspaceId) {
+            throw new SentinelTodoError('invalid', 'A reference needs the conversation processId and workspaceId');
+        }
+        if (processId === owner.processId) {
+            throw new SentinelTodoError('invalid', 'A Sentinel chat cannot reference itself');
+        }
+        const process = await this.deps.store.getProcess(processId);
+        if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId) {
+            throw new SentinelTodoError('not_found', 'Conversation not found in that workspace');
+        }
+        const title = (process.customTitle || process.title || process.promptPreview || '').trim().slice(0, 200);
+        const result = this.deps.todos.attachReference(owner, itemId, expectedRevision, {
+            processId, workspaceId, openLink: buildChatOpenLink(workspaceId, processId), ...(title ? { title } : {}),
+        }, actor);
+        if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
+        return { item: result.item, ledgerRevision: result.ledgerRevision, attached: result.changed };
     }
 
     /**

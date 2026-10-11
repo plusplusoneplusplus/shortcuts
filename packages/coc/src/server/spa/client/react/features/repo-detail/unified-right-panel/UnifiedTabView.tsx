@@ -289,6 +289,8 @@ export function UnifiedTabView({
                         ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
                         processId: tab.resourceId,
                     }}
+                    scopeWorkspaceId={scopeWorkspaceId}
+                    chatId={tab.chatId}
                     onErrorChange={handleError}
                 />
             );

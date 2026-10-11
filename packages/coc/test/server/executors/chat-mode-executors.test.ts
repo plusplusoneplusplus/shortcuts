@@ -24,7 +24,8 @@ import { AutopilotExecutor } from '../../../src/server/executors/autopilot-execu
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
 import { SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE } from '../../../src/server/executors/prompt-builder';
 import { GLOBAL_SYSTEM_PROMPT_TAG } from '../../../src/server/executors/system-message-builder';
-import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
+import type { ChatModeAIOptions, ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
+import type { InFlightTurn } from '../../../src/server/executors/executor-runtime-contracts';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
@@ -32,6 +33,10 @@ import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning
 import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 import { backgroundTasksRegistry } from '../../../src/server/streaming/background-tasks-registry';
 import { SENTINEL_DISPATCHER_DIRECTIVE } from '../../../src/server/executors/chat-mode-directive';
+import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { saveImagesToTempFiles } from '../../../src/server/core/image-utils';
+import * as imageStore from '../../../src/server/executors/image-store';
+import { prepareIncomingImages } from '../../../src/server/messaging/incoming-images';
 
 // ============================================================================
 // Mocks
@@ -50,9 +55,9 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 // Mock image-store to avoid temp-file side effects
-vi.mock('../../../src/server/executors/image-store', () => ({
+vi.mock('../../../src/server/executors/image-store', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../src/server/executors/image-store')>(),
     saveImagesToTempFiles: vi.fn().mockReturnValue({ tempDir: undefined, attachments: [] }),
-    cleanupTempDir: vi.fn(),
     rehydrateImagesIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -140,6 +145,88 @@ function makeClassificationTask(
 // ============================================================================
 // Provider routing
 // ============================================================================
+
+describe('admitted first-turn image lifetime', () => {
+    let tempDir: string;
+    const legacyTempDirs: string[] = [];
+    class ImageLifetimeExecutor extends ChatExecutor {
+        readonly disposeTurn = vi.fn();
+        protected override async buildModeOptions(_task: QueuedTask, prompt: string): Promise<ChatModeAIOptions> {
+            return { agentMode: 'interactive', systemMessage: undefined, tools: [],
+                effectivePrompt: prompt, dispose: this.disposeTurn };
+        }
+    }
+
+    beforeEach(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+    });
+    afterEach(() => {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        for (const dir of legacyTempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it.each([
+        ['prepared', 'success'], ['prepared', 'error'], ['prepared', 'cancel'],
+        ['legacy', 'success'], ['legacy', 'error'], ['legacy', 'cancel'],
+        ['incoming', 'success'], ['incoming', 'error'], ['incoming', 'cancel'],
+    ] as const)('retains %s image bytes after %s and cleans other turn resources', async (source, outcome) => {
+        const store = createMockProcessStore();
+        store.registerFlushHandler = vi.fn();
+        store.unregisterFlushHandler = vi.fn();
+        const inFlightTurns = new Map<string, InFlightTurn>();
+        const executor = new ImageLifetimeExecutor(store, makeOptions(store, { provider: 'claude', inFlightTurns }), tempDir);
+        const task = makeChatTask('ask', 'image-lifetime');
+        let imagePath = path.join(tempDir, 'image.png');
+        const documentPath = path.join(tempDir, 'context.txt');
+        const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+        const dataUrl = `data:image/png;base64,${bytes.toString('base64')}`;
+        fs.writeFileSync(imagePath, bytes);
+        fs.writeFileSync(documentPath, 'context');
+        task.payload = {
+            ...task.payload,
+            imageTempDir: tempDir,
+            attachments: [{ type: 'file', path: imagePath }, { type: 'file', path: documentPath }],
+        };
+        if (source === 'legacy') {
+            const saved = saveImagesToTempFiles([dataUrl]);
+            legacyTempDirs.push(saved.tempDir);
+            imagePath = saved.attachments[0].path;
+            fs.renameSync(documentPath, path.join(saved.tempDir, 'context.txt'));
+            vi.mocked(imageStore.saveImagesToTempFiles).mockReturnValueOnce(saved);
+            task.payload = { kind: 'chat', mode: 'ask', prompt: 'Describe this image', images: [dataUrl] };
+        } else if (source === 'incoming') {
+            const prepared = await prepareIncomingImages(tempDir, 'image-workspace', [{
+                mimeType: 'image/png', download: async () => bytes,
+            }]);
+            imagePath = prepared.sdkAttachments[0].path;
+            fs.renameSync(documentPath, path.join(prepared.imageTempDir, 'context.txt'));
+            task.payload = { kind: 'chat', mode: 'ask', prompt: 'Describe this image',
+                workspaceId: 'image-workspace', imageTempDir: prepared.imageTempDir,
+                attachments: prepared.sdkAttachments, images: prepared.validatedImages };
+        }
+        sdkMocks.mockSendMessage.mockImplementation(async options => {
+            expect(fs.readFileSync(imagePath)).toEqual(bytes);
+            if (outcome === 'cancel') {
+                inFlightTurns.get(toQueueProcessId(task.id))!.controller.abort();
+                expect(options.signal?.aborted).toBe(true);
+            }
+            if (outcome !== 'success') throw new Error(outcome);
+            return { success: true, response: 'done', sessionId: 'image-session', toolCalls: [] };
+        });
+
+        if (outcome === 'success') await executor.execute(task, 'Describe the image');
+        else await expect(executor.execute(task, 'Describe the image')).rejects.toThrow(outcome);
+
+        // A delegated child reads the same path only after its parent settles.
+        expect(fs.readFileSync(imagePath)).toEqual(bytes);
+        expect(fs.existsSync(path.join(path.dirname(imagePath), 'context.txt'))).toBe(false);
+        expect(executor.disposeTurn).toHaveBeenCalledOnce();
+        expect(inFlightTurns.size).toBe(0);
+        expect(store.unregisterFlushHandler).toHaveBeenCalledWith(toQueueProcessId(task.id));
+    });
+});
 
 describe('ChatBaseExecutor provider routing', () => {
     let store: ReturnType<typeof createMockProcessStore>;
@@ -767,6 +854,8 @@ describe('ChatExecutor system message content', () => {
         expect(call.prompt).toContain('unless the user requests a particular provider/model');
         expect(call.prompt).not.toContain('<chosen-folder>');
         expect(call.systemMessage?.content ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(call.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(call.prompt).not.toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
     });
 
     it('does not give an ask chat the dispatcher rules', async () => {
@@ -774,6 +863,7 @@ describe('ChatExecutor system message content', () => {
         await executor.execute(makeChatTask('ask', 'task-ask-no-dispatcher'), 'Hi');
 
         expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '').not.toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
     });
 
     it('does NOT inject note-file block when noteChat is absent', async () => {

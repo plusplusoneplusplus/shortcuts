@@ -873,7 +873,8 @@ export function resolveNoteChatBinding(
  *   - payload.attachments       Attachment[] (SDK form, file-path references)
  *                                          — pre-built so the executor can use
  *                                          them directly without re-decoding
- *   - payload.imageTempDir      string     temp dir to clean up after run
+ *   - payload.imageTempDir      string     per-turn upload dir; admitted images
+ *                                          remain, non-image files are cleaned
  *   - payload.fileAttachmentMeta FileAttachmentMeta[] — per-attachment display meta
  *
  * Text-file attachments have their content appended to `payload.prompt` so the

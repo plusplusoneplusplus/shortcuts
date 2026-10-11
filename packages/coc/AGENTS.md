@@ -70,6 +70,12 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- Admitted chat image files stay at their existing per-turn paths after success,
+  error or cancellation so local delegated children can read them. This temporary
+  policy preserves rejected/unadmitted and non-image cleanup, including mixed uploads.
+  OS temp cleanup is environment-dependent, not guaranteed under disk pressure;
+  remote paths and native delegated image forwarding remain unsupported.
+
 - Memory V2 tools `save_memory` and `recall_memory` default off in `LLM_TOOL_REGISTRY`.
   Honor explicit workspace `disabledLlmTools` lists; keep memory scope gates and prompt context independent.
 
@@ -184,6 +190,10 @@ references before editing. Paths are package-relative.
   Explicit user status/reason/outcome/archive decisions supersede already-linked work
   without claiming its evidence was assessed; acknowledgment requires exact `reviewedJobs`.
   Review updates cannot overwrite those verdicts or reopen archived/Done items.
+  Conversation references (`attachReference`, REST `.../items/:itemId/references`, tool
+  `attach_reference`) live in `sentinel_todo_references`, apart from job links: normal items
+  only, the chat must exist in the named local workspace, duplicates are no-ops, and they never
+  change status, create execution/review state, or message the referenced chat.
   Job execution/delivery/assessment are derived on read with exact parent/child workspace,
   process and session identity; remote links are always `unavailable`. Committed delivery
   transitions invalidate linked ledgers without advancing their revisions.
@@ -257,6 +267,10 @@ references before editing. Paths are package-relative.
 - Pause and delay menus use body portals and `useAnchoredPanelPosition` with
   constrained height, viewport-bounded width, and contained vertical scrolling.
   Outside-click checks include the portal; Escape returns focus to the owning trigger.
+  Collapsed-rail job previews use the same positioning with side placement and
+  a pointer bridge. Counts and rows share `useRepoQueueJobs` and the selected
+  workspace's source-checked queue, including groups; hidden follow-ups and
+  history are excluded. Preserve icon click expansion and concrete clone routes.
 
 - `AskUserInline` reply fields share batch submission with the button: Enter submits,
   Shift+Enter preserves multiline Need context notes, and IME/229 never submits.
@@ -371,7 +385,13 @@ references before editing. Paths are package-relative.
   writes/reloads; retain
   state on scan failure. Wakeups persist before arming.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
-  the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
+  the mode directive (`chat-mode-directive.ts`). Required review rules live in
+  `delegation/sentinel-job-review-instructions.ts` and are appended by
+  `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
+  resumed, provider-switched and post-compaction sessions, independently of admin/repo
+  prompts. Sentinel completion messages contain only the untrusted-result prefix and
+  result JSON; non-Sentinel parents receive the shared rules inline.
+  `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
   requests a particular provider/model. Enabled Auto uses target routing without parent AI
   inheritance. Disabled/unavailable Auto uses the parent's concrete provider after target
@@ -466,7 +486,8 @@ references before editing. Paths are package-relative.
   after local workspace resolution. It reuses chat attachment processing, stores
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
   batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
-  Callers own temporary-directory cleanup until delivery transfers it to executors. Teams/WhatsApp
+  Callers own rejected/unadmitted temporary-directory cleanup; accepted turns follow
+  the chat image lifetime policy above. Teams/WhatsApp
   image preparation runs inside durable binding admission; queue payloads
   carry SDK attachments, image history and the temporary directory together. Teams prepares
   initial, active and pending follow-ups inside relay receipts, including admission-only

@@ -320,6 +320,74 @@ describe('approved Sentinel auto-compact popover', () => {
         expect(document.activeElement).toBe(trigger);
     });
 
+    describe.each(['composer', 'indicator'] as const)('%s popover interaction', renderer => {
+        const container = () => screen.getByTestId(renderer === 'composer' ? 'composer-ctx-fuel' : 'context-window-indicator');
+        const panel = () => screen.queryByTestId('auto-compact-panel');
+
+        it('bridges the trigger gap so pointer travel into a hover preview stays inside the container', () => {
+            render(<Harness client={makeClient()} renderer={renderer} />);
+            fireEvent.mouseEnter(container());
+            const dialog = screen.getByRole('dialog', { name: 'Context usage' });
+            expect(container().contains(dialog)).toBe(true);
+            expect(dialog.className).toContain('mb-2');
+            expect(dialog.className).toContain('after:top-full');
+            expect(dialog.className).toContain('after:h-[9px]');
+        });
+
+        it('pins a hover preview once the toggle is used, then keeps it open after the pointer leaves', async () => {
+            const client = makeClient();
+            render(<Harness client={client} renderer={renderer} />);
+            fireEvent.mouseEnter(container());
+            fireEvent.click(screen.getByRole('switch'));
+            fireEvent.mouseLeave(container());
+            expect(panel()).not.toBeNull();
+            await waitFor(() => expect(client.processes.updateAutoCompact).toHaveBeenCalledWith('queue_s', enabled, { workspace: 'ws-remote' }));
+        });
+
+        it('keeps a hover preview open while the threshold is edited and saved', async () => {
+            const client = makeClient();
+            render(<Harness client={client} renderer={renderer} initial={enabled} />);
+            fireEvent.mouseEnter(container());
+            fireEvent.click(input());
+            act(() => input().focus());
+            fireEvent.mouseLeave(container());
+            fireEvent.change(input(), { target: { value: '850' } });
+            fireEvent.keyDown(input(), { key: 'Enter' });
+            expect(panel()).not.toBeNull();
+            await waitFor(() => expect(client.processes.updateAutoCompact).toHaveBeenCalledWith('queue_s', { enabled: true, thresholdTokens: 850_000 }, { workspace: 'ws-remote' }));
+        });
+
+        it('click/tap pins, a second trigger tap closes despite synthetic hover, and outside press dismisses', () => {
+            render(<Harness client={makeClient()} renderer={renderer} />);
+            const trigger = screen.getByRole('button', { name: /Context window/ });
+            fireEvent.mouseEnter(container());
+            fireEvent.click(trigger);
+            fireEvent.mouseLeave(container());
+            expect(panel()).not.toBeNull();
+            expect(trigger.getAttribute('aria-expanded')).toBe('true');
+            fireEvent.mouseDown(screen.getByRole('switch'));
+            expect(panel()).not.toBeNull();
+            fireEvent.mouseDown(document.body);
+            expect(panel()).toBeNull();
+
+            fireEvent.mouseEnter(container());
+            fireEvent.click(trigger);
+            fireEvent.click(trigger);
+            expect(panel()).toBeNull();
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        });
+
+        it('Escape dismisses a pinned popover even when focus is outside it', () => {
+            render(<><button>outside</button><Harness client={makeClient()} renderer={renderer} /></>);
+            fireEvent.click(screen.getByRole('button', { name: /Context window/ }));
+            const outside = screen.getByRole('button', { name: 'outside' });
+            act(() => outside.focus());
+            fireEvent.keyDown(outside, { key: 'Escape' });
+            expect(panel()).toBeNull();
+            expect(document.activeElement).toBe(outside);
+        });
+    });
+
     it.each(['process', 'workspace', 'client'] as const)('rejects late saves and resets drafts when the exact %s owner changes', async scope => {
         const client = makeClient();
         const pending = deferred();

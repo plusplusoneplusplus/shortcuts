@@ -30,7 +30,7 @@ export const MANUAL_TRACKING_GUIDANCE =
     'Archive/restore remain user-only.';
 
 export interface SentinelTodosToolDeps {
-    service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob'>;
+    service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
 }
@@ -38,7 +38,7 @@ export interface SentinelTodosToolDeps {
 interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string }
 
 export interface SentinelTodosArgs {
-    action: 'list' | 'create' | 'update';
+    action: 'list' | 'create' | 'update' | 'attach_reference';
     type?: SentinelTodoType;
     includeArchived?: boolean;
     itemId?: string;
@@ -53,11 +53,13 @@ export interface SentinelTodosArgs {
     outcome?: string;
     reviewedJobs?: { processId: string; terminalEventId: string }[];
     idempotencyKey?: string;
+    conversationId?: string;
+    conversationWorkspaceId?: string;
 }
 
 export type SentinelTodosResult =
     | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number }
-    | { item: SentinelTodoItem; created?: boolean }
+    | { item: SentinelTodoItem; created?: boolean; attached?: boolean }
     | { error: string; code?: string; current?: SentinelTodoItem };
 
 /** Statuses Sentinel may only set with a short reviewed reason. */
@@ -85,6 +87,9 @@ const DESCRIPTION =
     '`execution.review` together with the overall `status` and a short `reason`. Delivery alone never acknowledges ' +
     'assessment; acknowledge only the results you actually judged, not running follow-ups. Unrelated edits do not ' +
     'clear pending reviews. A newer user verdict supersedes stale job reviews; preserve it. ' +
+    '`attach_reference` links an existing local conversation (`conversationId`, plus `conversationWorkspaceId` when it is not this ' +
+    'chat\'s workspace) to a normal item as a reference only, with `itemId` and `expectedRevision`: it never sends the ' +
+    'conversation anything, never changes status, and is not a job or review evidence. Re-attaching is a no-op. ' +
     'For remote evidence, inspect `unavailable` (remote) jobs in their owning chat and record the reviewed state explicitly. ' +
     MANUAL_TRACKING_GUIDANCE + ' Create manual items with `type: manual`; Notes and Done when are optional. ' +
     'Item type is immutable; existing items remain normal. If a call fails, tell the user the item is not tracked.';
@@ -138,11 +143,13 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
         parameters: {
             type: 'object',
             properties: {
-                action: { type: 'string', enum: ['list', 'create', 'update'] },
+                action: { type: 'string', enum: ['list', 'create', 'update', 'attach_reference'] },
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
-                itemId: { type: 'string', description: 'update: the item to change.' },
-                expectedRevision: { type: 'number', description: 'update: the item revision you last read.' },
+                itemId: { type: 'string', description: 'update/attach_reference: the item to change.' },
+                expectedRevision: { type: 'number', description: 'update/attach_reference: the item revision you last read.' },
+                conversationId: { type: 'string', description: 'attach_reference: process ID of the existing conversation to reference.' },
+                conversationWorkspaceId: { type: 'string', description: 'attach_reference: that conversation\'s workspace (default: this chat\'s).' },
                 title: { type: 'string', description: 'create/update: short item title.' },
                 completionCondition: {
                     type: 'string',
@@ -244,8 +251,17 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         const { item } = await service.update(owner, args.itemId, args.expectedRevision, patch, 'sentinel');
                         return { item };
                     }
+                    case 'attach_reference': {
+                        if (!args.itemId || typeof args.expectedRevision !== 'number' || !args.conversationId) {
+                            return { error: 'attach_reference requires itemId, expectedRevision and conversationId.', code: 'invalid' };
+                        }
+                        const { item, attached } = await service.attachReference(owner, args.itemId, args.expectedRevision, {
+                            processId: args.conversationId, workspaceId: args.conversationWorkspaceId ?? owner.workspaceId,
+                        }, 'sentinel');
+                        return { item, attached };
+                    }
                     default:
-                        return { error: 'action must be list, create, or update.', code: 'invalid' };
+                        return { error: 'action must be list, create, update, or attach_reference.', code: 'invalid' };
                 }
             } catch (err) {
                 if (err instanceof SentinelTodoError) {

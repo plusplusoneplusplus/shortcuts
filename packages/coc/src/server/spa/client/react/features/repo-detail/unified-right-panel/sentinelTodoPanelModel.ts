@@ -31,6 +31,11 @@ export interface SentinelTodoOwner {
     processId: string;
 }
 
+/** One string per concrete ledger owner, so same-id workspaces on other hosts stay apart. */
+export function sentinelTodoOwnerKey(owner: SentinelTodoOwner): string {
+    return `${owner.ownerRoutingRef ?? ''}\n${owner.ownerWorkspaceId}\n${owner.processId}`;
+}
+
 export * from './sentinelTodoStatusModel';
 
 /** Statuses a user can pick, in the order the select lists them. */
@@ -43,6 +48,16 @@ export const SENTINEL_TODO_PRIORITY_LABELS: Readonly<Record<SentinelTodoPriority
 
 /** Priorities a user can pick, in the order the select lists them. */
 export const SENTINEL_TODO_PRIORITIES: readonly SentinelTodoPriority[] = ['regular', 'high'];
+
+/** Lines in a free-text field, ignoring trailing blank lines. */
+export function sentinelTodoLineCount(text: string): number {
+    return text.replace(/\s+$/, '').split(/\r?\n/).length;
+}
+
+/** Long notes start folded in an expanded row so Done when and actions stay in view. */
+export function sentinelTodoFoldNotes(notes: string): boolean {
+    return sentinelTodoLineCount(notes) > 2 || notes.length > 160;
+}
 
 /**
  * Whether choosing a status asks for a reason first. Needs attention requires

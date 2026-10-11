@@ -15,7 +15,7 @@
 
 import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
 
-export type AnchoredPanelPlacement = 'up' | 'down';
+export type AnchoredPanelPlacement = 'up' | 'down' | 'right';
 
 export interface AnchoredPanelPositionOptions {
     /** Whether the panel is currently open (mounted). Position is only tracked while open. */
@@ -34,6 +34,8 @@ export interface AnchoredPanelPositionOptions {
     align?: 'left' | 'right';
     /** Keep a scrollable panel beside the trigger when neither side fits. */
     constrainHeight?: boolean;
+    /** Reposition when a shared panel changes its active anchor or content. */
+    anchorKey?: string;
 }
 
 export interface AnchoredPanelPosition {
@@ -52,6 +54,7 @@ export function useAnchoredPanelPosition({
     margin = 8,
     align,
     constrainHeight = false,
+    anchorKey,
 }: AnchoredPanelPositionOptions): AnchoredPanelPosition {
     const [pos, setPos] = useState<AnchoredPanelPosition>({ top: 0, left: 0 });
 
@@ -71,6 +74,18 @@ export function useAnchoredPanelPosition({
         const bottom = viewportTop + vh - margin;
         const maxWidth = Math.max(0, vw - 2 * margin);
         const width = Math.min(p.width, maxWidth);
+
+        if (placement === 'right') {
+            const maxHeight = Math.max(0, vh - 2 * margin);
+            const height = Math.min(p.height, maxHeight);
+            let left = t.right + gap;
+            if (left + width > right) left = t.left - width - gap;
+            left = Math.max(viewportLeft + margin, Math.min(left, right - width));
+            const top = Math.max(viewportTop + margin, Math.min(t.top - margin, bottom - height));
+            setPos(prev => prev.top === top && prev.left === left && prev.maxHeight === maxHeight && prev.maxWidth === maxWidth
+                ? prev : { top, left, maxHeight, maxWidth });
+            return;
+        }
 
         // Horizontal anchor: `up` left-aligns, `down` right-aligns.
         let left = (align ?? (placement === 'up' ? 'left' : 'right')) === 'left' ? t.left : t.right - width;
@@ -128,7 +143,7 @@ export function useAnchoredPanelPosition({
             viewport?.removeEventListener('resize', recompute);
             viewport?.removeEventListener('scroll', recompute);
         };
-    }, [open, recompute]);
+    }, [open, recompute, anchorKey]);
 
     return pos;
 }

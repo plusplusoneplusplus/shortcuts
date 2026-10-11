@@ -28,9 +28,11 @@ export interface ContextAutoCompact {
 }
 
 /**
- * Hover previews the popover; click/Enter pins it so its controls can be used.
- * Focus inside keeps it open, Escape closes it and returns focus to the
- * trigger, and an outside press closes a pinned popover.
+ * Hover previews the popover; click/tap/Enter pins it, and so does any click
+ * inside it, so its controls stay usable once the pointer leaves. A second
+ * trigger click closes it. Focus inside keeps it open, Escape closes it
+ * (returning focus to the trigger when focus was inside), and an outside press
+ * closes a pinned popover.
  */
 export function useContextUsagePopover() {
     const [hovered, setHovered] = useState(false);
@@ -49,21 +51,34 @@ export function useContextUsagePopover() {
 
     useEffect(() => {
         if (!pinned) return;
-        const onPointerDown = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setPinned(false);
-                setFocusWithin(false);
-            }
+        const dismiss = () => {
+            setHovered(false);
+            setPinned(false);
+            setFocusWithin(false);
         };
+        const onPointerDown = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) dismiss();
+        };
+        // Escape with focus outside the container (e.g. Safari does not focus clicked buttons).
+        const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); };
         document.addEventListener('mousedown', onPointerDown);
-        return () => document.removeEventListener('mousedown', onPointerDown);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', onPointerDown);
+            document.removeEventListener('keydown', onKeyDown);
+        };
     }, [pinned]);
 
     const containerProps = {
         ref: containerRef,
         onMouseEnter: () => setHovered(true),
         onMouseLeave: () => setHovered(false),
-        onClick: () => setPinned(value => !value),
+        onClick: () => {
+            if (!pinned) return setPinned(true);
+            // Touch keeps a synthetic hover after a tap, so closing clears it too.
+            setPinned(false);
+            setHovered(false);
+        },
         onFocus: (event: React.FocusEvent) => { if (event.target !== triggerRef.current) setFocusWithin(true); },
         onBlur: (event: React.FocusEvent) => {
             if (!containerRef.current?.contains(event.relatedTarget as Node | null)) setFocusWithin(false);
@@ -83,7 +98,10 @@ export function useContextUsagePopover() {
     };
     const popoverProps = {
         onMouseEnter: () => setHovered(true),
-        onClick: (event: React.MouseEvent) => event.stopPropagation(),
+        onClick: (event: React.MouseEvent) => {
+            event.stopPropagation();
+            setPinned(true);
+        },
     };
     return { open, containerProps, triggerProps, popoverProps };
 }
@@ -197,4 +215,8 @@ export function ContextAutoCompactBadge({ autoCompact, testId }: { autoCompact?:
     );
 }
 
-export const CONTEXT_POPOVER_CLASS = 'absolute bottom-full right-0 mb-2 z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto';
+/**
+ * The transparent `after:` strip spans the `mb-2` gap (plus the 1px border) so
+ * moving the pointer from the gauge into a hover preview never leaves the container.
+ */
+export const CONTEXT_POPOVER_CLASS = "absolute bottom-full right-0 mb-2 after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[9px] z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto";

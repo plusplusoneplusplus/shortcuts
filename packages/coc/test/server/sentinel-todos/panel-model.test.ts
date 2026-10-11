@@ -12,6 +12,8 @@ import {
     SENTINEL_TODO_PRIORITY_LABELS,
     sentinelTodoJobStateLabel,
     sentinelTodoDisplayStatus,
+    sentinelTodoFoldNotes,
+    sentinelTodoLineCount,
     sentinelTodoPriority,
     sentinelTodoReviewLabel,
     sentinelTodoSaveError,
@@ -308,5 +310,21 @@ describe('sentinelTodoSaveError', () => {
         expect(sentinelTodoSaveError({ code: 'conflict', status: 409 })).toMatchObject({ conflict: true });
         expect(sentinelTodoSaveError({ status: 404 }).message).toMatch(/unavailable/);
         expect(sentinelTodoSaveError(new Error('disk full'))).toEqual({ message: 'Could not save: disk full', conflict: false });
+    });
+});
+
+describe('notes folding', () => {
+    it('counts lines across LF and CRLF, ignoring trailing blank lines', () => {
+        expect(sentinelTodoLineCount('one')).toBe(1);
+        expect(sentinelTodoLineCount('one\ntwo\r\nthree')).toBe(3);
+        expect(sentinelTodoLineCount('one\ntwo\n\n  \n')).toBe(2);
+    });
+
+    it('folds notes longer than two lines or 160 characters', () => {
+        expect(sentinelTodoFoldNotes('Check SSO too')).toBe(false);
+        expect(sentinelTodoFoldNotes('a\nb')).toBe(false);
+        expect(sentinelTodoFoldNotes('a\r\nb\r\nc')).toBe(true);
+        expect(sentinelTodoFoldNotes('x'.repeat(160))).toBe(false);
+        expect(sentinelTodoFoldNotes('x'.repeat(161))).toBe(true);
     });
 });

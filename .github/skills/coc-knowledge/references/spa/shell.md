@@ -314,6 +314,14 @@ readers receive the replacement result. `RepoDetail` seeds queue task data only 
 from stats-only placeholders, and `taskDataSource` records the server/API owner.
 `RepoChatTab` refreshes queue data on each mount.
 
+`queue/hooks/useRepoQueueStats.ts` shares eligible rows through `useRepoQueueJobs`;
+the selected group's queue stays independent of its members. Owner-aware readers
+exclude mismatched sources and unresolved remote selections. `RailJobStatuses`
+portals status-specific previews beside the collapsed workspace rail using
+`useAnchoredPanelPosition`, with a pointer bridge and focus/outside/Escape dismissal.
+Scope or transport changes dispose previews. Icon clicks retain sidebar expansion;
+`queueJobHash` shares existing conversation/workflow selection routes with `RepoChatTab`.
+
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
 response to provider and model selection; provider availability and choice
@@ -476,8 +484,11 @@ copy action and no save or dirty-state registration. With
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos`; only the descriptor
 persists. Normal tracking comes first, then an always-visible Manual tracking
-section with its own add form and separate Done/Archived groups. The full contract lives in
-`features/repo-detail/unified-right-panel/AGENTS.md`.
+section with its own add form and separate Done/Archived groups. Following an in-app To-do
+Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
+bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is
+never persisted; Back restores the list's scroll, expanded rows and link focus. The full
+contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
 visible Explorer navigator column. Content tabs keep their own find behavior,

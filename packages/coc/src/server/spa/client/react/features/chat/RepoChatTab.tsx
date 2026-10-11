@@ -39,6 +39,7 @@ import { setPinOrder } from '../../queue/hooks/pinArchiveApi';
 import { applyPendingChatStamps, applyPendingGroupStamps, stampPinOrder, type PendingPinOrder } from './pin-order-pending';
 import { getGroupPinKey } from './group-pinning';
 import { TaskDefs } from '../../../../../tasks/task-types';
+import { queueJobHash } from '../../queue/queueJobRoute';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { mergeCompactingConversations, isCompactingProcess } from './compacting-conversations';
 import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
@@ -703,8 +704,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // Activity-specific selectTask: chat tasks stay inline instead of navigating away
     const selectTask = useCallback((id: string, task?: any) => {
         if (task?.type === TaskDefs.runWorkflow.kind && !task?.payload?.workItemId && !task?.workItemId) {
-            const processId = task.processId || task.id;
-            location.hash = '#repos/' + encodeURIComponent(routeId) + '/workflow/' + encodeURIComponent(processId);
+            location.hash = queueJobHash(routeId, task);
             return;
         }
         // Derive processId for seen-state, notifications, and URL
@@ -731,7 +731,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         // fire a legacy /activity/ → /chats/ redirect (location.replace), which
         // causes an extra hashchange + render cycle visible as a one-frame blink.
         const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
-        location.hash = '#repos/' + encodeURIComponent(routeId) + '/' + tabSegment + '/' + encodeURIComponent(processId);
+        location.hash = queueJobHash(routeId, { ...task, id, processId }, tabSegment);
     }, [queueDispatch, workspaceId, routeId, isMobile, selectedTaskId, markSeen, markReadByProcessId, mode]);
 
     // Selecting a conversation from the floating peek opens it in the main pane

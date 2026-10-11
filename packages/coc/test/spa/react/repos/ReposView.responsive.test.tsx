@@ -64,6 +64,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
     useRepoQueueStats: () => ({ running: 0, queued: 0 }),
+    useRepoQueueJobs: () => ({ running: [], queued: [] }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/usePreferences', () => ({

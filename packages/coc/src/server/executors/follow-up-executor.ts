@@ -459,6 +459,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         let chatCtx: ChatTurnContext | undefined;
 
         const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
+        let imagesAccepted = false;
         try {
             await assertIncomingImageFiles(attachments, images, options?.imageTempDir,
                 this.dataDir ?? path.join(os.homedir(), '.coc'), wsId, turnAbort.signal);
@@ -550,13 +551,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
 
             // Build the system message AFTER the tool bundle so the
-            // tool-guidance prose lives in `systemMessage` (sent once at
-            // session creation) rather than being stapled to every user
-            // turn.
+            // tool-guidance prose and required runtime rules are supplied on
+            // every request, including native resumes and fresh sessions.
             const systemMessage = await buildChatTurnSystemMessage({
                 workingDirectory,
                 provider: sessionProvider,
                 globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+                sentinel: currentMode === 'sentinel',
                 forEachGeneration,
                 mapReduceGeneration,
                 memoryV2: chatCtx.memoryV2,
@@ -670,6 +671,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
 
             await this.assertChatImageModel(sessionProvider, followUpAiService, policy.modelId, attachments);
+            imagesAccepted = true;
 
             // AC-04 — Apply the per-repo MCP allow-lists (server-level
             // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
@@ -1009,6 +1011,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             await this.finalizeChatTurn(processId, {
                 controller: turnAbort,
                 dispose: chatCtx?.dispose,
+                // Accepted follow-up images stay for the caller's retention cleanup.
+                imageTempDir: imagesAccepted ? undefined : options?.imageTempDir,
                 logLabel: FOLLOW_UP_LOG_LABEL,
             });
         }

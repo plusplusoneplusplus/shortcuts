@@ -86,7 +86,7 @@ counts to separate native/transport cost from Forge hydration.
 ### Sentinel to-do store
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
-`sentinel_todo_ledgers`, `sentinel_todo_items` and `sentinel_todo_jobs` tables in
+`sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs` and `sentinel_todo_references` tables in
 the shared `processes.db`. Workspace and parent process keys isolate repos,
 groups and chats; unique scoped idempotency keys and job identities make replays
 safe. Transactions acquire the database writer before mutation reads and compare

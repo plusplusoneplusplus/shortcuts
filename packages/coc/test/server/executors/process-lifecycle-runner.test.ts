@@ -3,11 +3,12 @@
  */
 
 import * as path from 'node:path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { getLogger } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner, asPlanFilePath } from '../../../src/server/executors/process-lifecycle-runner';
-import { cleanupTempDir } from '../../../src/server/executors/image-store';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { rehydrateImagesIfNeeded } from '../../../src/server/executors/image-store';
@@ -17,9 +18,9 @@ import { rehydrateImagesIfNeeded } from '../../../src/server/executors/image-sto
 // ============================================================================
 
 // Stub image-store to avoid temp-file side effects
-vi.mock('../../../src/server/executors/image-store', () => ({
+vi.mock('../../../src/server/executors/image-store', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../src/server/executors/image-store')>(),
     saveImagesToTempFiles: vi.fn().mockReturnValue({ tempDir: undefined, attachments: [] }),
-    cleanupTempDir: vi.fn(),
     rehydrateImagesIfNeeded: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -64,7 +65,13 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // ============================================================================
 
 describe('ProcessLifecycleRunner — admitted attachment cancellation', () => {
-    it.each([false, true])('cleans prepared images before execution (follow-up=%s)', async followUp => {
+    let tempDir: string;
+    beforeEach(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
+    });
+    afterEach(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+    it.each([false, true])('retains prepared images on cancellation before execution (follow-up=%s)', async followUp => {
         vi.clearAllMocks();
         const store = createMockProcessStore();
         if (followUp) {
@@ -73,16 +80,41 @@ describe('ProcessLifecycleRunner — admitted attachment cancellation', () => {
                 promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-abc' },
             });
         }
-        const imageTempDir = path.join('test-attachments', 'incoming');
+        const imagePath = path.join(tempDir, 'image.png');
+        const documentPath = path.join(tempDir, 'document.txt');
+        const bytes = Buffer.from('image fixture');
+        fs.writeFileSync(imagePath, bytes);
+        fs.writeFileSync(documentPath, 'document');
         const task = makeTask({
             payload: { kind: 'chat', mode: 'ask', prompt: 'Describe this image',
-                imageTempDir, ...(followUp ? { processId: 'existing-chat' } : {}) },
+                imageTempDir: tempDir,
+                attachments: [{ type: 'file', path: imagePath }, { type: 'file', path: documentPath }],
+                ...(followUp ? { processId: 'existing-chat' } : {}) },
         });
         const options = makeOpts({ cancelledTasks: new Set([task.id]) });
         const runner = new ProcessLifecycleRunner(store, 'test-data', vi.fn());
         expect((await runner.run(task, options)).success).toBe(false);
-        expect(cleanupTempDir).toHaveBeenCalledExactlyOnceWith(imageTempDir);
+        expect(fs.readFileSync(imagePath)).toEqual(bytes);
+        expect(fs.existsSync(documentPath)).toBe(false);
         expect(options.executeByTypeFn).not.toHaveBeenCalled();
+        expect(options.executeFollowUpFn).not.toHaveBeenCalled();
+    });
+
+    it('retains admitted follow-up images when marking the process running fails', async () => {
+        const store = createMockProcessStore();
+        vi.mocked(store.updateProcess).mockRejectedValueOnce(new Error('store failure'));
+        const imagePath = path.join(tempDir, 'image.png');
+        const bytes = Buffer.from('image fixture');
+        fs.writeFileSync(imagePath, bytes);
+        const task = makeTask({
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Describe this image',
+                processId: 'existing-chat', imageTempDir: tempDir,
+                attachments: [{ type: 'file', path: imagePath }] },
+        });
+        const options = makeOpts();
+        const runner = new ProcessLifecycleRunner(store, undefined, vi.fn());
+        expect((await runner.run(task, options)).success).toBe(false);
+        expect(fs.readFileSync(imagePath)).toEqual(bytes);
         expect(options.executeFollowUpFn).not.toHaveBeenCalled();
     });
 });

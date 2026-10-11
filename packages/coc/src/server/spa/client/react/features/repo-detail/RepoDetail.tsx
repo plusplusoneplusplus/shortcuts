@@ -38,7 +38,8 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { readWorkspaceQueue, workspaceReadSource } from '../../api/workspaceReads';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { useCocClient } from '../../repos/cloneRouting';
-import { useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
+import { useRepoQueueJobs } from '../../queue/hooks/useRepoQueueStats';
+import { getRepoGroupServerName } from '../../repos/repoGroupName';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
@@ -137,7 +138,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     }, []);
     useEffect(() => { visitTab(activeSubTab); }, [activeSubTab, visitTab]);
     const wasVisited = (tab: string): boolean => visitedSubTabs.has(tab);
-    const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
+    const queueJobs = useRepoQueueJobs(ws.id, queueClient, sourceSelectionId);
+    const queueRunningCount = queueJobs.running.length;
+    const queueQueuedCount = queueJobs.queued.length;
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
@@ -780,6 +783,12 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
                                     runningCount={queueRunningCount}
                                     queuedCount={queueQueuedCount}
+                                    jobPreview={{
+                                        ...queueJobs,
+                                        scopeLabel: `${getRepoGroupServerName(ws)} / ${ws.name}`,
+                                        routeId: sourceSelectionId,
+                                        scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${activeSubTab}`,
+                                    }}
                                     chatList={
                                         <RepoChatTab
                                             key={`${ws.id}-split-chat`}

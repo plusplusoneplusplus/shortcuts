@@ -4,11 +4,14 @@
  * - Reuses the original process entry (no ghost process)
  * - Delegates to executeFollowUp() with correct arguments
  * - Success and failure return shapes
- * - imageTempDir cleanup on both success and failure (finally block)
+ * - Admitted images survive settlement; non-image attachments are cleaned
  * - Cancellation guard: reverts original process to 'completed'
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -49,7 +52,10 @@ vi.mock('../../src/server/core/image-utils', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../src/server/core/image-utils')>();
     return {
         ...actual,
-        cleanupTempDir: (...args: any[]) => mockCleanupTempDir(...args),
+        cleanupTempDir: (dir: string) => {
+            mockCleanupTempDir(dir);
+            actual.cleanupTempDir(dir);
+        },
     };
 });
 vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {
@@ -95,6 +101,26 @@ function followUpTask(overrides: { processId: string; content: string } & Partia
 
 describe('execute() short-circuit for chat-followup tasks', () => {
     let store: ReturnType<typeof createMockProcessStore>;
+    const tempDirs: string[] = [];
+
+    afterEach(() => {
+        for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    function imageTask() {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
+        tempDirs.push(tempDir);
+        const imagePath = path.join(tempDir, 'image.png');
+        const documentPath = path.join(tempDir, 'document.txt');
+        const bytes = Buffer.from('image fixture');
+        fs.writeFileSync(imagePath, bytes);
+        fs.writeFileSync(documentPath, 'document');
+        const task = followUpTask({
+            processId: 'proc-1', content: 'Describe this image', imageTempDir: tempDir,
+            attachments: [{ type: 'file', path: imagePath }, { type: 'file', path: documentPath }],
+        });
+        return { task, imagePath, documentPath, bytes };
+    }
 
     beforeEach(() => {
         store = createMockProcessStore();
@@ -176,20 +202,32 @@ describe('execute() short-circuit for chat-followup tasks', () => {
     });
 
     // 5 -----------------------------------------------------------------------
-    it('should clean up imageTempDir on follow-up completion', async () => {
+    it.each(['success', 'error', 'cancel'] as const)('retains image bytes after an admitted follow-up SDK %s', async outcome => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        proc.metadata = { ...proc.metadata, provider: 'claude' };
         await store.addProcess(proc);
 
-        const task = followUpTask({ processId: 'proc-1', content: 'follow up', imageTempDir: '/tmp/img-123' });
+        const { task, imagePath, documentPath, bytes } = imageTask();
+        sdkMocks.mockSendMessage.mockImplementation(async options => {
+            expect(fs.readFileSync(imagePath)).toEqual(bytes);
+            if (outcome === 'cancel') {
+                await executor.cancelProcess('proc-1');
+                expect(options.signal?.aborted).toBe(true);
+            }
+            if (outcome !== 'success') throw new Error(outcome);
+            return { success: true, response: 'done', sessionId: 'sess-1', toolCalls: [] };
+        });
 
         await executor.execute(task);
 
-        expect(mockCleanupTempDir).toHaveBeenCalledWith('/tmp/img-123');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        expect(fs.readFileSync(imagePath)).toEqual(bytes);
+        expect(fs.existsSync(documentPath)).toBe(false);
     });
 
     // 6 -----------------------------------------------------------------------
-    it('should clean up imageTempDir on follow-up failure', async () => {
+    it('retains images when the follow-up executor throws before settlement', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
         await store.addProcess(proc);
@@ -197,11 +235,12 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         const spy = vi.spyOn(CLITaskExecutor.prototype as any, 'executeFollowUp');
         spy.mockRejectedValue(new Error('boom'));
 
-        const task = followUpTask({ processId: 'proc-1', content: 'follow up', imageTempDir: '/tmp/img-456' });
+        const { task, imagePath, documentPath, bytes } = imageTask();
 
         await executor.execute(task);
 
-        expect(mockCleanupTempDir).toHaveBeenCalledWith('/tmp/img-456');
+        expect(fs.readFileSync(imagePath)).toEqual(bytes);
+        expect(fs.existsSync(documentPath)).toBe(false);
 
         spy.mockRestore();
     });

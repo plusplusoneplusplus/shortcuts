@@ -56,6 +56,7 @@ import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
 import { publishSentinelTodoChat, withdrawSentinelTodoChat } from '../repo-detail/unified-right-panel/sentinelTodoChats';
+import { SentinelTodoOriginBar } from '../repo-detail/unified-right-panel/SentinelTodoOriginBar';
 import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../repo-detail/unified-right-panel/resolveChatFileLink';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
@@ -730,11 +731,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const sentinelTodoOwnerWorkspaceId = resolveLoadedTaskMode(task) === 'sentinel' && processId
         ? workspaceId ?? unifiedPanelHost?.workspaceId ?? null
         : null;
+    const chatTitle: string | undefined = (task?.customTitle as string | undefined) || title || task?.title || task?.displayName;
     useEffect(() => {
         if (chatChangesScopeId === null || sentinelTodoOwnerWorkspaceId === null || !processId) return;
-        publishSentinelTodoChat(chatChangesScopeId, taskId, { ownerWorkspaceId: sentinelTodoOwnerWorkspaceId, processId });
+        publishSentinelTodoChat(chatChangesScopeId, taskId, { ownerWorkspaceId: sentinelTodoOwnerWorkspaceId, processId, title: chatTitle });
         return () => withdrawSentinelTodoChat(chatChangesScopeId, taskId);
-    }, [chatChangesScopeId, taskId, sentinelTodoOwnerWorkspaceId, processId]);
+    }, [chatChangesScopeId, taskId, sentinelTodoOwnerWorkspaceId, processId, chatTitle]);
 
     // Hosted file links use the workspace panel. Async group/folder resolution
     // belongs to the initiating chat; a later selection must not claim it.
@@ -2745,6 +2747,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
+            {chatChangesScopeId !== null && (
+                <SentinelTodoOriginBar scopeWorkspaceId={chatChangesScopeId} chatId={taskId} title={chatTitle ?? null} />
+            )}
             {!hideHeader && (
                 <ChatHeader
                     task={task}
@@ -2767,7 +2772,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onCopyResumeCommand={headerMetadata.onCopyResumeCommand}
                     onPopOut={handlePopOut}
                     onFloat={handleFloat}
-                    title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}
+                    title={chatTitle}
                     wsId={workspaceId}
                     turnsContainerRef={turnsContainerRef}
                     isSelecting={selection.isSelecting}

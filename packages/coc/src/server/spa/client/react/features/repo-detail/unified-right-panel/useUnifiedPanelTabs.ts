@@ -26,6 +26,12 @@ import { useUnifiedPanelState } from './unifiedPanelStore';
 import { useSentinelTodoLedgerEnabled } from './sentinelTodoChats';
 import { withoutSentinelTodoTabs } from './sentinelTodoPanelModel';
 import {
+    endSentinelTodoExcursion,
+    pinnedSentinelTodoTabId,
+    useSentinelTodoExcursion,
+    withPinnedSentinelTodo,
+} from './sentinelTodoExcursion';
+import {
     activateTab,
     activeTab,
     activeTabId,
@@ -37,6 +43,7 @@ import {
     previewTab,
     previewTabToReplace,
     promoteTab,
+    rememberActiveTab,
     updateNotesView,
     updateBrowserTab,
     visibleTabIds,
@@ -56,6 +63,11 @@ export interface UnifiedPanelTabsApi {
     activeId: string | null;
     /** The active tab object, or null when the panel is empty. */
     active: UnifiedPanelTab | null;
+    /**
+     * The origin Sentinel's To-do, layered over this chat while it is on a
+     * To-do excursion path. Never stored; closing it ends the excursion.
+     */
+    pinnedId: string | null;
 
     /** The section's replaceable preview tab, or null. See `previewTab`. */
     preview: UnifiedPanelTab | null;
@@ -103,11 +115,18 @@ export interface UnifiedPanelTabsApi {
 export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null): UnifiedPanelTabsApi {
     const [storedState, setState] = useUnifiedPanelState(workspaceId);
     // Flag-off hides To-do tabs from every read; writes keep the stored ones.
+    // Flag-on reads add the excursion's pinned To-do; writes never store it.
     const todoEnabled = useSentinelTodoLedgerEnabled();
+    const excursion = useSentinelTodoExcursion();
     const state = useMemo(
-        () => (todoEnabled ? storedState : withoutSentinelTodoTabs(storedState)),
-        [storedState, todoEnabled],
+        () => (todoEnabled
+            ? withPinnedSentinelTodo(storedState, excursion, workspaceId, chatId)
+            : withoutSentinelTodoTabs(storedState)),
+        [storedState, todoEnabled, excursion, workspaceId, chatId],
     );
+    const pinnedId = todoEnabled ? pinnedSentinelTodoTabId(excursion, workspaceId, chatId) : null;
+    const latestPinned = useRef(pinnedId);
+    latestPinned.current = pinnedId;
 
     // The latest state and chat, readable from a stable callback without making
     // that callback depend on the render. Only the pure lookups need them; the
@@ -130,11 +149,14 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
     }, [setState]);
 
     const activate = useCallback((id: string) => {
-        setState(prev => activateTab(prev, latestChat.current, id));
+        setState(prev => (id === latestPinned.current
+            ? rememberActiveTab(prev, latestChat.current, id)
+            : activateTab(prev, latestChat.current, id)));
     }, [setState]);
 
     const close = useCallback((id: string) => {
-        setState(prev => closeTab(prev, id));
+        if (id === latestPinned.current) endSentinelTodoExcursion();
+        else setState(prev => closeTab(prev, id));
     }, [setState]);
 
     const move = useCallback((id: string, beforeId: string | null) => {
@@ -162,10 +184,10 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
     const preview = useMemo(() => previewTab(state, chatId), [state, chatId]);
 
     return useMemo(() => ({
-        state, tabs, activeId, active, preview,
+        state, tabs, activeId, active, pinnedId, preview,
         open, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
         previewToReplace, find, visibleIds,
-    }), [state, tabs, activeId, active, preview,
+    }), [state, tabs, activeId, active, pinnedId, preview,
         open, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
         previewToReplace, find, visibleIds]);
 }

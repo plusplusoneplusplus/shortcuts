@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { AIProcess, ConversationTurn, PendingMessage } from '@plusplusoneplusplus/forge';
 import {
     ProcessMessageDeliveryService,
@@ -715,6 +718,42 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(executeFollowUp.mock.calls[0][1]).toBe('go');
         expect(store.appendConversationTurn).toHaveBeenCalledOnce();
         expect(result.turnIndex).toBe(0);
+    });
+
+    it.each(['success', 'error', 'cancel'] as const)('retains admitted direct-follow-up images after %s', async outcome => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
+        const imagePath = path.join(tempDir, 'image.png');
+        const documentPath = path.join(tempDir, 'document.txt');
+        const bytes = Buffer.from('image fixture');
+        fs.writeFileSync(imagePath, bytes);
+        fs.writeFileSync(documentPath, 'document');
+        const controller = new AbortController();
+        let settle!: () => void;
+        const execution = new Promise<void>((resolve, reject) => {
+            settle = () => {
+                if (outcome === 'cancel') controller.abort();
+                if (outcome === 'success') resolve();
+                else reject(new Error(outcome));
+            };
+        });
+        const executeFollowUp = vi.fn(() => execution);
+        const store = makeStore();
+        const service = makeService(store, { executeFollowUp });
+        try {
+            const result = await service.deliver(makeProc(), makeInput({
+                imageTempDir: tempDir,
+                attachments: [{ type: 'file', path: imagePath }, { type: 'file', path: documentPath }],
+            }));
+            expect(result.path).toBe('direct-executed');
+            expect(fs.readFileSync(documentPath, 'utf8')).toBe('document');
+            settle();
+            // Await the finally callback, not just the underlying SDK promise.
+            await vi.waitFor(() => expect(fs.existsSync(documentPath)).toBe(false));
+            expect(fs.readFileSync(imagePath)).toEqual(bytes);
+            expect(controller.signal.aborted).toBe(outcome === 'cancel');
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 
     it('rolls back status and throws FollowUpDeliveryError when enqueue fails', async () => {

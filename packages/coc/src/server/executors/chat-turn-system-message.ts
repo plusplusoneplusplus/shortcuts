@@ -17,13 +17,15 @@
  *   7. tool guidance
  *   7b. Codex `ask_user` discovery note (Codex only, when the tool is enabled)
  *   8. note file context
+ *   9. required Sentinel job-review rules (terminal dispatcher chats only)
  *
- * **This message is mode-invariant by contract.** It carries no `mode` input:
+ * **This message is mode-invariant for switchable chats.** It carries no `mode` input:
  * the read-only directive and the mode-specific repo instructions ride the
  * outgoing user turn instead (see `chat-mode-directive.ts`), so toggling the
  * mode pill mid-chat leaves the conversation's cached prefix intact. Do not
  * re-introduce a mode branch here — `chat-turn-system-message.test.ts` asserts
- * byte equality across modes.
+ * byte equality across modes. Terminal Sentinel chats additionally receive the
+ * required job-review contract on every request, independent of history.
  *
  * Callers decide *whether* a block applies by passing `undefined`; they do not
  * decide where it lands.
@@ -43,6 +45,7 @@ import {
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import type { MemoryV2Addon } from './memory-v2-addon';
+import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../delegation/sentinel-job-review-instructions';
 
 // ============================================================================
 // Types
@@ -55,6 +58,8 @@ export interface ChatTurnSystemMessageInput {
     provider: ChatProvider;
     /** Admin-configured global system prompt; `undefined` when unset. */
     globalSystemPrompt?: string;
+    /** Terminal dispatcher identity, not a switchable mode or child-output hint. */
+    sentinel?: boolean;
     /** For Each generation context, or `null` when this turn is not a generation turn. */
     forEachGeneration: Parameters<typeof buildForEachGenerationSystemMessage>[0];
     /** Map Reduce generation context, or `null` when this turn is not a generation turn. */
@@ -139,5 +144,6 @@ export function buildChatTurnSystemMessage(
         .appendToolGuidance(input.toolGuidance)
         .append(buildCodexAskUserDiscoveryBlock(input.provider, input.askUserAvailable))
         .appendNoteFile(input.notePath)
+        .append(input.sentinel ? SENTINEL_JOB_REVIEW_INSTRUCTIONS : undefined)
         .build();
 }

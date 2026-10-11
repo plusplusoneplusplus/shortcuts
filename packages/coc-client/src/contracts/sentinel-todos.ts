@@ -51,6 +51,19 @@ export interface SentinelTodoJobLink {
   execution: SentinelTodoJobExecution;
 }
 
+/**
+ * A reference-only link to an existing conversation on the owning server. It
+ * has no execution state, is never reviewed, and never changes item status.
+ */
+export interface SentinelTodoReference {
+  processId: string;
+  workspaceId: string;
+  openLink: string;
+  title?: string;
+  attachedAt: string;
+  attachedBy: SentinelTodoActor;
+}
+
 export interface SentinelTodoItem {
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
@@ -71,6 +84,8 @@ export interface SentinelTodoItem {
   createdBy: SentinelTodoActor;
   updatedBy: SentinelTodoActor;
   jobs: SentinelTodoJobLink[];
+  /** Absent from servers that predate conversation references. */
+  references?: SentinelTodoReference[];
 }
 
 export interface SentinelTodoLedgerResponse {
@@ -109,11 +124,20 @@ export interface UpdateSentinelTodoRequest {
   reviewedJobs?: { processId: string; terminalEventId: string }[];
 }
 
+/** Attaches an existing conversation on the owning server; re-attaching is a no-op. */
+export interface AttachSentinelTodoReferenceRequest {
+  expectedRevision: number;
+  processId: string;
+  workspaceId: string;
+}
+
 /** A write's committed item (without derived job execution) and ledger revision. */
 export interface SentinelTodoWriteResponse {
   item: Omit<SentinelTodoItem, 'jobs'> & { jobs: Omit<SentinelTodoJobLink, 'execution'>[] };
   ledgerRevision: number;
   created?: boolean;
+  /** Reference attachments: false when the conversation was already attached. */
+  attached?: boolean;
 }
 
 /** WebSocket event sent after a committed ledger write. */

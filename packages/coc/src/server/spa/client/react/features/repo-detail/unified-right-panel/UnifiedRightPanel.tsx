@@ -220,7 +220,7 @@ export function UnifiedRightPanel({
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
-        state, tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
+        state, tabs, activeId, active, pinnedId, open, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
         updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId);
@@ -228,11 +228,16 @@ export function UnifiedRightPanel({
     // Reconcile only at the chat-selection boundary. Resource entry points still
     // reveal the panel themselves, and a user may explicitly keep an empty panel
     // open until another selection (or a reload) asks us to reconcile again.
+    // A chat joining a To-do excursion is such a boundary too: the chat records
+    // its visit after this selection renders, and its pinned To-do starts active.
     const hasVisibleTabsRef = useRef(tabs.length > 0);
     hasVisibleTabsRef.current = tabs.length > 0;
     useEffect(() => {
         setWorkspaceDockOpen(workspaceId, hasVisibleTabsRef.current);
-    }, [workspaceId, chatId]);
+    }, [workspaceId, chatId, pinnedId]);
+    useEffect(() => {
+        if (pinnedId !== null) activate(pinnedId);
+    }, [pinnedId, activate]);
 
     // Expanded covers the workspace row; only an open panel can be expanded, and
     // closing the panel drops the flag so the next open starts at its own width.
@@ -1592,7 +1597,8 @@ export function UnifiedRightPanel({
     const todoOwner = useMemo<SentinelTodoOwner | null>(() => {
         if (!todoEnabled || sentinelChat === null) return null;
         return {
-            ...sentinelChat,
+            ownerWorkspaceId: sentinelChat.ownerWorkspaceId,
+            processId: sentinelChat.processId,
             ...(sentinelChat.ownerWorkspaceId === workspaceId && routingRef !== undefined ? { ownerRoutingRef: routingRef } : {}),
         };
     }, [todoEnabled, sentinelChat, workspaceId, routingRef]);
