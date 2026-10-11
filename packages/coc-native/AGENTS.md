@@ -105,8 +105,9 @@ Construction validates immutable configuration only. Kusto, ADO and Teams Azure 
 credentials use native authentication with automatic demand renewal. Kusto selects
 active-account mode or a complete explicit host identity and the Kusto SDK's audience.
 Teams connector providers are connection/resource scoped; the standalone Rust Teams
-CLI adapts auth-sdk to the Teams token-provider contract. Teams MCP OAuth and Copilot
-credentials have separate ownership.
+CLI adapts auth-sdk to the Teams token-provider contract. Teams MCP production
+callers use the connector's native OAuth owner; they do not import Copilot's
+OAuth cache. Copilot/GitHub credential acquisition has separate ownership.
 
 GitHub CLI credential import belongs to
 `auth_sdk::github` and the request-scoped `src/github-auth.ts` boundary.

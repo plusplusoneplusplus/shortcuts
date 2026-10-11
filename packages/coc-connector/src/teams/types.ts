@@ -97,28 +97,16 @@ export interface TeamsBotOptions {
     debug?: boolean;
 }
 
-/** Azure AD authentication configuration for the Teams MCP server. */
+/** Explicit credentials or a caller-owned demand acquisition policy. */
 export interface TeamsAuthConfig {
-    /** Azure AD tenant ID (default: extracted from mcpServerUrl). */
-    tenantId?: string;
-    /** Azure AD client/app ID for device code flow. */
-    clientId?: string;
-    /** OAuth2 scope for the Teams MCP resource. */
-    scope?: string;
+    /** Demand acquisition on startup and each authenticated request; the caller owns the credential. */
+    acquireToken?: (signal: AbortSignal, forceRefresh?: boolean) => Promise<string>;
+    /** Native verified identity; opaque MCP tokens do not carry readable claims. */
+    account?: { tenantId: string; objectId: string };
     /** Explicit bearer token; omitted Graph credentials use source-pinned native Azure CLI auth. */
     bearerToken?: string;
-    /** Called when device code flow requires user interaction. */
-    onDeviceCode?: (verification: DeviceCodeInfo) => void;
     /** Refreshes explicit Graph bearer tokens or MCP credentials after HTTP401; native Graph auth renews through the SDK. */
     onTokenRefresh?: () => Promise<string | null>;
-}
-
-/** Device code verification info shown to the user. */
-export interface DeviceCodeInfo {
-    userCode: string;
-    verificationUri: string;
-    message: string;
-    expiresIn: number;
 }
 
 export type BotStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';

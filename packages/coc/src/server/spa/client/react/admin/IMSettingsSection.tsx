@@ -69,77 +69,24 @@ async function postTeamsConfig(patch: { botName?: string; channelId?: string; en
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
-async function postTeamsReconnect(): Promise<void> {
-    // 1. Start auth session — server creates temp callback server and returns OAuth config
+async function postTeamsReconnect(): Promise<string> {
     const configRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/start', { method: 'POST' });
     if (!configRes.ok) throw new Error(`HTTP ${configRes.status}`);
-    const oauthConfig = await configRes.json() as { clientId: string; tenantId: string; scope: string; authorizeUrl: string; redirectUri: string };
-
-    // 2. Generate PKCE code_verifier + code_challenge
-    const codeVerifierBytes = new Uint8Array(32);
-    crypto.getRandomValues(codeVerifierBytes);
-    const codeVerifier = btoa(String.fromCharCode(...codeVerifierBytes))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    const challengeBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(challengeBuffer)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-    // 3. Use the localhost redirect URI from server config
-    const redirectUri = oauthConfig.redirectUri;
-
-    // 4. Build authorize URL and open popup
-    const params = new URLSearchParams({
-        client_id: oauthConfig.clientId,
-        response_type: 'code',
-        redirect_uri: redirectUri,
-        scope: oauthConfig.scope,
-        code_challenge: codeChallenge,
-        code_challenge_method: 'S256',
-        response_mode: 'query',
-    });
-    const authUrl = `${oauthConfig.authorizeUrl}?${params.toString()}`;
-    const popup = window.open(authUrl, 'teams-auth', 'width=600,height=700');
-
-    // 5. Listen for postMessage from popup with the auth code
-    const code = await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            window.removeEventListener('message', handler);
-            reject(new Error('OAuth login timed out (120s)'));
-        }, 120000);
-        function handler(event: MessageEvent) {
-            if (event.data?.type !== 'teams-auth-callback') return;
-            clearTimeout(timeout);
-            window.removeEventListener('message', handler);
-            if (event.data.error) {
-                reject(new Error(`OAuth error: ${event.data.error} - ${event.data.errorDescription ?? ''}`));
-            } else if (event.data.code) {
-                resolve(event.data.code);
-            } else {
-                reject(new Error('No auth code received'));
-            }
-        }
-        window.addEventListener('message', handler);
-        // Also check if popup was closed without completing
-        const pollClosed = setInterval(() => {
-            if (popup && popup.closed) {
-                clearInterval(pollClosed);
-                clearTimeout(timeout);
-                window.removeEventListener('message', handler);
-                reject(new Error('Login window was closed'));
-            }
-        }, 1000);
-    });
-
-    // 6. Exchange code for tokens on server
-    const exchangeRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/exchange', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, codeVerifier, redirectUri }),
-    });
-    if (!exchangeRes.ok) {
-        const err = await exchangeRes.json().catch(() => ({ error: 'Exchange failed' }));
-        throw new Error((err as { error?: string }).error ?? `HTTP ${exchangeRes.status}`);
+    const instructions: { ok?: boolean; authorizationUrl?: string; error?: string } = await configRes.json();
+    if (!instructions.ok || !instructions.authorizationUrl) {
+        throw new Error(instructions.error ?? 'Teams sign-in did not return instructions');
     }
+    if (new URL(instructions.authorizationUrl).protocol !== 'https:') {
+        throw new Error('Teams sign-in returned an invalid authorization URL');
+    }
+    return instructions.authorizationUrl;
+}
+
+async function cancelTeamsAuth(): Promise<void> {
+    const response = await fetch(getRawApiBase() + '/container/messaging/teams/auth/cancel', { method: 'POST' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result: { ok?: boolean; error?: string } = await response.json();
+    if (!result.ok) throw new Error(result.error ?? 'Teams sign-in cancellation failed');
 }
 
 // ── Main Section ────────────────────────────────────────────
@@ -431,7 +378,7 @@ function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus;
     );
 }
 
-function TeamsSettingsCard() {
+export function TeamsSettingsCard() {
     const [status, setStatus] = useState<TeamsStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -439,6 +386,11 @@ function TeamsSettingsCard() {
     const [nameEditing, setNameEditing] = useState(false);
     const [nameSaving, setNameSaving] = useState(false);
     const [toggling, setToggling] = useState(false);
+    const [authBusy, setAuthBusy] = useState(false);
+    const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
+    const [authError, setAuthError] = useState<string | null>(null);
+    const authGeneration = useRef(0);
+    const authActive = useRef(false);
 
     const loadStatus = useCallback(async () => {
         try {
@@ -456,6 +408,51 @@ function TeamsSettingsCard() {
     useEffect(() => {
         void loadStatus();
     }, [loadStatus]);
+
+    useEffect(() => () => {
+        authGeneration.current++;
+        if (authActive.current) {
+            void cancelTeamsAuth().catch(() => console.error('Teams sign-in cancellation failed'));
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!authorizationUrl) return;
+        const generation = authGeneration.current;
+        const controller = new AbortController();
+        const startedAt = Date.now();
+        let polling = false;
+        const poll = async () => {
+            if (polling) return;
+            polling = true;
+            try {
+                const response = await fetch(getRawApiBase() + '/container/messaging/teams/auth/status', {
+                    signal: controller.signal,
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const result: { authenticated: boolean; status: string; error?: string } = await response.json();
+                if (generation !== authGeneration.current || controller.signal.aborted) return;
+                if (result.status === 'pending' && Date.now() - startedAt < 10 * 60 * 1000) return;
+                if (result.status !== 'authenticated' || !result.authenticated) {
+                    throw new Error(result.error ?? (result.status === 'pending'
+                        ? 'Teams sign-in timed out' : 'Teams sign-in failed'));
+                }
+                authActive.current = false;
+                setAuthorizationUrl(null);
+                await loadStatus();
+            } catch (error) {
+                if (generation !== authGeneration.current || controller.signal.aborted) return;
+                setAuthError(error instanceof Error ? error.message : 'Teams sign-in failed');
+                setAuthorizationUrl(null);
+                authActive.current = false;
+                void cancelTeamsAuth().catch(() => console.error('Teams sign-in cancellation failed'));
+            } finally {
+                polling = false;
+            }
+        };
+        const timer = setInterval(() => void poll(), 2000);
+        return () => { clearInterval(timer); controller.abort(); };
+    }, [authorizationUrl, loadStatus]);
 
     // Poll while authenticating so UI updates when login completes
     const teamsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -490,6 +487,7 @@ function TeamsSettingsCard() {
                     ⚠ {error}
                 </div>
             )}
+            {authError && <div role="alert" className="text-xs text-red-600 mb-2">{authError}</div>}
 
             {/* Enable/Disable toggle */}
             <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
@@ -497,7 +495,7 @@ function TeamsSettingsCard() {
                     {status?.enabled ? 'Enabled' : 'Disabled'}
                 </span>
                 <button
-                    disabled={toggling}
+                    disabled={toggling || authBusy || !!authorizationUrl}
                     onClick={async () => {
                         setToggling(true);
                         try {
@@ -537,7 +535,7 @@ function TeamsSettingsCard() {
                     {/* Container-node requirement notice */}
                     {status.status !== 'connected' && (
                         <div className="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded px-3 py-2 text-blue-700 dark:text-blue-300">
-                            ℹ️ Connection must be initiated from the <strong>container node</strong> (where CoC server runs). The Connect button triggers authentication on that machine.
+                            ℹ️ Complete Microsoft sign-in on the <strong>container node</strong> (where CoC server runs), using the link returned by Connect.
                         </div>
                     )}
 
@@ -550,16 +548,26 @@ function TeamsSettingsCard() {
                             <Button
                                 size="sm"
                                 variant={status.status === 'connected' ? 'secondary' : 'primary'}
+                                disabled={authBusy || !!authorizationUrl}
                                 onClick={async () => {
+                                    const generation = ++authGeneration.current;
+                                    authActive.current = true;
+                                    setAuthBusy(true);
+                                    setAuthError(null);
                                     try {
-                                        await postTeamsReconnect();
-                                        setTimeout(() => void loadStatus(), 2000);
-                                    } catch (e: any) {
-                                        setError(e.message);
+                                        const url = await postTeamsReconnect();
+                                        if (generation === authGeneration.current) setAuthorizationUrl(url);
+                                    } catch (error) {
+                                        if (generation !== authGeneration.current) return;
+                                        authActive.current = false;
+                                        setAuthError(error instanceof Error ? error.message : 'Teams sign-in failed');
+                                        void cancelTeamsAuth().catch(() => console.error('Teams sign-in cancellation failed'));
+                                    } finally {
+                                        if (generation === authGeneration.current) setAuthBusy(false);
                                     }
                                 }}
                             >
-                                {status.status === 'connected' ? 'Reconnect' : 'Connect'}
+                                {authBusy || authorizationUrl ? 'Authorizing...' : status.status === 'connected' ? 'Reconnect' : 'Connect'}
                             </Button>
                             <button
                                 onClick={() => void loadStatus()}
@@ -568,6 +576,25 @@ function TeamsSettingsCard() {
                             >↻</button>
                         </div>
                     </div>
+
+                    {authorizationUrl && (
+                            <div className="flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs">
+                                <a href={authorizationUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">
+                                    Open Microsoft sign-in
+                                </a>
+                                <Button size="sm" variant="secondary" onClick={async () => {
+                                    try {
+                                        await cancelTeamsAuth();
+                                        authGeneration.current++;
+                                        authActive.current = false;
+                                        setAuthorizationUrl(null);
+                                        setAuthError(null);
+                                    } catch (error) {
+                                        setAuthError(error instanceof Error ? error.message : 'Teams sign-in cancellation failed');
+                                    }
+                                }}>Cancel</Button>
+                            </div>
+                    )}
 
                     {status.error && (
                         <div className="text-xs text-red-600 dark:text-red-400">

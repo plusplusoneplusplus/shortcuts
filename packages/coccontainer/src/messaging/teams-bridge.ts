@@ -2,7 +2,7 @@
  * TeamsBridge — glue between WS relay / agent proxy and TeamsBot.
  *
  * Only imported via dynamic import when messaging.teams.enabled is true.
- * Uses MCP server for communication (Graph API disabled — az CLI tokens lack Chat permissions).
+ * Uses explicitly selected MCP or Graph transport with runtime-owned native OAuth.
  * The transport is abstracted behind the TeamsTransport interface.
  *
  * Outbound flow:
@@ -13,7 +13,7 @@
  */
 
 import type { InboundTeamsMessage, BotStatus, TeamsTransport } from '@plusplusoneplusplus/coc-connector/teams';
-import { TeamsBot, createTransport, acquireMcpOAuthToken } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsBot, createTransport, type TeamsOAuthCredential } from '@plusplusoneplusplus/coc-connector/teams';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
@@ -26,6 +26,7 @@ import type { TeamsConfigPatch } from '../server/messaging-config';
 import { isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
 
 export interface TeamsBridgeOptions {
+    getCredential: () => TeamsOAuthCredential;
     config: ResolvedTeamsConfig;
     dataDir: string;
     wsRelay: WebSocketRelay;
@@ -59,18 +60,18 @@ export class TeamsBridge {
     /** Track latest assistant content per process (updated on each WS event) */
     private _lastAssistantContent = new Map<string, string>();
     private _workspaceNameCache = new Map<string, string>();
-    private _azToken: string | null = null;
+    private lifetime = new AbortController();
 
     constructor(private opts: TeamsBridgeOptions) {
-        // Force MCP mode — Graph API is disabled (az CLI tokens lack Chat permissions)
-        this.opts.config.mode = 'mcp';
         this.transport = createTransport(opts.config.mode, {
             mcpServerUrl: opts.config.mcpServerUrl,
             ic3DirectMessageOptions: { region: opts.config.ic3Region ?? undefined },
+            acquireToken: (signal, force) => this.opts.getCredential().getToken(signal, force),
         });
     }
 
     async start(): Promise<void> {
+        this.lifetime = new AbortController();
         this.store = new MessagingStore(this.opts.dataDir);
 
         // Initialize the command executor for handling /slash commands locally
@@ -114,18 +115,14 @@ export class TeamsBridge {
         });
         console.log('[teams-bridge] Command executor initialized');
 
-        // Resolve team/channel names → IDs (create if missing) using az token
+        // Resolve team/channel names → IDs through the selected OAuth resource.
         await this.resolveTeamAndChannel();
 
-        // Ensure we have a token even if resolution was skipped (IDs pre-configured)
-        if (!this._azToken) {
-            try {
-                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-            } catch { /* will be handled by bot start */ }
-        }
+        const credential = this.opts.getCredential();
+        await credential.getToken(this.lifetime.signal);
 
         // When target is 'chat' AND mode is 'mcp', don't pass teamId — triggers DM mode in transport.
-        // For graph mode, always use channel mode (az CLI tokens lack ChatMessage.Send for chat API).
+        // Graph retains its explicit channel/direct-message selection.
         const useChat = this.opts.config.target === 'chat' && this.opts.config.mode === 'mcp';
         if (useChat) {
             console.log(`[teams-bridge] ╔══════════════════════════════════════════════╗`);
@@ -145,10 +142,8 @@ export class TeamsBridge {
             pollIntervalMs: this.opts.config.pollIntervalMs,
             debug: this.opts.config.debug ?? false,
             auth: {
-                bearerToken: this._azToken ?? undefined,
-                clientId: this.opts.config.clientId,
-                scope: this.opts.config.scope,
-                onTokenRefresh: () => this.refreshMcpToken(),
+                acquireToken: (signal, force) => this.opts.getCredential().getToken(signal, force),
+                account: credential.getAccount(),
             },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
@@ -175,12 +170,22 @@ export class TeamsBridge {
 
         // Start and wait for connection (with timeout to avoid hanging on slow MCP server)
         try {
-            await Promise.race([
-                this.bot.start(),
-                new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Bot start timed out after 30s')), 30_000)),
-            ]);
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            try {
+                await Promise.race([
+                    this.bot.start(),
+                    new Promise<void>((_, reject) => {
+                        timeout = setTimeout(() => reject(new Error('Bot start timed out after 30s')), 30_000);
+                    }),
+                ]);
+            } finally { clearTimeout(timeout); }
         } catch (err: any) {
-            console.error(`[teams-bridge] Start failed: ${err.message ?? err}`);
+            await this.stop();
+            throw new Error('Teams connection failed');
+        }
+        if (this.lifetime.signal.aborted || !this.bot || this.bot.getStatus() !== 'connected') {
+            await this.stop();
+            throw new Error('Teams connection failed');
         }
 
         // Set the configured channel for polling (if not already set by DM mode)
@@ -190,6 +195,8 @@ export class TeamsBridge {
     }
 
     async stop(): Promise<void> {
+        this.lifetime.abort();
+        this.transport.stop();
         if (this.wsHandler) {
             this.opts.wsRelay.off('message', this.wsHandler);
             this.wsHandler = null;
@@ -206,18 +213,6 @@ export class TeamsBridge {
         this.bot = null;
         this.store?.close();
         this.store = null;
-    }
-
-    /** Refresh OAuth token (called by bot on 401). */
-    private async refreshMcpToken(): Promise<string | null> {
-        try {
-            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-            console.log('[teams-bridge] OAuth token refreshed');
-            return this._azToken;
-        } catch (err: any) {
-            console.error(`[teams-bridge] OAuth token refresh failed: ${err.message}`);
-            return null;
-        }
     }
 
     /** Get current Teams bridge status for REST API. */
@@ -247,8 +242,14 @@ export class TeamsBridge {
         if (patch.ic3Region !== undefined && patch.ic3Region !== null && !isIc3DirectMessageRegion(patch.ic3Region)) {
             throw new RangeError('IC3 region must be amer, emea, apac, or null (unconfigured)');
         }
-        if (patch.ic3Region !== undefined && patch.ic3Region !== (this.opts.config.ic3Region ?? null)) {
+        if ((patch.ic3Region !== undefined && patch.ic3Region !== (this.opts.config.ic3Region ?? null))
+            || (patch.mode !== undefined && patch.mode !== this.opts.config.mode)
+            || (patch.mcpServerUrl !== undefined && patch.mcpServerUrl !== this.opts.config.mcpServerUrl)
+            || (patch.clientId !== undefined && patch.clientId !== this.opts.config.clientId)
+            || (patch.scope !== undefined && patch.scope !== this.opts.config.scope)) {
             await this.bot?.stop();
+            this.lifetime.abort();
+            this.transport.stop();
         }
         if (patch.ic3Region !== undefined) this.opts.config.ic3Region = patch.ic3Region;
         if (patch.botName !== undefined) this.opts.config.botName = patch.botName;
@@ -260,18 +261,22 @@ export class TeamsBridge {
         if (patch.channelName !== undefined) this.opts.config.channelName = patch.channelName;
         if (patch.enabled !== undefined) this.opts.config.enabled = patch.enabled;
         if (patch.mode !== undefined) this.opts.config.mode = patch.mode;
+        if (patch.mcpServerUrl !== undefined) this.opts.config.mcpServerUrl = patch.mcpServerUrl;
+        if (patch.clientId !== undefined) this.opts.config.clientId = patch.clientId;
+        if (patch.scope !== undefined) this.opts.config.scope = patch.scope;
+        if (patch.mode !== undefined || patch.mcpServerUrl !== undefined || patch.clientId !== undefined || patch.scope !== undefined) {
+            this.opts.getCredential();
+        }
         await this.persistTeamsConfig(patch as Record<string, string | boolean | null | undefined>);
     }
 
     async reconnect(): Promise<void> {
         await this.bot?.stop();
 
-        // Re-acquire token from cached OAuth tokens (refreshes if needed)
-        try {
-            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-        } catch (err: any) {
-            console.error(`[teams-bridge] Failed to acquire token on reconnect: ${err.message}`);
-        }
+        this.lifetime.abort();
+        this.lifetime = new AbortController();
+        const credential = this.opts.getCredential();
+        await credential.getToken(this.lifetime.signal);
 
         const useChat = this.opts.config.target === 'chat' && this.opts.config.mode === 'mcp';
         this.bot = new TeamsBot({
@@ -283,10 +288,8 @@ export class TeamsBridge {
             pollIntervalMs: this.opts.config.pollIntervalMs,
             debug: this.opts.config.debug ?? false,
             auth: {
-                bearerToken: this._azToken ?? undefined,
-                clientId: this.opts.config.clientId,
-                scope: this.opts.config.scope,
-                onTokenRefresh: () => this.refreshMcpToken(),
+                acquireToken: (signal, force) => this.opts.getCredential().getToken(signal, force),
+                account: credential.getAccount(),
             },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
@@ -296,10 +299,10 @@ export class TeamsBridge {
                 console.error(`[teams-bridge] Error: ${error}`);
             },
         });
-        try {
-            await this.bot.start();
-        } catch (err) {
-            console.error('[teams-bridge] Reconnect start failed:', err);
+        await this.bot.start();
+        if (this.lifetime.signal.aborted || this.bot.getStatus() !== 'connected') {
+            await this.bot.stop();
+            throw new Error('Teams connection failed');
         }
         if (this.opts.config.channelId && !this.bot.getChannelId()) {
             this.bot.setChannelId(this.opts.config.channelId);
@@ -331,15 +334,23 @@ export class TeamsBridge {
             return;
         }
 
+        let token: string;
         try {
-            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
+            token = await this.opts.getCredential().getToken(this.lifetime.signal);
         } catch (err: any) {
             console.error(`[teams-bridge] Failed to acquire token for resolution: ${err.message}`);
             return;
         }
 
         try {
-            await this.transport.initialize(this._azToken!, {
+            this.transport.stop();
+            this.transport = createTransport(this.opts.config.mode, {
+                mcpServerUrl: this.opts.config.mcpServerUrl,
+                ic3DirectMessageOptions: { region: this.opts.config.ic3Region ?? undefined },
+                acquireToken: (signal, force) => this.opts.getCredential().getToken(signal, force),
+                account: this.opts.getCredential().getAccount(),
+            });
+            await this.transport.initialize(token, {
                 teamId: this.opts.config.teamId,
                 channelId: this.opts.config.channelId,
             });

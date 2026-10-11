@@ -670,6 +670,17 @@ references before editing. Paths are package-relative.
   Outcomes report counts only, never summaries or errors. Receipt states persist per workspace; interrupted sends
   are quarantined. WhatsApp binds replies to the notice's chat; Teams uses the captured
   parent thread for results or binds a top-level child notice. Selection remains unchanged.
+- Teams MCP production authentication uses the connector's host/resource-scoped
+  `TeamsOAuthCredential`. Native browser sign-in verifies identity and MCP access;
+  Rust owns OS refresh storage and demand renewal. TypeScript stores only verified
+  account/configuration metadata. Sign-in, bridge, status and discovery share one
+  owner, without Copilot-cache import or fallback. Native pending lifecycle is
+  available independently of the generic MCP OAuth flag; cancellation reaches
+  native work and host shutdown disposes all resource owners.
+- Generic MCP OAuth completion accepts the exact server's live runtime connection,
+  including broker sign-in with no browser URL or token JSON file. Pending flows
+  poll bounded runtime status and shared-cache state; late results cannot overwrite
+  a cancelled flow. Empty login responses alone never count as authenticated.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

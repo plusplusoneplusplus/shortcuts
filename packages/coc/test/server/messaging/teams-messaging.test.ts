@@ -14,9 +14,23 @@ import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/ser
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
 import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
 import { getRepoDataPath } from '../../../src/server/paths';
-import { acquireMcpOAuthToken, McpClient, TeamsBot, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
+import { McpClient, TeamsBot, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 import { TeamsBindingReleaseError, type TeamsAnswerRelay } from '../../../src/server/messaging/teams-answer-relay';
+import { getTeamsOAuthCredential } from '../../../src/server/messaging/teams-native-auth';
+
+const nativeCredential = vi.hoisted(() => ({
+    getToken: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
+    getAccount: vi.fn().mockReturnValue({ tenantId: 'fixture-tenant', objectId: 'fixture-object' }),
+    beginBrowser: vi.fn().mockResolvedValue({ authorizationUrl: 'https://login.example.test/authorize' }),
+    wait: vi.fn(() => new Promise<void>(() => {})),
+    cancelSignIn: vi.fn(),
+}));
+vi.mock('../../../src/server/messaging/teams-native-auth', () => ({
+    getTeamsOAuthCredential: vi.fn(() => nativeCredential),
+    teamsNativeAuthStatus: vi.fn(() => 'authenticated'),
+    disposeTeamsOAuthCredentials: vi.fn(),
+}));
 
 // Mock the teams-bot package
 vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => ({
@@ -64,12 +78,6 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => ({
             }),
         };
     }),
-    acquireMcpOAuthToken: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
-    acquireTokenViaAzCli: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
-    getOAuthConfig: vi.fn(() => ({
-        clientId: 'test-public-client', scope: 'https://example.test/teams/.default offline_access',
-        authorizeUrl: 'https://login.example.test/oauth2/v2.0/authorize',
-    })),
 }));
 
 describe('TeamsMessagingManager', () => {
@@ -350,11 +358,13 @@ describe('TeamsMessagingManager', () => {
         const mcpData = JSON.parse(fs.readFileSync(mcpConfig, 'utf-8'));
         expect(mcpData.mcpServers?.['Microsoft Teams']).toBeDefined();
         expect(mcpData.mcpServers['Microsoft Teams'].type).toBe('http');
-        expect(acquireMcpOAuthToken).toHaveBeenCalledWith('https://example.test/servers/mcp_TeamsServer', fakeHome);
+        expect(getTeamsOAuthCredential).toHaveBeenCalledWith(tmpDir, 'https://example.test/servers/mcp_TeamsServer');
         const botOptions = vi.mocked(TeamsBot).mock.lastCall?.[0];
         expect(botOptions?.ic3DirectMessageOptions).toEqual({ region: undefined });
-        expect(botOptions?.auth?.onTokenRefresh).toBeDefined();
-        await expect(botOptions!.auth!.onTokenRefresh!()).resolves.toBe('fake-mcp-token-abc');
+        expect(botOptions?.auth?.acquireToken).toBeDefined();
+        const signal = new AbortController().signal;
+        await expect(botOptions!.auth!.acquireToken!(signal, true)).resolves.toBe('fake-mcp-token-abc');
+        expect(nativeCredential.getToken).toHaveBeenLastCalledWith(signal, true);
         botOptions?.onError?.('Polling unavailable');
         expect(m2.getStatus().error).toBe('Polling unavailable');
         botOptions?.onStatusChange?.('connected');
@@ -611,7 +621,7 @@ describe('TeamsMessagingManager', () => {
             result: 'failed', failureCategory: 'configuration', phases: [{ stage: 'started' }],
         });
         await m2.configureServer('https://example.test/teams');
-        vi.mocked(acquireMcpOAuthToken).mockRejectedValueOnce(new Error('secret-token /private/path'));
+        nativeCredential.getToken.mockRejectedValueOnce(new Error('secret-token /private/path'));
         await expect(m2.connect()).rejects.toThrow('secret-token');
         expect(m2.getStatus().status).toBe('error');
         expect(m2.getAttemptHistory()?.[0]).toMatchObject({
@@ -641,7 +651,7 @@ describe('TeamsMessagingManager', () => {
         await m2.configureServer('https://example.test/teams');
         await m2.updateConfig({ enabled: true });
         let release!: (token: string) => void;
-        vi.mocked(acquireMcpOAuthToken).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        nativeCredential.getToken.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
         const connecting = m2.connect();
         await vi.waitFor(() => expect(release).toBeDefined());
         await m2.updateConfig({ enabled: false });
@@ -657,7 +667,7 @@ describe('TeamsMessagingManager', () => {
         await m2.configureServer('https://example.test/teams');
         await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
         let release!: (token: string) => void;
-        vi.mocked(acquireMcpOAuthToken).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        nativeCredential.getToken.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
         const pending = m2.connect();
         await vi.waitFor(() => expect(release).toBeDefined());
         await m2.connect();
@@ -695,7 +705,7 @@ describe('TeamsMessagingManager', () => {
         m2.setMessageHandler(async () => {});
         await m2.configureServer('https://example.test/teams');
         await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
-        vi.mocked(acquireMcpOAuthToken).mockRejectedValueOnce(new Error('OAuth required'));
+        nativeCredential.getToken.mockRejectedValueOnce(new Error('OAuth required'));
         await expect(m2.connect()).rejects.toThrow('OAuth required');
         expect(m2.getStatus()).toMatchObject({ status: 'error', error: 'OAuth required' });
         await m2.connect();
@@ -731,7 +741,7 @@ describe('TeamsMessagingManager', () => {
         await m2.configureServer('https://example.test/teams');
         await m2.updateConfig({ enabled: true });
         let release!: (token: string) => void;
-        vi.mocked(acquireMcpOAuthToken).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        nativeCredential.getToken.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
         const connecting = m2.connect();
         await vi.waitFor(() => expect(release).toBeDefined());
         await m2.updateConfig({ enabled: false });
@@ -1161,13 +1171,11 @@ describe('Teams messaging routes (integration)', () => {
                 const body = await response.json();
                 const signIn = new URL(body.authorizationUrl);
                 expect(signIn.protocol).toBe('https:');
-                expect(signIn.searchParams.get('code_challenge_method')).toBe('S256');
+                expect(body.authorizationUrl).toBe('https://login.example.test/authorize');
+                expect(nativeCredential.beginBrowser).toHaveBeenCalled();
                 expect(oauthManager.getPending(body.requestId)?.status).toBe('pending');
-                const url = new URL(body.authorizationUrl);
-                const callback = new URL(url.searchParams.get('redirect_uri')!.replace('localhost', '127.0.0.1'));
-                callback.searchParams.set('state', url.searchParams.get('state')!);
-                callback.searchParams.set('error', 'access_denied');
-                await fetch(callback);
+                manager.cancelOAuth(body.requestId);
+                expect(nativeCredential.cancelSignIn).toHaveBeenCalled();
             } finally {
                 await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
             }
@@ -1236,7 +1244,7 @@ describe('Teams messaging routes (integration)', () => {
             const status = await (await fetch(base + '/status')).json();
             expect(status).toMatchObject({
                 enabled: true, teamName: 'Team', channelName: 'General', oauthAvailable: false,
-                serverUrl: 'https://example.test/teams', authStatus: 'required',
+                serverUrl: 'https://example.test/teams', authStatus: 'authenticated',
             });
             const reconnect = await post('/reconnect', {});
             expect(reconnect.status).toBe(500);

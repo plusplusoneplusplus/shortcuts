@@ -135,6 +135,29 @@ describe('createSdkClient', () => {
         expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
+    it('defaults Entra scope binding without changing the host environment', () => {
+        vi.stubEnv('COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE', undefined);
+        try {
+            createSdkClient();
+            expect(capturedOptions[0].env.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE).toBe('allow_unbound_scopes');
+            expect(process.env.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE).toBeUndefined();
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('preserves explicit host and client scope binding overrides', () => {
+        vi.stubEnv('COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE', 'strict');
+        try {
+            createSdkClient();
+            expect(capturedOptions[0].env.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE).toBe('strict');
+            createSdkClient({ env: { COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE: 'allow_unbound_scopes' } });
+            expect(capturedOptions[1].env.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE).toBe('allow_unbound_scopes');
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
     it('passes workingDirectory to the CopilotClient constructor when provided', () => {
         createSdkClient({ workingDirectory: '/some/project' });
 
@@ -353,6 +376,27 @@ describe('createSdkClient — Electron connection override', () => {
         const spawn = getLastCopilotElectronSpawn();
         expect(spawn!.mode).toBe('native-binary');
         expect(spawn!.cliPath).toContain(NATIVE_PKG_FRAGMENT);
+    });
+
+    it.each(['js', 'native'])('preserves client scope binding overrides in Electron %s launches', layout => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        if (layout === 'native') mockNativeOnlyLayout();
+        createSdkClient({ env: { COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE: 'strict', FIXTURE_ENV: 'kept' } });
+        expect(capturedOptions[0].env).toMatchObject({
+            COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE: 'strict', FIXTURE_ENV: 'kept',
+        });
+    });
+
+    it.each(['js', 'native'])('defaults scope binding in Electron %s launches', layout => {
+        (process.versions as Record<string, string | undefined>).electron = '30.0.0';
+        if (layout === 'native') mockNativeOnlyLayout();
+        vi.stubEnv('COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE', undefined);
+        try {
+            createSdkClient();
+            expect(capturedOptions[0].env.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE).toBe('allow_unbound_scopes');
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 });
 

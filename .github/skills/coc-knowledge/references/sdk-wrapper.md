@@ -18,7 +18,7 @@ Forge imports directly from this package.
 | `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract; `TransformOptions`/`TransformResult` |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
 | `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); `./testing` subpath export |
-| `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring, permission handler, streaming routing |
+| `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring and [host-token routing](mcp-settings.md#teams-mcp-in-copilot-sessions), permissions, streaming |
 | `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` |
 | `session-manager.ts` | Active session tracking and cancellation |
 | `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) |
@@ -71,6 +71,8 @@ Copilot requests create fresh session objects. Cold requests own their client pr
 
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 Copilot child processes receive `COPILOT_AUTO_UPDATE=false` through `CopilotClientOptions.env`, keeping the installed CLI version in use without changing the host process or caller-owned connections. The SDK and CLI pins are recorded in [monorepo.md](monorepo.md).
+
+CoC-created child processes default `COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE` to `allow_unbound_scopes` for Entra MCP compatibility. This relaxes broker resource binding for every MCP server in that child, not authentication or consent. Explicit client environment values take precedence over host values and the default, including Electron/native launches. Caller-owned connection environments and in-process runtimes retain their own policy; the host environment is not mutated.
 
 ### Account quota contract
 

@@ -13,6 +13,11 @@ import * as os from 'os';
 import * as path from 'path';
 
 const listMcpToolsMock = vi.hoisted(() => vi.fn());
+const nativeTokenMock = vi.hoisted(() => vi.fn().mockResolvedValue('fixture-native-token'));
+vi.mock('../../src/server/messaging/teams-native-auth', async original => ({
+    ...await original<typeof import('../../src/server/messaging/teams-native-auth')>(),
+    getTeamsOAuthCredential: vi.fn(() => ({ getToken: nativeTokenMock })),
+}));
 vi.mock('../../src/server/routes/mcp-connection-tester', async (importActual) => {
     const actual = await importActual<typeof import('../../src/server/routes/mcp-connection-tester')>();
     return { ...actual, listMcpTools: listMcpToolsMock };
@@ -25,6 +30,23 @@ import {
     discoverWorkspaceMcpTools,
 } from '../../src/server/routes/mcp-tools-discovery';
 import { setHomeDirectoryOverride } from '@plusplusoneplusplus/forge';
+
+describe('native Teams tool discovery', () => {
+    it('uses a freshly acquired native bearer without retaining configured authorization headers', async () => {
+        listMcpToolsMock.mockResolvedValueOnce({ success: true, tools: [{ name: 'fixture-tool' }] });
+        const request = { type: 'http' as const, url: 'https://resource.example/mcp',
+            headers: { authorization: 'obsolete-fixture', 'X-Fixture': 'preserved' } };
+        const result = await discoverMcpToolsForServers({ 'Microsoft Teams': request }, {
+            dataDir: path.join(os.tmpdir(), 'teams-discovery-fixture'),
+        });
+        expect(listMcpToolsMock).toHaveBeenLastCalledWith({
+            ...request, headers: { 'X-Fixture': 'preserved', Authorization: 'Bearer fixture-native-token' },
+        }, 10000);
+        expect(nativeTokenMock).toHaveBeenCalledWith(expect.any(AbortSignal));
+        expect(request.headers.authorization).toBe('obsolete-fixture');
+        expect(JSON.stringify(result)).not.toContain('fixture-native-token');
+    });
+});
 
 // ----------------------------------------------------------------------------
 // configToTestRequest

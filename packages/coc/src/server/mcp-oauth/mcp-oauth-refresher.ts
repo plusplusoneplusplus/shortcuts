@@ -8,9 +8,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, loadDefaultMcpConfig } from '@plusplusoneplusplus/forge';
 import type { Logger } from '@plusplusoneplusplus/forge';
 import { getMcpOauthCacheDir } from './mcp-oauth-token-cache';
+import { isTeamsMcpServer } from '../messaging/teams-native-auth';
 
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_EXPIRY_WINDOW_SECONDS = 10 * 60;
@@ -84,7 +85,11 @@ export async function runMcpOauthMaintenancePass(
         return result;
     }
 
-    const entries = loadCacheEntries(cacheDir);
+    const nativeServers = new Set(Object.entries(loadDefaultMcpConfig().mcpServers)
+        .filter(([name, config]) => isTeamsMcpServer(name, config))
+        .map(([, config]) => 'url' in config ? config.url : undefined));
+    const entries = loadCacheEntries(cacheDir)
+        .filter(entry => !nativeServers.has(entry.metadata.serverUrl));
     const survivors = dedupByServerUrl(entries, log, result);
     await refreshNearExpiry(survivors, options, log, result);
 

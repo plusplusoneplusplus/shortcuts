@@ -1329,6 +1329,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // budget while a follow-up (which has no task config) cannot.
             const sendOptions = {
                 ...buildChatTurnSendOptions({
+                    dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'),
                     prompt: effectivePrompt,
                     agentMode,
                     policy,

@@ -6,7 +6,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 
 // Track all created bot instances
 let botInstances: Array<{
@@ -59,8 +58,6 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => {
             findChannelByName = vi.fn().mockResolvedValue({ id: 'channel-456', displayName: 'test' });
             createChannel = vi.fn().mockResolvedValue('channel-new');
         },
-        acquireTokenViaAzCli: vi.fn().mockResolvedValue('mock-az-token'),
-        acquireMcpOAuthToken: vi.fn().mockResolvedValue('mock-oauth-token'),
     };
 });
 
@@ -118,7 +115,7 @@ describe('TeamsBridge', () => {
 
     beforeEach(() => {
         botInstances = [];
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-bridge-test-'));
+        tmpDir = fs.mkdtempSync(path.join(process.cwd(), '.teams-bridge-test-'));
         wsRelay = new EventEmitter() as any;
         sseRelay = new EventEmitter() as any;
         const emitter = new EventEmitter();
@@ -145,6 +142,10 @@ describe('TeamsBridge', () => {
 
     function createBridge(configOverrides?: Partial<TeamsBridgeOptions['config']>): TeamsBridge {
         return new TeamsBridge({
+            getCredential: () => ({
+                getToken: vi.fn().mockResolvedValue('native-fixture-token'),
+                getAccount: () => undefined,
+            }) as any,
             config: {
                 enabled: true,
                 mode: 'graph',
@@ -165,6 +166,14 @@ describe('TeamsBridge', () => {
     }
 
     describe('start / stop', () => {
+        it.each(['graph', 'mcp'] as const)('preserves configured %s OAuth mode and forwards native demand acquisition', async mode => {
+            const bridge = createBridge({ mode });
+            await bridge.start();
+            expect(lastBot().opts.mode).toBe(mode);
+            expect(lastBot().opts.auth.bearerToken).toBeUndefined();
+            expect(await lastBot().opts.auth.acquireToken(new AbortController().signal)).toBe('native-fixture-token');
+            await bridge.stop();
+        });
         it.each(['amer', 'emea', 'apac', null, undefined] as const)('propagates region %s through start and reconnect', async ic3Region => {
             const bridge = createBridge({ ic3Region });
             await bridge.start();

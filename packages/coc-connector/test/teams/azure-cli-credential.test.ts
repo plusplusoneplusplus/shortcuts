@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthError, MicrosoftTokenProvider, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { TeamsAzureCliCredential } from '../../src/teams/azure-cli-credential';
-import { acquireTokenViaAzCli } from '../../src/teams/auth';
 import { GraphCredentialStore } from '../../src/teams/graph/graph-credential';
 import { GraphChannelReader } from '../../src/teams/graph/channel-reader';
 import { Ic3CredentialStore } from '../../src/teams/ic3/ic3-credential';
@@ -126,13 +125,6 @@ describe('Teams auth-sdk Azure CLI adapter', () => {
         credential.dispose();
     });
 
-    it('disposes the one-shot public helper on both success and failure', async () => {
-        await acquireTokenViaAzCli();
-        expect(native.dispose).toHaveBeenCalledTimes(1);
-        native.getToken.mockRejectedValueOnce(new AuthError('AccountMismatch'));
-        await expect(acquireTokenViaAzCli('https://ic3.teams.office.com')).rejects.toMatchObject({ code: 'AccountMismatch' });
-        expect(native.dispose).toHaveBeenCalledTimes(2);
-    });
 });
 
 describe('Teams Graph startup deadlines', () => {

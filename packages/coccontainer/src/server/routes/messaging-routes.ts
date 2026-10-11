@@ -83,13 +83,17 @@ export function installMessagingRoutes(table: RouteTable, runtime: ContainerRunt
 
     table.on('POST', '/api/container/messaging/teams/config', async ({ req, res }) => {
         const body = await readBody(req);
-        const { botName, channelId, enabled, teamName, channelName, mode, ic3Region } = body as TeamsConfigPatch;
+        const { botName, channelId, enabled, teamName, channelName, mode, ic3Region, mcpServerUrl, clientId, scope } = body as TeamsConfigPatch;
+        if (mode !== undefined && mode !== 'mcp' && mode !== 'graph') {
+            sendJson(res, { ok: false, error: 'Teams mode must be mcp or graph' }, 400);
+            return;
+        }
         if (ic3Region !== undefined && ic3Region !== null && !isIc3DirectMessageRegion(ic3Region)) {
             sendJson(res, { ok: false, error: 'IC3 region must be amer, emea, apac, or null (unconfigured)' }, 400);
             return;
         }
         const patch: TeamsConfigPatch = Object.fromEntries(
-            Object.entries({ botName, channelId, enabled, teamName, channelName, mode, ic3Region })
+            Object.entries({ botName, channelId, enabled, teamName, channelName, mode, ic3Region, mcpServerUrl, clientId, scope })
                 .filter(([, value]) => value !== undefined),
         );
         if (runtime.teamsBridge) {
@@ -102,6 +106,9 @@ export function installMessagingRoutes(table: RouteTable, runtime: ContainerRunt
         try {
             messagingConfig.saveTeamsConfig(patch);
             Object.assign(config.messaging.teams, patch);
+            if (mode !== undefined || mcpServerUrl !== undefined || clientId !== undefined || scope !== undefined) {
+                runtime.invalidateTeamsCredential();
+            }
             sendJson(res, { ok: true, message: 'Teams config saved (restart required)' });
         } catch (err: any) {
             sendJson(res, { ok: false, error: err.message });
