@@ -7,8 +7,8 @@
  * useSendMessage, useQueuedTaskPoll, and useChatWindowActions.
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { getCocClientFor, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting';
 import { patchSeenState } from '../../hooks/preferences/seenStateApi';
@@ -131,6 +131,8 @@ import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { popOutOpened } from '../../utils/popOutWindow';
 import { isConcreteChatProvider, resolveActiveChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
 import { RestartWithProviderButton } from './RestartWithProviderButton';
+import { useChatHistoryPagingEnabled } from './hooks/useChatHistoryPagingEnabled';
+import { useChatHistoryPaging } from './hooks/useChatHistoryPaging';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -194,6 +196,7 @@ export interface ChatDetailProps {
      * to highlight matches across the rendered turns while the search box is open.
      */
     searchHighlightQuery?: string;
+    targetTurnIndex?: number;
     /**
      * When true, suppresses the built-in ChatHeader entirely. Use when the
      * host surface (e.g. Notes Chat) renders its own compact header and would
@@ -219,17 +222,21 @@ export interface ChatDetailProps {
     hidePlanBanners?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sourceBaseUrl, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, onHeaderMetadataChange, hidePlanBanners = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sourceBaseUrl, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, targetTurnIndex, hideHeader = false, onHeaderMetadataChange, hidePlanBanners = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
-    const client = useCocClient(workspaceId);
+    const routedClient = useCocClient(workspaceId);
     const cloneBaseUrl = useCloneBaseUrl(workspaceId);
     const scopedOwner = useWorkspaceOwner(workspaceId);
-    const conversationStateKey = scopedOwner ? `${scopedOwner.selectionId}|${taskId}` : taskId;
-    const getOwnerProcess = useCallback((id: string) => scopedOwner
-        ? client.processes.get(id, { workspace: scopedOwner.workspaceId })
-        : client.processes.get(id), [client, scopedOwner]);
+    const historyOwner = scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId;
+    const historyBaseUrl = scopedOwner?.baseUrl ?? sourceBaseUrl ?? cloneBaseUrl;
+    const client = useMemo(() => historyBaseUrl ? getCocClientFor(historyBaseUrl) : routedClient, [historyBaseUrl, routedClient]);
+    const historyOwnerAvailable = !historyOwner?.startsWith('remote:') || !!historyBaseUrl;
+    const pagingEnabled = useChatHistoryPagingEnabled(historyBaseUrl, historyOwnerAvailable, taskId);
+    const conversationStateKey = scopedOwner ? `${scopedOwner.selectionId}|${taskId}`
+        : historyBaseUrl ? `${historyBaseUrl}|${historyOwner ?? ''}|${taskId}` : taskId;
+    const historyRef = useRef<ReturnType<typeof useChatHistoryPaging> | null>(null);
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -1463,9 +1470,47 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         turnsRef.current = resolved;
         setTurns(resolved);
         if (taskId && !resolved.some(t => t.streaming)) {
-            appDispatch({ type: 'CACHE_CONVERSATION', processId: conversationStateKey, turns: resolved });
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: conversationStateKey, turns: historyRef.current?.cacheTurns(resolved) ?? resolved, ...(pagingEnabled ? { paged: true } : {}) });
         }
-    }, [taskId, conversationStateKey, appDispatch]);
+    }, [taskId, conversationStateKey, appDispatch, pagingEnabled]);
+
+    const resetHistoryScroll = useCallback(() => {
+        isInitialLoadRef.current = true;
+        setIsScrolledUp(false);
+    }, []);
+    const historyPaging = useChatHistoryPaging({
+        enabled: pagingEnabled,
+        scopeKey: `${conversationStateKey}|${historyBaseUrl ?? ''}`,
+        client,
+        workspaceId: scopedOwner?.workspaceId ?? (pagingEnabled ? workspaceId : undefined),
+        processId, turns, turnsRef, setTurns: setTurnsAndRef,
+        scrollRef: conversationContainerRef, onReset: resetHistoryScroll,
+    });
+    historyRef.current = historyPaging;
+    const getOwnerProcess = historyPaging.readProcess;
+    useEffect(() => {
+        if (!pagingEnabled || loading || !historyPaging.history) return;
+        const navigate = (event?: Event) => {
+            const detail = (event as CustomEvent | undefined)?.detail;
+            if (detail?.taskId && detail.taskId !== taskId) return;
+            if (detail?.ownerKey && detail.ownerKey !== conversationStateKey) return;
+            if (!detail && targetTurnIndex == null) {
+                const path = window.location.hash.split('?')[0];
+                const linkedChat = path.split('/').at(-1);
+                if (path.includes('/') && linkedChat !== encodeURIComponent(taskId) && linkedChat !== encodeURIComponent(processId ?? '')) return;
+            }
+            const params = new URLSearchParams(window.location.hash.split('?')[1] ?? window.location.search);
+            const raw = detail?.turnIndex ?? targetTurnIndex ?? params.get('turnIndex') ?? params.get('turn');
+            if (raw != null && Number.isInteger(Number(raw))) void historyPaging.navigateToTurn(Number(raw));
+        };
+        navigate();
+        window.addEventListener('hashchange', navigate);
+        window.addEventListener('coc-jump-to-turn', navigate);
+        return () => {
+            window.removeEventListener('hashchange', navigate);
+            window.removeEventListener('coc-jump-to-turn', navigate);
+        };
+    }, [pagingEnabled, loading, taskId, processId, conversationStateKey, targetTurnIndex, !!historyPaging.history]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const removeStreamingPlaceholder = useCallback(() => {
         setTurnsAndRef(prev => {
@@ -1717,6 +1762,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         task,
         processId,
         workspaceId,
+        sourceBaseUrl: historyBaseUrl,
         setIsStreaming,
         setTask,
         setProcessDetails,
@@ -1731,6 +1777,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setRalphGrillPlanningProgress,
         setTurnsAndRef,
         refreshConversation,
+        onConversationSnapshot: (snapshotTurns, page) => {
+            setTurnsAndRef(historyRef.current?.acceptSnapshot(snapshotTurns, page) ?? snapshotTurns);
+        },
         onSendComplete,
         onAskUserBatch: (batch) => {
             setRalphGrillPlanningProgress(null);
@@ -1773,7 +1822,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         },
     });
 
-    useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef, workspaceId });
+    useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef, workspaceId, readProcess: getOwnerProcess });
 
     useEffect(() => {
         setRalphGrillPlanningProgress(null);
@@ -1947,6 +1996,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     // Load task + conversation on mount / taskId change
     useEffect(() => {
+        if (pagingEnabled === null) return;
         isInitialLoadRef.current = true;
         const loadId = ++loadCounterRef.current;
         const currentTaskId = taskId;
@@ -1997,7 +2047,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     // background so re-visits feel instant. Most clicks land on
                     // a session the user has already viewed in this tab.
                     const cached = appState.conversationCache[conversationStateKey];
-                    const cacheHit = cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS);
+                    const cacheHit = !pagingEnabled && cached && !cached.paged && (Date.now() - cached.cachedAt < CACHE_TTL_MS);
                     if (cacheHit) {
                         setTurnsAndRef(cached.turns);
                         setLoading(false);
@@ -2093,7 +2143,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 const pid = loadedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
 
                 const cached = appState.conversationCache[conversationStateKey];
-                if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
+                if (!pagingEnabled && cached && !cached.paged && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
                     setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
                     // Background-refresh metadata
@@ -2182,12 +2232,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         })();
 
         return () => {
+            ++loadCounterRef.current;
             stopStreaming();
             closeFollowUpStream();
             // Save draft on navigate-away; clear if input is empty
             setDraft(conversationStateKey, followUpInputRef.current, selectedModeRef.current);
         };
-    }, [client, taskId, conversationStateKey, getOwnerProcess]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [client, taskId, conversationStateKey, getOwnerProcess, pagingEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync mode selector with the loaded task's mode. Depends on the task
     // object (not just its id): a freshly enqueued chat's first snapshot may
@@ -2282,7 +2333,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         })();
     }, [client, taskId, queueState.refreshVersion, setTurnsAndRef, getOwnerProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Scroll to bottom on new turns
+    // Initial positioning precedes the history observer's first intersection.
+    useLayoutEffect(() => {
+        if (pagingEnabled && !loading && turns.length > 0 && isInitialLoadRef.current && conversationContainerRef.current) {
+            isInitialLoadRef.current = false;
+            conversationContainerRef.current.scrollTop = conversationContainerRef.current.scrollHeight;
+        }
+    }, [pagingEnabled, turns, loading]);
+
+    // Scroll to bottom on new turns.
     useEffect(() => {
         if (!loading && turns.length > 0 && conversationContainerRef.current) {
             const el = conversationContainerRef.current;
@@ -2382,6 +2441,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     }
                     : t
             ));
+            historyRef.current?.refreshPins();
         }).catch(() => {
             setTurnsAndRef(prev => prev.map(t =>
                 t.turnIndex === turnIndex
@@ -2908,6 +2968,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         loading={loading}
                         error={error}
                         turns={turns}
+                        historyPaging={pagingEnabled ? historyPaging : undefined}
                         pendingQueue={pendingQueue}
                         backgroundTasks={backgroundTasks}
                         pendingAskUserBatch={pendingAskUserBatch}
@@ -2985,6 +3046,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             scrollContainerRef={conversationContainerRef}
                             turnsContainerRef={turnsContainerRef}
                             isStreaming={task?.status === 'running'}
+                            pagingEnabled={pagingEnabled === true}
+                            hasMore={historyPaging.history?.hasMore}
+                            onNavigateToTurn={pagingEnabled ? historyPaging.navigateToTurn : undefined}
                         />
                     )}
                     </>

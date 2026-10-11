@@ -44,6 +44,7 @@ describe('adaptSearchResultToTask', () => {
         expect(task.endTime).toBe('2026-01-15T10:00:00Z');
         expect(task._searchSnippet).toBe('found <mark>query</mark> in response');
         expect(task._isSearchResult).toBe(true);
+        expect(task._searchTurnIndex).toBe(0);
     });
 
     it('falls back to processId when processTitle is undefined', () => {
@@ -123,6 +124,7 @@ describe('adaptSearchResults', () => {
         expect(tasks).toHaveLength(2);
         expect(tasks[0].id).toBe('p1');
         expect(tasks[0]._isSearchResult).toBe(true);
+        expect(tasks[0]._searchTurnIndex).toBe(1);
         expect(tasks[1].id).toBe('p2');
     });
 

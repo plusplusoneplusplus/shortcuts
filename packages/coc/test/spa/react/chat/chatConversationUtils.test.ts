@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { getConversationTurns, getRetryProvider } from '../../../../src/server/spa/client/react/features/chat/conversation/chatConversationUtils';
 
 describe('getConversationTurns', () => {
+    it('keeps an empty paged response empty rather than synthesizing the full prompt or task', () => {
+        expect(getConversationTurns({
+            history: { oldestTurnIndex: null, hasMore: false, totalTurns: 0, historyRevision: 0 },
+            process: { conversationTurns: [], fullPrompt: 'must not hydrate', result: 'must not hydrate' },
+        }, { payload: { prompt: 'must not hydrate' } })).toEqual([]);
+        expect(getConversationTurns({ turns: [], historyRevision: 0 }, { payload: { prompt: 'must not hydrate' } })).toEqual([]);
+    });
     describe('process.conversationTurns (highest priority)', () => {
         it('returns conversationTurns when present on process', () => {
             const turns = [{ role: 'user', content: 'hello', timeline: [] }];

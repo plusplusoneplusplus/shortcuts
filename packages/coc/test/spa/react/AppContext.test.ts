@@ -73,6 +73,14 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
 }
 
 describe('AppContext reducer', () => {
+    it('marks latest-page caches so full-history readers can reject them after a live flag change', () => {
+        const paged = appReducer(makeState(), {
+            type: 'CACHE_CONVERSATION', processId: 'owner|chat', turns: [{ turnIndex: 170 }], paged: true,
+        });
+        expect(paged.conversationCache['owner|chat'].paged).toBe(true);
+        const full = appReducer(paged, { type: 'CACHE_CONVERSATION', processId: 'owner|chat', turns: [{ turnIndex: 0 }] });
+        expect(full.conversationCache['owner|chat']).not.toHaveProperty('paged');
+    });
     it('clears bot presentation on authoritative process-summary omission without losing other detail', () => {
         const control = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' };
         const state = makeState({ processes: [{ id: 'p1', botControl: control, metadata: { model: 'example-model' } }] });

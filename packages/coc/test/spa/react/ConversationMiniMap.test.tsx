@@ -26,6 +26,19 @@ import {
 } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
+describe('paged minimap', () => {
+    it('keeps larger loaded ranges visible and navigates by actual turnIndex with a more-above cap', () => {
+        const navigate = vi.fn();
+        const turns = makeTurns(60).map((turn, index) => ({ ...turn, turnIndex: index + 140 }));
+        render(<ConversationMiniMap turns={turns} pagingEnabled hasMore onNavigateToTurn={navigate}
+            scrollContainerRef={{ current: createScrollContainer() }} turnsContainerRef={{ current: createTurnsContainer(60) }} />);
+        expect(screen.getByTestId('minimap-more-above')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('minimap-strip-0'));
+        expect(navigate).toHaveBeenCalledWith(140);
+        expect(screen.getByTestId('minimap-strip-0').dataset.turnIndex).toBe('140');
+    });
+});
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConversationTurn {

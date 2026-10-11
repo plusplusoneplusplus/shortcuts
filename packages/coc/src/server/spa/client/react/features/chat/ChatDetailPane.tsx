@@ -34,9 +34,10 @@ export interface ChatDetailPaneProps {
      * the open conversation highlights matches while the search box is open.
      */
     searchHighlightQuery?: string;
+    targetTurnIndex?: number;
 }
 
-export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSelectionId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun, searchHighlightQuery }: ChatDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSelectionId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun, searchHighlightQuery, targetTurnIndex }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
     const owner = useWorkspaceOwner(workspaceId);
@@ -92,5 +93,5 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSele
         );
     }
 
-    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} searchHighlightQuery={searchHighlightQuery} />;
+    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} searchHighlightQuery={searchHighlightQuery} targetTurnIndex={targetTurnIndex} />;
 }

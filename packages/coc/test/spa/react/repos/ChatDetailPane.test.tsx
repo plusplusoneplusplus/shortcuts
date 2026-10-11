@@ -9,7 +9,7 @@ import React from 'react';
 // Mock child components to isolate ChatDetailPane logic
 vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () => ({
     ChatDetail: (props: any) =>
-        React.createElement('div', { 'data-testid': 'activity-chat-detail' }, `task=${props.taskId}`),
+        React.createElement('div', { 'data-testid': 'activity-chat-detail', 'data-target-turn': props.targetTurnIndex }, `task=${props.taskId}`),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/NewChatArea', () => ({
@@ -28,6 +28,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext',
 import { ChatDetailPane } from '../../../../src/server/spa/client/react/features/chat/ChatDetailPane';
 
 describe('ChatDetailPane', () => {
+    it('forwards an unloaded search target to the shared conversation navigator', () => {
+        render(<ChatDetailPane selectedTaskId="task-1" selectedTask={{}} targetTurnIndex={5} />);
+        expect(screen.getByTestId('activity-chat-detail').dataset.targetTurn).toBe('5');
+    });
     it('renders NewChatArea when no task is selected', () => {
         render(<ChatDetailPane selectedTaskId={null} selectedTask={null} workspaceId="ws-1" />);
         const newChat = screen.getByTestId('new-chat-area');

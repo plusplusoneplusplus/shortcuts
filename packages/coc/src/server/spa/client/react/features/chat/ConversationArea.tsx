@@ -19,6 +19,7 @@ import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/mod
 import type { ChatMode } from '../../repos/modeConfig';
 import { getProviderLabel, type ChatProvider } from './ProviderBadge';
 import type { ClientSideNote, QuickAskSelection } from './quick-ask/types';
+import type { useChatHistoryPaging } from './hooks/useChatHistoryPaging';
 
 export const INTERRUPTED_TURN_CONTINUE_MESSAGE = 'Please continue from where the last response was interrupted.';
 export const INTERRUPTED_TURN_RETRY_MESSAGE = 'The previous response was interrupted by a temporary authorization/session error. Please retry the prior request and continue.';
@@ -222,6 +223,7 @@ export interface ConversationAreaProps {
      * scrolled into view; clearing it (empty/undefined) tears the highlight down.
      */
     searchHighlightQuery?: string;
+    historyPaging?: ReturnType<typeof useChatHistoryPaging>;
 }
 
 export function ConversationArea({
@@ -289,6 +291,7 @@ export function ConversationArea({
     compactionError,
     compactInstructions,
     searchHighlightQuery,
+    historyPaging,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -296,6 +299,8 @@ export function ConversationArea({
         scrollRef,
         containerRef,
         inputRef,
+        hasMore: historyPaging?.history?.hasMore,
+        onNavigateToTurn: historyPaging?.navigateToTurn,
     });
     // AC-04/AC-05: highlight the chat-list search query across rendered turns.
     useConversationSearchHighlight({
@@ -332,10 +337,27 @@ export function ConversationArea({
             aria-label="Chat conversation"
             data-current-turn={currentTurnIndex ?? undefined}
         >
+            {!loading && !isPending && historyPaging?.history && (
+                <>
+                    <div ref={historyPaging.sentinelRef} data-testid="history-sentinel" style={{ overflowAnchor: 'none' }} />
+                    <div role="status" aria-live="polite" data-testid="history-status"
+                        className="flex items-center justify-center gap-2 text-xs text-[#848484] dark:text-[#999]"
+                        style={{ height: 32, overflowAnchor: 'none' }}>
+                        {historyPaging.loading ? <><Spinner size="sm" className="!h-[14px] !w-[14px]" />Loading earlier messages...</>
+                            : historyPaging.error ? <>⚠ Couldn't load earlier messages</>
+                                : !historyPaging.history.hasMore ? <><span className="flex-1 border-t border-current opacity-20" />Start of conversation<span className="flex-1 border-t border-current opacity-20" /></> : null}
+                    </div>
+                    {historyPaging.target != null && (
+                        <div role="status" aria-live="polite" className="animate-pulse text-xs text-[#848484]"
+                            data-testid="history-jump-placeholder">Loading turn #{historyPaging.target}...</div>
+                    )}
+                </>
+            )}
             <div
                 ref={scrollRef}
                 data-testid="activity-chat-conversation"
                 className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
+                style={historyPaging ? { overflowAnchor: 'none' } : undefined}
             >
                 {isPending ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
@@ -367,7 +389,10 @@ export function ConversationArea({
                     <div className="space-y-3" ref={turnsContainerRef}>
                         {/* Pinned messages section */}
                         {onPinTurn && (() => {
-                            const pinnedTurns = turns.filter(t => t.pinnedAt && !t.deletedAt);
+                            const pinnedTurns = historyPaging ? [
+                                ...historyPaging.pins.filter(pin => !turns.some(t => t.turnIndex === pin.turnIndex)),
+                                ...turns.filter(t => t.pinnedAt),
+                            ].filter(t => !t.deletedAt) : turns.filter(t => t.pinnedAt && !t.deletedAt);
                             if (pinnedTurns.length === 0) return null;
                             return (
                                 <details data-pinned-section className="border border-amber-300/30 dark:border-amber-500/20 rounded-lg p-2 mb-2">
@@ -376,6 +401,9 @@ export function ConversationArea({
                                     </summary>
                                     <div className="mt-2 space-y-2">
                                         {pinnedTurns.sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? '')).map((turn, i) => (
+                                            <div key={`pinned-${turn.turnIndex ?? i}`}>
+                                            {historyPaging && <button type="button" className="text-xs text-[#848484]"
+                                                onClick={() => void historyPaging.navigateToTurn(turn.turnIndex ?? i)}>Go to turn #{turn.turnIndex ?? i}</button>}
                                             <ConversationTurnBubble
                                                 sourceSelectionId={sourceSelectionId}
                                                 sourceBaseUrl={sourceBaseUrl}
@@ -386,8 +414,8 @@ export function ConversationArea({
                                                 turnIndex={turn.turnIndex}
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
-                                                onRewindTurn={onRewindTurn}
-                                                onEditTurn={onEditTurn}
+                                                onRewindTurn={turns.some(t => t.turnIndex === turn.turnIndex) ? onRewindTurn : undefined}
+                                                onEditTurn={turns.some(t => t.turnIndex === turn.turnIndex) ? onEditTurn : undefined}
                                                 editTurnDisabledReason={editTurnDisabledReason}
                                                 inlineEditor={turn.turnIndex != null ? renderInlineTurnEditor?.(turn.turnIndex) : undefined}
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
@@ -400,6 +428,7 @@ export function ConversationArea({
                                                 rewindProvider={rewindProvider}
                                                 activeProviderSegment={activeProviderSegment}
                                             />
+                                            </div>
                                         ))}
                                     </div>
                                 </details>

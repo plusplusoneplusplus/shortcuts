@@ -169,6 +169,7 @@ export interface ClientConversationTurn {
 export interface ConversationCacheEntry {
     turns: ClientConversationTurn[];
     cachedAt: number;
+    paged?: boolean;
 }
 
 /** Summary of a chat session for sidebar display */

@@ -16,10 +16,11 @@ export interface UseQueuedTaskPollOptions {
     setProcessDetails: (p: any) => void;
     setTurnsAndRef: SetTurnsAndRef;
     workspaceId?: string;
+    readProcess?: (id: string) => Promise<any>;
 }
 
 /** Polls every 2 s while task is queued, transitioning to running state when the server starts it. */
-export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef, workspaceId }: UseQueuedTaskPollOptions): void {
+export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef, workspaceId, readProcess }: UseQueuedTaskPollOptions): void {
     const client = useCocClient(workspaceId);
     const owner = useWorkspaceOwner(workspaceId);
     useEffect(() => {
@@ -43,7 +44,7 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
                     // synthesised `queued` processDetails in place and keeping the
                     // PendingTaskInfoPanel visible after task completion.
                     const pid = t.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(bareTaskId));
-                    const procData = workspaceId
+                    const procData = readProcess ? await readProcess(pid) : workspaceId
                         ? await client.processes.get(pid, owner ? { workspace: owner.workspaceId } : undefined)
                         : await fetchApi(`/processes/${encodeURIComponent(pid)}`);
                     if (cancelled) return;
@@ -65,5 +66,5 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
             } catch { /* ignore */ }
         }, 2000);
         return () => { cancelled = true; clearInterval(interval); };
-    }, [taskId, task?.status, setTurnsAndRef, workspaceId, client, owner]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [taskId, task?.status, setTurnsAndRef, workspaceId, client, owner, readProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 }
