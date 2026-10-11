@@ -104,9 +104,13 @@ async function checkDomCompositing(main, guest) {
     const pagePixel = [...image.crop({ x: 650, y: 200, width: 1, height: 1 }).toBitmap()];
     assert.deepEqual(menuPixel, [0, 0, 255, 255]);
     assert.deepEqual(pagePixel, [255, 0, 0, 255]);
+    // Native mouse input requires the owner window and renderer to have focus.
+    main.focus();
+    main.webContents.focus();
+    await renderer(`document.getElementById('overlay-menu').focus()`);
     main.webContents.sendInputEvent({ type: 'mouseDown', x: 460, y: 100, button: 'left', clickCount: 1 });
     main.webContents.sendInputEvent({ type: 'mouseUp', x: 460, y: 100, button: 'left', clickCount: 1 });
-    await sleep(100);
+    for (let i = 0; i < 100 && !await renderer('window.__menuClicked'); i++) await sleep(25);
     assert.equal(await renderer('window.__menuClicked'), true);
     const ticks = await guest.executeJavaScript('window.__liveTicks');
     assert(ticks > firstTicks);
