@@ -14,9 +14,10 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 import { renderWithProviders } from '../test-utils';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 // ── Mutable quota state controlled per test ──────────────────────────────────
@@ -86,7 +87,8 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/hooks/useWork
     useWorkflowProgress: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/utils/config')>(),
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isChatFoldersEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
@@ -588,5 +590,82 @@ describe('PauseMarkerRow — fractional-hour formatting', () => {
             queued: [{ id: 'pm-timed', kind: 'pause-marker', durationHours: 2 }],
         });
         expect(screen.getByText('Queue pauses here · 2h')).toBeTruthy();
+    });
+});
+
+
+describe('configured scheduler delay hints', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockQuotaData = null;
+        applyRuntimeConfigPatch({ schedulerDelayHintEnabled: true });
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    });
+
+    it.each([undefined, 0, -1, NaN, Infinity, 1.5, 1441])('hides Off/unavailable/invalid configuration (%s)', minutes => {
+        renderPane({ taskDelayMinutes: minutes, autopilotTaskDelayMinutes: minutes });
+        expect(screen.queryByTestId('scheduler-delay-hint-all')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('scheduler-delay-hint-autopilot')).not.toBeInTheDocument();
+        expect(screen.getByTestId('repo-pause-resume-btn')).toHaveAccessibleName('ALL');
+    });
+
+    it.each([[1, '1m'], [15, '15m'], [60, '1h'], [7, '7m'], [90, '90m'], [1440, '24h']])('shows preset/custom %s minutes without a running cooldown', (minutes, short) => {
+        renderPane({ taskDelayMinutes: minutes });
+        expect(screen.getByTestId('scheduler-delay-hint-all')).toHaveTextContent(short);
+        const button = screen.getByTestId('repo-pause-resume-btn');
+        const label = `Pause all tasks. Delay between tasks: ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} (ALL scope: all tasks)`;
+        expect(button).toHaveAccessibleName(label);
+        expect(button).toHaveAttribute('title', label);
+        expect(screen.queryByTestId('scheduler-delay-hint-autopilot')).not.toBeInTheDocument();
+    });
+
+    it('keeps scopes independent and does not infer configuration from countdowns', () => {
+        const { props, rerender } = renderPane({ taskDelayMinutes: 5, autopilotTaskDelayMinutes: 15 });
+        expect(screen.getByTestId('scheduler-delay-hint-all')).toHaveTextContent('5m');
+        expect(screen.getByTestId('scheduler-delay-hint-autopilot')).toHaveTextContent('15m');
+        expect(screen.getByTestId('autopilot-pause-resume-btn')).toHaveAccessibleName('Pause autopilot tasks. Delay between tasks: 15 minutes (AP scope: autopilot tasks)');
+        rerender(<ChatListPane {...props} taskDelayMinutes={undefined} autopilotTaskDelayMinutes={7} taskDelayUntil={props.now + 60_000} />);
+        expect(screen.queryByTestId('scheduler-delay-hint-all')).not.toBeInTheDocument();
+        expect(screen.getByTestId('scheduler-delay-hint-autopilot')).toHaveTextContent('7m');
+        expect(screen.getByTestId('task-delay-countdown-all')).toBeInTheDocument();
+    });
+
+    it('updates on confirmed live configuration and removes hints on Off', () => {
+        const { props, rerender } = renderPane({ taskDelayMinutes: 15, autopilotTaskDelayMinutes: 7 });
+        rerender(<ChatListPane {...props} taskDelayMinutes={30} autopilotTaskDelayMinutes={0} />);
+        expect(screen.getByTestId('scheduler-delay-hint-all')).toHaveTextContent('30m');
+        expect(screen.queryByTestId('scheduler-delay-hint-autopilot')).not.toBeInTheDocument();
+        rerender(<ChatListPane {...props} taskDelayMinutes={undefined} autopilotTaskDelayMinutes={undefined} />);
+        expect(screen.queryByTestId('scheduler-delay-hint-all')).not.toBeInTheDocument();
+    });
+
+    it('coexists with pause dots and preserves resume and menu actions', () => {
+        const { props, rerender } = renderPane({ isPaused: true, isAutopilotPaused: true, taskDelayMinutes: 15, autopilotTaskDelayMinutes: 7 });
+        const hint = screen.getByTestId('scheduler-delay-hint-all');
+        expect(hint).toHaveTextContent('15m');
+        expect(hint).toHaveClass('text-[#606060]', 'dark:text-[#b0b0b0]');
+        expect(screen.getByTestId('repo-pause-resume-btn').querySelector('.bg-amber-500')).not.toBeNull();
+        fireEvent.click(screen.getByTestId('repo-pause-resume-btn'));
+        expect(props.onPauseResume).toHaveBeenCalledOnce();
+        expect(screen.getByTestId('scheduler-delay-hint-autopilot')).toHaveTextContent('7m');
+        fireEvent.click(screen.getByTestId('autopilot-pause-resume-btn'));
+        expect(props.onPauseResumeAutopilot).toHaveBeenCalledOnce();
+        rerender(<ChatListPane {...props} isAutopilotPaused={false} />);
+        openAutopilotMenu();
+        expect(screen.getByTestId('task-delay-autopilot-custom')).toHaveTextContent('7m');
+        expect(props.onSetTaskDelay).not.toHaveBeenCalled();
+    });
+
+    it('obeys live flag changes without modifying configured values', () => {
+        applyRuntimeConfigPatch({ schedulerDelayHintEnabled: false });
+        renderPane({ taskDelayMinutes: 15, autopilotTaskDelayMinutes: 7 });
+        expect(screen.queryByTestId('scheduler-delay-hint-all')).not.toBeInTheDocument();
+        act(() => applyRuntimeConfigPatch({ schedulerDelayHintEnabled: true }));
+        expect(screen.getByTestId('scheduler-delay-hint-all')).toHaveTextContent('15m');
+        act(() => applyRuntimeConfigPatch({ schedulerDelayHintEnabled: false }));
+        expect(screen.queryByTestId('scheduler-delay-hint-all')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('scheduler-delay-hint-autopilot')).not.toBeInTheDocument();
+        openAllMenu();
+        expect(screen.getByTestId('task-delay-all-15')).toHaveTextContent('✓');
     });
 });

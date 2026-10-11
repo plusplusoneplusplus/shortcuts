@@ -107,6 +107,14 @@ function mergeQueueStats(stats: any, fallback?: QueueStats): QueueStats {
         ...createEmptyQueueStats(),
         ...(fallback || {}),
         ...(stats || {}),
+        // Delay fields are optional in server snapshots: omission means Off/expired.
+        // Retain them only when this update carries no stats at all.
+        ...(stats ? {
+            taskDelayMinutes: stats.taskDelayMinutes,
+            taskDelayUntil: stats.taskDelayUntil,
+            autopilotTaskDelayMinutes: stats.autopilotTaskDelayMinutes,
+            autopilotTaskDelayUntil: stats.autopilotTaskDelayUntil,
+        } : {}),
     };
 }
 

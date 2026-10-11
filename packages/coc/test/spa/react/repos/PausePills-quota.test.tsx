@@ -84,6 +84,7 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/hooks/useWork
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isFeatureEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isChatFoldersEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,

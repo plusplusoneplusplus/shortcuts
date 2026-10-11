@@ -55,6 +55,8 @@ import { isSpawnedTreeViewEnabled, loadCollapsedSpawnedRootIds, toggleCollapsedS
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
 import { isRalphEnabled, isCronEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled, isCommitChatLensEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
+import { useSchedulerDelayHintEnabled } from '../../hooks/feature-flags/useSchedulerDelayHintEnabled';
+import { SchedulerDelayHint, schedulerDelayLabel } from './SchedulerDelayHint';
 import { useChatFoldersEnabled } from '../../hooks/feature-flags/useChatFoldersEnabled';
 import { useChatFolders } from './hooks/useChatFolders';
 import { useChatFolderMembership } from './hooks/useChatFolderMembership';
@@ -1501,6 +1503,9 @@ export function ChatListPane({
     // panes) → default origin client, unchanged.
     const cloneClient = useCocClient(workspaceId);
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
+    const schedulerDelayHintEnabled = useSchedulerDelayHintEnabled();
+    const allDelayLabel = schedulerDelayHintEnabled ? schedulerDelayLabel(taskDelayMinutes, 'all') : undefined;
+    const autopilotDelayLabel = schedulerDelayHintEnabled ? schedulerDelayLabel(autopilotTaskDelayMinutes, 'autopilot') : undefined;
     const [importCopilotOpen, setImportCopilotOpen] = useState(false);
     const handleCopilotChatImported = useCallback((targetWorkspaceId: string, processId: string) => {
         setImportCopilotOpen(false);
@@ -4714,7 +4719,7 @@ export function ChatListPane({
                 {activeTab !== 'chats' && (
                     <React.Fragment>
                 <div
-                    className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
+                    className="scheduler-delay-toolbar sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                     data-testid="chat-list-fixed-header"
                 >
                 {repoGate && (
@@ -4842,7 +4847,8 @@ export function ChatListPane({
                                 type="button"
                                 disabled={isPauseResumeLoading}
                                 onClick={() => isPaused ? onPauseResume() : setPauseMenuScope(pauseMenuScope === 'all' ? null : 'all')}
-                                title={isPaused ? 'Resume all tasks' : 'Pause all tasks'}
+                                title={[isPaused ? 'Resume all tasks' : 'Pause all tasks', allDelayLabel].filter(Boolean).join('. ')}
+                                aria-label={allDelayLabel ? `${isPaused ? 'Resume all tasks' : 'Pause all tasks'}. ${allDelayLabel}` : undefined}
                                 data-testid="repo-pause-resume-btn"
                                 className={cn(
                                     'inline-flex items-center gap-1.5 px-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
@@ -4871,6 +4877,7 @@ export function ChatListPane({
                                 >
                                     ALL
                                 </span>
+                                {allDelayLabel && <SchedulerDelayHint minutes={taskDelayMinutes!} scope="all" />}
                                 {isPaused && (
                                     <>
                                         {pauseSource === 'quota' && (
@@ -4911,7 +4918,8 @@ export function ChatListPane({
                                         type="button"
                                         disabled={isAutopilotPauseLoading}
                                         onClick={() => isAutopilotPaused ? onPauseResumeAutopilot() : setPauseMenuScope(pauseMenuScope === 'autopilot' ? null : 'autopilot')}
-                                        title={isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}
+                                        title={[isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks', autopilotDelayLabel].filter(Boolean).join('. ')}
+                                        aria-label={autopilotDelayLabel ? `${isAutopilotPaused ? 'Resume autopilot tasks' : 'Pause autopilot tasks'}. ${autopilotDelayLabel}` : undefined}
                                         data-testid="autopilot-pause-resume-btn"
                                         className={cn(
                                             'inline-flex items-center gap-1.5 px-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
@@ -4940,6 +4948,7 @@ export function ChatListPane({
                                         >
                                             AP
                                         </span>
+                                        {autopilotDelayLabel && <SchedulerDelayHint minutes={autopilotTaskDelayMinutes!} scope="autopilot" />}
                                         {isAutopilotPaused && (
                                             <>
                                                 {autopilotPauseSource === 'quota' && (

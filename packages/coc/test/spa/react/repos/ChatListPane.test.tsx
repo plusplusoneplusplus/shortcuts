@@ -153,6 +153,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota',
 
 // ── Utilities / config ──
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isFeatureEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isChatFoldersEnabled: () => false,
     isContainerMode: () => false,

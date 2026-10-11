@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import {
+    aggregateStats,
     getRepoIdentifierFromQuery,
     serializeTask,
     serializeTaskSummary,
@@ -369,5 +370,24 @@ describe('getRepoIdentifierFromQuery', () => {
         expect(getRepoIdentifierFromQuery({ workspace: '', repoId: 'repo-a' })).toBe('repo-a');
         expect(getRepoIdentifierFromQuery({ workspace: ['workspace-a', 'workspace-b'] })).toBe('workspace-a');
         expect(getRepoIdentifierFromQuery({ workspace: [], repoId: [] })).toBeUndefined();
+    });
+});
+
+
+describe('configured delay aggregate visibility', () => {
+    it.each([
+        [[15, 15], 15],
+        [[15, 7], undefined],
+        [[15, undefined], undefined],
+        [[undefined, undefined], undefined],
+    ])('reports ALL only when member settings agree (%j)', (values, expected) => {
+        const queues = new Map(values.map((minutes, index) => [String(index), {
+            getStats: () => ({ queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0,
+                isPaused: false, isDraining: false, taskDelayMinutes: minutes, autopilotTaskDelayMinutes: 7 }),
+        }]));
+        const bridge = { registry: { getAllQueues: () => queues } } as unknown as Parameters<typeof aggregateStats>[0];
+        const stats = aggregateStats(bridge);
+        expect(stats.taskDelayMinutes).toBe(expected);
+        expect(stats.autopilotTaskDelayMinutes).toBe(7);
     });
 });

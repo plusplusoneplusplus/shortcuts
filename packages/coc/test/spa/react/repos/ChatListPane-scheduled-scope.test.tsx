@@ -22,6 +22,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 
 let cronEnabledValue = false;
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isFeatureEnabled: () => false,
     isChatFoldersEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
     isContainerMode: () => false,

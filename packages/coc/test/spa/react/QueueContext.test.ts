@@ -188,6 +188,24 @@ describe('QueueContext reducer', () => {
             expect(result.repoQueueMap['ws-1'].stats.taskDelayMinutes).toBe(15);
         });
 
+        it.each(['REPO_QUEUE_UPDATED', 'REPO_QUEUE_STATS_UPDATED'] as const)('clears omitted delay configuration/deadlines in %s snapshots', type => {
+            let state = queueReducer(makeState(), {
+                type: 'REPO_QUEUE_STATS_UPDATED', repoId: 'ws-1',
+                stats: { taskDelayMinutes: 15, taskDelayUntil: 100, autopilotTaskDelayMinutes: 7, autopilotTaskDelayUntil: 200 },
+            });
+            state = queueReducer(state, { type: 'REPO_QUEUE_UPDATED', repoId: 'ws-1', queue: { queued: [], running: [] } });
+            expect(state.repoQueueMap['ws-1'].stats.taskDelayMinutes).toBe(15);
+            state = queueReducer(state, type === 'REPO_QUEUE_UPDATED'
+                ? { type, repoId: 'ws-1', queue: { stats: { taskDelayMinutes: 30, isPaused: true } } }
+                : { type, repoId: 'ws-1', stats: { taskDelayMinutes: 30, isPaused: true } });
+            expect(state.repoQueueMap['ws-1'].stats).toMatchObject({ taskDelayMinutes: 30, isPaused: true });
+            expect(state.repoQueueMap['ws-1'].stats.taskDelayUntil).toBeUndefined();
+            expect(state.repoQueueMap['ws-1'].stats.autopilotTaskDelayMinutes).toBeUndefined();
+            expect(state.repoQueueMap['ws-1'].stats.autopilotTaskDelayUntil).toBeUndefined();
+            state = queueReducer(state, { type: 'REPO_QUEUE_STATS_UPDATED', repoId: 'ws-1', stats: {} });
+            expect(state.repoQueueMap['ws-1'].stats.taskDelayMinutes).toBeUndefined();
+        });
+
         it('creates a repo entry when only stats are known', () => {
             const state = makeState();
 

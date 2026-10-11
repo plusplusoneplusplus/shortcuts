@@ -116,6 +116,7 @@ interface DashboardConfig {
     railGitSummaryEnabled?: boolean;
     /** Whether the collapsed workspace rail mirrors the Admin and quota controls. Default false. */
     railStatusActionsEnabled?: boolean;
+    schedulerDelayHintEnabled?: boolean;
     /** Whether chat composers show the client-side English word hint. Default true. */
     composerWordHintEnabled?: boolean;
     /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */

@@ -23,6 +23,7 @@ import { renderWithProviders } from '../test-utils';
 import { useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 import { useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 // ── Mock child components ──────────────────────────────────────────────
@@ -201,6 +202,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 // ── Mock fetchApi ──────────────────────────────────────────────────────
 
 const mockFetchApi = vi.fn();
+const mockRemoteQueue = vi.fn();
 const mockSetPinOrder = vi.fn();
 const mockPinned = vi.fn(async () => ({ entries: [] as any[] }));
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -208,6 +210,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getCocClientFor: (baseUrl: string) => ({
+        options: { baseUrl },
+        queue: { list: (query: any) => mockRemoteQueue(baseUrl, query) },
+        workspaces: { history: async () => ({ history: [] }) },
+        processes: { listGroupPins: async () => ({ pins: [] }) },
+    }),
     getSpaCocClient: () => ({
         workspaces: {
             history: (workspaceId: string, query?: { limit?: number; offset?: number }) => {
@@ -368,6 +376,7 @@ async function renderTabWithDeepLink(taskId: string, workspaceId = 'ws-1') {
 // ── Setup / Teardown ───────────────────────────────────────────────────
 
 beforeEach(() => {
+    resetCloneRegistryForTests();
     vi.clearAllMocks();
     try { localStorage.clear(); } catch { /* ignore */ }
     mockBreakpoint = { isMobile: false, isTablet: false };
@@ -591,6 +600,31 @@ describe('RepoChatTab: data fetching', () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
         expect(lastProps?.isAutopilotPaused).toBe(true);
+    });
+
+    it.each(['ws-remote', 'group-remote'])('reads %s delay configuration from its owner, not page-origin state', async workspaceId => {
+        setupFetchMock({ stats: { taskDelayMinutes: 5, autopilotTaskDelayMinutes: 30 } });
+        mockRemoteQueue.mockResolvedValue({ running: [], queued: [], stats: { taskDelayMinutes: 15, autopilotTaskDelayMinutes: 7 } });
+        const baseUrl = 'http://remote-owner.example';
+        registerCloneBaseUrls([{ workspaceId, baseUrl }]);
+        await renderTab(workspaceId);
+        expect(mockRemoteQueue).toHaveBeenCalledWith(baseUrl, { repoId: workspaceId });
+        expect(mockRemoteQueue).toHaveBeenCalledTimes(1);
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+        expect(props.taskDelayMinutes).toBe(15);
+        expect(props.autopilotTaskDelayMinutes).toBe(7);
+        expect(mockFetchApi.mock.calls.some(([url]) => url.startsWith('/queue?'))).toBe(false);
+    });
+
+    it('does not borrow page-origin delay settings when a remote owner is unavailable', async () => {
+        setupFetchMock({ stats: { taskDelayMinutes: 15 } });
+        mockRemoteQueue.mockRejectedValue(new Error('Owner offline'));
+        registerCloneBaseUrls([{ workspaceId: 'ws-offline', baseUrl: 'http://offline-owner.example' }]);
+        await renderTab('ws-offline');
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+        expect(props.taskDelayMinutes).toBeUndefined();
+        expect(props.autopilotTaskDelayMinutes).toBeUndefined();
+        expect(mockFetchApi.mock.calls.some(([url]) => url.startsWith('/queue?'))).toBe(false);
     });
 
     it('passes configured task delays from queue stats to the list pane', async () => {
@@ -1393,6 +1427,26 @@ describe('RepoChatTab: WebSocket updates via repoQueueMap', () => {
             const lastProps = mockListPane.mock.calls.at(-1)?.[0];
             expect(lastProps?.running?.some((t: any) => t.id === 'ws-r1')).toBe(true);
         });
+    });
+
+    it('passes live scope delay changes and Off through existing queue updates', async () => {
+        setupFetchMock({ stats: { taskDelayMinutes: 15, autopilotTaskDelayMinutes: 7 } });
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+        await act(async () => {
+            renderWithProviders(<><RepoChatTab workspaceId="ws-1" /><WsSimulator dispatchRef={dispatchRef} /></>);
+        });
+        await waitFor(() => expect(mockListPane.mock.calls.at(-1)?.[0]?.taskDelayMinutes).toBe(15));
+        await act(async () => {
+            dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: true, taskDelayMinutes: 30 } });
+        });
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+        expect(props.taskDelayMinutes).toBe(30);
+        expect(props.autopilotTaskDelayMinutes).toBeUndefined();
+        expect(props.isPaused).toBe(true);
+        await act(async () => {
+            dispatchRef.current?.({ running: [], queued: [], stats: { isPaused: false } });
+        });
+        expect(mockListPane.mock.calls.at(-1)?.[0]?.taskDelayMinutes).toBeUndefined();
     });
 
     it('updates isPaused from external queue update', async () => {
