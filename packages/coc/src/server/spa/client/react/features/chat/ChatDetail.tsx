@@ -3014,8 +3014,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         // Prefer the goal file (authoritative spec) over
                         // extracting from the last assistant turn, which is
                         // often a short synthesis that drops detail.
-                        if (ralphCtx && ralphCtx.phase === 'grilling' && task?.status === 'completed'
-                            && (task?.metadata?.ralphGoal || task?.metadata?.ralphLaunchedSession) && !task?.pendingAskUser) {
+                        // Managed interviews always project `ralphGoal` (null until the
+                        // server validates readiness); unmanaged ones keep the legacy gate.
+                        const managedGoalReady = task?.metadata?.ralphGoal === undefined
+                            || ((task.metadata.ralphGoal || task.metadata.ralphLaunchedSession) && !task.pendingAskUser);
+                        if (ralphCtx && ralphCtx.phase === 'grilling' && task?.status === 'completed' && managedGoalReady) {
                             return (
                                 <RalphStartPanel
                                     processId={processId ?? taskId}

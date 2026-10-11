@@ -610,6 +610,18 @@ describe('ChatDetail Sentinel implementation banners', () => {
         await waitFor(() => expect(screen.getByTestId('ralph-start-banner')).toBeTruthy());
     });
 
+    it.each([
+        { name: 'unmanaged grilling keeps the legacy Start banner', extra: {}, visible: true },
+        { name: 'managed grilling hides Start until readiness is validated', extra: { ralphGoal: null }, visible: false },
+        { name: 'managed grilling shows Start once readiness is validated', extra: { ralphGoal: { path: '/repo/goal.md', revision: 'r1' } }, visible: true },
+    ])('$name', async ({ extra, visible }) => {
+        const metadata = { mode: 'ask', goalFilePath: '/repo/goal.md', ralph: { phase: 'grilling' }, ...extra };
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask' }, metadata }), makeProcess({ metadata }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-b" /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy());
+        await waitFor(() => expect(!!screen.queryByTestId('ralph-start-banner')).toBe(visible));
+    });
+
     it('still suppresses both banners in embedded Ask conversations', async () => {
         const metadata = { mode: 'ask', goalFilePath: '/repo/goal.md', planFilePath: '/repo/work.plan.md' };
         setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask' }, metadata }), makeProcess({ metadata }));
