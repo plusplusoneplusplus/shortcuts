@@ -310,7 +310,7 @@ describe('buildRepoGroupChatFeed', () => {
         await addChat(id, A, 1, { status: durableStatus, lastEventAt: new Date(Date.UTC(2026, 0, 1, 0, 20)) });
         await addChat('history', B, 10);
         await store.appendConversationTurn('history', turnIndex => ({
-            turnIndex, role: 'user', content: 'cobalt', timestamp: new Date(Date.UTC(2026, 0, 1, 0, 10)),
+            turnIndex, role: 'user', content: 'cobalt', timestamp: new Date(Date.UTC(2026, 0, 1, 0, 10)), timeline: [],
         }));
         store.getDatabase().prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
             .run(new Date(Date.UTC(2026, 0, 1, 0, 10)).toISOString(), 'history');

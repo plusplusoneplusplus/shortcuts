@@ -135,9 +135,11 @@ section. Parent pin actions call the workspace group-pin API, never child proces
 Running, queued and historical matches share latest-activity ordering through
 `getTaskTimestamp`, with owner workspace and canonical chat identity breaking ties.
 Server search pages limit this combined sequence; Load more appends matches from
-all statuses, preserving the displayed prefix. Pins retain row styling without
-promotion; matching children retain owner-qualified parent links. Without a query,
-the list uses Running, Queued, Pinned and History sections.
+all statuses, preserving the displayed prefix. Live and committed read-state refreshes
+retain the combined loaded depth up to the 200-row server cap; further rows remain
+cursor-pageable. Pins retain row styling without promotion; matching children retain
+owner-qualified parent links. Without a query, the list uses Running, Queued, Pinned
+and History sections and refresh retains only paginated history depth.
 
 `repoGroupChatHierarchy` retains native owner-local run entries and recursive spawned
 trees. `RepoGroupChatContainer` reuses the native Ralph, For Each, Map Reduce,

@@ -114,7 +114,9 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         setLoadingMore(false);
         const controller = new AbortController();
         abortRef.current = controller;
-        const loaded = keepDepth ? modelRef.current?.history.length ?? 0 : 0;
+        const current = modelRef.current;
+        const loaded = keepDepth && current ? current.history.length
+            + (filters?.q?.trim() ? current.running.length + current.queued.length : 0) : 0;
         const limit = Math.min(REPO_GROUP_CHAT_FEED_MAX_PAGE, Math.max(pageSize, loaded));
         if (!keepDepth || !modelRef.current) setStatus('loading');
         try {
