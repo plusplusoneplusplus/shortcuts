@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { SentinelScrubFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { SentinelScrubFinding, SentinelScrubFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 import { Button } from '../../../ui/Button';
 
 type FindingAction = 'accept' | 'dismiss' | 'undo';
@@ -50,19 +50,23 @@ export function SentinelTodoScrubFinding({ item }: { item: SentinelTodoItem }) {
         </div>
         {stale && <p role="status">Item changed since this proposal. Run a fresh scrub.</p>}
         {record.demotedBecause && <p>{demotionLabels[record.demotedBecause]}</p>}
-        <details>
-            <summary className="cursor-pointer rounded focus-visible:ring-1 focus-visible:ring-[#0078d4]">Evidence</summary>
-            <p>Confidence: {finding.confidence} · {finding.rationale}</p>
-            <ul className="flex flex-col gap-1">
-                {finding.evidence.map((entry, index) => {
-                    const href = webLink(entry.ref);
-                    return <li key={index} className="break-words">
-                        {entry.kind} · {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#0078d4] hover:underline dark:text-[#3794ff]">{entry.ref}</a> : entry.ref}
-                        {' · '}{entry.state.replaceAll('_', ' ')} · checked <time dateTime={entry.checkedAt}>{new Date(entry.checkedAt).toLocaleString()}</time>
-                        {entry.observedAt && <> · observed <time dateTime={entry.observedAt}>{new Date(entry.observedAt).toLocaleString()}</time></>}
-                    </li>;
-                })}
-            </ul>
-        </details>
+        <ScrubFindingEvidence finding={finding} />
     </div>;
+}
+
+export function ScrubFindingEvidence({ finding }: { finding: SentinelScrubFinding }) {
+    return <details>
+        <summary className="cursor-pointer rounded focus-visible:ring-1 focus-visible:ring-[#0078d4]">Evidence</summary>
+        <p>Confidence: {finding.confidence} · {finding.rationale}</p>
+        <ul className="flex flex-col gap-1">
+            {finding.evidence.map((entry, index) => {
+                const href = webLink(entry.ref);
+                return <li key={index} className="break-words">
+                    {entry.kind} · {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#0078d4] hover:underline dark:text-[#3794ff]">{entry.ref}</a> : entry.ref}
+                    {' · '}{entry.state.replaceAll('_', ' ')} · checked <time dateTime={entry.checkedAt}>{new Date(entry.checkedAt).toLocaleString()}</time>
+                    {entry.observedAt && <> · observed <time dateTime={entry.observedAt}>{new Date(entry.observedAt).toLocaleString()}</time></>}
+                </li>;
+            })}
+        </ul>
+    </details>;
 }

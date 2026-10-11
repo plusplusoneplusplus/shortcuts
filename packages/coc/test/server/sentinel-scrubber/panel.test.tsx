@@ -127,6 +127,19 @@ describe('To-do Scrubber strip', () => {
         expect(screen.getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_done');
     });
 
+    it('opens and closes bounded history outside the pinned strip without extra reads until details are selected', async () => {
+        setupFindings();
+        render(<SentinelTodoScrubber owner={owner} items={[item('a')]} onFollowLink={follow} />);
+        const toggle = await screen.findByRole('button', { name: 'History (1)' });
+        await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());
+        fireEvent.click(toggle);
+        const history = screen.getByRole('region', { name: 'Scrubber run history' });
+        expect(screen.getByTestId('sentinel-scrubber-strip').contains(history)).toBe(false);
+        expect(mock.getRun).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByRole('button', { name: 'Hide history (1)' }));
+        expect(screen.queryByRole('region', { name: 'Scrubber run history' })).toBeNull();
+    });
+
     it('shows schedule description/next time and resumes a failure pause with expected revision', async () => {
         const config = { ...response().config, enabled: true, paused: true, consecutiveFailures: 3, nextRunAt: '2026-10-12T09:00:00Z' };
         mock.get.mockResolvedValue(response({ config }));

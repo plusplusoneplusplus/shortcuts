@@ -740,7 +740,13 @@ revisions. It skips known stale proposals, continues past 409s without retries,
 stops on other errors, reports partial results and reloads ledger/findings.
 Owner/endpoint remounts or flag disabling stop remaining batch requests.
 Successful actions reload the ledger for derived job states. Evidence links allow
-HTTP(S) only; other references render as text. Tests use isolated mock clients in
+HTTP(S) only; other references render as text. `SentinelTodoScrubHistory` lists
+retained summaries outside the pinned strip and lazily reads owner-routed details.
+Run changes refresh selected details; switching, pruning or closing aborts reads
+and rejects late results. The read-only log retains all finding states and audit
+actors, timestamps, before/after revisions, outcomes, exclusions and evidence.
+Shared `ScrubRunChatLink` preserves the owning route and excursion behavior.
+Tests use isolated mock clients in
 `test/server/sentinel-scrubber/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
 
 ### PR-merge triggers

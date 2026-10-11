@@ -9,6 +9,7 @@ import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
 import { AcceptAllScrubProposals, ScrubberFindingsContext } from './SentinelTodoScrubFinding';
+import { ScrubRunChatLink, SentinelTodoScrubHistory } from './SentinelTodoScrubHistory';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 function subscribeConfig(listener: () => void) {
@@ -53,6 +54,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
     const [schedule, setSchedule] = useState<SentinelScrubberConfig | null>(null);
     const [selecting, setSelecting] = useState(false);
     const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+    const [historyOpen, setHistoryOpen] = useState(false);
     const busyRef = useRef(false);
     const mounted = useRef(true);
     const sequence = useRef(0);
@@ -121,7 +123,6 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
     const last = data?.runs[0];
     const config = data?.config;
     const chatId = active?.childProcessId ?? last?.childProcessId;
-    const chatHref = chatId ? `#repos/${encodeURIComponent(owner.ownerRoutingRef ?? owner.ownerWorkspaceId)}/chats/${encodeURIComponent(chatId)}` : undefined;
     const cronError = useMemo(() => schedule ? validateScrubCron(schedule.cron) : undefined, [schedule?.cron]);
     const saveConfig = (draft: SentinelScrubberConfig) => mutate(() => api.updateConfig(owner.ownerWorkspaceId, owner.processId, {
         enabled: draft.enabled, cron: draft.cron.trim(), expectedRevision: draft.revision,
@@ -229,11 +230,11 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
                 {last.deferredCount > 0 && <p>{last.deferredCount} deferred to next run</p>}
                 {last.awaitingReviewCount > 0 && <p>{last.awaitingReviewCount} awaiting Sentinel review</p>}
             </div>}
-            {chatHref && <a href={chatHref} data-todo-link={`scrubber:${chatId}`} onClick={event => onFollowLink(event, `scrubber:${chatId}`)}
-                className="text-[#0078d4] hover:underline focus-visible:ring-1 dark:text-[#3794ff]">Open chat</a>}
+            <ScrubRunChatLink owner={owner} childProcessId={chatId} onFollowLink={onFollowLink} />
             {error && <p role="alert">{error}</p>}
             {batchResult && <p role="status">{batchResult}</p>}
             {data && <div className="flex flex-wrap gap-1">
+                <Button size="sm" variant="ghost" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Hide history' : 'History'} ({data.runs.length})</Button>
                 <Button size="sm" variant="ghost" onClick={() => setSelecting(value => !value)}>{selecting ? 'Hide selection' : 'Select items'}</Button>
                 {selecting && <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Scrub selected ({selectedIds.length})</Button>}
             </div>}
@@ -260,6 +261,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
                     <Button size="sm" type="submit" disabled={busy || !!cronError || !!loadError}>Save schedule</Button></div>
             </form>}
         </section>
+        {historyOpen && data && <SentinelTodoScrubHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
         {children}
     </ScrubberFindingsContext.Provider>;
 }

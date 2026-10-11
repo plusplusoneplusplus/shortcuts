@@ -559,8 +559,11 @@ strip and toolbar with newest-finding precedence. Accept/Undo use recorded revis
 bulk acceptance freezes those revisions, skips stale items, continues past conflicts
 without retrying and stops on other errors. Partial results are explicit and actions
 refetch the ledger/findings. Owner remounts stop remaining batch requests.
-Auto-Done attribution requires the applied
-revision; evidence URLs allow HTTP(S). The editor uses browser-safe
+Auto-Done attribution requires the applied revision; evidence URLs allow HTTP(S).
+History lists all retained statuses and lazily reads selected details with abort
+and late-result guards. Its read-only log preserves finding states, audit actors,
+before/after and exclusions; chat links share owner-routed excursion navigation.
+The editor uses browser-safe
 `schedule/scrub-cron.ts` validation/presets; the server owns writes and single-flight.
 
 ### Sentinel To-do triggers
