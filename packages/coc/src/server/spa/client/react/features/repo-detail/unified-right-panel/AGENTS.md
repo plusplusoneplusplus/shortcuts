@@ -644,9 +644,9 @@ Gated by the live `features.sentinelTodoLedger` flag (`sentinelTodoLedgerEnabled
 A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
 and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
 withdraws it with the host; the panel applies the flag. The `todo` descriptor is
-one tab per concrete owner and chat: `resourceId` is the parent process id, and
-the owner takes the panel's `routingRef` only when it is the panel scope itself.
-Only the descriptor persists; the ledger is fetched from the owning server
+one tab per concrete owner and chat: `resourceId` is the parent process id.
+`routingRefForPanelOwner` binds the owner workspace to the panel's server,
+including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
 (`client.sentinelTodos`, routed like the chat) and refreshed by that server's
 `sentinel-todos-changed` events on a workspace-subscribed socket. Flag-off hides
 stored `todo` tabs in `useUnifiedPanelTabs` without deleting them (the flag loads
@@ -731,8 +731,11 @@ directly. `triggers-panel.test.tsx` covers states, controls and ownership.
 
 A plain primary click on an in-app (`#…`) Job or Ref link starts one in-memory
 excursion per window (`sentinelTodoExcursion.ts`): the origin's panel scope, chat,
-ledger owner, published title and route, the followed link, and up to five
-hosted chats visited since. Hosted `ChatDetail`s mount `SentinelTodoOriginBar`,
+ledger owner, published title and owner-qualified chat route, the followed link,
+and up to five hosted chats visited since. The owner workspace/process defines
+the return destination; a matching group member route or chat sub-view is kept.
+Back reapplies routing even when the destination hash is already current.
+Hosted `ChatDetail`s mount `SentinelTodoOriginBar`,
 which records each selection as a visit (keyed by panel scope + chat) and, on the
 path, shows Back to Sentinel, a foldable breadcrumb and a close button. Arriving
 at the origin after leaving, Back, close, Unpin and closing the pinned tab end it;

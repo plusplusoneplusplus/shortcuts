@@ -1590,8 +1590,7 @@ export function UnifiedRightPanel({
     }, [open]);
 
     // A hosted Sentinel chat's To-do tab. The owner is the chat's parent
-    // workspace; it takes the panel's concrete route only when it is the
-    // panel's own scope, so same-id workspaces on other hosts stay distinct.
+    // workspace on the panel's server, including repo-group members.
     const todoEnabled = useSentinelTodoLedgerEnabled();
     const sentinelChat = useSentinelTodoChat(workspaceId, chatId);
     const todoOwner = useMemo<SentinelTodoOwner | null>(() => {
@@ -1599,7 +1598,7 @@ export function UnifiedRightPanel({
         return {
             ownerWorkspaceId: sentinelChat.ownerWorkspaceId,
             processId: sentinelChat.processId,
-            ...(sentinelChat.ownerWorkspaceId === workspaceId && routingRef !== undefined ? { ownerRoutingRef: routingRef } : {}),
+            ownerRoutingRef: routingRefForPanelOwner(routingRef, sentinelChat.ownerWorkspaceId),
         };
     }, [todoEnabled, sentinelChat, workspaceId, routingRef]);
     const todoInput = useMemo(

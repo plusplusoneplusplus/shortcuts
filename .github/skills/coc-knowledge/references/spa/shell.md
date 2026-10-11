@@ -540,7 +540,9 @@ comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
 bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is
-never persisted; Back restores the list's scroll, expanded rows and link focus. The full
+never persisted. The return route selects the ledger owner's workspace/process on its
+concrete server, preserving matching group routes and reapplying an unchanged hash.
+Back restores the list's scroll, expanded rows and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 `SentinelTodoTriggers` adds a separate rule section below the cards when existing

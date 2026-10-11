@@ -33,7 +33,11 @@ const SHOWN_CRUMBS = 2;
 const FOCUS = 'focus:outline-none focus-visible:ring-1 focus-visible:ring-[#8764b8]';
 
 function navigate(href: string | null): void {
-    if (href) window.location.hash = href;
+    if (!href) return;
+    // A hosted chat may differ from the URL selection. Reapply the route even
+    // when Back's destination is already the hash; assigning it emits no event.
+    if (window.location.hash === href) window.dispatchEvent(new HashChangeEvent('hashchange'));
+    else window.location.hash = href;
 }
 
 export function SentinelTodoOriginBar({ scopeWorkspaceId, chatId, title }: SentinelTodoOriginBarProps) {
