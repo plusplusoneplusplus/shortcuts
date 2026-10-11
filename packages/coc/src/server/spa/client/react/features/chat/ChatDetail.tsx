@@ -1580,16 +1580,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, [client, getOwnerProcess, setTurnsAndRef, seedSessionTokensFromProcess]);
     compactionRefreshRef.current = refreshConversation;
     useEffect(() => {
-        if (!scopedOwner || !processId) return;
+        if ((!scopedOwner && !historyBaseUrl) || !processId) return;
         let active = true;
         let generation = 0;
-        const eventName = scopedOwner.baseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message';
+        const ownerBaseUrl = scopedOwner?.baseUrl ?? historyBaseUrl;
+        const ownerWorkspaceId = scopedOwner?.workspaceId ?? workspaceId;
+        const eventName = ownerBaseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message';
         const handle = (event: Event) => {
             const detail = (event as CustomEvent).detail;
-            if (scopedOwner.baseUrl && detail?.baseUrl !== scopedOwner.baseUrl) return;
-            const message = scopedOwner.baseUrl ? detail?.message : detail;
+            if (ownerBaseUrl && detail?.baseUrl !== ownerBaseUrl) return;
+            const message = ownerBaseUrl ? detail?.message : detail;
             if (message?.type !== 'process-added' && message?.type !== 'process-updated') return;
-            if (message.process?.id !== processId || message.process?.workspaceId !== scopedOwner.workspaceId) return;
+            if (message.process?.id !== processId || message.process?.workspaceId !== ownerWorkspaceId) return;
             const request = ++generation;
             void getOwnerProcess(processId).then(data => {
                 if (!active || request !== generation || !data.process) return;
@@ -1606,7 +1608,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         };
         window.addEventListener(eventName, handle);
         return () => { active = false; window.removeEventListener(eventName, handle); };
-    }, [scopedOwner, processId, getOwnerProcess, setTurnsAndRef]);
+    }, [scopedOwner, historyBaseUrl, workspaceId, processId, getOwnerProcess, setTurnsAndRef]);
 
     // Sentinel-only auto-compact control in the context-usage popover. The
     // owning server persists the setting and runs every check and compaction.
@@ -2513,7 +2515,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const loadedConversationMode = resolveLoadedTaskMode(task);
     // Persisted/live conversation identity wins over the original queue payload
     // and the draft mode. Sentinel dispatches implementation through tools.
-    const liveConversation = scopedOwner ? undefined : appState.processes.find(p => p.id === processId);
+    // Remote owners resolve from their hydrated process, never a local ID match.
+    const liveConversation = scopedOwner || historyBaseUrl ? undefined : appState.processes.find(p => p.id === processId);
     const effectiveConversationMode = normalizeChatMode(liveConversation?.metadata?.mode)
         ?? normalizeChatMode(metadataProcess?.metadata?.mode)
         ?? loadedConversationMode
@@ -3053,7 +3056,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         compactInstructions={compactInstructions}
                         searchHighlightQuery={searchHighlightQuery}
                     />
-                    {variant !== 'floating' && !isMobile && (
+                    {/* Omit the component itself so Sentinel has no rail or minimap effects. */}
+                    {!loading && effectiveConversationMode !== 'sentinel' && variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
                             turns={turns}
                             scrollContainerRef={conversationContainerRef}

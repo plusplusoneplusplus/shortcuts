@@ -22,7 +22,9 @@ and mark it as paged, so disabling the flag cannot reuse it as full history.
 An IntersectionObserver loads shared `PAGE_TURNS` pages through the owner client, with
 one in-flight read, layout anchoring and automatic capped backoff. Hash `turn`/`turnIndex`,
 `coc-jump-to-turn`, minimap and pinned navigation load contiguous pages before highlighting.
-Pins have an independent owner-scoped read; find searches loaded turns. Owner/chat changes
+Pins have an independent owner-scoped read; find searches loaded turns. `ChatDetail` mounts
+the conversation minimap only after hydration for non-Sentinel displayed modes, resolved
+from owner-scoped process state independently of pinned Sentinel origins. Owner/chat changes
 abort requests and discard delayed results. Flag-off hydration and rendering remain full-history.
 
 ### ConversationTurnBubble
