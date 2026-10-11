@@ -91,6 +91,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
 | `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |
 | `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
+| `repoGroupAggregatedChats` | off | A repo group's Workspace chat list also shows every eligible member-repo chat with a muted repo prefix; gates UI only — the read-only `/api/repo-groups/:id/chats` feed ships regardless |
 | `singleRowShell` | off | Moves shell controls plus `+ New` into the global header |
 | `ralphMultiAgentGrill` | off | Ralph grill question-planning card, separate grill-agent calls, dedupe/provenance metadata |
 | `nativeCliSessions` | off | Read-only CLI Sessions surface over native Copilot/Codex/Claude stores |

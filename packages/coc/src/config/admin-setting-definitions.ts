@@ -942,6 +942,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.repoGroupAggregatedChats', default: false, runtime: 'live', runtimeFlag: 'repoGroupAggregatedChatsEnabled',
+        ui: {
+            group: 'dashboard', order: 67.5, label: 'Repo-group aggregated chats', badge: 'experimental',
+            hint: "A repo group's Workspace chat list also shows every chat in its member repos, with a muted repo prefix. Chats keep their own repo, queue and server; nothing is moved. Disabled by default.",
+            testId: 'toggle-repo-group-aggregated-chats-enabled',
+        },
+    }),
+    bool({
         key: 'features.schedulesInScheduledSlide', default: true, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
