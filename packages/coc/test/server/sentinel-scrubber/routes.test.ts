@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { CocClient } from '@plusplusoneplusplus/coc-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouter, type Route } from '../../../src/server/shared/router';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
@@ -77,6 +78,58 @@ afterEach(async () => {
     fixture.dispose();
 });
 describe('Scrubber REST commands', () => {
+    it('serves the shared client config, selected run, cancel, history and finding actions', async () => {
+        const client = new CocClient({ baseUrl: url }).sentinelTodos.scrubber;
+        expect((await client.get(owner.workspaceId, owner.processId)).config.revision).toBe(0);
+        const config = await client.updateConfig(owner.workspaceId, owner.processId, {
+            enabled: false, cron: '0 9 * * *', expectedRevision: 0,
+        });
+        expect(config).toMatchObject({ enabled: false, revision: 1 });
+        const selected = item();
+        const started = await client.start(owner.workspaceId, owner.processId, { itemIds: [selected.id] });
+        expect(started.processId).toBe('queue_child');
+        expect((await client.getRun(owner.workspaceId, owner.processId, started.runId)).snapshot)
+            .toEqual([{ itemId: selected.id, revision: selected.revision }]);
+        expect((await client.cancel(owner.workspaceId, owner.processId, started.runId)).status).toBe('cancelled');
+        expect((await client.get(owner.workspaceId, owner.processId)).runs[0])
+            .toMatchObject({ id: started.runId, itemCount: 1, counts: { done: 0, proposals: 0, unverified: 0 } });
+        settle(selected.id);
+        const detail = await client.getRun(owner.workspaceId, owner.processId, 'run');
+        expect(detail.findings[0]).toMatchObject({ state: 'proposed', itemRevision: 1 });
+        const accepted = await client.accept(owner.workspaceId, owner.processId, 'run', selected.id, { expectedItemRevision: 1 });
+        expect(accepted.item).toMatchObject({ status: 'done', archived: true });
+        expect(accepted.finding.audit[0]).toMatchObject({ action: 'accepted', actor: 'user', before: { status: 'todo' } });
+        await expect(client.get(owner.workspaceId, 'queue_s2')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('round-trips Undo and Dismiss through the shared client with stale-write errors', async () => {
+        const client = new CocClient({ baseUrl: url }).sentinelTodos.scrubber;
+        const original = item();
+        settle(original.id, 'done');
+        await expect(client.undo(owner.workspaceId, owner.processId, 'run', original.id, { expectedItemRevision: 1 }))
+            .rejects.toMatchObject({ status: 409, code: 'conflict', body: { current: { revision: 2 } } });
+        const restored = await client.undo(owner.workspaceId, owner.processId, 'run', original.id, { expectedItemRevision: 2 });
+        expect(restored.item.status).toBe('todo');
+        expect(restored.finding.state).toBe('undone');
+        // A separate owner has independent run IDs, findings and dismissal state.
+        const other = { workspaceId: 'group-team', processId: 'queue_s2' };
+        const groupItem = todos.create(other, { title: 'Group task' }, { actor: 'sentinel' }).item;
+        scrubber.createRun(other, {
+            id: 'run', trigger: 'manual', status: 'running', createdAt: '2026-10-11T10:00:00.000Z',
+            snapshot: [{ itemId: groupItem.id, revision: 1 }], deferredItemIds: [], awaitingReviewItemIds: [],
+        });
+        engine.complete(other, 'run', [{
+            itemId: groupItem.id, verdict: 'obsolete', autoApply: false, confidence: 'medium',
+            summary: 'Superseded', rationale: 'Replaced', evidence: [{
+                kind: 'reference', ref: 'replacement', state: 'other', checkedAt: '2026-10-11T10:05:00.000Z',
+            }],
+        }]);
+        const dismissed = await client.dismiss(other.workspaceId, other.processId, 'run', groupItem.id, { expectedItemRevision: 1 });
+        expect(dismissed.finding.state).toBe('dismissed');
+        expect(dismissed).not.toHaveProperty('item');
+        expect(todos.get(other).items[0].revision).toBe(1);
+        expect((await client.getRun(owner.workspaceId, owner.processId, 'run')).findings[0].state).toBe('undone');
+    });
     it('hides every endpoint while disabled without persistence or queues', async () => {
         enabled = false;
         for (const [method, route] of [

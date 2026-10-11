@@ -235,7 +235,10 @@ references before editing. Paths are package-relative.
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
   Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
   prove the Sentinel owner through `SentinelTodoService.list` before accessing
-  scrubber state, and use the engine for revision-checked Accept/Undo. Route composition
+  scrubber state, and use the engine for revision-checked Accept/Undo. The shared
+  `client.sentinelTodos.scrubber` resource uses the owning client transport for config,
+  runs and finding actions; reads support abort signals and conflicts retain the current
+  item in `CocApiError.body.current`. Route composition
   shares the native ledger database, publishes the live flag-gated `getSentinelScrubber`
   executor capability, and returns `scrubberReady`; server startup awaits recovery before
   activating restored queues. Scrubber events carry workspace/process ownership and use

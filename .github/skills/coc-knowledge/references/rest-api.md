@@ -251,6 +251,8 @@ workspace and Sentinel process; mutation methods carry the rule revision.
 
 `sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. 
 
+`client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-scrubber.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
+
 Its injected gate requires both ledger and scrubber flags. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Route composition shares the native ledger database and resolved-defaults enqueue path. It publishes the live-gated `getSentinelScrubber` capability, follows terminal registry events, and emits owner-scoped `sentinel-scrubber-changed` plus ledger invalidations. Server startup awaits `scrubberReady` recovery before activating restored queues; route disposal removes queue listeners and timeout timers.
 
 ## Task Groups
