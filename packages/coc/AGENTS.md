@@ -262,6 +262,10 @@ references before editing. Paths are package-relative.
 - Pause and delay menus use body portals and `useAnchoredPanelPosition` with
   constrained height, viewport-bounded width, and contained vertical scrolling.
   Outside-click checks include the portal; Escape returns focus to the owning trigger.
+  Collapsed-rail job previews use the same positioning with side placement and
+  a pointer bridge. Counts and rows share `useRepoQueueJobs` and the selected
+  workspace's source-checked queue, including groups; hidden follow-ups and
+  history are excluded. Preserve icon click expansion and concrete clone routes.
 
 - `AskUserInline` reply fields share batch submission with the button: Enter submits,
   Shift+Enter preserves multiline Need context notes, and IME/229 never submits.

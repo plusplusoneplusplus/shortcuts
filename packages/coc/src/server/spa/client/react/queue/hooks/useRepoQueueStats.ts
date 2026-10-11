@@ -8,6 +8,19 @@
 import { useMemo } from 'react';
 import { useQueue } from '../../contexts/QueueContext';
 import { TaskDefs } from '../../../../../tasks/task-types';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import { workspaceReadSource } from '../../api/workspaceReads';
+import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
+
+export interface QueueJob {
+    id: string;
+    kind?: string;
+    type?: string;
+    displayName?: string;
+    processId?: string;
+    workItemId?: string;
+    payload?: { processId?: string; workItemId?: string; mode?: string };
+}
 
 export interface RepoQueueStats {
     running: number;
@@ -16,16 +29,24 @@ export interface RepoQueueStats {
 
 export const isHidden = (t: { type?: string; payload?: any }) => t.type === TaskDefs.chat.kind && t.payload?.processId;
 
-export function useRepoQueueStats(workspaceId: string): RepoQueueStats {
+export function useRepoQueueJobs(workspaceId: string, client?: CocClient, routingRef?: string) {
     const { state } = useQueue();
-    return useMemo(() => {
+    return useMemo<{ running: QueueJob[]; queued: QueueJob[] }>(() => {
         const entry = state.repoQueueMap[workspaceId];
-        if (!entry) return { running: 0, queued: 0 };
-        const runningArr = entry.running ?? [];
-        const queuedArr = entry.queued ?? [];
+        // Untagged WebSocket snapshots belong to the page-origin server only.
+        const unresolvedRemote = parseRemoteCloneKey(routingRef) && !client?.options?.baseUrl;
+        const matchesSource = !unresolvedRemote && (!client || (entry?.taskDataSource
+            ? entry.taskDataSource === workspaceReadSource(client)
+            : !client.options?.baseUrl));
+        if (!entry || !matchesSource) return { running: [], queued: [] };
         return {
-            running: runningArr.filter(t => !isHidden(t)).length,
-            queued: queuedArr.filter(t => !isHidden(t)).length,
+            running: (entry.running ?? []).filter(t => !isHidden(t)),
+            queued: (entry.queued ?? []).filter(t => !isHidden(t)),
         };
-    }, [state.repoQueueMap, workspaceId]);
+    }, [state.repoQueueMap, workspaceId, client, routingRef]);
+}
+
+export function useRepoQueueStats(workspaceId: string, client?: CocClient): RepoQueueStats {
+    const jobs = useRepoQueueJobs(workspaceId, client);
+    return useMemo(() => ({ running: jobs.running.length, queued: jobs.queued.length }), [jobs]);
 }

@@ -1,0 +1,306 @@
+/** @vitest-environment jsdom */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { SplitWorkspacePanel } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
+import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
+import type { RailJobPreview } from '../../../../src/server/spa/client/react/features/repo-detail/RailJobStatuses';
+
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: () => ({ isMobile: false }),
+}));
+
+const preview: RailJobPreview = {
+    running: [{ id: 'r1', type: 'chat', displayName: 'Active chat', payload: { mode: 'autopilot' } }],
+    queued: [{ id: 'q1', type: 'run-script', displayName: 'Waiting script' }],
+    scopeLabel: 'Workspace Alpha',
+    routeId: 'ws-alpha',
+    scopeKey: 'ws-alpha:local',
+};
+
+function panel(jobs = preview) {
+    return <SplitWorkspacePanel workspaceId="ws-alpha" jobPreview={jobs}
+        chatList={<div>Pinned and completed history</div>} gitList={<div>Git</div>} detail={<div>Detail</div>} />;
+}
+function tick(ms: number) {
+    act(() => { vi.advanceTimersByTime(ms); });
+}
+function hover(status = 'running') {
+    fireEvent.pointerEnter(screen.getByTestId(`split-workspace-left-${status}`), { pointerType: 'mouse' });
+}
+
+beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'), '1');
+    vi.stubGlobal('PointerEvent', class extends MouseEvent {
+        readonly pointerType: string;
+        constructor(type: string, init: PointerEventInit = {}) {
+            super(type, init);
+            this.pointerType = init.pointerType ?? 'mouse';
+        }
+    });
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+});
+afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+});
+
+describe('scoped rail job previews', () => {
+    it('opens only matching jobs after 200ms, never the full sidebar', () => {
+        render(panel());
+        hover();
+        tick(199);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        tick(1);
+        const dialog = screen.getByRole('dialog');
+        expect(dialog).toHaveTextContent('Running jobs (1)');
+        expect(dialog).toHaveTextContent('Active chat');
+        expect(dialog).not.toHaveTextContent('Waiting script');
+        expect(dialog).not.toHaveTextContent('Pinned');
+        tick(500);
+        expect(screen.getByTestId('split-workspace-left')).toHaveClass('hidden');
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
+    });
+
+    it('switches running/queued previews and cancels a pending full-rail peek', () => {
+        render(panel());
+        fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+        hover();
+        tick(450);
+        expect(screen.getByTestId('split-workspace-left')).toHaveClass('hidden');
+        hover('queued');
+        tick(200);
+        expect(screen.getAllByRole('dialog')).toHaveLength(1);
+        expect(screen.getByRole('dialog')).toHaveTextContent('Queued jobs (1)');
+        expect(screen.getByRole('dialog')).not.toHaveTextContent('Active chat');
+        expect(within(screen.getByRole('dialog')).getByText('Queued').parentElement).toHaveClass('text-[#5a5a5a]');
+    });
+
+    it('preserves other rail hover, including moving off a count within the rail', () => {
+        render(panel());
+        hover();
+        tick(200);
+        fireEvent.pointerLeave(screen.getByTestId('split-workspace-left-running'));
+        fireEvent.mouseMove(screen.getByTestId('split-workspace-left-expand'));
+        tick(450);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByTestId('split-workspace-left')).not.toHaveClass('hidden');
+    });
+
+    it('bridges the gap safely and dismisses after 250ms outside both surfaces', () => {
+        render(panel());
+        hover();
+        tick(200);
+        fireEvent.pointerLeave(screen.getByTestId('split-workspace-left-running'));
+        tick(200);
+        fireEvent.pointerEnter(screen.getByTestId('rail-job-preview-bridge'));
+        tick(500);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        fireEvent.pointerLeave(screen.getByTestId('rail-job-preview-bridge'));
+        fireEvent.pointerEnter(screen.getByRole('dialog'));
+        tick(500);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        fireEvent.pointerLeave(screen.getByRole('dialog'));
+        tick(249);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        tick(1);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('cancels short hovers and cleans timers on unmount', () => {
+        const view = render(panel());
+        hover();
+        tick(100);
+        fireEvent.pointerLeave(screen.getByTestId('split-workspace-left-running'));
+        tick(300);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        hover();
+        view.unmount();
+        tick(500);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('opens on focus, reaches actions with Tab/arrows and escapes without reopening', async () => {
+        vi.useRealTimers();
+        const user = userEvent.setup();
+        render(panel());
+        const trigger = screen.getByTestId('split-workspace-left-running');
+        act(() => trigger.focus());
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        await user.tab();
+        expect(screen.getByRole('button', { name: 'Close job preview' })).toHaveFocus();
+        await user.keyboard('{ArrowDown}');
+        expect(screen.getByRole('link', { name: 'Open job: Active chat' })).toHaveFocus();
+        await user.keyboard('{Escape}');
+        expect(trigger).toHaveFocus();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        vi.useFakeTimers();
+        tick(1000);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+        expect(screen.getByRole('button', { name: 'Close job preview' })).toHaveFocus();
+    });
+
+    it('keeps focus inside the preview when the pointer leaves, without trapping Tab', async () => {
+        vi.useRealTimers();
+        const user = userEvent.setup();
+        render(panel());
+        act(() => screen.getByTestId('split-workspace-left-running').focus());
+        await user.keyboard('{ArrowRight}');
+        await user.tab();
+        expect(screen.getByRole('link')).toHaveFocus();
+        vi.useFakeTimers();
+        fireEvent.pointerLeave(screen.getByRole('dialog'));
+        tick(500);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        vi.useRealTimers();
+        await user.tab();
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('close restores focus; outside pointer clicks dismiss without stealing focus', () => {
+        render(panel());
+        hover();
+        tick(200);
+        fireEvent.click(screen.getByRole('button', { name: 'Close job preview' }));
+        expect(screen.getByTestId('split-workspace-left-running')).toHaveFocus();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.keyDown(screen.getByTestId('split-workspace-left-running'), { key: 'ArrowRight' });
+        fireEvent.pointerDown(document.body);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        tick(500);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('permits a deliberate focus after outside dismissal while suppressing restored focus', () => {
+        render(panel());
+        hover();
+        tick(200);
+        fireEvent.pointerDown(document.body);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        act(() => screen.getByTestId('split-workspace-left-running').focus());
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        act(() => screen.getByTestId('split-workspace-left-expand').focus());
+        act(() => screen.getByTestId('split-workspace-left-running').focus());
+        expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+
+    it.each(['running', 'queued'])('ordinary %s click expands instead of navigating', status => {
+        render(panel());
+        hover(status);
+        tick(200);
+        fireEvent.click(screen.getByTestId(`split-workspace-left-${status}`));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
+
+    it('Enter retains native button expansion', async () => {
+        vi.useRealTimers();
+        const user = userEvent.setup();
+        render(panel());
+        act(() => screen.getByTestId('split-workspace-left-running').focus());
+        await user.keyboard('{Enter}');
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('coarse-pointer focus/click expands without requiring a preview affordance', () => {
+        window.matchMedia = vi.fn().mockReturnValue({ matches: false });
+        render(panel());
+        hover();
+        tick(500);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.click(screen.getByTestId('split-workspace-left-running'));
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
+
+    it('touch on a fine-pointer-capable device does not open a preview before expansion', () => {
+        render(panel());
+        const trigger = screen.getByTestId('split-workspace-left-running');
+        fireEvent.pointerEnter(trigger, { pointerType: 'touch' });
+        fireEvent.pointerDown(trigger, { pointerType: 'touch' });
+        act(() => trigger.focus());
+        tick(500);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.click(trigger);
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
+
+    it('updates rows/counts live, removes the last completed icon, never substitutes history', () => {
+        const view = render(panel());
+        hover();
+        tick(200);
+        view.rerender(panel({ ...preview, running: [
+            ...preview.running,
+            { id: 'r2', type: 'dream-run', displayName: 'Dream job' },
+        ] }));
+        expect(screen.getByRole('dialog')).toHaveTextContent('Running jobs (2)');
+        expect(screen.getByTestId('split-workspace-left-running')).toHaveTextContent('2');
+        view.rerender(panel({ ...preview, running: [] }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-left-running')).toBeNull();
+        hover('queued');
+        tick(200);
+        expect(screen.getByRole('dialog')).toHaveTextContent('Waiting script');
+        view.rerender(panel({ ...preview, running: preview.queued, queued: [] }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-left-queued')).toBeNull();
+        view.rerender(panel({ ...preview, running: [], queued: [] }));
+        expect(screen.queryByTestId('split-workspace-left-running')).toBeNull();
+    });
+
+    it('does not keep stale keyboard ownership after a focused job row disappears', () => {
+        const view = render(panel({ ...preview, running: [...preview.running, { id: 'r2', displayName: 'Remaining job' }] }));
+        hover();
+        tick(200);
+        act(() => screen.getByRole('link', { name: 'Open job: Active chat' }).focus());
+        view.rerender(panel({ ...preview, running: [{ id: 'r2', displayName: 'Remaining job' }] }));
+        fireEvent.pointerLeave(screen.getByRole('dialog'));
+        tick(250);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('retains counted queue markers but never invents a process destination for them', () => {
+        render(panel({ ...preview, queued: [...preview.queued, { id: 'pause-one', kind: 'pause-marker' }] }));
+        hover('queued');
+        tick(200);
+        expect(screen.getByRole('dialog')).toHaveTextContent('Queued jobs (2)');
+        expect(screen.getByRole('dialog')).toHaveTextContent('Queue pause');
+        expect(screen.getAllByRole('link')).toHaveLength(1);
+    });
+
+    it('disposes open and pending previews on workspace/server/active-surface changes', () => {
+        const view = render(panel());
+        hover();
+        tick(200);
+        view.rerender(panel({ ...preview, scopeKey: 'ws-alpha:remote-a', routeId: 'remote:a:ws-alpha', scopeLabel: 'Remote Alpha' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        hover();
+        tick(100);
+        view.rerender(panel({ ...preview, scopeKey: 'ws-beta:remote-b' }));
+        tick(500);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('uses exact many-job count but keeps 99+ badges and owner-qualified routes', () => {
+        render(panel({ ...preview, routeId: 'remote:server-a:ws-alpha', running: Array.from({ length: 123 }, (_, i) => ({
+            id: `job-${i}`, type: 'pr-classification', displayName: `Classification ${i}`,
+        })) }));
+        hover();
+        tick(200);
+        expect(screen.getByTestId('split-workspace-left-running')).toHaveTextContent('99+');
+        expect(screen.getByRole('dialog')).toHaveTextContent('Running jobs (123)');
+        expect(screen.getAllByRole('link')).toHaveLength(123);
+        const link = screen.getByRole('link', { name: 'Open job: Classification 0' });
+        expect(link).toHaveAttribute('href', '#repos/remote%3Aserver-a%3Aws-alpha/chats/queue_job-0');
+        fireEvent.click(link);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+    });
+});

@@ -34,7 +34,9 @@ import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import { useQueue, useQueueOptional } from '../contexts/QueueContext';
-import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
+import { useRepoQueueJobs } from '../queue/hooks/useRepoQueueStats';
+import { useCocClient } from './cloneRouting';
+import { workspaceReadSource } from '../api/workspaceReads';
 import { StatusActions } from '../layout/StatusActions';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName, resolveRepoGroupDisplayName } from './repoGroupName';
@@ -119,7 +121,10 @@ export interface RepoGroupViewProps {
 export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGroupViewProps) {
     const { state } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(workspaceId);
+    const queueClient = useCocClient(selectionId);
+    const queueJobs = useRepoQueueJobs(workspaceId, queueClient, selectionId);
+    const queueRunningCount = queueJobs.running.length;
+    const queueQueuedCount = queueJobs.queued.length;
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     // In the remote-first desktop shell the header lives in the global TopBar
@@ -258,6 +263,12 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                 railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
                                 runningCount={queueRunningCount}
                                 queuedCount={queueQueuedCount}
+                                jobPreview={{
+                                    ...queueJobs,
+                                    scopeLabel: `${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group queue`,
+                                    routeId: selectionId,
+                                    scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:${activeTab}`,
+                                }}
                                 chatHeaderExtra={
                                     <button
                                         type="button"

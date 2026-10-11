@@ -43,6 +43,7 @@ export function useHoverPopoverDismissal(
     anchorRef: React.RefObject<HTMLElement | null>,
     popoverRef: React.RefObject<HTMLElement | null>,
     onDismiss: () => void,
+    onEscape: () => void = onDismiss,
 ) {
     useEffect(() => {
         if (!open) {
@@ -51,7 +52,7 @@ export function useHoverPopoverDismissal(
 
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
-                onDismiss();
+                onEscape();
             }
         };
         const handlePointerDown = (event: MouseEvent | TouchEvent) => {
@@ -70,13 +71,15 @@ export function useHoverPopoverDismissal(
 
         document.addEventListener('keydown', handleKeyDown);
         document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('pointerdown', handlePointerDown);
         document.addEventListener('touchstart', handlePointerDown);
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
             document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('pointerdown', handlePointerDown);
             document.removeEventListener('touchstart', handlePointerDown);
         };
-    }, [open, anchorRef, popoverRef, onDismiss]);
+    }, [open, anchorRef, popoverRef, onDismiss, onEscape]);
 }
 
 export interface HoverPopoverController<T extends HTMLElement> {

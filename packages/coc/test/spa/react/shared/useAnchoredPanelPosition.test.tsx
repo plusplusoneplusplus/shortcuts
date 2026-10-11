@@ -88,6 +88,23 @@ function readPos() {
 describe('useAnchoredPanelPosition', () => {
     afterEach(() => vi.unstubAllGlobals());
     // jsdom viewport defaults: innerWidth 1024, innerHeight 768.
+    it('places rail previews beside the icon, flips left at the edge and constrains scrolling', () => {
+        const view = render(<Harness placement="right"
+            triggerRect={rect({ top: 200, left: 4, width: 28, height: 28 })}
+            panelRect={rect({ top: 0, left: 0, width: 310, height: 160 })} />);
+        expect(readPos()).toEqual({ top: 192, left: 36 });
+        view.rerender(<Harness placement="right"
+            triggerRect={rect({ top: 730, left: 990, width: 28, height: 28 })}
+            panelRect={rect({ top: 0, left: 0, width: 310, height: 160 })} />);
+        act(() => window.dispatchEvent(new Event('resize')));
+        expect(readPos()).toEqual({ top: 600, left: 676 });
+        vi.stubGlobal('innerWidth', 280);
+        vi.stubGlobal('innerHeight', 200);
+        act(() => window.dispatchEvent(new Event('resize')));
+        expect(readPos()).toEqual({ top: 32, left: 8 });
+        expect(screen.getByTestId('panel')).toHaveAttribute('data-max-height', '184');
+        expect(screen.getByTestId('panel')).toHaveAttribute('data-max-width', '264');
+    });
 
     it('placement "down": right-aligns to the trigger and opens below', () => {
         render(

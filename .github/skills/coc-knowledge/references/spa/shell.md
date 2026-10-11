@@ -314,6 +314,14 @@ readers receive the replacement result. `RepoDetail` seeds queue task data only 
 from stats-only placeholders, and `taskDataSource` records the server/API owner.
 `RepoChatTab` refreshes queue data on each mount.
 
+`queue/hooks/useRepoQueueStats.ts` shares eligible rows through `useRepoQueueJobs`;
+the selected group's queue stays independent of its members. Owner-aware readers
+exclude mismatched sources and unresolved remote selections. `RailJobStatuses`
+portals status-specific previews beside the collapsed workspace rail using
+`useAnchoredPanelPosition`, with a pointer bridge and focus/outside/Escape dismissal.
+Scope or transport changes dispose previews. Icon clicks retain sidebar expansion;
+`queueJobHash` shares existing conversation/workflow selection routes with `RepoChatTab`.
+
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
 response to provider and model selection; provider availability and choice
