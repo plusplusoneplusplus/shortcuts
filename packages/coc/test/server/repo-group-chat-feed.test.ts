@@ -117,6 +117,17 @@ describe('buildRepoGroupChatFeed', () => {
         expect(feed.counts.running).toBe(2);
     });
 
+    it('counts one conversation when several running or queued representations share its owner and process', async () => {
+        queues[A] = {
+            running: [{ id: 'original', processId: 'same' }, { id: 'second', processId: 'same' }],
+            queued: [{ id: 'follow-up', processId: 'same' }, { id: 'another', processId: 'different' }],
+        };
+        const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query());
+        expect(feed.running).toHaveLength(1);
+        expect(feed.queued).toHaveLength(1);
+        expect(feed.counts).toMatchObject({ total: 2, running: 1, queued: 1, byOwner: { [A]: 2 } });
+    });
+
     it('pages through every chat once with stable global order (no omissions or duplicates)', async () => {
         const expected: string[] = [];
         for (let i = 0; i < 17; i++) {

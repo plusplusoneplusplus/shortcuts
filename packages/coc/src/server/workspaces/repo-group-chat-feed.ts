@@ -254,9 +254,16 @@ export async function buildRepoGroupChatFeed(
         try {
             const snapshot = await deps.readQueue(source.workspaceId);
             const tag = (task: Record<string, unknown>): OwnedTask => ({ ...task, ownerWorkspaceId: source.workspaceId });
-            state.running = snapshot.running.map(tag);
+            const represented = new Set<string>();
+            const unique = (items: Record<string, unknown>[]) => items.filter(item => {
+                const id = activeProcessId(item);
+                if (!id || represented.has(id)) return false;
+                represented.add(id);
+                return true;
+            });
+            state.running = unique(snapshot.running).map(tag);
             // Pause markers are queue controls, which stay owner-specific.
-            state.queued = snapshot.queued.filter(item => item.kind !== 'pause-marker').map(tag);
+            state.queued = unique(snapshot.queued.filter(item => item.kind !== 'pause-marker')).map(tag);
             for (const task of [...state.running, ...state.queued]) {
                 const id = activeProcessId(task);
                 if (id) state.activeIds.add(id);
