@@ -38,6 +38,17 @@ describe('admitted chat attachment cleanup', () => {
         expect(fs.readdirSync(tempDir)).toHaveLength(3);
     });
 
+    it('ignores damaged non-string image history instead of throwing', () => {
+        const imagePath = path.join(tempDir, 'image.png');
+        const documentPath = path.join(tempDir, 'document.txt');
+        fs.writeFileSync(imagePath, 'image');
+        fs.writeFileSync(documentPath, 'document');
+        expect(() => cleanupChatAttachmentTempDir(tempDir, [
+            { type: 'file', path: imagePath }, { type: 'file', path: documentPath },
+        ], [123, null])).not.toThrow();
+        expect(fs.readdirSync(tempDir)).toEqual(['image.png']);
+    });
+
     it('removes document-only directories and unrelated contents', () => {
         const documentPath = path.join(tempDir, 'document.txt');
         fs.writeFileSync(documentPath, 'document');

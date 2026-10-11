@@ -25,11 +25,12 @@ export function getChatImageAttachments(attachments: readonly Attachment[] | und
 export function cleanupChatAttachmentTempDir(
     tempDir: string | undefined,
     attachments?: readonly Attachment[],
-    images?: readonly string[],
+    images?: readonly unknown[],
 ): void {
     if (!tempDir) return;
     const imageExtensions = new Set(images?.flatMap(image => {
-        const parsed = parseDataUrl(image);
+        // Persisted history can be damaged; never let cleanup throw.
+        const parsed = typeof image === 'string' ? parseDataUrl(image) : null;
         return parsed ? [`.${parsed.extension}`] : [];
     }));
     const imagePaths = new Set([

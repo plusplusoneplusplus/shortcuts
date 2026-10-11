@@ -46,7 +46,7 @@ import {
 import { advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatMode, ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatMode, normalizeChatModeOrDefault } from '../tasks/task-types';
-import { saveImagesToTempFiles, rehydrateImagesIfNeeded } from './image-store';
+import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { BaseExecutor } from './base-executor';
 import {
     assertNoAskUserConflict,
@@ -661,7 +661,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             /** Temp dir holding decoded image attachments, if this turn made one. */
             imageTempDir?: string;
             attachments?: readonly Attachment[];
-            images?: readonly string[];
+            images?: readonly unknown[];
+            /** False when the turn settled before its images passed the image policy. */
+            imagesAccepted?: boolean;
             /** Cleanup for a prompt rewritten to a paste file, if any. */
             pasteCleanup?: () => void;
             logLabel: string;
@@ -674,7 +676,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // Background tasks cannot outlive the turn; drop the replay snapshot
         // on every exit path, including a drain-cap abort that never settles.
         this.backgroundTasks.clear(processId);
-        cleanupChatAttachmentTempDir(opts.imageTempDir, opts.attachments, opts.images);
+        // Rejected images never reached the provider, so no child can need them.
+        if (opts.imagesAccepted) cleanupChatAttachmentTempDir(opts.imageTempDir, opts.attachments, opts.images);
+        else if (opts.imageTempDir) cleanupTempDir(opts.imageTempDir);
         if (opts.pasteCleanup) { opts.pasteCleanup(); }
         opts.dispose?.();
         // Cancel any pending ask-user questions before cleanup
@@ -1162,6 +1166,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // provider reports its session. Handed back with the result so the
         // lifecycle runner can attribute the assistant turn it appends.
         let turnSegmentId: string | undefined;
+        let imagesAccepted = false;
         try {
             await assertIncomingImageFiles(payloadRecord.attachments, payloadImages, preBuiltTempDir,
                 this.dataDir ?? path.join(os.homedir(), '.coc'), payload.workspaceId, turnAbort.signal);
@@ -1235,6 +1240,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             policyModelId = policy.modelId;
             policyReasoningEffort = policy.reasoningEffort;
             await this.assertChatImageModel(taskProvider, effectiveAiService, policy.modelId, attachments);
+            imagesAccepted = true;
 
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(
@@ -1446,6 +1452,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 imageTempDir,
                 attachments,
                 images: payload.images,
+                imagesAccepted,
                 pasteCleanup,
                 logLabel: CHAT_EXECUTOR_LOG_LABEL,
             });
