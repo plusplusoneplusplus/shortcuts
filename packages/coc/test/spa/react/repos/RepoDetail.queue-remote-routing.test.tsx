@@ -122,6 +122,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isTerminalEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
+    isRailGitSummaryEnabled: () => false,
     isNotesEnabled: () => false,
     isMyWorkEnabled: () => false,
     isMyLifeEnabled: () => false,

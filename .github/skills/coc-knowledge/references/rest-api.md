@@ -64,7 +64,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | POST | `/api/workspaces/active` | Report selected workspace by `clientId`; `workspaceId: null` clears it |
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
 | PATCH | `/api/workspaces/:id` | Update metadata; workspace mutations broadcast `workspace-topology-changed` |
-| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, upstream divergence and remote metadata |
+| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, detached flag, upstream name (null when none) with its ahead/behind, and remote metadata |
 | POST | `/api/git-info/batch` | Batched cached metadata for physical workspaces |
 | GET/PATCH | `/api/workspaces/:id/preferences` | Read/update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for modes `base`, `ask`, `autopilot` |

@@ -46,6 +46,9 @@ references before editing. Paths are package-relative.
   from the owning workspace's full pinned-process read, overlaid with the chat
   list's live pin/archive state and tab/type visibility; do not derive them from
   queue status arrays or aggregate member pins for a selected group.
+  Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
+  owner's git-info/working tree (groups: per-member git-info, never a group branch),
+  and never show unknown, no-upstream or detached state as clean or 0/0.
 - Terminal native paste is captured inside the focused `TerminalPanel`, consumes
   only `text/plain`, cancels parallel/default insertion, and uses xterm `paste()`.
   Clipboard shortcuts leave browser/Electron paste enabled without async reads;

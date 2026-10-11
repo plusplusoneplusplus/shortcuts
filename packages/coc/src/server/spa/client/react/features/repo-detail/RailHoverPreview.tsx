@@ -18,6 +18,8 @@ export interface RailControls {
     hoverEnabled: boolean;
     onExpand: () => void;
     onPreview: () => void;
+    /** Expand the sidebar with its Git half open; `changes` reveals the working tree. */
+    onOpenGit?: (target: 'changes' | 'branch') => void;
 }
 export const RailControlsContext = createContext<RailControls | null>(null);
 
@@ -33,6 +35,17 @@ export interface RailPreviewControl {
     icon: ReactNode;
     /** List rows; `dismiss` closes the preview without restoring focus. */
     renderRows: (dismiss: () => void) => ReactNode;
+    /** Replaces the icon and count badge (status tiles that are not counts). */
+    content?: ReactNode;
+    /** Replaces the default 28px square trigger size. */
+    sizeClassName?: string;
+    /** Click action; defaults to expanding the sidebar. */
+    onClick?: () => void;
+    /** Extra accessible description; defaults to the job-preview hint. */
+    description?: string;
+    /** Show `(count)` after the heading. Defaults to true. */
+    headingCount?: boolean;
+    closeLabel?: string;
 }
 
 interface Props extends RailControls {
@@ -149,12 +162,13 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                     data-rail-job-status
                     data-testid={`split-workspace-left-${control.key}`}
                     aria-label={control.label}
-                    aria-description={previewable ? `${scopeLabel}. Focus to preview; click expands sidebar.` : undefined}
+                    aria-description={previewable ? `${scopeLabel}. ${control.description ?? 'Focus to preview; click expands sidebar.'}` : undefined}
                     aria-haspopup={previewable ? 'dialog' : undefined}
                     aria-expanded={previewable ? open && active === control.key : undefined}
                     aria-controls={open && active === control.key ? id : undefined}
                     className={cn(
-                        'relative flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
+                        'relative flex items-center justify-center rounded-md border transition-colors',
+                        control.sizeClassName ?? 'h-7 w-7',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50',
                         control.className,
                     )}
@@ -182,15 +196,17 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                     onKeyDown={event => keyDown(event, control.key)}
                     onClick={() => {
                         dismiss();
-                        onExpand();
+                        (control.onClick ?? onExpand)();
                     }}
                 >
-                    {control.icon}
-                    <span className={cn(
-                        'absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5',
-                        'border border-white text-[8px] font-bold leading-none text-white dark:border-[#1e1e1e]',
-                        control.badgeClassName,
-                    )} aria-hidden="true">{control.count > 99 ? '99+' : control.count}</span>
+                    {control.content ?? <>
+                        {control.icon}
+                        <span className={cn(
+                            'absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5',
+                            'border border-white text-[8px] font-bold leading-none text-white dark:border-[#1e1e1e]',
+                            control.badgeClassName,
+                        )} aria-hidden="true">{control.count > 99 ? '99+' : control.count}</span>
+                    </>}
                 </button>
             ))}
             {open && portal && current && createPortal(
@@ -228,11 +244,11 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                         <header className="flex items-start justify-between gap-2 border-b border-[#e5e5e5] px-3 py-2 dark:border-[#3c3c3c]">
                             <div className="min-w-0">
                                 <div id={`${id}-heading`} className="text-xs font-semibold">
-                                    {current.heading} <span className="font-normal text-[#848484]">({count})</span>
+                                    {current.heading}{current.headingCount !== false && <> <span className="font-normal text-[#848484]">({count})</span></>}
                                 </div>
                                 <div className="mt-0.5 break-words text-[11px] text-[#656d76] dark:text-[#aaa]">{scopeLabel}</div>
                             </div>
-                            <button type="button" aria-label="Close job preview" className="h-[22px] w-[22px] flex-shrink-0 rounded text-xs text-[#848484] hover:bg-[#f3f3f3] focus-visible:outline focus-visible:outline-[#007acc] dark:hover:bg-[#333]" onClick={() => dismiss(true)}>x</button>
+                            <button type="button" aria-label={current.closeLabel ?? 'Close job preview'} className="h-[22px] w-[22px] flex-shrink-0 rounded text-xs text-[#848484] hover:bg-[#f3f3f3] focus-visible:outline focus-visible:outline-[#007acc] dark:hover:bg-[#333]" onClick={() => dismiss(true)}>x</button>
                         </header>
                         <ul>{current.renderRows(close)}</ul>
                     </div>

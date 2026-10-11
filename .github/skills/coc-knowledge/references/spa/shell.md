@@ -349,6 +349,17 @@ live pin/archive state and visibility rules; group scope does not aggregate memb
 pins. Scope or transport changes dispose previews. Icon clicks retain sidebar
 expansion, and `queueJobHash` preserves conversation/workflow owner routes.
 
+### Collapsed-rail Git tiles
+
+`features.railGitSummary` (default off) adds changes, sync and branch-spine tiles
+through `SplitWorkspacePanel`'s `railGit` slot, reusing `RailHoverPreview`.
+Repos read git-info plus working-tree changes from their owner; groups batch
+member git-info on the group's server and list each member's own branch.
+Changes count distinct paths with conflicts first; sync compares only against the
+reported `upstream`. Unknown, failed, detached and no-upstream states never render
+clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`
+git-info refreshes; tiles open the expanded Git half (branch overview or member).
+
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
 response to provider and model selection; provider availability and choice

@@ -344,6 +344,12 @@ export interface GitInfoResponse {
   dirty: boolean;
   ahead?: number;
   behind?: number;
+  /**
+   * Upstream that `ahead`/`behind` compare against; null when none is
+   * configured. Absent from servers that do not report it.
+   */
+  upstream?: string | null;
+  detached?: boolean;
   isGitRepo: boolean;
   remoteUrl: string | null;
 }
