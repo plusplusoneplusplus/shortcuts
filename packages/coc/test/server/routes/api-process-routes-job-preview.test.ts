@@ -73,6 +73,8 @@ describe('owner-scoped preview HTTP contract', () => {
         expect(response.status).toBe(200);
         const body = await response.json();
         expect(body.process).toHaveProperty('jobPreview');
+        expect(body.process.jobPreview.excerpt.length).toBeLessThanOrEqual(800);
+        expect(body.process.promptPreview).toBe('');
         expect(body.process).not.toHaveProperty('conversationTurns');
         expect(body.process).not.toHaveProperty('fullPrompt');
         expect(body).not.toHaveProperty('history');

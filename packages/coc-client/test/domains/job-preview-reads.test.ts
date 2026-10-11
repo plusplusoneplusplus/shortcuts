@@ -13,6 +13,16 @@ describe('abortable compact job reads', () => {
       signal, query: { workspace: 'ws/owner', preview: true, exclude: 'conversation,toolCalls' },
     } });
   });
+  it('supports preview and paging options together without losing owner or cancellation', async () => {
+    const adapter = createMockAdapter({ process: { id: 'job/1' } });
+    const signal = new AbortController().signal;
+    await new ProcessesClient(adapter, new CocClient().options).get('job/1', {
+      workspace: 'ws/owner', preview: true, turnsLimit: 30,
+    }, { signal });
+    expect(adapter.calls[0]).toMatchObject({ path: '/processes/job%2F1', options: {
+      signal, query: { workspace: 'ws/owner', preview: true, turnsLimit: 30 },
+    } });
+  });
   it('reads a whole Ralph group on its owner and forwards cancellation', async () => {
     const adapter = createMockAdapter({ group: { groupId: 'ralph/1' } });
     const signal = new AbortController().signal;

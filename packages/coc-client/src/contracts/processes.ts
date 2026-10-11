@@ -162,6 +162,7 @@ export interface ConversationTurnsPage extends ConversationHistoryMetadata {
 
 export interface ProcessGetOptions extends Pick<ProcessListQuery, 'workspace' | 'exclude' | 'include'> {
   turnsLimit?: number;
+  preview?: boolean;
 }
 
 export interface ProcessTurnsQuery {
