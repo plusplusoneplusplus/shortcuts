@@ -18,7 +18,7 @@ import { McpHttpError } from './mcp/mcp-client';
 import { GraphHttpError } from './graph/graph-client';
 import { TrouterClient, trouterAccount, type TrouterStatus } from './trouter';
 import { TeamsNotificationScheduler, type TeamsReadHints } from './notification-scheduler';
-import { acquireTokenViaAzCli } from './auth';
+import { TeamsAzureCliCredential } from './azure-cli-credential';
 import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
 import type { GraphOutboundOptions } from './graph/graph-credential';
 import type { TeamsDestination, TeamsMessageBody, TeamsMessageRef, TeamsOperationRoutes,
@@ -37,6 +37,7 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     graphReadOptions?: GraphOutboundOptions;
     receiveImages?: boolean;
     onTokenRefresh?: () => Promise<string | null>;
+    acquireToken?: (signal: AbortSignal) => Promise<string>;
 }): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
@@ -50,7 +51,8 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     if (opts.operationRoutes?.selfSend === 'ic3' || opts.operationRoutes?.chatSend === 'ic3') {
         throw new Error('IC3 direct messages require MCP mode');
     }
-    return new GraphTransport({ connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh });
+    return new GraphTransport({ connectionId: opts.connectionId, routes: opts.operationRoutes,
+        onTokenRefresh: opts.onTokenRefresh, acquireToken: opts.acquireToken });
 }
 
 function isHistoricalSelectionCommand(text: string): boolean {
@@ -91,6 +93,8 @@ export class TeamsBot implements MessagingConnector {
     private _sentMessageIds = new Set<string>();
     /** Whether a token refresh is already in progress. */
     private _refreshingToken = false;
+    private azureCliCredential?: TeamsAzureCliCredential;
+    private authLifetime = new AbortController();
 
     private get debug(): boolean { return this.opts.debug ?? false; }
 
@@ -106,7 +110,9 @@ export class TeamsBot implements MessagingConnector {
             : this.pollMcpMessages.bind(this);
         this.transport = createTransport(this.mode, {
             ...opts,
-            onTokenRefresh: opts.auth?.onTokenRefresh,
+            onTokenRefresh: this.mode === 'mcp' || opts.auth?.bearerToken
+                ? opts.auth?.onTokenRefresh : () => this.acquireAzureCliToken(true),
+            acquireToken: opts.auth?.bearerToken ? undefined : signal => this.acquireAzureCliToken(false, signal),
         });
         this.transport.debug = opts.debug ?? false;
     }
@@ -114,6 +120,11 @@ export class TeamsBot implements MessagingConnector {
     /** Connect to Teams. Acquires token if needed, then initializes transport. */
     async start(): Promise<void> {
         const lifecycle = ++this.lifecycle;
+        this.authLifetime.abort();
+        this.azureCliCredential?.dispose();
+        this.azureCliCredential = undefined;
+        this.authLifetime = new AbortController();
+        this._refreshingToken = false;
         this.setStatus('connecting');
         this._lastError = null;
         console.log(`[teams-bot] Starting in ${this.mode} mode, teamId=${this.opts.teamId ?? 'none'}`);
@@ -124,9 +135,12 @@ export class TeamsBot implements MessagingConnector {
         if (!token) {
             try {
                 this.setStatus('authenticating');
-                token = await acquireTokenViaAzCli();
+                this.azureCliCredential = new TeamsAzureCliCredential('https://graph.microsoft.com');
+                token = await this.acquireAzureCliToken();
             } catch (err: any) {
                 if (lifecycle !== this.lifecycle) return;
+                this.azureCliCredential?.dispose();
+                this.azureCliCredential = undefined;
                 this._lastError = err.message ?? 'Failed to acquire token via az CLI';
                 this.setStatus('error');
                 this.opts.onError?.(this._lastError!);
@@ -182,6 +196,10 @@ export class TeamsBot implements MessagingConnector {
             }
         } catch (err: any) {
             if (lifecycle !== this.lifecycle) return;
+            this.authLifetime.abort();
+            this.azureCliCredential?.dispose();
+            this.azureCliCredential = undefined;
+            this.transport.stop();
             this._lastError = err.message ?? `Failed to connect via ${this.mode}`;
             this.setStatus('error');
             this.opts.onError?.(this._lastError!);
@@ -191,6 +209,9 @@ export class TeamsBot implements MessagingConnector {
     /** Gracefully disconnect. */
     async stop(): Promise<void> {
         const lifecycle = ++this.lifecycle;
+        this.authLifetime.abort();
+        this.azureCliCredential?.dispose();
+        this.azureCliCredential = undefined;
         this.stopPolling();
         this.notificationScheduler?.stop();
         this.notificationScheduler = undefined;
@@ -700,12 +721,15 @@ export class TeamsBot implements MessagingConnector {
 
     /** Attempt to refresh the bearer token via the configured callback. */
     private async refreshToken(): Promise<boolean> {
-        const refreshFn = this.opts.auth?.onTokenRefresh;
+        const refreshFn = this.mode === 'mcp' || this.opts.auth?.bearerToken ? this.opts.auth?.onTokenRefresh
+            : () => this.acquireAzureCliToken(true);
         if (!refreshFn || this._refreshingToken) return false;
 
         this._refreshingToken = true;
+        const lifecycle = this.lifecycle;
         try {
             const newToken = await refreshFn();
+            if (lifecycle !== this.lifecycle) return false;
             if (newToken) {
                 if (this.notificationAccount) {
                     const account = trouterAccount(newToken);
@@ -727,15 +751,23 @@ export class TeamsBot implements MessagingConnector {
                 return true;
             }
         } catch (err: any) {
+            if (lifecycle !== this.lifecycle) return false;
             console.error('[teams-bot] Token refresh failed:', err.message);
             this._lastError = `Token refresh failed: ${err.message}`;
             this.setStatus('error');
             this.notificationScheduler?.stop();
             void this.trouter?.stop();
         } finally {
-            this._refreshingToken = false;
+            if (lifecycle === this.lifecycle) this._refreshingToken = false;
         }
         return false;
+    }
+
+    private async acquireAzureCliToken(forceRefresh = false, signal?: AbortSignal): Promise<string> {
+        if (!this.azureCliCredential) throw new Error('Teams Azure CLI connection is not active');
+        return this.azureCliCredential.get(AbortSignal.any([
+            this.authLifetime.signal, ...(signal ? [signal] : []),
+        ]), forceRefresh);
     }
 
     /**

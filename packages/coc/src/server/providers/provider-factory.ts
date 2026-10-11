@@ -104,8 +104,8 @@ export class ProviderFactory {
     /**
      * Instantiate an IPullRequestsService for the given remote URL and config.
      *
-     * For ADO remotes, uses the shared ADO token resolver (cached + single-flighted).
-     * Returns `{ error: 'no-ado-credentials' }` sentinel when no token is available.
+     * For ADO remotes, uses the shared native ADO token provider.
+     * Missing organization returns a sentinel; native authentication errors propagate.
      *
      * For other providers: returns `null` when credentials are absent or the URL
      * is unrecognized (does not throw).
@@ -138,24 +138,14 @@ export class ProviderFactory {
             }
 
             const bearerToken = await resolveAdoAccessTokenValue({ dataDir: options?.dataDir });
-            if (bearerToken) {
-                // Best-effort: resolve the current user's ADO identity GUID
-                // so the adapter can filter PRs to the current user.
-                let currentUserId: string | undefined;
-                try {
-                    currentUserId = (await getOrResolveAdoUserId(orgUrl, bearerToken)) ?? undefined;
-                } catch { /* identity resolution is best-effort */ }
-
-                return createAdoPullRequestsAdapter({
-                    orgUrl,
-                    token: bearerToken,
-                    project: parsed?.project,
-                    repo: parsed?.repo,
-                    currentUserId,
-                });
-            }
-
-            return { error: 'no-ado-credentials' };
+            const currentUserId = (await getOrResolveAdoUserId(orgUrl, bearerToken)) ?? undefined;
+            return createAdoPullRequestsAdapter({
+                orgUrl,
+                token: bearerToken,
+                project: parsed?.project,
+                repo: parsed?.repo,
+                currentUserId,
+            });
         }
 
         return null;

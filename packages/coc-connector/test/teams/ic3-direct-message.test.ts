@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ic3DirectMessageClient, TeamsIc3SendError, type Ic3DirectMessageOptions } from '../../src/teams/ic3/ic3-direct-message';
-import { acquireTokenViaAzCli } from '../../src/teams/auth';
 import { TeamsBot, createTransport } from '../../src/teams/bot';
 import { McpTransport } from '../../src/teams/mcp/transport-mcp';
 
-vi.mock('../../src/teams/auth', () => ({ acquireTokenViaAzCli: vi.fn() }));
+const acquireAzureCliToken = vi.hoisted(() => vi.fn());
+vi.mock('../../src/teams/azure-cli-credential', () => ({
+    TeamsAzureCliCredential: class {
+        constructor(private readonly resource: string) {}
+        get(signal: AbortSignal) { return acquireAzureCliToken(this.resource, signal); }
+        clear() {}
+        dispose() {}
+    },
+}));
 
 const resource = 'https://ic3.teams.office.com';
 const senderId = '00000000-0000-0000-0000-000000000001';
@@ -28,7 +35,7 @@ function success(id: string | number = '1790000000123'): Response {
 
 beforeEach(() => {
     fetchMock.mockReset();
-    vi.mocked(acquireTokenViaAzCli).mockReset().mockResolvedValue(token());
+    vi.mocked(acquireAzureCliToken).mockReset().mockResolvedValue(token());
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -45,7 +52,7 @@ describe('IC3 verified self-DM send', () => {
         const pending = client.send('48:notes', 'message');
         await expect(pending).rejects.toBeInstanceOf(TeamsIc3SendError);
         await expect(pending).rejects.toMatchObject({ code: 'configuration', outcome: 'not-attempted' });
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -86,17 +93,18 @@ describe('IC3 verified self-DM send', () => {
         expect(acquire).toHaveBeenCalledWith(init?.signal);
     });
 
-    it('uses a separate Azure CLI IC3 token, caches it, and clears it explicitly', async () => {
+    it('uses the separate IC3 provider for every operation and after explicit clearing', async () => {
         const client = new Ic3DirectMessageClient({ region: 'amer' });
         fetchMock.mockImplementation(async () => success());
         await client.send('48:notes', 'test');
         await client.send('48:notes', 'test');
-        expect(acquireTokenViaAzCli).toHaveBeenCalledExactlyOnceWith(resource, expect.any(AbortSignal));
+        expect(acquireAzureCliToken).toHaveBeenCalledTimes(2);
+        expect(acquireAzureCliToken).toHaveBeenCalledWith(resource, expect.any(AbortSignal));
         const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
         expect(bodies[0].clientmessageid).not.toBe(bodies[1].clientmessageid);
         client.clearCredential();
         await client.send('48:notes', 'test');
-        expect(acquireTokenViaAzCli).toHaveBeenCalledTimes(2);
+        expect(acquireAzureCliToken).toHaveBeenCalledTimes(3);
     });
 
     it('derives self sender identity from each current credential after invalidation', async () => {
@@ -122,7 +130,7 @@ describe('IC3 verified self-DM send', () => {
             });
             expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${values[index]}`);
         }
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
     });
 
     it('snapshots routing and authentication options at construction', async () => {
@@ -138,7 +146,7 @@ describe('IC3 verified self-DM send', () => {
         );
         expect(acquire).toHaveBeenCalledOnce();
         expect(replacement).not.toHaveBeenCalled();
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
     });
 
     it.each(['', 'AMER', 'unknown', '../amer', 'emea?x=1', 'https://example.test', 'amer/../../', null, 1])(
@@ -152,7 +160,7 @@ describe('IC3 verified self-DM send', () => {
                 onMessage: async () => {},
             })).toThrow('region must be');
             expect(acquire).not.toHaveBeenCalled();
-            expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+            expect(acquireAzureCliToken).not.toHaveBeenCalled();
             expect(fetchMock).not.toHaveBeenCalled();
         },
     );
@@ -190,7 +198,7 @@ describe('IC3 verified self-DM send', () => {
 
     it.each(['', ' \n'])('rejects empty text before authentication', async text => {
         await expect(new Ic3DirectMessageClient().send('48:notes', text)).rejects.toThrow('nonempty text');
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -219,7 +227,7 @@ describe('IC3 verified self-DM send', () => {
         });
         await expect(client.send('48:notes', 'test')).rejects.toThrow('IC3 credential could not be acquired');
         expect(fetchMock).not.toHaveBeenCalled();
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
     });
 
     it.each([401, 403, 429, 500, 503])('does not retry HTTP %s or reveal response bodies', async status => {
@@ -317,7 +325,7 @@ describe('IC3 transport and bot routing', () => {
         await transport.initialize(mcpToken(), {});
         await transport.send('19:self@thread.v2', 'self');
         expect(fetchMock.mock.calls.every(([url]) => url === 'https://mcp.example.test')).toBe(true);
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         transport.stop();
     });
 
@@ -331,7 +339,7 @@ describe('IC3 transport and bot routing', () => {
         await expect(transport.send('48:notes', 'message'))
             .rejects.toMatchObject({ code: 'configuration', outcome: 'not-attempted' });
         expect(fetchMock).not.toHaveBeenCalled();
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         await transport.initialize(mcpToken(), { teamId: 'team' });
         await transport.send('channel', 'message');
         expect(fetchMock.mock.calls.every(([url]) => url === 'https://mcp.example.test')).toBe(true);
@@ -347,7 +355,7 @@ describe('IC3 transport and bot routing', () => {
         });
         await transport.initialize('mcp-token', {});
         expect(await transport.send('19:self@thread.v2', 'test')).toBe('mcp-message');
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         expect(acquire).not.toHaveBeenCalled();
         expect(fetchMock.mock.calls.every(([url]) => String(url) === 'https://mcp.example.test')).toBe(true);
         transport.stop();
@@ -386,7 +394,7 @@ describe('IC3 transport and bot routing', () => {
                 from: `8:orgid:${account.oid}`, fromUserId: `8:orgid:${account.oid}`, imdisplayname: account.name,
             });
             expect(acquire).toHaveBeenCalledExactlyOnceWith(init?.signal);
-            expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+            expect(acquireAzureCliToken).not.toHaveBeenCalled();
         } finally {
             await bot.stop();
         }
@@ -409,7 +417,7 @@ describe('IC3 transport and bot routing', () => {
             expect(await bot.send('48:notes', 'test')).toBe('1790000000123');
             const [, init] = fetchMock.mock.calls.at(-1)!;
             expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${token()}`);
-            expect(acquireTokenViaAzCli).toHaveBeenCalledWith(resource, expect.any(AbortSignal));
+            expect(acquireAzureCliToken).toHaveBeenCalledWith(resource, expect.any(AbortSignal));
         } finally {
             await bot.stop();
         }
@@ -450,7 +458,7 @@ describe('IC3 transport and bot routing', () => {
         await expect(transport.send('48:notes', 'test', { replyToId: 'root' }))
             .rejects.toMatchObject({ code: 'unsupported', outcome: 'not-attempted' });
         expect(fetchMock).not.toHaveBeenCalled();
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         transport.stop();
     });
 
@@ -479,7 +487,7 @@ describe('IC3 transport and bot routing', () => {
         await transport.send('19:channel@thread.tacv2', 'test', { replyToId: 'root' });
         expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).params.name))
             .toEqual(['SendMessageToChannel', 'ReplyToChannelMessage']);
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         expect(acquire).not.toHaveBeenCalled();
         transport.stop();
     });
@@ -497,7 +505,7 @@ describe('IC3 transport and bot routing', () => {
             await expect(bot.send('48:notes', 'test', { replyToId: '' }))
                 .rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
             expect(fetchMock).not.toHaveBeenCalled();
-            expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+            expect(acquireAzureCliToken).not.toHaveBeenCalled();
             const send = vi.spyOn(McpTransport.prototype, 'send').mockRejectedValue(
                 new Error('wrapped HTTP 401', { cause: new TeamsIc3SendError('failed') }),
             );
@@ -523,7 +531,7 @@ describe('IC3 transport and bot routing', () => {
         await transport.initialize(mcpToken(), {});
         fetchMock.mockResolvedValueOnce(success());
         await transport.send('48:notes', 'test');
-        expect(acquireTokenViaAzCli).toHaveBeenCalledTimes(2);
+        expect(acquireAzureCliToken).toHaveBeenCalledTimes(2);
         await transport.initialize(mcpToken(), { teamId: 'team' });
         fetchMock.mockClear();
         await transport.send('19:channel@thread.tacv2', 'test');

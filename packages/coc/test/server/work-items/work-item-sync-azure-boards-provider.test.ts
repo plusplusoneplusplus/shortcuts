@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -8,12 +8,20 @@ import {
     resolveAzureDevOpsCliAccessToken,
 } from '../../../src/server/work-items/work-item-sync-azure-boards-provider';
 import { writeProvidersConfig } from '../../../src/server/providers/providers-config';
+import { resolveAdoAccessTokenValue } from '@plusplusoneplusplus/forge';
+import { AuthError } from '@plusplusoneplusplus/coc-native';
+
+vi.mock('@plusplusoneplusplus/forge', async importOriginal => ({
+    ...await importOriginal<typeof import('@plusplusoneplusplus/forge')>(),
+    resolveAdoAccessTokenValue: vi.fn(),
+}));
 
 const WORKSPACE_ID = 'azure-sync-repo';
 
 let tmpDir: string;
 
 beforeEach(async () => {
+    vi.mocked(resolveAdoAccessTokenValue).mockReset();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-wi-az-sync-'));
 });
 
@@ -279,54 +287,33 @@ describe('Azure Boards work item sync provider status adapter', () => {
 });
 
 describe('resolveAzureDevOpsCliAccessToken', () => {
-    it('uses Azure DevOps resource ID and returns only trimmed stdout', async () => {
-        const calls: Array<{ file: string; args: string[] }> = [];
-        const run = async (file: string, args: string[]) => {
-            calls.push({ file, args });
-            return { stdout: '  access-token-value\n', stderr: '' };
-        };
-
-        await expect(resolveAzureDevOpsCliAccessToken(run, 'linux')).resolves.toBe('access-token-value');
-        expect(calls).toEqual([{
-            file: 'az',
-            args: [
-                'account',
-                'get-access-token',
-                '--resource',
-                '499b84ac-1321-427f-aa17-267ca6975798',
-                '--query',
-                'accessToken',
-                '-o',
-                'tsv',
-            ],
-        }]);
+    it('delegates token acquisition to the shared native resolver', async () => {
+        vi.mocked(resolveAdoAccessTokenValue).mockResolvedValueOnce('test-access-token');
+        await expect(resolveAzureDevOpsCliAccessToken()).resolves.toBe('test-access-token');
+        expect(resolveAdoAccessTokenValue).toHaveBeenCalledExactlyOnceWith();
     });
 
-    it('runs Azure CLI through cmd.exe on Windows so az.cmd can be resolved', async () => {
-        const calls: Array<{ file: string; args: string[] }> = [];
-        const run = async (file: string, args: string[]) => {
-            calls.push({ file, args });
-            return { stdout: 'windows-access-token\n', stderr: '' };
-        };
+    it('preserves native account errors without direct CLI fallback', async () => {
+        const error = new AuthError('AccountMismatch');
+        vi.mocked(resolveAdoAccessTokenValue).mockRejectedValueOnce(error);
+        await expect(resolveAzureDevOpsCliAccessToken()).rejects.toBe(error);
+        expect(resolveAdoAccessTokenValue).toHaveBeenCalledOnce();
+    });
 
-        await expect(resolveAzureDevOpsCliAccessToken(run, 'win32', 'cmd.exe'))
-            .resolves.toBe('windows-access-token');
-        expect(calls).toEqual([{
-            file: 'cmd.exe',
-            args: [
-                '/d',
-                '/s',
-                '/c',
-                'az',
-                'account',
-                'get-access-token',
-                '--resource',
-                '499b84ac-1321-427f-aa17-267ca6975798',
-                '--query',
-                'accessToken',
-                '-o',
-                'tsv',
-            ],
-        }]);
+    it('shares the host resolver across workspace adapters using their data directory', async () => {
+        vi.mocked(resolveAdoAccessTokenValue).mockResolvedValue('test-access-token');
+        const adapter = createAzureBoardsWorkItemSyncProviderAdapter({ dataDir: tmpDir });
+        await adapter.getStatus(makeContext(undefined, 'https://dev.azure.com/example-org/Project/_git/repo-one'));
+        await adapter.getStatus(makeContext(undefined, 'https://dev.azure.com/example-org/Project/_git/repo-two'));
+        expect(resolveAdoAccessTokenValue).toHaveBeenCalledTimes(2);
+        expect(resolveAdoAccessTokenValue).toHaveBeenCalledWith({ dataDir: tmpDir });
+    });
+
+    it('surfaces native login errors through adapter status rather than returning unavailable auth', async () => {
+        const error = new AuthError('LoginRequired');
+        vi.mocked(resolveAdoAccessTokenValue).mockRejectedValueOnce(error);
+        const adapter = createAzureBoardsWorkItemSyncProviderAdapter({ dataDir: tmpDir });
+        await expect(adapter.getStatus(makeContext(undefined, 'https://dev.azure.com/example-org/Project/_git/repo')))
+            .rejects.toBe(error);
     });
 });

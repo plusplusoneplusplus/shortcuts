@@ -165,6 +165,9 @@ export class GraphOperations implements TeamsOperations {
                 throw new TeamsOperationError(`Graph request failed (HTTP ${status})`, this.backend, code,
                     status >= 400 && status < 500 && status !== 408 ? 'rejected' : 'unknown', error.retryAfterMs);
             }
+            if (outcome === 'not-attempted') {
+                throw new TeamsOperationError('Graph credential acquisition failed', this.backend, 'authentication', 'not-attempted');
+            }
             throw new TeamsOperationError('Graph request failed without a definitive response', this.backend, 'network', 'unknown');
         } finally {
             clearTimeout(timer);

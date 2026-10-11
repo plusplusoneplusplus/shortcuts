@@ -21,15 +21,6 @@ vi.mock('../../src/ado/ado-token-resolver', async (importOriginal) => {
     };
 });
 
-vi.mock('../../src/ado/ado-session-cache', async (importOriginal) => {
-    const original = await importOriginal<typeof import('../../src/ado/ado-session-cache')>();
-    return {
-        ...original,
-        readAdoSessionCache: vi.fn(),
-        writeAdoSessionCache: vi.fn(),
-    };
-});
-
 import {
     AdoConnectionFactory,
     getAdoConnectionFactory,
@@ -37,17 +28,11 @@ import {
 } from '../../src/ado/ado-connection-factory';
 import * as azdev from 'azure-devops-node-api';
 import { resolveAdoAccessToken } from '../../src/ado/ado-token-resolver';
-import { readAdoSessionCache } from '../../src/ado/ado-session-cache';
+import { AuthError } from '@plusplusoneplusplus/coc-native';
 
 const mockedResolveToken = vi.mocked(resolveAdoAccessToken);
-const mockedReadCache = vi.mocked(readAdoSessionCache);
 
 const NOW = 1_700_000_000_000;
-const TOKEN_JSON = JSON.stringify({
-    token: 'az-bearer-token-123',
-    expiresOn: new Date(NOW + 3600_000).toISOString(),
-});
-const ACCOUNT_JSON = JSON.stringify({ upn: 'user@example.com', displayName: 'Test User' });
 
 describe('AdoConnectionFactory', () => {
     const ORIGINAL_ENV = { ...process.env };
@@ -57,8 +42,7 @@ describe('AdoConnectionFactory', () => {
         delete process.env.AZURE_DEVOPS_ORG_URL;
         vi.clearAllMocks();
         vi.setSystemTime(NOW);
-        // Default: token resolver returns null (no token available)
-        mockedResolveToken.mockResolvedValue(null);
+        mockedResolveToken.mockRejectedValue(new AuthError('LoginRequired'));
     });
 
     afterEach(() => {
@@ -93,7 +77,7 @@ describe('AdoConnectionFactory', () => {
         });
     });
 
-    describe('connect — token cache hit', () => {
+    describe('connect — native token', () => {
         beforeEach(() => {
             process.env.AZURE_DEVOPS_ORG_URL = 'https://dev.azure.com/myorg';
         });
@@ -130,7 +114,7 @@ describe('AdoConnectionFactory', () => {
         });
     });
 
-    describe('connect — token resolution (cache miss)', () => {
+    describe('connect — token resolution', () => {
         beforeEach(() => {
             process.env.AZURE_DEVOPS_ORG_URL = 'https://dev.azure.com/myorg';
         });
@@ -150,15 +134,15 @@ describe('AdoConnectionFactory', () => {
             expect(azdev.getBearerHandler).toHaveBeenCalledWith('az-bearer-token-123');
         });
 
-        it('returns error when token resolver returns null', async () => {
-            mockedResolveToken.mockResolvedValueOnce(null);
+        it('returns native auth error when token acquisition fails', async () => {
+            mockedResolveToken.mockRejectedValueOnce(new AuthError('LoginRequired'));
 
             const factory = getAdoConnectionFactory();
             const result = await factory.connect();
 
             expect(result.connected).toBe(false);
             if (!result.connected) {
-                expect(result.error).toContain('az login');
+                expect(result.error).toContain('LoginRequired');
             }
         });
 
@@ -166,7 +150,7 @@ describe('AdoConnectionFactory', () => {
             mockedResolveToken.mockResolvedValueOnce({
                 token: 'token-for-dir',
                 expiresAt: NOW + 3600_000,
-                account: null,
+                account: { upn: 'account@example.test', displayName: 'Account', adoId: null },
             });
 
             const factory = getAdoConnectionFactory();
@@ -175,11 +159,11 @@ describe('AdoConnectionFactory', () => {
             expect(mockedResolveToken).toHaveBeenCalledWith({ dataDir: '/custom/dir' });
         });
 
-        it('still connects when account is null', async () => {
+        it('connects with native account metadata', async () => {
             mockedResolveToken.mockResolvedValueOnce({
                 token: 'token-no-account',
                 expiresAt: NOW + 3600_000,
-                account: null,
+                account: { upn: 'account@example.test', displayName: 'Account', adoId: null },
             });
 
             const factory = getAdoConnectionFactory();
@@ -187,7 +171,7 @@ describe('AdoConnectionFactory', () => {
 
             expect(result.connected).toBe(true);
             if (result.connected) {
-                expect(result.account).toBeNull();
+                expect(result.account?.upn).toBe('account@example.test');
             }
         });
     });
@@ -200,7 +184,7 @@ describe('AdoConnectionFactory', () => {
             mockedResolveToken.mockResolvedValueOnce({
                 token: 'az-bearer-token-123',
                 expiresAt: NOW + 3600_000,
-                account: null,
+                account: { upn: 'account@example.test', displayName: 'Account', adoId: null },
             });
             process.env.AZURE_DEVOPS_ORG_URL = 'https://org';
 

@@ -55,7 +55,7 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig, type ProvidersFileConfig } from '../providers/providers-config';
 import { execGitAsync, loadComparisonPatch, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
-import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { AuthError, loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestAutoMerge, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 import {
@@ -82,6 +82,10 @@ import {
 
 /** Detect whether an error is an authentication/authorization failure. */
 function isAuthError(err: unknown): boolean {
+    if (err instanceof AuthError) {
+        return ['LoginRequired', 'InteractionRequired', 'AccountMismatch', 'TokenExpired', 'RefreshDisabled', 'AccessDenied']
+            .includes(err.code);
+    }
     if (!(err instanceof Error)) return false;
     const msg = err.message.toLowerCase();
     return msg.includes('401') || msg.includes('403') || msg.includes('unauthorized') || msg.includes('forbidden');

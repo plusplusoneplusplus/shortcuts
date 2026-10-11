@@ -137,8 +137,7 @@ describe('ProviderFactory.parseAdoRemote', () => {
 describe('ProviderFactory.createPullRequestsService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // Default: shared resolver returns no token (not logged in)
-        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Authentication failed: LoginRequired.'));
         // Default: no cached user identity
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     });
@@ -152,13 +151,13 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(result).toBeNull();
     });
 
-    it('returns no-ado-credentials sentinel when shared resolver returns no token', async () => {
+    it('surfaces native login failure instead of returning a no-credentials sentinel', async () => {
         const config: ProvidersFileConfig = { providers: {} };
-        const result = await ProviderFactory.createPullRequestsService(
+        await expect(ProviderFactory.createPullRequestsService(
             'https://dev.azure.com/org/proj/_git/repo',
             config,
-        );
-        expect(result).toEqual({ error: 'no-ado-credentials' });
+        )).rejects.toThrow('LoginRequired');
+        expect(createAdoPullRequestsAdapter).not.toHaveBeenCalled();
     });
 
     it('returns a service when shared resolver returns a token', async () => {
@@ -254,7 +253,7 @@ describe('ProviderFactory.createPullRequestsService', () => {
         expect(resolveAdoAccessTokenValue).toHaveBeenCalledWith({ dataDir: '/custom/data' });
     });
 
-    it('passes cached ADO user ID as currentUserId', async () => {
+    it('passes the current token-bound ADO user ID as currentUserId', async () => {
         (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token');
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockResolvedValue('ado-guid-123');
         const config: ProvidersFileConfig = { providers: {} };
@@ -281,19 +280,14 @@ describe('ProviderFactory.createPullRequestsService', () => {
         );
     });
 
-    it('creates adapter without currentUserId when identity resolution throws', async () => {
+    it('propagates unexpected identity resolver failures', async () => {
         (resolveAdoAccessTokenValue as ReturnType<typeof vi.fn>).mockResolvedValue('bearer-token');
         (getOrResolveAdoUserId as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network error'));
         const config: ProvidersFileConfig = { providers: {} };
-        const result = await ProviderFactory.createPullRequestsService(
+        await expect(ProviderFactory.createPullRequestsService(
             'https://dev.azure.com/org/proj/_git/repo',
             config,
-        );
-        // Should still return a valid service, not throw
-        expect(result).not.toBeNull();
-        expect(result).not.toEqual({ error: 'no-ado-credentials' });
-        expect(createAdoPullRequestsAdapter).toHaveBeenCalledWith(
-            expect.objectContaining({ currentUserId: undefined }),
-        );
+        )).rejects.toThrow('network error');
+        expect(createAdoPullRequestsAdapter).not.toHaveBeenCalled();
     });
 });

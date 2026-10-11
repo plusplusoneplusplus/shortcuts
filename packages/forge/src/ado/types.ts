@@ -1,5 +1,11 @@
 import type { WebApi } from 'azure-devops-node-api';
-import type { AdoAccountInfo } from './ado-session-cache';
+
+export interface AdoAccountInfo {
+    upn: string;
+    displayName: string;
+    /** ADO identity GUID, distinct from the Microsoft account selector. */
+    adoId: string | null;
+}
 
 /**
  * Discriminated union returned by `AdoConnectionFactory.connect()`.
@@ -12,6 +18,6 @@ export type AdoConnectionResult =
 /** Optional overrides that let callers skip env-var lookup (useful for tests). */
 export interface AdoClientOptions {
     orgUrl?: string;
-    /** Directory where `~/.coc/ado-session.json` is written. Defaults to `~/.coc`. */
+    /** Host data directory identifying the shared authentication lifetime. */
     dataDir?: string;
 }

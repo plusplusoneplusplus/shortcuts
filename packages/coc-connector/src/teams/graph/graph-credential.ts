@@ -1,4 +1,5 @@
-import { acquireTokenViaAzCli } from '../auth';
+import { TeamsAzureCliCredential } from '../azure-cli-credential';
+import { AuthError, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { TeamsOperationError } from '../operations';
 
 export interface GraphOutboundOptions {
@@ -10,36 +11,50 @@ export class GraphCredentialStore {
     private token?: string;
     private expiresAt = 0;
     private readonly acquireToken: NonNullable<GraphOutboundOptions['acquireToken']>;
+    private readonly nativeCredential?: TeamsAzureCliCredential;
 
     constructor(
         private readonly account: { tenantId: string; objectId: string } | undefined,
         options: GraphOutboundOptions = {},
         private readonly purpose: 'read' | 'write' = 'write',
     ) {
-        this.acquireToken = options.acquireToken ?? (signal => acquireTokenViaAzCli('https://graph.microsoft.com', signal));
+        if (!options.acquireToken) this.nativeCredential = new TeamsAzureCliCredential('https://graph.microsoft.com');
+        this.acquireToken = options.acquireToken ?? (signal => this.nativeCredential!.get(signal));
     }
 
     clear(): void {
+        this.nativeCredential?.clear();
         this.token = undefined;
         this.expiresAt = 0;
+    }
+
+    dispose(): void {
+        this.nativeCredential?.dispose();
+        this.clear();
     }
 
     async get(signal: AbortSignal, refresh = false): Promise<string> {
         signal.throwIfAborted();
         if (!this.account) throw this.invalid(`Graph ${this.purpose === 'read' ? 'reader' : 'outbound'} requires an MCP reader tenant/object identity`);
-        if (!refresh && this.token && this.expiresAt > Date.now() + 60_000) return this.token;
-        this.clear();
+        if (!this.nativeCredential && !refresh && this.token && this.expiresAt > Date.now() + 60_000) return this.token;
+        this.token = undefined;
+        this.expiresAt = 0;
         let token: string;
         let onAbort = () => {};
         try {
             token = await new Promise<string>((resolve, reject) => {
                 onAbort = () => reject(this.invalid('Graph credential acquisition cancelled or timed out'));
                 signal.addEventListener('abort', onAbort, { once: true });
-                this.acquireToken(signal).then(resolve, reject);
+                (this.nativeCredential ? this.nativeCredential.get(signal, refresh) : this.acquireToken(signal)).then(resolve, reject);
             });
-        } catch {
+        } catch (error) {
             if (signal.aborted) throw this.invalid('Graph credential acquisition cancelled or timed out');
-            throw this.invalid('Graph credential unavailable; install Azure CLI if needed and run az login on the server host with the MCP reader account, then reconnect');
+            if (error instanceof NativeAddonLoadError) {
+                throw new TeamsOperationError('Graph native authentication unavailable; rebuild with npm run build:native -w packages/coc-native',
+                    'graph', 'unavailable', 'not-attempted');
+            }
+            const reason = error instanceof AuthError ? ` (${error.code})` : '';
+            throw this.invalid(`Graph credential unavailable${reason}; install Azure CLI if needed and run az login on the server host with the MCP reader account, then reconnect`);
         } finally {
             signal.removeEventListener('abort', onAbort);
         }
@@ -65,8 +80,10 @@ export class GraphCredentialStore {
         if (this.purpose === 'write' && !scopes.includes('ChannelMessage.Send') && !scopes.includes('Group.ReadWrite.All')) {
             throw this.invalid('Graph outbound requires delegated ChannelMessage.Send or an existing Group.ReadWrite.All grant. Request least-privilege ChannelMessage.Send consent for new Entra public clients; backend selection or Azure CLI sign-in alone does not grant consent');
         }
-        this.expiresAt = claims.exp * 1000;
-        this.token = token;
+        if (!this.nativeCredential) {
+            this.expiresAt = claims.exp * 1000;
+            this.token = token;
+        }
         return token;
     }
 

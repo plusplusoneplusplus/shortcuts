@@ -24,7 +24,7 @@ vi.mock('@plusplusoneplusplus/coc-native', async importOriginal => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>();
     return { ...actual, loadNativeGit: vi.fn(actual.loadNativeGit) };
 });
-import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { AuthError, loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
@@ -711,7 +711,18 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         expect(body.remoteUrl).toBe(REMOTE_URL);
     });
 
-    it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
+    it.each(['LoginRequired', 'AccountMismatch', 'TokenExpired', 'AccessDenied'] as const)(
+        'returns 401 with the native %s error without retrying auth',
+        async code => {
+            (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new AuthError(code));
+            const res = await fetch(`${baseUrl}/api/origins/${ORIGIN_ID}/pull-requests?workspaceId=${REPO_ID}&repoId=${REPO_ID}`);
+            expect(res.status).toBe(401);
+            expect(await res.json()).toMatchObject({ error: `Authentication failed: ${code}.` });
+            expect(ProviderFactory.createPullRequestsService).toHaveBeenCalledOnce();
+        },
+    );
+
+    it('returns 401 with no-ado-credentials when ADO organization is missing', async () => {
         (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
 
         const res = await fetch(originPullRequestsUrl(``, REPO_ID));

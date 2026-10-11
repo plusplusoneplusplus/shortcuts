@@ -2,10 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ic3Operations } from '../../src/teams/ic3/operations-ic3';
 import { Ic3DirectMessageClient, TeamsIc3SendError } from '../../src/teams/ic3/ic3-direct-message';
 import { Ic3ReactionClient } from '../../src/teams/ic3/ic3-reaction';
-import { acquireTokenViaAzCli } from '../../src/teams/auth';
 import { TeamsOperationError, type TeamsAction, type TeamsMessageRef } from '../../src/teams/operations';
 
-vi.mock('../../src/teams/auth', () => ({ acquireTokenViaAzCli: vi.fn() }));
+const acquireAzureCliToken = vi.hoisted(() => vi.fn());
+vi.mock('../../src/teams/azure-cli-credential', () => ({
+    TeamsAzureCliCredential: class {
+        constructor(private readonly resource: string) {}
+        get(signal: AbortSignal) { return acquireAzureCliToken(this.resource, signal); }
+        clear() {}
+        dispose() {}
+    },
+}));
 
 const objectId = '00000000-0000-0000-0000-000000000001';
 const tenantId = '00000000-0000-0000-0000-000000000002';
@@ -36,7 +43,7 @@ function setup(options: Partial<ConstructorParameters<typeof Ic3Operations>[0]> 
 
 beforeEach(() => {
     fetchMock.mockReset();
-    vi.mocked(acquireTokenViaAzCli).mockReset().mockResolvedValue(token());
+    vi.mocked(acquireAzureCliToken).mockReset().mockResolvedValue(token());
     vi.stubGlobal('fetch', fetchMock);
 });
 
@@ -57,7 +64,7 @@ describe('IC3 operations', () => {
             });
         }
         expect(acquire).not.toHaveBeenCalled();
-        expect(acquireTokenViaAzCli).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -92,7 +99,7 @@ describe('IC3 operations', () => {
                 destination: self, messageId: '1234567890', backend: 'ic3', connectionId: 'standalone',
             },
         });
-        expect(acquireTokenViaAzCli).toHaveBeenCalledExactlyOnceWith(
+        expect(acquireAzureCliToken).toHaveBeenCalledExactlyOnceWith(
             'https://ic3.teams.office.com', expect.any(AbortSignal));
         expect(fetchMock).toHaveBeenCalledOnce();
     });

@@ -134,6 +134,11 @@ references before editing. Paths are package-relative.
   `getKustoRuntime`; reconfiguration/shutdown disposes providers and closes clients.
   Let the Kusto SDK resolve the audience and native auth own token validation,
   caching and renewal. Surface native `AuthError` unchanged; never fall back or replay queries.
+- ADO uses the shared Forge native Microsoft provider with explicit Azure CLI
+  source and automatic renewal. Host data directories scope provider lifetimes;
+  shutdown disposes the host provider. Account selection stays pinned until disposal.
+  PRs and Azure Boards use this resolver without CLI fallback or bearer-token disk
+  caching. Resolve ADO identity from the current token and organization, not Microsoft account IDs.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
   LLM-tool settings and chat retrieval checks share

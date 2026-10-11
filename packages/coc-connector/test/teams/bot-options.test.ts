@@ -42,23 +42,31 @@ describe('TeamsBot transport options', () => {
         expect(constructors.mcp).toHaveBeenCalledExactlyOnceWith(
             opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots,
             opts.onChannelRootDiscovered, opts.ic3DirectMessageOptions,
-            { connectionId: opts.connectionId, routes: opts.operationRoutes,
-                onTokenRefresh: opts.auth?.onTokenRefresh },
+            expect.objectContaining({ connectionId: opts.connectionId, routes: opts.operationRoutes,
+                onTokenRefresh: opts.auth?.onTokenRefresh }),
         );
         expect(constructors.graph).not.toHaveBeenCalled();
     });
 
-    it.each([undefined, vi.fn()])('forwards optional auth refresh in default Graph mode', (onTokenRefresh) => {
+    it.each([undefined, vi.fn()])('forwards optional refresh for explicit Graph credentials', (onTokenRefresh) => {
         new TeamsBot({
             onMessage: vi.fn(),
             connectionId: 'connection',
             operationRoutes: { channel: 'graph' },
-            ...(onTokenRefresh ? { auth: { onTokenRefresh } } : {}),
+            auth: { bearerToken: 'fixture-token', onTokenRefresh },
         });
 
         expect(constructors.graph).toHaveBeenCalledExactlyOnceWith({
-            connectionId: 'connection', routes: { channel: 'graph' }, onTokenRefresh,
+            connectionId: 'connection', routes: { channel: 'graph' }, onTokenRefresh, acquireToken: undefined,
         });
         expect(constructors.mcp).not.toHaveBeenCalled();
+    });
+
+    it('wires SDK acquisition and renewal for default Graph credentials', () => {
+        new TeamsBot({ onMessage: vi.fn() });
+        expect(constructors.graph).toHaveBeenCalledExactlyOnceWith({
+            connectionId: undefined, routes: undefined,
+            acquireToken: expect.any(Function), onTokenRefresh: expect.any(Function),
+        });
     });
 });

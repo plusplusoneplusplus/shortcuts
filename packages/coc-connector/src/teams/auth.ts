@@ -12,6 +12,7 @@ import type { TeamsAuthConfig, DeviceCodeInfo } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { TeamsAzureCliCredential } from './azure-cli-credential';
 
 /** Default client ID — Azure CLI public client (works for Graph API). */
 const DEFAULT_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46';
@@ -402,55 +403,11 @@ export async function exchangeCodeForToken(
  * Returns the access token string.
  */
 export async function acquireTokenViaAzCli(resource?: string, signal?: AbortSignal): Promise<string> {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const fs = await import('fs');
-    const execFileAsync = promisify(execFile);
-
-    const targetResource = resource ?? 'https://graph.microsoft.com';
-    const args = ['account', 'get-access-token', '--resource', targetResource, '--query', 'accessToken', '-o', 'tsv'];
-
-    // Resolve the az CLI executable — search common install paths on Windows
-    if (process.platform === 'win32') {
-        const candidates = [
-            'C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd',
-            'C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd',
-        ];
-        let azPath: string | undefined;
-        for (const candidate of candidates) {
-            try {
-                fs.accessSync(candidate);
-                azPath = candidate;
-                break;
-            } catch { /* try next */ }
-        }
-
-        if (azPath) {
-            try {
-                // Use cmd.exe /c to handle .cmd files with spaces in path
-                const { stdout } = await execFileAsync('cmd.exe', ['/c', azPath, ...args], { timeout: 15000, signal });
-                const token = stdout.trim();
-                if (!token) throw new Error('az CLI returned empty token — run `az login` first');
-                return token;
-            } catch (err: any) {
-                throw new Error(`az CLI token acquisition failed: ${err.message ?? err}`);
-            }
-        }
-    }
-
-    // Unix or az in PATH
+    const credentials = new TeamsAzureCliCredential(resource ?? 'https://graph.microsoft.com');
     try {
-        const { stdout } = await execFileAsync('az', args, { timeout: 15000, signal });
-        const token = stdout.trim();
-        if (!token) {
-            throw new Error('az CLI returned empty token — run `az login` first');
-        }
-        return token;
-    } catch (err: any) {
-        if (err.code === 'ENOENT') {
-            throw new Error('Azure CLI (az) not found — install it or provide a bearerToken');
-        }
-        throw new Error(`az CLI token acquisition failed: ${err.message ?? err}`);
+        return await credentials.get(signal ?? AbortSignal.timeout(15_000));
+    } finally {
+        credentials.dispose();
     }
 }
 
