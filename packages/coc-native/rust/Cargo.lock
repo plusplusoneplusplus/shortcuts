@@ -155,6 +155,7 @@ dependencies = [
  "jsonwebtoken",
  "keyring",
  "libc",
+ "openssl",
  "rand 0.8.8",
  "reqwest",
  "security-framework",
