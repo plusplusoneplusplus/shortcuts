@@ -135,7 +135,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(41);
+        expect(SCHEMA_VERSION).toBe(42);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1217,7 +1217,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(41);
+            expect(SCHEMA_VERSION).toBe(42);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1444,7 +1444,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(41);
+            expect(SCHEMA_VERSION).toBe(42);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1645,7 +1645,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(41);
+            expect(SCHEMA_VERSION).toBe(42);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1884,6 +1884,7 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
             db = new Database(':memory:');
             initializeDatabase(db);
             db.exec('DROP INDEX idx_turns_relay_request');
+            db.exec('DROP TRIGGER history_turn_update');
             db.exec('ALTER TABLE conversation_turns DROP COLUMN relay_request_id');
             db.prepare('INSERT INTO processes (id, workspace_id, status, start_time) VALUES (?, ?, ?, ?)')
                 .run('old-process', 'old-workspace', 'completed', '2026-01-01T00:00:00.000Z');

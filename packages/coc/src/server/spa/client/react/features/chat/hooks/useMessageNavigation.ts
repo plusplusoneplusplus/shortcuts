@@ -32,6 +32,8 @@ export interface MessageNavigationOptions {
     inputRef?: React.RefObject<{ focus: () => void } | null> | null;
     /** Whether the navigation hook is enabled (defaults to true). */
     enabled?: boolean;
+    hasMore?: boolean;
+    onNavigateToTurn?: (turnIndex: number) => void;
 }
 
 export interface MessageNavigationState {
@@ -67,7 +69,7 @@ const HINT_TIMEOUT_MS = 2500;
 const G_CHORD_TIMEOUT_MS = 500;
 
 export function useMessageNavigation(opts: MessageNavigationOptions): MessageNavigationState {
-    const { scrollRef, containerRef, inputRef, enabled = true } = opts;
+    const { scrollRef, containerRef, inputRef, enabled = true, hasMore, onNavigateToTurn } = opts;
 
     const { vimNavigationEnabled } = useDisplaySettings();
     const effectiveEnabled = enabled && vimNavigationEnabled;
@@ -175,7 +177,14 @@ export function useMessageNavigation(opts: MessageNavigationOptions): MessageNav
                         if (pos >= indices.length - 1) return;
                         nextIdx = indices[pos + 1];
                     } else {
-                        if (pos <= 0) return;
+                        if (pos <= 0) {
+                            if (hasMore && cur > 0 && onNavigateToTurn) {
+                                onNavigateToTurn(cur - 1);
+                                setCurrentTurnIndex(cur - 1);
+                                e.preventDefault();
+                            }
+                            return;
+                        }
                         nextIdx = indices[pos - 1];
                     }
                 }
@@ -200,9 +209,10 @@ export function useMessageNavigation(opts: MessageNavigationOptions): MessageNav
             if (e.key === 'g' && !e.shiftKey) {
                 const now = Date.now();
                 if (now - lastGAtRef.current <= G_CHORD_TIMEOUT_MS) {
-                    const first = indices[0];
+                    const first = hasMore && onNavigateToTurn ? 0 : indices[0];
                     setCurrentTurnIndex(first);
-                    scrollTo(first);
+                    if (hasMore && onNavigateToTurn) onNavigateToTurn(first);
+                    else scrollTo(first);
                     showHint();
                     lastGAtRef.current = 0;
                     e.preventDefault();
@@ -218,7 +228,7 @@ export function useMessageNavigation(opts: MessageNavigationOptions): MessageNav
         return () => {
             container.removeEventListener('keydown', handler);
         };
-    }, [effectiveEnabled, containerRef, scrollRef, inputRef, currentTurnIndex, scrollTo, showHint, hideHint]);
+    }, [effectiveEnabled, containerRef, scrollRef, inputRef, currentTurnIndex, scrollTo, showHint, hideHint, hasMore, onNavigateToTurn]);
 
     useEffect(() => {
         return () => {

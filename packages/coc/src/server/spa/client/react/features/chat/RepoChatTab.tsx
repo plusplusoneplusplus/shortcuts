@@ -1304,6 +1304,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             onOpenForEachRun={handleOpenForEachRun}
             onOpenMapReduceRun={handleOpenMapReduceRun}
             searchHighlightQuery={searchQuery}
+            targetTurnIndex={searchResults?.find(result => result.id === selectedTaskId)?._searchTurnIndex}
         />
     );
 
@@ -1424,6 +1425,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                                      onOpenForEachRun={handleOpenForEachRun}
                                      onOpenMapReduceRun={handleOpenMapReduceRun}
                                      searchHighlightQuery={searchQuery}
+                                     targetTurnIndex={searchResults?.find(result => result.id === selectedTaskId)?._searchTurnIndex}
                                   />
                             )}
                         </div>

@@ -15,6 +15,9 @@ import type {
   CompactResult,
   CreateProcessRequest,
   ProcessDetailResponse,
+  ProcessGetOptions,
+  ProcessTurnsQuery,
+  ConversationTurnsPage,
   CreatePendingProcessMessageResponse,
   ProcessListQuery,
   ProcessListResponse,
@@ -97,9 +100,17 @@ export class ProcessesClient {
     return this.transport.request<AIProcess>('/processes', { method: 'POST', body: request });
   }
 
-  get(processId: string, query?: Pick<ProcessListQuery, 'workspace' | 'exclude' | 'include'>): Promise<ProcessDetailResponse> {
+  get(processId: string, query?: ProcessGetOptions, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessDetailResponse> {
     return this.transport.request<ProcessDetailResponse>(`/processes/${encodePathSegment(processId)}`, {
       query: serializeListQuery(query),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+  }
+
+  listTurns(processId: string, query?: ProcessTurnsQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ConversationTurnsPage> {
+    return this.transport.request<ConversationTurnsPage>(`/processes/${encodePathSegment(processId)}/turns`, {
+      query: query ? { ...query } : undefined,
+      ...(options?.signal ? { signal: options.signal } : {}),
     });
   }
 
@@ -212,8 +223,11 @@ export class ProcessesClient {
     });
   }
 
-  pinnedTurns(processId: string): Promise<PinnedTurnsResponse> {
-    return this.transport.request<PinnedTurnsResponse>(`/processes/${encodePathSegment(processId)}/turns/pinned`);
+  pinnedTurns(processId: string, query?: Pick<ProcessListQuery, 'workspace'>, options?: Pick<CocRequestOptions, 'signal'>): Promise<PinnedTurnsResponse> {
+    return this.transport.request<PinnedTurnsResponse>(`/processes/${encodePathSegment(processId)}/turns/pinned`, {
+      query,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
   }
 
   listChatFolders(workspaceId: string): Promise<ChatFolderListResponse> {

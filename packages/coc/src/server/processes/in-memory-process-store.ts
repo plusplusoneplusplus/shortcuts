@@ -3,12 +3,12 @@
  * Supports event emission for SSE streaming and process tracking.
  */
 
-import { createProcessEventBus } from '@plusplusoneplusplus/forge';
+import { createProcessEventBus, HistoryAwareProcessMap } from '@plusplusoneplusplus/forge';
 import type { ProcessStore, AIProcess, ProcessChangeCallback } from '@plusplusoneplusplus/forge';
 import type { ConversationTurn, TimelineItem } from '@plusplusoneplusplus/forge';
 
 export function createStubStore(): ProcessStore {
-    const processes = new Map<string, AIProcess>();
+    const processes = new HistoryAwareProcessMap();
     let changeCallback: ProcessChangeCallback | undefined;
 
     const store: ProcessStore = {
@@ -27,6 +27,7 @@ export function createStubStore(): ProcessStore {
             changeCallback?.({ type: 'process-updated', process: merged as AIProcess });
         },
         getProcess: async (id) => processes.get(id),
+        getProcessHistory: async (id, workspaceId, options) => processes.getProcessHistory(id, workspaceId, options),
         getAllProcesses: async () => Array.from(processes.values()),
         removeProcess: async (id) => {
             const proc = processes.get(id);
@@ -63,7 +64,7 @@ export function createStubStore(): ProcessStore {
                 ? options.additionalUpdates(existing)
                 : (options?.additionalUpdates ?? {});
             const merged = { ...existing, ...extraUpdates, conversationTurns: allTurns };
-            processes.set(processId, merged);
+            processes.set(processId, merged, options?.filterStreaming);
             changeCallback?.({ type: 'process-updated', process: merged });
             return { turn, allTurns };
         },
@@ -114,7 +115,7 @@ export function createStubStore(): ProcessStore {
             if (turnIndex < 0 || turnIndex >= turns.length) return;
             const updatedTurns = turns.map((turn, i) => i === turnIndex ? { ...turn, content } : turn);
             const merged = { ...existing, conversationTurns: updatedTurns };
-            processes.set(processId, merged);
+            processes.set(processId, merged, false, true);
             changeCallback?.({ type: 'process-updated', process: merged });
         },
         updateTurnSdkEventId: async (processId, turnIndex, sdkEventId) => {

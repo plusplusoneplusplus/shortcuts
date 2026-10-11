@@ -3,6 +3,40 @@ import { AUTO_COMPACT_THRESHOLD_DEFAULT, CocClient, ProcessesClient } from '../.
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
+  it('preserves unparameterized detail options and serializes bounded history with cancellation', async () => {
+    const adapter = createMockAdapter({});
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    const controller = new AbortController();
+    await client.get('proc/1');
+    expect(adapter.calls[0]).toEqual({ path: '/processes/proc%2F1', options: { query: undefined } });
+    await client.get('proc/1', { workspace: 'owner', turnsLimit: 30, include: ['children'] }, { signal: controller.signal });
+    expect(adapter.calls[1]).toMatchObject({ path: '/processes/proc%2F1', options: {
+      query: { workspace: 'owner', turnsLimit: 30, include: 'children' }, signal: controller.signal,
+    } });
+    await client.listTurns('proc/1', { workspace: 'owner', beforeTurnIndex: 170, limit: 30 }, { signal: controller.signal });
+    expect(adapter.calls[2]).toEqual({ path: '/processes/proc%2F1/turns', options: {
+      query: { workspace: 'owner', beforeTurnIndex: 170, limit: 30 }, signal: controller.signal,
+    } });
+    await client.pinnedTurns('proc/1', { workspace: 'owner' }, { signal: controller.signal });
+    expect(adapter.calls[3]).toMatchObject({ path: '/processes/proc%2F1/turns/pinned',
+      options: { query: { workspace: 'owner' }, signal: controller.signal } });
+  });
+
+  it('keeps every history read on its configured owner and aborts without local retries', async () => {
+    const controller = new AbortController();
+    const urls: string[] = [];
+    const client = new CocClient({ baseUrl: 'https://owner.example', fetch: async (input, init) => {
+      urls.push(String(input));
+      expect(init?.signal).toBe(controller.signal);
+      throw new DOMException('Aborted', 'AbortError');
+    } });
+    controller.abort();
+    await expect(client.processes.get('p', { workspace: 'owner', turnsLimit: 30 }, { signal: controller.signal })).rejects.toThrow();
+    await expect(client.processes.listTurns('p', { workspace: 'owner', beforeTurnIndex: 30 }, { signal: controller.signal })).rejects.toThrow();
+    expect(urls).toHaveLength(2);
+    expect(urls.every(url => url.startsWith('https://owner.example/api/processes/p'))).toBe(true);
+  });
+
   it('preserves queued compaction responses and scopes cancellation to its workspace', async () => {
     const adapter = createMockAdapter({ state: 'queued', taskId: 'compact-task' });
     const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);

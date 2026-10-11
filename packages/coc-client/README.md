@@ -34,7 +34,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 | --- | --- | --- |
 | Health/OpenAPI | `coc.health` | `/api/health`, `/api/openapi.json` |
 | Models | `coc.models` | model list and enabled-model configuration |
-| Processes | `coc.processes` | list, summaries, detail, create, update, delete, cancel, follow-up message, output, stream helper |
+| Processes | `coc.processes` | list, summaries, detail, turn history pages, pinned turns, create, update, delete, cancel, follow-up message, output, stream helper |
 | Queue | `coc.queue` | list, stats, history, enqueue, pause/resume, cancel |
 | Schedules | `coc.schedules` | repo-scoped list, create, update, enable/disable, move, delete, run, history |
 | Work items | `coc.workItems` | origin-scoped list/grouped/tree, plan/version history, sync/import/convert, AI authoring, create, get, update, delete, and workspace-root-dependent execution actions |
@@ -73,6 +73,24 @@ await coc.processes.sendMessage(processId, {
   content: 'Continue with the next failing test.',
   deliveryMode: 'enqueue',
 }, { workspace: workspaceId });
+```
+
+### Process history
+
+When the owning server enables `features.chatHistoryPaging`, an explicit
+`turnsLimit` bounds the initial history. Unparameterized detail reads retain
+the full response. Older pages use an exclusive turn-index cursor; page metadata
+includes `historyRevision` for detecting edits and rewinds.
+
+```ts
+const controller = new AbortController();
+const detail = await coc.processes.get(processId,
+  { workspace: workspaceId, turnsLimit: 30 }, { signal: controller.signal });
+if (detail.history?.hasMore && detail.history.oldestTurnIndex !== null) {
+  const older = await coc.processes.listTurns(processId,
+    { workspace: workspaceId, beforeTurnIndex: detail.history.oldestTurnIndex, limit: 30 },
+    { signal: controller.signal });
+}
 ```
 
 ### WebSocket events

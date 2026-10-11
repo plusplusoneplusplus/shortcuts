@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe('batched process reads', () => {
-    it.each([38, 39])('preserves SQLite values and workspace filtering with schema %s', async version => {
+    it.each([38, 39, 42])('preserves SQLite values and workspace filtering with schema %s', async version => {
         const directory = fs.mkdtempSync(path.join(process.cwd(), '.native-process-reads-'));
         directories.push(directory);
         const database = new NativeDatabase(path.join(directory, 'processes.db'));

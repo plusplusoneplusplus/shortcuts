@@ -110,7 +110,7 @@ pub(super) fn check_process_schema(connection: &Connection) -> Result<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     // Additive queue provenance, relay indexes and turn-source JSON preserve
     // the typed process layout; generic turn reads include added columns.
-    if !matches!(version, 38..=41) {
+    if !matches!(version, 38..=42) {
         return Err(Error::UnsupportedVersion(version));
     }
     Ok(())

@@ -106,6 +106,16 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.workItemsWorkflowEnabled).toBe(false);
         expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
         expect(result.features.markdownPanelPreviewEnabled).toBe(false);
+        expect(result.features.chatHistoryPagingEnabled).toBe(false);
+    });
+
+    it('exposes chat history paging only when the owning-server flag is explicitly enabled', () => {
+        expect(buildRuntimeFeatureFlags({}).chatHistoryPagingEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.chatHistoryPaging).toBe(false);
+        const svc = createMockRuntimeConfigService({
+            features: { ...DEFAULT_CONFIG.features, chatHistoryPaging: true },
+        });
+        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.chatHistoryPagingEnabled).toBe(true);
     });
 
     it('exposes the opt-in Markdown panel preview flag', () => {
