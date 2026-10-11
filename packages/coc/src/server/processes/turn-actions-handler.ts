@@ -3,11 +3,12 @@
  * Follows the same narrow-interface pattern as `pin-archive-handler.ts`.
  */
 
-import { sendJSON } from '../core/api-handler';
+import { sendJSON, parseQueryParams } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { handleAPIError, notFound } from '../errors';
 import type { Route } from '../types';
-import type { ConversationTurn } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ProcessStore } from '@plusplusoneplusplus/forge';
+import { readChatHistory } from './chat-history-read-model';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 // ============================================================================
@@ -22,13 +23,15 @@ export interface TurnActionStore {
     unarchiveTurn(processId: string, turnIndex: number): void;
     getPinnedTurns(processId: string): ConversationTurn[];
     getProcess(id: string): Promise<{ id: string } | undefined>;
+    getProcessHistory?: ProcessStore['getProcessHistory'];
 }
 
 // ============================================================================
 // Route registration
 // ============================================================================
 
-export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore, getWsServer?: () => ProcessWebSocketServer): void {
+export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore, getWsServer?: () => ProcessWebSocketServer,
+    chatHistoryPagingEnabled: () => boolean = () => false): void {
     // PATCH /api/processes/:id/turns/:turnIndex/pin — toggle pin state
     routes.push({
         method: 'PATCH',
@@ -88,10 +91,16 @@ export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)\/turns\/pinned$/,
         handler: async (_req, res, match) => {
-            const processId = decodeURIComponent(match![1]);
-
-            const proc = await store.getProcess(processId);
+            let processId = decodeURIComponent(match![1]);
+            const workspaceId = parseQueryParams(_req.url || '/').workspaceId;
+            const history = chatHistoryPagingEnabled() && store.getProcessHistory
+                ? await readChatHistory({ getProcessHistory: store.getProcessHistory.bind(store) }, processId, workspaceId, { limit: 1 })
+                : undefined;
+            const proc = chatHistoryPagingEnabled()
+                ? history?.process
+                : await store.getProcess(processId);
             if (!proc) return handleAPIError(res, notFound('Process'));
+            processId = proc.id;
 
             const pinnedTurns = store.getPinnedTurns(processId);
             sendJSON(res, 200, { turns: pinnedTurns });
