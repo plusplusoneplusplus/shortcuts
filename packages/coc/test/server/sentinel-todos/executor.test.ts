@@ -11,6 +11,7 @@ import { FollowUpExecutor } from '../../../src/server/executors/follow-up-execut
 import { SENTINEL_TODOS_TOOL_NAME } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { SENTINEL_TODO_LEDGER_GUIDANCE } from '../../../src/server/executors/prompt-builder';
 import { SENTINEL_DISPATCHER_DIRECTIVE } from '../../../src/server/executors/chat-mode-directive';
+import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { nestRuntime, type FlatExecutorOptions } from '../executors/runtime-options-helper';
@@ -130,7 +131,9 @@ describe('sentinel to-do ledger executor wiring', () => {
         await plain.execute(makeTask('sentinel', 'task-s-off'), 'Hello');
 
         expect(toolNames(flagOff)).not.toContain(SENTINEL_TODOS_TOOL_NAME);
-        expect(flagOff.systemMessage?.content ?? '').not.toContain('sentinel_todos');
+        expect(flagOff.systemMessage?.content).not.toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
+        expect(flagOff.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(flagOff.systemMessage).toEqual(lastCall().systemMessage);
         expect(toolNames(flagOff)).toEqual(toolNames(lastCall()));
         expect(flagOff.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
     });
@@ -151,10 +154,33 @@ describe('sentinel to-do ledger executor wiring', () => {
 
         const call = lastCall();
         expect(call.mode).toBe('interactive');
+        expect(call.systemMessage?.content).toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
         const tool = call.tools.find((t: any) => t.name === SENTINEL_TODOS_TOOL_NAME);
         expect(tool).toBeDefined();
         await tool.handler({ action: 'list' }, {});
         expect(service.list).toHaveBeenCalledWith({ workspaceId: 'ws-1', processId: 'queue_parent' });
+    });
+
+    it('keeps review rules but no ledger tool or guidance on flag-off sentinel follow-ups', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess(makeProcess('queue_parent', 'sentinel'));
+        await new FollowUpExecutor(store, makeOptions({ getSentinelTodos: () => undefined }))
+            .executeFollowUp('queue_parent', 'next', undefined, 'sentinel');
+        const flagOff = lastCall();
+
+        const plainStore = createMockProcessStore();
+        await plainStore.addProcess(makeProcess('queue_parent', 'sentinel'));
+        await new FollowUpExecutor(plainStore, makeOptions())
+            .executeFollowUp('queue_parent', 'next', undefined, 'sentinel');
+
+        expect(toolNames(flagOff)).not.toContain(SENTINEL_TODOS_TOOL_NAME);
+        expect(toolNames(flagOff)).not.toContain('create_pull_request');
+        expect(flagOff.mode).toBe('interactive');
+        expect(flagOff.systemMessage?.content).not.toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
+        expect(flagOff.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(flagOff.systemMessage).toEqual(lastCall().systemMessage);
+        expect(toolNames(flagOff)).toEqual(toolNames(lastCall()));
+        expect(flagOff.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
     });
 
     it('does not offer the tool on ask follow-ups', async () => {
