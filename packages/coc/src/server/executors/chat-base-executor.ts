@@ -66,6 +66,8 @@ import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import { createSubmitScrubFindingsTool } from '../llm-tools/submit-scrub-findings-tool';
+import { getScrubChildContext } from '../sentinel-scrubber/scrubber-runs';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -728,6 +730,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
+     * `submit_scrub_findings` for a Sentinel To-do Scrubber child chat; its
+     * first turn starting marks the run running. Other chats get nothing.
+     */
+    protected buildScrubFindingsTool(task: QueuedTask): Tool<any> | undefined {
+        const context = getScrubChildContext(task.payload);
+        const service = context && this.runtime.getSentinelScrubber?.();
+        if (!context || !service) return undefined;
+        service.markRunning(context);
+        return createSubmitScrubFindingsTool({ service, context });
+    }
+
+    /**
      * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
      * connector started (located through the ask_user relay's connector
      * receipts) records its origin on chats it hands off, so they post
@@ -957,6 +971,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Sentinel runs on the ask path; only it gets the to-do ledger tool.
             sentinelTodos: isAsk ? this.buildSentinelTodoDeps(processId, payload.workspaceId, payload.mode) : undefined,
+            scrubFindings: isAsk ? this.buildScrubFindingsTool(task) : undefined,
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the

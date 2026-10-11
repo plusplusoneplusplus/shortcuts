@@ -79,7 +79,7 @@ export interface ScrubFindingRecord {
 }
 
 export class ScrubberStoreError extends Error {
-    constructor(readonly code: 'not_found' | 'conflict', message: string) { super(message); }
+    constructor(readonly code: 'not_found' | 'conflict' | 'invalid', message: string) { super(message); }
 }
 
 /**

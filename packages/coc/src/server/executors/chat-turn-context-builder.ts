@@ -74,6 +74,8 @@ export interface ChatTurnContextInput {
     createPullRequest?: CreatePullRequestToolDeps;
     /** `sentinel_todos` wiring; Sentinel chats with the to-do ledger flag on only. */
     sentinelTodos?: SentinelTodosToolDeps;
+    /** A scrubber child chat's only tool; also skips Memory V2. */
+    scrubFindings?: Tool<any>;
     /** Additional tool names to exclude beyond workspace preferences. */
     excludeTools?: string[];
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
@@ -166,7 +168,7 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  * ```
  */
 export async function buildChatTurnContext(input: ChatTurnContextInput): Promise<ChatTurnContext> {
-    const includeMemoryV2 = input.includeMemoryV2 !== false;
+    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.scrubFindings;
 
     const memoryV2: MemoryV2Addon = includeMemoryV2
         ? await buildMemoryV2Addon(input.dataDir, input.workspaceId, input.query, input.processId)
@@ -190,6 +192,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         kustoRuntime: input.kustoRuntime,
         createPullRequest: input.createPullRequest,
         sentinelTodos: input.sentinelTodos,
+        scrubFindings: input.scrubFindings,
         excludeTools: input.excludeTools,
         onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,
     });

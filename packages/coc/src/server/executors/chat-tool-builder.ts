@@ -86,6 +86,12 @@ export interface ChatToolBundleOptions {
      * to-do ledger flag on — absent → no tool and no guidance.
      */
     sentinelTodos?: SentinelTodosToolDeps;
+    /**
+     * A Sentinel To-do Scrubber child chat: its findings tool replaces every
+     * other LLM tool, so the chat can neither write the ledger nor message
+     * other chats.
+     */
+    scrubFindings?: Tool<any>;
     excludeTools?: string[];
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
     onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
@@ -114,6 +120,11 @@ export interface ChatToolBundle {
  * in its unit tests.
  */
 export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
+    if (options.scrubFindings) {
+        // Approval handles stay wired for the dangerous-command guard; the tool is not offered.
+        const askUser = options.askUser ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps) : undefined;
+        return { tools: [options.scrubFindings], toolGuidance: '', askUser };
+    }
     const addons: ToolAddon[] = [];
 
     if (options.includeFollowUpSuggestions !== false && options.followUpSuggestions) {
