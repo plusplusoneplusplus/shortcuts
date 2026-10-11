@@ -45,6 +45,16 @@ describe('canonicalChatId', () => {
 });
 
 describe('buildRepoGroupChatFeedModel', () => {
+    it('keeps queue cancellation provenance distinct from canonical conversation identity', () => {
+        const model = buildRepoGroupChatFeedModel(page({ queued: [
+            { id: 'initial', queueTaskId: 'initial', ownerWorkspaceId: 'ws-a' },
+            { id: 'follow', queueTaskId: 'follow', processId: 'existing', ownerWorkspaceId: 'ws-a' },
+            { id: 'queue_waiting', processId: 'queue_waiting', ownerWorkspaceId: 'ws-b' },
+        ] }), 'local');
+        expect(model.queued.map(row => [row.canonicalId, row.queueTaskId]))
+            .toEqual([['queue_initial', 'initial'], ['existing', 'follow'], ['queue_waiting', undefined]]);
+    });
+
     it('includes group-owned, delegated and unrelated member chats with owner identity', () => {
         const model = buildRepoGroupChatFeedModel(page({
             running: [{ id: 't-run', processId: 'p-run', ownerWorkspaceId: 'ws-a' }],

@@ -80,8 +80,9 @@ export interface RepoGroupChatFeedResponse<TTask = Record<string, unknown>, THis
   /** Changes whenever the group's source set changes. */
   membershipKey: string;
   sources: RepoGroupChatSource[];
-  running: Array<TTask & { ownerWorkspaceId: string }>;
-  queued: Array<TTask & { ownerWorkspaceId: string }>;
+  /** queueTaskId is present only for rows read from an owner's queue snapshot. */
+  running: Array<TTask & { ownerWorkspaceId: string; queueTaskId?: string }>;
+  queued: Array<TTask & { ownerWorkspaceId: string; queueTaskId?: string }>;
   history: Array<THistory & { ownerWorkspaceId: string }>;
   /** Plain-text search excerpts keyed by owner workspace, then canonical process id. */
   snippets?: Record<string, Record<string, string>>;

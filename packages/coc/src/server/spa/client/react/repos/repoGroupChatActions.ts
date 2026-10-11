@@ -49,7 +49,7 @@ export async function applyRepoGroupChatAction(
             const client = getCocClientFor(baseUrl);
             const owner = { workspace: row.ownerWorkspaceId };
             if (action === 'cancel') {
-                if (row.section === 'queued') await client.queue.cancel(row.item.id);
+                if (row.section === 'queued' && row.queueTaskId) await client.queue.cancel(row.queueTaskId);
                 else await client.processes.cancel(row.canonicalId, owner);
             } else if (action === 'delete') await client.processes.delete(row.canonicalId, owner);
             else await client.request(`/processes/${encodeURIComponent(row.canonicalId)}/${action === 'pin' || action === 'unpin' ? 'pin' : 'archive'}`, {

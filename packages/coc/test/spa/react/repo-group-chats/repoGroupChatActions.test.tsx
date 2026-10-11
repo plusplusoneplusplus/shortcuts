@@ -4,6 +4,7 @@ import { getCocClientFor, resetSpaCocClientForTests } from '../../../../src/serv
 import { applyRepoGroupChatAction, applyRepoGroupQueueControl } from '../../../../src/server/spa/client/react/repos/repoGroupChatActions';
 import type { RepoGroupChatAction } from '../../../../src/server/spa/client/react/repos/repoGroupChatActions';
 import type { RepoGroupChatRow } from '../../../../src/server/spa/client/react/repos/repoGroupChatFeed';
+import { buildRepoGroupChatFeedModel } from '../../../../src/server/spa/client/react/repos/repoGroupChatFeed';
 
 const sources = ['ws-a', 'ws-b'].map(workspaceId => ({ workspaceId, role: 'member' as const, available: true }));
 function row(owner: string, action: RepoGroupChatAction): RepoGroupChatRow {
@@ -13,6 +14,37 @@ function row(owner: string, action: RepoGroupChatAction): RepoGroupChatRow {
 }
 afterEach(() => { vi.restoreAllMocks(); resetSpaCocClientForTests(); });
 describe('concrete owner actions', () => {
+    it('cancels ordinary tasks and queued follow-ups by task id, but process-only queued jobs by owner-scoped process id', async () => {
+        const client = getCocClientFor('https://owner.test');
+        const cancelQueue = vi.spyOn(client.queue, 'cancel').mockResolvedValue({});
+        const cancelProcess = vi.spyOn(client.processes, 'cancel').mockImplementation(async (_id, query) => {
+            if (query?.workspace === 'ws-b') throw new Error('Owner B denied');
+            return {} as never;
+        });
+        const model = buildRepoGroupChatFeedModel({
+            groupId: 'grp', membershipKey: 'm1', sources, running: [], history: [], hasMore: false,
+            counts: { total: 4, running: 0, queued: 4, history: 0, byOwner: {}, partial: false },
+            queued: [
+                { id: 'initial', queueTaskId: 'initial', ownerWorkspaceId: 'ws-a' },
+                { id: 'follow', processId: 'existing-chat', queueTaskId: 'follow', ownerWorkspaceId: 'ws-a' },
+                { id: 'queue_waiting', processId: 'queue_waiting', ownerWorkspaceId: 'ws-a' },
+                { id: 'queue_waiting', processId: 'queue_waiting', ownerWorkspaceId: 'ws-b' },
+            ],
+        }, 'server');
+        const result = await applyRepoGroupChatAction(model.queued, 'cancel', sources, 'https://owner.test');
+        expect(cancelQueue.mock.calls).toEqual([['initial'], ['follow']]);
+        expect(cancelProcess.mock.calls).toEqual([
+            ['queue_waiting', { workspace: 'ws-a' }], ['queue_waiting', { workspace: 'ws-b' }],
+        ]);
+        expect(result.succeededByOwner).toEqual({ 'ws-a': 3 });
+        expect(result.failed).toEqual([{ key: 'server|ws-b|queue_waiting', ownerWorkspaceId: 'ws-b', error: 'Owner B denied' }]);
+        cancelProcess.mockResolvedValue({} as never);
+        const retry = await applyRepoGroupChatAction(model.queued.filter(row => result.failed.some(failure => failure.key === row.key)),
+            'cancel', sources, 'https://owner.test');
+        expect(retry.succeeded).toEqual(['server|ws-b|queue_waiting']);
+        expect(cancelQueue).toHaveBeenCalledTimes(2);
+    });
+
     it.each(['pin', 'unpin', 'archive', 'unarchive', 'delete', 'cancel'] as const)('routes %s separately for colliding ids and retains partial failures', async action => {
         const client = getCocClientFor('https://owner.test');
         const request = vi.spyOn(client, 'request').mockImplementation(async (_path, options) => {

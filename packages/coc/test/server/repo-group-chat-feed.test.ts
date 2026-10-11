@@ -85,6 +85,23 @@ describe('buildRepoGroupChatFeed', () => {
 
     const members = [member(A), member(B)];
 
+    it('keeps actual queue task provenance separate from process-only queued conversation ids', async () => {
+        queues[A] = { running: [], queued: [
+            { id: 'initial-task', type: 'chat' },
+            { id: 'follow-task', processId: 'existing-chat', type: 'chat' },
+        ] };
+        await addChat('queue_waiting', B, 1, { status: 'queued' });
+        const before = JSON.stringify(queues);
+        const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query());
+        expect(feed.queued).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: 'initial-task', queueTaskId: 'initial-task', ownerWorkspaceId: A }),
+            expect.objectContaining({ id: 'follow-task', processId: 'existing-chat', queueTaskId: 'follow-task', ownerWorkspaceId: A }),
+            expect.objectContaining({ id: 'queue_waiting', processId: 'queue_waiting', ownerWorkspaceId: B }),
+        ]));
+        expect(feed.queued.find(row => row.processId === 'queue_waiting')?.queueTaskId).toBeUndefined();
+        expect(JSON.stringify(queues)).toBe(before);
+    });
+
     it('includes group-owned and every member chat, each tagged with its owner, in global activity order', async () => {
         await addChat('g1', GROUP, 5);
         await addChat('a1', A, 10);

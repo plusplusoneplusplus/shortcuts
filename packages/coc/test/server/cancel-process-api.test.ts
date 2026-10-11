@@ -111,6 +111,22 @@ describe('POST /api/processes/:id/cancel — bridge.cancelProcess integration', 
         expect(body.process.status).toBe('cancelled');
     });
 
+    it('cancels a process-only queued row through its exact owner without requiring a queue task', async () => {
+        await startWithBridge(mockBridge);
+        await store.addProcess({
+            id: 'queue_waiting', type: 'queue-ai-clarification', promptPreview: 'waiting', fullPrompt: 'waiting',
+            status: 'queued', startTime: new Date(), metadata: { type: 'queue-ai-clarification', workspaceId: 'ws-owner' },
+        });
+        const wrongOwner = await postJSON(`${baseUrl}/api/processes/queue_waiting/cancel?workspace=ws-other`);
+        expect(wrongOwner.status).toBe(404);
+        expect(mockBridge.cancelProcess).not.toHaveBeenCalled();
+        expect((await store.getProcess('queue_waiting'))?.status).toBe('queued');
+        const response = await postJSON(`${baseUrl}/api/processes/queue_waiting/cancel?workspace=ws-owner`);
+        expect(response.status).toBe(200);
+        expect(mockBridge.cancelProcess).toHaveBeenCalledWith('queue_waiting');
+        expect(JSON.parse(response.body).process.status).toBe('cancelled');
+    });
+
     it('should set cancelling status before awaiting abort', async () => {
         let intermediateStatus: string | undefined;
         const slowBridge = createMockBridge({

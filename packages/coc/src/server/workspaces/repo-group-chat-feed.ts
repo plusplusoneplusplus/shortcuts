@@ -259,7 +259,10 @@ export async function buildRepoGroupChatFeed(
         if (!deps.readQueue) return state;
         try {
             const snapshot = await deps.readQueue(source.workspaceId);
-            const tag = (task: Record<string, unknown>): OwnedTask => ({ ...task, ownerWorkspaceId: source.workspaceId });
+            const tag = (task: Record<string, unknown>): OwnedTask => ({
+                ...task, ownerWorkspaceId: source.workspaceId,
+                queueTaskId: typeof task.id === 'string' ? task.id : undefined,
+            });
             const represented = new Set<string>();
             const unique = (items: Record<string, unknown>[]) => items.filter(item => {
                 if (!eligibleProcess(item.type, item.metadata)) return false;

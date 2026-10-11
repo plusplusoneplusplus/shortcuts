@@ -44,6 +44,10 @@ counts or snippets. Its activity-ordered metadata snapshot supplies counts and
 pagination without aggregate records or a new index. Group unread uses each
 owner's existing seen map against eligible completed/failed, unarchived chats,
 independently of list filters.
+Active feed rows carry `queueTaskId` only when read from a queue snapshot;
+process-store-only rows retain canonical process identity without queue provenance.
+Queued task/follow-up cancellation uses that task id, while process-only cancellation
+uses the existing process endpoint with an exact owner workspace.
 
 `getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
 `listRecentProcesses` use typed Rust read-pool tasks with the same schema check.

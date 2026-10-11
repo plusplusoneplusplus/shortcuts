@@ -34,6 +34,8 @@ export interface RepoGroupChatRow {
     ownerName?: string;
     /** Process id the owner's chat routes use (queue rows: `processId` or `queue_<id>`). */
     canonicalId: string;
+    /** Actual queue task id, absent for process-store-only active rows. */
+    queueTaskId?: string;
     section: RepoGroupChatSection;
     /** The owner's native row (queue task summary or process history item). */
     item: any;
@@ -87,6 +89,8 @@ function toRows(
             ownerRole: source?.role ?? 'member',
             ...(source?.name ? { ownerName: source.name } : {}),
             canonicalId,
+            ...(section !== 'history' && typeof item.queueTaskId === 'string' && item.queueTaskId
+                ? { queueTaskId: item.queueTaskId } : {}),
             section,
             item,
         });
