@@ -15,6 +15,7 @@ const get = vi.fn();
 const create = vi.fn();
 const update = vi.fn();
 const connect = vi.fn();
+const scrubGet = vi.fn();
 const clientRefs: unknown[] = [];
 
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
@@ -32,6 +33,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
 }));
 const fakeClient = {
     sentinelTodos: {
+        scrubber: { get: (...args: unknown[]) => scrubGet(...args) },
         get: (...args: unknown[]) => get(...args),
         create: (...args: unknown[]) => create(...args),
         update: (...args: unknown[]) => update(...args),
@@ -86,6 +88,8 @@ function conflict(current: SentinelTodoItem) {
 }
 
 beforeEach(() => {
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false });
+    scrubGet.mockReset();
     get.mockReset();
     create.mockReset();
     update.mockReset();
@@ -98,9 +102,26 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false });
 });
 
 describe('UnifiedTodoTab', () => {
+    it('mounts the enabled scrubber above the list only after the ledger loads', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+        const read = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValue(read.promise);
+        scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 }, runs: [] });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        expect(screen.queryByTestId('sentinel-scrubber-strip')).toBeNull();
+        expect(scrubGet).not.toHaveBeenCalled();
+        await act(async () => read.resolve(ledger([item()])));
+        await screen.findByText('Manual only');
+        expect(scrubGet).toHaveBeenCalledWith(OWNER.ownerWorkspaceId, OWNER.processId);
+        const strip = screen.getByTestId('sentinel-scrubber-strip');
+        const row = screen.getByTestId('sentinel-todo-row-i1');
+        expect(strip.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it.each(['normal', 'manual'] as const)('copy-drags and attaches a %s row without ledger writes or execution', async type => {
         applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
         get.mockResolvedValue(ledger([item({ type })]));

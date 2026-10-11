@@ -718,6 +718,20 @@ result reasons remain separate from the item verdict. The tab never starts,
 retries, or cancels jobs. Tests live in `test/server/sentinel-todos/` and the
 read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
+### To-do Scrubber
+
+`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by both
+live ledger and scrubber flags. Its owner/endpoint-keyed strip uses
+`client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
+late reads and mutations cannot update a remounted owner. A visibility-aware
+poll refreshes missed events. All-open and selected runs start separate queued
+read-only chats, with Cancel and owner-routed chat links using excursion navigation.
+Selection contains open normal/manual items and filters closed items again at admission.
+Config drafts keep their captured revision through refresh; conflicts reload
+without retrying writes. The schedule editor shares browser-safe validation and
+presets from `server/schedule/scrub-cron.ts`; Resume saves the current revision.
+Tests use isolated mock clients in `test/server/sentinel-scrubber/panel.test.tsx`.
+
 ### PR-merge triggers
 
 `SentinelTodoTriggers` is a separate section below the cards, gated by existing

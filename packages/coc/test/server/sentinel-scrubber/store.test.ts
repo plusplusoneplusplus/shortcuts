@@ -64,6 +64,10 @@ describe('scrubber model', () => {
         expect(validateScrubCron('0 9 * *', at)).toMatch(/5 fields/);
         expect(validateScrubCron('99 9 * * *', at)).toMatch(/out of range/);
         expect(validateScrubCron('a b c d e', at)).toBeDefined();
+        // Zero steps otherwise loop forever while expanding wildcard/range fields.
+        expect(validateScrubCron('*/0 * * * *', at)).toMatch(/step must be positive/);
+        expect(validateScrubCron('0 0-23/00 * * *', at)).toMatch(/step must be positive/);
+        expect(validateScrubCron('0-999999999 9 * * *', at)).toMatch(/out of range/);
     });
 });
 
