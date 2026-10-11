@@ -389,6 +389,9 @@ references before editing. Paths are package-relative.
   `src/server/canvas/canvas-file-sandbox.ts` checks encoded/decoded shape, resolved
   containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
   file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
+  Inline `CanvasEmbed` disclosures keep hidden bodies and Kusto connection portals
+  mounted/inert to preserve drafts. State is per occurrence and resets by workspace,
+  chat and canvas identity; panel opening stays separate and owner-routed.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
   Cover actual column widths and overflow with the Kusto browser regression suite.
