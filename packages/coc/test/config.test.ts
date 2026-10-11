@@ -1197,6 +1197,7 @@ timeout: 300
                 '  chatFolders: true',
                 '  railGitSummary: true',
                 '  chatHistoryPaging: true',
+                '  railGitSummary: true',
                 '  composerWordHint: false',
                 '  chatProviderSwitching: true',
                 '  canvasHostApis: true',
