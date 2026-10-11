@@ -65,6 +65,15 @@ suffix for every `#repos/<workspaceId>/<subroute>` hash and expands a bare
 per-segment encode/decode helpers in `layout/routePath.ts`, re-exported from
 `layout/Router`.
 
+Group member chat routes use
+`#repos/<groupSelectionId>/chats/member/<ownerWorkspaceId>/<canonicalProcessId>`.
+`dashboardRoutes` builds and parses the path, deriving the member's concrete clone
+key from the group server. `useRepoGroupChatSelection` restores owner identity
+before feed pages load and follows hash history. The router records the full
+suffix under the server-qualified group but clears group queue selection;
+member ids never select group tasks. New Chat returns to the same group's
+`/chats` route.
+
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats
 `chats`/`activity` and `cli-sessions`/`copilot-sessions` as aliases, waits for git

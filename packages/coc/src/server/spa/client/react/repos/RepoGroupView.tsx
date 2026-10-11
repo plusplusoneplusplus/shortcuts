@@ -52,7 +52,8 @@ import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virt
 import { getRemoteCloneKey, getWorkspaceSelectionId } from './cloneIdentity';
 import { useRepoGroupAggregatedChatsEnabled } from '../hooks/feature-flags/useRepoGroupAggregatedChatsEnabled';
 import { useRepoGroupChatFeed } from './useRepoGroupChatFeed';
-import { LOCAL_CHAT_FEED_SERVER_KEY, repoGroupChatKey, type RepoGroupChatRow } from './repoGroupChatFeed';
+import { LOCAL_CHAT_FEED_SERVER_KEY, repoGroupChatKey } from './repoGroupChatFeed';
+import { useRepoGroupChatSelection } from './useRepoGroupChatSelection';
 import { RepoGroupChatList } from './RepoGroupChatList';
 import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
 
@@ -198,8 +199,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         serverKey: chatServerKey,
         enabled: aggregatedChats,
     });
-    const [selectedMemberChat, setSelectedMemberChat] = useState<RepoGroupChatRow | null>(null);
-    useEffect(() => { setSelectedMemberChat(null); }, [workspaceId, chatServerKey]);
+    const memberChat = useRepoGroupChatSelection(selectionId, aggregatedChats);
     // Member repos, for the dock's target picker and the Git tab's host. The
     // Settings tab does its own read — it needs the descriptions too, and only
     // while it is the visible tab.
@@ -223,14 +223,14 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const [splitRailShortcutNode, setSplitRailShortcutNode] = useState<HTMLDivElement | null>(null);
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     const handleSplitNewChat = useCallback(() => {
+        memberChat.backToGroupChats();
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chats';
         setSplitLastClicked('chat');
-    }, [queueDispatch, workspaceId]);
+    }, [memberChat.backToGroupChats, queueDispatch, workspaceId]);
     // Group-owned rows select through the tab's native path, so the group's own
     // selection, hash and detail pane behave exactly as in the native list.
     const renderAggregatedList = useCallback((ctx: RepoChatTabListContext) => {
-        const selectedKey = selectedMemberChat?.key
+        const selectedKey = memberChat.selectedKey
             ?? (ctx.selectedTaskId ? repoGroupChatKey(chatServerKey, workspaceId, ctx.selectedTaskId) : null);
         return (
             <RepoGroupChatList
@@ -239,15 +239,15 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                 selectedKey={selectedKey}
                 onSelect={(row) => {
                     if (row.ownerWorkspaceId === workspaceId) {
-                        setSelectedMemberChat(null);
+                        memberChat.clearSelection();
                         ctx.selectTask(row.item.id, row.item);
                         return;
                     }
-                    setSelectedMemberChat(row);
+                    memberChat.selectMember(row);
                 }}
             />
         );
-    }, [chatFeed, chatServerKey, chatServerLabel, selectedMemberChat, workspaceId]);
+    }, [chatFeed, chatServerKey, chatServerLabel, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;

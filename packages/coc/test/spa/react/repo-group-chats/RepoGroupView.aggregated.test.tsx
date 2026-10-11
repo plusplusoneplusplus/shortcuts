@@ -156,5 +156,36 @@ describe('RepoGroupView — aggregated chats', () => {
         expect(mockSelectTask).not.toHaveBeenCalled();
         expect(mockQueueDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SELECT_QUEUE_TASK', repoId: GROUP_ID, id: 'queue_m1' }));
         expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('aria-selected')).toBe('true');
+        expect(location.hash).toBe('#repos/group-ai/chats/member/ws-a/queue_m1');
+    });
+
+    it('restores member selection from a deep link and switches owners on browser history', async () => {
+        location.hash = '#repos/group-ai/chats/member/ws-b/queue_m2';
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        expect(screen.getAllByTestId('repo-group-chat-row')[2].getAttribute('aria-selected')).toBe('true');
+        act(() => {
+            location.hash = '#repos/group-ai/chats/member/ws-a/queue_m1';
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+        expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('aria-selected')).toBe('true');
+        expect(screen.getAllByTestId('repo-group-chat-row')[2].getAttribute('aria-selected')).toBe('false');
+        expect(mockSelectTask).not.toHaveBeenCalled();
+    });
+
+    it('New Chat clears the member selection and retains the remote group owner', async () => {
+        const selectionId = 'remote:srv-1:group-ai';
+        mockRemoteGroups = [{
+            id: GROUP_ID, name: 'AI', baseUrl: 'http://remote:4000',
+            remote: { serverId: 'srv-1', serverLabel: 'devbox', baseUrl: 'http://remote:4000', cloneKey: selectionId },
+        }];
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        fireEvent.click(screen.getAllByTestId('repo-group-chat-row')[0]);
+        expect(location.hash).toBe('#repos/remote%3Asrv-1%3Agroup-ai/chats/member/ws-a/queue_m1');
+        fireEvent.click(screen.getByTestId('repo-group-split-new-chat'));
+        expect(location.hash).toBe('#repos/remote%3Asrv-1%3Agroup-ai/chats');
+        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null, repoId: GROUP_ID });
+        expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('aria-selected')).toBe('false');
     });
 });
