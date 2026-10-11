@@ -78,6 +78,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | POST | `/api/repo-groups` | Create virtual group; members must be registered non-virtual repos, description/read-only keys must be members |
 | GET | `/api/repo-groups/:id` | Resolved membership and description/read-only metadata; missing members marked stale |
 | GET | `/api/repo-groups/:id/search` | Search live member indexes by `q`; ranked cross-repo results and completeness status, `limit` 1–200 |
+| GET | `/api/repo-groups/:id/chats` | Read-only aggregated chats of the group and its members from the owning registry: rows tagged `ownerWorkspaceId`, `running`/`queued` from each owner's queue (first page only), terminal history k-way merged by latest activity; `limit` 1–200, `owners`, `statuses`, `archived` (`exclude`/`only`/`include`), `type`; opaque `cursor` pins membership and filters (409 `STALE_CURSOR` otherwise); exact `counts` with `unread` and `partial` when a source is unavailable |
 | PATCH | `/api/repo-groups/:id` | Rename/replace members; partially patch descriptions/read-only flags, pruning removed members |
 | DELETE | `/api/repo-groups/:id` | Deregister group, retain its data |
 

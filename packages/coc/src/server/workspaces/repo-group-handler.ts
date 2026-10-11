@@ -15,7 +15,7 @@ import type { ExplorerRepoGroupSearchResponse } from '@plusplusoneplusplus/coc-c
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import type { NativeRankedFileMatch } from '@plusplusoneplusplus/coc-native';
 import { sendJSON } from '../core/api-handler';
-import { handleAPIError, badRequest, notFound, missingFields } from '../errors';
+import { APIError, handleAPIError, badRequest, notFound, missingFields } from '../errors';
 import type { RepoTreeService } from '../repos/tree-service';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
@@ -41,6 +41,13 @@ import {
     RepoGroupValidationError,
 } from './repo-group-workspace';
 import { getRepoGroupAccess, withRepoGroupMutation } from './repo-group-exclusive-writer';
+import {
+    buildRepoGroupChatFeed,
+    InvalidRepoGroupChatQueryError,
+    parseRepoGroupChatFeedQuery,
+    StaleRepoGroupCursorError,
+    type RepoGroupChatFeedDeps,
+} from './repo-group-chat-feed';
 
 /** Minimal broadcast surface of the process WebSocket server. */
 interface TopologyBroadcaster {
@@ -65,6 +72,10 @@ export interface RepoGroupRouteDeps {
     onGroupRegistered?: (ws: WorkspaceInfo) => void | Promise<void>;
     /** Shared native file-index service used by repo and repo-group search. */
     repoTreeService?: Pick<RepoTreeService, 'searchFilesRanked' | 'searchContent'>;
+    /** One workspace's queue snapshot for the aggregated chat feed; absent ⇒ history only. */
+    readQueue?: RepoGroupChatFeedDeps['readQueue'];
+    /** Live bot-managed-conversations flag for history row projection. */
+    getBotControlEnabled?: () => boolean;
 }
 
 export type RepoGroupSearchResult = ExplorerRepoGroupSearchResponse;
@@ -270,6 +281,34 @@ export function registerRepoGroupRoutes(
                     ),
                 );
             } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/repo-groups/:id/chats — read-only aggregated chat feed
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repo-groups\/([^/]+)\/chats$/,
+        handler: async (req, res, match) => {
+            try {
+                const id = decodeURIComponent(match![1]);
+                if (!readRepoGroup(dataDir, id)) {
+                    return handleAPIError(res, notFound('Repo group'));
+                }
+                const query = parseRepoGroupChatFeedQuery(new URL(req.url ?? '', 'http://localhost').searchParams);
+                const members = await resolveRepoGroupMembers(dataDir, store, id);
+                sendJSON(res, 200, await buildRepoGroupChatFeed(
+                    { store, readQueue: deps.readQueue, botControlEnabled: deps.getBotControlEnabled?.() === true },
+                    id,
+                    members,
+                    query,
+                ));
+            } catch (err) {
+                if (err instanceof InvalidRepoGroupChatQueryError) return handleAPIError(res, badRequest(err.message));
+                if (err instanceof StaleRepoGroupCursorError) return handleAPIError(res, new APIError(409, err.message, err.code));
                 handleAPIError(res, err);
             }
         },
