@@ -12,6 +12,8 @@ import { CocApiError, type ChatProviderId, type ChatStyle, type ProcessMessageRe
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace, resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
 import type { MetaCommand } from '../slash-command-parser';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
@@ -100,6 +102,8 @@ export interface UseSendMessageOptions {
     workspaceId?: string;
     /** Canonical owner from loaded process metadata; routing still uses the selection workspace. */
     owningWorkspaceId?: string;
+    /** Owner-qualified client draft identity, separate from the process id on the wire. */
+    draftKey?: string;
     /** Feature flag state for session-context attachments. Required before sending session pointers. */
     sessionContextAttachmentsEnabled?: boolean;
     /** Conversation retrieval capability for the active workspace/provider mode. */
@@ -163,6 +167,7 @@ export function useSendMessage({
     chatStyle,
     workspaceId,
     owningWorkspaceId: messageOwnerWorkspaceId,
+    draftKey = taskId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
     ralphGrillSetup,
@@ -182,6 +187,10 @@ export function useSendMessage({
     // `/compact` or a normal follow-up) must be dropped. A ref closes the
     // double-click race that a React state flag would lose between renders.
     const compactingRef = useRef(false);
+    const scopedOwner = useWorkspaceOwner(workspaceId);
+    const scopedClient = useCocClient(workspaceId);
+    const getMessageClient = useCallback(() => scopedOwner
+        ? scopedClient : getCocClientForWorkspace(workspaceId), [scopedOwner, scopedClient, workspaceId]);
 
     const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => {
         // An explicit override wins over the composer's own attachments; without
@@ -266,7 +275,7 @@ export function useSendMessage({
         compactingRef.current = true;
         setCompacting?.(true, customInstructions);
         try {
-            const result = await getCocClientForWorkspace(workspaceId).processes.compact(
+            const result = await getMessageClient().processes.compact(
                 pid,
                 customInstructions,
                 workspaceId ? { workspace: workspaceId } : undefined,
@@ -299,7 +308,7 @@ export function useSendMessage({
             compactingRef.current = false;
             setCompacting?.(false);
         }
-    }, [workspaceId, notifyCompact, refreshConversation, setCompacting]);
+    }, [workspaceId, getMessageClient, notifyCompact, refreshConversation, setCompacting]);
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
         const includeComposerContext = options.includeComposerContext !== false;
@@ -325,7 +334,7 @@ export function useSendMessage({
             : userText;
         const rawContent = contextPrefix ? contextPrefix + baseContent : baseContent;
         if (!processId || inputDisabled) return;
-        if (resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
+        if (!scopedOwner && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
             setError('The owning server is unavailable. Reconnect it before sending this message.');
             return;
         }
@@ -352,7 +361,7 @@ export function useSendMessage({
             setSuggestions([]);
             if (includeComposerContext) {
                 setFollowUpInput('');
-                clearDraft(taskId);
+                clearDraft(draftKey);
             }
             slashCommands.dismissMenu();
             setError(null);
@@ -370,14 +379,14 @@ export function useSendMessage({
             if (archivedChatIds.has(taskId)) unarchiveChat(taskId);
             setSuggestions([]);
             setFollowUpInput('');
-            clearDraft(taskId);
+            clearDraft(draftKey);
             slashCommands.dismissMenu();
             setError(null);
             setSending(true);
             try {
                 // Route the write to the chat's clone (AC-07): a remote clone's
                 // promotion hits its own server, never the local one.
-                await getCocClientForWorkspace(workspaceId).processes.promoteToRalph(processId, {
+                await getMessageClient().processes.promoteToRalph(processId, {
                     workspaceId,
                     extraGuidance: userText || undefined,
                     ...(ralphGrillSetup?.enabled ? { grill: ralphGrillSetup } : {}),
@@ -417,7 +426,7 @@ export function useSendMessage({
         setSuggestions([]);
         if (includeComposerContext) {
             setFollowUpInput('');
-            clearDraft(taskId);
+            clearDraft(draftKey);
         }
         slashCommands.dismissMenu();
         setError(null);
@@ -443,7 +452,7 @@ export function useSendMessage({
             // server steer, buffer, or enqueue as appropriate.  No local
             // pending queue entry — the server is the source of truth.
             // Routed to the chat's clone (AC-07).
-            void getCocClientForWorkspace(workspaceId).processes.sendMessage(
+            void getMessageClient().processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
                 ownerQuery,
@@ -476,7 +485,7 @@ export function useSendMessage({
 
         try {
             // Idle chat: start the streaming follow-up against the chat's clone (AC-07).
-            await getCocClientForWorkspace(workspaceId).processes.sendMessage(
+            await getMessageClient().processes.sendMessage(
                 processId,
                 buildMessageRequest(rawContent, deliveryMode, extractedSkills, options),
                 ownerQuery,
@@ -504,7 +513,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation, scopedOwner, getMessageClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

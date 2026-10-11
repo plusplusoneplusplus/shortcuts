@@ -84,6 +84,8 @@ export interface RepoChatTabProps {
      * `selectTask` is the native row-click path for this tab's own chats.
      */
     renderList?: (ctx: RepoChatTabListContext) => ReactNode;
+    /** Split-layout owner-routed detail supplied by an aggregated workspace. */
+    detailOverride?: ReactNode;
 }
 
 export interface RepoChatTabListContext {
@@ -165,7 +167,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter, renderList }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter, renderList, detailOverride }: RepoChatTabProps) {
     const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -1345,7 +1347,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                             className="flex flex-col h-full min-h-0 overflow-hidden outline-none"
                             onPointerDown={handleDetailPointerDown}
                         >
-                            {detailPaneContent}
+                            {detailOverride ?? detailPaneContent}
                         </div>,
                         detailContainer,
                     )

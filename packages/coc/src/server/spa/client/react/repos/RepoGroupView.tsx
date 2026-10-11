@@ -54,6 +54,8 @@ import { useRepoGroupAggregatedChatsEnabled } from '../hooks/feature-flags/useRe
 import { useRepoGroupChatFeed } from './useRepoGroupChatFeed';
 import { LOCAL_CHAT_FEED_SERVER_KEY, repoGroupChatKey } from './repoGroupChatFeed';
 import { useRepoGroupChatSelection } from './useRepoGroupChatSelection';
+import { RepoGroupMemberChatDetail } from './RepoGroupMemberChatDetail';
+import { allRepoGroupChatRows } from './repoGroupChatFeed';
 import { RepoGroupChatList } from './RepoGroupChatList';
 import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
 
@@ -200,6 +202,9 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         enabled: aggregatedChats,
     });
     const memberChat = useRepoGroupChatSelection(selectionId, aggregatedChats);
+    const memberRow = chatFeed.model && memberChat.selectedKey
+        ? allRepoGroupChatRows(chatFeed.model).find(row => row.key === memberChat.selectedKey)
+        : undefined;
     // Member repos, for the dock's target picker and the Git tab's host. The
     // Settings tab does its own read — it needs the descriptions too, and only
     // while it is the visible tab.
@@ -303,6 +308,8 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                     <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             <SplitWorkspacePanel
                                 workspaceId={workspaceId}
+                                mobileChatBackLabel={aggregatedChats ? 'Back to group chats' : undefined}
+                                onMobileChatBack={aggregatedChats ? memberChat.backToGroupChats : undefined}
                                 footer={headerInTopBar ? <StatusActions variant="sidebar" /> : undefined}
                                 onNewChat={handleSplitNewChat}
                                 railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
@@ -334,6 +341,15 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}
+                                        detailOverride={memberChat.selection ? (
+                                            <RepoGroupMemberChatDetail
+                                                selection={memberChat.selection}
+                                                row={memberRow}
+                                                serverLabel={chatServerLabel}
+                                                groupBaseUrl={groupBaseUrl}
+                                                onBack={memberChat.backToGroupChats}
+                                            />
+                                        ) : undefined}
                                     />
                                 }
                                 gitList={splitGitAvailable ? (

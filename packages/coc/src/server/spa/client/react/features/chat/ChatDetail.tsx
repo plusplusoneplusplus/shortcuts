@@ -10,7 +10,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
-import { useCocClient } from '../../repos/cloneRouting';
+import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
@@ -222,6 +223,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
     const client = useCocClient(workspaceId);
+    const cloneBaseUrl = useCloneBaseUrl(workspaceId);
+    const scopedOwner = useWorkspaceOwner(workspaceId);
+    const conversationStateKey = scopedOwner ? `${scopedOwner.selectionId}|${taskId}` : taskId;
+    const getOwnerProcess = useCallback((id: string) => scopedOwner
+        ? client.processes.get(id, { workspace: scopedOwner.workspaceId })
+        : client.processes.get(id), [client, scopedOwner]);
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -430,7 +437,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         firstTurnIndex: number;
     } | undefined;
     const composerProvider: ConcreteChatProvider = pendingProvider ?? conversationProvider;
-    const owningServerBaseUrl = sourceBaseUrl ?? (workspaceId ? lookupCloneBaseUrl(workspaceId) : undefined);
+    const owningServerBaseUrl = sourceBaseUrl ?? cloneBaseUrl;
     const compactionRefreshRef = useRef<(pid: string) => Promise<void>>(async () => {});
     useBotControlUpdates(owningServerBaseUrl, effectiveWorkspaceId, update => {
         if (update.processId !== processId) return;
@@ -540,6 +547,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const sourceRemoteInfo = useMemo(() => {
         const none = { isRemote: false, baseUrl: undefined as string | undefined, serverLabel: undefined as string | undefined };
         if (!workspaceId) return none;
+        if (scopedOwner) return { ...none, isRemote: !!scopedOwner.baseUrl, baseUrl: scopedOwner.baseUrl };
         const repoWs = reposCtx?.repos?.find((r: any) => r?.workspace?.id === workspaceId)?.workspace;
         if (repoWs && isRemoteWorkspace(repoWs)) {
             return { isRemote: true, baseUrl: repoWs.baseUrl, serverLabel: repoWs.remote.serverLabel };
@@ -548,7 +556,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (baseUrl) return { isRemote: true, baseUrl, serverLabel: undefined };
         const knownLocal = appState.workspaces.some((ws: any) => ws?.id === workspaceId);
         return { ...none, isRemote: appState.workspaces.length > 0 && !knownLocal };
-    }, [reposCtx?.repos, appState.workspaces, workspaceId]);
+    }, [reposCtx?.repos, appState.workspaces, workspaceId, scopedOwner]);
     const implementTargets = useMemo(() => {
         if (!reposCtx) return undefined;
         return buildImplementTargets(reposCtx.repos, {
@@ -1189,7 +1197,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // Resolve live status for each recorded implementation from the queue context
     const existingRuns: ExistingRun[] = useMemo(() => {
         if (rawImplementations.length === 0) return [];
-        const allTasks = [...queueState.queued, ...queueState.running, ...queueState.history];
+        const allTasks = scopedOwner ? [] : [...queueState.queued, ...queueState.running, ...queueState.history];
         return rawImplementations.map((rec) => {
             const bareId = rec.processId.startsWith('queue_') ? rec.processId.slice(6) : rec.processId;
             const found = allTasks.find((t: any) => t.id === bareId || t.id === rec.processId);
@@ -1202,7 +1210,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             }
             return { ...rec, liveStatus };
         });
-    }, [rawImplementations, queueState.queued, queueState.running, queueState.history]);
+    }, [rawImplementations, queueState.queued, queueState.running, queueState.history, scopedOwner]);
 
     // One-time fetch for implementation runs not found in queue state
     const implFetchedRef = useRef(false);
@@ -1255,7 +1263,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // Reactively sync title, customTitle, lastMessagePreview, and status from
     // process-updated WS events (via AppContext).
     useEffect(() => {
-        if (!processId) return;
+        if (!processId || scopedOwner) return;
         const proc = appState.processes.find((p: any) => p.id === processId);
         if (!proc) return;
         setTask((prev: any) => {
@@ -1272,7 +1280,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             if (statusChanged) next.status = proc.status;
             return next;
         });
-    }, [processId, appState.processes]);
+    }, [processId, appState.processes, scopedOwner]);
 
     // Tracks the previous `task.status` so a one-shot conversation refresh
     // can fire when the task transitions out of `queued`. Declared here; the
@@ -1441,9 +1449,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         turnsRef.current = resolved;
         setTurns(resolved);
         if (taskId && !resolved.some(t => t.streaming)) {
-            appDispatch({ type: 'CACHE_CONVERSATION', processId: taskId, turns: resolved });
+            appDispatch({ type: 'CACHE_CONVERSATION', processId: conversationStateKey, turns: resolved });
         }
-    }, [taskId, appDispatch]);
+    }, [taskId, conversationStateKey, appDispatch]);
 
     const removeStreamingPlaceholder = useCallback(() => {
         setTurnsAndRef(prev => {
@@ -1464,7 +1472,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     conversationScopeRef.current = { processId, client };
     const refreshConversation = useCallback(async (pid: string) => {
         try {
-            const data = await client.processes.get(pid);
+            const data = await getOwnerProcess(pid);
             if (conversationScopeRef.current.processId !== pid || conversationScopeRef.current.client !== client) return;
             setProcessDetails(data?.process || null);
             // Re-seed the context-window meter from the refreshed record. This is
@@ -1498,8 +1506,36 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 ...(Array.isArray(m.images) && m.images.length > 0 ? { images: m.images } : {}),
             })));
         } catch { /* keep current turns */ }
-    }, [client, setTurnsAndRef, seedSessionTokensFromProcess]);
+    }, [client, getOwnerProcess, setTurnsAndRef, seedSessionTokensFromProcess]);
     compactionRefreshRef.current = refreshConversation;
+    useEffect(() => {
+        if (!scopedOwner || !processId) return;
+        let active = true;
+        let generation = 0;
+        const eventName = scopedOwner.baseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message';
+        const handle = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (scopedOwner.baseUrl && detail?.baseUrl !== scopedOwner.baseUrl) return;
+            const message = scopedOwner.baseUrl ? detail?.message : detail;
+            if (message?.type !== 'process-added' && message?.type !== 'process-updated') return;
+            if (message.process?.id !== processId || message.process?.workspaceId !== scopedOwner.workspaceId) return;
+            const request = ++generation;
+            void getOwnerProcess(processId).then(data => {
+                if (!active || request !== generation || !data.process) return;
+                const process = data.process;
+                setTask((prev: any) => prev ? {
+                    ...prev, status: process.status, title: process.title,
+                    customTitle: process.customTitle, metadata: process.metadata,
+                } : prev);
+                setProcessDetails(process);
+                setTurnsAndRef(getConversationTurns(data));
+            }).catch(err => {
+                if (active && request === generation) setError(err?.message ?? 'Could not refresh the owning conversation.');
+            });
+        };
+        window.addEventListener(eventName, handle);
+        return () => { active = false; window.removeEventListener(eventName, handle); };
+    }, [scopedOwner, processId, getOwnerProcess, setTurnsAndRef]);
 
     // Sentinel-only auto-compact control in the context-usage popover. The
     // owning server persists the setting and runs every check and compaction.
@@ -1590,6 +1626,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         chatStyle: chatStyleSelectorEnabled ? followUpChatStyle : undefined,
         workspaceId,
         owningWorkspaceId,
+        draftKey: conversationStateKey,
         ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
         conversationRetrievalAvailable: canRetrieveConversations,
@@ -1722,7 +1759,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         },
     });
 
-    useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
+    useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef, workspaceId });
 
     useEffect(() => {
         setRalphGrillPlanningProgress(null);
@@ -1923,7 +1960,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setSending(false);
         setIsStreaming(false);
 
-        const draft = getDraft(currentTaskId);
+        const draft = getDraft(conversationStateKey);
         if (draft) {
             setFollowUpInput(draft.text);
             const draftMode = normalizeChatMode(draft.mode);
@@ -1945,14 +1982,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     // paint immediately from the cache and revalidate in the
                     // background so re-visits feel instant. Most clicks land on
                     // a session the user has already viewed in this tab.
-                    const cached = appState.conversationCache[taskId];
+                    const cached = appState.conversationCache[conversationStateKey];
                     const cacheHit = cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS);
                     if (cacheHit) {
                         setTurnsAndRef(cached.turns);
                         setLoading(false);
                         // Fire-and-forget background revalidation. Bail out if
                         // the user has navigated away or to another session.
-                        client.processes.get(pid).then((processData: any) => {
+                        getOwnerProcess(pid).then((processData: any) => {
                             if (loadCounterRef.current !== loadId) return;
                             const loadedProcess = processData?.process ?? null;
                             if (!loadedProcess) return;
@@ -1987,7 +2024,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         return;
                     }
 
-                    const processData = await client.processes.get(pid);
+                    const processData = await getOwnerProcess(pid);
                     if (loadCounterRef.current !== loadId) return;
                     const loadedProcess = processData?.process ?? null;
 
@@ -2041,12 +2078,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
                 const pid = loadedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
 
-                const cached = appState.conversationCache[taskId];
+                const cached = appState.conversationCache[conversationStateKey];
                 if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
                     setTask(loadedTask);
                     setTurnsAndRef(cached.turns);
                     // Background-refresh metadata
-                    client.processes.get(pid)
+                    getOwnerProcess(pid)
                         .then((data: any) => {
                             if (loadCounterRef.current !== loadId) {
                                 return;
@@ -2076,7 +2113,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         })
                         .catch(() => { /* metadata refresh is best-effort */ });
                 } else {
-                    const procData = await client.processes.get(pid);
+                    const procData = await getOwnerProcess(pid);
                     if (loadCounterRef.current !== loadId) return;
 
                     // Reconcile: process status is authoritative over queue status.
@@ -2134,9 +2171,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             stopStreaming();
             closeFollowUpStream();
             // Save draft on navigate-away; clear if input is empty
-            setDraft(currentTaskId, followUpInputRef.current, selectedModeRef.current);
+            setDraft(conversationStateKey, followUpInputRef.current, selectedModeRef.current);
         };
-    }, [client, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [client, taskId, conversationStateKey, getOwnerProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync mode selector with the loaded task's mode. Depends on the task
     // object (not just its id): a freshly enqueued chat's first snapshot may
@@ -2148,7 +2185,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (!task || modeSyncDoneRef.current) {
             return;
         }
-        const draft = getDraft(taskId);
+        const draft = getDraft(conversationStateKey);
         if (normalizeChatMode(draft?.mode)) {
             modeSyncDoneRef.current = true;
             return;
@@ -2173,7 +2210,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             try {
                 // For processId-keyed taskIds, try loading process directly first
                 if (isQueueProcessId(taskId)) {
-                    const procData = await client.processes.get(taskId);
+                    const procData = await getOwnerProcess(taskId);
                     if (procData?.process) {
                         setTask({
                             id: taskId,
@@ -2204,7 +2241,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     return;
                 }
 
-                const procData = await client.processes.get(pid);
+                const procData = await getOwnerProcess(pid);
 
                 // Reconcile: process status is authoritative over queue status.
                 // Also propagate customTitle/lastMessagePreview/title from the
@@ -2229,7 +2266,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 setTurnsAndRef(refreshedTurns);
             } catch { /* keep current state */ }
         })();
-    }, [client, taskId, queueState.refreshVersion, setTurnsAndRef]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [client, taskId, queueState.refreshVersion, setTurnsAndRef, getOwnerProcess]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Scroll to bottom on new turns
     useEffect(() => {
@@ -2389,7 +2426,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const loadedConversationMode = resolveLoadedTaskMode(task);
     // Persisted/live conversation identity wins over the original queue payload
     // and the draft mode. Sentinel dispatches implementation through tools.
-    const liveConversation = appState.processes.find(p => p.id === processId);
+    const liveConversation = scopedOwner ? undefined : appState.processes.find(p => p.id === processId);
     const effectiveConversationMode = normalizeChatMode(liveConversation?.metadata?.mode)
         ?? normalizeChatMode(metadataProcess?.metadata?.mode)
         ?? loadedConversationMode
@@ -2465,7 +2502,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
         const routeScope = workspaceId ?? effectiveWorkspaceId;
-        if (resolveCloneRoute(routeScope).kind === 'unresolved-remote') {
+        if (!scopedOwner && resolveCloneRoute(routeScope).kind === 'unresolved-remote') {
             setError('The owning server is unavailable. Reconnect it before removing this message.');
             return;
         }
@@ -2476,14 +2513,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             removed = prev.find(m => m.id === messageId);
             return prev.filter(m => m.id !== messageId);
         });
-        getCocClientForWorkspace(routeScope).processes.deletePendingMessage(
+        (scopedOwner ? client : getCocClientForWorkspace(routeScope)).processes.deletePendingMessage(
             processId, messageId, wireWorkspaceId ? { workspace: wireWorkspaceId } : undefined,
         ).catch(() => {
             if (removed) {
                 setPendingQueue(prev => (prev.some(m => m.id === messageId) ? prev : [...prev, removed!]));
             }
         });
-    }, [processId, workspaceId, effectiveWorkspaceId, owningWorkspaceId]);
+    }, [client, processId, workspaceId, effectiveWorkspaceId, owningWorkspaceId, scopedOwner]);
 
     const launchInteractiveResume = async () => {
         if (!processId || !resumeSessionId) return;
@@ -2920,7 +2957,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         compactionError={persistedCompaction?.state === 'failed' ? persistedCompaction.error : undefined}
                         onCancelCompaction={() => {
                             if (!processId) return;
-                            void getCocClientForWorkspace(workspaceId).processes.cancelCompaction(processId,
+                            void client.processes.cancelCompaction(processId,
                                 workspaceId ? { workspace: workspaceId } : undefined)
                                 .then(() => refreshConversation(processId))
                                 .catch(error => addToast(getSpaCocClientErrorMessage(error, 'Failed to cancel compaction.'), 'error'));

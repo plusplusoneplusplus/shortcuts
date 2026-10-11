@@ -91,6 +91,15 @@ over `subscribeCloneBaseUrl`, so a caller re-renders when its route resolves aft
 paint (remote aggregation finishing late), when the active clone key disambiguates a
 shared id, or when a route is dropped.
 
+Repo-group member conversations mount under `WorkspaceOwnerContext` with a raw
+workspace id, concrete selection id and resolved endpoint. `useCloneBaseUrl`
+and `useCocClient` prefer that exact matching subtree owner, including explicit
+local ownership, without changing registry aliases. Member detail blocks
+unresolved remote owners and remounts transports on endpoint changes. Main chat
+SSE, warm streams, queued polling, follow-up and preference writes share that
+owner; request payloads keep raw workspace ids. Conversation caches and drafts
+use owner-qualified keys.
+
 Long-lived language transports subscribe to the registry rather than resolving
 only once. Their cache identity is `(workspaceId, concrete clone route,
 editingSessionId)`: the clone route chooses the socket origin, while the plain

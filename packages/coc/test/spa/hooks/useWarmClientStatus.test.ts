@@ -17,7 +17,8 @@ const { cloneApiBaseSpy } = vi.hoisted(() => ({
     cloneApiBaseSpy: vi.fn((ws: string | null | undefined) => `https://api.test/${ws}/api`),
 }));
 
-vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../../src/server/spa/client/react/repos/cloneRegistry')>(),
     cloneApiBase: (workspaceId: string | null | undefined) => cloneApiBaseSpy(workspaceId),
 }));
 

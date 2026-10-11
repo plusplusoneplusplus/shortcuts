@@ -98,6 +98,9 @@ export interface SplitWorkspacePanelProps {
     /** Waiting jobs shown on the collapsed desktop rail. Zero hides the control. */
     queuedCount?: number;
     jobPreview?: RailJobPreview;
+    /** Group chat navigation keeps the list mounted and clears its member route on back. */
+    mobileChatBackLabel?: string;
+    onMobileChatBack?: () => void;
 }
 
 /** localStorage key for the chat/git divider ratio (chat half height), per workspace. */
@@ -272,6 +275,8 @@ export function SplitWorkspacePanel({
     runningCount = 0,
     queuedCount = 0,
     jobPreview,
+    mobileChatBackLabel,
+    onMobileChatBack,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
     const viewportWidth = useViewportWidth();
@@ -415,11 +420,16 @@ export function SplitWorkspacePanel({
                             <button
                                 type="button"
                                 className="touch-target flex items-center gap-1 rounded px-2 text-sm text-[#0078d4] dark:text-[#3794ff]"
-                                onClick={() => mobilePane.setDetailOpen(false)}
-                                aria-label={`Back to ${mobilePane.pane === 'git' ? gitLabel : MOBILE_CHAT_SEGMENT_LABEL} list`}
+                                onClick={() => {
+                                    mobilePane.setDetailOpen(false);
+                                    if (mobilePane.pane === 'chat') onMobileChatBack?.();
+                                }}
+                                aria-label={mobilePane.pane === 'chat' && mobileChatBackLabel
+                                    ? mobileChatBackLabel
+                                    : `Back to ${mobilePane.pane === 'git' ? gitLabel : MOBILE_CHAT_SEGMENT_LABEL} list`}
                                 data-testid="split-workspace-mobile-back"
                             >
-                                ← Back
+                                {mobilePane.pane === 'chat' && mobileChatBackLabel ? mobileChatBackLabel : '← Back'}
                             </button>
                         </div>
                     ) : (

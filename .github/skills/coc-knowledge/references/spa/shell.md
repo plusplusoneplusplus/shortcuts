@@ -72,7 +72,9 @@ key from the group server. `useRepoGroupChatSelection` restores owner identity
 before feed pages load and follows hash history. The router records the full
 suffix under the server-qualified group but clears group queue selection;
 member ids never select group tasks. New Chat returns to the same group's
-`/chats` route.
+`/chats` route. `RepoGroupMemberChatDetail` supplies `RepoChatTab.detailOverride`,
+an owner header and explicit repo navigation; mobile back clears the member
+route without unmounting the list.
 
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats
