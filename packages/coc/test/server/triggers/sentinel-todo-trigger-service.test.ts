@@ -226,6 +226,36 @@ describe('SentinelTodoTriggerService', () => {
         expect(triggers.countActive()).toBe(MAX_ACTIVE_TRIGGERS);
     });
 
+    it('replays create receipts without rearming paused or consumed rules', async () => {
+        const first = await create({ idempotencyKey: 'draft-1' });
+        const paused = await service.setPaused(owner, first.id, { expectedRevision: 1 }, true);
+        expect(await create({ idempotencyKey: 'draft-1' })).toEqual(paused);
+        expect(arm).toHaveBeenCalledTimes(1);
+        const fired = await service.runNow(owner, first.id, { expectedRevision: paused.revision, confirmed: true });
+        expect(await create({ idempotencyKey: 'draft-1' })).toEqual(fired);
+        expect(triggers.getAll()).toHaveLength(1);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses one owner-scoped rule for concurrent retries of the same editor draft', async () => {
+        const [first, second] = await Promise.all([
+            create({ idempotencyKey: 'draft-1' }), create({ idempotencyKey: 'draft-1' }),
+        ]);
+        expect(first.id).toBe(second.id);
+        expect(triggers.getAll()).toHaveLength(1);
+        expect(arm).toHaveBeenCalledTimes(1);
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('never recreates a removed rule on a stale draft retry', async () => {
+        const first = await create({ idempotencyKey: 'draft-1' });
+        await service.remove(owner, first.id, { expectedRevision: first.revision });
+        await expect(create({ idempotencyKey: 'draft-1' })).rejects.toMatchObject({ statusCode: 409 });
+        expect(await service.list(owner)).toEqual([]);
+        expect(triggers.countActive()).toBe(0);
+        expect(arm).toHaveBeenCalledTimes(1);
+    });
+
     it('rejects owner removal during PR preflight and foreign rule/item access', async () => {
         const rule = await create();
         getProcess.mockImplementation(async (id: string) => id === process.id ? process : { ...process, id, metadata: { ...process.metadata, mode: 'sentinel' } });

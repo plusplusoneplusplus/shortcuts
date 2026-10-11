@@ -77,7 +77,8 @@ When `triggers.enabled` infrastructure is present, the same tool offers
 invoking Sentinel; `getTriggerInfra().sentinelTodoTriggers` supplies the shared
 rule service to first turns and follow-ups. Creation arms a normal eligible item's
 PR URL immediately with optional instruction, without expiry or another approval
-gate. Rule mutations use its `expectedRevision`. Merge wakes the Sentinel once,
+gate. Creation uses a stable `idempotencyKey` across retries; rule mutations use
+its `expectedRevision`. Merge wakes the Sentinel once,
 never launches or changes item status; manual-copy/conversion bypasses remain prohibited.
 
 The addon's `<sentinel_todo_ledger>` guidance tracks concrete intended outcomes

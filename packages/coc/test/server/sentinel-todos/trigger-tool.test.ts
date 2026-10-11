@@ -77,6 +77,14 @@ describe('Sentinel PR-merge rule tool actions', () => {
         expect(store.getById(rule.id)).toBeNull();
     });
 
+    it('retries self-arming with the same authoring receipt without duplicating rules', async () => {
+        const args = { action: 'create_trigger', itemId, prUrl, idempotencyKey: 'sentinel-draft-1' };
+        const first = await call(args);
+        const second = await call(args);
+        expect(second.trigger.id).toBe(first.trigger.id);
+        expect(store.getAll()).toHaveLength(1);
+        expect(arm).toHaveBeenCalledTimes(1);
+    });
     it('rejects manual items and ignores forged owner identity rather than reaching another ledger', async () => {
         const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
         expect(await call({ action: 'create_trigger', itemId: manual.id, prUrl })).toMatchObject({ error: expect.stringContaining('Manual') });

@@ -18,7 +18,9 @@ const ruleInput = z.object({
     workspaceId: id.optional(),
     originId: id.optional(),
 }).strict();
-const createInput = ruleInput.extend({ runNow: z.boolean().optional(), confirmed: z.literal(true).optional() }).strict();
+const createInput = ruleInput.extend({
+    runNow: z.boolean().optional(), confirmed: z.literal(true).optional(), idempotencyKey: id.optional(),
+}).strict();
 const editInput = ruleInput.extend({ expectedRevision: z.number().int().min(1) }).strict();
 const revisionInput = z.object({ expectedRevision: z.number().int().min(1) }).strict();
 const runInput = revisionInput.extend({ confirmed: z.literal(true) }).strict();
@@ -61,6 +63,8 @@ export class SentinelTodoTriggerService {
         await this.assertOwner(owner);
         const body = parse(createInput, input);
         if (body.runNow && !body.confirmed) throw new SentinelTodoTriggerError(400, 'Run now requires confirmation');
+        const replay = this.findCreation(owner, body.idempotencyKey);
+        if (replay) return replay;
         const pr = parsePr(body.prUrl, body);
         this.assertEligible(owner, body.itemId);
         const snapshot = await this.readPr(pr);
@@ -69,7 +73,9 @@ export class SentinelTodoTriggerService {
             throw new SentinelTodoTriggerError(409, 'PR already merged; use Run now');
         }
         await this.assertOwner(owner);
-        const trigger = this.deps.triggers.transaction(() => {
+        const result = this.deps.triggers.transaction(() => {
+            const replay = this.findCreation(owner, body.idempotencyKey);
+            if (replay) return { trigger: replay, created: false };
             this.assertEligible(owner, body.itemId);
             this.assertCap();
             const at = this.timestamp();
@@ -86,12 +92,15 @@ export class SentinelTodoTriggerService {
                 binding: {
                     kind: 'sentinel-todo', itemId: body.itemId, instruction: body.instruction,
                     armedBy: actor, armedAt: at,
+                    ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
                 },
                 action: { type: 'send-message', mode: 'inherit', processId: owner.processId, prompt: '' },
             };
             this.deps.triggers.insert(candidate);
-            return candidate;
+            return { trigger: candidate, created: true };
         });
+        const { trigger } = result;
+        if (!result.created) return trigger;
         try { this.deps.manager.arm(trigger); }
         catch (error) {
             this.deps.triggers.delete(trigger.id);
@@ -169,8 +178,8 @@ export class SentinelTodoTriggerService {
                 binding: { ...current.binding!, removedAt: this.timestamp() },
                 nextTickAt: current.delivery?.state === 'pending' ? current.nextTickAt : null,
             };
-            // A fired wake owns a durable receipt even after its presentation is cleared.
-            if (current.delivery) this.deps.triggers.update(next);
+            // Delivery and authoring receipts survive Clear so stale retries cannot revive work.
+            if (current.delivery || current.binding?.idempotencyKey) this.deps.triggers.update(next);
             else this.deps.triggers.delete(triggerId);
             return next;
         });
@@ -213,6 +222,14 @@ export class SentinelTodoTriggerService {
         if (this.deps.triggers.countActive() >= MAX_ACTIVE_TRIGGERS) {
             throw new SentinelTodoTriggerError(409, `Server-wide active trigger limit reached (${MAX_ACTIVE_TRIGGERS})`);
         }
+    }
+
+    private findCreation(owner: SentinelTodoOwner, key: string | undefined): Trigger | undefined {
+        if (!key) return;
+        const existing = this.deps.triggers.getByWorkspace(owner.workspaceId).find(trigger =>
+            trigger.processId === owner.processId && trigger.binding?.idempotencyKey === key);
+        if (existing?.binding?.removedAt) throw new SentinelTodoTriggerError(409, 'Rule was removed', existing);
+        return existing;
     }
 
     private requireRule(owner: SentinelTodoOwner, triggerId: string, revision: number): Trigger {

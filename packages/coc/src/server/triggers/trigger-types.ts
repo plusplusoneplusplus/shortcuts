@@ -164,6 +164,8 @@ export interface SentinelTodoTriggerBinding {
     armedAt: string;
     /** Presentation cleared; a committed pending delivery remains recoverable. */
     removedAt?: string;
+    /** Owner-scoped authoring receipt for safe create retries. */
+    idempotencyKey?: string;
 }
 
 /**

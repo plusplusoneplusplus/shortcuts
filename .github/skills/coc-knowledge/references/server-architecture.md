@@ -128,7 +128,8 @@ using owner-workspace/process checks and optimistic revisions. Rules never expir
 share the existing active cap and gate only on `triggers.enabled`. Creation/edit
 preflight reads canonical GitHub/ADO PR URLs with server credentials; already-merged
 creation requires confirmed Run now, while closed-unmerged creation rejects.
-Clearing a fired rule hides it without removing its durable delivery receipt.
+Owner-scoped creation receipts replay a draft without rearming or duplicating it.
+Clearing a rule hides it while preserving delivery and keyed authoring receipts.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR-merge decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision

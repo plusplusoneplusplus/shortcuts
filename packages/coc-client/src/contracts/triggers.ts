@@ -66,6 +66,7 @@ export interface SentinelTodoTriggerBinding {
   armedBy: 'user' | 'sentinel';
   armedAt: string;
   removedAt?: string;
+  idempotencyKey?: string;
 }
 
 export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
@@ -143,6 +144,7 @@ export interface SentinelTodoTriggerInput {
 export interface CreateSentinelTodoTriggerRequest extends SentinelTodoTriggerInput {
   runNow?: boolean;
   confirmed?: true;
+  idempotencyKey?: string;
 }
 
 export interface EditSentinelTodoTriggerRequest extends SentinelTodoTriggerInput {

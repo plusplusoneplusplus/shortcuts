@@ -219,13 +219,13 @@ Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create rules; create `{ itemId, prUrl, instruction?, workspaceId?, originId? }` arms immediately; already merged → `409` unless `{ runNow: true, confirmed: true }`; closed-unmerged → `409`; provider read failure → `502`; cap → `409` |
+| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create rules; create `{ itemId, prUrl, instruction?, workspaceId?, originId?, idempotencyKey? }` arms immediately; same owner/key replays without rearming; already merged → `409` unless `{ runNow: true, confirmed: true }`; closed-unmerged → `409`; provider read failure → `502`; cap → `409` |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/preview` | `{ prUrl }` → canonical provider identity and untrusted PR snapshot; no persisted state |
 | PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | Replace authoring fields with required `expectedRevision`; preserves armed-by attribution; stale/terminal → `409` |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/pause` | `{ expectedRevision }` pauses a non-terminal rule |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/resume` | `{ expectedRevision }` rechecks item eligibility and cap, then resumes polling |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/run-now` | `{ expectedRevision, confirmed: true }` posts the same one-shot wake, consuming the rule |
-| DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes waiting rules or clears terminal presentation; fired delivery receipts remain durable, including pending retries |
+| DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes/clears presentation; delivery and keyed authoring receipts remain durable, preventing stale create retries from reviving removed rules |
 
 `coc-client` exposes these as `client.triggers.listSentinelTodo`, `previewSentinelTodo`,
 `createSentinelTodo`, `editSentinelTodo`, `pauseSentinelTodo`, `resumeSentinelTodo`,

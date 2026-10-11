@@ -89,10 +89,12 @@ describe('TriggersClient', () => {
     const preview = { pr: { url: 'https://github.com/example/repo/pull/1' }, snapshot: { title: 'PR', status: 'open' } };
     const adapter = createMockAdapter({ trigger, triggers: [trigger], deleted: true, ...preview });
     const client = new TriggersClient(adapter);
-    const input = { itemId: 'item-1', prUrl: preview.pr.url, instruction: 'Ship', workspaceId: 'picked', originId: 'origin' };
+    const input = {
+      itemId: 'item-1', prUrl: preview.pr.url, instruction: 'Ship', workspaceId: 'picked', originId: 'origin',
+    };
     await expect(client.listSentinelTodo('owner/repo', 'sentinel/chat')).resolves.toEqual([trigger]);
     await expect(client.previewSentinelTodo('owner/repo', 'sentinel/chat', { prUrl: input.prUrl })).resolves.toMatchObject(preview);
-    await expect(client.createSentinelTodo('owner/repo', 'sentinel/chat', input)).resolves.toEqual(trigger);
+    await expect(client.createSentinelTodo('owner/repo', 'sentinel/chat', { ...input, idempotencyKey: 'draft-1' })).resolves.toEqual(trigger);
     await expect(client.editSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', { ...input, expectedRevision: 2 })).resolves.toEqual(trigger);
     await client.pauseSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', 3);
     await client.resumeSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', 4);
@@ -104,6 +106,7 @@ describe('TriggersClient', () => {
       `${base}/rule%2F1/resume`, `${base}/rule%2F1/run-now`, `${base}/rule%2F1`,
     ]);
     expect(adapter.calls[3].options).toEqual({ method: 'PATCH', body: { ...input, expectedRevision: 2 } });
+    expect(adapter.calls[2].options).toEqual({ method: 'POST', body: { ...input, idempotencyKey: 'draft-1' } });
     expect(adapter.calls[6].options).toEqual({ method: 'POST', body: { expectedRevision: 5, confirmed: true } });
     expect(adapter.calls[7].options).toEqual({ method: 'DELETE', body: { expectedRevision: 6 } });
   });
