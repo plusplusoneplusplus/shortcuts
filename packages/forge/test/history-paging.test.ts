@@ -5,7 +5,7 @@ import { PAGE_TURNS as rootPageTurns } from '../src/index';
 
 describe('shared browser-safe history paging contract', () => {
     it('exports one fixed page size through the public package subpath and root', async () => {
-        const shared = await import('@plusplusoneplusplus/coc-workflow/history-paging');
+        const shared = await import('@plusplusoneplusplus/forge/history-paging');
         expect(PAGE_TURNS).toBe(30);
         expect(shared.PAGE_TURNS).toBe(PAGE_TURNS);
         expect(rootPageTurns).toBe(PAGE_TURNS);

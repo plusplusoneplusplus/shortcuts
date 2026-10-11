@@ -1,5 +1,4 @@
 export * from './workflow';
-export { PAGE_TURNS } from './history-paging';
 
 export { validate as validateWorkflow } from './workflow/validator';
 export { schedule as scheduleWorkflow } from './workflow/scheduler';
