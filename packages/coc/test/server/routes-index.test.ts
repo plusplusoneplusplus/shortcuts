@@ -220,6 +220,7 @@ describe('registerAllRoutes', () => {
             childProcessId: 'queue_old', createdAt: new Date().toISOString(),
             snapshot: [{ itemId: item.id, revision: item.revision }], deferredItemIds: [], awaitingReviewItemIds: [] });
         const bridge = makeBridge();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
         bridge.registry = new EventEmitter();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: vi.fn() });
         const wsServer = makeWsServer();
@@ -259,7 +260,7 @@ describe('registerAllRoutes', () => {
                 confidence: 'high', summary: 'Merged', rationale: 'Completion verified',
                 evidence: [{ kind: 'pr', ref: 'https://github.com/o/r/pull/1', state: 'merged',
                     checkedAt: new Date().toISOString() }] }]);
-            bridge.registry.emit('taskCompleted', '/fixture', { ...input, id: 'task-1', processId: 'queue_task-1' });
+            bridge.registry.emit('taskCompleted', '/fixture', { ...input, id: input.id, processId: `queue_${input.id}` });
             expect(todos.get(owner).items[0].status).toBe('done');
             expect(scrubber.getRun(owner, runId)?.status).toBe('completed');
             expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(expect.objectContaining({

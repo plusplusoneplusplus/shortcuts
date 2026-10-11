@@ -243,6 +243,9 @@ references before editing. Paths are package-relative.
   executor capability, and returns `scrubberReady`; server startup awaits recovery before
   activating restored queues. Scrubber events carry workspace/process ownership and use
   workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
+  Runs persist a caller-supplied child task id before queue admission, so early
+  execution/terminal events stay bound. Admission rechecks cancellation after snapshot
+  writes and cancels a child admitted after its run terminates.
   `ScrubberScheduler` uses owner-keyed shared schedule timers and future cron ticks,
   rechecking owner/config/flags before admission. Config and run events refresh timers;
   failure pause and live flag changes disarm them. Shutdown disposes schedule timers,

@@ -38,7 +38,7 @@ export interface ScrubberRunServiceDeps {
     todos: Pick<SentinelTodoService, 'list'>;
     scrubber: ScrubberStore;
     engine: Pick<ScrubberEngine, 'complete'>;
-    /** Admits the child chat to the owner's workspace queue; returns the task id. */
+    /** Admits the child chat with its supplied id to the owner's workspace queue. */
     enqueue: (input: CreateTaskInput) => Promise<string>;
     cancelTask: (taskId: string) => boolean | Promise<boolean>;
     /** Armed PR rules feed the skip-if-unchanged fingerprint and the snapshot. */
@@ -126,11 +126,16 @@ export class ScrubberRunService {
             return this.record(owner, { ...base, status: 'completed', startedAt: base.createdAt, finishedAt: base.createdAt });
         }
 
-        const run = this.deps.scrubber.createRun(owner, base);
+        const taskId = randomUUID();
+        // Persist identity before admission: execution and cancellation can race enqueue.
+        const run = this.deps.scrubber.createRun(owner, { ...base, childProcessId: toQueueProcessId(taskId) });
         const snapshotPath = this.snapshotPath(owner, run.id);
         try {
             await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
             await fs.writeFile(snapshotPath, JSON.stringify(buildSnapshot(owner, run, included, awaiting, triggers), null, 2));
+            const beforeAdmission = this.deps.scrubber.getRun(owner, run.id);
+            if (!beforeAdmission) throw new ScrubberStoreError('not_found', 'Scrub run was removed during admission');
+            if (beforeAdmission.status !== 'queued') return beforeAdmission;
             if (opts.trigger === 'schedule' && this.deps.canStartScheduled?.(owner) === false) {
                 const cancelled = this.deps.scrubber.transitionRun(owner, run.id, ['queued'], {
                     status: 'cancelled', finishedAt: this.now().toISOString(), error: 'The scrubber schedule was disarmed',
@@ -138,14 +143,17 @@ export class ScrubberRunService {
                 this.finish(owner, run.id);
                 return cancelled ?? this.deps.scrubber.getRun(owner, run.id)!;
             }
-            const taskId = await this.deps.enqueue(buildChildTask(owner, run, snapshotPath));
-            const linked = this.deps.scrubber.transitionRun(owner, run.id, ['queued'], { childProcessId: toQueueProcessId(taskId) });
+            await this.deps.enqueue(buildChildTask(owner, run, snapshotPath, taskId));
+            const admitted = this.deps.scrubber.getRun(owner, run.id);
+            if (!admitted || ['cancelled', 'timed_out', 'interrupted', 'failed'].includes(admitted.status)) await this.stopChild(run);
             this.changed(owner, run.id);
-            return linked ?? this.deps.scrubber.getRun(owner, run.id)!;
+            if (!admitted) throw new ScrubberStoreError('not_found', 'Scrub run was removed during admission');
+            return admitted;
         } catch (error) {
-            const failed = this.deps.scrubber.transitionRun(owner, run.id, ['queued'], {
+            const failed = this.deps.scrubber.transitionRun(owner, run.id, ['queued', 'running'], {
                 status: 'failed', finishedAt: this.now().toISOString(), error: `Could not start the scrub: ${message(error)}`,
             });
+            if (failed) await this.stopChild(failed);
             this.finish(owner, run.id);
             if (failed) return failed;
             throw error;
@@ -359,9 +367,10 @@ function buildSnapshot(
     };
 }
 
-function buildChildTask(owner: SentinelTodoOwner, run: ScrubRunRecord, snapshotPath: string): CreateTaskInput {
+function buildChildTask(owner: SentinelTodoOwner, run: ScrubRunRecord, snapshotPath: string, taskId: string): CreateTaskInput {
     const context: ScrubChildContext = { workspaceId: owner.workspaceId, processId: owner.processId, runId: run.id };
     return {
+        id: taskId,
         type: 'chat',
         priority: 'low',
         repoId: owner.workspaceId,

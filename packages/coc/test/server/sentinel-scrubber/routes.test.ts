@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
+import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouter, type Route } from '../../../src/server/shared/router';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
@@ -59,7 +60,7 @@ beforeEach(async () => {
             return metadata ? { id, metadata } as never : undefined;
         },
     } });
-    enqueue = vi.fn(async () => 'child');
+    enqueue = vi.fn(async (input: CreateTaskInput) => input.id!);
     cancelTask = vi.fn(() => true);
     runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: service, scrubber, engine, enqueue, cancelTask });
     enabled = true;
@@ -87,7 +88,7 @@ describe('Scrubber REST commands', () => {
         expect(config).toMatchObject({ enabled: false, revision: 1 });
         const selected = item();
         const started = await client.start(owner.workspaceId, owner.processId, { itemIds: [selected.id] });
-        expect(started.processId).toBe('queue_child');
+        expect(started.processId).toBe(`queue_${enqueue.mock.calls[0][0].id}`);
         expect((await client.getRun(owner.workspaceId, owner.processId, started.runId)).snapshot)
             .toEqual([{ itemId: selected.id, revision: selected.revision }]);
         expect((await client.cancel(owner.workspaceId, owner.processId, started.runId)).status).toBe('cancelled');
@@ -160,14 +161,14 @@ describe('Scrubber REST commands', () => {
         const a = item();
         item();
         const started = await request('POST', `${base}/runs`, { itemIds: [a.id] });
-        expect(started).toMatchObject({ status: 202, body: { processId: 'queue_child' } });
+        expect(started).toMatchObject({ status: 202, body: { processId: `queue_${enqueue.mock.calls[0][0].id}` } });
         const runId = started.body.runId;
         expect((await request('POST', `${base}/runs`, {})).status).toBe(409);
         expect(enqueue).toHaveBeenCalledTimes(1);
         expect((await request('GET', `${base}/runs/${runId}`)).body).toMatchObject({ snapshot: [{ itemId: a.id, revision: 1 }], findings: [] });
         expect((await request('GET')).body).toMatchObject({ activeRun: { id: runId }, runs: [{ itemCount: 1 }] });
         expect(await request('POST', `${base}/runs/${runId}/cancel`)).toMatchObject({ status: 200, body: { status: 'cancelled' } });
-        expect(cancelTask).toHaveBeenCalledWith('child');
+        expect(cancelTask).toHaveBeenCalledWith(enqueue.mock.calls[0][0].id);
         expect(todos.get(owner).items.every(i => i.status === 'todo')).toBe(true);
         expect((await request('GET', `${base}/runs/missing`)).status).toBe(404);
         expect((await request('POST', `${base}/runs/missing/cancel`)).status).toBe(404);

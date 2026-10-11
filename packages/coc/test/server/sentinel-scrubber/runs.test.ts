@@ -62,7 +62,7 @@ function item(title: string, patch: { status?: 'in_progress' | 'done'; statusRea
 
 function childTask(index = 0): QueuedTask {
     const input = enqueued[index];
-    return { ...input, id: `task-${index + 1}`, status: 'running', createdAt: 0, retryCount: 0 } as unknown as QueuedTask;
+    return { ...input, id: input.id!, status: 'running', createdAt: 0, retryCount: 0 } as unknown as QueuedTask;
 }
 
 function current(itemId: string): SentinelTodoItem {
@@ -74,7 +74,7 @@ beforeEach(() => {
     todos = new SentinelTodoStore(fixture.db);
     scrubber = new ScrubberStore(fixture.db);
     enqueued = [];
-    enqueue = vi.fn(async (input: CreateTaskInput) => { enqueued.push(input); return `task-${enqueued.length}`; });
+    enqueue = vi.fn(async (input: CreateTaskInput) => { enqueued.push(input); return input.id!; });
     cancelTask = vi.fn(() => true);
     onChange = vi.fn();
     triggers = [];
@@ -82,6 +82,7 @@ beforeEach(() => {
     createService();
 });
 afterEach(() => {
+    vi.restoreAllMocks();
     service.dispose();
     vi.useRealTimers();
     fixture.dispose();
@@ -129,7 +130,7 @@ describe('ScrubberRunService.start', () => {
 
         const run = await service.start(owner, { trigger: 'manual' });
 
-        expect(run).toMatchObject({ status: 'queued', trigger: 'manual', childProcessId: 'queue_task-1',
+        expect(run).toMatchObject({ status: 'queued', trigger: 'manual', childProcessId: `queue_${enqueued[0].id}`,
             snapshot: [{ itemId: a.id, revision: a.revision }] });
         expect(enqueue).toHaveBeenCalledTimes(1);
         const task = enqueued[0];
@@ -219,6 +220,67 @@ describe('ScrubberRunService.start', () => {
         expect(run).toMatchObject({ status: 'failed', error: 'Could not start the scrub: queue full' });
         expect(scrubber.activeRun(owner)).toBeUndefined();
     });
+
+    it('tracks a child that starts and completes before enqueue resolves', async () => {
+        const a = item('Fast child', { status: 'in_progress' });
+        enqueue.mockImplementation(async input => {
+            enqueued.push(input);
+            const context = getScrubChildContext(input.payload)!;
+            expect(scrubber.getRun(owner, context.runId)?.childProcessId).toBe(`queue_${input.id}`);
+            service.markRunning(context);
+            service.submit(context, [{ itemId: a.id, verdict: 'done', confidence: 'high', autoApply: true, summary: 'Merged', evidence: [pr] }]);
+            await service.handleTaskTerminal(childTask(), 'completed');
+            return input.id!;
+        });
+        const run = await service.start(owner, { trigger: 'manual' });
+        expect(run.status).toBe('completed');
+        expect(current(a.id).status).toBe('done');
+        expect(scrubber.activeRun(owner)).toBeUndefined();
+    });
+
+    it('does not enqueue when cancellation wins during snapshot writes', async () => {
+        const a = item('Cancelled before admission');
+        const createRun = scrubber.createRun.bind(scrubber);
+        vi.spyOn(scrubber, 'createRun').mockImplementationOnce((ledgerOwner, record) => {
+            const run = createRun(ledgerOwner, record);
+            void service.cancel(owner, run.id);
+            return run;
+        });
+        const run = await service.start(owner, { trigger: 'manual' });
+        expect(run.status).toBe('cancelled');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(current(a.id).status).toBe('todo');
+    });
+
+    it('cancels the late-admitted child when cancellation wins while enqueue is pending', async () => {
+        const a = item('Cancelled during admission');
+        enqueue.mockImplementation(async input => {
+            enqueued.push(input);
+            const context = getScrubChildContext(input.payload)!;
+            await service.cancel(owner, context.runId);
+            expect(service.markRunning(context)?.status).toBe('cancelled');
+            expect(() => service.submit(context, [])).toThrow('no longer active');
+            return input.id!;
+        });
+        const run = await service.start(owner, { trigger: 'manual' });
+        expect(run.status).toBe('cancelled');
+        expect(cancelTask).toHaveBeenLastCalledWith(enqueued[0].id);
+        expect(cancelTask).toHaveBeenCalledTimes(2);
+        expect(current(a.id).status).toBe('todo');
+    });
+
+    it('fails and cancels an early-running child if queue admission rejects', async () => {
+        const a = item('Rejected admission');
+        enqueue.mockImplementation(async input => {
+            enqueued.push(input);
+            service.markRunning(getScrubChildContext(input.payload)!);
+            throw new Error('Admission failed');
+        });
+        expect((await service.start(owner, { trigger: 'manual' })).status).toBe('failed');
+        expect(cancelTask).toHaveBeenLastCalledWith(enqueued[0].id);
+        expect(scrubber.activeRun(owner)).toBeUndefined();
+        expect(current(a.id).status).toBe('todo');
+    });
 });
 
 describe('ScrubberRunService findings lifecycle', () => {
@@ -262,7 +324,7 @@ describe('ScrubberRunService findings lifecycle', () => {
         await expect(service.cancel(owner, run.id)).resolves.toMatchObject({ status: 'cancelled' });
         await service.handleTaskTerminal(childTask(), 'completed');
 
-        expect(cancelTask).toHaveBeenCalledWith('task-1');
+        expect(cancelTask).toHaveBeenCalledWith(enqueued[0].id);
         expect(current(a.id).status).toBe('in_progress');
         expect(scrubber.getRun(owner, run.id)?.status).toBe('cancelled');
         await expect(service.cancel(owner, 'missing')).rejects.toMatchObject({ code: 'not_found' });
@@ -310,7 +372,7 @@ describe('ScrubberRunService findings lifecycle', () => {
         await vi.advanceTimersByTimeAsync(1_000);
 
         expect(scrubber.getRun(owner, run.id)).toMatchObject({ status: 'timed_out', error: expect.stringContaining('did not finish') });
-        expect(cancelTask).toHaveBeenCalledWith('task-1');
+        expect(cancelTask).toHaveBeenCalledWith(enqueued[0].id);
         await service.handleTaskTerminal(childTask(), 'completed');
         expect(current(a.id).status).toBe('in_progress');
     });
@@ -322,7 +384,7 @@ describe('ScrubberRunService findings lifecycle', () => {
         await expect(createService().interruptActive()).resolves.toBe(1);
 
         expect(scrubber.getRun(owner, run.id)).toMatchObject({ status: 'interrupted' });
-        expect(cancelTask).toHaveBeenCalledWith('task-1');
+        expect(cancelTask).toHaveBeenCalledWith(enqueued[0].id);
         expect(scrubber.activeRun(owner)).toBeUndefined();
     });
 });
