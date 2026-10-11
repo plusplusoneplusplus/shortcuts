@@ -305,11 +305,20 @@ export async function buildRepoGroupChatFeed(
     for (const state of selected) {
         if (!state.source.available) continue;
         try {
-            const activeProcesses = await deps.store.getAllProcesses({
-                workspaceId: state.source.workspaceId, status: ['running', 'queued'], exclude: ['conversation'],
+            const processes = await deps.store.getAllProcesses({
+                workspaceId: state.source.workspaceId,
+                status: ['running', 'queued', ...TERMINAL_STATUSES], exclude: ['conversation'],
             });
-            for (const proc of activeProcesses) {
-                if (!eligibleProcess(proc.type, proc.metadata) || state.activeIds.has(proc.id)) continue;
+            const queueRows = new Map([...state.running, ...state.queued].map(task => [activeProcessId(task), task]));
+            for (const proc of processes) {
+                if (!eligibleProcess(proc.type, proc.metadata)) continue;
+                const represented = queueRows.get(proc.id);
+                if (represented) {
+                    // Follow-ups can still have terminal durable status; queue identity/status stay authoritative.
+                    represented.lastActivityAt = activityMs(proc);
+                    continue;
+                }
+                if (proc.status !== 'running' && proc.status !== 'queued') continue;
                 const task: OwnedTask = {
                     ...toProcessHistoryItem(proc, undefined, deps.botControlEnabled),
                     processId: proc.id, ownerWorkspaceId: state.source.workspaceId,
@@ -322,12 +331,8 @@ export async function buildRepoGroupChatFeed(
             if (query.q) {
                 state.hits = searchFeedBodies(deps.store, state.source.workspaceId, query.q);
             }
-            state.history = terminal.length ? await deps.store.getAllProcesses({
-                workspaceId: state.source.workspaceId,
-                status: terminal,
-                exclude: ['conversation'],
-                ...(query.type ? { type: query.type as AIProcess['type'] } : {}),
-            }) : [];
+            state.history = processes.filter(proc => terminal.some(status => status === proc.status)
+                && (!query.type || proc.type === query.type));
             for (const proc of state.history) if (eligibleProcess(proc.type, proc.metadata)) {
                 parentOwners.set(proc.id, state.source.workspaceId);
             }

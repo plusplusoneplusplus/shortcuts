@@ -27,6 +27,7 @@ import { createRequestHandler } from '../../src/server/router';
 import type { Route } from '../../src/server/types';
 import { getTaskTimestamp } from '../../src/server/spa/client/react/features/chat/task-group-grouping';
 import { allRepoGroupChatRows, appendRepoGroupChatFeedPage, buildRepoGroupChatFeedModel } from '../../src/server/spa/client/react/repos/repoGroupChatFeed';
+import { serializeTaskSummary } from '../../src/server/routes/queue-shared';
 
 const GROUP = 'group-platform';
 const A = 'repo-a';
@@ -287,6 +288,82 @@ describe('buildRepoGroupChatFeed', () => {
             .rejects.toBeInstanceOf(StaleRepoGroupCursorError);
         const refreshed = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt', limit: '1' }));
         expect(refreshed.queued.map(row => row.id)).toEqual(['old']);
+    });
+
+    it.each([
+        { section: 'running', durableStatus: 'running', explicitProcessId: true },
+        { section: 'queued', durableStatus: 'queued', explicitProcessId: false },
+        { section: 'queued', durableStatus: 'completed', explicitProcessId: true },
+    ] as const)('orders serialized $section rows by $durableStatus durable activity and invalidates activity-only cursors', async ({
+        section, durableStatus, explicitProcessId,
+    }) => {
+        const id = explicitProcessId ? 'conversation' : 'queue_active-task';
+        const task = serializeTaskSummary({
+            id: 'active-task', repoId: A, type: 'chat', priority: 'normal', status: section,
+            createdAt: Date.UTC(2026, 0, 1, 0, 1),
+            ...(section === 'running' ? { startedAt: Date.UTC(2026, 0, 1, 0, 1) } : {}),
+            ...(explicitProcessId ? { processId: id } : {}),
+            payload: { prompt: 'cobalt', provider: 'copilot' }, config: {}, admitted: true,
+        });
+        expect(task.lastActivityAt).toBeUndefined();
+        queues[A] = { running: [], queued: [], [section]: [task] };
+        await addChat(id, A, 1, { status: durableStatus, lastEventAt: new Date(Date.UTC(2026, 0, 1, 0, 20)) });
+        await addChat('history', B, 10);
+        await store.appendConversationTurn('history', turnIndex => ({
+            turnIndex, role: 'user', content: 'cobalt', timestamp: new Date(Date.UTC(2026, 0, 1, 0, 10)),
+        }));
+        store.getDatabase().prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
+            .run(new Date(Date.UTC(2026, 0, 1, 0, 10)).toISOString(), 'history');
+        const before = JSON.stringify(queues);
+        const changes = () => (store.getDatabase().prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+        const initialChanges = changes();
+        const first = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt', limit: '1' }));
+        expect(first[section]).toEqual([expect.objectContaining({
+            ...task, queueTaskId: 'active-task', ownerWorkspaceId: A,
+            lastActivityAt: Date.UTC(2026, 0, 1, 0, 20),
+        })]);
+        expect(first.history).toEqual([]);
+        expect(first.counts).toMatchObject({ total: 2, [section]: 1, history: 1 });
+        expect(first.nextCursor).toBeDefined();
+        const next = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt', limit: '1', cursor: first.nextCursor! }));
+        const model = appendRepoGroupChatFeedPage(buildRepoGroupChatFeedModel(first, 'local'), next);
+        expect(allRepoGroupChatRows(model).sort((a, b) => getTaskTimestamp(b.item) - getTaskTimestamp(a.item))
+            .map(row => row.canonicalId)).toEqual([id, 'history']);
+        const activeOnly = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt', statuses: section }));
+        expect(activeOnly[section][0].lastActivityAt).toBe(Date.UTC(2026, 0, 1, 0, 20));
+        expect(changes()).toBe(initialChanges);
+
+        store.getDatabase().prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
+            .run(new Date(Date.UTC(2026, 0, 1, 0, 5)).toISOString(), id);
+        const updatedChanges = changes();
+        await expect(buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt', limit: '1', cursor: first.nextCursor! })))
+            .rejects.toBeInstanceOf(StaleRepoGroupCursorError);
+        const refreshed = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt', limit: '1' }));
+        expect(refreshed.history.map(row => row.id)).toEqual(['history']);
+        expect(refreshed[section]).toEqual([]);
+        expect(JSON.stringify(queues)).toBe(before);
+        expect(changes()).toBe(updatedChanges);
+    });
+
+    it('enriches serialized activity only for the concrete owner and preserves queue timing without durable matches', async () => {
+        const serialized = (repoId: string, id: string, processId?: string) => serializeTaskSummary({
+            id, repoId, processId, type: 'chat', priority: 'normal', status: 'running',
+            createdAt: Date.UTC(2026, 0, 1, 0, 1), startedAt: Date.UTC(2026, 0, 1, 0, 2),
+            payload: { prompt: 'cobalt' }, config: {},
+        });
+        queues[A] = { running: [serialized(A, 'task', 'shared-id'), serialized(A, 'missing')], queued: [] };
+        queues[B] = { running: [serialized(B, 'task', 'shared-id')], queued: [] };
+        await addChat('shared-id', A, 1, { status: 'running', lastEventAt: new Date(Date.UTC(2026, 0, 1, 0, 20)) });
+        const before = JSON.stringify(queues);
+        const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt' }));
+        expect(feed.running.find(row => row.ownerWorkspaceId === A && row.id === 'task')?.lastActivityAt)
+            .toBe(Date.UTC(2026, 0, 1, 0, 20));
+        const unmatched = feed.running.filter(row => row.ownerWorkspaceId === B || row.id === 'missing');
+        expect(unmatched).toHaveLength(2);
+        expect(unmatched.every(row => row.lastActivityAt === undefined)).toBe(true);
+        expect(unmatched.map(getTaskTimestamp)).toEqual([Date.UTC(2026, 0, 1, 0, 2), Date.UTC(2026, 0, 1, 0, 2)]);
+        expect(feed.counts).toMatchObject({ total: 3, running: 3 });
+        expect(JSON.stringify(queues)).toBe(before);
     });
 
     it('returns old pins on page one without duplicating them in global history pages', async () => {
