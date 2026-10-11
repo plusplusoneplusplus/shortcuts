@@ -5,6 +5,9 @@ import { RepoGroupChatList } from '../../../../src/server/spa/client/react/repos
 import { buildRepoGroupChatFeedModel } from '../../../../src/server/spa/client/react/repos/repoGroupChatFeed';
 
 const action = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupChatHierarchy', () => ({
+    useRepoGroupChatHierarchy: () => ({ owners: {}, error: null, togglePin: vi.fn() }),
+}));
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupChatActions', async original => ({
     ...await original<typeof import('../../../../src/server/spa/client/react/repos/repoGroupChatActions')>(),
     applyRepoGroupChatAction: action,
@@ -63,11 +66,13 @@ describe('group list bulk actions', () => {
 
     it('requires explicit delete confirmation and retains expandable owner-local trees without duplicates', async () => {
         renderList(true);
-        const toggle = screen.getByText('Repo A / Ralph / r (2)');
-        fireEvent.click(toggle);
+        const toggle = screen.getByTestId('ralph-session-chevron');
         expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(1);
         fireEvent.click(toggle);
         expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3);
+        fireEvent.click(toggle);
+        expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(1);
+        fireEvent.click(toggle);
         fireEvent.click(screen.getByText('Select chats'));
         fireEvent.click(screen.getAllByTestId('repo-group-chat-row')[0]);
         fireEvent.click(screen.getByText('delete'));

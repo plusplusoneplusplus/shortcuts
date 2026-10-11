@@ -127,6 +127,14 @@ Running, queued and historical matches share latest-activity ordering through
 Pins retain row styling without promotion; matching children retain owner-qualified
 parent links. Without a query, the list uses Running, Queued, Pinned and History sections.
 
+`repoGroupChatHierarchy` retains native owner-local run entries and recursive spawned
+trees. `RepoGroupChatContainer` reuses the native Ralph, For Each, Map Reduce,
+task-group and spawned-tree rows with owner-qualified expansion keys.
+`useRepoGroupChatHierarchy` reads each available owner's run summaries/group pins
+through its concrete server client; stale responses cannot replace newer owner state
+or pins. Group pins and native run-detail navigation target that owner, while
+individual pins stay independent and loaded feed rows remain authoritative.
+
 Pin time is the Pinned section's sort key. Dragging a pinned row (chat or group parent)
 within the Pinned section, in both the Chats tab and Activity, reorders it: each entry is
 wrapped by `usePinnedReorderDragDrop`, and `RepoChatTab.handleReorderPins` sends the full

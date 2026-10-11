@@ -9,12 +9,14 @@
  * owning server is named in the list header.
  *
  * Rows keep the native status dot, mode pill, time and selection styling from
- * `chat-row-style`. The list is navigation only: it never mutates chats or queues.
+ * `chat-row-style`. Mutations always target the row or run's concrete source owner.
  */
 import { useMemo, useState } from 'react';
 import { cn, Dialog } from '../ui';
 import { applyRepoGroupChatAction, applyRepoGroupQueueControl, groupChatActionAllowed, type RepoGroupChatAction, type RepoGroupChatActionResult } from './repoGroupChatActions';
 import { groupRepoGroupChatRows } from './repoGroupChatHierarchy';
+import { useRepoGroupChatHierarchy } from './useRepoGroupChatHierarchy';
+import { RepoGroupChatContainer, type RepoGroupChatRowOptions } from './RepoGroupChatContainer';
 import { buildRepoGroupChatHash } from '../layout/dashboardRoutes';
 import { repoHashBase } from '../layout/routePath';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from './cloneIdentity';
@@ -23,6 +25,7 @@ import { formatRelativeTime, statusLabel } from '../utils/format';
 import { getTaskModeKey, getTaskModeLabel } from '../features/chat/ChatListPane';
 import { getChatRowTitle } from '../features/chat/latestSentinelChat';
 import { getTaskTimestamp } from '../features/chat/task-group-grouping';
+import { useTaskGroupExpansion } from '../features/chat/task-group-expansion';
 import { getTaskChatProvider } from '../features/chat/ProviderBadge';
 import {
     CHAT_ROW_LAYOUT_CLASSES,
@@ -71,7 +74,8 @@ function rowTime(row: RepoGroupChatRow): string {
     return ts ? formatRelativeTime(new Date(ts).toISOString()) : '';
 }
 
-function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, unavailable, groupSelectionId }: {
+function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, unavailable, groupSelectionId,
+    isGroupChild, leadingElement }: {
     row: RepoGroupChatRow;
     owner: RepoGroupOwnerLabel | undefined;
     serverLabel: string;
@@ -80,7 +84,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, un
     snippet?: string;
     unavailable?: boolean;
     groupSelectionId?: string;
-}) {
+} & RepoGroupChatRowOptions) {
     const task = row.item;
     const isRunning = row.section === 'running';
     const isQueued = row.section === 'queued';
@@ -104,6 +108,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, un
                 task?.archived && 'opacity-70',
                 isPinned && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                 selected && CHAT_ROW_SELECTED_CLASSES,
+                isGroupChild && 'border-l-2 border-l-[#e0e0e0] dark:border-l-[#3c3c3c]',
             )}
             onClick={() => onSelect(row)}
             onKeyDown={(e) => {
@@ -119,12 +124,13 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, un
             data-section={row.section}
             data-unseen={isUnseen || undefined}
             data-unavailable={unavailable || undefined}
+            data-group-child={isGroupChild || undefined}
         >
-            <span
+            {leadingElement ?? <span
                 className={getChatRowDotClasses({ isRunning, isQueued, isFailed, provider: getTaskChatProvider(task) })}
                 aria-hidden="true"
-            />
-            <span className={getChatRowModeBadgeClasses(modeKey)} aria-hidden="true">{getTaskModeLabel(task)}</span>
+            />}
+            <span className={getChatRowModeBadgeClasses(modeKey, isGroupChild)} aria-hidden="true">{getTaskModeLabel(task)}</span>
             <span className="min-w-0 flex items-center gap-1 overflow-hidden">
                 {isUnseen && (
                     <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff]" data-testid="unseen-dot" />
@@ -172,7 +178,9 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
     const { model, status, error, loadingMore, loadMore } = feed;
     const foldersEnabled = useChatFoldersEnabled();
     const [collapsed, setCollapsed] = useState<Set<SectionKey>>(() => new Set());
-    const [containersCollapsed, setContainersCollapsed] = useState<Set<string>>(() => new Set());
+    const hierarchy = useRepoGroupChatHierarchy(model, baseUrl, !!filters?.q?.trim());
+    const expansion = useTaskGroupExpansion(model ? `${model.serverKey}|${model.groupId}` : undefined);
+    const [collapsedSpawned, setCollapsedSpawned] = useState<Record<string, Set<string>>>({});
     const [selecting, setSelecting] = useState(false);
     const [selection, setSelection] = useState<Set<string>>(() => new Set());
     const [pendingAction, setPendingAction] = useState<RepoGroupChatAction | null>(null);
@@ -218,17 +226,21 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
             }] : [];
         }
         const { pinned, rest } = partitionPinnedRows(model.history);
-        const containers = groupRepoGroupChatRows([...model.running, ...model.queued, ...pinned, ...rest], false, foldersEnabled);
+        const containers = groupRepoGroupChatRows([...model.running, ...model.queued, ...pinned, ...rest], false, foldersEnabled, hierarchy.owners);
         for (const container of containers) {
-            const key: SectionKey = container.rows.some(row => row.section === 'running') ? 'running'
+            const runStatus = container.entry && 'run' in container.entry ? container.entry.run.status : container.summary?.status;
+            const key: SectionKey = container.rows.some(row => row.section === 'running') || runStatus === 'running' || runStatus === 'reducing' ? 'running'
                 : container.rows.some(row => row.section === 'queued') ? 'queued'
-                : container.rows.some(row => row.item.pinnedAt && !row.item.archived) ? 'pinned' : 'history';
+                : container.groupPinnedAt || container.rows.some(row => row.item.pinnedAt && !row.item.archived) ? 'pinned' : 'history';
             const section = sections.find(section => section.key === key)!;
             section.containers.push(container);
             section.rows.push(...container.rows);
         }
+        sections.find(section => section.key === 'pinned')!.containers.sort((a, b) =>
+            Date.parse(b.groupPinnedAt ?? b.rows[0].item.pinnedAt) - Date.parse(a.groupPinnedAt ?? a.rows[0].item.pinnedAt)
+            || a.key.localeCompare(b.key));
         return sections.filter(section => section.rows.length);
-    }, [model, filters?.q, foldersEnabled]);
+    }, [model, filters?.q, foldersEnabled, hierarchy.owners]);
     const unavailable = (model?.sources ?? []).filter(source => !source.available);
 
     const toggle = (key: SectionKey) => setCollapsed(prev => {
@@ -272,6 +284,7 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
                 {actionResult.failed.map(failure =>
                     `${owners.get(failure.ownerWorkspaceId)?.full ?? failure.ownerWorkspaceId}: ${failure.error}`).join('; ')}
             </div>}
+            {hierarchy.error && <div role="status" className="px-2 text-xs">{hierarchy.error}</div>}
             {groupSelectionId && <details className="px-2 text-xs">
                 <summary>Owner queues</summary>
                 <div>Queue controls affect one owner only. Reorder in that repo.</div>
@@ -336,33 +349,61 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
                                     {section.rows.length}
                                 </span>
                             </div>
-                            {open && section.containers.map(container => (
-                                <div key={container.key}>
-                                {container.label && <button type="button" className="px-3 text-xs text-[#848484]"
-                                    title={`${owners.get(container.rows[0].ownerWorkspaceId)?.full ?? container.rows[0].ownerWorkspaceId} · ${serverLabel}`}
-                                    aria-expanded={!containersCollapsed.has(container.key)}
-                                    onClick={() => setContainersCollapsed(prev => {
-                                        const next = new Set(prev);
-                                        if (next.has(container.key)) next.delete(container.key); else next.add(container.key);
+                            {open && section.containers.map(container => {
+                                const ownerId = container.rows[0].ownerWorkspaceId;
+                                const ownerKey = `${model?.serverKey}|${model?.groupId}|${ownerId}`;
+                                const source = model?.sources.find(source => source.workspaceId === ownerId);
+                                const canAct = !!source?.available && !source.stale && (model?.serverKey === 'local' || !!baseUrl);
+                                const runRoute = container.groupType === 'ralph-session' || container.groupType === 'ralph' ? 'ralph'
+                                    : container.groupType === 'for-each-run' || container.groupType === 'for-each' ? 'for-each'
+                                    : container.groupType === 'map-reduce-run' || container.groupType === 'map-reduce' ? 'map-reduce' : undefined;
+                                const pinType = container.groupType === 'ralph' ? 'ralph-session'
+                                    : container.groupType === 'for-each' ? 'for-each-run'
+                                    : container.groupType === 'map-reduce' ? 'map-reduce-run' : container.groupType;
+                                return <RepoGroupChatContainer key={container.key} container={container}
+                                    expanded={expansion.expandedIds('parent').has(container.key)}
+                                    onToggleExpanded={() => expansion.toggle('parent', container.key)}
+                                    collapsedNodes={collapsedSpawned[ownerKey] ?? new Set()}
+                                    onToggleCollapsed={id => setCollapsedSpawned(previous => {
+                                        const next = new Set(previous[ownerKey]);
+                                        if (next.has(id)) next.delete(id); else next.add(id);
+                                        return { ...previous, [ownerKey]: next };
+                                    })}
+                                    prefix={owners.get(ownerId)?.prefix}
+                                    ownerDetails={`${owners.get(ownerId)?.full ?? ownerId} · ${serverLabel}${source && (!source.available || source.stale) ? ' · unavailable' : ''}`}
+                                    selecting={selecting} selectedKeys={selection}
+                                    onSelectGroup={() => setSelection(previous => {
+                                        const next = new Set(previous);
+                                        const remove = container.rows.every(row => next.has(row.key));
+                                        for (const row of container.rows) if (remove) next.delete(row.key); else next.add(row.key);
                                         return next;
-                                    })}>{owners.get(container.rows[0].ownerWorkspaceId)?.prefix
-                                        ? `${owners.get(container.rows[0].ownerWorkspaceId)!.prefix} / ` : ''}
-                                        {container.label} ({container.rows.length})</button>}
-                                {(!container.label || !containersCollapsed.has(container.key)) && container.rows.map(row => (
-                                <GroupChatRow
+                                    })}
+                                    onTogglePin={canAct && pinType && container.groupId && !busy ? () => {
+                                        setBusy(true);
+                                        void hierarchy.togglePin(ownerId, pinType, container.groupId!, !container.groupPinnedAt)
+                                            .catch(error => setActionResult({ succeeded: [], failed: [{
+                                                key: container.key, ownerWorkspaceId: ownerId,
+                                                error: error instanceof Error ? error.message : 'Group pin failed.',
+                                            }] })).finally(() => setBusy(false));
+                                    } : undefined}
+                                    onOpenOwner={runRoute ? () => {
+                                        const ownerSelection = model?.serverKey !== 'local'
+                                            ? buildRemoteCloneKey(model!.serverKey, ownerId) : ownerId;
+                                        window.location.hash = repoHashBase(ownerSelection) + '/chats/' + runRoute + '/' + encodeURIComponent(container.groupId!);
+                                    } : undefined}
+                                    renderRow={(row, options) => <GroupChatRow
                                     key={row.key}
                                     row={row}
                                     snippet={model?.snippets?.[row.ownerWorkspaceId]?.[row.canonicalId]}
-                                    unavailable={model?.sources.find(source => source.workspaceId === row.ownerWorkspaceId)?.available === false}
+                                    unavailable={source?.available === false || source?.stale}
                                     groupSelectionId={groupSelectionId}
                                     owner={owners.get(row.ownerWorkspaceId)}
                                     serverLabel={serverLabel}
                                     selected={selecting ? selection.has(row.key) : row.key === selectedKey}
                                     onSelect={select}
-                                />
-                                ))}
-                                </div>
-                            ))}
+                                    {...options}
+                                />} />;
+                            })}
                         </div>
                     );
                 })}

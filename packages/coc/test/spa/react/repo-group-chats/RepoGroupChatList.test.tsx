@@ -20,6 +20,10 @@ import {
     partitionPinnedRows,
 } from '../../../../src/server/spa/client/react/repos/repoGroupChatRowLabels';
 
+vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupChatHierarchy', () => ({
+    useRepoGroupChatHierarchy: () => ({ owners: {}, error: null, togglePin: vi.fn() }),
+}));
+
 const sources: RepoGroupChatSource[] = [
     { workspaceId: 'grp', role: 'group', name: 'AI Repos', available: true },
     { workspaceId: 'ws-a', role: 'member', name: 'connector', available: true },

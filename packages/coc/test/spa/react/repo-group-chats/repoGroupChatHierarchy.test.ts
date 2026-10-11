@@ -24,7 +24,25 @@ describe('owner-local chat hierarchy', () => {
         const groups = groupRepoGroupChatRows(rows);
         expect(groups[0].rows.map(row => row.canonicalId)).toEqual(['parent', 'child']);
         expect(groups[1].rows.map(row => row.canonicalId)).toEqual(['delegated']);
+        expect(groups[0].entry).toMatchObject({
+            kind: 'spawned-tree', root: { task: rows[0].item, children: [{ task: rows[2].item }] },
+        });
         expect(groupRepoGroupChatRows(rows, true).map(group => group.rows[0].key)).toEqual(rows.map(row => row.key));
+    });
+    it('retains recursive native nodes without changing source parent links', () => {
+        const rows = [
+            row('a', 'root'), row('a', 'child', { parentProcessId: 'root' }),
+            row('a', 'grandchild', { parentProcessId: 'child' }),
+            row('a', 'delegated', { parentProcessId: 'root', parentOwnerWorkspaceId: 'b' }),
+            row('a', 'delegated-child', { parentProcessId: 'delegated' }),
+        ];
+        const groups = groupRepoGroupChatRows(rows);
+        expect(groups).toHaveLength(2);
+        expect(groups[0].entry).toMatchObject({ kind: 'spawned-tree', descendantCount: 2,
+            root: { children: [{ children: [{ task: rows[2].item }] }] } });
+        expect(groups[1].entry).toMatchObject({ kind: 'spawned-tree', rootProcessId: 'delegated', descendantCount: 1 });
+        expect(groups.flatMap(group => group.rows)).toHaveLength(5);
+        expect(rows[3].item.parentProcessId).toBe('root');
     });
     it('keeps same-named folders owner-local and pinned or active members outside folder containers', () => {
         const rows = [
