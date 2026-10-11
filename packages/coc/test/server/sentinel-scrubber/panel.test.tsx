@@ -8,7 +8,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useC
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 const client = { sentinelTodos: { scrubber: mock }, events: { connect: mock.connect } };
 import { SentinelTodoScrubber } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber';
-import { SentinelTodoScrubFinding } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding';
+import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_parent' };
@@ -256,6 +256,124 @@ describe('Scrubber row findings', () => {
         expect(mock.accept).toHaveBeenCalledExactlyOnceWith('group', 'queue_parent', 'result', 'a', { expectedItemRevision: 1 });
     });
 
+    describe('Accept all scrubber proposals', () => {
+        function batch(records: SentinelScrubFindingRecord[], current = records.map(record => item(record.itemId))) {
+            const result = results(records);
+            mock.get.mockResolvedValue(response({ runs: [result.summary] }));
+            mock.getRun.mockResolvedValue(result.detail);
+            return current;
+        }
+        function panel(current: SentinelTodoItem[], refresh = vi.fn().mockResolvedValue(undefined), own = owner) {
+            return <SentinelTodoScrubber owner={own} items={current} onFollowLink={follow} onLedgerChange={refresh}
+                toolbar={<div role="toolbar" aria-label="To-do actions"><AcceptAllScrubProposals /></div>}>
+                {current.map(value => <SentinelTodoScrubFinding key={value.id} item={value} />)}
+            </SentinelTodoScrubber>;
+        }
+        const proposal = (id: string, revision = 1) => finding('proposed', { itemId: id, itemRevision: revision,
+            finding: { ...finding().finding, itemId: id } });
+
+        it('offers both entry points with one busy guard and accepts only latest owner proposals at snapshot revisions', async () => {
+            const records = [proposal('a', 4), proposal('m', 7), finding('dismissed', { itemId: 'd' }),
+                finding('unverified', { itemId: 'u' }), proposal('removed')];
+            const current = batch(records, [item('a', { revision: 4 }), item('m', { revision: 7, type: 'manual' }), item('d'), item('u')]);
+            const pending = deferred<unknown>();
+            mock.accept.mockReturnValueOnce(pending.promise);
+            const refresh = vi.fn().mockResolvedValue(undefined);
+            mock.route = { kind: 'remote', baseUrl: 'https://remote.example' };
+            render(panel(current, refresh, { ...owner, ownerWorkspaceId: 'group', ownerRoutingRef: 'remote:srv:group' }));
+            const buttons = await screen.findAllByRole('button', { name: 'Accept all proposals' });
+            expect(buttons).toHaveLength(2);
+            fireEvent.click(buttons[1]);
+            fireEvent.click(buttons[0]);
+            fireEvent.click(screen.getAllByRole('button', { name: 'Accept' })[0]);
+            expect(buttons.every(button => button.hasAttribute('disabled'))).toBe(true);
+            expect(mock.accept).toHaveBeenCalledExactlyOnceWith('group', 'queue_parent', 'result', 'a', { expectedItemRevision: 4 });
+            mock.getRun.mockResolvedValue(results(records.map(record => record.state === 'proposed' ? { ...record, state: 'accepted' } : record)).detail);
+            await act(async () => pending.resolve({}));
+            await screen.findByText('Accepted 2 proposals.');
+            expect(mock.accept.mock.calls).toEqual([
+                ['group', 'queue_parent', 'result', 'a', { expectedItemRevision: 4 }],
+                ['group', 'queue_parent', 'result', 'm', { expectedItemRevision: 7 }],
+            ]);
+            expect(refresh).toHaveBeenCalledOnce();
+            await waitFor(() => expect(screen.queryByRole('button', { name: 'Accept all proposals' })).toBeNull());
+        });
+
+        it('skips known stale proposals, reports raced conflicts and continues without revision retries', async () => {
+            const current = batch([proposal('known'), proposal('race', 3), proposal('ok', 5)],
+                [item('known', { revision: 2 }), item('race', { revision: 3 }), item('ok', { revision: 5 })]);
+            mock.accept.mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 409 }));
+            render(panel(current));
+            const buttons = await screen.findAllByRole('button', { name: 'Accept all proposals' });
+            fireEvent.click(buttons[0]);
+            await screen.findByText('Accepted 1 proposal. 2 items changed since this proposal. Run a fresh scrub.');
+            expect(mock.accept.mock.calls).toEqual([
+                ['ws-a', 'queue_parent', 'result', 'race', { expectedItemRevision: 3 }],
+                ['ws-a', 'queue_parent', 'result', 'ok', { expectedItemRevision: 5 }],
+            ]);
+            expect(screen.getAllByText('Item changed since this proposal. Run a fresh scrub.')).toHaveLength(1);
+        });
+
+        it('reports a fully stale batch without submitting any writes', async () => {
+            const current = batch([proposal('a')], [item('a', { revision: 2 })]);
+            render(panel(current));
+            fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
+            await screen.findByText('Accepted 0 proposals. 1 item changed since this proposal. Run a fresh scrub.');
+            expect(mock.accept).not.toHaveBeenCalled();
+        });
+
+        it('stops on a non-conflict failure and refreshes successes without silently claiming the rest were accepted', async () => {
+            const current = batch([proposal('a'), proposal('b'), proposal('c')]);
+            mock.accept.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('Server offline'));
+            const refresh = vi.fn().mockResolvedValue(undefined);
+            render(panel(current, refresh));
+            fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
+            await screen.findByText('Accepted 1 proposal. 1 acceptance failed; 1 not attempted.');
+            expect(screen.getByRole('alert')).toHaveTextContent('Server offline');
+            expect(mock.accept).toHaveBeenCalledTimes(2);
+            await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+        });
+
+        it('surfaces refresh errors without losing the accepted count', async () => {
+            const current = batch([proposal('a')]);
+            const refresh = vi.fn().mockRejectedValue(new Error('Ledger refresh failed'));
+            render(panel(current, refresh));
+            fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
+            await screen.findByText('Ledger refresh failed');
+            expect(screen.getByText('Accepted 1 proposal.')).toBeInTheDocument();
+            expect(mock.accept).toHaveBeenCalledOnce();
+        });
+
+        it.each(['owner', 'endpoint', 'flag'] as const)('stops the remaining batch when %s changes during a write', async change => {
+            const current = batch([proposal('a'), proposal('b')]);
+            const pending = deferred<unknown>();
+            mock.accept.mockReturnValueOnce(pending.promise);
+            const refresh = vi.fn().mockResolvedValue(undefined);
+            const view = render(panel(current, refresh));
+            fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
+            if (change === 'owner') view.rerender(panel(current, refresh, { ...owner, processId: 'other' }));
+            if (change === 'endpoint') {
+                mock.route = { kind: 'remote', baseUrl: 'https://other.example' };
+                view.rerender(panel(current, refresh));
+            }
+            if (change === 'flag') act(() => applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }));
+            await act(async () => pending.resolve({}));
+            expect(mock.accept).toHaveBeenCalledOnce();
+            expect(refresh).not.toHaveBeenCalled();
+            expect(screen.queryByText('Accepted 1 proposal.')).toBeNull();
+        });
+
+        it('uses newest hidden findings to exclude older proposals from bulk acceptance', async () => {
+            const newest = results([finding('suppressed')], 'new');
+            const older = results([proposal('a')], 'old');
+            mock.get.mockResolvedValue(response({ runs: [newest.summary, older.summary] }));
+            mock.getRun.mockImplementation((_ws, _pid, runId) => Promise.resolve(runId === 'new' ? newest.detail : older.detail));
+            render(panel([item('a')]));
+            await waitFor(() => expect(mock.getRun).toHaveBeenCalledTimes(2));
+            expect(screen.queryByRole('button', { name: 'Accept all proposals' })).toBeNull();
+        });
+    });
+
     it('dismisses without duplicate admission and hides the sticky result after refresh', async () => {
         setupFindings();
         const pending = deferred<unknown>();
@@ -316,6 +434,7 @@ describe('Scrubber row findings', () => {
         await act(async () => mock.connect.mock.calls[0][0].onMessage({ type: 'sentinel-scrubber-changed', workspaceId: 'ws-a', processId: owner.processId }));
         await screen.findByText(/Could not load findings: offline/);
         expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Accept all proposals' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
         fireEvent.click(screen.getByRole('button', { name: 'Refresh findings' }));
         await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled());

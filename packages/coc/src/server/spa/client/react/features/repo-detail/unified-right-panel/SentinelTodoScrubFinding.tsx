@@ -7,7 +7,15 @@ export const ScrubberFindingsContext = createContext<{
     findings: ReadonlyMap<string, SentinelScrubFindingRecord>;
     busy: boolean;
     act: (record: SentinelScrubFindingRecord, action: FindingAction) => Promise<void>;
-}>({ findings: new Map(), busy: false, act: async () => {} });
+    proposalCount: number;
+    acceptAll: () => Promise<void>;
+}>({ findings: new Map(), busy: false, act: async () => {}, proposalCount: 0, acceptAll: async () => {} });
+
+export function AcceptAllScrubProposals() {
+    const { proposalCount, busy, acceptAll } = useContext(ScrubberFindingsContext);
+    if (!proposalCount) return null;
+    return <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void acceptAll(); }}>Accept all proposals</Button>;
+}
 
 const verdictLabels = { done: 'Done', obsolete: 'Obsolete', in_progress: 'In progress', needs_attention: 'Needs attention', unchanged: 'Unchanged', unverified: 'Unverified' };
 const demotionLabels = {

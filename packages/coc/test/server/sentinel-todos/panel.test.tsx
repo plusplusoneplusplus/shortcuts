@@ -110,7 +110,7 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
-    it('renders findings under collapsed item titles and refetches the ledger when Obsolete is accepted', async () => {
+    it.each(['row', 'strip', 'toolbar'])('renders collapsed findings and archives accepted Obsolete through %s', async entryPoint => {
         applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
         get.mockResolvedValue(ledger([item()]));
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
@@ -128,7 +128,9 @@ describe('UnifiedTodoTab', () => {
         await screen.findByText('◇ Proposal: Obsolete (high)');
         expect(screen.queryByTestId('sentinel-todo-i1-details')).toBeNull();
         const row = screen.getByTestId('sentinel-todo-row-i1');
-        fireEvent.click(within(row).getByRole('button', { name: 'Accept' }));
+        if (entryPoint === 'row') fireEvent.click(within(row).getByRole('button', { name: 'Accept' }));
+        else fireEvent.click(within(entryPoint === 'strip' ? screen.getByTestId('sentinel-scrubber-strip')
+            : screen.getByRole('toolbar', { name: 'To-do actions' })).getByRole('button', { name: 'Accept all proposals' }));
         await waitFor(() => expect(screen.queryByText('◇ Proposal: Obsolete (high)')).toBeNull());
         expect(scrubAccept).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'r1', 'i1', { expectedItemRevision: 1 });
         expect(get).toHaveBeenCalledTimes(2);

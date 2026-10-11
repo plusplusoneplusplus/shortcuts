@@ -8,7 +8,7 @@ import { formatRelativeTime } from '../../../utils/format';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
-import { ScrubberFindingsContext } from './SentinelTodoScrubFinding';
+import { AcceptAllScrubProposals, ScrubberFindingsContext } from './SentinelTodoScrubFinding';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 function subscribeConfig(listener: () => void) {
@@ -22,6 +22,7 @@ function readEnabled() {
 type Props = {
     ready?: boolean;
     children?: ReactNode;
+    toolbar?: ReactNode;
     onLedgerChange?: () => Promise<void>;
     owner: SentinelTodoOwner;
     items: readonly SentinelTodoItem[];
@@ -34,19 +35,20 @@ export function SentinelTodoScrubber(props: Props) {
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
-    if (!enabled || props.ready === false) return <>{props.children}</>;
-    if (route.kind === 'unresolved-remote') return <><p role="status">Scrubber unavailable: owning server is not connected.</p>{props.children}</>;
+    if (!enabled || props.ready === false) return <>{props.toolbar}{props.children}</>;
+    if (route.kind === 'unresolved-remote') return <>{props.toolbar}<p role="status">Scrubber unavailable: owning server is not connected.</p>{props.children}</>;
     return <ScrubberStrip key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`}
         {...props} client={client} />;
 }
 
-function ScrubberStrip({ owner, items, onFollowLink, client, children, onLedgerChange }: Props & { client: CocClient }) {
+function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, onLedgerChange }: Props & { client: CocClient }) {
     const id = useId();
     const [findings, setFindings] = useState<ReadonlyMap<string, SentinelScrubFindingRecord>>(new Map());
     const [data, setData] = useState<SentinelScrubberResponse | null>(null);
     const [findingsError, setFindingsError] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [batchResult, setBatchResult] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [schedule, setSchedule] = useState<SentinelScrubberConfig | null>(null);
     const [selecting, setSelecting] = useState(false);
@@ -98,6 +100,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, onLedgerC
         busyRef.current = true;
         setBusy(true);
         setError(null);
+        setBatchResult(null);
         try {
             await action();
             if (!mounted.current) return;
@@ -130,6 +133,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, onLedgerC
         sequence.current++;
         setBusy(true);
         setError(null);
+        setBatchResult(null);
         try {
             const expectedItemRevision = action === 'undo'
                 ? record.audit.find(entry => entry.action === 'applied')!.after!.revision : record.itemRevision;
@@ -149,11 +153,62 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, onLedgerC
             if (mounted.current) setBusy(false);
         }
     };
-    return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, act: findingAction }}>
+    const proposals = useMemo(() => [...findings.values()].filter(record =>
+        record.state === 'proposed' && items.some(item => item.id === record.itemId)), [findings, items]);
+    const acceptAll = async () => {
+        if (busyRef.current || loadError || findingsError || !proposals.length) return;
+        busyRef.current = true;
+        sequence.current++;
+        setBusy(true);
+        setError(null);
+        setBatchResult(null);
+        let accepted = 0;
+        let changed = 0;
+        let attempted = 0;
+        let failureMessage: string | undefined;
+        try {
+            // Keep the admitted findings and revisions fixed; conflicts never authorize a retry.
+            for (const record of proposals) {
+                if (!mounted.current) return;
+                attempted++;
+                if (items.find(item => item.id === record.itemId)?.revision !== record.itemRevision) {
+                    changed++;
+                    continue;
+                }
+                try {
+                    await api.accept(owner.ownerWorkspaceId, owner.processId, record.runId, record.itemId, {
+                        expectedItemRevision: record.itemRevision,
+                    });
+                    accepted++;
+                } catch (failure) {
+                    if ((failure as { status?: number })?.status === 409) changed++;
+                    else {
+                        failureMessage = failure instanceof Error ? failure.message : 'Could not accept proposal.';
+                        break;
+                    }
+                }
+            }
+            if (!mounted.current) return;
+            setBatchResult(`Accepted ${accepted} proposal${accepted === 1 ? '' : 's'}.`
+                + (changed ? ` ${changed} item${changed === 1 ? '' : 's'} changed since this proposal. Run a fresh scrub.` : '')
+                + (failureMessage ? ` 1 acceptance failed; ${proposals.length - attempted} not attempted.` : ''));
+            if (failureMessage) setError(failureMessage);
+            await onLedgerChange?.();
+            if (mounted.current) await load();
+        } catch (failure) {
+            if (mounted.current) setError(failure instanceof Error ? failure.message : 'Could not refresh accepted proposals.');
+        } finally {
+            busyRef.current = false;
+            if (mounted.current) setBusy(false);
+        }
+    };
+    return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, act: findingAction, proposalCount: proposals.length, acceptAll }}>
+        {toolbar}
         <section aria-label="To-do Scrubber" data-testid="sentinel-scrubber-strip"
             className="sticky top-0 z-10 flex flex-col gap-1 rounded border border-[#e0e0e0] bg-white p-2 dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="flex flex-wrap items-center gap-1">
                 <strong className="mr-auto">Scrubber</strong>
+                <AcceptAllScrubProposals />
                 <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Scrub now</Button>
                 <Button size="sm" variant="secondary" disabled={!config || busy || !!loadError} onClick={() => setSchedule(schedule ? null : { ...config! })}>Schedule ▾</Button>
             </div>
@@ -177,6 +232,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, onLedgerC
             {chatHref && <a href={chatHref} data-todo-link={`scrubber:${chatId}`} onClick={event => onFollowLink(event, `scrubber:${chatId}`)}
                 className="text-[#0078d4] hover:underline focus-visible:ring-1 dark:text-[#3794ff]">Open chat</a>}
             {error && <p role="alert">{error}</p>}
+            {batchResult && <p role="status">{batchResult}</p>}
             {data && <div className="flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setSelecting(value => !value)}>{selecting ? 'Hide selection' : 'Select items'}</Button>
                 {selecting && <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Scrub selected ({selectedIds.length})</Button>}

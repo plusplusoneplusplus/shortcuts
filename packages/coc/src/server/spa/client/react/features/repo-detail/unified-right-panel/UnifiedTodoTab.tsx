@@ -32,7 +32,7 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
-import { SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
+import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
 import { SentinelTodoScrubber } from './SentinelTodoScrubber';
 import {
     endSentinelTodoExcursion,
@@ -401,7 +401,8 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                         aria-label={`Unpin ${originTitle} To-do`}>Unpin</Button>
                 </div>
             )}
-            <div className="flex items-center gap-2">
+            <SentinelTodoScrubber owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
+            <div role="toolbar" aria-label="To-do actions" className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">To-do</span>
                 {ledger && sections.active.length > 0 && (
                     <span className={MUTED} data-testid="sentinel-todo-active-count">{sections.active.length} active</span>
@@ -413,11 +414,11 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                     </span>
                 )}
                 <span className="flex-1" />
+                <AcceptAllScrubProposals />
                 {!addForm.adding && normalCount > 0 && (
                     <Button size="sm" variant="secondary" onClick={addForm.open} data-testid="sentinel-todo-add">Add item</Button>
                 )}
-            </div>
-            <SentinelTodoScrubber owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load}>
+            </div>}>
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
                     Could not load the to-do list: {loadError}
