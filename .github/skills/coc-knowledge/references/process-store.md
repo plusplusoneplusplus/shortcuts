@@ -97,7 +97,8 @@ rows participate, including archived turns and tombstones, matching full process
 reads; presentation owns visibility. `processes.history_revision` is private:
 full process shapes and exports omit it. Triggers invalidate pages for settled
 turn edits, removals, historical inserts, and completed compaction metadata,
-including direct SQL writers and same-index SQL replacement attempts. Appends and streaming updates remain stable;
+including direct SQL writers and same-index SQL replacement attempts. Malformed
+metadata JSON never fails a write; it simply counts as no compaction. Appends and streaming updates remain stable;
 placeholder replacement compensates deletion increments in its write transaction.
 
 File fixtures persist the counter in the file envelope. In-memory and mock stores

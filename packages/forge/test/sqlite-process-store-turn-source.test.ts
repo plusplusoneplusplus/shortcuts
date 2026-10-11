@@ -49,12 +49,20 @@ describe('durable trigger wake turn identity', () => {
         const db = new NativeDatabase(':memory:');
         try {
             initializeDatabase(db);
-            db.exec('ALTER TABLE conversation_turns DROP COLUMN turn_source');
+            // V40 predates the V42 history-revision triggers that reference turn_source.
+            db.exec(`
+                DROP TRIGGER history_turn_update; DROP TRIGGER history_turn_delete;
+                DROP TRIGGER history_turn_insert; DROP TRIGGER history_turn_replace; DROP TRIGGER history_compaction_complete;
+                ALTER TABLE processes DROP COLUMN history_revision;
+                ALTER TABLE conversation_turns DROP COLUMN turn_source;
+            `);
             db.pragma('user_version = 40');
             initializeDatabase(db);
             initializeDatabase(db);
             const columns = db.prepare('PRAGMA table_info(conversation_turns)').all<{ name: string }>();
             expect(columns.filter(column => column.name === 'turn_source')).toHaveLength(1);
+            expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'history_%'").all())
+                .toHaveLength(5);
             expect(db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
         } finally { db.close(); }
     });

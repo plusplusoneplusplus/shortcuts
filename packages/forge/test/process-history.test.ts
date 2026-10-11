@@ -248,6 +248,20 @@ describe('SQLite history isolation', () => {
         await store.updateTurnContent('history', 0, 'updated');
         expect((await store.getProcessHistory('history'))!.page.historyRevision).toBe(1);
     });
+
+    it('accepts malformed metadata writes and still counts a completed compaction', async () => {
+        const store = await createStore('sqlite') as SqliteProcessStore;
+        await store.addProcess(processFixture(2));
+        const setMetadata = (metadata: string) =>
+            store.getDatabase().prepare('UPDATE processes SET metadata = ? WHERE id = ?').run(metadata, 'history');
+        const revision = async () => (await store.getProcessHistory('history'))!.page.historyRevision;
+        setMetadata('{bad');
+        expect(await revision()).toBe(0);
+        setMetadata(JSON.stringify({ compaction: { state: 'completed' } }));
+        expect(await revision()).toBe(1);
+        setMetadata('{bad');
+        expect(await revision()).toBe(1);
+    });
 });
 
 it('in-memory revision tracking preserves shapes and detects history replacement', () => {

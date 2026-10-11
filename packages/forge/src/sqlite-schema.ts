@@ -631,9 +631,11 @@ function createHistoryRevisionTriggers(db: NativeDatabase): void {
         BEGIN
             UPDATE processes SET history_revision = history_revision + 1 WHERE id = NEW.process_id;
         END;
-        CREATE TRIGGER IF NOT EXISTS history_compaction_complete AFTER UPDATE OF metadata ON processes
-        WHEN json_extract(NEW.metadata, '$.compaction.state') = 'completed'
-            AND json_extract(OLD.metadata, '$.compaction') IS NOT json_extract(NEW.metadata, '$.compaction')
+        DROP TRIGGER IF EXISTS history_compaction_complete;
+        CREATE TRIGGER history_compaction_complete AFTER UPDATE OF metadata ON processes
+        WHEN CASE WHEN json_valid(NEW.metadata) THEN json_extract(NEW.metadata, '$.compaction.state') END = 'completed'
+            AND CASE WHEN json_valid(OLD.metadata) THEN json_extract(OLD.metadata, '$.compaction') END
+                IS NOT CASE WHEN json_valid(NEW.metadata) THEN json_extract(NEW.metadata, '$.compaction') END
         BEGIN
             UPDATE processes SET history_revision = history_revision + 1 WHERE id = NEW.id;
         END;
