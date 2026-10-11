@@ -6,10 +6,13 @@
  */
 
 import { createContext, useContext, useCallback, useMemo, useState, type ReactNode } from 'react';
+import type { WorkspaceOwner } from '../repos/workspaceOwnerContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface FloatingChatEntry {
+    stateKey?: string;
+    owner?: WorkspaceOwner;
     taskId: string;
     workspaceId?: string;
     /** Short display label used in the FloatingDialog title and minimized tray pill. */
@@ -42,7 +45,7 @@ export function FloatingChatsProvider({ children }: { children: ReactNode }) {
     const floatChat = useCallback((entry: FloatingChatEntry) => {
         setFloatingChats(prev => {
             const next = new Map(prev);
-            next.set(entry.taskId, entry);
+            next.set(entry.stateKey ?? entry.taskId, entry);
             return next;
         });
     }, []);

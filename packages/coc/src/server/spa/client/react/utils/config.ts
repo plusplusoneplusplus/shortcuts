@@ -110,6 +110,8 @@ interface DashboardConfig {
     schedulesInScheduledSlideEnabled?: boolean;
     /** Whether user-created chat folders are shown in the chat list. Default false. */
     chatFoldersEnabled?: boolean;
+    /** Whether a repo group's Workspace chat list aggregates member chats. Default false. */
+    repoGroupAggregatedChatsEnabled?: boolean;
     /** Whether chat composers show the client-side English word hint. Default true. */
     composerWordHintEnabled?: boolean;
     /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */
@@ -576,6 +578,15 @@ export function isGitWorktreeExecutionEnabled(): boolean {
  */
 export function isChatFoldersEnabled(): boolean {
     return getConfig().chatFoldersEnabled === true;
+}
+
+/**
+ * Returns true when a repo group's Workspace chat list aggregates group-owned
+ * and member chats (`features.repoGroupAggregatedChats`). Gates UI only — the
+ * read-only `/api/repo-groups/:id/chats` feed ships regardless.
+ */
+export function isRepoGroupAggregatedChatsEnabled(): boolean {
+    return getConfig().repoGroupAggregatedChatsEnabled === true;
 }
 
 /**

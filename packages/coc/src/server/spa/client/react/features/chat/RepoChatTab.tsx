@@ -4,7 +4,7 @@
  * Every task type, chat or not, goes through the one ChatDetailPane.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef, useContext, cloneElement } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useContext, cloneElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { cn } from '../../ui';
@@ -78,6 +78,19 @@ export interface RepoChatTabProps {
      * `DockedStatusFooter`'s own gate.
      */
     dockStatusFooter?: boolean;
+    /**
+     * Split layout only: replaces the native conversation list (the repo-group
+     * aggregated list) while this tab keeps owning selection and the detail pane.
+     * `selectTask` is the native row-click path for this tab's own chats.
+     */
+    renderList?: (ctx: RepoChatTabListContext) => ReactNode;
+    /** Split-layout owner-routed detail supplied by an aggregated workspace. */
+    detailOverride?: ReactNode;
+}
+
+export interface RepoChatTabListContext {
+    selectedTaskId: string | null;
+    selectTask: (id: string, task?: any) => void;
 }
 
 function getActivityTabSegment(mode: RepoChatTabProps['mode']): 'activity' | 'chats' | 'tasks' {
@@ -154,7 +167,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter, renderList, detailOverride }: RepoChatTabProps) {
     const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -1312,7 +1325,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                     data-testid="activity-split-workspace-list"
                     onClickCapture={() => onActivateDetail?.()}
                 >
-                    {listPane}
+                    {renderList ? renderList({ selectedTaskId, selectTask }) : listPane}
                 </div>
                 {railShortcutContainer
                     ? createPortal(
@@ -1334,7 +1347,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                             className="flex flex-col h-full min-h-0 overflow-hidden outline-none"
                             onPointerDown={handleDetailPointerDown}
                         >
-                            {detailPaneContent}
+                            {detailOverride ?? detailPaneContent}
                         </div>,
                         detailContainer,
                     )

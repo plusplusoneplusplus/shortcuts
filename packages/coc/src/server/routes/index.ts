@@ -95,6 +95,7 @@ import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { registerMyWorkRoutes } from '../workspaces/my-work-handler';
 import { registerMyLifeRoutes } from '../workspaces/my-life-handler';
 import { registerRepoGroupRoutes } from '../workspaces/repo-group-handler';
+import { readRepoQueueSnapshot } from './queue-stats';
 import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemHierarchyRoutes } from './work-item-hierarchy-routes';
 import { registerWorkItemSyncRoutes } from './work-item-sync-routes';
@@ -930,6 +931,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRepoGroupRoutes(routes, store, dataDir, {
         getWsServer,
         repoTreeService,
+        readQueue: (workspaceId) => readRepoQueueSnapshot({
+            bridge,
+            store,
+            botManagedConversationsEnabled: () => getLiveFeatureFlags().botManagedConversationsEnabled === true,
+        }, workspaceId),
+        getBotControlEnabled: () => getLiveFeatureFlags().botManagedConversationsEnabled === true,
         getExclusiveWriterEnabled: () =>
             (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.repoGroupExclusiveWriter === true,
         onGroupRegistered: async (ws) => {

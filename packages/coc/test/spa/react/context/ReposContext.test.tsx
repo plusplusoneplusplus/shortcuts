@@ -15,6 +15,13 @@ const webSocketMock = vi.hoisted(() => ({
     connect: vi.fn(),
     disconnect: vi.fn(),
 }));
+const groupBadgeMocks = vi.hoisted(() => ({ enabled: false, getRepoGroupChats: vi.fn() }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRepoGroupAggregatedChatsEnabled', () => ({
+    useRepoGroupAggregatedChatsEnabled: () => groupBadgeMocks.enabled,
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
+    getRepoGroupChats: groupBadgeMocks.getRepoGroupChats,
+}));
 vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
     useWebSocket: vi.fn((options: { onMessage: (message: any) => void; onConnect?: () => void }) => {
         webSocketMock.options = options;
@@ -27,7 +34,8 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api'
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
     computeUnseenCount: vi.fn(() => 0),
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi')>(),
     fetchUnseenCount: vi.fn().mockResolvedValue(0),
 }));
 
@@ -73,7 +81,7 @@ import {
     legacyPathOnlyWorkspaceIdForRootPath,
 } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { getCocClientFor } from '../../../../src/server/spa/client/react/api/cocClient';
-import { fetchUnseenCount } from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
+import { fetchUnseenCount, patchSeenState, deleteSeenEntry } from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -144,8 +152,8 @@ function RepoStatsConsumer() {
 }
 
 function AttentionConsumer() {
-    const { badgeCounts, unseenCounts } = useRepos();
-    return <div data-testid="attention">{JSON.stringify({ badgeCounts, unseenCounts })}</div>;
+    const { badgeCounts, badgePartial, unseenCounts } = useRepos();
+    return <div data-testid="attention">{JSON.stringify({ badgeCounts, badgePartial, unseenCounts })}</div>;
 }
 
 function ProviderWithConsumer() {
@@ -203,6 +211,8 @@ function SelectedRepoConsumer() {
 
 describe('ReposContext', () => {
     beforeEach(() => {
+        groupBadgeMocks.enabled = false;
+        groupBadgeMocks.getRepoGroupChats.mockReset();
         vi.spyOn(getCocClientFor().workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
         vi.mocked(fetchUnseenCount).mockResolvedValue(0);
         webSocketMock.options = null;
@@ -217,6 +227,80 @@ describe('ReposContext', () => {
         _resetRemoteSelectionForTests();
         _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
+    });
+
+    it('publishes eligible group unread across concrete servers and refreshes member read/membership changes without a group view', async () => {
+        groupBadgeMocks.enabled = true;
+        const groupId = 'group-shared';
+        const remoteKey = buildRemoteCloneKey('srv-1', groupId);
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([{ ...makeWorkspace(groupId), virtual: true }]);
+        const remoteGroups = tagRemoteWorkspaces({ id: 'srv-1', label: 'Remote' }, 'https://owner.test',
+            [{ id: groupId, name: 'Shared', rootPath: '/repos/group' }], false, { connection: 'online' });
+        aggregateRemoteWorkspacesMock.mockResolvedValue({ ...emptyAggregate(), groupWorkspaces: remoteGroups });
+        let localUnread = 3;
+        let members = ['ws-a', 'ws-b'];
+        groupBadgeMocks.getRepoGroupChats.mockImplementation(async (_id, _query, baseUrl) => ({
+            groupId, membershipKey: members.join(','), running: [], queued: [], history: [], hasMore: false,
+            sources: [
+                { workspaceId: groupId, role: 'group', available: true },
+                ...members.map(workspaceId => ({ workspaceId, role: 'member', available: true })),
+            ],
+            counts: { total: 20, running: 0, queued: 0, history: 20, byOwner: {},
+                unread: baseUrl ? 7 : localUnread, partial: false },
+        }));
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        const counts = () => JSON.parse(screen.getByTestId('attention').textContent!);
+        await waitFor(() => expect(counts().badgeCounts).toMatchObject({ [groupId]: 3, [remoteKey]: 7 }));
+        expect(counts().badgePartial).toMatchObject({ [groupId]: false, [remoteKey]: false });
+        expect(groupBadgeMocks.getRepoGroupChats.mock.calls.every(call => call[1].limit === 1 && !call[1].q)).toBe(true);
+        const calls = groupBadgeMocks.getRepoGroupChats.mock.calls.length;
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-group-chat-seen', {
+            detail: { workspaceId: 'ws-a', baseUrl: 'https://wrong.test' },
+        })));
+        expect(groupBadgeMocks.getRepoGroupChats).toHaveBeenCalledTimes(calls);
+        localUnread = 2;
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-group-chat-seen', {
+            detail: { workspaceId: 'ws-a' },
+        })));
+        await waitFor(() => expect(counts().badgeCounts[groupId]).toBe(2));
+        expect(counts().badgeCounts[remoteKey]).toBe(7);
+        members = ['ws-a'];
+        localUnread = 1;
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'workspace-topology-changed', workspaceId: groupId },
+        })));
+        await waitFor(() => expect(counts().badgeCounts[groupId]).toBe(1));
+        aggregateRemoteWorkspacesMock.mockResolvedValue({
+            ...emptyAggregate(), groupWorkspaces: remoteGroups.map(workspace => ({
+                ...workspace, remote: { ...workspace.remote, offline: true, connection: 'offline' },
+            })),
+        });
+        await act(async () => webSocketMock.options?.onMessage({ type: 'server-topology-changed' }));
+        await waitFor(() => expect(counts().badgePartial[remoteKey]).toBe(true));
+        expect(counts().badgeCounts).toMatchObject({ [groupId]: 1, [remoteKey]: 7 });
+        expect(groupBadgeMocks.getRepoGroupChats.mock.calls.filter(call => call[2] === 'https://owner.test')).toHaveLength(1);
+    });
+
+    it('does not load group badge feeds with the aggregate gate disabled', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([{ ...makeWorkspace('group-shared'), virtual: true }]);
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(repositoryServiceMocks.listWorkspaces).toHaveBeenCalled());
+        expect(groupBadgeMocks.getRepoGroupChats).not.toHaveBeenCalled();
+    });
+
+    it('marks a group unread badge partial when its owner cannot supply unread counts', async () => {
+        groupBadgeMocks.enabled = true;
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([{ ...makeWorkspace('group-unknown'), virtual: true }]);
+        groupBadgeMocks.getRepoGroupChats.mockResolvedValue({
+            groupId: 'group-unknown', membershipKey: 'm1', running: [], queued: [], history: [], hasMore: false,
+            sources: [{ workspaceId: 'group-unknown', role: 'group', available: true }],
+            counts: { total: 0, running: 0, queued: 0, history: 0, byOwner: {}, partial: false },
+        });
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(groupBadgeMocks.getRepoGroupChats).toHaveBeenCalled());
+        const value = JSON.parse(screen.getByTestId('attention').textContent!);
+        expect(value.badgeCounts['group-unknown']).toBe(0);
+        expect(value.badgePartial['group-unknown']).toBe(true);
     });
 
     it('shows awaiting-input attention after reload and clears it on answer or stop independently of unread', async () => {
@@ -258,6 +342,36 @@ describe('ReposContext', () => {
             detail: { baseUrl: remoteUrl },
         })));
         await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts[remoteKey]).toBe(3));
+    });
+
+    it('reconciles native badges after persisted owner reads and unread changes, rejecting stale counts', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        const baseUrl = 'https://owner.test';
+        const remoteKey = buildRemoteCloneKey('srv-1', 'ws-1');
+        aggregateRemoteWorkspacesMock.mockResolvedValue(remoteAggregate('srv-1', baseUrl, 'ws-1'));
+        vi.spyOn(getCocClientFor(baseUrl).workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
+        vi.spyOn(getCocClientFor(baseUrl).seenState, 'updateMany').mockResolvedValue({});
+        vi.spyOn(getCocClientFor(baseUrl).seenState, 'markUnseen').mockResolvedValue({ ok: true });
+        vi.mocked(fetchUnseenCount).mockResolvedValue(1);
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        const badges = () => JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts;
+        await waitFor(() => expect(badges()).toMatchObject({ 'ws-1': 1, [remoteKey]: 1 }));
+        let resolveOld!: (value: number) => void;
+        vi.mocked(fetchUnseenCount).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+        await act(async () => {
+            await patchSeenState('ws-1', [{ processId: 'proc', seenAt: '2026-05-02T00:00:00.000Z' }], { baseUrl });
+        });
+        expect(fetchUnseenCount).toHaveBeenLastCalledWith('ws-1', { baseUrl });
+        vi.mocked(fetchUnseenCount).mockResolvedValueOnce(0);
+        await act(async () => {
+            await patchSeenState('ws-1', [{ processId: 'proc', seenAt: '2026-05-02T00:00:00.000Z' }], { baseUrl });
+        });
+        await waitFor(() => expect(badges()[remoteKey]).toBe(0));
+        await act(async () => resolveOld(1));
+        expect(badges()).toMatchObject({ 'ws-1': 1, [remoteKey]: 0 });
+        await act(async () => { await deleteSeenEntry('ws-1', 'proc', { baseUrl }); });
+        await waitFor(() => expect(badges()[remoteKey]).toBe(1));
+        expect(badges()['ws-1']).toBe(1);
     });
 
     it('ignores a stale pause response after a newer answer response', async () => {

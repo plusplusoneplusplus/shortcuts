@@ -204,7 +204,8 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
     const { onClose, addTargetRepo } = options ?? {};
     const { state: queueState } = useQueue();
     const { state: appState, dispatch } = useApp();
-    const { fetchRepos, unseenCounts, remoteGroupWorkspaces } = useRepos();
+    const { fetchRepos, unseenCounts: processUnseenCounts, badgeCounts, badgePartial, remoteGroupWorkspaces } = useRepos();
+    const unseenCounts = badgeCounts ?? processUnseenCounts;
     const { selectClone } = useShellNavigation();
     const { goToMyWork, goToMyLife } = useScopeNavigation();
     const { toasts, addToast, removeToast } = useToast();
@@ -425,9 +426,10 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
             groupWorkspaces: repoGroupWorkspaces,
             cloneStatus,
             unseenCounts,
+            badgePartial,
             lastCloneByRemote: appState.lastCloneByRemote,
         });
-    }, [pinnedScopesEnabled, pins, groups, repoGroupWorkspaces, cloneStatus, unseenCounts, appState.lastCloneByRemote]);
+    }, [pinnedScopesEnabled, pins, groups, repoGroupWorkspaces, cloneStatus, unseenCounts, badgePartial, appState.lastCloneByRemote]);
 
     const footerActions = useMemo<ScopePickerFooterAction[]>(() => [
         {

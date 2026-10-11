@@ -8,7 +8,8 @@ vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSid
 }));
 // The hook routes every call through the clone registry so a remote clone's
 // side-notes are written on ITS server, not the local data dir.
-vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async original => ({
+    ...await original<typeof import('../../../src/server/spa/client/react/repos/cloneRegistry')>(),
     requestForWorkspace: requestMock,
 }));
 

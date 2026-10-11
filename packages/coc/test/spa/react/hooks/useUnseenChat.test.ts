@@ -11,7 +11,8 @@ import { useUnseenChat, getTaskCompletedAtIso } from '../../../../src/server/spa
 import * as seenStateApi from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
 
 // Mock the API module
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', async importOriginal => ({
+    ...await importOriginal<typeof seenStateApi>(),
     fetchSeenMap: vi.fn(),
     patchSeenState: vi.fn(),
     deleteSeenEntry: vi.fn(),
@@ -67,7 +68,7 @@ describe('useUnseenChat', () => {
             expect(result.current.unseenProcessIds.has('a')).toBe(false);
             expect(result.current.unseenProcessIds.has('b')).toBe(true);
         });
-        expect(mockFetchSeenMap).toHaveBeenCalledWith('ws1');
+        expect(mockFetchSeenMap).toHaveBeenCalledWith('ws1', { baseUrl: undefined });
     });
 
     it('seeds all tasks as seen on first visit (empty server map)', async () => {
@@ -173,7 +174,7 @@ describe('useUnseenChat', () => {
 
         expect(mockPatchSeenState).toHaveBeenCalledWith('ws1', expect.arrayContaining([
             expect.objectContaining({ processId: 'b' }),
-        ]));
+        ]), { baseUrl: undefined });
     });
 
     it('auto-marks selected task as seen', async () => {
@@ -301,7 +302,7 @@ describe('useUnseenChat', () => {
             result.current.markUnseen('a');
         });
 
-        expect(mockDeleteSeenEntry).toHaveBeenCalledWith('ws1', 'a');
+        expect(mockDeleteSeenEntry).toHaveBeenCalledWith('ws1', 'a', { baseUrl: undefined });
     });
 
     it('markUnseen is a no-op for a task not in seen map', async () => {
@@ -461,7 +462,7 @@ describe('useUnseenChat', () => {
             // Should have called patchSeenState with the migrated entries
             expect(mockPatchSeenState).toHaveBeenCalledWith('ws1', expect.arrayContaining([
                 { processId: 'a', seenAt: history[0].completedAt },
-            ]));
+            ]), { baseUrl: undefined });
 
             // localStorage key should be removed after migration
             expect(localStorage.getItem('coc-unseen-ws1')).toBeNull();

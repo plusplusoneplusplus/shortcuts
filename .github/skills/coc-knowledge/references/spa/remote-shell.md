@@ -233,7 +233,26 @@ that same registry.
   and accepting a member result opens the panel, switches its target, and creates a
   result-owned preview without navigating away from the group. Mobile has no group panel
   or shortcut owner.
-- `listRepoGroupServerOptions()` builds `repo-group-server-select` from `/api/servers`:
+- Behind `features.repoGroupAggregatedChats` (default off) the group's Workspace chat
+  list is `repos/RepoGroupChatList.tsx`, fed by `useRepoGroupChatFeed` from the owning
+  server's `GET /api/repo-groups/:id/chats` (group + explicit members). Rows use
+  `serverKey|ownerWorkspaceId|canonicalId`, native styling and compact, distinguishable
+  muted member prefixes; group rows omit the prefix. Running, Queued and Pinned
+  precede globally ordered history and one Load more. Search/filter/count behavior
+  and owner-qualified group navigation live in [shell.md](shell.md).
+  `RepoChatTab.renderList` hosts the combined list; `detailOverride` shows member
+  conversations while retaining group navigation. Concrete reads and mutations
+  follow [clone-routing.md](clone-routing.md), not the active workspace alias.
+  `RepoGroupView` passes remote connection availability separately from retained
+  endpoints. Offline transitions abort feed/page reads, retain unavailable cached
+  history with partial counts, and disable owner actions/detail transports.
+  Reconnection refreshes the same concrete server without changing selection.
+  `ReposProvider` mounts unfiltered `RepoGroupBadgeFeed` readers for registered
+  groups while the gate is enabled, independently of the selected group view.
+  Eligible aggregate unread counts and partial availability project into
+  server-qualified `badgeCounts`/`badgePartial` for active group chips and pinned
+  scopes, including mobile pickers. Badge/list page-size caches remain separate.
+ from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.
 - `repos/useServerSelection.ts` reuses the same option list for the **Server** dropdown in

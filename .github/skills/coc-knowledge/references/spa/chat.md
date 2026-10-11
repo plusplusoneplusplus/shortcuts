@@ -105,6 +105,16 @@ workspace-scoped expand/collapse state behind `useTaskGroupExpansion` (pure help
 resets on workspace switch), and `task-group-copy-info.ts` holds the pure copy-run-info
 text builders.
 
+### Read-state reconciliation
+
+`seenStateApi` captures the concrete owner route before read/unread writes and
+publishes `coc-group-chat-seen` only after persistence succeeds. Native
+`useUnseenChat` and scoped `ChatDetail` share that mutation path. Mounted native
+readers merge committed entries/deletions for the matching workspace and endpoint;
+aggregate feeds refresh their rows/counts. `ReposContext` refreshes native badges
+under concrete selection keys, rejecting obsolete count responses. Failed writes
+publish no success event; failed count reads retain the last known value.
+
 ### ChatListPane
 
 Grouped expansion state is local to the mounted view; Ralph sessions, For Each runs, Map
@@ -120,6 +130,24 @@ render non-running group parents in the Pinned section, interleaved with individ
 pinned chats by pin time. A pinned parent leaves its recency bucket without mutating child
 `pinnedAt`/`archived`, while running For Each / Map Reduce parents stay in the Running
 section. Parent pin actions call the workspace group-pin API, never child process state.
+
+`RepoGroupChatList` renders an active body search as one flat Search results section.
+Running, queued and historical matches share latest-activity ordering through
+`getTaskTimestamp`, with owner workspace and canonical chat identity breaking ties.
+Server search pages limit this combined sequence; Load more appends matches from
+all statuses, preserving the displayed prefix. Live and committed read-state refreshes
+retain the combined loaded depth up to the 200-row server cap; further rows remain
+cursor-pageable. Pins retain row styling without promotion; matching children retain
+owner-qualified parent links. Without a query, the list uses Running, Queued, Pinned
+and History sections and refresh retains only paginated history depth.
+
+`repoGroupChatHierarchy` retains native owner-local run entries and recursive spawned
+trees. `RepoGroupChatContainer` reuses the native Ralph, For Each, Map Reduce,
+task-group and spawned-tree rows with owner-qualified expansion keys.
+`useRepoGroupChatHierarchy` reads each available owner's run summaries/group pins
+through its concrete server client; stale responses cannot replace newer owner state
+or pins. Group pins and native run-detail navigation target that owner, while
+individual pins stay independent and loaded feed rows remain authoritative.
 
 Pin time is the Pinned section's sort key. Dragging a pinned row (chat or group parent)
 within the Pinned section, in both the Chats tab and Activity, reorders it: each entry is
@@ -166,7 +194,8 @@ state taking precedence. The menu can skip the current wait through
 
 Behind `features.chatFolders` (default off), a **Folders** section renders after
 Running/Queued/Pinned and before the date buckets, on every list surface — Activity,
-Chats, Tasks and a repo group's Workspace tab all go through `ChatListPane`, so
+Chats, Tasks and a repo group's Workspace tab all go through `ChatListPane` (except the
+flag-gated repo-group aggregated list, `RepoGroupChatList`), so
 `ChatFolderSection.tsx` is one renderer rather than four copies of the JSX. The section
 is declared as the `folders` `SectionVariant` in `list-mode-config.ts`.
 

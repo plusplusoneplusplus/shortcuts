@@ -91,6 +91,22 @@ over `subscribeCloneBaseUrl`, so a caller re-renders when its route resolves aft
 paint (remote aggregation finishing late), when the active clone key disambiguates a
 shared id, or when a route is dropped.
 
+### Aggregated group conversation owners
+
+Group and member conversations mount under `WorkspaceOwnerContext` with a raw
+workspace id, concrete selection, resolved endpoint and optional member root.
+Clone hooks prefer the matching subtree owner, including explicit local ownership,
+without changing registry aliases. Unresolved remote groups cannot mount a native
+chat tab. Member detail remounts transports on owner/endpoint changes.
+
+Main/warm streams, queued polling, follow-ups and preferences share that owner.
+Quick-ask and source file/tree reads use the same client; path resolution keeps
+only the owner's server candidates and exact member root. Wire payloads keep
+raw workspace ids; conversation caches and drafts use owner-qualified keys.
+Scoped popouts carry their endpoint and `ownerKey` through URL/channel messages;
+floating entries retain the same owner context and separate state key from raw
+task id, keeping equal ids on different servers independent.
+
 Long-lived language transports subscribe to the registry rather than resolving
 only once. Their cache identity is `(workspaceId, concrete clone route,
 editingSessionId)`: the clone route chooses the socket origin, while the plain

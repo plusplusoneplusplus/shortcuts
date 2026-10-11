@@ -65,6 +65,32 @@ suffix for every `#repos/<workspaceId>/<subroute>` hash and expands a bare
 per-segment encode/decode helpers in `layout/routePath.ts`, re-exported from
 `layout/Router`.
 
+Group member chat routes use
+`#repos/<groupSelectionId>/chats/member/<ownerWorkspaceId>/<canonicalProcessId>`.
+`dashboardRoutes` builds and parses the path, deriving the member's concrete clone
+key from the group server. `useRepoGroupChatSelection` restores owner identity
+before feed pages load and follows hash history. The router records the full
+suffix under the server-qualified group but clears group queue selection;
+member ids never select group tasks. New Chat returns to the same group's
+`/chats` route. `RepoGroupMemberChatDetail` supplies `RepoChatTab.detailOverride`,
+an owner header and explicit repo navigation; mobile back clears the member
+route without unmounting the list.
+Group list search and repo/status/archive filters persist under
+`coc.group-chat-filters:<groupSelectionId>`. Narrow layouts use a filter
+disclosure; matching rows retain their owner prefixes and plain-text excerpts.
+Member conversation completion writes the owner's existing seen-state and
+invalidates the group feed through an owner-qualified event.
+The feed keeps a bounded in-memory owner/query history cache for unavailable
+sources, marks their rows and counts partial, and removes sources absent from
+fresh membership. Reconnect and topology events reconcile the list; topology
+invalidates pending responses immediately. Removed members retain the open
+conversation identity until navigation clears it.
+The aggregate list groups Ralph, For Each, Map Reduce, generic tagged groups,
+spawn trees and enabled chat folders per owner. Cross-owner parent links remain
+delegation navigation, not nesting. Bulk actions keep owner-qualified selection,
+apply successful writes and retain failed rows for retry. Queue controls always
+name one owner; reorder uses that owner's repo view.
+
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats
 `chats`/`activity` and `cli-sessions`/`copilot-sessions` as aliases, waits for git

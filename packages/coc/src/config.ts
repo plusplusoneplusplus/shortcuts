@@ -333,6 +333,8 @@ export interface CLIConfig {
         pinnedScopes?: boolean;
         /** Only one repo group may grant writable membership to a shared root. Disabled by default. */
         repoGroupExclusiveWriter?: boolean;
+        /** Repo-group Workspace chat list aggregates group-owned and member chats. Disabled by default. */
+        repoGroupAggregatedChats?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -724,6 +726,8 @@ export interface ResolvedCLIConfig {
         /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
         pinnedScopes: boolean;
         repoGroupExclusiveWriter: boolean;
+        /** Repo-group Workspace chat list aggregates group-owned and member chats. Disabled by default. */
+        repoGroupAggregatedChats: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -1031,6 +1035,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         scopeSwitcher: true,
         pinnedScopes: true,
         repoGroupExclusiveWriter: false,
+        repoGroupAggregatedChats: false,
         schedulesInScheduledSlide: true,
         chatFolders: false,
         composerWordHint: true,

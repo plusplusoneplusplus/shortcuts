@@ -35,6 +35,7 @@ import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client
 import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
+import { buildRemoteCloneKey, parseRemoteCloneKey } from '../repos/cloneIdentity';
 import { buildGitRouteSuffix, parseGitRoute } from './gitRoute';
 import { resolveRepoGroupSection } from '../repos/repoGroupSettingsSections';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
@@ -215,9 +216,45 @@ export function parseActivityDeepLink(hash: string): string | null {
     const parts = tokenizeHash(hash).segments;
     if (parts[0] === 'repos' && parts[1] && (parts[2] === 'chats' || parts[2] === 'activity') && parts[3]) {
         if (parts[3] === 'ralph' || parts[3] === 'for-each' || parts[3] === 'map-reduce') return null;
+        if (parts[3] === 'member' && isRepoGroupWorkspaceId(decodeSegment(parts[1]))) return null;
         return decodeSegment(parts[3]);
     }
     return null;
+}
+
+export interface RepoGroupChatDeepLink {
+    groupSelectionId: string;
+    ownerWorkspaceId: string;
+    ownerSelectionId: string;
+    processId: string;
+}
+
+/** The group is navigation scope; its owning server also owns the explicit member. */
+export function buildRepoGroupChatHash(groupSelectionId: string, ownerWorkspaceId: string, processId: string): string {
+    if (!isRepoGroupWorkspaceId(groupSelectionId) || !ownerWorkspaceId || !processId
+        || parseRemoteCloneKey(ownerWorkspaceId)) {
+        throw new Error('A group chat link requires a group, raw owner workspace and process id.');
+    }
+    return repoHashBase(groupSelectionId) + '/chats/member/'
+        + encodeSegment(ownerWorkspaceId) + '/' + encodeSegment(processId);
+}
+
+export function parseRepoGroupChatDeepLink(hash: string): RepoGroupChatDeepLink | null {
+    const parts = tokenizeHash(hash).segments;
+    if (parts.length !== 6 || parts[0] !== 'repos' || parts[2] !== 'chats'
+        || parts[3] !== 'member' || !parts[1] || !parts[4] || !parts[5]) return null;
+    const groupSelectionId = decodeSegment(parts[1]);
+    const ownerWorkspaceId = decodeSegment(parts[4]);
+    if (!isRepoGroupWorkspaceId(groupSelectionId) || parseRemoteCloneKey(ownerWorkspaceId)) return null;
+    const groupClone = parseRemoteCloneKey(groupSelectionId);
+    return {
+        groupSelectionId,
+        ownerWorkspaceId,
+        ownerSelectionId: groupClone
+            ? buildRemoteCloneKey(groupClone.serverId, ownerWorkspaceId)
+            : ownerWorkspaceId,
+        processId: decodeSegment(parts[5]),
+    };
 }
 
 /** Parse a tasks deep-link: `#repos/{wsId}/tasks/{taskId}`. */
@@ -737,7 +774,11 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
     // Chats / activity deep-link handling — select task when ID present. Both URL
     // segments are aliases for the chat surface (canonical key differs by layout
     // mode). Parent-run sub-segments are owned by RepoChatTab detail panes.
-    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3] && parts[3] !== 'ralph' && parts[3] !== 'for-each') {
+    if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3] === 'member' && isRepoGroupWorkspaceId(repoId)) {
+        // Member selection belongs to the group view, never the group's queue.
+        // Reserve incomplete member links too, so "member" cannot become a task id.
+        effects.push({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: null, repoId } });
+    } else if ((parts[2] === 'chats' || parts[2] === 'activity') && parts[3] && parts[3] !== 'ralph' && parts[3] !== 'for-each') {
         effects.push({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: decodeSegment(parts[3]), repoId } });
     } else if (parts[2] === 'chats' || parts[2] === 'activity') {
         effects.push({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: null, repoId } });

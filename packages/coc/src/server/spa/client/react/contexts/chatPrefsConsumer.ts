@@ -14,6 +14,8 @@ import {
     unarchiveProcesses as apiUnarchiveProcesses,
 } from '../queue/hooks/pinArchiveApi';
 import type { ChatPrefsAction, ChatPrefsState } from './ChatPreferencesContext';
+import { useWorkspaceOwner } from '../repos/workspaceOwnerContext';
+import { useCocClient } from '../repos/cloneRouting';
 
 // ── Context ────────────────────────────────────────────────────────────────
 
@@ -59,19 +61,23 @@ export function useOptionalChatPrefs(): ChatPrefsAPI | null {
     const state = ctx?.state ?? EMPTY_STATE;
     const dispatch = ctx?.dispatch ?? NOOP_DISPATCH;
     const workspaceId = ctx?.workspaceId ?? '';
+    const owner = useWorkspaceOwner(workspaceId);
+    const ownerClient = useCocClient(workspaceId);
+    const client = owner ? ownerClient : undefined;
 
     const setChatPinned = useCallback(async (taskId: string, pinned: boolean) => {
         const wasPinned = state.pinnedIds.includes(taskId);
         const wasArchived = state.archivedIds.includes(taskId);
         dispatch({ type: pinned ? 'PIN' : 'UNPIN', taskId });
         try {
-            await (pinned ? apiPinProcess : apiUnpinProcess)(taskId, workspaceId);
+            if (client) await (pinned ? apiPinProcess : apiUnpinProcess)(taskId, workspaceId, client);
+            else await (pinned ? apiPinProcess : apiUnpinProcess)(taskId, workspaceId);
         } catch (err) {
             if (wasPinned !== pinned) dispatch({ type: wasPinned ? 'PIN' : 'UNPIN', taskId });
             if (pinned && wasArchived) dispatch({ type: 'ARCHIVE', taskId });
             throw err;
         }
-    }, [dispatch, state.pinnedIds, state.archivedIds, workspaceId]);
+    }, [dispatch, state.pinnedIds, state.archivedIds, workspaceId, client]);
 
     const pinChat = useCallback((taskId: string) => {
         if (state.pinnedIds.includes(taskId)) return;
@@ -86,29 +92,29 @@ export function useOptionalChatPrefs(): ChatPrefsAPI | null {
     const archiveChat = useCallback((taskId: string) => {
         if (state.archivedIds.includes(taskId)) return;
         dispatch({ type: 'ARCHIVE', taskId });
-        apiArchiveProcess(taskId, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
+        (client ? apiArchiveProcess(taskId, workspaceId, client) : apiArchiveProcess(taskId, workspaceId)).catch(() => {});
+    }, [dispatch, state.archivedIds, workspaceId, client]);
 
     const unarchiveChat = useCallback((taskId: string) => {
         if (!state.archivedIds.includes(taskId)) return;
         dispatch({ type: 'UNARCHIVE', taskId });
-        apiUnarchiveProcess(taskId, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
+        (client ? apiUnarchiveProcess(taskId, workspaceId, client) : apiUnarchiveProcess(taskId, workspaceId)).catch(() => {});
+    }, [dispatch, state.archivedIds, workspaceId, client]);
 
     const archiveChats = useCallback((taskIds: string[]) => {
         const toAdd = taskIds.filter(id => !state.archivedIds.includes(id));
         if (toAdd.length === 0) return;
         dispatch({ type: 'ARCHIVE_MANY', taskIds });
-        apiArchiveProcesses(taskIds, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
+        (client ? apiArchiveProcesses(taskIds, workspaceId, client) : apiArchiveProcesses(taskIds, workspaceId)).catch(() => {});
+    }, [dispatch, state.archivedIds, workspaceId, client]);
 
     const unarchiveChats = useCallback((taskIds: string[]) => {
         const removing = new Set(taskIds);
         const filtered = state.archivedIds.filter(id => !removing.has(id));
         if (filtered.length === state.archivedIds.length) return;
         dispatch({ type: 'UNARCHIVE_MANY', taskIds });
-        apiUnarchiveProcesses(taskIds, workspaceId).catch(() => {});
-    }, [dispatch, state.archivedIds, workspaceId]);
+        (client ? apiUnarchiveProcesses(taskIds, workspaceId, client) : apiUnarchiveProcesses(taskIds, workspaceId)).catch(() => {});
+    }, [dispatch, state.archivedIds, workspaceId, client]);
 
     if (!ctx) return null;
     return {

@@ -28,6 +28,7 @@ import {
     createRepoGroup,
     deleteRepoGroup,
     getRepoGroup,
+    getRepoGroupChats,
     listRepoGroupServerOptions,
     updateRepoGroup,
     searchRepoGroupFiles,
@@ -112,6 +113,26 @@ describe('repo-group requests route to the owning server', () => {
             'prompt',
             { limit: 25, showIgnored: true, signal: controller.signal },
         );
+    });
+});
+
+describe('getRepoGroupChats', () => {
+    it('reads the aggregated chat feed from the owning server with comma-joined filters', async () => {
+        const controller = new AbortController();
+        await getRepoGroupChats('group a', {
+            limit: 25, cursor: 'c1', owners: ['ws-a', 'ws-b'], statuses: ['running', 'failed'], archived: 'include', type: 'chat',
+        }, REMOTE, controller.signal);
+        expect(clientForCalls).toEqual([REMOTE]);
+        expect(mockRequest).toHaveBeenCalledWith('/repo-groups/group%20a/chats', {
+            query: { limit: 25, cursor: 'c1', owners: 'ws-a,ws-b', statuses: 'running,failed', archived: 'include', type: 'chat' },
+            signal: controller.signal,
+        });
+    });
+
+    it('omits empty filters and uses the local client for a local group', async () => {
+        await getRepoGroupChats('grp', { owners: [], statuses: [] });
+        expect(clientForCalls).toEqual([undefined]);
+        expect(mockRequest).toHaveBeenCalledWith('/repo-groups/grp/chats', { query: {}, signal: undefined });
     });
 });
 

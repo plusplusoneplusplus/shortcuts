@@ -589,6 +589,25 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
     });
 
+    // Repo-group aggregated chats: a default-off live toggle that gates the
+    // group's combined chat list; the read-only feed route ships regardless.
+    it('exposes repo-group aggregated chats as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.repoGroupAggregatedChats');
+        expect(def, 'features.repoGroupAggregatedChats must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('repoGroupAggregatedChatsEnabled');
+        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui!.badge).toBe('experimental');
+        expect(def!.ui!.hint).toMatch(/disabled by default/i);
+        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.repoGroupAggregatedChats')).toBe(true);
+        expect(DEFAULT_CONFIG.features.repoGroupAggregatedChats).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).repoGroupAggregatedChatsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).repoGroupAggregatedChatsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { repoGroupAggregatedChats: true } }).repoGroupAggregatedChatsEnabled).toBe(true);
+    });
+
     it('exposes triggers as a default-on, restart-required feature', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'triggers.enabled');
         expect(def, 'triggers.enabled must be an admin setting').toBeDefined();
@@ -669,6 +688,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.commitChatLens': 'features',
         'features.commitChatLensDormantMode': 'features',
         'features.nativeCliSessions': 'features',
+        'features.repoGroupAggregatedChats': 'features',
         'features.repoGroupExclusiveWriter': 'features',
         // Not named in the placement spec — falls back to the Features default.
         'features.schedulesInScheduledSlide': 'features',

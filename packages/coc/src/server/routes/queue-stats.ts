@@ -14,7 +14,7 @@ import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import * as url from 'url';
 import * as fs from 'fs';
-import type { QueueStats, ProcessFilter, QueuedTask, PauseMarker } from '@plusplusoneplusplus/forge';
+import type { QueueStats, ProcessFilter, ProcessStore, QueuedTask, PauseMarker } from '@plusplusoneplusplus/forge';
 import {
     serializeTask,
     serializeTaskSummary,
@@ -28,18 +28,90 @@ import {
 import { processToHistorySummary, processToTaskDetail } from '../shared/process-history-mapper';
 import { projectBotControl, projectQueueTaskBotControl } from '../processes/bot-control-read-model';
 
+type QueueReadContext = Pick<QueueRouteContext, 'bridge' | 'store' | 'botManagedConversationsEnabled'>;
+
+const EMPTY_REPO_QUEUE_STATS: QueueStats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false, isAutopilotPaused: false };
+
+async function serializeReadTask(ctx: QueueReadContext, task: QueuedTask, enabled: boolean, detail = false): Promise<Record<string, unknown>> {
+    const serialized = detail ? serializeTask(task) : serializeTaskSummary(task);
+    const botControl = await projectQueueTaskBotControl(task, ctx.store, enabled);
+    return botControl ? { ...serialized, botControl } : serialized;
+}
+
+function serializeReadItem(ctx: QueueReadContext, item: QueuedTask | PauseMarker, enabled: boolean): Promise<Record<string, unknown>> {
+    return 'kind' in item
+        ? Promise.resolve(serializeQueueItemSummary(item))
+        : serializeReadTask(ctx, item, enabled);
+}
+
+/**
+ * One workspace's queue as `GET /api/queue?repoId=` serializes it (running
+ * tasks enriched with `pendingAskUserCount`). Read-only: shared with the
+ * repo-group chat feed so aggregated rows keep the exact per-repo shape.
+ */
+export async function readRepoQueueSnapshot(
+    ctx: QueueReadContext,
+    repoId: string,
+): Promise<{ queued: Record<string, unknown>[]; running: Record<string, unknown>[]; stats: QueueStats }> {
+    const enabled = ctx.botManagedConversationsEnabled?.() === true;
+    const mgr = await getManagerByRepoIdentifier(repoId, ctx.bridge, ctx.store);
+    if (!mgr) return { queued: [], running: [], stats: EMPTY_REPO_QUEUE_STATS };
+    const queued = await Promise.all(mgr.getQueueItems().map(item => serializeReadItem(ctx, item, enabled)));
+    const running = await Promise.all(mgr.getRunning().map(task => serializeReadTask(ctx, task, enabled)));
+    await enrichPendingAskUserCounts(ctx.store, running);
+    const repoGate = mgr.getRepoGate(repoId);
+    return { queued, running, stats: repoGate ? { ...mgr.getStats(), repoGate } : mgr.getStats() };
+}
+
+/**
+ * Enrich running tasks with `pendingAskUserCount` so the activity list can
+ * immediately surface tasks that are waiting on the user for input (before
+ * the WebSocket `process-updated` stream has had a chance to populate the
+ * global process index on the client). Use the narrow batch lookup so we
+ * don't load full process rows + all conversation turns just to read a
+ * single JSON-array length out of `metadata`.
+ */
+async function enrichPendingAskUserCounts(store: ProcessStore | undefined, running: Record<string, unknown>[]): Promise<void> {
+    if (!store || running.length === 0) return;
+    const storeWithCounts = store as unknown as {
+        getPendingAskUserCounts?: (ids: readonly string[]) => Map<string, number>;
+    };
+    const ids: string[] = [];
+    for (const task of running) {
+        if (typeof task.processId === 'string') ids.push(task.processId);
+    }
+    if (ids.length > 0 && typeof storeWithCounts.getPendingAskUserCounts === 'function') {
+        try {
+            const counts = storeWithCounts.getPendingAskUserCounts(ids);
+            for (const task of running) {
+                const pid = typeof task.processId === 'string' ? task.processId : undefined;
+                if (!pid) continue;
+                const n = counts.get(pid);
+                if (n && n > 0) task.pendingAskUserCount = n;
+            }
+        } catch {
+            // Best-effort enrichment — never fail the list response over it.
+        }
+    } else if (ids.length > 0) {
+        // Fallback path for stores without the batch helper (e.g. file store).
+        await Promise.all(running.map(async (task) => {
+            const processId = typeof task.processId === 'string' ? task.processId : undefined;
+            if (!processId) return;
+            try {
+                const proc = await store.getProcess(processId);
+                const count = Array.isArray(proc?.pendingAskUser) ? proc!.pendingAskUser!.length : 0;
+                if (count > 0) task.pendingAskUserCount = count;
+            } catch {
+                // Best-effort enrichment — never fail the list response over it.
+            }
+        }));
+    }
+}
+
 export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, state } = ctx;
-    async function serializeReadTask(task: QueuedTask, enabled: boolean, detail = false): Promise<Record<string, unknown>> {
-        const serialized = detail ? serializeTask(task) : serializeTaskSummary(task);
-        const botControl = await projectQueueTaskBotControl(task, store, enabled);
-        return botControl ? { ...serialized, botControl } : serialized;
-    }
-    function serializeReadItem(item: QueuedTask | PauseMarker, enabled: boolean): Promise<Record<string, unknown>> {
-        return 'kind' in item
-            ? Promise.resolve(serializeQueueItemSummary(item))
-            : serializeReadTask(item, enabled);
-    }
+    const serializeReadTaskFor = (task: QueuedTask, enabled: boolean, detail = false) => serializeReadTask(ctx, task, enabled, detail);
+    const serializeReadItemFor = (item: QueuedTask | PauseMarker, enabled: boolean) => serializeReadItem(ctx, item, enabled);
 
     // ------------------------------------------------------------------
     // GET /api/queue — List all queued tasks
@@ -64,75 +136,21 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             let stats: QueueStats;
 
             if (repoId) {
-                const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
-                if (mgr) {
-                    queued = await Promise.all(mgr.getQueueItems().map(item => serializeReadItem(item, botControlEnabled)));
-                    running = await Promise.all(mgr.getRunning().map(task => serializeReadTask(task, botControlEnabled)));
-                    stats = mgr.getStats();
-                    const repoGate = mgr.getRepoGate(repoId);
-                    if (repoGate) {
-                        stats = { ...stats, repoGate };
-                    }
-                } else {
-                    queued = [];
-                    running = [];
-                    stats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false, isAutopilotPaused: false };
-                }
+                ({ queued, running, stats } = await readRepoQueueSnapshot(ctx, repoId));
             } else {
                 queued = [];
                 running = [];
                 for (const manager of bridge.registry.getAllQueues().values()) {
-                    queued.push(...await Promise.all(manager.getQueueItems().map(item => serializeReadItem(item, botControlEnabled))));
-                    running.push(...await Promise.all(manager.getRunning().map(task => serializeReadTask(task, botControlEnabled))));
+                    queued.push(...await Promise.all(manager.getQueueItems().map(item => serializeReadItemFor(item, botControlEnabled))));
+                    running.push(...await Promise.all(manager.getRunning().map(task => serializeReadTaskFor(task, botControlEnabled))));
                 }
                 stats = getAggregateStats(bridge, state);
+                await enrichPendingAskUserCounts(store, running);
             }
 
             if (typeFilter) {
                 queued = queued.filter(t => t.kind === 'pause-marker' || t.type === typeFilter);
                 running = running.filter(t => t.type === typeFilter);
-            }
-
-            // Enrich running tasks with `pendingAskUserCount` so the activity list can
-            // immediately surface tasks that are waiting on the user for input (before
-            // the WebSocket `process-updated` stream has had a chance to populate the
-            // global process index on the client). Use the narrow batch lookup so we
-            // don't load full process rows + all conversation turns just to read a
-            // single JSON-array length out of `metadata`.
-            if (store && running.length > 0) {
-                const storeWithCounts = store as unknown as {
-                    getPendingAskUserCounts?: (ids: readonly string[]) => Map<string, number>;
-                };
-                const ids: string[] = [];
-                for (const task of running) {
-                    if (typeof task.processId === 'string') ids.push(task.processId);
-                }
-                if (ids.length > 0 && typeof storeWithCounts.getPendingAskUserCounts === 'function') {
-                    try {
-                        const counts = storeWithCounts.getPendingAskUserCounts(ids);
-                        for (const task of running) {
-                            const pid = typeof task.processId === 'string' ? task.processId : undefined;
-                            if (!pid) continue;
-                            const n = counts.get(pid);
-                            if (n && n > 0) task.pendingAskUserCount = n;
-                        }
-                    } catch {
-                        // Best-effort enrichment — never fail the list response over it.
-                    }
-                } else if (ids.length > 0) {
-                    // Fallback path for stores without the batch helper (e.g. file store).
-                    await Promise.all(running.map(async (task) => {
-                        const processId = typeof task.processId === 'string' ? task.processId : undefined;
-                        if (!processId) return;
-                        try {
-                            const proc = await store.getProcess(processId);
-                            const count = Array.isArray(proc?.pendingAskUser) ? proc!.pendingAskUser!.length : 0;
-                            if (count > 0) task.pendingAskUserCount = count;
-                        } catch {
-                            // Best-effort enrichment — never fail the list response over it.
-                        }
-                    }));
-                }
             }
 
             sendJSON(res, 200, { queued, running, stats });
@@ -186,12 +204,12 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 inMemoryHistory = mgr
-                    ? await Promise.all(mgr.getHistory().map(task => serializeReadTask(task, botControlEnabled)))
+                    ? await Promise.all(mgr.getHistory().map(task => serializeReadTaskFor(task, botControlEnabled)))
                     : [];
             } else {
                 inMemoryHistory = [];
                 for (const m of bridge.registry.getAllQueues().values()) {
-                    inMemoryHistory.push(...await Promise.all(m.getHistory().map(task => serializeReadTask(task, botControlEnabled))));
+                    inMemoryHistory.push(...await Promise.all(m.getHistory().map(task => serializeReadTaskFor(task, botControlEnabled))));
                 }
             }
 
@@ -362,7 +380,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             const task = bridge.findManagerForTask(id)?.getTask(id);
             const botControlEnabled = ctx.botManagedConversationsEnabled?.() === true;
             if (task) {
-                return sendJSON(res, 200, { task: await serializeReadTask(task, botControlEnabled, true) });
+                return sendJSON(res, 200, { task: await serializeReadTaskFor(task, botControlEnabled, true) });
             }
 
             // Fallback: check process store for completed/historical tasks

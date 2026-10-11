@@ -128,6 +128,7 @@ export interface PinnedScopeResolveContext {
     groupWorkspaces: readonly NamedWorkspace[];
     cloneStatus: Record<string, CloneStatus | string>;
     unseenCounts: Record<string, number>;
+    badgePartial?: Record<string, boolean>;
     /**
      * Which clone of each git-remote cluster the user was last on, keyed by
      * `groupKey(group)` and valued with a repo selection id. Owned by
@@ -158,6 +159,7 @@ export interface ResolvedPinnedScope {
     /** Status dot color; group pins have no member health of their own. */
     color: string;
     unseen: number;
+    partial?: boolean;
 }
 
 /**
@@ -217,6 +219,7 @@ export function resolvePinnedScopes(
             // borrowing any member's color would misreport the others.
             color: '#848484',
             unseen: ctx.unseenCounts[ref.key] ?? 0,
+            partial: ctx.badgePartial?.[ref.key],
         });
     }
     return out;

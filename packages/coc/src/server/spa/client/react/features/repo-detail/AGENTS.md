@@ -91,6 +91,13 @@ in the remote desktop shell. A null `gitList` removes the desktop Git section
 and lets chats fill the left column; group views pass null when membership is
 loaded and has no healthy member. Mobile publishes no live left width.
 
+With `repoGroupAggregatedChats` enabled, `RepoChatTab.detailOverride` hosts the
+member conversation beside the combined list. `RepoGroupMemberChatDetail` keeps
+the raw member workspace separate from its concrete server route through
+`WorkspaceOwnerContext`; clone hooks honor that owner only inside its subtree.
+Mobile member links push the shared detail; the shell's group-chat back callback
+clears the member route while retaining the mounted list and its scroll.
+
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and
 the workspace `NotesView` is keyed on. The *target* is the workspace new

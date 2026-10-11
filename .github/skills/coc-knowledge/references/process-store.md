@@ -37,6 +37,27 @@ processes and interrupted turns are excluded; other filters and pagination
 retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 `ConversationSearchResult` and reports malformed FTS syntax as an empty result.
 
+The repo-group chat feed reads the same `conversation_search` index with literal
+AND-token matching and plain excerpts, including requested archives. It excludes
+non-visible task definitions and internal Dream steps before projecting rows,
+counts or snippets. Search paginates one globally activity-ordered sequence of
+active and terminal matches, with owner/canonical identity ties and a cursor bound
+to membership, filters and activity snapshots. Non-search views retain first-page
+active rows/pins and history pagination. Group unread uses each
+owner's existing seen map against eligible completed/failed, unarchived chats,
+independently of list filters.
+Active feed rows carry `queueTaskId` only when read from a queue snapshot.
+Each owner's conversation-free process snapshot supplies durable activity for
+represented queue rows, including follow-ups whose durable status is terminal.
+The native history projection supplies parent and Ralph/For Each/Map Reduce/task-group
+presentation fields. Durable ownership qualifies parent links; recursive trees stay
+owner-local and cross-owner delegation remains a link. Queue identity, status and
+payload remain authoritative; unmatched rows retain queue timing. Durable activity
+drives global search ordering and cursor invalidation.
+Process-store-only rows retain canonical process identity without queue provenance.
+Queued task/follow-up cancellation uses that task id, while process-only cancellation
+uses the existing process endpoint with an exact owner workspace.
+
 `getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
 `listRecentProcesses` use typed Rust read-pool tasks with the same schema check.
 Forge maps returned SQLite rows into the existing date- and JSON-rich

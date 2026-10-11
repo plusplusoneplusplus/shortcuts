@@ -27,6 +27,16 @@ describe('ProcessesClient mock server contract', () => {
     vi.restoreAllMocks();
   });
 
+  it('preserves raw owner queries on pin and archive requests', async () => {
+    mock = await startMockServer();
+    mock.on('PATCH', '/api/processes/chat/pin', { body: { process: mockProcess() } });
+    mock.on('PATCH', '/api/processes/chat/archive', { body: { process: mockProcess() } });
+    const client = createClient(mock);
+    await client.processes.pin('chat', true, { workspace: 'owner-a' });
+    await client.processes.archive('chat', false, { workspace: 'owner-b' });
+    expect(mock.requests.map(request => request.query.workspace)).toEqual(['owner-a', 'owner-b']);
+  });
+
   it('serializes list filters and omits empty array filters', async () => {
     mock = await startMockServer();
     mock.on('GET', '/api/processes', { body: mockProcessListResponse() });

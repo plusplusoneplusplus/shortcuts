@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 
 export interface UseTypingPrewarmClientOptions {
     /** Current composer text. A non-empty trimmed value opens a typing window. */
@@ -56,6 +58,8 @@ export function useTypingPrewarmClient({
     // window. Reset when the composer empties or the conversation key changes.
     const prewarmedRef = useRef(false);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const owner = useWorkspaceOwner(workspaceId);
+    const client = useCocClient(workspaceId ?? undefined);
 
     const clearTimer = () => {
         if (timerRef.current !== null) {
@@ -70,7 +74,7 @@ export function useTypingPrewarmClient({
         prewarmedRef.current = false;
         clearTimer();
         return clearTimer;
-    }, [workspaceId, processId, provider]);
+    }, [workspaceId, processId, provider, client]);
 
     useEffect(() => {
         const hasText = input.trim().length > 0;
@@ -98,7 +102,7 @@ export function useTypingPrewarmClient({
                 // Route through the workspace-specific client so remote clones hit
                 // the correct CoC server. Best-effort: ignore the response and
                 // swallow rejections — the stream owns the dot, not this call.
-                void getCocClientForWorkspace(ws)
+                void (owner ? client : getCocClientForWorkspace(ws))
                     .processes.prewarm(pid, { workspace: ws, ...(provider ? { provider } : {}) })
                     .catch(() => {});
             } catch {
@@ -107,5 +111,5 @@ export function useTypingPrewarmClient({
         }, debounceMs);
 
         return clearTimer;
-    }, [input, workspaceId, processId, provider, enabled, debounceMs]);
+    }, [input, workspaceId, processId, provider, enabled, debounceMs, owner, client]);
 }

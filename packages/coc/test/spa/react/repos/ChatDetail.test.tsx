@@ -375,6 +375,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ImplementPlanCard
 
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 
 // ── Provider wrapper ───────────────────────────────────────────────────────
 
@@ -666,6 +667,54 @@ describe('ChatDetail', () => {
         act(() => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', { detail: { baseUrl, message } })));
         expect(screen.queryByTestId('bot-management-badge')).toBeNull();
         expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith(`${baseUrl}/api/processes/`))).toBe(true);
+    });
+
+    it('loads a group member through its scoped server and isolates draft/cache identity from equal process ids', async () => {
+        const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+        const owner = {
+            workspaceId: 'ws-member',
+            selectionId: 'remote:server-a:ws-member',
+            baseUrl: 'https://owner.example.test',
+        };
+        registerCloneBaseUrls([{ workspaceId: 'ws-member', serverId: 'server-b', baseUrl: 'https://other.example.test' }]);
+        setupStandardFetch(undefined, makeProcess({ id: 'queue_chat', endTime: '2026-01-01T00:00:00Z', metadata: { workspaceId: 'ws-member', mode: 'ask' } }));
+        const view = render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <ChatDetail taskId="queue_chat" workspaceId="ws-member" sourceSelectionId={owner.selectionId} />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await waitFor(() => expect(screen.queryByTestId('activity-chat-loading')).toBeNull());
+        await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
+            String(url) === 'https://owner.example.test/api/processes/queue_chat?workspace=ws-member')).toBe(true));
+        await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) =>
+            String(url) === 'https://owner.example.test/api/workspaces/ws-member/seen-state'
+            && init?.method === 'PATCH')).toBe(true));
+        const seenWrite = fetchMock.mock.calls.find(([url, init]) =>
+            String(url).endsWith('/workspaces/ws-member/seen-state') && init?.method === 'PATCH');
+        expect(JSON.parse(String(seenWrite?.[1]?.body)).entries[0].processId).toBe('queue_chat');
+        await waitFor(() => expect(dispatchEvent.mock.calls.some(([event]) => event instanceof CustomEvent
+            && event.type === 'coc-group-chat-seen'
+            && event.detail.workspaceId === owner.workspaceId
+            && event.detail.baseUrl === owner.baseUrl
+            && event.detail.entries[0].processId === 'queue_chat')).toBe(true));
+        expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('https://other.example.test/'))).toBe(false);
+        expect(mockState.getDraft).toHaveBeenCalledWith('remote:server-a:ws-member|queue_chat');
+        expect(mockState.getDraft).not.toHaveBeenCalledWith('queue_chat');
+        expect((globalThis as any).__useSendMessage_opts.workspaceId).toBe('ws-member');
+        expect((globalThis as any).__useSendMessage_opts.draftKey).toBe('remote:server-a:ws-member|queue_chat');
+        const reads = () => fetchMock.mock.calls.filter(([url]) =>
+            String(url) === 'https://owner.example.test/api/processes/queue_chat?workspace=ws-member').length;
+        const initialReads = reads();
+        const message = { type: 'process-updated', process: { id: 'queue_chat', workspaceId: 'ws-member' } };
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', { detail: message })));
+        act(() => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
+            detail: { baseUrl: 'https://other.example.test', message },
+        })));
+        expect(reads()).toBe(initialReads);
+        act(() => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
+            detail: { baseUrl: owner.baseUrl, message },
+        })));
+        await waitFor(() => expect(reads()).toBe(initialReads + 1));
+        view.unmount();
+        expect(mockState.setDraft).toHaveBeenCalledWith('remote:server-a:ws-member|queue_chat', expect.any(String), expect.any(String));
     });
 
     it.each(['teams', 'whatsapp'] as const)('shows persisted %s management and clears a live release without a reload', async source => {

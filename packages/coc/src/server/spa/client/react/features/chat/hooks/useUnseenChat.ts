@@ -9,7 +9,8 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { fetchSeenMap, patchSeenState, deleteSeenEntry } from '../../../hooks/preferences/seenStateApi';
+import { fetchSeenMap, patchSeenState, deleteSeenEntry, SEEN_STATE_CHANGED_EVENT, type SeenStateChange } from '../../../hooks/preferences/seenStateApi';
+import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 
 const STORAGE_PREFIX = 'coc-unseen-';
 
@@ -55,6 +56,7 @@ export function useUnseenChat(
     history: any[],
     selectedTaskId: string | null,
 ): useUnseenChatResult {
+    const baseUrl = useCloneBaseUrl(workspaceId);
     const [seenMap, setSeenMap] = useState<Record<string, string>>({});
     // Synchronous mirror of seenMap. The mutators below run inside event
     // handlers and must report whether they actually changed state *before* the
@@ -76,8 +78,8 @@ export function useUnseenChat(
         if (pendingEntriesRef.current.length === 0) return;
         const entries = pendingEntriesRef.current;
         pendingEntriesRef.current = [];
-        patchSeenState(workspaceId, entries).catch(() => { /* fire-and-forget */ });
-    }, [workspaceId]);
+        patchSeenState(workspaceId, entries, { baseUrl }).catch(err => console.warn('Could not mark conversations as read', err));
+    }, [workspaceId, baseUrl]);
 
     const schedulePatch = useCallback((entries: Array<{ processId: string; seenAt: string }>) => {
         pendingEntriesRef.current.push(...entries);
@@ -93,11 +95,11 @@ export function useUnseenChat(
 
         (async () => {
             try {
-                const serverMap = await fetchSeenMap(workspaceId);
+                const serverMap = await fetchSeenMap(workspaceId, { baseUrl });
                 if (cancelled) return;
 
                 // One-time localStorage migration
-                const storageKey = STORAGE_PREFIX + workspaceId;
+                const storageKey = STORAGE_PREFIX + (baseUrl ? `${baseUrl}|${workspaceId}` : workspaceId);
                 let localMap: Record<string, string> | null = null;
                 try {
                     const raw = localStorage.getItem(storageKey);
@@ -115,7 +117,7 @@ export function useUnseenChat(
                         }
                     }
                     if (migrationEntries.length > 0) {
-                        patchSeenState(workspaceId, migrationEntries).catch(() => {});
+                        patchSeenState(workspaceId, migrationEntries, { baseUrl }).catch(err => console.warn('Could not migrate conversation read state', err));
                     }
                     // Remove localStorage key after migration
                     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
@@ -124,7 +126,10 @@ export function useUnseenChat(
                     if (!cancelled) setSeenMap(serverMap);
                 }
 
-                if (!cancelled) initializedRef.current = true;
+                if (!cancelled) {
+                    initializedRef.current = true;
+                    seededRef.current = Object.keys(serverMap).length > 0;
+                }
             } catch {
                 // Server unavailable — start with empty map
                 if (!cancelled) {
@@ -140,8 +145,29 @@ export function useUnseenChat(
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
             }
+            pendingEntriesRef.current = [];
+            prevSelectedRef.current = null;
         };
-    }, [workspaceId]);
+    }, [workspaceId, baseUrl]);
+
+    useEffect(() => {
+        const onChanged = (event: Event) => {
+            const detail = (event as CustomEvent<SeenStateChange>).detail;
+            if (detail?.workspaceId !== workspaceId || detail.baseUrl !== baseUrl) return;
+            // Merge only the committed mutation, preserving unrelated optimistic marks.
+            const updated = { ...seenMapRef.current };
+            if ('entries' in detail) {
+                for (const entry of detail.entries) updated[entry.processId] = entry.seenAt;
+            } else {
+                delete updated[detail.processId];
+            }
+            seededRef.current = true;
+            seenMapRef.current = updated;
+            setSeenMap(updated);
+        };
+        window.addEventListener(SEEN_STATE_CHANGED_EVENT, onChanged);
+        return () => window.removeEventListener(SEEN_STATE_CHANGED_EVENT, onChanged);
+    }, [workspaceId, baseUrl]);
 
     // First-visit seeding: when server map is empty and no localStorage key exists,
     // seed all completed tasks as seen so we don't flash everything as "unseen".
@@ -161,9 +187,9 @@ export function useUnseenChat(
         }
         if (entries.length > 0) {
             setSeenMap(updated);
-            patchSeenState(workspaceId, entries).catch(() => {});
+            patchSeenState(workspaceId, entries, { baseUrl }).catch(err => console.warn('Could not initialize conversation read state', err));
         }
-    }, [history, seenMap, workspaceId]);
+    }, [history, seenMap, workspaceId, baseUrl]);
 
     // Auto-mark currently selected task as seen when user navigates to it.
     // Guard: skip when only history changed (e.g. running → completed transition).
@@ -256,10 +282,11 @@ export function useUnseenChat(
         const updated = { ...seenMapRef.current };
         delete updated[processId];
         seenMapRef.current = updated;
-        deleteSeenEntry(workspaceId, processId).catch(() => {});
+        pendingEntriesRef.current = pendingEntriesRef.current.filter(entry => entry.processId !== processId);
+        deleteSeenEntry(workspaceId, processId, { baseUrl }).catch(err => console.warn('Could not mark conversation as unread', err));
         setSeenMap(updated);
         return true;
-    }, [workspaceId]);
+    }, [workspaceId, baseUrl]);
 
     return { unseenProcessIds, unseenCount: unseenProcessIds.size, markSeen, markAllSeen, markTasksSeen, markUnseen };
 }

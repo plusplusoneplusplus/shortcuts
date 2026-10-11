@@ -18,6 +18,7 @@ import { cloneWsUrl } from '../api/wsUrl';
 import { lookupCloneBaseUrl, subscribeCloneBaseUrl } from './cloneRegistry';
 import { isRemoteWorkspace } from './remoteWorkspaceAggregation';
 import type { RepoData } from './repoGrouping';
+import { useWorkspaceOwner } from './workspaceOwnerContext';
 
 /** A workspace object, or a bare workspace id. */
 export type CloneRef = string | { id?: unknown; baseUrl?: unknown; remote?: unknown };
@@ -83,12 +84,14 @@ function resolveCloneBaseUrlForHook(ref: CloneRef | undefined): string | undefin
  */
 export function useCloneBaseUrl(ref?: CloneRef): string | undefined {
     const id = typeof ref === 'string' ? ref : refId(ref);
+    const owner = useWorkspaceOwner(id);
     const subscribe = useCallback(
         (onChange: () => void) => subscribeCloneBaseUrl(id, onChange),
         [id],
     );
     const getSnapshot = () => resolveCloneBaseUrlForHook(ref);
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    const registryBaseUrl = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    return owner ? owner.baseUrl : registryBaseUrl;
 }
 
 /**

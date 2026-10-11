@@ -61,7 +61,7 @@ export interface WorkspaceIdentityChipProps {
      * git-remote clustering that `activeGroupKey` / `data-remote-key` refer to;
      * the group id therefore gets its own `data-repo-group-id` attribute.
      */
-    groupIdentity?: { id: string; name: string };
+    groupIdentity?: { id: string; name: string; unread?: number; partial?: boolean };
     /**
      * When true the chip renders as a bare picker trigger (chevron only, no dot /
      * name / badges). Set by `ScopeSlideSwitcher` when a *pinned* segment is
@@ -273,6 +273,8 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                 />
             )}
             <span className="truncate">{displayName}</span>
+            {groupIdentity && ((groupIdentity.unread ?? 0) > 0 || groupIdentity.partial) &&
+                <UnseenBadge count={groupIdentity.unread ?? 0} partial={groupIdentity.partial} testId="group-scope-unseen-badge" />}
             {!groupIdentity && activeSummary && activeSummary.cloneCount > 1 && (
                 <CloneCountBadge count={activeSummary.cloneCount} className="hidden lg:inline-flex" />
             )}

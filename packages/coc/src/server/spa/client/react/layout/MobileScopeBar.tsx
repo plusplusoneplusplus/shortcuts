@@ -43,6 +43,7 @@ interface ActiveScope {
     color: string;
     cloneCount: number;
     unseen: number;
+    partial?: boolean;
 }
 
 /**
@@ -62,7 +63,7 @@ export function MobileScopeBar() {
 
 function MobileScopeBarBody() {
     const { state, dispatch } = useApp();
-    const { repos, badgeCounts, unseenCounts: processUnseenCounts, remoteGroupWorkspaces } = useRepos();
+    const { repos, badgeCounts, badgePartial, unseenCounts: processUnseenCounts, remoteGroupWorkspaces } = useRepos();
     const unseenCounts = badgeCounts ?? processUnseenCounts;
     const repoQueueMap = useQueue().state.repoQueueMap;
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -93,6 +94,7 @@ function MobileScopeBarBody() {
                 name: resolveRepoGroupDisplayName(scopeId, state.workspaces, remoteGroupWorkspaces),
                 cloneCount: 1,
                 unseen,
+                partial: badgePartial?.[scopeId],
             };
         }
         const repo = findRepoBySelectionId(repos, scopeId);
@@ -104,7 +106,7 @@ function MobileScopeBarBody() {
         }
         const summary = summarizeRemote(group, cloneStatus, unseenCounts);
         return { icon: null, isGroup: false, name: summary.name, color: summary.color, cloneCount: summary.cloneCount, unseen: summary.unseen };
-    }, [scopeId, repos, unseenCounts, repoQueueMap, state.workspaces, remoteGroupWorkspaces]);
+    }, [scopeId, repos, unseenCounts, badgePartial, repoQueueMap, state.workspaces, remoteGroupWorkspaces]);
 
     const switchTab = useCallback((tab: DashboardTab) => {
         setMoreOpen(false);
@@ -149,7 +151,8 @@ function MobileScopeBarBody() {
                     {activeScope?.icon && <span aria-hidden>{activeScope.icon}</span>}
                     <span className="truncate">{activeScope?.name ?? 'Select workspace'}</span>
                     {activeScope && activeScope.cloneCount > 1 && <CloneCountBadge count={activeScope.cloneCount} />}
-                    {activeScope && activeScope.unseen > 0 && <UnseenBadge count={activeScope.unseen} testId="mobile-scope-unseen-badge" />}
+                    {activeScope && (activeScope.unseen > 0 || activeScope.partial) &&
+                        <UnseenBadge count={activeScope.unseen} partial={activeScope.partial} testId="mobile-scope-unseen-badge" />}
                     <Chevron />
                 </button>
                 <button

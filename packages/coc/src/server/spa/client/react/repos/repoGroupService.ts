@@ -19,6 +19,8 @@ import type {
     ExplorerRepoGroupSearchResponse,
     ExplorerSearchOptions,
     RemoteServer,
+    RepoGroupChatFeedQuery,
+    RepoGroupChatFeedResponse,
     WorkspaceInfo,
 } from '@plusplusoneplusplus/coc-client';
 import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
@@ -103,6 +105,29 @@ export function createRepoGroup(request: { name: string; members: string[]; desc
 
 export function getRepoGroup(groupId: string, baseUrl?: string): Promise<RepoGroupDetails> {
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`);
+}
+
+/**
+ * One page of the group's aggregated chat list (group-owned + every member's
+ * chats), read from the group's OWNING server via `baseUrl`. Read-only: the
+ * server never moves, merges or re-owns anything. List filters travel as
+ * comma-joined values, which is what the endpoint parses.
+ */
+export function getRepoGroupChats(
+    groupId: string,
+    query: RepoGroupChatFeedQuery = {},
+    baseUrl?: string,
+    signal?: AbortSignal,
+): Promise<RepoGroupChatFeedResponse> {
+    const params: Record<string, string | number> = {};
+    if (query.limit !== undefined) params.limit = query.limit;
+    if (query.cursor) params.cursor = query.cursor;
+    if (query.owners && query.owners.length > 0) params.owners = query.owners.join(',');
+    if (query.statuses && query.statuses.length > 0) params.statuses = query.statuses.join(',');
+    if (query.archived) params.archived = query.archived;
+    if (query.type) params.type = query.type;
+    if (query.q) params.q = query.q;
+    return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}/chats`, { query: params, signal });
 }
 
 export function searchRepoGroupFiles(

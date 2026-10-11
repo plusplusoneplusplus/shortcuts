@@ -86,10 +86,11 @@ export function CloneCountBadge({ count, className = '' }: { count: number; clas
 }
 
 /** The red unseen-chat count carried by both cluster and pinned rows. */
-export function UnseenBadge({ count, testId = 'remote-unseen-badge' }: { count: number; testId?: string }) {
+export function UnseenBadge({ count, partial, testId = 'remote-unseen-badge' }: { count: number; partial?: boolean; testId?: string }) {
     return (
-        <span className={unreadBadgeClass} data-testid={testId} aria-label={`${count} needing attention`}>
-            {formatUnreadCount(count)}
+        <span className={unreadBadgeClass} data-testid={testId} data-partial={partial || undefined}
+            aria-label={`${count} needing attention${partial ? ', partial' : ''}`}>
+            {formatUnreadCount(count)}{partial && count <= 99 ? '+' : ''}
         </span>
     );
 }

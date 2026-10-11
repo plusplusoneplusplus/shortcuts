@@ -20,10 +20,11 @@
  * With no remote workspaces present, both return the input array identity
  * unchanged, so the local flow (and memo identity) is unaffected.
  */
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { useApp, useAppOptional } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { getRemoteWorkspacesSnapshot, isRemoteWorkspace } from './remoteWorkspaceAggregation';
+import { WorkspaceOwnerContext } from './workspaceOwnerContext';
 
 /** The minimum a workspace needs to participate in path resolution. */
 export interface ResolvableWorkspace {
@@ -52,13 +53,24 @@ export function useWorkspacesWithRemote(): ResolvableWorkspace[] {
     const { state } = useApp();
     const repos = useReposOptional();
     const reposList = repos?.repos;
+    const owner = useContext(WorkspaceOwnerContext);
 
     return useMemo(() => {
         const remote = reposList
             ? reposList.map((r) => r.workspace).filter(isRemoteWorkspace)
             : getRemoteWorkspacesSnapshot();
+        if (owner) {
+            const candidates = owner.baseUrl
+                ? remote.filter(workspace => workspace.baseUrl === owner.baseUrl)
+                : state.workspaces;
+            return [
+                { id: owner.workspaceId, rootPath: owner.rootPath
+                    ?? candidates.find(workspace => workspace.id === owner.workspaceId)?.rootPath },
+                ...candidates.filter(workspace => workspace.id !== owner.workspaceId),
+            ];
+        }
         return merge(state.workspaces as ResolvableWorkspace[], remote as ResolvableWorkspace[]);
-    }, [state.workspaces, reposList]);
+    }, [state.workspaces, reposList, owner]);
 }
 
 /**

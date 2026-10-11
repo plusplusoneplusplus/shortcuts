@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { cloneApiBase } from '../../../repos/cloneRegistry';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { QueuedMessage } from '../../../utils/chatUtils';
 import { readBotControl } from '../../../utils/botControl';
@@ -192,6 +194,8 @@ export function useChatSSE({
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
     const askUserBatchesRef = useRef<Map<string, Map<number, AskUserQuestion>>>(new Map());
+    const owner = useWorkspaceOwner(workspaceId);
+    const client = useCocClient(workspaceId);
 
     const stopStreaming = useCallback(() => {
         eventSourceRef.current?.close();
@@ -207,7 +211,9 @@ export function useChatSSE({
         if (!taskId || task?.status !== 'running' || !processId) return;
         if (typeof EventSource === 'undefined') return;
 
-        const es = new EventSource(`${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream`);
+        const es = new EventSource(owner
+            ? client.processes.streamUrl(processId, { workspace: owner.workspaceId })
+            : `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
         setIsStreaming(true);
         const sseStartTime = Date.now();
@@ -224,10 +230,12 @@ export function useChatSSE({
                 ? { ...turn, provider: runningTurn.provider, segmentId: runningTurn.segmentId }
                 : turn;
 
-        const findAssistantIndex = (turns: ClientConversationTurn[]): number =>
-            runningTurn
-                ? turns.findIndex(turn => turn.role === 'assistant' && turn.turnIndex === runningTurn.turnIndex)
+        const findAssistantIndex = (turns: ClientConversationTurn[]): number => {
+            const activeTurn = runningTurn;
+            return activeTurn
+                ? turns.findIndex(turn => turn.role === 'assistant' && turn.turnIndex === activeTurn.turnIndex)
                 : turns.at(-1)?.role === 'assistant' ? turns.length - 1 : -1;
+        };
 
         const ensureAssistantTurn = (prev: ClientConversationTurn[]): { turns: ClientConversationTurn[]; assistantIndex: number } => {
             const assistantIndex = findAssistantIndex(prev);
@@ -596,7 +604,7 @@ export function useChatSSE({
         });
 
         return () => { es.close(); eventSourceRef.current = null; setIsStreaming(false); };
-    }, [taskId, task?.status, processId, workspaceId, refreshConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [taskId, task?.status, processId, workspaceId, refreshConversation, owner, client]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { stopStreaming };
 }

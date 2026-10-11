@@ -137,6 +137,7 @@ export interface AdminResolvedConfig {
     arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
     repoGroupExclusiveWriter?: boolean;
+    repoGroupAggregatedChats?: boolean;
     chatProviderSwitching?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
@@ -299,6 +300,8 @@ export interface RuntimeDashboardConfig {
     arxivPaperIngestEnabled: boolean;
     singleRowShellEnabled: boolean;
     repoGroupExclusiveWriterEnabled: boolean;
+    /** Whether a repo group's Workspace chat list aggregates member chats (feature flag, default off). */
+    repoGroupAggregatedChatsEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
     /** Whether user-created chat folders are enabled in the chat list (feature flag, default off). */
     chatFoldersEnabled: boolean;

@@ -65,6 +65,34 @@ describe('resolveDashboardRoute — repo group settings', () => {
         expect(navigations(r)).toEqual([]);
     });
 
+    describe('resolveDashboardRoute — group member chats', () => {
+        it.each(['group-ai', 'remote:server-a:group-ai'])('retains group navigation without selecting a member in its queue: %s', group => {
+            const suffix = '/chats/member/ws-member/queue_chat';
+            const r = resolveDashboardRoute('#repos/' + encodeURIComponent(group) + suffix, makeCtx());
+            expect(appActions(r)).toContainEqual({ type: 'SET_SELECTED_REPO', id: group });
+            expect(appActions(r)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
+            expect(appActions(r)).toContainEqual({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: group, suffix });
+            expect(queueActions(r)).toEqual([{ type: 'SELECT_QUEUE_TASK', id: null, repoId: group }]);
+        });
+
+        it('replays both group scope and owner from the remembered route', () => {
+            const group = 'remote:server-a:group-ai';
+            const suffix = '/chats/member/ws-member/queue_chat';
+            const r = resolveDashboardRoute('#repos/' + encodeURIComponent(group), makeCtx({
+                repoRouteState: { [group]: suffix },
+            }));
+            expect(navigations(r)).toContainEqual({
+                kind: 'navigate', hash: '#repos/' + encodeURIComponent(group) + suffix, mode: 'replaceState',
+            });
+            expect(queueActions(r)).toEqual([{ type: 'SELECT_QUEUE_TASK', id: null, repoId: group }]);
+        });
+
+        it.each(['/chats/member', '/chats/member/ws-member'])('never treats a partial member link as a group task: %s', suffix => {
+            const r = resolveDashboardRoute('#repos/group-ai' + suffix, makeCtx());
+            expect(queueActions(r)).toEqual([{ type: 'SELECT_QUEUE_TASK', id: null, repoId: 'group-ai' }]);
+        });
+    });
+
     it('remembers the bare /settings suffix so returning to the group lands there', () => {
         const r = resolveDashboardRoute('#repos/group-frontend/settings', makeCtx());
         expect(appActions(r)).toContainEqual({

@@ -20,7 +20,8 @@ const { getClientSpy, prewarmSpy } = vi.hoisted(() => {
     return { getClientSpy, prewarmSpy };
 });
 
-vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../../src/server/spa/client/react/repos/cloneRegistry')>(),
     getCocClientForWorkspace: (ws: string | null | undefined) => getClientSpy(ws),
 }));
 

@@ -20,9 +20,11 @@
  * A root change (new ref) resets the expansion; a generation guard drops any
  * in-flight child fetch whose root has since changed.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExplorerTreeEntry } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
 import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { isAbsolutePath } from '../../../utils/path-resolution';
@@ -93,6 +95,9 @@ export function useSourceCanvasTree(
     // in a remote conversation carries that remote workspace id, and without its
     // `rootPath` a relative path can't be anchored.
     const workspaces = useWorkspacesWithRemote();
+    const owner = useContext(WorkspaceOwnerContext);
+    const client = useCocClient(owner?.workspaceId);
+    const getClient = useCallback((workspaceId: string) => owner ? client : getCocClientForWorkspace(workspaceId), [owner, client]);
 
     const [root, setRoot] = useState<RootState>(LOADING_ROOT);
     const [childrenMap, setChildrenMap] = useState<Map<string, ExplorerTreeEntry[]>>(new Map());
@@ -159,7 +164,7 @@ export function useSourceCanvasTree(
                 // stat each candidate. Resolve ownership there, then route the
                 // root and every lazy child request through the owning member.
                 if (resolvedWorkspaceId.startsWith('group-') && !isAbsolutePath(resolvedPath)) {
-                    const preview = await getCocClientForWorkspace(resolvedWorkspaceId)
+                    const preview = await getClient(resolvedWorkspaceId)
                         .tasks.previewWorkspaceFile(resolvedWorkspaceId, resolvedPath);
                     if (gen !== genRef.current) {
                         return;
@@ -189,7 +194,7 @@ export function useSourceCanvasTree(
 
                 // Route through the clone registry so a remote workspace's tree
                 // comes from its own server; local ids use the default client.
-                const res = await getCocClientForWorkspace(resolvedWorkspaceId)
+                const res = await getClient(resolvedWorkspaceId)
                     .explorer.tree(resolvedWorkspaceId, { path: relativePath });
                 if (gen !== genRef.current) {
                     return;
@@ -226,7 +231,7 @@ export function useSourceCanvasTree(
         };
 
         void loadRoot();
-    }, [fullPath, sourceFilePath, wsHint, workspaces]);
+    }, [fullPath, sourceFilePath, wsHint, workspaces, getClient]);
 
     const fetchChildren = useCallback((path: string) => {
         const wsId = wsIdRef.current;
@@ -250,7 +255,7 @@ export function useSourceCanvasTree(
             next.delete(path);
             return next;
         });
-        getCocClientForWorkspace(wsId)
+        getClient(wsId)
             .explorer.tree(wsId, { path })
             .then((res) => {
                 if (gen !== genRef.current) {
@@ -285,7 +290,7 @@ export function useSourceCanvasTree(
                     return next;
                 });
             });
-    }, []);
+    }, [getClient]);
 
     const toggle = useCallback((path: string) => {
         const wasExpanded = expandedRef.current.has(path);

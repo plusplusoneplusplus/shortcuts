@@ -4,6 +4,8 @@ import { getSpaCocClient } from '../../api/cocClient';
 import { getConversationTurns } from '../../features/chat/conversation/chatConversationUtils';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
+import { useCocClient } from '../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 
@@ -13,10 +15,13 @@ export interface UseQueuedTaskPollOptions {
     setTask: (t: any) => void;
     setProcessDetails: (p: any) => void;
     setTurnsAndRef: SetTurnsAndRef;
+    workspaceId?: string;
 }
 
 /** Polls every 2 s while task is queued, transitioning to running state when the server starts it. */
-export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef }: UseQueuedTaskPollOptions): void {
+export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef, workspaceId }: UseQueuedTaskPollOptions): void {
+    const client = useCocClient(workspaceId);
+    const owner = useWorkspaceOwner(workspaceId);
     useEffect(() => {
         if (!taskId || task?.status !== 'queued') return;
         // The queue endpoint expects a bare task id. The taskId received here
@@ -24,9 +29,11 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
         // ChatDetail through `/activity/queue_<id>`); strip the prefix so the
         // server can locate the in-memory queued task.
         const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
+        let cancelled = false;
         const interval = setInterval(async () => {
             try {
-                const data = await getSpaCocClient().queue.getTask(bareTaskId);
+                const data = await (workspaceId ? client : getSpaCocClient()).queue.getTask(bareTaskId);
+                if (cancelled) return;
                 const t = data?.task;
                 if (t && t.status !== 'queued') {
                     setTask(t);
@@ -36,7 +43,10 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
                     // synthesised `queued` processDetails in place and keeping the
                     // PendingTaskInfoPanel visible after task completion.
                     const pid = t.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(bareTaskId));
-                    const procData = await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                    const procData = workspaceId
+                        ? await client.processes.get(pid, owner ? { workspace: owner.workspaceId } : undefined)
+                        : await fetchApi(`/processes/${encodeURIComponent(pid)}`);
+                    if (cancelled) return;
                     setProcessDetails(procData?.process || null);
                     const loadedTurns = getConversationTurns(procData, t);
                     if (t.status === 'running') {
@@ -54,6 +64,6 @@ export function useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, se
                 }
             } catch { /* ignore */ }
         }, 2000);
-        return () => clearInterval(interval);
-    }, [taskId, task?.status, setTurnsAndRef]); // eslint-disable-line react-hooks/exhaustive-deps
+        return () => { cancelled = true; clearInterval(interval); };
+    }, [taskId, task?.status, setTurnsAndRef, workspaceId, client, owner]); // eslint-disable-line react-hooks/exhaustive-deps
 }

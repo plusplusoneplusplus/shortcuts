@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { cloneApiBase } from '../../../repos/cloneRegistry';
 import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 
 /**
  * Real-time process-scoped warm status for a conversation, pushed from the backend
@@ -59,6 +61,8 @@ export function useWarmClientStatus({
     enabled = true,
 }: UseWarmClientStatusOptions): WarmClientStatus {
     const [status, setStatus] = useState<WarmClientStatus>('cold');
+    const owner = useWorkspaceOwner(workspaceId);
+    const client = useCocClient(workspaceId ?? undefined);
 
     useEffect(() => {
         // No conversation to reflect (or disabled) → stay invisible.
@@ -79,7 +83,9 @@ export function useWarmClientStatus({
 
         const providerQuery = provider ? `&provider=${encodeURIComponent(provider)}` : '';
         const es = new EventSource(
-            `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream?warm=1${providerQuery}`,
+            owner
+                ? client.processes.streamUrl(processId, { workspace: owner.workspaceId }) + `&warm=1${providerQuery}`
+                : `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream?warm=1${providerQuery}`,
         );
 
         es.addEventListener('warm_status', (event: Event) => {
@@ -102,7 +108,7 @@ export function useWarmClientStatus({
         return () => {
             es.close();
         };
-    }, [workspaceId, processId, provider, enabled]);
+    }, [workspaceId, processId, provider, enabled, owner, client]);
 
     return status;
 }

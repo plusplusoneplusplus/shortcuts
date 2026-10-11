@@ -79,7 +79,7 @@ function PinGroupGlyph() {
 export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const { state } = useApp();
     const { state: queueState } = useQueue();
-    const { remoteGroupWorkspaces, badgeCounts, unseenCounts: processUnseenCounts } = useRepos();
+    const { remoteGroupWorkspaces, badgeCounts, badgePartial, unseenCounts: processUnseenCounts } = useRepos();
     const unseenCounts = badgeCounts ?? processUnseenCounts;
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
@@ -187,10 +187,11 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 groupWorkspaces,
                 cloneStatus,
                 unseenCounts: unseenCounts ?? {},
+                badgePartial,
                 lastCloneByRemote: state.lastCloneByRemote,
             })
             : []),
-        [pinnedScopesEnabled, pins, groups, groupWorkspaces, cloneStatus, unseenCounts, state.lastCloneByRemote],
+        [pinnedScopesEnabled, pins, groups, groupWorkspaces, cloneStatus, unseenCounts, badgePartial, state.lastCloneByRemote],
     );
 
     // A repo group is a virtual scope without its own segment: unless pinned it
@@ -248,8 +249,9 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const groupIdentity = useMemo(() => {
         if (!groupScopeActive || activePin) return undefined;
         const id = state.selectedRepoId!;
-        return { id, name: resolveRepoGroupDisplayName(id, state.workspaces, remoteGroupWorkspaces) };
-    }, [groupScopeActive, activePin, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
+        return { id, name: resolveRepoGroupDisplayName(id, state.workspaces, remoteGroupWorkspaces),
+            unread: unseenCounts[id] ?? 0, partial: badgePartial?.[id] };
+    }, [groupScopeActive, activePin, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces, unseenCounts, badgePartial]);
 
     // Whenever some *other* segment owns the active scope — a pinned repo, a
     // pinned group, My Work or My Life — the chip must stop echoing a repo
@@ -390,14 +392,15 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                     the whole pin strip goes (below `lg`) — a pin without its name
                     is still a usable target, a missing pin is not. */}
                 <span className="hidden xl:inline truncate">{pin.label}</span>
-                {pin.unseen > 0 && (
+                {(pin.unseen > 0 || pin.partial) && (
                     <span
                         data-testid="scope-pin-unseen-badge"
                         data-pin-id={pin.id}
-                        aria-label={`${pin.unseen} unread`}
+                        aria-label={`${pin.unseen} unread${pin.partial ? ', partial' : ''}`}
+                        data-partial={pin.partial || undefined}
                         className="min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
                     >
-                        {pin.unseen > 99 ? '99+' : pin.unseen}
+                        {pin.unseen > 99 ? '99+' : `${pin.unseen}${pin.partial ? '+' : ''}`}
                     </span>
                 )}
             </button>
