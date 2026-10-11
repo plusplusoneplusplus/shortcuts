@@ -89,6 +89,7 @@ import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/fo
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 import { validateBotControlMetadata } from '../messaging/bot-control-metadata';
 import { processOperationAdmission } from '../processes/process-operation-admission';
+import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import { connectorMessagingOrigin, isMessagingJobOrigin } from '../messaging/job-notices';
 
 // ============================================================================
@@ -489,15 +490,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             await rehydrateImagesIfNeeded(task.payload as any);
             // Extract turnSource from payload context for cron/wakeup/trigger-triggered follow-ups
             const ctx = followUpPayload.context as Record<string, unknown> | undefined;
-            let turnSource: TurnSource | undefined;
-            if (ctx?.source === 'cron' || ctx?.source === 'wakeup' || ctx?.source === 'trigger') {
-                turnSource = {
-                    source: ctx.source as 'cron' | 'wakeup' | 'trigger',
-                    ...(typeof ctx.cronId === 'string' ? { cronId: ctx.cronId } : {}),
-                    ...(typeof ctx.wakeupId === 'string' ? { wakeupId: ctx.wakeupId } : {}),
-                    ...(typeof ctx.triggerId === 'string' ? { triggerId: ctx.triggerId } : {}),
-                };
-            }
+            const turnSource = readAutomationTurnSource(ctx);
             // Mark the target process as running BEFORE invoking the follow-up
             // executor. This closes a race where the queue has already broadcast
             // that this task is running while the process row still reads as
@@ -533,6 +526,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     timestamp: new Date(),
                                     turnIndex: index,
                                     relayRequestId: followUpPayload.relayRequestId,
+                                    ...(turnSource ? { turnSource } : {}),
                                     ...(followUpPayload.images?.length ? { images: followUpPayload.images } : {}),
                                     timeline: [],
                                 }),

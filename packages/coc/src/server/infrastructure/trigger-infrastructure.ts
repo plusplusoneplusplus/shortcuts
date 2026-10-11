@@ -27,6 +27,10 @@ import { createPrStatusFetcher, type PrStatusFetcher } from '../triggers/pr-stat
 import { QueueActionExecutor } from '../triggers/queue-action-executor';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import type { TriggerEvent } from '../triggers/trigger-types';
+import type { QueueExecutorBridge } from '../core/api-handler';
+import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
+import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
+import { SentinelTodoTriggerFirer } from '../triggers/sentinel-todo-trigger-firer';
 
 // ============================================================================
 // Types
@@ -35,6 +39,7 @@ import type { TriggerEvent } from '../triggers/trigger-types';
 export interface TriggerInfrastructure {
     triggerStore: TriggerStore;
     triggerManager: TriggerManager;
+    sentinelTodoFirer: SentinelTodoTriggerFirer;
     /** Shared creation path for server tools. */
     createTrigger: CreateTriggerFn;
     /** Timer registry for scheduling trigger ticks. */
@@ -50,6 +55,9 @@ export interface TriggerInfrastructureOptions {
     dataDir: string;
     /** Aggregate queue facade for follow-up delivery (the action executor). */
     queueFacade: TaskQueueManager;
+    /** Owner-routed queue admission; enqueueAdmitted is used under the shared process lock. */
+    deliveryBridge: QueueExecutorBridge;
+    recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
     /** Process store instance (SQLite DB is extracted from SqliteProcessStore). */
     store: ProcessStore;
     /** Emit trigger change events (for WebSocket broadcasting). */
@@ -117,8 +125,17 @@ export async function createTriggerInfrastructure(
         processStore: store,
         queueManager: queueFacade,
         resolveWorkspaceId,
+        messageDelivery: new ProcessMessageDeliveryService({
+            store, bridge: options.deliveryBridge, listTasks: () => queueFacade.getAll(),
+        }),
+        recoverPendingMessages: options.recoverPendingMessages,
     });
 
+    const sentinelTodoFirer = new SentinelTodoTriggerFirer({
+        triggers: triggerStore, todos: new SentinelTodoStore(db), processes: store,
+        executor: actionExecutor, emit, now,
+        onPendingDelivery: trigger => triggerManager.schedulePendingDelivery(trigger),
+    });
     const triggerManager = new TriggerManager({
         store: triggerStore,
         timerRegistry,
@@ -127,12 +144,37 @@ export async function createTriggerInfrastructure(
             return event.monitor === 'ci-failure' ? ciFailureEvaluator : prMergedEvaluator;
         },
         actionExecutor,
+        oneShotFirer: sentinelTodoFirer,
         emit,
         ...(now ? { now } : {}),
     });
 
     // Restore active trigger timers from the persisted nextTickAt values.
     triggerManager.armAll();
+    await triggerManager.reconcilePendingDeliveries();
+    for (const trigger of triggerStore.getAll()) {
+        if (!trigger.binding || trigger.delivery?.state !== 'delivered') continue;
+        try {
+            await options.recoverPendingMessages?.(trigger.workspaceId, trigger.processId);
+        } catch (error) {
+            getLogger().error(LogCategory.AI, `[TriggerInfra] Buffered wake recovery failed for ${trigger.id}: ${String(error)}`);
+            const pending = triggerStore.transaction(() => {
+                const current = triggerStore.getById(trigger.id);
+                if (current?.delivery?.state !== 'delivered') return;
+                const updated = {
+                    ...current, revision: current.revision + 1,
+                    outcomeReason: error instanceof Error ? error.message : String(error),
+                    delivery: { ...current.delivery, state: 'pending' as const },
+                };
+                triggerStore.update(updated);
+                return updated;
+            });
+            if (pending) {
+                triggerManager.schedulePendingDelivery(pending);
+                emit({ type: 'trigger-updated', trigger: pending });
+            }
+        }
+    }
 
     // Log startup state after timers have been restored.
     const activeCount = triggerStore.getActive().length;
@@ -145,14 +187,14 @@ export async function createTriggerInfrastructure(
     }
 
     const dispose = () => {
-        timerRegistry.clear();
+        triggerManager.shutdownAll();
         if (ownsDb) {
             try { db.close(); } catch { /* already closed */ }
         }
     };
 
     return {
-        triggerStore, triggerManager, timerRegistry, emit, dispose,
+        triggerStore, triggerManager, sentinelTodoFirer, timerRegistry, emit, dispose,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit, enabled: true,
             resolveWorkspaceId: options.resolveWorkspaceId, now: options.now,

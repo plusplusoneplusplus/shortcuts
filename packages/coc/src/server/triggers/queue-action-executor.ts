@@ -24,6 +24,7 @@ import { toTaskId, isQueueProcessId, getLogger, LogCategory } from '@plusplusone
 import type { ActionExecutor } from './trigger-manager';
 import type { Trigger, TriggerAction } from './trigger-types';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
+import { emitDeliveryEvents, type ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 
 // ============================================================================
 // Types
@@ -36,6 +37,9 @@ export interface QueueActionExecutorDeps {
     queueManager: TaskQueueManager | null;
     /** Resolve processId → workspaceId for multi-repo routing. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    /** Shared serialized, durable admission for one-shot Sentinel wakes. */
+    messageDelivery?: Pick<ProcessMessageDeliveryService, 'deliverOnce'>;
+    recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
 }
 
 /** Process statuses that mean a turn is in flight (buffer instead of enqueue). */
@@ -59,12 +63,19 @@ export class QueueActionExecutor implements ActionExecutor {
 
         const processId = action.processId;
         if (trigger.binding) {
-            const process = await this.deps.processStore.getProcess(processId);
-            if (processId !== trigger.processId || process?.id !== processId
-                || process.metadata?.workspaceId !== trigger.workspaceId
-                || process.metadata?.mode !== 'sentinel') {
-                throw new Error('Sentinel chat not found in this workspace');
+            if (!this.deps.messageDelivery || !trigger.delivery || processId !== trigger.processId) {
+                throw new Error('Sentinel wake requires durable message admission');
             }
+            const result = await this.deps.messageDelivery.deliverOnce(
+                trigger.workspaceId, processId, trigger.delivery.deliveryId, {
+                    content: prompt, displayContent: prompt,
+                    turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: trigger.delivery.deliveryId },
+                });
+            emitDeliveryEvents(this.deps.processStore, processId, result.events);
+            if (result.path === 'buffered') {
+                await this.deps.recoverPendingMessages?.(trigger.workspaceId, processId);
+            }
+            return;
         }
         if (await this.isProcessMidTurn(processId)) {
             await this.bufferPendingMessage(trigger, action, prompt);
@@ -106,9 +117,6 @@ export class QueueActionExecutor implements ActionExecutor {
         const queueManager = this.deps.queueManager!;
         const processId = action.processId;
         const workspaceId = await this.deps.resolveWorkspaceId(processId);
-        if (trigger.binding && workspaceId !== trigger.workspaceId) {
-            throw new Error('Sentinel workspace could not be resolved');
-        }
         // Explicit action mode (autopilot) wins; otherwise inherit the process default.
         const mode = await resolveFollowUpMode(this.deps.processStore, processId,
             action.mode === 'inherit' ? undefined : action.mode);
@@ -159,11 +167,6 @@ export class QueueActionExecutor implements ActionExecutor {
             createdAt: new Date().toISOString(),
         };
         const current = await this.deps.processStore.getProcess(processId);
-        if (trigger.binding && (current?.id !== processId
-            || current.metadata?.workspaceId !== trigger.workspaceId
-            || current.metadata?.mode !== 'sentinel')) {
-            throw new Error('Sentinel chat not found in this workspace');
-        }
         const existing = current?.pendingMessages ?? [];
         await this.deps.processStore.updateProcess(processId, {
             pendingMessages: [...existing, pendingMsg],

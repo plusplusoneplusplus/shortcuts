@@ -147,6 +147,7 @@ interface TurnRow {
     provider: string | null;
     segment_id: string | null;
     relay_request_id: string | null;
+    turn_source: string | null;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -492,6 +493,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         provider: turn.provider ?? null,
         segment_id: turn.segmentId ?? null,
         relay_request_id: turn.relayRequestId ?? null,
+        turn_source: jsonStringify(turn.turnSource),
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -552,6 +554,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         ...(row.provider ? { provider: row.provider as ConversationTurn['provider'] } : {}),
         ...(row.segment_id ? { segmentId: row.segment_id } : {}),
         ...(row.relay_request_id !== null ? { relayRequestId: row.relay_request_id } : {}),
+        ...(row.turn_source ? { turnSource: jsonParse<ConversationTurn['turnSource']>(row.turn_source) } : {}),
         ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
         deletedAt: isoToDate(row.deleted_at),
         pinnedAt: isoToDate(row.pinned_at),
@@ -682,12 +685,12 @@ export class SqliteProcessStore implements ProcessStore {
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                 token_usage, paste_externalized, model, mode, sdk_event_id, display_only,
-                compaction_summary, repo_group_context, chat_mode_context, provider, segment_id, relay_request_id
+                compaction_summary, repo_group_context, chat_mode_context, provider, segment_id, relay_request_id, turn_source
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
                 @token_usage, @paste_externalized, @model, @mode, @sdk_event_id, @display_only,
-                @compaction_summary, @repo_group_context, @chat_mode_context, @provider, @segment_id, @relay_request_id
+                @compaction_summary, @repo_group_context, @chat_mode_context, @provider, @segment_id, @relay_request_id, @turn_source
             )
         `);
 
@@ -845,12 +848,12 @@ export class SqliteProcessStore implements ProcessStore {
                   (process_id, turn_index, role, content, timestamp, streaming,
                    interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                    token_usage, paste_externalized, model, mode, display_only, compaction_summary,
-                   repo_group_context, chat_mode_context, provider, segment_id, relay_request_id)
+                   repo_group_context, chat_mode_context, provider, segment_id, relay_request_id, turn_source)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
                   interrupted, interruption_reason, tool_calls, timeline, images, 1, suggestions,
                   token_usage, paste_externalized, model, mode, display_only, compaction_summary,
-                  repo_group_context, chat_mode_context, provider, segment_id, relay_request_id
+                  repo_group_context, chat_mode_context, provider, segment_id, relay_request_id, turn_source
                 FROM conversation_turns
                 WHERE process_id = ?
                   AND deleted_at IS NULL

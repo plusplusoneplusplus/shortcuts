@@ -605,6 +605,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerInfra = await createTriggerInfrastructure({
             dataDir,
             queueFacade,
+            deliveryBridge: bridge,
+            recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
             store,
             emit: (event) => {
                 try {

@@ -98,6 +98,7 @@ export interface ActionExecutor {
  */
 export interface OneShotFirer {
     fire(triggerId: string, reason: TriggerDelivery['reason']): Promise<void>;
+    deliverPending?(triggerId: string): Promise<void>;
 }
 
 export type TriggerEventEmit = (event: TriggerChangeEvent) => void;
@@ -122,6 +123,7 @@ export interface TriggerManagerDeps {
 export class TriggerManager {
     private readonly deps: TriggerManagerDeps;
     private readonly now: () => number;
+    private stopped = false;
 
     /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
     private readonly scheduler: PeriodicEntryScheduler<Trigger>;
@@ -131,7 +133,10 @@ export class TriggerManager {
         this.now = deps.now ?? Date.now;
         this.scheduler = new PeriodicEntryScheduler<Trigger>({
             timerRegistry: deps.timerRegistry,
-            getFallbackIntervalMs: trigger => getPollInterval(trigger.event),
+            getFallbackIntervalMs: trigger => trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
+                ? getPrMergedPollDelay({ ...trigger.event, consecutiveErrors: trigger.delivery.consecutiveErrors ?? 0 })
+                : getPollInterval(trigger.event),
+            isActive: trigger => trigger.status === 'active' || trigger.delivery?.state === 'pending',
             persist: trigger => this.deps.store.update(trigger),
             onTick: id => { void this.onTick(id); },
             logLabel: 'TriggerManager',
@@ -148,7 +153,19 @@ export class TriggerManager {
      * triggers are loaded from the DB.
      */
     armAll(): void {
-        this.scheduler.armAll(this.deps.store.getActive());
+        this.scheduler.armAll(this.deps.store.getAll().filter(trigger =>
+            trigger.status === 'active' || trigger.delivery?.state === 'pending'));
+    }
+
+    /** Reconcile durable wake receipts before ordinary queue processing starts. */
+    async reconcilePendingDeliveries(): Promise<void> {
+        for (const trigger of this.deps.store.getAll()) {
+            if (trigger.delivery?.state === 'pending') await this.retryDelivery(trigger.id);
+        }
+    }
+
+    schedulePendingDelivery(trigger: Trigger): void {
+        if (!this.stopped && trigger.delivery?.state === 'pending') this.reschedule(trigger);
     }
 
     /**
@@ -156,7 +173,7 @@ export class TriggerManager {
      * (or falls back to the event's poll cadence from now).
      */
     arm(trigger: Trigger): void {
-        this.scheduler.arm(trigger);
+        if (!this.stopped) this.scheduler.arm(trigger);
     }
 
     /** Cancel the timer for a trigger (does not mutate persisted state). */
@@ -169,6 +186,7 @@ export class TriggerManager {
      * persisted state. Active triggers re-arm on the next startup.
      */
     shutdownAll(): void {
+        this.stopped = true;
         this.scheduler.shutdownAll();
     }
 
@@ -192,10 +210,15 @@ export class TriggerManager {
     // ========================================================================
 
     private async onTick(triggerId: string): Promise<void> {
+        if (this.stopped) return;
         const logger = getLogger();
         const trigger = this.deps.store.getById(triggerId);
         if (!trigger) {
             logger.warn(LogCategory.AI, `[TriggerManager] Tick for unknown trigger ${triggerId}`);
+            return;
+        }
+        if (trigger.delivery?.state === 'pending') {
+            await this.retryDelivery(triggerId);
             return;
         }
         if (trigger.status !== 'active') return;
@@ -218,12 +241,14 @@ export class TriggerManager {
             outcome = await evaluator.evaluate(trigger);
         } catch (err) {
             logger.warn(LogCategory.AI, `[TriggerManager] Evaluator error for ${triggerId}: ${err instanceof Error ? err.message : String(err)}`);
-            this.reschedule(trigger);
+            const current = this.deps.store.getById(triggerId);
+            if (current?.status === 'active') this.reschedule(current);
             return;
         }
 
         // Re-read in case state changed during the async evaluate (e.g. the
         // in-flight action completed and cleared the guard).
+        if (this.stopped) return;
         const current = this.deps.store.getById(triggerId);
         if (!current || current.status !== 'active') return;
         if (current.revision !== trigger.revision) {
@@ -297,13 +322,27 @@ export class TriggerManager {
 
     /** Persist `nextTickAt` and (re)arm the timer at the event's poll cadence. */
     private reschedule(trigger: Trigger): void {
-        this.scheduler.reschedule(trigger);
+        if (!this.stopped) this.scheduler.reschedule(trigger);
+    }
+
+    private async retryDelivery(triggerId: string): Promise<void> {
+        try {
+            if (!this.deps.oneShotFirer?.deliverPending) {
+                throw new Error('One-shot delivery admission is unavailable');
+            }
+            await this.deps.oneShotFirer.deliverPending(triggerId);
+        } catch (error) {
+            getLogger().error(LogCategory.AI, `[TriggerManager] Pending delivery failed for ${triggerId}: ${String(error)}`);
+        }
+        const current = this.deps.store.getById(triggerId);
+        if (current?.delivery?.state === 'pending') this.reschedule(current);
+        else this.disarm(triggerId);
     }
 
     /**
      * Hand a bound one-shot fire to the `OneShotFirer` after persisting the
-     * observed event (merge commit/title). Without a firer, or when it throws,
-     * the trigger stays active and the next tick retries.
+     * observed event (merge commit/title). Failures before the terminal commit
+     * retry watching; committed pending deliveries retry through their own receipt.
      */
     private async fireOneShot(trigger: Trigger, outcome: EvaluationOutcome): Promise<void> {
         const logger = getLogger();

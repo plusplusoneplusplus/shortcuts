@@ -76,6 +76,7 @@ export interface TriggerDelivery {
   state: 'pending' | 'delivered';
   deliveredAt?: string;
   itemRevision?: number;
+  consecutiveErrors?: number;
 }
 
 export interface Trigger {

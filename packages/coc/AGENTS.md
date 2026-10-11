@@ -122,7 +122,9 @@ references before editing. Paths are package-relative.
   workspace/conversation and canonical PR origin; arming failures preserve PR success.
   Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
   rule revision and owner-scoped item, and persists the terminal decision, immutable
-  wake prompt and delivery identity before queue work. Trigger code never writes item
+  wake prompt and delivery identity before queue work. Wakes use shared
+  `ProcessMessageDeliveryService.deliverOnce` admission and the existing trigger
+  scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in

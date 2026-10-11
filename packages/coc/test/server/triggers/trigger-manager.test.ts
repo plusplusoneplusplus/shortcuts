@@ -130,6 +130,38 @@ function makeManager(
 describe('TriggerManager', () => {
     let h: Harness;
 
+    it.each(['paused', 'disarmed', 'removed'] as const)(
+        'does not resurrect a %s rule when an in-flight evaluator fails', async status => {
+            const trigger = makeTrigger();
+            h = makeManager({ evaluate: vi.fn(async () => {
+                if (status === 'removed') h.store.delete(trigger.id);
+                else h.store.update({ ...trigger, status, revision: 2, nextTickAt: null });
+                throw new Error('Provider read failed');
+            }) });
+            h.store.insert(trigger);
+            h.manager.arm(trigger);
+            h.timer._fire(trigger.id);
+            await flush();
+            expect(h.timer.has(trigger.id)).toBe(false);
+            expect(h.store.getById(trigger.id)?.status).toBe(status === 'removed' ? undefined : status);
+            expect(h.action.calls).toEqual([]);
+        });
+
+    it('does not admit or rearm a wake after shutdown while evaluation is in flight', async () => {
+        const trigger = makeTrigger();
+        h = makeManager({ evaluate: vi.fn(async () => {
+            h.manager.shutdownAll();
+            return { fire: true, event: trigger.event };
+        }) });
+        h.store.insert(trigger);
+        h.manager.arm(trigger);
+        h.timer._fire(trigger.id);
+        await flush();
+        expect(h.action.calls).toEqual([]);
+        expect(h.timer.has(trigger.id)).toBe(false);
+        expect(h.store.getById(trigger.id)).toEqual(trigger);
+    });
+
     describe('arm + tick → fire', () => {
         beforeEach(() => {
             const failing: TriggerEvent = {

@@ -9,6 +9,7 @@ import { compactProcess } from '../processes/compact-process';
 import { maybeAutoCompactAfterResponse, settleAutoCompaction } from '../processes/auto-compact';
 import { APIError } from '../errors';
 import { pendingMessageTask } from '../processes/queued-pending-message';
+import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import type { PendingMessage } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
@@ -655,7 +656,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     } else {
                         const binding = readActiveProviderSession(proc);
                         const model = resolveModelForProvider(resolveChatProviderOrDefault(deferred.provider ?? proc.metadata?.provider), deferred.model).model;
-                        const source = deferred.context?.source;
+                        const turnSource = readAutomationTurnSource(deferred.context);
                         const appended = await this.store.appendConversationTurn(proc.id, index => ({
                             role: 'user', content: deferred.displayContent ?? deferred.content,
                             timestamp: new Date(deferred.createdAt), turnIndex: index, timeline: [],
@@ -663,7 +664,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                             ...(deferred.pasteExternalized ? { pasteExternalized: true } : {}),
                             ...(model ? { model } : {}),
                             ...(deferred.mode ? { mode: normalizeChatMode(deferred.mode) } : {}),
-                            ...(['cron', 'wakeup', 'trigger'].includes(String(source)) ? { turnSource: deferred.context as unknown as TurnSource } : {}),
+                            ...(turnSource ? { turnSource } : {}),
                             ...turnProviderAttribution(deferred.provider, deferred.provider === binding.provider ? binding.segmentId : undefined),
                         }), { additionalUpdates: current => ({ pendingMessages: current.pendingMessages?.filter(message => message.id !== deferred.id) }) });
                         task.payload.historyCutoffTurnIndex = appended?.turn.turnIndex;
@@ -1098,6 +1099,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // Append the deferred user turn at the correct position (after the
         // assistant response that just completed) before enqueuing the follow-up.
         const turnContent = nextMsg.displayContent ?? nextMsg.content;
+        const turnSource = readAutomationTurnSource(nextMsg.context);
         const existingUserTurn = receiptId ? proc.conversationTurns?.find(turn => turn.role === 'user'
             && turn.relayRequestId === receiptId) : undefined;
         const appendedUserTurn = existingUserTurn ? { turn: existingUserTurn } : await this.store.appendConversationTurn(
@@ -1108,6 +1110,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 timestamp: new Date(nextMsg.createdAt),
                 turnIndex,
                 ...(nextMsg.relayRequestId !== undefined ? { relayRequestId: nextMsg.relayRequestId } : {}),
+                ...(turnSource ? { turnSource } : {}),
                 timeline: [],
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),

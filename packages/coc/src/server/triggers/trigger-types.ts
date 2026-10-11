@@ -185,6 +185,8 @@ export interface TriggerDelivery {
     deliveredAt?: string;
     /** Item revision captured when the fire committed. */
     itemRevision?: number;
+    /** Delivery admission failures, independent of provider-read errors. */
+    consecutiveErrors?: number;
 }
 
 // ============================================================================
@@ -230,8 +232,8 @@ export interface Trigger {
     lastTickAt: string | null;
 
     /**
-     * ISO timestamp of the next scheduled tick (null if not active). Persisted
-     * so active triggers can be re-armed across server restarts.
+     * ISO timestamp of the next watch tick or pending-delivery retry. Persisted
+     * so watching and delivery can be re-armed across server restarts.
      */
     nextTickAt: string | null;
 

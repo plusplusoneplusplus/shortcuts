@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, type ProcessStore } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoItem, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { ActionExecutor, OneShotFirer, TriggerEventEmit } from './trigger-manager';
 import type { TriggerStore } from './trigger-store';
@@ -13,6 +13,8 @@ export interface SentinelTodoTriggerFirerDeps {
     executor: ActionExecutor;
     emit: TriggerEventEmit;
     now?: () => number;
+    /** Reuses the trigger manager's scheduler for pending delivery retries. */
+    onPendingDelivery?: (trigger: Trigger) => void;
 }
 
 /**
@@ -59,9 +61,18 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
             return terminal;
         });
         if (!committed) return;
-        this.deps.emit({ type: committed.outcome === 'fired' ? 'trigger-fired' : 'trigger-disarmed', trigger: committed });
-        if (committed.outcome !== 'fired') return;
+        this.emit(committed, committed.outcome === 'fired' ? 'trigger-fired' : 'trigger-disarmed');
+        if (committed.outcome !== 'fired') {
+            if (committed.delivery) this.deps.onPendingDelivery?.(committed);
+            return;
+        }
+        await this.deliverPending(committed.id);
+    }
 
+    /** Replays the saved prompt; the shared admission service deduplicates its fixed identity. */
+    async deliverPending(triggerId: string): Promise<void> {
+        const committed = this.deps.triggers.getById(triggerId);
+        if (!committed?.binding || committed.delivery?.state !== 'pending') return;
         try {
             await this.deps.executor.execute(committed, committed.action, committed.action.prompt);
         } catch (error) {
@@ -75,18 +86,32 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
     private updateDelivery(committed: Trigger, error?: string): void {
         const updated = this.deps.triggers.transaction(() => {
             const current = this.deps.triggers.getById(committed.id);
-            if (!current?.delivery || current.delivery.deliveryId !== committed.delivery?.deliveryId) return;
+            if (!current?.delivery || current.delivery.deliveryId !== committed.delivery?.deliveryId
+                || current.delivery.state !== 'pending') return;
             const next: Trigger = {
                 ...current, outcomeReason: error, revision: current.revision + 1,
+                nextTickAt: null,
+                outcome: error === undefined ? 'fired' : current.outcome,
                 delivery: error === undefined ? {
                     ...current.delivery, state: 'delivered',
                     deliveredAt: new Date((this.deps.now ?? Date.now)()).toISOString(),
-                } : current.delivery,
+                } : { ...current.delivery, consecutiveErrors: (current.delivery.consecutiveErrors ?? 0) + 1 },
             };
             this.deps.triggers.update(next);
             return next;
         });
-        if (updated) this.deps.emit({ type: 'trigger-updated', trigger: updated });
+        if (updated) {
+            this.emit(updated, 'trigger-updated');
+            if (updated.delivery?.state === 'pending') this.deps.onPendingDelivery?.(updated);
+        }
+    }
+
+    private emit(trigger: Trigger, type: Parameters<TriggerEventEmit>[0]['type']): void {
+        try { this.deps.emit({ type, trigger }); }
+        catch (error) {
+            getLogger().warn(LogCategory.AI,
+                `[SentinelTodoTriggerFirer] Notification failed for ${trigger.id}: ${String(error)}`);
+        }
     }
 }
 

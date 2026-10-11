@@ -11,10 +11,10 @@ const store = createProcessStore(dataDir, backend?); // always SqliteProcessStor
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 39.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 41.
 
 `SqliteProcessStore` opens the file through `NativeDatabase` from `coc-native`.
-The schema definition and v1→v39 migration ladder stay in TypeScript and run
+The schema definition and v1→v41 migration ladder stay in TypeScript and run
 through that synchronous handle. Startup treats a missing or stale native addon
 as a hard failure; the process store has no JavaScript SQLite fallback.
 The process writer runs in WAL mode with `synchronous=NORMAL`, including when
@@ -172,7 +172,7 @@ ownership before persistence and process-added events.
 Initial admissions carry URL-free `QueuedTask.botControl` outside public payloads,
 persisted in schema-39 `queue_tasks.bot_control`. Queue restore/requeue preserves
 trusted control; lifecycle registration rereads it under process mutation admission
-before execution. Native readers accept schemas 38/39. Existing-topic adoption in
+before execution. Native readers accept schemas 38–41. Existing-topic adoption in
 `server/messaging/bot-control-admission.ts` verifies workspace/controller, persists
 a claim before enqueue, and compensates only that exact new claim on rejection.
 Observers are reconciled against exact accepted task/workspace/process/request/prompt
@@ -243,7 +243,12 @@ unauthorized links are omitted without discarding valid provenance.
   `relay-request-projection.ts`) is the reference semantics; SQLite answers with bounded
   reads on `idx_turns_relay_request` and `idx_turns_process_role` in one read transaction,
   selecting only the settled answer text and failure evidence between a request's user
-  turn and the next user turn. The Rust process reader accepts schema versions 38–40.
+  turn and the next user turn. The Rust process reader accepts schema versions 38–41.
+- **Automation attribution** — `ConversationTurn.turnSource` is JSON in `turn_source`.
+  Cron, wakeup and trigger identifiers survive SQLite, JSON serialization and fork
+  copies. Sentinel wakes carry their fixed `deliveryId` on queue/pending context,
+  turn source and `relayRequestId`, allowing shared message admission to reconcile
+  accepted receipts even after queue history is cleared.
 - **Active provider/session binding** — `AIProcess.activeProviderSession` (`active_provider_session`,
   JSON) holds `{ provider, sessionId?, segmentId, firstTurnIndex }` as one value, so the provider
   that owns the conversation and the native session id that continues it can only ever be written

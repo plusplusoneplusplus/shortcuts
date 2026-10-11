@@ -206,43 +206,32 @@ describe('QueueActionExecutor', () => {
                 });
             }
 
-            it.each(['completed', 'running'])('carries deliveryId and Sentinel mode for a %s owner', async status => {
-                const store = makeProcessStore({
-                    [PROC]: { id: PROC, status, metadata: { mode: 'sentinel', workspaceId: 'ws_a' } },
-                });
+            it('uses the shared durable admission service with its owner and fixed identity', async () => {
+                const store = makeProcessStore();
                 const queue = makeQueueManager();
+                const deliverOnce = vi.fn().mockResolvedValue({ events: [] });
+                const exec = new QueueActionExecutor({
+                    processStore: store as any, queueManager: queue as any,
+                    resolveWorkspaceId: async () => 'ws_other',
+                    messageDelivery: { deliverOnce },
+                });
                 const trigger = wakeTrigger();
-                await makeExecutor(store, queue).execute(trigger, trigger.action, 'wake');
-                const message = status === 'running'
-                    ? store.procs.get(PROC).pendingMessages[0] : queue.enqueued[0].payload;
-                expect(message.mode).toBe('sentinel');
-                expect(message.context).toEqual({ triggerId: trigger.id, deliveryId: 'delivery-1', source: 'trigger' });
+                await exec.execute(trigger, trigger.action, 'wake');
+                expect(deliverOnce).toHaveBeenCalledWith('ws_a', PROC, 'delivery-1', {
+                    content: 'wake', displayContent: 'wake',
+                    turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: 'delivery-1' },
+                });
+                expect(queue.enqueue).not.toHaveBeenCalled();
             });
 
-            it.each(['missing', 'foreign', 'not-sentinel'])('never wakes a %s owner', async state => {
-                const store = makeProcessStore(state === 'missing' ? {} : {
-                    [PROC]: { id: PROC, status: 'completed', metadata: {
-                        mode: state === 'not-sentinel' ? 'ask' : 'sentinel',
-                        workspaceId: state === 'foreign' ? 'ws_other' : 'ws_a',
-                    } },
-                });
+            it('never falls back to unsafe admission when the durable service is missing', async () => {
+                const store = makeProcessStore();
                 const queue = makeQueueManager();
                 const trigger = wakeTrigger();
                 await expect(makeExecutor(store, queue).execute(trigger, trigger.action, 'wake'))
-                    .rejects.toThrow('Sentinel chat not found');
+                    .rejects.toThrow('durable message admission');
                 expect(queue.enqueue).not.toHaveBeenCalled();
                 expect(store.updateProcess).not.toHaveBeenCalled();
-            });
-
-            it('does not fall back to another workspace when owner routing disagrees', async () => {
-                const store = makeProcessStore({
-                    [PROC]: { id: PROC, status: 'completed', metadata: { mode: 'sentinel', workspaceId: 'ws_a' } },
-                });
-                const queue = makeQueueManager();
-                const trigger = wakeTrigger();
-                await expect(makeExecutor(store, queue, 'ws_other').execute(trigger, trigger.action, 'wake'))
-                    .rejects.toThrow('Sentinel workspace could not be resolved');
-                expect(queue.enqueue).not.toHaveBeenCalled();
             });
         });
     });

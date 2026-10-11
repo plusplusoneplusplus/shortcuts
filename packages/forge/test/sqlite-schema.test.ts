@@ -95,18 +95,18 @@ describe('sqlite-schema', () => {
     });
 
     describe('PRAGMAs', () => {
-        it('adds workload indexes to an existing V40 database without changing its typed layout', () => {
+        it('adds workload indexes to an existing database without changing its schema version', () => {
             initializeDatabase(db);
             db.exec(`DROP INDEX idx_sentinel_mirror_deliveries_sending;
                 DROP INDEX idx_sentinel_mirror_deliveries_workspace_heads;
                 DROP INDEX idx_sentinel_mirror_deliveries_staged_answers`);
-            expect(getSchemaVersion(db)).toBe(40);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
             initializeDatabase(db);
             const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all<{ name: string }>();
             expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_sending');
             expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_workspace_heads');
             expect(indexes.map(row => row.name)).toContain('idx_sentinel_mirror_deliveries_staged_answers');
-            expect(getSchemaVersion(db)).toBe(40);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
         });
         it('enables foreign_keys', () => {
             initializeDatabase(db);
@@ -135,7 +135,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(40);
+        expect(SCHEMA_VERSION).toBe(41);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1217,7 +1217,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(40);
+            expect(SCHEMA_VERSION).toBe(41);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1444,7 +1444,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(40);
+            expect(SCHEMA_VERSION).toBe(41);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1645,7 +1645,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(40);
+            expect(SCHEMA_VERSION).toBe(41);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',

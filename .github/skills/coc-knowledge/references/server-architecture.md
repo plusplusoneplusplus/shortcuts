@@ -131,9 +131,13 @@ fixed delivery identity and immutable wake prompt before queue work; delivery er
 remain pending and visible. The prompt treats PR metadata as untrusted data and asks
 the Sentinel to delegate through `send_to_conversation` with `todoItemId`.
 
-`QueueActionExecutor` checks bound Sentinel ownership, inherits its mode and carries
-`deliveryId` in queue and pending-message context. Trigger firing never writes item
-status, calls delegation admission or selects a remote execution target.
+`QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
+which serializes owner checks and dedupe with human follow-ups and buffer draining.
+The fixed delivery ID survives queue tasks, pending messages and durable turn attribution.
+Trigger infrastructure reconciles pending deliveries after `armAll()`; retry/backoff
+uses the same trigger manager and timer registry, independently of PR watching.
+Accepted busy-parent buffers recover through the existing owner-routed drain.
+Trigger firing never writes item status, calls delegation admission or selects a remote target.
 
 ### Temporary chat image lifetime
 
