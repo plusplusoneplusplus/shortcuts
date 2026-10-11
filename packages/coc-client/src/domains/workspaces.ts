@@ -34,6 +34,7 @@ import type {
   UpdateWorkspaceMcpConfigRequest,
   UpdateWorkspaceMcpConfigResponse,
   ProcessHistoryResponse,
+  WorkspacePinnedResponse,
   WorkspaceHistoryQuery,
   WorkspaceInfo,
   WorkspaceInstructionMode,
@@ -264,6 +265,11 @@ export class WorkspacesClient {
     return this.transport.request<ProcessHistoryResponse>(`/workspaces/${encodePathSegment(workspaceId)}/history`, {
       query: serializeHistoryQuery(query),
     });
+  }
+
+  /** All pinned processes in the workspace, independent of history pagination. */
+  pinned(workspaceId: string): Promise<WorkspacePinnedResponse> {
+    return this.transport.request<WorkspacePinnedResponse>(`/workspaces/${encodePathSegment(workspaceId)}/pinned`);
   }
 
   /** Count Ralph sessions waiting for human input in this workspace. */

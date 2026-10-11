@@ -313,6 +313,28 @@ export interface ProcessHistoryResponse {
   limit: number;
 }
 
+/** Every pinned process in one workspace (`GET /workspaces/:id/pinned`), newest pin first. */
+export interface WorkspacePinnedEntry {
+  id: string;
+  workspaceId?: string;
+  type: string;
+  status: string;
+  title?: string;
+  customTitle?: string;
+  promptPreview?: string;
+  lastMessagePreview?: string;
+  parentProcessId?: string;
+  pinnedAt?: string;
+  archived?: boolean;
+  mode?: string;
+  workItemId?: string;
+  sessionCategory?: string;
+}
+
+export interface WorkspacePinnedResponse {
+  entries: WorkspacePinnedEntry[];
+}
+
 export interface DiscoverWorkspacesResponse {
   repos: Array<{ path: string; name: string }>;
 }

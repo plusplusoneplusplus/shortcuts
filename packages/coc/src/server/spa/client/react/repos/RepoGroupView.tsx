@@ -361,6 +361,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
                                         railShortcutContainer={splitRailShortcutNode}
+                                        railScopeLabel={`${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group`}
                                         detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}

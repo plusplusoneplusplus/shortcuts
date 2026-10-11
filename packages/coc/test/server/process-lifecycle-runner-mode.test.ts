@@ -78,6 +78,36 @@ describe('ProcessLifecycleRunner persisted metadata.mode', () => {
         expect(process?.metadata?.mode).toBe('autopilot');
     });
 
+    it('persists list visibility metadata from chat payloads', async () => {
+        const task: QueuedTask = {
+            id: 'work-item-chat-1',
+            repoId: 'ws-chat',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.parse('2026-06-12T00:00:00.000Z'),
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Implement the work item.',
+                workspaceId: 'ws-chat',
+                workItemId: 'work-42',
+                sessionCategory: 'generating-code',
+            },
+            config: {},
+            displayName: 'Work item chat',
+        };
+
+        const { result, store } = await runTask(task);
+
+        expect(result.success).toBe(true);
+        const process = await store.getProcess('queue_work-item-chat-1');
+        expect(process?.metadata).toEqual(expect.objectContaining({
+            workItemId: 'work-42',
+            sessionCategory: 'generating-code',
+        }));
+    });
+
     it('leaves mode undefined for unrelated non-chat tasks', async () => {
         const task: QueuedTask = {
             id: 'workflow-task-1',

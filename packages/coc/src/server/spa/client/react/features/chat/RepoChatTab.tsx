@@ -20,6 +20,7 @@ import { useMobileWorkspacePane } from '../repo-detail/mobileWorkspacePane';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
 import { SentinelRailShortcut } from './SentinelRailShortcut';
+import { RailPinnedJobs } from './RailPinnedJobs';
 import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
 import type { ScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
@@ -71,6 +72,8 @@ export interface RepoChatTabProps {
      * latest-Sentinel shortcut. Split layout only; null while the rail is hidden.
      */
     railShortcutContainer?: HTMLElement | null;
+    /** Scope shown in the collapsed-rail pinned preview (defaults to the workspace id). */
+    railScopeLabel?: string;
     /**
      * Pin the shared status/action cluster to the bottom of this tab's own
      * conversation-list column, instead of the app-wide `GlobalStatusDock`
@@ -167,7 +170,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, dockStatusFooter, renderList, detailOverride }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, detailOverride }: RepoChatTabProps) {
     const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -1329,12 +1332,24 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 </div>
                 {railShortcutContainer
                     ? createPortal(
-                        <SentinelRailShortcut
-                            running={mergedRunning}
-                            history={mergedHistory}
-                            selectedTaskId={selectedTaskId}
-                            onOpen={handleOpenRailShortcut}
-                        />,
+                        <>
+                            <SentinelRailShortcut
+                                running={mergedRunning}
+                                history={mergedHistory}
+                                selectedTaskId={selectedTaskId}
+                                onOpen={handleOpenRailShortcut}
+                            />
+                            <RailPinnedJobs
+                                workspaceId={workspaceId}
+                                routeId={routeId}
+                                client={cloneClient}
+                                running={mergedRunning}
+                                history={mergedHistory}
+                                scopeLabel={railScopeLabel ?? workspaceId}
+                                tab={getActivityTabSegment(mode)}
+                                onOpen={handleOpenRailShortcut}
+                            />
+                        </>,
                         railShortcutContainer,
                     )
                     : null}

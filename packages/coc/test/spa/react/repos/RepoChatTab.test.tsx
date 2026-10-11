@@ -202,6 +202,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 
 const mockFetchApi = vi.fn();
 const mockSetPinOrder = vi.fn();
+const mockPinned = vi.fn(async () => ({ entries: [] as any[] }));
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
@@ -216,6 +217,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
                 const suffix = params.toString() ? `?${params.toString()}` : '';
                 return mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/history${suffix}`);
             },
+            pinned: (workspaceId: string) => mockPinned(workspaceId),
         },
         queue: {
             list: (query?: { repoId?: string }) => mockFetchApi('/queue?repoId=' + encodeURIComponent(query?.repoId ?? '')),
@@ -246,6 +248,7 @@ vi.mock('../../../../src/server/spa/client/react/layout/DockedStatusFooter', () 
 // ── Import component under test (after mocks) ─────────────────────────
 
 import { RepoChatTab } from '../../../../src/server/spa/client/react/features/chat/RepoChatTab';
+import { RailControlsContext } from '../../../../src/server/spa/client/react/features/repo-detail/RailHoverPreview';
 
 // ── Test helpers ───────────────────────────────────────────────────────
 
@@ -2674,5 +2677,80 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         });
         await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
         expect(document.querySelector('[data-testid="split-workspace-left-sentinel"]')).toBeNull();
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// COLLAPSED-RAIL PINNED JOBS
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab: collapsed-rail pinned jobs', () => {
+    let hosts: HTMLElement[] = [];
+    function makeHost(): HTMLElement {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        hosts.push(host);
+        return host;
+    }
+    afterEach(() => {
+        for (const host of hosts) host.remove();
+        hosts = [];
+        mockPinned.mockReset();
+        mockPinned.mockImplementation(async () => ({ entries: [] }));
+    });
+
+    async function renderWithRail(rail: { onExpand: () => void } | null, onActivateDetail = vi.fn()) {
+        const host = makeHost();
+        const tab = React.createElement(RepoChatTab, {
+            workspaceId: 'ws-1',
+            layout: 'split-workspace',
+            detailContainer: makeHost(),
+            detailActive: true,
+            onActivateDetail,
+            railShortcutContainer: host,
+        });
+        await act(async () => {
+            renderWithProviders(rail
+                ? React.createElement(RailControlsContext.Provider, { value: { hoverEnabled: true, onPreview: vi.fn(), ...rail } }, tab)
+                : tab);
+        });
+        await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
+        return host;
+    }
+
+    it('counts the workspace pinned set beyond the loaded page and opens through list selection', async () => {
+        setupFetchMock({ history: [makeHistoryTask('queue_loaded', { pinnedAt: '2026-03-02T00:00:00Z' })] });
+        // The unloaded pin still resolves on its server, as a deep link would.
+        const listFetch = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation(async (url: string, init?: any) => (url.endsWith('/processes/queue_paged')
+            ? { process: { id: 'queue_paged', type: 'chat', status: 'completed' } }
+            : listFetch(url, init)));
+        mockPinned.mockImplementation(async () => ({ entries: [
+            { id: 'queue_loaded', type: 'chat', status: 'completed', pinnedAt: '2026-03-02T00:00:00Z' },
+            { id: 'queue_paged', type: 'chat', status: 'completed', title: 'Older pinned', pinnedAt: '2026-03-01T00:00:00Z' },
+        ] }));
+        const onActivateDetail = vi.fn();
+        const onExpand = vi.fn();
+        const host = await renderWithRail({ onExpand }, onActivateDetail);
+        await waitFor(() => expect(mockPinned).toHaveBeenCalledWith('ws-1'));
+        const button = await waitFor(() => {
+            const found = host.querySelector<HTMLButtonElement>('[data-testid="split-workspace-left-pinned"]');
+            expect(found?.getAttribute('aria-label')).toBe('2 pinned jobs');
+            return found!;
+        });
+        act(() => button.focus());
+        const open = screen.getByRole('link', { name: 'Open job: Older pinned' });
+        await act(async () => { fireEvent.click(open); });
+        expect(onActivateDetail).toHaveBeenCalled();
+        expect(location.hash).toBe('#repos/ws-1/activity/queue_paged');
+        expect(onExpand).not.toHaveBeenCalled();
+        await act(async () => { fireEvent.click(button); });
+        expect(onExpand).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays out of the rail without split rail controls', async () => {
+        setupFetchMock({ history: [makeHistoryTask('queue_loaded', { pinnedAt: '2026-03-02T00:00:00Z' })] });
+        const host = await renderWithRail(null);
+        expect(host.querySelector('[data-testid="split-workspace-left-pinned"]')).toBeNull();
     });
 });

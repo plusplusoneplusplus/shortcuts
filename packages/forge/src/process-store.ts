@@ -312,6 +312,12 @@ export interface ProcessIndexEntry {
     pinnedAt?: string;
     /** Whether the process is archived. */
     archived?: boolean;
+    /** Chat mode used by list visibility filters. */
+    mode?: string;
+    /** Work-item owner used to keep work-item chats out of the Chats tab. */
+    workItemId?: string;
+    /** Purpose category used by Activity type/category filters. */
+    sessionCategory?: string;
     /**
      * Chat folder this process is filed into (`task_groups.group_id` of a
      * `chat-folder` group), or null/undefined when unfiled. Denormalized onto

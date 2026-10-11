@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn, SegmentedControl } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import {
@@ -25,6 +25,7 @@ import {
 } from './WorkspaceLeftWidth';
 import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from './WorkspaceDockToggle';
 import { RailJobStatuses, type RailJobPreview } from './RailJobStatuses';
+import { RailControlsContext, type RailControls } from './RailHoverPreview';
 
 export { splitWorkspaceWidthStorageKey } from './WorkspaceLeftWidth';
 
@@ -499,9 +500,17 @@ export function SplitWorkspacePanel({
     // during a hover-peek; otherwise it is hidden (display:none) but stays mounted
     // so chat/git scroll + per-section collapse survive a collapse round-trip
     // (keep-alive, mirroring the right dock).
+    // Portaled rail shortcuts (e.g. the chat list's pinned-jobs control) share
+    // the status controls' hover, expansion and peek behavior.
+    const railControls = useMemo<RailControls>(() => ({
+        hoverEnabled: hasFinePointer,
+        onExpand: toggleLeftCollapsed,
+        onPreview: hoverPeek.close,
+    }), [hasFinePointer, toggleLeftCollapsed, hoverPeek.close]);
     const peeking = leftCollapsed && hoverPeek.isOpen;
 
     return (
+        <RailControlsContext.Provider value={railControls}>
         <div
             className="split-workspace-panel relative flex h-full w-full overflow-hidden"
             data-testid="split-workspace-panel"
@@ -564,9 +573,7 @@ export function SplitWorkspacePanel({
                         runningCount={runningCount}
                         queuedCount={queuedCount}
                         preview={jobPreview}
-                        hoverEnabled={hasFinePointer}
-                        onExpand={toggleLeftCollapsed}
-                        onPreview={hoverPeek.close}
+                        {...railControls}
                     />
                     <span
                         className="mt-1 text-[10px] tracking-wide text-[#848484] select-none"
@@ -739,5 +746,6 @@ export function SplitWorkspacePanel({
                 {detail}
             </div>
         </div>
+        </RailControlsContext.Provider>
     );
 }

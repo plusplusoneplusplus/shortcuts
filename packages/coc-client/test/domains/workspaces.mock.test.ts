@@ -24,6 +24,15 @@ describe('WorkspacesClient mock server contract', () => {
     expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/ralph-sessions/attention');
   });
 
+  it('requests every pinned process for an encoded workspace id', async () => {
+    mock = await startMockServer();
+    const entries = [{ id: 'queue_a', type: 'chat', status: 'completed', pinnedAt: '2026-10-01T00:00:00.000Z' }];
+    mock.on('GET', '/api/workspaces/repo%2Fone/pinned', { body: { entries } });
+    const client = createClient(mock);
+    await expect(client.workspaces.pinned('repo/one')).resolves.toEqual({ entries });
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/pinned');
+  });
+
   it('returns workspace lists including an empty server result', async () => {
     mock = await startMockServer();
     const workspace = mockWorkspace({ id: 'repo/one', name: 'Repo One' });

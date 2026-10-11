@@ -761,7 +761,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 planFilePath: isChatPayload(task.payload)
                     ? asPlanFilePath(task.payload.context?.files?.[0])
                     : undefined,
-                workItemId: (task.payload as any)?.workItemId,
+                workItemId: payload?.workItemId,
+                sessionCategory: payload?.sessionCategory,
                 restartedFrom: isChatPayload(task.payload) ? task.payload.restartedFrom : undefined,
                 notePath: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
                     ? task.payload.context?.noteChat?.notePath

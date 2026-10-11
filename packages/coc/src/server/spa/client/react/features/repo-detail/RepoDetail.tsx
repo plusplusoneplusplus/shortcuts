@@ -141,6 +141,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const queueJobs = useRepoQueueJobs(ws.id, queueClient, sourceSelectionId);
     const queueRunningCount = queueJobs.running.length;
     const queueQueuedCount = queueJobs.queued.length;
+    const railScopeLabel = `${getRepoGroupServerName(ws)} / ${ws.name}`;
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
@@ -785,7 +786,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     queuedCount={queueQueuedCount}
                                     jobPreview={{
                                         ...queueJobs,
-                                        scopeLabel: `${getRepoGroupServerName(ws)} / ${ws.name}`,
+                                        scopeLabel: railScopeLabel,
                                         routeId: sourceSelectionId,
                                         scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${activeSubTab}`,
                                     }}
@@ -797,6 +798,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             layout="split-workspace"
                                             detailContainer={splitDetailNode}
                                             railShortcutContainer={splitRailShortcutNode}
+                                            railScopeLabel={railScopeLabel}
                                             detailActive={dockAvailable || splitLastClicked === 'chat'}
                                             onActivateDetail={() => setSplitLastClicked('chat')}
                                         />
