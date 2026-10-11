@@ -20,6 +20,7 @@ import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react
 import {
     REPO_GROUP_CHAT_FEED_REFRESH_DEBOUNCE_MS,
     useRepoGroupChatFeed,
+    resetRepoGroupChatFeedCacheForTests,
 } from '../../../../src/server/spa/client/react/repos/useRepoGroupChatFeed';
 
 const sources = [
@@ -50,6 +51,7 @@ function deferred<T>() {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    resetRepoGroupChatFeedCacheForTests();
 });
 
 afterEach(() => {
@@ -57,6 +59,50 @@ afterEach(() => {
 });
 
 describe('useRepoGroupChatFeed', () => {
+    it('retains cached history as unavailable after owner disconnect without ever reading locally', async () => {
+        getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' }] }));
+        const { result, rerender } = renderHook(
+            ({ baseUrl }) => useRepoGroupChatFeed({ groupId: 'grp', serverKey: 'server-a', baseUrl, enabled: true }),
+            { initialProps: { baseUrl: 'https://owner.test' as string | undefined } });
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        const calls = getRepoGroupChats.mock.calls.length;
+        rerender({ baseUrl: undefined });
+        await waitFor(() => expect(result.current.model?.counts.partial).toBe(true));
+        expect(result.current.model?.history[0].canonicalId).toBe('p1');
+        expect(result.current.model?.sources.every(source => !source.available)).toBe(true);
+        expect(getRepoGroupChats).toHaveBeenCalledTimes(calls);
+        rerender({ baseUrl: 'https://owner.test' });
+        await waitFor(() => expect(result.current.model?.counts.partial).toBe(false));
+        expect(result.current.model?.history).toHaveLength(1);
+    });
+
+    it('drops removed members but keeps cached rows only for still registered unavailable sources', async () => {
+        getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' }] }));
+        const { result } = renderHook(() => useRepoGroupChatFeed({ groupId: 'grp', serverKey: 'local', enabled: true }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        getRepoGroupChats.mockResolvedValue(page({ sources: [
+            sources[0], { ...sources[1], available: false },
+        ], counts: { total: 0, running: 0, queued: 0, history: 0, byOwner: {}, partial: true } }));
+        await act(async () => { await result.current.refresh(); });
+        expect(result.current.model?.history).toHaveLength(1);
+        getRepoGroupChats.mockResolvedValue(page({ membershipKey: 'm2', sources: [sources[0]] }));
+        await act(async () => { await result.current.refresh(); });
+        expect(result.current.model?.history).toHaveLength(0);
+        expect(result.current.model?.counts.total).toBe(0);
+    });
+
+    it('refreshes membership and local reconnect using the current query', async () => {
+        getRepoGroupChats.mockResolvedValue(page());
+        renderHook(() => useRepoGroupChatFeed({ groupId: 'grp', serverKey: 'local', enabled: true }));
+        await waitFor(() => expect(getRepoGroupChats).toHaveBeenCalledTimes(1));
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-connect', { detail: {} })));
+        await waitFor(() => expect(getRepoGroupChats).toHaveBeenCalledTimes(2));
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'workspace-topology-changed', workspaceId: 'grp', action: 'updated' },
+        })));
+        await waitFor(() => expect(getRepoGroupChats).toHaveBeenCalledTimes(3));
+    });
+
     it('reads the local group from the local server', async () => {
         getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' }] }));
         const { result } = renderHook(() => useRepoGroupChatFeed({ groupId: 'grp', serverKey: 'local', enabled: true }));

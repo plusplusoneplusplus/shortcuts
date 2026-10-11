@@ -134,6 +134,18 @@ describe('member conversation owner boundary', () => {
         expect(Stream.instances).toHaveLength(0);
     });
 
+    it('labels a removed member while retaining its concrete owner and disables offline detail actions', () => {
+        stubClient();
+        const { rerender } = render(<RepoGroupMemberChatDetail selection={selection('group-ai')}
+            serverLabel="This server" noLongerInGroup onBack={vi.fn()} />);
+        expect(screen.getByText('No longer in group')).toBeTruthy();
+        expect(screen.getByTestId('detail-probe')).toBeTruthy();
+        rerender(<RepoGroupMemberChatDetail selection={selection('group-ai')}
+            serverLabel="This server" unavailable onBack={vi.fn()} />);
+        expect(screen.queryByTestId('detail-probe')).toBeNull();
+        expect(screen.queryByText('Send')).toBeNull();
+    });
+
     it('closes old running and warm streams on endpoint reassignment without losing selection', () => {
         taskStatus = 'running';
         registerCloneBaseUrls([{ workspaceId: 'group-ai', serverId: 'server-a', baseUrl: 'https://owner.test' }]);

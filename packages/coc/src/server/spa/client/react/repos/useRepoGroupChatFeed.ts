@@ -32,6 +32,17 @@ export const REPO_GROUP_CHAT_FEED_PAGE_SIZE = 50;
 /** Server-side cap on one page; a refresh never asks for more. */
 export const REPO_GROUP_CHAT_FEED_MAX_PAGE = 200;
 export const REPO_GROUP_CHAT_FEED_REFRESH_DEBOUNCE_MS = 250;
+const historyCache = new Map<string, RepoGroupChatFeedModel>();
+
+export function resetRepoGroupChatFeedCacheForTests(): void { historyCache.clear(); }
+
+function unavailableModel(model: RepoGroupChatFeedModel, error: string): RepoGroupChatFeedModel {
+    return {
+        ...model, running: [], queued: [], hasMore: false, nextCursor: undefined,
+        sources: model.sources.map(source => ({ ...source, available: false, error })),
+        counts: { ...model.counts, partial: true },
+    };
+}
 
 export type RepoGroupChatFeedFilters = Omit<RepoGroupChatFeedQuery, 'cursor' | 'limit'>;
 
@@ -79,6 +90,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
     const { groupId, baseUrl, serverKey, enabled } = options;
     const pageSize = options.pageSize ?? REPO_GROUP_CHAT_FEED_PAGE_SIZE;
     const fKey = filtersKey(options.filters);
+    const cacheKey = `${serverKey}|${groupId}|${fKey}`;
     // Filters are compared by value so a fresh object each render does not refetch.
     const filters = useMemo(() => options.filters, [fKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -101,18 +113,31 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         const limit = Math.min(REPO_GROUP_CHAT_FEED_MAX_PAGE, Math.max(pageSize, loaded));
         if (!keepDepth || !modelRef.current) setStatus('loading');
         try {
+            if (serverKey !== 'local' && !baseUrl) throw new Error('The owning server is unavailable.');
             const response = await getRepoGroupChats(groupId, { ...filters, limit }, baseUrl, controller.signal);
             if (generation !== generationRef.current) return;
-            setModel(buildRepoGroupChatFeedModel(response, serverKey));
+            let next = buildRepoGroupChatFeedModel(response, serverKey);
+            const cached = historyCache.get(cacheKey);
+            const unavailable = new Set(next.sources.filter(source => !source.available).map(source => source.workspaceId));
+            if (cached && unavailable.size) {
+                const keys = new Set(allRepoGroupChatRows(next).map(row => row.key));
+                next = { ...next, history: [...next.history, ...cached.history.filter(row =>
+                    unavailable.has(row.ownerWorkspaceId) && !keys.has(row.key))] };
+            }
+            historyCache.set(cacheKey, next);
+            if (historyCache.size > 50) historyCache.delete(historyCache.keys().next().value!);
+            setModel(next);
             setStatus('ready');
             setError(undefined);
         } catch (err) {
             if (generation !== generationRef.current) return;
             // Keep the last good rows on a failed live refresh; only a cold load errors out.
             setError(errorMessage(err));
-            setStatus(modelRef.current ? 'ready' : 'error');
+            const cached = modelRef.current ?? historyCache.get(cacheKey);
+            if (cached) setModel(unavailableModel(cached, errorMessage(err)));
+            setStatus(cached ? 'ready' : 'error');
         }
-    }, [groupId, baseUrl, serverKey, filters, pageSize]);
+    }, [groupId, baseUrl, serverKey, filters, pageSize, cacheKey]);
 
     // Group, server or filters changed: drop the old rows (another scope's
     // identities must never linger) and load the first page.
@@ -125,10 +150,11 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
             setError(undefined);
             return;
         }
-        setModel(null);
-        modelRef.current = null;
+        const cached = historyCache.get(cacheKey) ?? null;
+        setModel(cached);
+        modelRef.current = cached;
         void fetchFirstPage(false);
-    }, [enabled, fetchFirstPage]);
+    }, [enabled, fetchFirstPage, cacheKey]);
 
     useEffect(() => () => {
         generationRef.current++;
@@ -152,7 +178,12 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
                 await fetchFirstPage(false);
                 return;
             }
-            setModel(prev => (prev ? appendRepoGroupChatFeedPage(prev, response) : prev));
+            setModel(prev => {
+                if (!prev) return prev;
+                const next = appendRepoGroupChatFeedPage(prev, response);
+                historyCache.set(cacheKey, next);
+                return next;
+            });
             setError(undefined);
         } catch (err) {
             if (generation !== generationRef.current) return;
@@ -164,7 +195,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         } finally {
             setLoadingMore(false);
         }
-    }, [enabled, groupId, baseUrl, filters, pageSize, loadingMore, fetchFirstPage]);
+    }, [enabled, groupId, baseUrl, filters, pageSize, loadingMore, fetchFirstPage, cacheKey]);
 
     // ── Live refresh ────────────────────────────────────────────────────────
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,7 +230,11 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
             const detail = (event as CustomEvent).detail;
             if (baseUrl && detail?.baseUrl !== baseUrl) return;
             const message = baseUrl ? detail?.message : detail;
-            if (isRepoGroupChatFeedMessage(message, liveRef.current.sourceIds, liveRef.current.shownIds)) {
+            if (message?.type === 'workspace-topology-changed') {
+                generationRef.current++;
+                abortRef.current?.abort();
+                scheduleRefresh();
+            } else if (isRepoGroupChatFeedMessage(message, liveRef.current.sourceIds, liveRef.current.shownIds)) {
                 scheduleRefresh();
             }
         };
@@ -213,10 +248,12 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         window.addEventListener(messageEvent, onMessage);
         window.addEventListener('coc-group-chat-seen', onSeen);
         if (baseUrl) window.addEventListener('coc-remote-ws-connect', onConnect);
+        else window.addEventListener('coc-local-ws-connect', onConnect);
         return () => {
             window.removeEventListener(messageEvent, onMessage);
             window.removeEventListener('coc-group-chat-seen', onSeen);
             if (baseUrl) window.removeEventListener('coc-remote-ws-connect', onConnect);
+            else window.removeEventListener('coc-local-ws-connect', onConnect);
         };
     }, [enabled, baseUrl, scheduleRefresh]);
 

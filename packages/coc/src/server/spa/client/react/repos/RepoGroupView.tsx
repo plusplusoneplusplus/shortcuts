@@ -49,7 +49,7 @@ import { useWorkspaceDockExpanded } from '../features/repo-detail/WorkspaceDockT
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
-import { getRemoteCloneKey, getWorkspaceSelectionId } from './cloneIdentity';
+import { getRemoteCloneKey, getWorkspaceSelectionId, parseRemoteCloneKey } from './cloneIdentity';
 import { useRepoGroupAggregatedChatsEnabled } from '../hooks/feature-flags/useRepoGroupAggregatedChatsEnabled';
 import { useRepoGroupChatFeed } from './useRepoGroupChatFeed';
 import { LOCAL_CHAT_FEED_SERVER_KEY, repoGroupChatKey } from './repoGroupChatFeed';
@@ -190,9 +190,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // carry that server's identity so equal ids on two servers never collide.
     const aggregatedChats = useRepoGroupAggregatedChatsEnabled();
     const remoteMarker = (remoteGroup as { remote?: { serverId?: unknown; serverLabel?: unknown } } | undefined)?.remote;
-    const chatServerKey = typeof remoteMarker?.serverId === 'string' && remoteMarker.serverId
-        ? remoteMarker.serverId
-        : LOCAL_CHAT_FEED_SERVER_KEY;
+    const chatServerKey = parseRemoteCloneKey(selectionId)?.serverId ?? LOCAL_CHAT_FEED_SERVER_KEY;
     const chatServerLabel = typeof remoteMarker?.serverLabel === 'string' && remoteMarker.serverLabel
         ? remoteMarker.serverLabel
         : 'This server';
@@ -352,6 +350,11 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                                 row={memberRow}
                                                 serverLabel={chatServerLabel}
                                                 groupBaseUrl={groupBaseUrl}
+                                                unavailable={chatFeed.status === 'error' || chatFeed.model?.sources.find(source =>
+                                                    source.workspaceId === memberChat.selection?.ownerWorkspaceId)?.available === false}
+                                                stale={chatFeed.model?.sources.find(source => source.workspaceId === memberChat.selection?.ownerWorkspaceId)?.stale}
+                                                noLongerInGroup={!!chatFeed.model && !chatFeed.model.sources.some(source =>
+                                                    source.workspaceId === memberChat.selection?.ownerWorkspaceId)}
                                                 onBack={memberChat.backToGroupChats}
                                             />
                                         ) : undefined}

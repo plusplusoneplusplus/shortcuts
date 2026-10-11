@@ -38,7 +38,10 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
                 }
                 onMessageRef.current(msg);
             },
-            onOpen: () => onConnectRef.current?.(),
+            onOpen: () => {
+                window.dispatchEvent(new CustomEvent('coc-local-ws-connect', { detail: {} }));
+                onConnectRef.current?.();
+            },
             onStatusChange: setStatus,
         });
     }, [broadcastProcessUpdates]);

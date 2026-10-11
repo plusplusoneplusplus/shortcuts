@@ -60,13 +60,14 @@ function rowTime(row: RepoGroupChatRow): string {
     return ts ? formatRelativeTime(new Date(ts).toISOString()) : '';
 }
 
-function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet }: {
+function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, unavailable }: {
     row: RepoGroupChatRow;
     owner: RepoGroupOwnerLabel | undefined;
     serverLabel: string;
     selected: boolean;
     onSelect: (row: RepoGroupChatRow) => void;
     snippet?: string;
+    unavailable?: boolean;
 }) {
     const task = row.item;
     const isRunning = row.section === 'running';
@@ -83,7 +84,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet }: 
             role="option"
             tabIndex={0}
             aria-selected={selected}
-            aria-label={`${title} — ${ownerDetails}`}
+            aria-label={`${title} — ${ownerDetails}${unavailable ? ' — unavailable' : ''}`}
             title={`${title}\n${ownerDetails}`}
             className={cn(
                 CHAT_ROW_LAYOUT_CLASSES,
@@ -105,6 +106,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet }: 
             data-owner-role={row.ownerRole}
             data-section={row.section}
             data-unseen={isUnseen || undefined}
+            data-unavailable={unavailable || undefined}
         >
             <span
                 className={getChatRowDotClasses({ isRunning, isQueued, isFailed, provider: getTaskChatProvider(task) })}
@@ -134,6 +136,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet }: 
                     )}
                 >
                     {title}
+                    {unavailable && <span className="ml-1 text-amber-700 text-[10px]">unavailable</span>}
                     {snippet && <span className="ml-2 font-normal text-[#848484]" data-testid="repo-group-search-snippet">{snippet}</span>}
                 </span>
             </span>
@@ -227,6 +230,7 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
                                     key={row.key}
                                     row={row}
                                     snippet={model?.snippets?.[row.ownerWorkspaceId]?.[row.canonicalId]}
+                                    unavailable={model?.sources.find(source => source.workspaceId === row.ownerWorkspaceId)?.available === false}
                                     owner={owners.get(row.ownerWorkspaceId)}
                                     serverLabel={serverLabel}
                                     selected={row.key === selectedKey}

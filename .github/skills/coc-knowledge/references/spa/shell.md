@@ -80,6 +80,11 @@ Group list search and repo/status/archive filters persist under
 disclosure; matching rows retain their owner prefixes and plain-text excerpts.
 Member conversation completion writes the owner's existing seen-state and
 invalidates the group feed through an owner-qualified event.
+The feed keeps a bounded in-memory owner/query history cache for unavailable
+sources, marks their rows and counts partial, and removes sources absent from
+fresh membership. Reconnect and topology events reconcile the list; topology
+invalidates pending responses immediately. Removed members retain the open
+conversation identity until navigation clears it.
 
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats
