@@ -13,12 +13,14 @@ const model = buildRepoGroupChatFeedModel({
         { workspaceId: 'repo-a', role: 'member', name: 'Connector', available: true },
         { workspaceId: 'repo-b', role: 'member', name: 'Dashboard', available: true },
     ],
-    running: [{ id: 'active', processId: 'queue_active', ownerWorkspaceId: 'repo-a', status: 'running', type: 'chat', title: 'Fix relay routing' }],
+    running: [{ id: 'active', processId: 'queue_active', ownerWorkspaceId: 'repo-a', status: 'running', type: 'chat', title: 'Fix relay routing', lastActivityAt: 3000 }],
     queued: [], history: [
-        { id: 'group-plan', ownerWorkspaceId: 'group-demo', status: 'completed', type: 'chat', title: 'Group plan' },
+        { id: 'group-plan', ownerWorkspaceId: 'group-demo', status: 'completed', type: 'chat', title: 'Group plan', lastActivityAt: 4000 },
         ...Array.from({ length: 30 }, (_, index) => ({
             id: `history-${index}`, ownerWorkspaceId: index % 2 ? 'repo-a' : 'repo-b',
             status: 'completed', type: 'chat', title: `Conversation ${index}`,
+            lastActivityAt: 2000 - index * 10,
+            ...(index === 29 ? { pinnedAt: '2026-10-10T00:00:00Z' } : {}),
         })),
     ],
     hasMore: false, counts: { total: 32, running: 1, queued: 0, history: 31, unread: 3, byOwner: {}, partial: false },
