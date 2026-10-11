@@ -28,7 +28,9 @@ list when their flags are off.
 and gated by both `sentinelTodoLedger` and `sentinelTodoScrubber`. Ask tasks carrying
 `context.sentinelScrub` mark their run running and receive only `submit_scrub_findings`
 from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat tools,
-ledger writers and `send_to_conversation` are excluded. Findings remain pending until
+ledger writers and `send_to_conversation` are excluded. Scrubber turns are unattended:
+ask-user wiring is noninteractive and enabled dangerous-command guards omit approval
+callbacks, preserving auto-deny with audit reporting. Findings remain pending until
 queue completion; cancellation, failure and timeout apply nothing.
 
 ### Per-repo overrides

@@ -938,6 +938,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
         const isAsk = mode === 'ask';
+        const scrubContext = getScrubChildContext(task.payload);
 
         // Resolved for the two consumers that still need it: the Ralph grilling
         // directive's `.goal.md` destination and the ask directive's `.plan.md`
@@ -980,6 +981,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
+                ...(scrubContext ? { isInteractive: () => false } : {}),
                 ...(isAsk
                     ? { ralphGrillPlanningState, questionRelayRequestId: () => payload.relayRequestId ?? task.id }
                     : { isInteractive: () => true }),
@@ -1054,10 +1056,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             ...(isAsk
                 ? {
                     dangerousCommandGuard: this.buildDangerousCommandGuardWiring(processId, {
-                        // A dashboard chat's first turn is opened by a person
-                        // who is watching it — the same assumption the ask-user
-                        // wiring above makes by leaving `isInteractive` unset.
-                        isInteractive: () => true,
+                        // Scrubber children run unattended, including manual starts.
+                        isInteractive: () => !scrubContext,
                     }),
                 }
                 : {}),

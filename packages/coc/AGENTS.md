@@ -241,7 +241,8 @@ references before editing. Paths are package-relative.
   item in `CocApiError.body.current`. Route composition
   shares the native ledger database, publishes the live flag-gated `getSentinelScrubber`
   executor capability, and returns `scrubberReady`; server startup awaits recovery before
-  activating restored queues. Scrubber events carry workspace/process ownership and use
+  activating restored queues. Scrubber ask turns are unattended; enabled shell guards
+  auto-deny without offering user approval. Scrubber events carry workspace/process ownership and use
   workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
   Runs persist a caller-supplied child task id before queue admission, so early
   execution/terminal events stay bound. Admission rechecks cancellation after snapshot
