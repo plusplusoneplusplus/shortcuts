@@ -43,6 +43,13 @@ conversation provider only for unattributed records. `ConversationArea` derives 
 non-persisted `Continued with <Provider>` separator before the first assistant response
 of each provable provider segment. Error and script-output turns keep their own palettes.
 
+`AssistantStatsBadge` reads per-turn token usage and elapsed time in the shared bubble
+across chat modes and pop-outs. It reuses `ContextUsagePopover`'s token formatter and
+button reset, retains exact cache/total/time details, and exposes disclosure state to
+assistive technology. Streaming turns omit metrics; partial usage keeps zero defaults
+and derives missing totals from input/output. Header wrapping preserves complete values
+and the non-shrinking action group; keyboard focus reveals actions.
+
 Native rewind and edit-and-resend are available only for user turns in the active
 provider segment. Earlier-segment controls stay visible but disabled with the
 cross-provider rewind explanation; the REST route enforces the same boundary against

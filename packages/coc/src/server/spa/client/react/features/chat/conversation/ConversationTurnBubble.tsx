@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
+import { CONTEXT_TRIGGER_CLASS, formatTokenCount } from '../../../ui/ContextUsagePopover';
 import type { ClientConversationTurn, ClientTokenUsage, ToolCallApprovalOutcome } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
@@ -1146,30 +1147,19 @@ export function formatShortTimestamp(date: Date): string {
     return `${month}/${day} ${hours}:${minutes} ${ampm}`;
 }
 
-function fmtTokens(n: number): string {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-    return String(n);
-}
-
-/** Merged badge showing token usage and response time in a single compact chip. */
+/** Inline metrics wrap only between complete values or expanded detail entries. */
 function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTokenUsage; costTimeMs?: number }) {
     const [expanded, setExpanded] = useState(false);
 
     // Token usage can arrive partially populated (e.g. an SSE token-usage event
     // that only carries context-window fields, or an SDK result without a full
     // per-turn breakdown). Coerce each numeric field so a missing value never
-    // throws on .toLocaleString()/fmtTokens and crashes the whole dashboard.
+    // throws on .toLocaleString()/formatTokenCount and crashes the whole dashboard.
     const inputTokens = tokenUsage?.inputTokens ?? 0;
     const outputTokens = tokenUsage?.outputTokens ?? 0;
     const cacheReadTokens = tokenUsage?.cacheReadTokens ?? 0;
     const cacheWriteTokens = tokenUsage?.cacheWriteTokens ?? 0;
     const totalTokens = tokenUsage?.totalTokens ?? inputTokens + outputTokens;
-
-    const parts: string[] = [];
-    if (tokenUsage) parts.push(`↓${fmtTokens(inputTokens)} ↑${fmtTokens(outputTokens)}`);
-    if (costTimeMs != null) parts.push(formatCostTime(costTimeMs));
-    const summary = parts.join(' · ');
 
     const detailParts: string[] = [];
     if (tokenUsage) {
@@ -1182,15 +1172,50 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
     if (costTimeMs != null) detailParts.push(`Time: ${costTimeMs.toLocaleString()}ms`);
     const detail = detailParts.join(' · ');
 
-    if (!summary) return null;
+    if (!detail) return null;
 
     return (
         <button
-            className="assistant-stats-badge inline-flex items-center px-1.5 py-0.5 rounded text-[10px] tabular-nums bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#383838] transition-colors cursor-pointer border border-transparent hover:border-[#d0d0d0] dark:hover:border-[#505050]"
+            type="button"
+            className={cn(CONTEXT_TRIGGER_CLASS, 'assistant-stats-badge max-w-full shrink-0 flex-wrap gap-x-1.5 gap-y-0.5 text-[11px] leading-4 tabular-nums hover:text-[#1e1e1e] dark:hover:text-[#cccccc]')}
             title={expanded ? 'Click to collapse' : detail}
+            aria-label={`Token usage and elapsed time: ${detail}. ${expanded ? 'Hide' : 'Show'} details`}
+            aria-expanded={expanded}
             onClick={() => setExpanded(v => !v)}
+            onKeyDown={event => {
+                if (event.key === 'Escape' && expanded) {
+                    event.stopPropagation();
+                    setExpanded(false);
+                }
+            }}
         >
-            {expanded ? detail : summary}
+            {expanded ? detailParts.map((part, index) => (
+                <span key={part} className="whitespace-nowrap">
+                    {index > 0 && <span aria-hidden="true">· </span>}
+                    {part}
+                </span>
+            )) : (
+                <>
+                    {tokenUsage && (
+                        <span className="inline-flex gap-1.5 whitespace-nowrap">
+                            <span title={`Input tokens: ${inputTokens.toLocaleString()}`}>
+                                <span aria-hidden="true">↓</span>{formatTokenCount(inputTokens)}
+                            </span>
+                            <span title={`Output tokens: ${outputTokens.toLocaleString()}`}>
+                                <span aria-hidden="true">↑</span>{formatTokenCount(outputTokens)}
+                            </span>
+                        </span>
+                    )}
+                    {costTimeMs != null && (
+                        <span
+                            className={cn('whitespace-nowrap', tokenUsage && 'border-l border-[#d0d7de] dark:border-[#505050] pl-1.5')}
+                            title={`Elapsed time: ${costTimeMs.toLocaleString()}ms`}
+                        >
+                            {formatCostTime(costTimeMs)}
+                        </span>
+                    )}
+                </>
+            )}
         </button>
     );
 }
@@ -1673,10 +1698,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             >
                 <div
                     className={cn(
-                        'flex items-center flex-nowrap gap-1.5 text-[11px] text-[#848484] mb-1 select-none',
+                        'turn-header flex items-center gap-1.5 text-[11px] leading-4 text-[#848484] mb-1 select-none',
                         isUser
-                            ? 'absolute -top-4 right-2 z-10 px-1 bg-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none [&>*]:pointer-events-auto'
-                            : 'min-h-[16px]'
+                            ? 'flex-nowrap absolute -top-4 right-2 z-10 px-1 bg-transparent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none [&>*]:pointer-events-auto'
+                            : 'flex-wrap min-h-[16px]'
                     )}
                 >
                     {!isUser && turn.pinnedAt && (
@@ -1698,7 +1723,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     {turn.timestamp && (() => {
                         const d = new Date(turn.timestamp);
                         return (
-                            <span className="ml-auto timestamp whitespace-nowrap font-mono tabular-nums" title={d.toLocaleString()}>
+                            <span className="ml-auto timestamp shrink-0 whitespace-nowrap font-mono tabular-nums" title={d.toLocaleString()}>
                                 {formatShortTimestamp(d)}
                             </span>
                         );
@@ -1728,9 +1753,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     {!isUser && !turn.streaming && (turn.tokenUsage || turn.costTimeMs != null) && (
                         <AssistantStatsBadge tokenUsage={turn.tokenUsage} costTimeMs={turn.costTimeMs} />
                     )}
+                    <span className="turn-header-actions ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
                     {jsonDetected && !showRaw && (
                         <button
-                            className="bubble-json-toggle-btn ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-medium"
+                            className="bubble-json-toggle-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px] font-medium"
                             title={viewMode === 'json' ? 'Switch to rendered markdown' : 'Switch to JSON tree view'}
                             onClick={() => setViewMode(v => v === 'json' ? 'rendered' : 'json')}
                             style={viewMode === 'json' ? { opacity: 1, color: '#0078d4' } : undefined}
@@ -1740,7 +1766,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         </button>
                     )}
                     <button
-                        className={`bubble-raw-btn ${!jsonDetected || showRaw ? 'ml-auto' : ''} text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]`}
+                        className="bubble-raw-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px]"
                         title={showRaw ? 'View rendered content' : 'View raw content'}
                         onClick={() => setShowRaw((v) => !v)}
                         style={showRaw ? { opacity: 1, color: '#0078d4' } : undefined}
@@ -1748,7 +1774,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         &lt;/&gt;
                     </button>
                     <button
-                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                        className="bubble-copy-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px]"
                         title="Copy to clipboard"
                         onClick={async () => {
                             const text = showRaw ? buildRawContent(turn) : (turn.content || '');
@@ -1765,7 +1791,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     </button>
                     {!showRaw && (
                         <button
-                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                            className="bubble-copy-html-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px]"
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
@@ -1784,7 +1810,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     {showEditButton && (
                         <button
                             type="button"
-                            className="bubble-edit-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="bubble-edit-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
                             title={editDisabledTooltip ?? 'Edit message'}
                             aria-label="Edit message"
                             data-testid="bubble-edit-btn"
@@ -1794,6 +1820,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             ✏️
                         </button>
                     )}
+                    </span>
                 </div>
 
                 {isUser && turn.pinnedAt && (
