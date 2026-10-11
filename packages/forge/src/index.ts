@@ -318,12 +318,16 @@ export {
     ProcessFilter,
     ProcessChangeCallback,
     ProcessStore,
+    PAGE_TURNS,
+    ConversationTurnsPage,
+    ProcessHistoryOptions,
     StorageStats,
     ConversationSearchResult,
     SearchFilter,
     PromptAutocompleteHistoryItem,
     PromptAutocompleteContext,
 } from './process-store';
+export { HistoryAwareProcessMap } from './process-history';
 
 export {
     FileProcessStore,

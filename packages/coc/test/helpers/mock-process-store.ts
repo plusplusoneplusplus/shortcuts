@@ -7,6 +7,7 @@
  */
 
 import { vi } from 'vitest';
+import { HistoryAwareProcessMap } from '@plusplusoneplusplus/forge';
 import type { ProcessStore, AIProcess, WorkspaceInfo, ConversationTurn, TimelineItem } from '@plusplusoneplusplus/forge';
 
 // ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ export interface MockProcessStoreOptions {
  * queue-executor-bridge.test.ts and executor-session-tracking.test.ts.
  */
 export function createMockProcessStore(options?: MockProcessStoreOptions): MockProcessStore {
-    const processes = new Map<string, AIProcess>();
+    const processes = new HistoryAwareProcessMap();
     const outputs = new Map<string, string[]>();
     const completions = new Map<string, { status: string; duration: string }>();
 
@@ -72,6 +73,7 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             }
             return p;
         }),
+        getProcessHistory: vi.fn(async (id, workspaceId, options) => processes.getProcessHistory(id, workspaceId, options)),
         getAllProcesses: vi.fn(async () => Array.from(processes.values())),
         removeProcess: vi.fn(async (id: string) => { processes.delete(id); }),
         clearProcesses: vi.fn(async () => {
@@ -118,7 +120,7 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             const extraUpdates = typeof options?.additionalUpdates === 'function'
                 ? options.additionalUpdates(existing)
                 : (options?.additionalUpdates ?? {});
-            processes.set(processId, { ...existing, ...extraUpdates, conversationTurns: allTurns });
+            processes.set(processId, { ...existing, ...extraUpdates, conversationTurns: allTurns }, options?.filterStreaming);
             return { turn, allTurns };
         }),
         removePendingMessage: vi.fn(async (processId: string, messageId: string) => {
@@ -164,7 +166,7 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             const turns = existing.conversationTurns ?? [];
             if (turnIndex < 0 || turnIndex >= turns.length) return;
             const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, content } : turn);
-            processes.set(processId, { ...existing, conversationTurns: updatedTurns });
+            processes.set(processId, { ...existing, conversationTurns: updatedTurns }, false, true);
         }),
         updateTurnSdkEventId: vi.fn(async (processId: string, turnIndex: number, sdkEventId: string) => {
             const existing = processes.get(processId);

@@ -11,10 +11,10 @@ const store = createProcessStore(dataDir, backend?); // always SqliteProcessStor
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 41.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 42.
 
 `SqliteProcessStore` opens the file through `NativeDatabase` from `coc-native`.
-The schema definition and v1→v41 migration ladder stay in TypeScript and run
+The schema definition and migration ladder stay in TypeScript and run
 through that synchronous handle. Startup treats a missing or stale native addon
 as a hard failure; the process store has no JavaScript SQLite fallback.
 The process writer runs in WAL mode with `synchronous=NORMAL`, including when
@@ -77,6 +77,30 @@ uses a synchronous `NativeDatabase.transaction` because its turn factory and
 optional process-update callback can re-enter the same database. The transaction
 holds the writer through turn-index allocation, callback execution, updates,
 and rollback.
+
+### Bounded conversation history
+
+Required `getProcessHistory(id, workspaceId?, options?)` returns `{process, page}`.
+The process contains only the page's chronological turns; `page` carries `turns`,
+`oldestTurnIndex`, `hasMore`, `totalTurns`, and `historyRevision`. An explicit workspace
+must equal the persisted owner. Browser-safe `forge/history-paging` exports the
+same `PAGE_TURNS=30` constant; limits are integers from 1–200 and
+the exclusive cursor is a non-negative safe integer. A leading assistant includes
+its immediately preceding user, permitting one extra row. Empty pages have a null
+oldest index and `hasMore=false`.
+
+SQLite reads the process, total count, `LIMIT limit+1` rows, older-row existence,
+and revision in one transaction, without full-history/native hydration. All stored
+rows participate, including archived turns and tombstones, matching full process
+reads; presentation owns visibility. `processes.history_revision` is private:
+full process shapes and exports omit it. Triggers invalidate pages for settled
+turn edits, removals, historical inserts, and completed compaction metadata,
+including direct SQL writers and same-index SQL replacement attempts. Appends and streaming updates remain stable;
+placeholder replacement compensates deletion increments in its write transaction.
+
+File fixtures persist the counter in the file envelope. In-memory and mock stores
+keep it outside process objects. They share page validation and boundary semantics;
+their history mutation counters are monotonic, not exact SQL row-operation counts.
 
 ### Process-store benchmark
 
@@ -172,7 +196,7 @@ ownership before persistence and process-added events.
 Initial admissions carry URL-free `QueuedTask.botControl` outside public payloads,
 persisted in schema-39 `queue_tasks.bot_control`. Queue restore/requeue preserves
 trusted control; lifecycle registration rereads it under process mutation admission
-before execution. Native readers accept schemas 38–41. Existing-topic adoption in
+before execution. Native readers accept schemas 38–42. Existing-topic adoption in
 `server/messaging/bot-control-admission.ts` verifies workspace/controller, persists
 a claim before enqueue, and compensates only that exact new claim on rejection.
 Observers are reconciled against exact accepted task/workspace/process/request/prompt
@@ -243,7 +267,7 @@ unauthorized links are omitted without discarding valid provenance.
   `relay-request-projection.ts`) is the reference semantics; SQLite answers with bounded
   reads on `idx_turns_relay_request` and `idx_turns_process_role` in one read transaction,
   selecting only the settled answer text and failure evidence between a request's user
-  turn and the next user turn. The Rust process reader accepts schema versions 38–41.
+  turn and the next user turn. The Rust process reader accepts schema versions 38–42.
 - **Automation attribution** — `ConversationTurn.turnSource` is JSON in `turn_source`.
   Cron, wakeup and trigger identifiers survive SQLite, JSON serialization and fork
   copies. Sentinel wakes carry their fixed `deliveryId` on queue/pending context,
@@ -298,8 +322,8 @@ workspace (never pins, never crosses workspaces) and returns the ids it updated 
 is the Pinned section's sort key.
 
 `softDeleteTurn` / `restoreTurn` / `hardDeleteTurn` and the `deleted_at` column exist on
-`SqliteProcessStore`, but no REST route deletes a message; read paths hide turns with
-`deleted_at` set. Seen-state, pin, and archive HTTP surfaces are catalogued in
+`SqliteProcessStore`. Full and paged process reads retain `deleted_at` rows; pinned
+turn queries exclude them. Seen-state, pin, and archive HTTP surfaces are catalogued in
 [rest-api.md](rest-api.md).
 
 ### Task Group Registry

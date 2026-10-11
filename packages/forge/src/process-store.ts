@@ -10,6 +10,21 @@ import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
 import type { ProcessOwnerProjection, RelayRequestProjection } from './relay-request-projection';
 
+export const PAGE_TURNS = 30;
+
+export interface ConversationTurnsPage {
+    turns: ConversationTurn[];
+    oldestTurnIndex: number | null;
+    hasMore: boolean;
+    totalTurns: number;
+    historyRevision: number;
+}
+
+export interface ProcessHistoryOptions {
+    limit?: number;
+    beforeTurnIndex?: number;
+}
+
 /**
  * A single FTS5 search hit within a conversation turn,
  * enriched with process-level metadata for display.
@@ -346,6 +361,8 @@ export interface ProcessStore {
     addProcess(process: AIProcess): Promise<void>;
     updateProcess(id: string, updates: Partial<AIProcess>): Promise<void>;
     getProcess(id: string, workspaceId?: string): Promise<AIProcess | undefined>;
+    /** Exact workspace ownership when supplied; exclusive cursor, chronological page. */
+    getProcessHistory(id: string, workspaceId?: string, options?: ProcessHistoryOptions): Promise<{ process: AIProcess; page: ConversationTurnsPage } | undefined>;
     getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]>;
     removeProcess(id: string): Promise<void>;
     /** Remove processes matching filter. Returns count of removed items. */

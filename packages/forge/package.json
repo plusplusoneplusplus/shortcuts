@@ -79,6 +79,7 @@
     "./git/origin-id": "./dist/git/origin-id.js",
     "./git/pull-request-detection": "./dist/git/pull-request-detection.js",
     "./ai": "./dist/ai/index.js",
+    "./history-paging": "./dist/process-store.js",
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",
     "./utils": "./dist/utils/index.js",
