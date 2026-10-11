@@ -70,6 +70,7 @@ describe('sqlite-schema', () => {
             'idx_pull_request_chat_bindings_workspace',
             'idx_work_item_chat_bindings_workspace',
             'idx_processes_ws_status_activity',
+            'idx_processes_ws_seen',
             'idx_task_groups_workspace_type',
             'idx_task_group_members_group',
             'idx_task_group_members_process',
@@ -92,6 +93,49 @@ describe('sqlite-schema', () => {
         }
         // Exactly the indexes we expect (no extras with our prefix)
         expect(indexes).toHaveLength(expected.length);
+    });
+
+    describe('seen-state index', () => {
+        const SEEN_MAP_SQL = `SELECT id, seen_at FROM processes
+            WHERE workspace_id = ? AND seen_at IS NOT NULL`;
+        const UNSEEN_COUNT_SQL = `SELECT COUNT(*) AS cnt FROM processes
+            WHERE workspace_id = ?
+              AND status IN ('completed', 'failed')
+              AND end_time IS NOT NULL
+              AND (seen_at IS NULL OR seen_at != end_time)`;
+        const plan = (sql: string) => db.prepare(`EXPLAIN QUERY PLAN ${sql}`)
+            .all<{ detail: string }>('ws-1').map(row => row.detail).join('\n');
+
+        it('answers seen-state reads from the covering index without loading large rows', () => {
+            initializeDatabase(db);
+            // Rows with large `result` values ahead of seen_at, plus planner stats,
+            // mirror the production shape that made table lookups expensive.
+            const insert = db.prepare(`INSERT INTO processes
+                (id, workspace_id, status, start_time, end_time, result, seen_at, last_event_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+            const big = 'x'.repeat(64 * 1024);
+            for (let i = 0; i < 40; i++) {
+                const end = `2026-01-01T00:00:${String(i).padStart(2, '0')}.000Z`;
+                insert.run(`p-${i}`, i % 4 === 0 ? 'ws-2' : 'ws-1', i % 3 === 0 ? 'failed' : 'completed',
+                    end, end, big, i % 2 === 0 ? end : null, end);
+            }
+            db.exec('ANALYZE');
+
+            expect(plan(SEEN_MAP_SQL)).toContain('USING COVERING INDEX idx_processes_ws_seen');
+            expect(plan(UNSEEN_COUNT_SQL)).toContain('USING COVERING INDEX idx_processes_ws_seen');
+            expect(db.prepare(UNSEEN_COUNT_SQL).get<{ cnt: number }>('ws-1')?.cnt).toBe(20);
+            expect(db.prepare(SEEN_MAP_SQL).all('ws-1')).toHaveLength(10);
+        });
+
+        it('adds the seen index to an existing current-version database without a version bump', () => {
+            initializeDatabase(db);
+            db.exec('DROP INDEX idx_processes_ws_seen');
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            initializeDatabase(db);
+            const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all<{ name: string }>();
+            expect(indexes.map(row => row.name)).toContain('idx_processes_ws_seen');
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        });
     });
 
     describe('PRAGMAs', () => {

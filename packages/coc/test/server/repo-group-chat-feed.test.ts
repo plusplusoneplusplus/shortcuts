@@ -8,7 +8,7 @@
  * and the HTTP route wiring.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -442,6 +442,28 @@ describe('buildRepoGroupChatFeed', () => {
 
         expect(feed.counts.unread).toBe(2);
         expect(feed.history[0].seenAt).toBeDefined();
+    });
+
+    it('reads each owner\'s seen map once per request, not once per pinned or search row', async () => {
+        for (let i = 0; i < 4; i++) {
+            await addChat(`pin-${i}`, A, i + 1, { pinnedAt: `2026-01-01T0${i + 1}:00:00Z` });
+            await addChat(`hit-${i}`, B, i + 10);
+            await store.appendConversationTurn(`hit-${i}`, turnIndex => ({ turnIndex, role: 'user', content: 'A rare cobalt capacitor body term', timestamp: new Date('2026-01-01T02:00:00Z') }));
+        }
+        store.markSeen('pin-0', new Date(Date.UTC(2026, 0, 1, 0, 1) + 1000).toISOString());
+        const seenMapReads = vi.spyOn(store, 'getSeenMap');
+        const readsFor = (workspaceId: string) => seenMapReads.mock.calls.filter(([id]) => id === workspaceId).length;
+
+        const firstPage = await buildRepoGroupChatFeed(deps, GROUP, members, query());
+        expect(firstPage.history.filter(row => row.id.startsWith('pin-'))).toHaveLength(4);
+        expect(firstPage.history.find(row => row.id === 'pin-0')?.seenAt).toBeDefined();
+        // At most one read for rows plus one for the unread count, independent of row count.
+        expect(readsFor(A)).toBeLessThanOrEqual(2);
+
+        seenMapReads.mockClear();
+        const search = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt capacitor' }));
+        expect(search.history.map(row => row.id).sort()).toEqual(['hit-0', 'hit-1', 'hit-2', 'hit-3']);
+        expect(readsFor(B)).toBeLessThanOrEqual(2);
     });
 
     it('hides internal processes and excludes archived or hidden chats from unread counts', async () => {

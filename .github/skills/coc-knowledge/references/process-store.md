@@ -217,6 +217,13 @@ unauthorized links are omitted without discarding valid provenance.
 - **Column semantics** — `pinned_at TEXT` / `archived INTEGER` back pin and archive (per
   process and per turn); `seen_at TEXT` backs read/unread; `lastEventAt` is set on `addProcess`
   (= `startTime`) and updated on `appendConversationTurn`.
+- **Seen-state reads** — `getSeenMap` and `getUnseenCount` run synchronously on the shared
+  handle, so they must stay index-only: `idx_processes_ws_seen`
+  `(workspace_id, status, end_time, seen_at, id)` covers both. Large `result` values sit in
+  overflow pages ahead of `seen_at`/`end_time`, so any table lookup walks every row's chain
+  and blocks the event loop. Additive indexes like this one are created idempotently without
+  a schema version bump, preserving the Rust reader's version contract. Callers read a
+  workspace's seen map once per request, never per row.
 - **Context window tracking** — `tokenLimit`, `currentTokens`, and optional `systemTokens` /
   `toolDefinitionsTokens` / `conversationTokens` persist on the process record for snapshot
   replay.

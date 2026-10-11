@@ -382,6 +382,16 @@ export async function buildRepoGroupChatFeed(
     // History page: k-way merge of each source's activity-ordered stream.
     const history: Array<ProcessHistoryItem & { ownerWorkspaceId: string }> = [];
     const nextOffsets: Record<string, number> = { ...offsets };
+    // One seen-map read per owner workspace per request; rows look up in it.
+    const seenMaps = new Map<string, Record<string, string>>();
+    const seenMapFor = (workspaceId: string) => {
+        let seenMap = seenMaps.get(workspaceId);
+        if (!seenMap) {
+            seenMap = deps.store.getSeenMap?.(workspaceId) ?? {};
+            seenMaps.set(workspaceId, seenMap);
+        }
+        return seenMap;
+    };
     let hasMore = false;
     if (query.q) {
         // One search page is a prefix of all statuses, not a history page plus active pins.
@@ -401,7 +411,7 @@ export async function buildRepoGroupChatFeed(
         for (const match of page) {
             if (match.section === 'history') {
                 history.push({
-                    ...toProcessHistoryItem(match.proc, deps.store.getSeenMap?.(match.workspaceId)[match.id], deps.botControlEnabled),
+                    ...toProcessHistoryItem(match.proc, seenMapFor(match.workspaceId)[match.id], deps.botControlEnabled),
                     ownerWorkspaceId: match.workspaceId,
                     ...parentContext(match.proc.parentProcessId),
                 });
@@ -420,7 +430,6 @@ export async function buildRepoGroupChatFeed(
                     Math.max(0, Math.floor(offsets[state.source.workspaceId] ?? 0)),
                 ),
             }));
-        const seenMaps = new Map<string, Record<string, string>>();
         const failed = new Set<typeof streams[number]>();
         const peek = async (entry: typeof streams[number]) => {
             if (failed.has(entry)) return undefined;
@@ -450,13 +459,8 @@ export async function buildRepoGroupChatFeed(
             best.entry.stream.take();
             const workspaceId = best.entry.state.source.workspaceId;
             nextOffsets[workspaceId] = best.head.rawIndex + 1;
-            let seenMap = seenMaps.get(workspaceId);
-            if (!seenMap) {
-                seenMap = deps.store.getSeenMap?.(workspaceId) ?? {};
-                seenMaps.set(workspaceId, seenMap);
-            }
             history.push({
-                ...toProcessHistoryItem(best.head.proc, seenMap[best.head.proc.id], deps.botControlEnabled),
+                ...toProcessHistoryItem(best.head.proc, seenMapFor(workspaceId)[best.head.proc.id], deps.botControlEnabled),
                 ownerWorkspaceId: workspaceId,
                 ...parentContext(best.head.proc.parentProcessId),
             });
@@ -469,7 +473,7 @@ export async function buildRepoGroupChatFeed(
     if (firstPage && !query.q) {
         const pinned = selected.filter(state => state.source.available).flatMap(state =>
             (state.history ?? []).filter(proc => proc.pinnedAt && !proc.archived).map(proc => ({
-                ...toProcessHistoryItem(proc, deps.store.getSeenMap?.(state.source.workspaceId)[proc.id], deps.botControlEnabled),
+                ...toProcessHistoryItem(proc, seenMapFor(state.source.workspaceId)[proc.id], deps.botControlEnabled),
                 ownerWorkspaceId: state.source.workspaceId,
                 ...parentContext(proc.parentProcessId),
             })));
