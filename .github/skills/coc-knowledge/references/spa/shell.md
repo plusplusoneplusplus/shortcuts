@@ -85,6 +85,11 @@ sources, marks their rows and counts partial, and removes sources absent from
 fresh membership. Reconnect and topology events reconcile the list; topology
 invalidates pending responses immediately. Removed members retain the open
 conversation identity until navigation clears it.
+The aggregate list groups Ralph, For Each, Map Reduce, generic tagged groups,
+spawn trees and enabled chat folders per owner. Cross-owner parent links remain
+delegation navigation, not nesting. Bulk actions keep owner-qualified selection,
+apply successful writes and retain failed rows for retry. Queue controls always
+name one owner; reorder uses that owner's repo view.
 
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats

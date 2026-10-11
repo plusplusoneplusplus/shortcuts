@@ -184,6 +184,20 @@ describe('buildRepoGroupChatFeed', () => {
         expect(next.hasMore).toBe(false);
     });
 
+    it('does not write store state, mutate queue snapshots or change queue ownership while discovering chats', async () => {
+        await addChat('history', A, 1);
+        queues[A] = { running: [{ id: 'active', processId: 'queue_active', repoId: A }], queued: [] };
+        queues[B] = { running: [], queued: [{ id: 'waiting', repoId: B, config: { concurrency: 2 } }] };
+        const before = JSON.stringify(queues);
+        const changes = () => store.getDatabase().prepare('SELECT total_changes() AS count').get() as { count: number };
+        const initial = changes().count;
+        await buildRepoGroupChatFeed(deps, GROUP, members, query());
+        await buildRepoGroupChatFeed(deps, GROUP, members, query({ owners: B, archived: 'include' }));
+        expect(JSON.stringify(queues)).toBe(before);
+        expect(changes().count).toBe(initial);
+        expect(await store.getProcess('history')).toMatchObject({ metadata: { workspaceId: A } });
+    });
+
     it('shows a re-queued follow-up only in its active section, never also as history', async () => {
         await addChat('a1', A, 1);
         await addChat('a2', A, 2);

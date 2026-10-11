@@ -1514,7 +1514,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 });
             });
             // Sync queued follow-ups from server state
-            const serverPending: any[] = data?.process?.pendingMessages ?? [];
+            const serverPending = Array.isArray(data?.process?.pendingMessages) ? data.process.pendingMessages : [];
             setPendingQueue(serverPending.map((m: any) => ({
                 id: m.id,
                 content: m.content,
@@ -2030,7 +2030,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             // returns early, so without this a still-running chat
                             // with pending follow-ups would show an empty
                             // "Queued · N" section after a switch-away/return.
-                            const serverPending: any[] = loadedProcess.pendingMessages ?? [];
+                            const serverPending = Array.isArray(loadedProcess.pendingMessages) ? loadedProcess.pendingMessages : [];
                             setPendingQueue(serverPending.map((m: any) => ({
                                 id: m.id,
                                 content: m.content,
@@ -2064,7 +2064,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         // Re-hydrate the queued follow-ups so a cold processId
                         // load of a still-running chat keeps its "Queued · N"
                         // section instead of clearing it.
-                        const serverPending: any[] = loadedProcess.pendingMessages ?? [];
+                        const serverPending = Array.isArray(loadedProcess.pendingMessages) ? loadedProcess.pendingMessages : [];
                         setPendingQueue(serverPending.map((m: any) => ({
                             id: m.id,
                             content: m.content,
@@ -2085,7 +2085,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
                 if (!loadedTask?.processId && loadedTask?.status === 'queued') {
                     setTask(loadedTask);
-                    const prompt = loadedTask?.payload?.prompt ?? '';
+                    const prompt = typeof loadedTask?.payload?.prompt === 'string' ? loadedTask.payload.prompt : '';
                     if (prompt) {
                         setTurnsAndRef([{ role: 'user', content: prompt, turnIndex: 0, timeline: [] }]);
                     }
@@ -2168,7 +2168,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     }
 
                     // Sync queued follow-ups from server
-                    const serverPending: any[] = procData?.process?.pendingMessages ?? [];
+                    const serverPending = Array.isArray(procData?.process?.pendingMessages) ? procData.process.pendingMessages : [];
                     setPendingQueue(serverPending.map((m: any) => ({
                         id: m.id,
                         content: m.content,

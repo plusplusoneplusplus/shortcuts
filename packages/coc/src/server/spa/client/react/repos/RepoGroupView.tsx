@@ -245,6 +245,9 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                 selectedKey={selectedKey}
                 filters={chatFilters}
                 onFiltersChange={setChatFilters}
+                baseUrl={groupBaseUrl}
+                refresh={chatFeed.refresh}
+                groupSelectionId={selectionId}
                 onSelect={(row) => {
                     if (row.ownerWorkspaceId === workspaceId) {
                         memberChat.clearSelection();
@@ -255,7 +258,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                 }}
             />
         );
-    }, [chatFeed, chatFilters, chatServerKey, chatServerLabel, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
+    }, [chatFeed, chatFilters, chatServerKey, chatServerLabel, groupBaseUrl, selectionId, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;

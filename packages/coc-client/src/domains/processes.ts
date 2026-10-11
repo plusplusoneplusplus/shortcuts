@@ -182,17 +182,19 @@ export class ProcessesClient {
     });
   }
 
-  pin(processId: string, pinned: boolean): Promise<{ process: AIProcess }> {
+  pin(processId: string, pinned: boolean, query?: Pick<ProcessListQuery, 'workspace'>): Promise<{ process: AIProcess }> {
     return this.transport.request<{ process: AIProcess }>(`/processes/${encodePathSegment(processId)}/pin`, {
       method: 'PATCH',
       body: { pinned },
+      query,
     });
   }
 
-  archive(processId: string, archived: boolean): Promise<{ process: AIProcess }> {
+  archive(processId: string, archived: boolean, query?: Pick<ProcessListQuery, 'workspace'>): Promise<{ process: AIProcess }> {
     return this.transport.request<{ process: AIProcess }>(`/processes/${encodePathSegment(processId)}/archive`, {
       method: 'PATCH',
       body: { archived },
+      query,
     });
   }
 

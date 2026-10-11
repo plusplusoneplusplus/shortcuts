@@ -270,6 +270,11 @@ export async function buildRepoGroupChatFeed(
     const selected = states.filter(state => !ownerFilter || ownerFilter.has(state.source.workspaceId));
     const matchesType = (task: Record<string, unknown>) => !query.type || task.type === query.type;
     const snippets: Record<string, Record<string, string>> = {};
+    const parentOwners = new Map<string, string>();
+    for (const state of states) for (const task of [...state.running, ...state.queued]) {
+        const id = activeProcessId(task);
+        if (id) parentOwners.set(id, state.source.workspaceId);
+    }
     // Counts and ordering share one eligible snapshot. Stable ties inside each
     // owner are essential: sorting only page-sized chunks can skip equal times.
     for (const state of selected) {
@@ -284,6 +289,7 @@ export async function buildRepoGroupChatFeed(
                 exclude: ['conversation'],
                 ...(query.type ? { type: query.type as AIProcess['type'] } : {}),
             }) : [];
+            for (const proc of state.history) parentOwners.set(proc.id, state.source.workspaceId);
             state.history = state.history
                 .filter(proc => matchesArchived(proc.archived, query.archived)
                     && !state.activeIds.has(proc.id) && (!state.hits || state.hits.has(proc.id)))
@@ -312,6 +318,9 @@ export async function buildRepoGroupChatFeed(
 
     const running = wantRunning ? selected.flatMap(state => state.running.filter(matchesType)) : [];
     const queued = wantQueued ? selected.flatMap(state => state.queued.filter(matchesType)) : [];
+    const parentContext = (parentProcessId: unknown) => typeof parentProcessId === 'string' && parentOwners.has(parentProcessId)
+        ? { parentOwnerWorkspaceId: parentOwners.get(parentProcessId), groupWorkspaceId: groupId } : {};
+    for (const task of [...running, ...queued]) Object.assign(task, parentContext(task.parentProcessId));
 
     // History page: k-way merge of each source's activity-ordered stream.
     const history: Array<ProcessHistoryItem & { ownerWorkspaceId: string }> = [];
@@ -365,6 +374,7 @@ export async function buildRepoGroupChatFeed(
             history.push({
                 ...toProcessHistoryItem(best.head.proc, seenMap[best.head.proc.id], deps.botControlEnabled),
                 ownerWorkspaceId: workspaceId,
+                ...parentContext(best.head.proc.parentProcessId),
             });
         }
         for (const entry of streams) {
@@ -377,12 +387,29 @@ export async function buildRepoGroupChatFeed(
             (state.history ?? []).filter(proc => proc.pinnedAt && !proc.archived).map(proc => ({
                 ...toProcessHistoryItem(proc, deps.store.getSeenMap?.(state.source.workspaceId)[proc.id], deps.botControlEnabled),
                 ownerWorkspaceId: state.source.workspaceId,
+                ...parentContext(proc.parentProcessId),
             })));
         pinned.sort((a, b) => new Date(b.pinnedAt!).getTime() - new Date(a.pinnedAt!).getTime()
             || a.ownerWorkspaceId.localeCompare(b.ownerWorkspaceId) || a.id.localeCompare(b.id));
         history.unshift(...pinned);
     }
     const counts = await countFeed(deps.store, states, selected, query, terminal, { wantRunning, wantQueued, matchesType });
+    const db = deps.store.getDatabase?.();
+    if (db) for (const state of selected) {
+        const folders = db.prepare(`
+            SELECT m.process_id AS processId, g.group_id AS folderId, g.title AS folderName
+            FROM task_groups g JOIN task_group_members m
+                ON m.workspace_id = g.workspace_id AND m.group_id = g.group_id
+            WHERE g.workspace_id = ? AND g.type = 'chat-folder' AND g.hidden = 0
+        `).all(state.source.workspaceId) as Array<{ processId: string; folderId: string; folderName: string }>;
+        const byId = new Map(folders.map(folder => [folder.processId, folder]));
+        for (const row of [...history, ...running, ...queued]) {
+            if (row.ownerWorkspaceId !== state.source.workspaceId) continue;
+            const id = 'startTime' in row ? String(row.id) : activeProcessId(row);
+            const folder = id ? byId.get(id) : undefined;
+            if (folder) Object.assign(row, { folderId: folder.folderId, folderName: folder.folderName });
+        }
+    }
     if (query.q) {
         for (const state of selected) {
             const visibleIds = new Set([
