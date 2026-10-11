@@ -134,11 +134,6 @@ describe('snapshot domain contract harness', () => {
 
     for (const domain of createSnapshotDomains()) {
         describe(`domain: ${domain.id}`, () => {
-            it('has a stable non-empty id', () => {
-                expect(typeof domain.id).toBe('string');
-                expect(domain.id.length).toBeGreaterThan(0);
-            });
-
             it('collect returns a well-formed CollectResult', async () => {
                 const collected = await domain.collect({ dataDir, store });
                 expect(collected).toBeTypeOf('object');

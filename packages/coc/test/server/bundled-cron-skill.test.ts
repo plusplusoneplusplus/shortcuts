@@ -8,11 +8,6 @@ import * as path from 'path';
 import { getBundledSkillsPath } from '@plusplusoneplusplus/forge';
 
 describe('bundled cron skill', () => {
-    it('has a SKILL.md file in the bundled-skills directory', () => {
-        const skillPath = path.join(getBundledSkillsPath(), 'cron', 'SKILL.md');
-        expect(fs.existsSync(skillPath)).toBe(true);
-    });
-
     it('SKILL.md contains expected frontmatter name', () => {
         const skillPath = path.join(getBundledSkillsPath(), 'cron', 'SKILL.md');
         const content = fs.readFileSync(skillPath, 'utf-8');

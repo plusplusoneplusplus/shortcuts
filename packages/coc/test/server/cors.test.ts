@@ -170,11 +170,6 @@ describe('CORS headers', () => {
         expect(headers['access-control-allow-origin']).toBe(loopback);
     });
 
-    it('Access-Control-Allow-Headers is set on all responses', async () => {
-        const { headers } = await rawRequest(baseUrl, '/api/processes');
-        expect(headers['access-control-allow-headers']).toBeDefined();
-    });
-
     it('Access-Control-Allow-Headers always includes Authorization', async () => {
         const { headers } = await rawRequest(baseUrl, '/api/processes');
         expect(String(headers['access-control-allow-headers'])).toContain('Authorization');

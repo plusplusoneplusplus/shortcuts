@@ -1,9 +1,11 @@
 /**
- * Tests for the duplicate chat session bug fix:
- * - Follow-up messages while parent task is running should NOT create new tasks
- * - Follow-up messages while parent task is queued should NOT create new tasks
- * - Follow-up messages after completion should requeue (existing behavior)
- * - Client-side processId deduplication logic
+ * Narrow follow-up routing checks not covered elsewhere:
+ * - isSessionAlive against the process store
+ * - findTaskByProcessId for failed tasks in history
+ * - requeueForFollowUp after a failed task
+ *
+ * Running/completed lookup and broader requeue behavior live in
+ * multi-repo-queue-router.test.ts.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -77,31 +79,6 @@ describe('isSessionAlive (process store check)', () => {
 // ============================================================================
 
 describe('follow-up routing by task status', () => {
-    it('findTaskByProcessId finds running tasks', () => {
-        const { bridge } = createBridge();
-        bridge.getOrCreateBridge('/repo/find-running');
-        const manager = bridge.registry.getQueueForRepo('/repo/find-running');
-        enqueueAndStart(manager, 'proc-find-running');
-
-        const found = bridge.findTaskByProcessId('proc-find-running');
-        expect(found).toBeDefined();
-        expect(found!.status).toBe('running');
-        bridge.dispose();
-    });
-
-    it('findTaskByProcessId finds completed tasks in history', () => {
-        const { bridge } = createBridge();
-        bridge.getOrCreateBridge('/repo/find-completed');
-        const manager = bridge.registry.getQueueForRepo('/repo/find-completed');
-        const taskId = enqueueAndStart(manager, 'proc-find-completed');
-        manager.markCompleted(taskId);
-
-        const found = bridge.findTaskByProcessId('proc-find-completed');
-        expect(found).toBeDefined();
-        expect(found!.status).toBe('completed');
-        bridge.dispose();
-    });
-
     it('findTaskByProcessId finds failed tasks in history', () => {
         const { bridge } = createBridge();
         bridge.getOrCreateBridge('/repo/find-failed');

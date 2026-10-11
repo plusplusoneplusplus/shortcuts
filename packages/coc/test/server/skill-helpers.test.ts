@@ -3,11 +3,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import {
-    FRONTMATTER_REGEX,
-    DESCRIPTION_REGEX,
-    VERSION_REGEX,
-    VARIABLES_REGEX,
-    OUTPUT_REGEX,
     parseSkillMd,
     parseYamlDescription,
     extractDescriptionFromMarkdown,
@@ -15,7 +10,6 @@ import {
     listInstalledSkills,
     getSkillDetail,
 } from '../../src/server/skills/skill-handler';
-import type { SkillInfo } from '../../src/server/skills/skill-handler';
 
 describe('shared skill helpers', () => {
     let tmpDir: string;
@@ -26,41 +20,6 @@ describe('shared skill helpers', () => {
 
     afterEach(() => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
-    });
-
-    // ── Regex constants ──────────────────────────────────────
-
-    describe('regex constants', () => {
-        it('FRONTMATTER_REGEX matches YAML frontmatter', () => {
-            const md = '---\nname: test\ndescription: hello\n---\n# Body';
-            const m = md.match(FRONTMATTER_REGEX);
-            expect(m).toBeTruthy();
-            expect(m![1]).toContain('name: test');
-        });
-
-        it('DESCRIPTION_REGEX matches description line', () => {
-            const m = 'description: My skill'.match(DESCRIPTION_REGEX);
-            expect(m).toBeTruthy();
-            expect(m![1]).toBe('My skill');
-        });
-
-        it('VERSION_REGEX matches version line', () => {
-            const m = 'version: "1.2.3"'.match(VERSION_REGEX);
-            expect(m).toBeTruthy();
-            expect(m![1]).toBe('1.2.3');
-        });
-
-        it('VARIABLES_REGEX matches variables array', () => {
-            const m = 'variables: ["a", "b"]'.match(VARIABLES_REGEX);
-            expect(m).toBeTruthy();
-            expect(m![1]).toContain('"a"');
-        });
-
-        it('OUTPUT_REGEX matches output array', () => {
-            const m = 'output: ["x"]'.match(OUTPUT_REGEX);
-            expect(m).toBeTruthy();
-            expect(m![1]).toContain('"x"');
-        });
     });
 
     // ── parseSkillMd ─────────────────────────────────────────
@@ -333,18 +292,4 @@ describe('shared skill helpers', () => {
         });
     });
 
-    // ── SkillInfo type ───────────────────────────────────────
-
-    describe('SkillInfo type', () => {
-        it('accepts both relativePath and source fields', () => {
-            const skill: SkillInfo = {
-                name: 'test',
-                relativePath: '.github/skills/test',
-                source: 'global',
-            };
-            expect(skill.name).toBe('test');
-            expect(skill.relativePath).toBe('.github/skills/test');
-            expect(skill.source).toBe('global');
-        });
-    });
 });

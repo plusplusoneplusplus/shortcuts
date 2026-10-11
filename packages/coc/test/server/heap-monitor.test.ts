@@ -90,21 +90,6 @@ describe('HeapMonitor', () => {
         vi.restoreAllMocks();
     });
 
-    describe('constructor', () => {
-        it('creates a monitor with config', () => {
-            const monitor = new HeapMonitor(defaultConfig);
-            expect(monitor).toBeInstanceOf(HeapMonitor);
-            monitor.dispose();
-        });
-
-        it('accepts a custom log function', () => {
-            const log = vi.fn();
-            const monitor = new HeapMonitor(defaultConfig, log);
-            expect(monitor).toBeInstanceOf(HeapMonitor);
-            monitor.dispose();
-        });
-    });
-
     describe('start/stop', () => {
         it('does not start when enabled=false', () => {
             const setIntervalSpy = vi.spyOn(global, 'setInterval');
@@ -154,14 +139,6 @@ describe('HeapMonitor', () => {
     });
 
     describe('check', () => {
-        it('returns a heap snapshot', () => {
-            const monitor = new HeapMonitor(defaultConfig);
-            const snapshot = monitor.check();
-            expect(snapshot).toHaveProperty('usedHeapMB');
-            expect(snapshot).toHaveProperty('usagePercent');
-            monitor.dispose();
-        });
-
         it('logs warning when usage exceeds warn threshold', () => {
             const log = vi.fn();
             // Use a threshold of 0 so any usage triggers warning

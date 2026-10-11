@@ -117,10 +117,6 @@ describe('ensureMyLifeWorkspace', () => {
         expect(fs.existsSync(weeklyDir)).toBe(false);
     });
 
-    it('exports the correct constants', () => {
-        expect(MY_LIFE_WORKSPACE_ID).toBe('my_life');
-        expect(MY_LIFE_WORKSPACE_NAME).toBe('My Life');
-    });
 });
 
 describe('seedMyLifeDefaultNotes', () => {

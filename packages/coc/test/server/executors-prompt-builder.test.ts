@@ -38,7 +38,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 const mockCreateSuggestFollowUpsTool = vi.fn(() => ({ name: 'suggest_follow_ups' }));
-vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
+vi.mock('../../src/server/llm-tools/suggest-follow-ups-tool', () => ({
     createSuggestFollowUpsTool: () => mockCreateSuggestFollowUpsTool(),
 }));
 

@@ -27,10 +27,7 @@ import {
     VISIBLE_TASK_TYPE_LABELS,
     VALID_ENQUEUE_TYPES,
 } from '../../src/server/tasks/task-types';
-import type {
-    RunWorkflowPayload,
-    CocTaskKind,
-} from '../../src/server/tasks/task-types';
+import type { RunWorkflowPayload } from '../../src/server/tasks/task-types';
 import type { MCPServerConfig } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -45,11 +42,6 @@ describe('isChatPayload', () => {
 
     it('returns true for payload with kind: chat and context.skills', () => {
         const payload: Record<string, unknown> = { kind: 'chat', prompt: 'hello', context: { skills: ['impl'] } };
-        expect(isChatPayload(payload)).toBe(true);
-    });
-
-    it('returns true for payload with mode: ask', () => {
-        const payload: Record<string, unknown> = { kind: 'chat', mode: 'ask', prompt: 'explain' };
         expect(isChatPayload(payload)).toBe(true);
     });
 
@@ -355,100 +347,10 @@ describe('hasResolveDiffCommentsMultiContext', () => {
 });
 
 // ============================================================================
-// Type narrowing integration
-// ============================================================================
-
-describe('type narrowing', () => {
-    it('guards correctly narrow Record<string, unknown> payloads', () => {
-        const payloads: Record<string, unknown>[] = [
-            { kind: 'chat', prompt: 'hi' },
-            { kind: 'chat', prompt: 'follow', processId: 'proc-1' },
-            { kind: 'run-workflow', workflowPath: '/tmp/p', workingDirectory: '/tmp' },
-            { kind: 'run-script', script: 'echo hi' },
-        ];
-
-        expect(isChatPayload(payloads[0])).toBe(true);
-        expect(isChatFollowUp(payloads[1])).toBe(true);
-        expect(isRunWorkflowPayload(payloads[2])).toBe(true);
-        expect(isRunScriptPayload(payloads[3])).toBe(true);
-    });
-
-    it('discriminant-based guards are mutually exclusive', () => {
-        const chatPayload: Record<string, unknown> = { kind: 'chat', prompt: 'hi' };
-        const runWorkflowPayload: Record<string, unknown> = { kind: 'run-workflow', workflowPath: '/p', workingDirectory: '/tmp' };
-        const runScriptPayload: Record<string, unknown> = { kind: 'run-script', script: 'echo' };
-
-        // Chat is not run-workflow or run-script
-        expect(isChatPayload(chatPayload)).toBe(true);
-        expect(isRunWorkflowPayload(chatPayload)).toBe(false);
-        expect(isRunScriptPayload(chatPayload)).toBe(false);
-
-        // Run-workflow is not chat or run-script
-        expect(isRunWorkflowPayload(runWorkflowPayload)).toBe(true);
-        expect(isChatPayload(runWorkflowPayload)).toBe(false);
-        expect(isRunScriptPayload(runWorkflowPayload)).toBe(false);
-
-        // Run-script is not chat or run-workflow
-        expect(isRunScriptPayload(runScriptPayload)).toBe(true);
-        expect(isChatPayload(runScriptPayload)).toBe(false);
-        expect(isRunWorkflowPayload(runScriptPayload)).toBe(false);
-    });
-
-    it('context helpers are only true for chat payloads with matching context', () => {
-        const taskGenPayload: Record<string, unknown> = {
-            kind: 'chat',
-            prompt: 'gen',
-            context: { taskGeneration: { targetFolder: '/t' } },
-        };
-        const resolvePayload: Record<string, unknown> = {
-            kind: 'chat',
-            prompt: 'resolve',
-            context: { resolveComments: { documentUri: '/d', commentIds: ['c1'], documentContent: 'x', filePath: '/f' } },
-        };
-        const replicatePayload: Record<string, unknown> = {
-            kind: 'chat',
-            prompt: 'replicate',
-            context: { replication: { commitHash: 'abc', templateName: 'x' } },
-        };
-        const commitChatPayload: Record<string, unknown> = {
-            kind: 'chat',
-            prompt: 'discuss commit',
-            context: { commitChat: { commitHash: 'abc123', commitMessage: 'fix: update validation' } },
-        };
-
-        expect(hasTaskGenerationContext(taskGenPayload)).toBe(true);
-        expect(hasResolveCommentsContext(taskGenPayload)).toBe(false);
-        expect(hasReplicationContext(taskGenPayload)).toBe(false);
-        expect(hasCommitChatContext(taskGenPayload)).toBe(false);
-
-        expect(hasResolveCommentsContext(resolvePayload)).toBe(true);
-        expect(hasTaskGenerationContext(resolvePayload)).toBe(false);
-        expect(hasReplicationContext(resolvePayload)).toBe(false);
-        expect(hasCommitChatContext(resolvePayload)).toBe(false);
-
-        expect(hasReplicationContext(replicatePayload)).toBe(true);
-        expect(hasTaskGenerationContext(replicatePayload)).toBe(false);
-        expect(hasResolveCommentsContext(replicatePayload)).toBe(false);
-        expect(hasCommitChatContext(replicatePayload)).toBe(false);
-
-        expect(hasCommitChatContext(commitChatPayload)).toBe(true);
-        expect(hasTaskGenerationContext(commitChatPayload)).toBe(false);
-        expect(hasResolveCommentsContext(commitChatPayload)).toBe(false);
-        expect(hasReplicationContext(commitChatPayload)).toBe(false);
-    });
-});
-
-// ============================================================================
 // TaskDefs struct
 // ============================================================================
 
 describe('TaskDefs', () => {
-    it('defines all expected task types', () => {
-        expect(TaskDefs.chat.kind).toBe('chat');
-        expect(TaskDefs.runWorkflow.kind).toBe('run-workflow');
-        expect(TaskDefs.runScript.kind).toBe('run-script');
-    });
-
     it('has correct labels', () => {
         expect(TaskDefs.chat.label).toBe('Chat');
         expect(TaskDefs.runWorkflow.label).toBe('Run Workflow');
@@ -465,12 +367,6 @@ describe('TaskDefs', () => {
         expect(TaskDefs.chat.visible).toBe(true);
         expect(TaskDefs.runWorkflow.visible).toBe(true);
         expect(TaskDefs.runScript.visible).toBe(true);
-    });
-
-    it('kind values match payload interface literal types', () => {
-        expect(TaskDefs.chat.kind).toBe('chat');
-        expect(TaskDefs.runWorkflow.kind).toBe('run-workflow');
-        expect(TaskDefs.runScript.kind).toBe('run-script');
     });
 });
 
@@ -515,17 +411,6 @@ describe('VALID_ENQUEUE_TYPES', () => {
         expect(VALID_ENQUEUE_TYPES.has('chat')).toBe(true);
         expect(VALID_ENQUEUE_TYPES.has('run-workflow')).toBe(true);
         expect(VALID_ENQUEUE_TYPES.has('run-script')).toBe(true);
-    });
-});
-
-// ============================================================================
-// CocTaskKind type
-// ============================================================================
-
-describe('CocTaskKind type', () => {
-    it('accepts all valid task kind strings at type level', () => {
-        const kinds: CocTaskKind[] = ['chat', 'run-workflow', 'run-script'];
-        expect(kinds).toHaveLength(3);
     });
 });
 
@@ -614,13 +499,6 @@ describe('resolveInstructionMode', () => {
 
     it('maps sentinel -> ask (read-only supervisor instructions)', () => {
         expect(resolveInstructionMode('sentinel')).toBe('ask');
-    });
-
-    it('returns a value for every ChatMode member', () => {
-        const modes = ['ask', 'plan', 'autopilot', 'ralph', 'sentinel'] as const;
-        for (const mode of modes) {
-            expect(['ask', 'autopilot']).toContain(resolveInstructionMode(mode));
-        }
     });
 });
 

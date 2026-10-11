@@ -17,9 +17,4 @@ describe('getRepoDataPath', () => {
         const result = getRepoDataPath('/data', 'ws-kss6a7', 'sub/dir/file.json');
         expect(result).toBe(path.join('/data', 'repos', 'ws-kss6a7', 'sub/dir/file.json'));
     });
-
-    it('is re-exported from the server barrel', async () => {
-        const barrel = await import('../../src/server/index');
-        expect(barrel.getRepoDataPath).toBe(getRepoDataPath);
-    });
 });

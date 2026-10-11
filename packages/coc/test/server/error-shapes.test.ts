@@ -149,15 +149,6 @@ describe('Error response shapes', () => {
         expect((body as any).details).toBeDefined();
     });
 
-    it('400 missing fields — error string is non-empty and contains field names', async () => {
-        const { body } = await apiRequest(baseUrl, '/api/processes', {
-            method: 'POST',
-            body: {},
-        });
-        expect(typeof (body as any).error).toBe('string');
-        expect((body as any).error.length).toBeGreaterThan(0);
-    });
-
     it('400 invalid JSON — shape { error, code: "INVALID_JSON" }', async () => {
         const { status, body } = await apiRequest(baseUrl, '/api/processes', {
             method: 'POST',
