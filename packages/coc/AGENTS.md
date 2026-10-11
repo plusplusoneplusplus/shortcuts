@@ -240,8 +240,11 @@ references before editing. Paths are package-relative.
   executor capability, and returns `scrubberReady`; server startup awaits recovery before
   activating restored queues. Scrubber events carry workspace/process ownership and use
   workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
-  Shutdown disposes scrubber queue subscriptions and timeout timers through the route
-  composition's WhatsApp manager disposal hook.
+  `ScrubberScheduler` uses owner-keyed shared schedule timers and future cron ticks,
+  rechecking owner/config/flags before admission. Config and run events refresh timers;
+  failure pause and live flag changes disarm them. Shutdown disposes schedule timers,
+  config subscriptions, queue subscriptions and timeout timers through the route
+  composition's WhatsApp manager disposal hook. See the Cron knowledge reference.
   To-do composer context reuses pointer attachments and resolves the owning ledger
   on drop and explicit send (`spa/client/react/features/chat/sentinelTodoContext.ts`).
   Bind workspace, parent Sentinel and concrete server identity; remote selections

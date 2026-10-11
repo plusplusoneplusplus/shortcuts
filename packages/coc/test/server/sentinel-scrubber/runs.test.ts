@@ -88,6 +88,41 @@ afterEach(() => {
 });
 
 describe('ScrubberRunService.start', () => {
+    it('cancels a scheduled admission disarmed during snapshot I/O without counting a failure', async () => {
+        item('Work');
+        service.dispose();
+        service = new ScrubberRunService({ dataDir: fixture.dataDir, scrubber,
+            engine: new ScrubberEngine({ todos, scrubber }), enqueue, cancelTask,
+            todos: { list: async () => ({ ...todos.get(owner), items: todos.get(owner).items.map(view) }) },
+            canStartScheduled: vi.fn().mockReturnValueOnce(true).mockReturnValue(false) });
+        expect((await service.start(owner, { trigger: 'schedule' })).status).toBe('cancelled');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(scrubber.getConfig(owner).consecutiveFailures).toBe(0);
+    });
+
+    it('rechecks live schedule admission after awaited snapshot reads', async () => {
+        item('Work');
+        let armed = true;
+        let release!: () => void;
+        service.dispose();
+        service = new ScrubberRunService({ dataDir: fixture.dataDir, scrubber,
+            engine: new ScrubberEngine({ todos, scrubber }), enqueue, cancelTask,
+            todos: { list: async () => ({ ...todos.get(owner), items: todos.get(owner).items.map(view) }) },
+            listTriggers: () => new Promise(resolve => { release = () => resolve([]); }),
+            canStartScheduled: () => armed });
+        const pending = service.start(owner, { trigger: 'schedule' });
+        await Promise.resolve();
+        armed = false;
+        release();
+        await expect(pending).rejects.toThrow('disarmed');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(scrubber.listRuns(owner)).toEqual([]);
+        const manual = service.start(owner, { trigger: 'manual' });
+        await Promise.resolve();
+        release();
+        expect((await manual).status).toBe('queued');
+    });
+
     it('queues one low-priority ask child chat with the snapshot passed as a repo-scoped file path', async () => {
         const a = item('Chat pagination', { status: 'in_progress' });
         item('Shipped', { status: 'done', statusReason: 'Merged' });

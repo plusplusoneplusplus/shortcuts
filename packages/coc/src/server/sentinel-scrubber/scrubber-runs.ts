@@ -43,6 +43,8 @@ export interface ScrubberRunServiceDeps {
     cancelTask: (taskId: string) => boolean | Promise<boolean>;
     /** Armed PR rules feed the skip-if-unchanged fingerprint and the snapshot. */
     listTriggers?: (owner: SentinelTodoOwner) => Promise<Trigger[]>;
+    /** Re-check live schedule gates after asynchronous snapshot reads. */
+    canStartScheduled?: (owner: SentinelTodoOwner) => boolean;
     /** Fired after any run change; `ledgerChanged` when findings were applied. */
     onChange?: (owner: SentinelTodoOwner, change: { runId: string; ledgerChanged?: boolean }) => void;
     now?: () => Date;
@@ -92,6 +94,9 @@ export class ScrubberRunService {
     async start(owner: SentinelTodoOwner, opts: { trigger: ScrubTrigger; itemIds?: string[] }): Promise<ScrubRunRecord> {
         const ledger = await this.deps.todos.list(owner);
         const triggers = await this.listArmedTriggers(owner);
+        if (opts.trigger === 'schedule' && this.deps.canStartScheduled?.(owner) === false) {
+            throw new ScrubberStoreError('conflict', 'The scrubber schedule is disarmed');
+        }
         let open = ledger.items.filter(item => OPEN_STATUSES.has(item.status) && !item.archived);
         if (opts.itemIds) {
             const selected = new Set(opts.itemIds);
@@ -126,6 +131,13 @@ export class ScrubberRunService {
         try {
             await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
             await fs.writeFile(snapshotPath, JSON.stringify(buildSnapshot(owner, run, included, awaiting, triggers), null, 2));
+            if (opts.trigger === 'schedule' && this.deps.canStartScheduled?.(owner) === false) {
+                const cancelled = this.deps.scrubber.transitionRun(owner, run.id, ['queued'], {
+                    status: 'cancelled', finishedAt: this.now().toISOString(), error: 'The scrubber schedule was disarmed',
+                });
+                this.finish(owner, run.id);
+                return cancelled ?? this.deps.scrubber.getRun(owner, run.id)!;
+            }
             const taskId = await this.deps.enqueue(buildChildTask(owner, run, snapshotPath));
             const linked = this.deps.scrubber.transitionRun(owner, run.id, ['queued'], { childProcessId: toQueueProcessId(taskId) });
             this.changed(owner, run.id);

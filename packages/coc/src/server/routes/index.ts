@@ -9,6 +9,7 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { ScrubberStore } from '../sentinel-scrubber/scrubber-store';
 import { ScrubberEngine } from '../sentinel-scrubber/scrubber-engine';
 import { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
+import { ScrubberScheduler } from '../sentinel-scrubber/scrubber-scheduler';
 import { registerScrubberRoutes } from '../sentinel-scrubber/scrubber-routes';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
@@ -539,8 +540,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
     const scrubber = new ScrubberStore(todoDb);
     const scrubberEngine = new ScrubberEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
+    let scrubberScheduler: ScrubberScheduler | undefined;
     const scrubberChanged = (owner: import('../sentinel-todos/sentinel-todo-store').SentinelTodoOwner,
         change: { runId?: string; ledgerChanged?: boolean }) => {
+        scrubberScheduler?.refresh(owner);
         getWsServer().broadcastProcessEvent({ type: 'sentinel-scrubber-changed', ...owner,
             runId: change.runId, timestamp: Date.now() });
         if (change.ledgerChanged) getWsServer().broadcastProcessEvent({ type: 'sentinel-todos-changed', ...owner,
@@ -555,11 +558,33 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
         },
         listTriggers: opts.sentinelTodoTriggers ? owner => opts.sentinelTodoTriggers!.list(owner) : undefined,
+        canStartScheduled: owner => {
+            const config = scrubber.getConfig(owner);
+            return scrubberScheduler?.canStart(owner) === true
+                && getScrubberEnabled() && config.enabled && !config.paused;
+        },
         onChange: scrubberChanged,
     });
     scrubberRuns.attach(bridge.registry);
     // Recovery completes before the composition root starts restored queues or accepts requests.
-    const scrubberReady = scrubberRuns.interruptActive();
+    scrubberScheduler = new ScrubberScheduler({ scrubber, runs: scrubberRuns, getEnabled: getScrubberEnabled,
+        assertOwner: async owner => {
+            if (!(await store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
+                throw new Error('Scrubber workspace not found');
+            }
+            await sentinelTodos.list(owner);
+        } });
+    const scrubberReady = scrubberRuns.interruptActive().then(count => {
+        scrubberScheduler?.refreshAll();
+        return count;
+    });
+    const unsubscribeScrubberConfig = opts.runtimeConfigService?.onChange(() => scrubberScheduler?.refreshAll());
+    const previousScrubberProcessChange = store.onProcessChange;
+    const scrubberProcessChange: NonNullable<ProcessStore['onProcessChange']> = event => {
+        previousScrubberProcessChange?.(event);
+        if (event.type === 'process-removed' || event.type === 'processes-cleared') scrubberScheduler?.refreshAll();
+    };
+    store.onProcessChange = scrubberProcessChange;
     opts.setSentinelScrubber?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
     registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
@@ -1270,6 +1295,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         jobNotices.dispose();
         delegatedJobResults.dispose();
         delegatedJobReviews.dispose();
+        unsubscribeScrubberConfig?.();
+        scrubberScheduler?.dispose();
+        if (store.onProcessChange === scrubberProcessChange) store.onProcessChange = previousScrubberProcessChange;
         scrubberRuns.dispose();
         if (!(store instanceof SqliteProcessStore)) todoDb.close();
     });

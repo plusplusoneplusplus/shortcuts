@@ -10,6 +10,7 @@
 import { Readable } from 'stream';
 import { EventEmitter } from 'node:events';
 import { ScrubberStore } from '../../src/server/sentinel-scrubber/scrubber-store';
+import { ScrubberScheduler } from '../../src/server/sentinel-scrubber/scrubber-scheduler';
 import type { ScrubberRunService } from '../../src/server/sentinel-scrubber/scrubber-runs';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import * as fs from 'fs/promises';
@@ -205,6 +206,9 @@ describe('registerAllRoutes', () => {
     });
 
     it('wires scrubber recovery, REST, runtime, queue completion and owner invalidations', async () => {
+        const refreshAll = vi.spyOn(ScrubberScheduler.prototype, 'refreshAll');
+        const refresh = vi.spyOn(ScrubberScheduler.prototype, 'refresh');
+        const disposeScheduler = vi.spyOn(ScrubberScheduler.prototype, 'dispose');
         const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
         const owner = { workspaceId: 'ws-fixture', processId: 'parent' };
         await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
@@ -230,10 +234,17 @@ describe('registerAllRoutes', () => {
         const scrubberListener = bridge.registry.listeners('taskCompleted')[0];
         try {
             await composition.scrubberReady;
+            expect(refreshAll).toHaveBeenCalledOnce();
             expect(scrubber.getRun(owner, 'orphan')?.status).toBe('interrupted');
             expect(bridge.findExecutorForTask).toHaveBeenCalledWith('old');
             expect(todos.get(owner).items[0].status).toBe('todo');
             const base = `/api/workspaces/${owner.workspaceId}/sentinel-todos/${owner.processId}/scrubber`;
+            const configRoute = findRoute(routes, 'PUT', `${base}/config`)!;
+            const configResponse = fakeRes();
+            await configRoute.route.handler(fakeJsonReq('PUT', { enabled: false, cron: '0 * * * *', expectedRevision: 0 }),
+                configResponse, configRoute.match);
+            expect(configResponse.statusCode).toBe(200);
+            expect(refresh).toHaveBeenCalledWith(owner);
             const found = findRoute(routes, 'POST', `${base}/runs`)!;
             const res = fakeRes();
             await found.route.handler(fakeJsonReq('POST', {}), res, found.match);
@@ -256,6 +267,9 @@ describe('registerAllRoutes', () => {
             expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(expect.objectContaining({
                 type: 'sentinel-todos-changed', ...owner, ledgerRevision: todos.get(owner).revision }));
             flags.sentinelTodoScrubber = false;
+            const configListener = vi.mocked(opts.runtimeConfigService!.onChange).mock.calls[0][0];
+            configListener({} as never);
+            expect(refreshAll).toHaveBeenCalledTimes(2);
             expect(getScrubber()).toBeUndefined();
             const disabled = fakeRes();
             await found.route.handler(fakeJsonReq('POST', {}), disabled, found.match);
@@ -263,7 +277,10 @@ describe('registerAllRoutes', () => {
             flags.sentinelTodoScrubber = true;
             flags.sentinelTodoLedger = false;
             expect(getScrubber()).toBeUndefined();
+            await store.removeProcess(owner.processId);
+            expect(refreshAll).toHaveBeenCalledTimes(3);
             composition.whatsappMessagingManager.dispose();
+            expect(disposeScheduler).toHaveBeenCalledOnce();
             expect(bridge.registry.listeners('taskCompleted')).not.toContain(scrubberListener);
         } finally {
             composition.whatsappMessagingManager.dispose();
