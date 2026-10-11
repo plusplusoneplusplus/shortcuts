@@ -486,7 +486,9 @@ references before editing. Paths are package-relative.
   both relays resolve request-correlated answers and safe failure notices
   through `src/server/messaging/relay-answer.ts`. Session/usage-limit notices
   include recognized UTC/GMT reset times; other failures use fixed text. Never
-  relay raw exceptions or partial output, or borrow another request's error. Receipt files use
+  relay raw exceptions or partial output, or borrow another request's error.
+  WhatsApp inbound failure logs carry command type, failing stage and
+  `messaging/safe-error-diagnostics.ts` fields only, never raw errors. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - `features.sentinelDesktopMirror` is live/default-off under Admin → Configure →
   Integrations. Stage newly submitted dashboard messages before canonical admission;

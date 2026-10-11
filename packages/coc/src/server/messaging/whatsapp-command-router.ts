@@ -17,11 +17,16 @@ import { IncomingImagesError, MAX_MESSAGING_IMAGES, prepareIncomingImages, type 
 import { cleanupTempDir } from '../core/image-utils';
 import { PendingImages, PendingImagesError, type PendingImageScope } from './pending-images';
 import { createCache } from '../cache';
+import { safeErrorDiagnostics } from './safe-error-diagnostics';
 
 import { LocalTopicMemory } from './local-topics';
 import { listTodosReply, TODOS_NO_TARGET_REPLY, type MessagingTodoReader } from './messaging-todos';
 
 const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*`, platform: 'whatsapp' as const };
+
+/** Where an inbound message failed; logged with the command type, never the message. */
+type InboundStage = 'question-answer' | 'reserve-command' | 'command' | 'chat-routing' | 'chat-admission'
+    | 'handoff' | 'post-admission' | 'send-reply' | 'record-reply';
 
 interface PendingImageReference {
     scope: PendingImageScope;
@@ -156,10 +161,15 @@ export class WhatsAppCommandRouter {
                 throw new PendingImagesError('binding-changed');
             }
         };
+        let stage: InboundStage = 'question-answer';
         const reply = async (text: string) => {
             checkConnection();
+            const resume = stage;
+            stage = 'send-reply';
             const id = await this.deps.send(text, msg.messageId);
+            stage = 'record-reply';
             this.deps.bindings.recordOutbound(id);
+            stage = resume;
             return id;
         };
         let admitted = false;
@@ -187,8 +197,10 @@ export class WhatsAppCommandRouter {
                 const bindings = this.deps.bindings;
                 // Reserve the command before awaiting transport or dispatch, including concurrent redelivery.
                 if (bindings.isKnownMessage(msg.messageId)) return;
+                stage = 'reserve-command';
                 bindings.recordOutbound(msg.messageId);
                 await react();
+                stage = 'command';
                 const text = command.type === 'list-todos' ? await this.todosReply(msg) : await handleMessagingCommand(command, {
                     store: this.deps.store,
                     dataDir: this.deps.dataDir,
@@ -224,6 +236,7 @@ export class WhatsAppCommandRouter {
                 for (const part of command.type === 'git-status' || command.type === 'list-todos' ? chunkWhatsAppText(text) : [text]) await reply(part);
                 return;
             }
+            stage = 'chat-routing';
             const workspaces = await this.deps.store.getWorkspaces();
             checkConnection();
             let workspaceId = resolveChatWorkspace(workspaces, this.deps.bindings.selectedRepo)?.id;
@@ -322,6 +335,7 @@ export class WhatsAppCommandRouter {
                     outboundIds: [], nextPart: 0, status: 'delivered', notice: true,
                     ...(sourceMessageIds ? { sourceMessageIds } : {}),
                 };
+                stage = 'chat-admission';
                 if (!await this.deps.bindings.admit(binding, async () => {
                     if (!this.deps.dataDir) throw new IncomingImagesError('storage');
                     images = await prepareIncomingImages(this.deps.dataDir, handOff.workspaceId, turnImages, signal);
@@ -330,12 +344,15 @@ export class WhatsAppCommandRouter {
                         { connector: 'whatsapp', chatKey: msg.chatJid }, { taskId, images });
                 }, this.deps.getTask)) return;
                 admitted = true;
+                stage = 'post-admission';
                 await react();
                 return;
             }
             if (handOff) {
+                stage = 'handoff';
                 await this.deps.handOff!.start(handOff, command.args, { connector: 'whatsapp', chatKey: msg.chatJid });
                 admitted = true;
+                stage = 'post-admission';
                 // No receipt: the job reports through notices. Remember the inbound id so a redelivery is ignored.
                 this.deps.bindings.recordOutbound(msg.messageId);
                 await react();
@@ -348,6 +365,7 @@ export class WhatsAppCommandRouter {
                 outboundIds: [], nextPart: 0, status: 'queued',
                 ...(sourceMessageIds ? { sourceMessageIds } : {}),
             };
+            stage = 'chat-admission';
             if (!await this.deps.bindings.admit(binding, async () => {
                 checkConnection();
                 if (turnImages.length) {
@@ -377,6 +395,7 @@ export class WhatsAppCommandRouter {
                 }
             }, this.deps.getTask)) return;
             admitted = true;
+            stage = 'post-admission';
             if (!keepSelection) this.deps.bindings.selectTopic(workspaceId, processId);
             this.deps.queued?.(binding);
             await react();
@@ -392,7 +411,8 @@ export class WhatsAppCommandRouter {
                 await reply(error.message);
                 return;
             }
-            console.error('[whatsapp-messaging] Unable to handle inbound message');
+            console.error('[whatsapp-messaging] Unable to handle inbound message',
+                { command: command.type, stage, ...safeErrorDiagnostics(error) });
             if (error instanceof WhatsAppBindingAdmissionError && error.uncertain) {
                 await reply(error.message);
                 return;

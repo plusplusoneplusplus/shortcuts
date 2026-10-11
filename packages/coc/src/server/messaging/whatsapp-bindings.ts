@@ -47,7 +47,8 @@ export class WhatsAppBindingReleaseError extends Error {
 }
 
 export class WhatsAppBindingAdmissionError extends Error {
-    constructor(readonly uncertain = false) {
+    /** `cause` keeps the underlying failure for sanitized diagnostics; replies use only `message`. */
+    constructor(readonly uncertain = false, readonly cause?: unknown) {
         super(uncertain ? 'WhatsApp request admission is unconfirmed; check the conversation before retrying.'
             : 'WhatsApp request was not admitted.');
         this.name = 'WhatsAppBindingAdmissionError';
@@ -197,8 +198,8 @@ export class WhatsAppBindings {
             binding.admissionPending = true;
             try {
                 if (!this.add(binding)) return false;
-            } catch {
-                throw new WhatsAppBindingAdmissionError();
+            } catch (error) {
+                throw new WhatsAppBindingAdmissionError(false, error);
             }
             this.activeAdmissions.add(binding);
             try {
@@ -207,14 +208,14 @@ export class WhatsAppBindings {
                 } catch (error) {
                     let accepted: boolean;
                     try { accepted = await this.hasAdmissionProof(binding, getTask); }
-                    catch { throw new WhatsAppBindingAdmissionError(true); }
+                    catch (proofError) { throw new WhatsAppBindingAdmissionError(true, proofError); }
                     if (!accepted) {
                         try { this.discardRejected(binding); }
-                        catch { throw new WhatsAppBindingAdmissionError(true); }
+                        catch (discardError) { throw new WhatsAppBindingAdmissionError(true, discardError); }
                         if (error instanceof ImageDownloadError) throw new ImageDownloadError(error.code);
                         if (error instanceof IncomingImagesError) throw new IncomingImagesError(error.code);
                         if (error instanceof PendingImagesError) throw new PendingImagesError(error.code);
-                        throw new WhatsAppBindingAdmissionError();
+                        throw new WhatsAppBindingAdmissionError(false, error);
                     }
                     console.error('[whatsapp-bindings] Request admitted; notification reconciliation is pending');
                 }
