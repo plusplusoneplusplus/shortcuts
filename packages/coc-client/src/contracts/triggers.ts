@@ -65,6 +65,7 @@ export interface SentinelTodoTriggerBinding {
   instruction?: string;
   armedBy: 'user' | 'sentinel';
   armedAt: string;
+  removedAt?: string;
 }
 
 export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';

@@ -828,6 +828,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerStore: triggerInfra?.triggerStore,
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
+        sentinelTodoTriggers: triggerInfra?.sentinelTodoTriggers,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
         cronEmit: cronInfra?.emit,

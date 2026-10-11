@@ -50,6 +50,12 @@ describe('parsePullRequestUrl', () => {
         'https://gitlab.com/o/r/pull/1',
         'https://dev.azure.com/org/proj/_git/repo',
         'https://evil.example.com/github.com/o/r/pull/1',
+        'https://github.com/%ZZ/r/pull/1',
+        'https://github.com/o%2Fother/r/pull/1',
+        'https://github.com/o%5Cother/r/pull/1',
+        'https://github.com/o/r/pull/1%00',
+        'https://account:secret@github.com/o/r/pull/1',
+        'https://github.com:8443/o/r/pull/1',
     ])('rejects %s', (input) => {
         expect(parsePullRequestUrl(input)).toBeNull();
     });

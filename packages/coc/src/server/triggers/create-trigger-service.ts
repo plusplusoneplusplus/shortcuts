@@ -42,6 +42,9 @@ export interface CreateTriggerValidation {
  * accepted this iteration.
  */
 export function validateCreateTriggerBody(body: Record<string, unknown>): CreateTriggerValidation {
+    if (body.binding !== undefined || body.delivery !== undefined || body.outcome !== undefined) {
+        return { valid: false, error: 'Sentinel rules require the owner-scoped Sentinel To-do trigger API' };
+    }
     if (!isNonEmptyString(body.processId)) {
         return { valid: false, error: 'processId must be a non-empty string' };
     }

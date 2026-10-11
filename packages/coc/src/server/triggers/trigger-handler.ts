@@ -41,7 +41,7 @@ export function resolveTriggerForWorkspace(
     triggerId: string,
 ): Trigger | null {
     const trigger = store.getById(triggerId);
-    if (!trigger) return null;
+    if (!trigger || trigger.binding?.removedAt) return null;
     if (trigger.workspaceId === workspaceId) return trigger;
     logAutomationScopeMismatch('trigger', triggerId, workspaceId, trigger.workspaceId);
     return null;
@@ -127,8 +127,9 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
-            const triggers = store.getByWorkspace(workspaceId);
+            const triggers = store.getByWorkspace(workspaceId).filter(trigger => !trigger.binding);
             sendJSON(res, 200, { triggers: triggers.map(serializeTrigger) });
         },
     });
@@ -140,10 +141,11 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
-            if (!trigger) {
+            if (!trigger || trigger.binding) {
                 return sendError(res, 404, 'Trigger not found');
             }
             sendJSON(res, 200, { trigger: serializeTrigger(trigger) });
@@ -157,6 +159,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const body = await parseBodyOrReject(req, res);
@@ -175,6 +178,9 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
             }
 
             const target = body.status as 'active' | 'paused' | 'disarmed';
+            if (trigger.binding) {
+                return sendError(res, 409, 'Use the owner-scoped Sentinel To-do trigger API');
+            }
 
             if (target === 'paused') {
                 manager.disarm(triggerId);
@@ -217,11 +223,15 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
             if (!trigger) {
                 return sendError(res, 404, 'Trigger not found');
+            }
+            if (trigger.binding) {
+                return sendError(res, 409, 'Use the owner-scoped Sentinel To-do trigger API');
             }
 
             manager.disarm(triggerId);
@@ -245,7 +255,8 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/triggers$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse) => {
-            const triggers = store.getAll();
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
+            const triggers = store.getAll().filter(trigger => !trigger.binding);
             sendJSON(res, 200, { triggers: triggers.map(serializeTrigger) });
         },
     });

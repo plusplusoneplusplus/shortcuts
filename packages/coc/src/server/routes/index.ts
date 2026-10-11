@@ -163,6 +163,8 @@ import { registerCronRoutes } from '../cron/cron-handler';
 import type { CronStore } from '../cron/cron-store';
 import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import { registerTriggerRoutes } from '../triggers/trigger-handler';
+import { registerSentinelTodoTriggerRoutes } from '../triggers/sentinel-todo-trigger-routes';
+import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { TriggerStore } from '../triggers/trigger-store';
 import type { TriggerManager, TriggerEventEmit } from '../triggers/trigger-manager';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
@@ -269,6 +271,7 @@ export interface RegisterRoutesOptions {
     triggerStore?: TriggerStore;
     triggerManager?: TriggerManager;
     triggerEmit?: TriggerEventEmit;
+    sentinelTodoTriggers?: SentinelTodoTriggerService;
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     cronEmit?: CronEventEmit;
@@ -843,6 +846,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             enabled: opts.resolvedConfig?.triggers?.enabled ?? true,
             resolveWorkspaceId: resolveProcessWorkspaceId,
         });
+    }
+    if (opts.sentinelTodoTriggers) {
+        registerSentinelTodoTriggerRoutes(routes, opts.sentinelTodoTriggers,
+            opts.resolvedConfig?.triggers?.enabled ?? true);
     }
 
     // MCP OAuth routes (feature-flagged via mcpOauth.enabled)

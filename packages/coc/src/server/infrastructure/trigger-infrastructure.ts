@@ -31,6 +31,8 @@ import type { QueueExecutorBridge } from '../core/api-handler';
 import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoTriggerFirer } from '../triggers/sentinel-todo-trigger-firer';
+import { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 
 // ============================================================================
 // Types
@@ -40,6 +42,7 @@ export interface TriggerInfrastructure {
     triggerStore: TriggerStore;
     triggerManager: TriggerManager;
     sentinelTodoFirer: SentinelTodoTriggerFirer;
+    sentinelTodoTriggers: SentinelTodoTriggerService;
     /** Shared creation path for server tools. */
     createTrigger: CreateTriggerFn;
     /** Timer registry for scheduling trigger ticks. */
@@ -131,8 +134,9 @@ export async function createTriggerInfrastructure(
         recoverPendingMessages: options.recoverPendingMessages,
     });
 
+    const todos = new SentinelTodoStore(db);
     const sentinelTodoFirer = new SentinelTodoTriggerFirer({
-        triggers: triggerStore, todos: new SentinelTodoStore(db), processes: store,
+        triggers: triggerStore, todos, processes: store,
         executor: actionExecutor, emit, now,
         onPendingDelivery: trigger => triggerManager.schedulePendingDelivery(trigger),
     });
@@ -147,6 +151,12 @@ export async function createTriggerInfrastructure(
         oneShotFirer: sentinelTodoFirer,
         emit,
         ...(now ? { now } : {}),
+    });
+    const sentinelTodoTriggers = new SentinelTodoTriggerService({
+        triggers: triggerStore, todos,
+        owners: new SentinelTodoService({ todos, store, getTask: id => queueFacade.getTask(id) }),
+        manager: triggerManager, firer: sentinelTodoFirer, enabled: true,
+        fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
     });
 
     // Restore active trigger timers from the persisted nextTickAt values.
@@ -194,7 +204,7 @@ export async function createTriggerInfrastructure(
     };
 
     return {
-        triggerStore, triggerManager, sentinelTodoFirer, timerRegistry, emit, dispose,
+        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, timerRegistry, emit, dispose,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit, enabled: true,
             resolveWorkspaceId: options.resolveWorkspaceId, now: options.now,

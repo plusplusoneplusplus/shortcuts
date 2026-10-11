@@ -213,6 +213,20 @@ Items carry `priority: 'high' | 'regular'` (create defaults to `regular`; items 
 
 `coc-client` exposes these as `client.sentinelTodos.get/create/update/attachReference` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
 
+### PR-merge trigger rules
+
+Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers.enabled` (default on, restart required; `403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual items reject, and terminal rules cannot edit/resume/refire. Legacy `/triggers` APIs exclude bound rules and reject their mutation. Fires wake the Sentinel without changing item status or launching jobs.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create rules; create `{ itemId, prUrl, instruction?, workspaceId?, originId? }` arms immediately; already merged → `409` unless `{ runNow: true, confirmed: true }`; closed-unmerged → `409`; provider read failure → `502`; cap → `409` |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/preview` | `{ prUrl }` → canonical provider identity and untrusted PR snapshot; no persisted state |
+| PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | Replace authoring fields with required `expectedRevision`; preserves armed-by attribution; stale/terminal → `409` |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/pause` | `{ expectedRevision }` pauses a non-terminal rule |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/resume` | `{ expectedRevision }` rechecks item eligibility and cap, then resumes polling |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/run-now` | `{ expectedRevision, confirmed: true }` posts the same one-shot wake, consuming the rule |
+| DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes waiting rules or clears terminal presentation; fired delivery receipts remain durable, including pending retries |
+
 ## Task Groups
 
 Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dreams. Always registered (no feature flag).

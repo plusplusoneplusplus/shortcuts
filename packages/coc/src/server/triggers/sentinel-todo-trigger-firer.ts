@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getLogger, LogCategory, type ProcessStore } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoItem, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { ActionExecutor, OneShotFirer, TriggerEventEmit } from './trigger-manager';
+import { OneShotFireConflictError } from './trigger-manager';
 import type { TriggerStore } from './trigger-store';
 import type { Trigger, TriggerDelivery } from './trigger-types';
 
@@ -24,8 +25,11 @@ export interface SentinelTodoTriggerFirerDeps {
 export class SentinelTodoTriggerFirer implements OneShotFirer {
     constructor(private readonly deps: SentinelTodoTriggerFirerDeps) {}
 
-    async fire(triggerId: string, reason: TriggerDelivery['reason']): Promise<void> {
+    async fire(triggerId: string, reason: TriggerDelivery['reason'], expectedRevision?: number): Promise<void> {
         const initial = this.deps.triggers.getById(triggerId);
+        if (expectedRevision !== undefined && (!initial || initial.revision !== expectedRevision || !canFire(initial, reason))) {
+            throw new OneShotFireConflictError('Rule changed before Run now');
+        }
         if (!initial || !canFire(initial, reason)) return;
 
         // No database writer is held across asynchronous process lookup.
@@ -35,7 +39,10 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
             && process.metadata?.mode === 'sentinel';
         const committed = this.deps.triggers.transaction(() => {
             const current = this.deps.triggers.getById(triggerId);
-            if (!current || current.revision !== initial.revision || !canFire(current, reason)) return;
+            if (!current || current.revision !== initial.revision || !canFire(current, reason)) {
+                if (expectedRevision !== undefined) throw new OneShotFireConflictError('Rule changed before Run now');
+                return;
+            }
             const item = this.deps.todos.get({
                 workspaceId: current.workspaceId, processId: current.processId,
             }).items.find(item => item.id === current.binding?.itemId);

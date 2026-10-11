@@ -123,6 +123,13 @@ review recipients receive the same contract inline. Cancellation remains display
 
 ### Sentinel To-do trigger firing
 
+`triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
+using owner-workspace/process checks and optimistic revisions. Rules never expire,
+share the existing active cap and gate only on `triggers.enabled`. Creation/edit
+preflight reads canonical GitHub/ADO PR URLs with server credentials; already-merged
+creation requires confirmed Run now, while closed-unmerged creation rejects.
+Clearing a fired rule hides it without removing its durable delivery receipt.
+
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR-merge decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
 and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,

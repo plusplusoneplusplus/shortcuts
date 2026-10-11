@@ -163,6 +163,8 @@ export interface SentinelTodoTriggerBinding {
     instruction?: string;
     armedBy: 'user' | 'sentinel';
     armedAt: string;
+    /** Presentation cleared; a committed pending delivery remains recoverable. */
+    removedAt?: string;
 }
 
 /**

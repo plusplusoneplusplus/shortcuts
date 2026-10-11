@@ -34,14 +34,18 @@ export type PrStatusFetcher = (pr: PrIdentity) => Promise<PrStatusSnapshot>;
 export function parsePullRequestUrl(input: string): PrIdentity | null {
     let url: URL;
     try { url = new URL(input.trim()); } catch { return null; }
-    if (url.protocol !== 'https:') return null;
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
     const host = url.hostname.toLowerCase();
-    const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    let parts: string[];
+    try { parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent); }
+    catch { return null; }
+    if (parts.some(part => /[/\\\u0000-\u001f]/.test(part))) return null;
 
     if (host === 'github.com' || host === 'www.github.com') {
         const [owner, repo, kind, num] = parts;
         const number = parsePrNumber(num);
-        if (!owner || !repo || kind !== 'pull' || number === undefined) return null;
+        if (!owner || !repo || !/^[a-zA-Z0-9_.-]+$/.test(owner)
+            || !/^[a-zA-Z0-9_.-]+$/.test(repo) || kind !== 'pull' || number === undefined) return null;
         return {
             provider: 'github', host: 'github.com', repoPath: `${owner}/${repo}`, number,
             url: `https://github.com/${owner}/${repo}/pull/${number}`,

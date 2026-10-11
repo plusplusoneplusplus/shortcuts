@@ -97,9 +97,11 @@ export interface ActionExecutor {
  * calls the action executor for bound triggers. Shared by ticks and Run now.
  */
 export interface OneShotFirer {
-    fire(triggerId: string, reason: TriggerDelivery['reason']): Promise<void>;
+    fire(triggerId: string, reason: TriggerDelivery['reason'], expectedRevision?: number): Promise<void>;
     deliverPending?(triggerId: string): Promise<void>;
 }
+
+export class OneShotFireConflictError extends Error {}
 
 export type TriggerEventEmit = (event: TriggerChangeEvent) => void;
 

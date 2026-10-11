@@ -126,6 +126,10 @@ references before editing. Paths are package-relative.
   `ProcessMessageDeliveryService.deliverOnce` admission and the existing trigger
   scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
+  `SentinelTodoTriggerService` owns rule authoring with expected revisions,
+  eligibility and shared-cap checks. Rules use `triggers.enabled` (default on),
+  never expire and require no additional approval gate. Clearing fired rules
+  hides their presentation while preserving committed delivery receipts.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
