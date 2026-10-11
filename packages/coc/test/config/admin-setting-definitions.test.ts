@@ -356,6 +356,18 @@ describe('Features card UI metadata', () => {
         expect(() => CLIConfigSchema.parse({ features: { sentinelTodoLedger: 'yes' } })).toThrow();
     });
 
+    it('exposes the Sentinel To-do Scrubber as a live, default-off toggle', () => {
+        const scrubber = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelTodoScrubber')!;
+        expect(scrubber.default).toBe(false);
+        expect(scrubber.runtime).toBe('live');
+        expect(scrubber.ui).toMatchObject({ group: 'aiModes', testId: 'toggle-sentinel-todo-scrubber-enabled' });
+        expect(DEFAULT_CONFIG.features.sentinelTodoScrubber).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoScrubberEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { sentinelTodoScrubber: true },
+        })).sentinelTodoScrubberEnabled).toBe(true);
+    });
+
     it('exposes Teams message reaction as an independent live, default-off toggle', () => {
         const reaction = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsMessageReaction')!;
         expect(reaction.value).toEqual({ kind: 'boolean' });
@@ -658,6 +670,7 @@ describe('feature toggle settings-tab placement', () => {
         'mapReduce.enabled': 'ai',
         'sentinel.enabled': 'ai',
         'features.sentinelTodoLedger': 'ai',
+        'features.sentinelTodoScrubber': 'ai',
         'dangerousCommandGuard.enabled': 'ai',
         'effortLevels.enabled': 'ai',
         'copilot.transformTransport': 'ai',
