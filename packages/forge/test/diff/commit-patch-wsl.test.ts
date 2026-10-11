@@ -14,18 +14,43 @@ vi.mock('../../src/utils/exec-utils', () => ({ execFileAsync: vi.fn() }));
 vi.mock('../../src/git/safe-directory', () => ({ ensureGitSafeDirectoryAsync: vi.fn() }));
 const raw = 'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n@@ -1 +1 @@\n-old\n+new\n';
 
+async function loadWithReversedPlanning<T>(roots: string[], load: (root: string) => Promise<T>): Promise<T[]> {
+    const addon = loadNativeGit();
+    const prepare = addon.prepareGitRevisionPatch.bind(addon);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const planning = vi.spyOn(addon, 'prepareGitRevisionPatch').mockImplementationOnce(async (...args) => {
+        const plan = await prepare(...args);
+        await gate;
+        return plan;
+    });
+    const results = Promise.all(roots.map(load));
+    try {
+        // The second request must reach transport before the first plan is released.
+        await vi.waitFor(() => expect(execFileAsync).toHaveBeenCalledTimes(1));
+        release();
+        return await results;
+    } finally {
+        release();
+        planning.mockRestore();
+    }
+}
+
 describe('commit WSL transport using Rust planning and processing', () => {
-    it('GitLogService commit patches use each WSL root and preserve first-parent bytes', async () => {
+    it.each([false, true])('GitLogService commit patches use each WSL root and preserve first-parent bytes (reversed planning: %s)', async reversedPlanning => {
         vi.mocked(execFileAsync).mockClear();
         vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
             stdout: raw.replace('+new', args?.includes('Debian') ? '+two' : '+one'), stderr: '',
         }));
         const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
         const service = new GitLogService();
-        const results = await Promise.all(roots.map(root => service.getCommitDiff(root, 'HEAD')));
+        const load = (root: string) => service.getCommitDiff(root, 'HEAD');
+        const results = reversedPlanning ? await loadWithReversedPlanning(roots, load) : await Promise.all(roots.map(load));
         for (const [index, marker] of ['one', 'two'].entries()) {
             expect(results[index]).toBe(raw.replace('+new', `+${marker}`).slice(0, -1));
-            const call = vi.mocked(execFileAsync).mock.calls[index];
+            const calls = vi.mocked(execFileAsync).mock.calls.filter(call => call[1]?.includes(index ? 'Debian' : 'Ubuntu'));
+            expect(calls).toHaveLength(1);
+            const call = calls[0];
             expect(call[1]).toEqual(expect.arrayContaining([
                 index ? 'Debian' : 'Ubuntu', `/home/${marker}/repo`,
                 '--literal-pathspecs', 'diff-tree', '--root', '--first-parent', 'HEAD',
@@ -311,16 +336,19 @@ it('GitLogService pending/staged patches route WSL batches and compose headings 
     expect(await service.getStagedChangesDiff(roots[0])).toBe('');
 });
 
-it('routes direct PR comparison plans through WSL and processes exact bytes in Rust', async () => {
+it.each([false, true])('routes direct PR comparison plans through WSL and processes exact bytes in Rust (reversed planning: %s)', async reversedPlanning => {
     vi.mocked(execFileAsync).mockClear();
     vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
         stdout: raw.replace('+new', args?.includes('Debian') ? '+two' : '+one'), stderr: '',
     }));
     const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
-    const results = await Promise.all(roots.map(root => loadComparisonPatch(root, 'base', 'head', '[ab].txt', { contextLines: 99999 })));
+    const load = (root: string) => loadComparisonPatch(root, 'base', 'head', '[ab].txt', { contextLines: 99999 });
+    const results = reversedPlanning ? await loadWithReversedPlanning(roots, load) : await Promise.all(roots.map(load));
     for (const [index, marker] of ['one', 'two'].entries()) {
         expect(results[index].content.raw).toBe(raw.replace('+new', `+${marker}`).slice(0, -1));
-        const args = vi.mocked(execFileAsync).mock.calls[index][1];
+        const calls = vi.mocked(execFileAsync).mock.calls.filter(call => call[1]?.includes(index ? 'Debian' : 'Ubuntu'));
+        expect(calls).toHaveLength(1);
+        const args = calls[0][1];
         expect(args).toEqual(expect.arrayContaining([index ? 'Debian' : 'Ubuntu', `/home/${marker}/repo`, '--literal-pathspecs', 'diff', '-U99999', '--end-of-options', 'base', 'head', '--', '[ab].txt']));
         expect(args).not.toContain('base...head');
         expect(results[index].summary).toEqual({ filesChanged: 1, additions: 1, deletions: 1 });
