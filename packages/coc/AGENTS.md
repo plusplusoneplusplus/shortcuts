@@ -130,6 +130,8 @@ references before editing. Paths are package-relative.
   eligibility and shared-cap checks. Rules use `triggers.enabled` (default on),
   never expire and require no additional approval gate. Clearing fired rules
   hides their presentation while preserving committed delivery receipts.
+  Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
+  the rule owner is the invoking chat, never a tool argument.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

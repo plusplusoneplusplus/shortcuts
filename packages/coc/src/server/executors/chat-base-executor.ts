@@ -721,7 +721,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     ): SentinelTodosToolDeps | undefined {
         if (normalizeChatMode(mode) !== 'sentinel' || !workspaceId) return undefined;
         const service = this.runtime.getSentinelTodos?.();
-        return service ? { service, owner: { workspaceId, processId } } : undefined;
+        return service ? {
+            service, owner: { workspaceId, processId },
+            triggers: this.runtime.getTriggerInfra?.()?.sentinelTodoTriggers,
+        } : undefined;
     }
 
     /**

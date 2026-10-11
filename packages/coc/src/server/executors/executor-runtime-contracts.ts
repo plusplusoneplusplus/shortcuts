@@ -44,6 +44,7 @@ import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-servic
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
+import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 
@@ -72,6 +73,7 @@ export interface CronInfraDeps {
 export interface TriggerInfraDeps {
     manager: TriggerManager;
     createTrigger?: CreateTriggerFn;
+    sentinelTodoTriggers?: SentinelTodoTriggerService;
 }
 
 // ============================================================================
