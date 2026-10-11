@@ -4,9 +4,8 @@
  * the event fires), scoped to a conversation `processId` and a `workspaceId`.
  *
  * This is intentionally shaped as a small, extensible abstraction:
- *  - `event` is a discriminated union. The ONLY variant implemented now is a
- *    server-side `condition-monitor` (CI-failure poller). `schedule` and
- *    `interval` variants are designed-for but NOT built this iteration.
+ *  - `event` is a discriminated union of server-side condition monitors for
+ *    CI failures and one-shot Sentinel PR-merge wakes.
  *  - `action` is a discriminated union with one variant: `send-message`.
  *
  * The framework reuses existing plumbing rather than inventing new plumbing:

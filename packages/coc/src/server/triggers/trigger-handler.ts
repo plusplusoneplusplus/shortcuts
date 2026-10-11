@@ -4,8 +4,8 @@
  * secondary server-wide route at `/api/triggers`.
  *
  * Mirrors `cron-handler.ts` (same in-process route shape, validation, and
- * best-effort emit). Only the `condition-monitor` / `ci-failure` event and the
- * `send-message` action are implemented this iteration.
+ * best-effort emit). These routes manage CI monitors. Bound Sentinel To-do
+ * rules use their own owner/process-scoped routes and shared authoring service.
  */
 
 import type * as http from 'http';

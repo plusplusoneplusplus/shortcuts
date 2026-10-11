@@ -9,6 +9,9 @@ import {
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import { buildSendToConversationAddon } from '../../../src/server/executors/prompt-builder';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
+import { TriggerStore } from '../../../src/server/triggers/trigger-store';
+import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
+import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_other' };
@@ -289,6 +292,41 @@ describe('Sentinel to-do job links', () => {
             const call = (args: Record<string, unknown>) => (tool as any).handler(args, invocation);
             return { tool, call, enqueueChat, launchRalph, startRemoteChat };
         }
+
+        it.each(['ws-child', 'remote:srv-1:w-api'])(
+            'a trigger wakes first and only the Sentinel handoff links a job in %s', async target => {
+                const item = await createItem();
+                const { call, enqueueChat, startRemoteChat } = makeTool();
+                const triggers = new TriggerStore(database.db);
+                const wake = vi.fn().mockResolvedValue(undefined);
+                const firer = new SentinelTodoTriggerFirer({
+                    triggers, todos, processes: { getProcess: async id => processes.get(id) },
+                    executor: { execute: wake }, emit: vi.fn(),
+                });
+                const rules = new SentinelTodoTriggerService({
+                    triggers, todos, owners: service, firer, enabled: true,
+                    manager: { arm: vi.fn(), disarm: vi.fn() },
+                    fetchPr: async pr => ({ status: 'open', title: 'PR', url: pr.url }),
+                });
+                const rule = await rules.create(owner, {
+                    itemId: item.id, prUrl: 'https://github.com/example/foreign-repo/pull/1',
+                    instruction: 'Start the item when ready',
+                }, 'sentinel');
+                await rules.runNow(owner, rule.id, { expectedRevision: rule.revision, confirmed: true });
+                expect(wake).toHaveBeenCalledTimes(1);
+                expect(wake.mock.calls[0][2]).toContain('send_to_conversation with todoItemId');
+                expect(enqueueChat).not.toHaveBeenCalled();
+                expect(startRemoteChat).not.toHaveBeenCalled();
+                expect(current(item.id)).toMatchObject({ status: 'todo', jobs: [] });
+                const result = await call({ content: 'Implement the item', todoItemId: item.id, workspaceId: target, mode: 'autopilot' });
+                expect(result.tracking).toMatchObject({ status: 'tracked', itemId: item.id });
+                expect(current(item.id).status).toBe('in_progress');
+                expect(current(item.id).jobs).toHaveLength(1);
+                const linked = (await service.list(owner)).items[0].jobs[0];
+                if (target.startsWith('remote:')) expect(linked.execution).toEqual({ state: 'unavailable' });
+                expect(current(item.id).outcome).toBeUndefined();
+            },
+        );
 
         it('requires an existing, unarchived item before launching anything', async () => {
             const { call, enqueueChat } = makeTool();

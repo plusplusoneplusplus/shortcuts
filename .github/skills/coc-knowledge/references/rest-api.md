@@ -227,6 +227,11 @@ Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/run-now` | `{ expectedRevision, confirmed: true }` posts the same one-shot wake, consuming the rule |
 | DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes waiting rules or clears terminal presentation; fired delivery receipts remain durable, including pending retries |
 
+`coc-client` exposes these as `client.triggers.listSentinelTodo`, `previewSentinelTodo`,
+`createSentinelTodo`, `editSentinelTodo`, `pauseSentinelTodo`, `resumeSentinelTodo`,
+`removeSentinelTodo` and `runSentinelTodoNow`. Every method requires the owner's
+workspace and Sentinel process; mutation methods carry the rule revision.
+
 ## Task Groups
 
 Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dreams. Always registered (no feature flag).
