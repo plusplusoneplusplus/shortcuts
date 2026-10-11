@@ -55,6 +55,7 @@ import { cancelQueuedCompaction, compactProcess } from '../processes/compact-pro
 import { isSentinelProcess, parseAutoCompactSettings, resumeAutoCompact, saveAutoCompactSettings } from '../processes/auto-compact';
 import { cancelConversation } from '../processes/cancel-conversation';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
+import { parseChatHistoryQuery, readChatHistory } from '../processes/chat-history-read-model';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -379,12 +380,32 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async (req, res, match) => {
             let id = decodeURIComponent(match![1]);
             // Resolve queue_ prefix mismatch for forked processes
-            const resolved = await resolveProcess(store, id);
+            const workspaceId = parseQueryParams(req.url || '/').workspaceId;
+            const resolved = ctx.getLiveFeatureFlags?.().chatHistoryPagingEnabled === true
+                ? (await readChatHistory(store, id, workspaceId))?.process
+                : await resolveProcess(store, id);
             if (resolved) id = resolved.id;
             return handleProcessStream(req, res, id, store, undefined, undefined,
-                () => ctx.getLiveFeatureFlags?.().botManagedConversationsEnabled === true);
+                () => ctx.getLiveFeatureFlags?.().botManagedConversationsEnabled === true,
+                () => ctx.getLiveFeatureFlags?.().chatHistoryPagingEnabled === true);
         },
     });
+
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/processes\/([^/]+)\/turns$/,
+        handler: async ({ req, res, match }) => {
+            if (ctx.getLiveFeatureFlags?.().chatHistoryPagingEnabled !== true) {
+                return void handleAPIError(res, notFound('Chat history paging'));
+            }
+            const query = new URL(req.url || '/', 'http://localhost').searchParams;
+            const options = parseChatHistoryQuery(query);
+            const result = await readChatHistory(store, decodeURIComponent(match[1]),
+                parseQueryParams(req.url || '/').workspaceId, options);
+            if (!result) return void handleAPIError(res, notFound('Process'));
+            return result.page;
+        },
+    }));
 
     // GET /api/processes/:id/output — Persisted conversation output
     routes.push(createRoute({
@@ -435,9 +456,21 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const id = decodeURIComponent(match[1]);
             const filter = parseQueryParams(req.url || '/');
             const include = parseIncludeFields(req.url || '/');
-            const preview = url.parse(req.url || '/', true).query.preview === 'true';
+            const query = new URL(req.url || '/', 'http://localhost').searchParams;
+            const preview = query.get('preview') === 'true';
             if (preview && !filter.workspaceId) return void handleAPIError(res, badRequest('workspace is required for job previews'));
-            const proc = await resolveProcess(store, id, filter.workspaceId);
+            // Job previews are a bounded projection of their own; they never page history.
+            const paging = !preview && ctx.getLiveFeatureFlags?.().chatHistoryPagingEnabled === true && query.has('turnsLimit');
+            const history = paging
+                ? await readChatHistory(store, id, filter.workspaceId, parseChatHistoryQuery(query, true))
+                : undefined;
+            const proc = paging ? history?.process : await resolveProcess(store, id, filter.workspaceId);
+            const historyMetadata = history ? {
+                oldestTurnIndex: history.page.oldestTurnIndex,
+                hasMore: history.page.hasMore,
+                totalTurns: history.page.totalTurns,
+                historyRevision: history.page.historyRevision,
+            } : undefined;
             if (!proc) {
                 // Synthesize a response for queued tasks that don't yet have a process record
                 if (isQueueProcessId(id) && bridge) {
@@ -445,7 +478,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     if (task && (!filter.workspaceId || task.repoId === filter.workspaceId)) {
                         const synthetic = queuedTaskToProcess(task);
                         const result = preview ? buildJobPreviewProcess(synthetic) : filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
-                        return { process: projectProcess(result), children: [], total: 0 };
+                        return { process: projectProcess(result), children: [], total: 0,
+                            ...(paging ? { history: { oldestTurnIndex: null, hasMore: false, totalTurns: 0, historyRevision: 0 } } : {}),
+                        };
                     }
                 }
                 return void handleAPIError(res, notFound('Process'));
@@ -455,7 +490,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const result = projectProcess(filter.exclude ? stripExcludedFields(projected, filter.exclude) : buildMetadataProcess(projected));
 
             if (!include.has('children')) {
-                return { process: result, children: [], total: 0 };
+                return { process: result, children: [], total: 0, ...(historyMetadata ? { history: historyMetadata } : {}) };
             }
 
             // Embed children using the same logic the deleted /children route used
@@ -471,7 +506,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? children.map(p => stripExcludedFields(p, childFilter.exclude))
                 : children).map(projectProcess);
 
-            return { process: result, children: responseChildren, total: children.length };
+            return { process: result, children: responseChildren, total: children.length, ...(historyMetadata ? { history: historyMetadata } : {}) };
         },
     }));
 

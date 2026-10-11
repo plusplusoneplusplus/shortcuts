@@ -193,9 +193,11 @@ Internal process-summary rows carry `bot_control_json` extracted from process me
 within the count/page snapshot. This is authoritative storage data, not a public
 presentation: Forge retains it on index entries and CoC validates, gates, and strips
 private controller identity at its HTTP read boundary.
-Typed process operations accept schema versions 38 through 41. Generic turn reads
-include the additive `turn_source` JSON column; Forge owns its serialization and
-the migration, keeping durable automation delivery identity in the transcript.
+Typed process operations accept schema versions 38 through 42. Generic row reads
+retain additive columns, including `turn_source` and private `history_revision`;
+Forge owns migrations, automation serialization, and omission of the revision from
+full process payloads. Bounded history paging uses synchronous writer-handle SQL in
+one transaction; async streaming writes preserve Forge's history revision triggers.
 
 ## Generated types
 

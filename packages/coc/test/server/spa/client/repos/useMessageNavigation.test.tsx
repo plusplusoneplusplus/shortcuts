@@ -39,9 +39,11 @@ interface HarnessProps {
     withInput?: boolean;
     /** Render a sibling pinned section that contains duplicated turn bubbles. */
     withPinned?: boolean;
+    hasMore?: boolean;
+    onNavigateToTurn?: (index: number) => void;
 }
 
-function Harness({ turnIndices, withInput, withPinned }: HarnessProps) {
+function Harness({ turnIndices, withInput, withPinned, hasMore, onNavigateToTurn }: HarnessProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const inputFocus = vi.fn();
@@ -52,6 +54,8 @@ function Harness({ turnIndices, withInput, withPinned }: HarnessProps) {
         scrollRef,
         containerRef,
         inputRef,
+        hasMore,
+        onNavigateToTurn,
     });
     (window as any).__currentTurnIndex = currentTurnIndex;
     (window as any).__navHintVisible = navHintVisible;
@@ -88,6 +92,18 @@ function getCursor(container: HTMLElement): string {
 }
 
 describe('useMessageNavigation', () => {
+    it('loads through to the actual beginning and beyond the oldest loaded turn', () => {
+        const navigate = vi.fn();
+        const { container } = render(<Harness turnIndices={[170, 171]} hasMore onNavigateToTurn={navigate} />);
+        const root = container.querySelector('[data-testid="container"]') as HTMLElement;
+        root.focus();
+        fireEvent.keyDown(root, { key: 'j' });
+        fireEvent.keyDown(root, { key: 'k' });
+        expect(navigate).toHaveBeenCalledWith(169);
+        fireEvent.keyDown(root, { key: 'g' });
+        fireEvent.keyDown(root, { key: 'g' });
+        expect(navigate).toHaveBeenCalledWith(0);
+    });
     it('does nothing when there are no turns', () => {
         const { container } = render(<Harness turnIndices={[]} />);
         const root = container.querySelector('[data-testid="container"]') as HTMLElement;

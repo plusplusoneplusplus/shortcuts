@@ -68,6 +68,9 @@
       ],
       "connectors": [
         "dist/connectors/index.d.ts"
+      ],
+      "history-paging": [
+        "dist/history-paging.d.ts"
       ]
     }
   },
@@ -79,6 +82,7 @@
     "./git/origin-id": "./dist/git/origin-id.js",
     "./git/pull-request-detection": "./dist/git/pull-request-detection.js",
     "./ai": "./dist/ai/index.js",
+    "./history-paging": "./dist/history-paging.js",
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",
     "./utils": "./dist/utils/index.js",

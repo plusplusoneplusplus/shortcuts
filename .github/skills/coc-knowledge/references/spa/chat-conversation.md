@@ -6,6 +6,25 @@ tool calls. Chat list and lens: [chat.md](chat.md). Composer:
 
 ## Conversation rendering
 
+### Owner-scoped history paging
+
+The owning server's live default-off `chatHistoryPagingEnabled` capability selects
+`useChatHistoryPaging` for every `ChatDetail` mode, including Notes, groups and popouts.
+Local runtime patches and owner config/reconnect notifications refresh capability reads;
+unresolved remote selections cannot hydrate locally.
+
+REST hydration, queued transitions and SSE snapshots share the revision-aware merger.
+Same-revision snapshots replace the
+latest tail while retaining loaded older pages; revision changes cancel reads and reset
+to the latest page and bottom. Conversation caches retain only that latest page
+and mark it as paged, so disabling the flag cannot reuse it as full history.
+
+An IntersectionObserver loads shared `PAGE_TURNS` pages through the owner client, with
+one in-flight read, layout anchoring and automatic capped backoff. Hash `turn`/`turnIndex`,
+`coc-jump-to-turn`, minimap and pinned navigation load contiguous pages before highlighting.
+Pins have an independent owner-scoped read; find searches loaded turns. Owner/chat changes
+abort requests and discard delayed results. Flag-off hydration and rendering remain full-history.
+
 ### ConversationTurnBubble
 
 Git review openers retain the chat's concrete source owner and optional endpoint.

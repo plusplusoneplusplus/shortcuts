@@ -357,6 +357,8 @@ export interface CLIConfig {
         chatStyleSelector?: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
         chatProviderSwitching?: boolean;
+        /** Load chat history in turn-count pages. Disabled by default. */
+        chatHistoryPaging?: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle?: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -752,6 +754,8 @@ export interface ResolvedCLIConfig {
         chatStyleSelector: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
         chatProviderSwitching: boolean;
+        /** Load chat history in turn-count pages. Disabled by default. */
+        chatHistoryPaging: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -1051,6 +1055,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,
+        chatHistoryPaging: false,
         defaultChatStyle: 'default',
         chatStylePrompts: {},
     },

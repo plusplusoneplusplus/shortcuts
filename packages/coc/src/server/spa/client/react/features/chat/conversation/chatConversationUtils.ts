@@ -13,6 +13,9 @@ import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
  */
 export function getConversationTurns(data: any, task?: any): ClientConversationTurn[] {
     const process = data?.process;
+    if (data?.history || typeof data?.historyRevision === 'number') {
+        return process?.conversationTurns ?? data?.turns ?? [];
+    }
     if (process?.conversationTurns && Array.isArray(process.conversationTurns) && process.conversationTurns.length > 0) {
         return process.conversationTurns;
     }

@@ -2,10 +2,12 @@ import { useEffect, useRef, useCallback } from 'react';
 import { cloneApiBase } from '../../../repos/cloneRegistry';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
+import { getCocClientFor } from '../../../api/cocClient';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { QueuedMessage } from '../../../utils/chatUtils';
 import { readBotControl } from '../../../utils/botControl';
 import type { ConversationSnapshotPayload, ProviderSessionPayload } from '@plusplusoneplusplus/coc-client';
+import type { ChatHistoryPage } from './useChatHistoryPaging';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
@@ -132,6 +134,7 @@ export interface UseChatSSEOptions {
      * keeps the default page-origin stream.
      */
     workspaceId?: string;
+    sourceBaseUrl?: string;
     setIsStreaming: (v: boolean) => void;
     setTask: (updater: (prev: any) => any) => void;
     /**
@@ -154,6 +157,7 @@ export interface UseChatSSEOptions {
     setBackgroundTasks: (v: BackgroundTasksState | null) => void;
     setRalphGrillPlanningProgress?: (v: RalphGrillPlanningProgress | null) => void;
     setTurnsAndRef: SetTurnsAndRef;
+    onConversationSnapshot?: (turns: ClientConversationTurn[], history?: ChatHistoryPage) => void;
     refreshConversation: (pid: string) => Promise<void>;
     onSendComplete: () => void;
     /** Called when the server emits all `ask-user` SSE events for a batch. */
@@ -172,6 +176,7 @@ export function useChatSSE({
     task,
     processId,
     workspaceId,
+    sourceBaseUrl,
     setIsStreaming,
     setTask,
     setProcessDetails,
@@ -185,6 +190,7 @@ export function useChatSSE({
     setBackgroundTasks,
     setRalphGrillPlanningProgress,
     setTurnsAndRef,
+    onConversationSnapshot,
     refreshConversation,
     onSendComplete,
     onAskUserBatch,
@@ -193,6 +199,8 @@ export function useChatSSE({
     onCanvasUpdated,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
+    const snapshotCallback = useRef(onConversationSnapshot);
+    snapshotCallback.current = onConversationSnapshot;
     const askUserBatchesRef = useRef<Map<string, Map<number, AskUserQuestion>>>(new Map());
     const owner = useWorkspaceOwner(workspaceId);
     const client = useCocClient(workspaceId);
@@ -211,7 +219,9 @@ export function useChatSSE({
         if (!taskId || task?.status !== 'running' || !processId) return;
         if (typeof EventSource === 'undefined') return;
 
-        const es = new EventSource(owner
+        const es = new EventSource(sourceBaseUrl
+            ? getCocClientFor(sourceBaseUrl).processes.streamUrl(processId, { workspace: workspaceId })
+            : owner
             ? client.processes.streamUrl(processId, { workspace: owner.workspaceId })
             : `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream`);
         eventSourceRef.current = es;
@@ -258,11 +268,19 @@ export function useChatSSE({
         };
 
         es.addEventListener('conversation-snapshot', (event: Event) => {
+            if (eventSourceRef.current !== es) return;
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 runningTurn = data.runningTurn;
                 applyBinding(data.activeProviderSession);
-                if (data.turns) setTurnsAndRef(data.turns.map(attributeStreamingTurn));
+                if (data.turns) {
+                    const snapshotTurns = data.turns.map(attributeStreamingTurn);
+                    const page = typeof data.historyRevision === 'number' && typeof data.hasMore === 'boolean'
+                        ? { oldestTurnIndex: data.oldestTurnIndex ?? null, hasMore: data.hasMore, totalTurns: data.totalTurns ?? snapshotTurns.length, historyRevision: data.historyRevision }
+                        : undefined;
+                    if (snapshotCallback.current) snapshotCallback.current(snapshotTurns, page);
+                    else setTurnsAndRef(snapshotTurns);
+                }
                 if (Object.prototype.hasOwnProperty.call(data, 'botControl')) {
                     const botControl = readBotControl(data.botControl);
                     setTask(prev => prev ? { ...prev, botControl } : prev);
@@ -291,6 +309,7 @@ export function useChatSSE({
         });
 
         es.addEventListener('chunk', (event: Event) => {
+            if (eventSourceRef.current !== es) return;
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 const chunk = data.content || '';
@@ -604,7 +623,7 @@ export function useChatSSE({
         });
 
         return () => { es.close(); eventSourceRef.current = null; setIsStreaming(false); };
-    }, [taskId, task?.status, processId, workspaceId, refreshConversation, owner, client]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [taskId, task?.status, processId, workspaceId, sourceBaseUrl, refreshConversation, owner, client]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { stopStreaming };
 }

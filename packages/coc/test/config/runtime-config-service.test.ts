@@ -194,6 +194,39 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('persists default-off chat history paging live and keeps owning-server config isolated', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const otherOwner = new RuntimeConfigService({ fileConfig: {} });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.chatHistoryPagingEnabled;
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.sources['features.chatHistoryPaging']).toBe('default');
+            const changed = vi.fn();
+            svc.onChange(changed);
+
+            const enabled = await svc.updateConfig({ 'features.chatHistoryPaging': true });
+            expect(enabled.effects).toEqual([{
+                field: 'features.chatHistoryPaging', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(runtimeFlag()).toBe(true);
+            expect(changed).toHaveBeenCalledOnce();
+            expect(svc.revision).toBe(1);
+            expect(enabled.sources['features.chatHistoryPaging']).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features.chatHistoryPaging).toBe(true);
+            expect(buildRuntimeDashboardConfig(otherOwner, 'other-host', '127.0.0.1').features.chatHistoryPagingEnabled).toBe(false);
+
+            const saved = fs.readFileSync(configPath, 'utf-8');
+            await expect(svc.updateConfig({ 'features.chatHistoryPaging': 'true' })).rejects.toThrow();
+            expect(fs.readFileSync(configPath, 'utf-8')).toBe(saved);
+            expect(svc.revision).toBe(1);
+            expect(runtimeFlag()).toBe(true);
+
+            await svc.updateConfig({ 'features.chatHistoryPaging': false });
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.revision).toBe(2);
+            expect(changed).toHaveBeenCalledTimes(2);
+            expect(new RuntimeConfigService({ configPath }).config.features.chatHistoryPaging).toBe(false);
+        });
+
         it('defaults Teams answer relay on and persists a live opt-out without requiring restart', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsAiAnswerRelayEnabled;

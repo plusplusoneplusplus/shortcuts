@@ -18,6 +18,7 @@ export interface SearchResultTask {
     /** FTS5 snippet with <mark> highlights */
     _searchSnippet: string;
     _isSearchResult: true;
+    _searchTurnIndex: number;
 }
 
 /**
@@ -48,6 +49,7 @@ export function adaptSearchResultToTask(result: ProcessSearchResult): SearchResu
         endTime: result.startTime,
         _searchSnippet: result.snippet,
         _isSearchResult: true,
+        _searchTurnIndex: result.turnIndex,
     };
 }
 

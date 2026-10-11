@@ -603,6 +603,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             llmToolSystemOneEnabled: opts.runtimeConfigService!.config.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
+            chatHistoryPagingEnabled: opts.runtimeConfigService!.config.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.runtimeConfigService!.config.features?.botManagedConversations === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
@@ -613,6 +614,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             llmToolSystemOneEnabled: opts.resolvedConfig?.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
+            chatHistoryPagingEnabled: opts.resolvedConfig?.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.resolvedConfig?.features?.botManagedConversations === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
@@ -781,7 +783,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const groupFolderStore = new GroupFolderStore(dataDir);
     registerChatFolderRoutes(routes, store, chatFolderStore, groupFolderStore);
     registerGroupFolderRoutes(routes, store, chatFolderStore, groupFolderStore);
-    registerTurnActionRoutes(routes, store as any, getWsServer);
+    registerTurnActionRoutes(routes, store as any, getWsServer,
+        () => getLiveFeatureFlags().chatHistoryPagingEnabled === true);
     registerProcessHistoryRoutes(routes, store as any, () => getLiveFeatureFlags().botManagedConversationsEnabled === true);
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);

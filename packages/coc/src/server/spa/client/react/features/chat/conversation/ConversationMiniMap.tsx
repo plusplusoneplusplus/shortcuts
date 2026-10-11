@@ -56,6 +56,7 @@ export type MiniMapStripKind =
 
 interface StripInfo {
     index: number;
+    turnIndex: number;
     kind: MiniMapStripKind;
     color: string;
     height: number;
@@ -141,10 +142,11 @@ function buildStrips(turns: ClientConversationTurn[]): StripInfo[] {
         const kind = getTurnKind(turn);
         return {
             index: i,
+            turnIndex: turn.turnIndex ?? i,
             kind,
             color: `var(--minimap-${kind})`,
             height: heights[i],
-            label: `Turn ${i + 1}`,
+            label: `Turn ${(turn.turnIndex ?? i) + 1}`,
             tooltipRole: turn.role === 'user' ? 'User' : 'Assistant',
             tooltipTime: formatTime(turn.timestamp),
             tooltipPreview: (turn.content || '').slice(0, 60),
@@ -163,6 +165,9 @@ export interface ConversationMiniMapProps {
     turnsContainerRef: React.RefObject<HTMLElement | null>;
     /** Whether the process is currently streaming */
     isStreaming?: boolean;
+    pagingEnabled?: boolean;
+    hasMore?: boolean;
+    onNavigateToTurn?: (turnIndex: number) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -172,6 +177,9 @@ export function ConversationMiniMap({
     scrollContainerRef,
     turnsContainerRef,
     isStreaming,
+    pagingEnabled,
+    hasMore,
+    onNavigateToTurn,
 }: ConversationMiniMapProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [narrowViewport, setNarrowViewport] = useState(false);
@@ -193,7 +201,7 @@ export function ConversationMiniMap({
         [strips],
     );
 
-    const isVisible = turns.length >= MIN_TURNS_TO_SHOW && turns.length <= MAX_TURNS_TO_SHOW;
+    const isVisible = turns.length >= MIN_TURNS_TO_SHOW && (pagingEnabled || turns.length <= MAX_TURNS_TO_SHOW);
     const isCollapsed = collapsed || narrowViewport;
 
     // ── Responsive collapse ────────────────────────────────────────────
@@ -249,7 +257,7 @@ export function ConversationMiniMap({
             const containerRect = sc.getBoundingClientRect();
             const probe = sc.clientHeight * ACTIVE_PROBE_OFFSET_RATIO;
             let nextActive: number | null = null;
-            const children = tc.children;
+            const children = pagingEnabled ? tc.querySelectorAll('[data-turn-index]:not([data-pinned-section] *)') : tc.children;
             for (let i = 0; i < children.length; i++) {
                 const rect = (children[i] as HTMLElement).getBoundingClientRect();
                 const offset = rect.top - containerRect.top;
@@ -264,7 +272,7 @@ export function ConversationMiniMap({
 
         const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - JUMP_LATEST_THRESHOLD;
         setUserScrolledUp(!atBottom);
-    }, [scrollContainerRef, turnsContainerRef]);
+    }, [scrollContainerRef, turnsContainerRef, pagingEnabled]);
 
     const scheduleUpdate = useCallback(() => {
         if (rafRef.current) return;
@@ -298,6 +306,10 @@ export function ConversationMiniMap({
     // ── Click-to-navigate (container-relative, with breathing-room offset) ─
 
     const scrollToTurn = useCallback((index: number) => {
+        if (onNavigateToTurn) {
+            onNavigateToTurn(turns[index]?.turnIndex ?? index);
+            return;
+        }
         const sc = scrollContainerRef.current;
         const tc = turnsContainerRef.current;
         if (!sc || !tc) return;
@@ -309,7 +321,7 @@ export function ConversationMiniMap({
         sc.scrollTo({ top, behavior: 'smooth' });
         el.classList.add('minimap-highlight-pulse');
         setTimeout(() => el.classList.remove('minimap-highlight-pulse'), 1100);
-    }, [scrollContainerRef, turnsContainerRef]);
+    }, [scrollContainerRef, turnsContainerRef, onNavigateToTurn, turns]);
 
     // ── Drag viewport ─────────────────────────────────────────────────
 
@@ -419,6 +431,8 @@ export function ConversationMiniMap({
 
             {/* Strip area */}
             <div className="minimap-strip-area" ref={stripAreaRef} data-testid="minimap-strip-area">
+                {hasMore && <div data-testid="minimap-more-above" role="note" aria-label="More messages above"
+                    className="text-xs text-[#848484]" title="More messages above">⋮</div>}
                 {/* Viewport indicator */}
                 <div
                     className="minimap-viewport-indicator"
@@ -438,14 +452,14 @@ export function ConversationMiniMap({
                         isStreamingStrip ? 'minimap-strip-streaming' : '',
                         isActive ? 'active' : '',
                     ].filter(Boolean).join(' ');
-                    const tooltipTitle = `${strip.tooltipRole} Turn ${strip.index + 1}${strip.tooltipTime ? ` · ${strip.tooltipTime}` : ''}`;
+                    const tooltipTitle = `${strip.tooltipRole} Turn ${strip.turnIndex + 1}${strip.tooltipTime ? ` · ${strip.tooltipTime}` : ''}`;
                     return (
                         <button
                             key={strip.index}
                             type="button"
                             className={className}
                             data-testid={`minimap-strip-${strip.index}`}
-                            data-turn-index={strip.index}
+                            data-turn-index={strip.turnIndex}
                             data-kind={strip.kind}
                             aria-label={tooltipTitle}
                             aria-current={isActive ? 'location' : undefined}

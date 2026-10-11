@@ -28,11 +28,14 @@ import { projectRelayRequest, type ProcessOwnerProjection, type RelayRequestProj
 import { withRetry } from './runtime/retry';
 import { getLogger } from './logger';
 import { computeMessagePreview } from './utils/message-preview';
+import { historyChanged, pageConversationTurns, validateProcessHistoryOptions } from './process-history';
+import type { ProcessHistoryOptions, ConversationTurnsPage } from './process-store';
 
 /** On-disk shape for individual process files (repos/<workspaceId>/processes/<id>.json) */
 export interface StoredProcessEntry {
     workspaceId: string;
     process: SerializedAIProcess;
+    historyRevision?: number;
 }
 
 // Re-export ProcessIndexEntry from process-store for backward compatibility
@@ -165,6 +168,20 @@ export class FileProcessStore implements ProcessStore {
 
     async getProcess(id: string, workspaceId?: string): Promise<AIProcess | undefined> {
         return this.readProcess(id, workspaceId);
+    }
+
+    async getProcessHistory(id: string, workspaceId?: string, options?: ProcessHistoryOptions): Promise<{ process: AIProcess; page: ConversationTurnsPage } | undefined> {
+        validateProcessHistoryOptions(options);
+        await this.writeQueue;
+        const owner = workspaceId ?? await this.findWorkspaceIdForProcess(id);
+        if (owner === undefined) return undefined;
+        const entry = await this.readProcessFile(owner, id);
+        if (!entry || entry.workspaceId !== owner) return undefined;
+        const process = deserializeProcess(entry.process);
+        if ((process.metadata?.workspaceId ?? '') !== owner) return undefined;
+        process.dataFilePath = this.resolveFilePath(owner, id);
+        const page = pageConversationTurns(process.conversationTurns ?? [], entry.historyRevision ?? 0, options);
+        return { process: { ...process, conversationTurns: page.turns }, page };
     }
 
     // Relay projections share the private reader so callers never invoke public getProcess.
@@ -450,7 +467,7 @@ export class FileProcessStore implements ProcessStore {
                 workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
                 process: serializeProcess(merged),
             };
-            await this.writeProcessFile(workspaceId, processId, newEntry);
+            await this.writeProcessFile(workspaceId, processId, newEntry, options?.filterStreaming);
 
             const index = await this.readIndex(workspaceId);
             const idx = index.findIndex(e => e.id === processId);
@@ -629,7 +646,7 @@ export class FileProcessStore implements ProcessStore {
                 workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
                 process: serializeProcess(merged),
             };
-            await this.writeProcessFile(workspaceId, processId, newEntry);
+            await this.writeProcessFile(workspaceId, processId, newEntry, false, true);
 
             const index = await this.readIndex(workspaceId);
             const idx = index.findIndex(e => e.id === processId);
@@ -1203,7 +1220,11 @@ export class FileProcessStore implements ProcessStore {
         }
     }
 
-    private async writeProcessFile(workspaceId: string, id: string, entry: StoredProcessEntry): Promise<void> {
+    private async writeProcessFile(workspaceId: string, id: string, entry: StoredProcessEntry, filterStreaming = false, explicitEdit = false): Promise<void> {
+        const previous = await this.readProcessFile(workspaceId, id);
+        entry.historyRevision = (previous?.historyRevision ?? 0) + Number(historyChanged(
+            previous ? deserializeProcess(previous.process) : undefined, deserializeProcess(entry.process), filterStreaming, explicitEdit,
+        ));
         const filePath = this.resolveFilePath(workspaceId, id);
         const tmpPath = filePath + '.tmp';
         await this.retryAtomicWrite(tmpPath, async () => {

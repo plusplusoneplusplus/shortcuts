@@ -23,7 +23,10 @@ import {
     ConversationSearchResult,
     PromptAutocompleteContext,
     PromptAutocompleteHistoryItem,
+    ProcessHistoryOptions,
+    ConversationTurnsPage,
 } from './process-store';
+import { validateProcessHistoryOptions } from './process-history';
 import {
     AIProcess,
     AIProcessStatus,
@@ -740,6 +743,30 @@ export class SqliteProcessStore implements ProcessStore {
         return rowToProcess(row, turns);
     }
 
+    async getProcessHistory(id: string, workspaceId?: string, options?: ProcessHistoryOptions): Promise<{ process: AIProcess; page: ConversationTurnsPage } | undefined> {
+        const { limit, beforeTurnIndex } = validateProcessHistoryOptions(options);
+        return this.db.transaction(() => {
+            const row = this.getProcessStmt.get(id) as (ProcessRow & { history_revision: number }) | undefined;
+            if (!row || (workspaceId !== undefined && row.workspace_id !== workspaceId)) return undefined;
+            const { total } = this.db.prepare('SELECT COUNT(*) AS total FROM conversation_turns WHERE process_id = ?')
+                .get(id) as { total: number };
+            const cursor = beforeTurnIndex === undefined ? '' : ' AND turn_index < ?';
+            const params = beforeTurnIndex === undefined ? [id, limit + 1] : [id, beforeTurnIndex, limit + 1];
+            const rows = this.db.prepare(`SELECT * FROM conversation_turns WHERE process_id = ?${cursor} ORDER BY turn_index DESC LIMIT ?`)
+                .all(...params) as TurnRow[];
+            const selected = rows.slice(0, limit);
+            if (rows[limit]?.role === 'user' && selected[selected.length - 1]?.role === 'assistant') selected.push(rows[limit]);
+            selected.reverse();
+            const turns = selected.map(rowToTurn);
+            const oldestTurnIndex = turns[0]?.turnIndex ?? null;
+            const hasMore = oldestTurnIndex !== null && !!this.db.prepare(
+                'SELECT 1 FROM conversation_turns WHERE process_id = ? AND turn_index < ? LIMIT 1',
+            ).get(id, oldestTurnIndex);
+            const page = { turns, oldestTurnIndex, hasMore, totalTurns: total, historyRevision: row.history_revision };
+            return { process: rowToProcess(row, turns), page };
+        })();
+    }
+
     /**
      * Light-weight lookup for `pendingAskUser` counts across a set of running
      * processes. Avoids loading the full process row + all conversation turns
@@ -1357,9 +1384,12 @@ export class SqliteProcessStore implements ProcessStore {
                     stableTurnIndex = streamingRow.turn_index;
                 }
 
-                this.db.prepare(
+                const removedStreaming = this.db.prepare(
                     'DELETE FROM conversation_turns WHERE process_id = ? AND streaming = 1'
                 ).run(processId);
+                // Placeholder replacement is not a destructive history edit.
+                this.db.prepare('UPDATE processes SET history_revision = history_revision - ? WHERE id = ?')
+                    .run(removedStreaming.changes, processId);
 
                 // Guard: discard stale stableTurnIndex if a new turn was appended after it
                 if (stableTurnIndex !== undefined) {
@@ -1463,9 +1493,17 @@ export class SqliteProcessStore implements ProcessStore {
         turnIndex: number,
         content: string,
     ): Promise<void> {
-        const result = this.db.prepare(
-            'UPDATE conversation_turns SET content = ? WHERE process_id = ? AND turn_index = ?'
-        ).run(content, processId, turnIndex);
+        const result = this.db.transaction(() => {
+            // Explicit edits invalidate even a live placeholder; native streaming writes do not.
+            this.db.prepare(`
+                UPDATE processes SET history_revision = history_revision + 1 WHERE id = ?
+                AND EXISTS (SELECT 1 FROM conversation_turns WHERE process_id = ?
+                    AND turn_index = ? AND streaming = 1 AND content IS NOT ?)
+            `).run(processId, processId, turnIndex, content);
+            return this.db.prepare(
+                'UPDATE conversation_turns SET content = ? WHERE process_id = ? AND turn_index = ?'
+            ).run(content, processId, turnIndex);
+        })();
 
         if (result.changes === 0) {
             getLogger().warn('SqliteProcessStore', `Turn not found: processId=${processId}, turnIndex=${turnIndex}`);

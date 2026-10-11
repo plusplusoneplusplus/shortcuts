@@ -35,11 +35,17 @@ describe('bounded job preview projection', () => {
 describe('owner-scoped preview HTTP contract', () => {
     let server: http.Server;
     let base: string;
+    const readHistory = vi.fn().mockRejectedValue(new Error('Previews must not page history'));
     beforeAll(async () => {
         const store = createMockProcessStore();
         store.getProcess.mockImplementation(async id => id === 'job' ? process : undefined);
+        store.getProcessHistory = readHistory;
         const routes: Route[] = [];
-        registerApiProcessRoutes({ routes, store, bridge: {
+        registerApiProcessRoutes({ routes, store, getLiveFeatureFlags: () => ({
+            excalidrawEnabled: false, canvasEnabled: false, kustoEnabled: false,
+            chatStyleSelectorEnabled: false, chatProviderSwitchingEnabled: false,
+            chatHistoryPagingEnabled: true, defaultChatStyle: 'default',
+        }), bridge: {
             executeFollowUp: vi.fn(), isSessionAlive: vi.fn(), cancelProcess: vi.fn(),
             getTask: id => id === 'pending' ? { id, repoId: 'owner', type: 'chat', status: 'queued', payload: { prompt: 'Private queued prompt', workspaceId: 'owner' }, createdAt: at } as any : undefined,
         } });
@@ -61,5 +67,18 @@ describe('owner-scoped preview HTTP contract', () => {
         expect(body.process.jobPreview).toEqual({ source: 'empty', excerpt: '' });
         expect(body.process.promptPreview).toBe('');
         expect((await fetch(`${base}/api/processes/queue_pending?workspace=other&preview=true`)).status).toBe(404);
+    });
+    it.each(['job', 'queue_pending'])('prioritizes previews over paging for %s without exposing history', async id => {
+        const response = await fetch(`${base}/api/processes/${id}?workspace=owner&preview=true&turnsLimit=30&include=children`);
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.process).toHaveProperty('jobPreview');
+        expect(body.process).not.toHaveProperty('conversationTurns');
+        expect(body.process).not.toHaveProperty('fullPrompt');
+        expect(body).not.toHaveProperty('history');
+        expect(body.children).toEqual([]);
+        expect(readHistory).not.toHaveBeenCalled();
+        expect((await fetch(`${base}/api/processes/${id}?workspace=other&preview=true&turnsLimit=30`)).status).toBe(404);
+        expect((await fetch(`${base}/api/processes/${id}?preview=true&turnsLimit=30`)).status).toBe(400);
     });
 });

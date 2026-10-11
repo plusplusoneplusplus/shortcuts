@@ -67,6 +67,22 @@ Snapshots include available context totals/breakdown for reconnect indicators.
 flush. With bot identification enabled, snapshots include safe `botControl` or explicit null,
 including processes with empty turns.
 
+### Paged conversation snapshots
+
+The default-off live `features.chatHistoryPaging` gate selects bounded
+`getProcessHistory(processId, workspaceId, { limit: PAGE_TURNS })` reads on connect
+and after `requestFlush`. Enabled snapshots contain the latest 30 turns (31 when
+pairing requires it), `totalTurns`, `oldestTurnIndex`, `hasMore`, and
+`historyRevision`, including empty conversations. Provider/segment attribution,
+`runningTurn`, bot control, context tokens, pending questions and live events keep
+their existing meanings. Disabled streams retain their exact snapshot shape and
+omit empty snapshots unless bot identification is enabled.
+
+The owner hint is `workspace`; enabled streams also accept `workspaceId`.
+Warm-only enabled streams use the bounded process lookup but emit only warm status
+and heartbeats. Live output never triggers another history read or persisted text
+replay. Each connection captures the gate at opening.
+
 **Why per-process?** Selective subscription — a browser receives heavy token data only for the
 chat it is viewing, instead of every tab being flooded with every process's output.
 

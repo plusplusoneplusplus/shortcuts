@@ -23,6 +23,10 @@ export interface ConversationTurn {
 
 export interface ConversationSnapshotPayload {
   turns: ConversationTurn[];
+  oldestTurnIndex?: number | null;
+  hasMore?: boolean;
+  totalTurns?: number;
+  historyRevision?: number;
   activeProviderSession?: ActiveProviderSession;
   runningTurn?: { turnIndex: number; provider: ChatProviderId; segmentId?: string };
   /** Null explicitly clears control; omitted when identification is disabled. */
@@ -141,6 +145,29 @@ export interface ProcessDetailResponse {
   process: AIProcess;
   children: AIProcess[];
   total: number;
+  /** Present only on an explicitly requested, enabled history page. */
+  history?: ConversationHistoryMetadata;
+}
+
+export interface ConversationHistoryMetadata {
+  oldestTurnIndex: number | null;
+  hasMore: boolean;
+  totalTurns: number;
+  historyRevision: number;
+}
+
+export interface ConversationTurnsPage extends ConversationHistoryMetadata {
+  turns: ConversationTurn[];
+}
+
+export interface ProcessGetOptions extends Pick<ProcessListQuery, 'workspace' | 'exclude' | 'include'> {
+  turnsLimit?: number;
+}
+
+export interface ProcessTurnsQuery {
+  workspace?: string;
+  beforeTurnIndex?: number;
+  limit?: number;
 }
 
 export interface ProcessMetadataPatchRequest {

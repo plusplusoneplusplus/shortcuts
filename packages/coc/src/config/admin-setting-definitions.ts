@@ -1048,6 +1048,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-chat-provider-switching-enabled',
         },
     }),
+    bool({
+        key: 'features.chatHistoryPaging', default: false, runtime: 'live', runtimeFlag: 'chatHistoryPagingEnabled',
+        ui: {
+            tab: 'chat', group: 'aiModes', order: 47, label: 'Chat history paging', badge: 'experimental',
+            hint: 'Open chats on the latest turns and load earlier messages automatically when scrolling up. Disabled by default.',
+            testId: 'toggle-chat-history-paging-enabled',
+        },
+    }),
 
     // Deliberately has no `ui` block: the control lives on the dedicated Chat
     // Style settings section (`#admin/settings/chat-style`), not on the

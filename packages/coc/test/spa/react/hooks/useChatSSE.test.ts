@@ -84,6 +84,35 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
 }
 
 describe('useChatSSE', () => {
+    it('forwards paged snapshots to the shared merger while retaining running provider attribution and token fields', () => {
+        const onConversationSnapshot = vi.fn();
+        const options = makeOptions({ onConversationSnapshot });
+        renderHook(() => useChatSSE(options));
+        act(() => MockEventSource.last._emit('conversation-snapshot', {
+            turns: [{ role: 'assistant', content: '', streaming: true, turnIndex: 199 }],
+            oldestTurnIndex: 170, hasMore: true, totalTurns: 200, historyRevision: 3,
+            runningTurn: { turnIndex: 199, provider: 'codex', segmentId: 'active' },
+            sessionCurrentTokens: 456, sessionTokenLimit: 999,
+        }));
+        expect(onConversationSnapshot).toHaveBeenCalledWith([
+            expect.objectContaining({ turnIndex: 199, streaming: true, provider: 'codex', segmentId: 'active' }),
+        ], { oldestTurnIndex: 170, hasMore: true, totalTurns: 200, historyRevision: 3 });
+        expect(options.setTurnsAndRef).not.toHaveBeenCalled();
+        expect(options.setSessionCurrentTokens).toHaveBeenCalledWith(456);
+        expect(options.setSessionTokenLimit).toHaveBeenCalledWith(999);
+    });
+    it('drops snapshots and chunks from an abandoned owner stream', () => {
+        const options = makeOptions({ onConversationSnapshot: vi.fn() });
+        const { rerender } = renderHook(({ id }) => useChatSSE({ ...options, processId: id }), { initialProps: { id: 'first' } });
+        const abandoned = MockEventSource.last;
+        rerender({ id: 'second' });
+        act(() => {
+            abandoned._emit('conversation-snapshot', { turns: [] });
+            abandoned._emit('chunk', { content: 'late' });
+        });
+        expect(options.onConversationSnapshot).not.toHaveBeenCalled();
+        expect(options.setTurnsAndRef).not.toHaveBeenCalled();
+    });
     it('applies bot control snapshots to task and metadata details, including explicit release', () => {
         const setTask = vi.fn();
         const setProcessDetails = vi.fn();

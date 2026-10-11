@@ -6,8 +6,9 @@
 
 import { writeNamedEvent, writeSseHeaders } from '../shared/sse-writer';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, ProcessOutputEvent, ConversationTurnsPage } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { PAGE_TURNS } from '@plusplusoneplusplus/forge';
 import type { WarmStatus } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getServerLogger } from '../logging/server-logger';
 import type { RalphGrillPlanningProgress } from '../ralph/grill-planning';
@@ -136,7 +137,7 @@ export function emitWarmStatus(store: ProcessStore, processId: string, status: W
  * Handle SSE streaming for a single process.
  *
  * Protocol:
- *   event: conversation-snapshot → { turns: ConversationTurn[], activeProviderSession, runningTurn?, botControl?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
+ *   event: conversation-snapshot → { turns: ConversationTurn[], activeProviderSession, runningTurn?, botControl?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens?, totalTurns?, oldestTurnIndex?, hasMore?, historyRevision? }
  *   event: provider-session     → { activeProviderSession, turnIndex }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
@@ -166,10 +167,13 @@ export async function handleProcessStream(
     warmBridge: WarmStatusBridge = warmStatusBridge,
     backgroundTasks: BackgroundTasksRegistry = backgroundTasksRegistry,
     botManagedConversationsEnabled: () => boolean = () => false,
+    chatHistoryPagingEnabled: () => boolean = () => false,
 ): Promise<void> {
     // Parse workspaceId hint from the query string for direct-path lookup
     const parsed = new URL(req.url ?? '/', 'http://x');
-    const wsId = parsed.searchParams.get('workspace') ?? undefined;
+    const pagingEnabled = chatHistoryPagingEnabled();
+    const wsId = parsed.searchParams.get('workspace')
+        ?? (pagingEnabled ? parsed.searchParams.get('workspaceId') : null) ?? undefined;
     // Warm-only mode: the SPA opens this lightweight stream purely to receive
     // `warm_status` pushes (AC-02). Unlike the main stream it skips the
     // conversation replay and stays open for completed/failed/cancelled
@@ -179,7 +183,8 @@ export async function handleProcessStream(
     const requestedWarmProvider = asProviderId(parsed.searchParams.get('provider'));
 
     // 1. Look up the process — 404 if not found
-    let process = await store.getProcess(processId, wsId);
+    let history = pagingEnabled ? await store.getProcessHistory(processId, wsId, { limit: PAGE_TURNS }) : undefined;
+    let process = pagingEnabled ? history?.process : await store.getProcess(processId, wsId);
     if (!process || (wsId !== undefined && process.metadata?.workspaceId !== wsId)) {
         getServerLogger().warn({ processId }, 'SSE: process not found');
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -200,7 +205,8 @@ export async function handleProcessStream(
     // 3. For running processes, flush buffered content before replay
     if ((process.status === 'running') && store.requestFlush) {
         await store.requestFlush(processId);
-        const refreshed = await store.getProcess(processId, wsId);
+        history = pagingEnabled ? await store.getProcessHistory(processId, wsId, { limit: PAGE_TURNS }) : undefined;
+        const refreshed = pagingEnabled ? history?.process : await store.getProcess(processId, wsId);
         if (refreshed && (wsId === undefined || refreshed.metadata?.workspaceId === wsId)) {
             process = refreshed;
         } else {
@@ -211,7 +217,7 @@ export async function handleProcessStream(
     }
 
     // 4. Replay persisted conversation history as a structured snapshot
-    replayConversationTurns(res, process, botManagedConversationsEnabled());
+    replayConversationTurns(res, process, botManagedConversationsEnabled(), history?.page);
 
     // Replay pending ask-user questions whenever the process has them — regardless
     // of status. ChatBaseExecutor finishes its SDK turn with `status='completed'`
@@ -523,12 +529,17 @@ function resolveProcessWarmProvider(process: AIProcess): string {
 
 /**
  * Replay persisted conversation turns as a single structured snapshot event.
- * Sends the full turns array so the client can reconstruct conversation state.
+ * Sends the selected turns so the client can reconstruct conversation state.
  * Also includes session-level token tracking data when available.
  */
-function replayConversationTurns(res: ServerResponse, process: AIProcess, botManagedConversationsEnabled: boolean): void {
+function replayConversationTurns(
+    res: ServerResponse,
+    process: AIProcess,
+    botManagedConversationsEnabled: boolean,
+    page?: ConversationTurnsPage,
+): void {
     const turns = process.conversationTurns ?? [];
-    if (turns.length === 0 && !botManagedConversationsEnabled) { return; }
+    if (turns.length === 0 && !botManagedConversationsEnabled && !page) { return; }
 
     const activeProviderSession = readActiveProviderSession(process);
     const last = turns[turns.length - 1];
@@ -557,5 +568,11 @@ function replayConversationTurns(res: ServerResponse, process: AIProcess, botMan
         ...(process.systemTokens != null ? { sessionSystemTokens: process.systemTokens } : {}),
         ...(process.toolDefinitionsTokens != null ? { sessionToolTokens: process.toolDefinitionsTokens } : {}),
         ...(process.conversationTokens != null ? { sessionConversationTokens: process.conversationTokens } : {}),
+        ...(page ? {
+            totalTurns: page.totalTurns,
+            oldestTurnIndex: page.oldestTurnIndex,
+            hasMore: page.hasMore,
+            historyRevision: page.historyRevision,
+        } : {}),
     });
 }

@@ -408,7 +408,7 @@ export type AppAction =
     | { type: 'WIKI_REBUILDING'; wikiId: string }
     | { type: 'WIKI_ERROR'; wikiId: string; error: string }
     | { type: 'TOGGLE_GROUP'; key: string }
-    | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[] }
+    | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[]; paged?: boolean }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
     | { type: 'INVALIDATE_CONVERSATION'; processId: string }
     | { type: 'SET_SELECTED_WORKFLOW'; name: string | null }
@@ -693,7 +693,7 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 }
                 delete cache[oldestKey];
             }
-            cache[action.processId] = { turns: action.turns, cachedAt: now };
+            cache[action.processId] = { turns: action.turns, cachedAt: now, ...(action.paged ? { paged: true } : {}) };
             return { ...state, conversationCache: cache };
         }
         case 'APPEND_TURN': {

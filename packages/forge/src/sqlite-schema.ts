@@ -3,7 +3,7 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 export { NativeDatabase as Database };
 export type DatabaseType = NativeDatabase;
 
-export const SCHEMA_VERSION = 41;
+export const SCHEMA_VERSION = 42;
 
 /**
  * Read the current schema version from the database.
@@ -578,6 +578,8 @@ export function initializeDatabase(db: NativeDatabase): void {
         if (versionBefore < 41) {
             ensureColumn(db, 'conversation_turns', 'turn_source', 'TEXT');
         }
+        ensureColumn(db, 'processes', 'history_revision', 'INTEGER NOT NULL DEFAULT 0');
+        createHistoryRevisionTriggers(db);
         // Additive indexes preserve the V40 table/read-pool contract.
         // idx_processes_ws_seen covers the seen-state reads (getSeenMap,
         // getUnseenCount) so they never load processes rows, whose large
@@ -604,6 +606,50 @@ export function initializeDatabase(db: NativeDatabase): void {
     });
 
     migrate();
+}
+
+function createHistoryRevisionTriggers(db: NativeDatabase): void {
+    const columns = new Set((db.prepare('PRAGMA table_info(conversation_turns)').all() as { name: string }[]).map(column => column.name));
+    const fields = [
+        'turn_index', 'role', 'content', 'timestamp', 'interrupted', 'interruption_reason',
+        'tool_calls', 'timeline', 'images', 'historical', 'suggestions', 'token_usage',
+        'paste_externalized', 'model', 'mode', 'sdk_event_id', 'display_only',
+        'compaction_summary', 'repo_group_context', 'chat_mode_context', 'provider',
+        'segment_id', 'relay_request_id', 'turn_source', 'pinned_at', 'archived', 'deleted_at',
+    ].filter(field => columns.has(field));
+    const visibilityChanges = ['deleted_at', 'archived'].filter(field => columns.has(field))
+        .map(field => ` OR OLD.${field} IS NOT NEW.${field}`).join('');
+    db.exec(`
+        DROP TRIGGER IF EXISTS history_turn_update;
+        CREATE TRIGGER history_turn_update AFTER UPDATE ON conversation_turns
+        WHEN (${columns.has('streaming') ? 'COALESCE(OLD.streaming, 0) = 0' : '1'} AND (${fields.map(field => `OLD.${field} IS NOT NEW.${field}`).join(' OR ')}))
+            ${visibilityChanges}
+        BEGIN
+            UPDATE processes SET history_revision = history_revision + 1 WHERE id = OLD.process_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS history_turn_delete AFTER DELETE ON conversation_turns
+        BEGIN
+            UPDATE processes SET history_revision = history_revision + 1 WHERE id = OLD.process_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS history_turn_insert AFTER INSERT ON conversation_turns
+        WHEN NEW.turn_index < (SELECT MAX(turn_index) FROM conversation_turns WHERE process_id = NEW.process_id)
+        BEGIN
+            UPDATE processes SET history_revision = history_revision + 1 WHERE id = NEW.process_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS history_turn_replace BEFORE INSERT ON conversation_turns
+        WHEN EXISTS (SELECT 1 FROM conversation_turns WHERE process_id = NEW.process_id AND turn_index = NEW.turn_index)
+        BEGIN
+            UPDATE processes SET history_revision = history_revision + 1 WHERE id = NEW.process_id;
+        END;
+        DROP TRIGGER IF EXISTS history_compaction_complete;
+        CREATE TRIGGER history_compaction_complete AFTER UPDATE OF metadata ON processes
+        WHEN CASE WHEN json_valid(NEW.metadata) THEN json_extract(NEW.metadata, '$.compaction.state') END = 'completed'
+            AND CASE WHEN json_valid(OLD.metadata) THEN json_extract(OLD.metadata, '$.compaction') END
+                IS NOT CASE WHEN json_valid(NEW.metadata) THEN json_extract(NEW.metadata, '$.compaction') END
+        BEGIN
+            UPDATE processes SET history_revision = history_revision + 1 WHERE id = NEW.id;
+        END;
+    `);
 }
 
 function ensureColumn(db: NativeDatabase, table: string, column: string, definition: string): void {

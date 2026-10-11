@@ -61,7 +61,9 @@ function originalSql(
 
 function persistedRows(db: NativeDatabase): string {
     const rows = (sql: string) => (db.prepare(sql).all() as Array<Record<string, unknown>>)
-        .map(row => Object.fromEntries(Object.entries(row).sort(([a], [b]) => a.localeCompare(b))));
+        .map(row => Object.fromEntries(Object.entries(row)
+            .filter(([key]) => key !== 'history_revision')
+            .sort(([a], [b]) => a.localeCompare(b))));
     return JSON.stringify({
         process: rows("SELECT * FROM processes WHERE id = 'one'"),
         turns: rows('SELECT * FROM conversation_turns ORDER BY id'),
@@ -96,5 +98,6 @@ it('matches the original SQL bytes for streaming replacement, follow-up, and pro
         expect(result?.turn.turnIndex).toBe(index);
         expect(persistedRows(store.getDatabase())).toBe(persistedRows(oracle.getDatabase()));
         expect(await store.getConversationTurns('one')).toEqual(await oracle.getConversationTurns('one'));
+        expect((await store.getProcessHistory('one'))!.page.historyRevision).toBe(0);
     }
 });

@@ -65,11 +65,14 @@ const { mockState } = vi.hoisted(() => ({
         // Per-test toggle for the follow-up Style chip. Off by default so existing
         // tests keep the pre-experiment toolbar.
         chatStyleSelectorEnabled: false,
+        chatHistoryPagingEnabled: false,
+        sseOptions: undefined as any,
     },
 }));
 
 // Config
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isFeatureEnabled: (name: string) => name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled,
     isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '/api',
@@ -138,7 +141,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext',
 
 // useChatSSE
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE', () => ({
-    useChatSSE: () => ({ stopStreaming: mockState.stopStreaming }),
+    useChatSSE: (options: any) => { mockState.sseOptions = options; return { stopStreaming: mockState.stopStreaming }; },
 }));
 
 // useSendMessage
@@ -501,6 +504,8 @@ beforeEach(() => {
     resetCloneRegistryForTests();
     mockState.defaultChatStyle = 'default';
     mockState.sessionContextAttachmentsEnabled = false;
+    mockState.chatHistoryPagingEnabled = false;
+    mockState.sseOptions = undefined;
     resetActiveChatAttach();
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
@@ -541,6 +546,152 @@ afterEach(() => {
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────
+
+describe('ChatDetail shared paged hydration', () => {
+    function CacheProbe() {
+        const { state } = useApp();
+        return <div data-testid="paged-cache" data-paged={String(state.conversationCache.queue_paged?.paged === true)}>{JSON.stringify(state.conversationCache.queue_paged?.turns.map(turn => turn.turnIndex) ?? [])}</div>;
+    }
+    let intersect: (() => void) | undefined;
+    let initialHash: string;
+    beforeEach(() => {
+        initialHash = window.location.hash;
+        intersect = undefined;
+        vi.stubGlobal('IntersectionObserver', class {
+            constructor(callback: (entries: any[]) => void) { intersect = () => callback([{ isIntersecting: true }]); }
+            observe() {}
+            disconnect() {}
+        });
+    });
+    afterEach(() => { window.location.hash = initialHash; vi.unstubAllGlobals(); });
+    function pagedFetch(mode = 'ask') {
+        const latest = Array.from({ length: 30 }, (_, i) => ({
+            role: i % 2 ? 'assistant' : 'user', content: `latest-${170 + i}`, turnIndex: 170 + i, timeline: [],
+        }));
+        setupFetch({
+            '/config/runtime': { body: { features: { chatHistoryPagingEnabled: true } } },
+            '/turns/pinned': { body: { turns: [] } },
+            '/turns?': { body: { turns: Array.from({ length: 30 }, (_, i) => ({
+                role: i % 2 ? 'assistant' : 'user', content: `older-${140 + i}`, turnIndex: 140 + i, timeline: [],
+            })), oldestTurnIndex: 140, hasMore: true, totalTurns: 200, historyRevision: 0 } },
+            '/processes/': { body: { process: makeProcess({
+                id: 'queue_paged', conversationTurns: latest, metadata: { mode, sessionId: 'session' },
+            }), history: { oldestTurnIndex: 170, hasMore: true, totalTurns: 200, historyRevision: 0 } } },
+        });
+    }
+    it.each([
+        { mode: 'ask' }, { mode: 'autopilot' }, { mode: 'sentinel' }, { mode: 'ralph' },
+        { mode: 'ask', hideHeader: true, hidePlanBanners: true }, { mode: 'ask', isPopOut: true },
+    ])('opens latest and auto-pages older for shared mode $mode', async props => {
+        mockState.chatHistoryPagingEnabled = true;
+        pagedFetch(props.mode);
+        render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" {...props} /></Wrap>);
+        await waitFor(() => expect(screen.getByText('latest-199')).toBeTruthy());
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/processes/queue_paged?workspace=ws-local&turnsLimit=30'))).toBe(true);
+        await waitFor(() => expect(intersect).toBeDefined());
+        await act(async () => intersect?.());
+        await waitFor(() => expect(screen.getByText('older-140')).toBeTruthy());
+    });
+    it('routes group/remote/popout page and pin reads exclusively to the concrete owner', async () => {
+        const owner = { workspaceId: 'ws-member', selectionId: 'remote:owner:ws-member', baseUrl: 'https://owner.example.test' };
+        pagedFetch();
+        render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <ChatDetail taskId="queue_paged" workspaceId="ws-member" isPopOut sourceSelectionId={owner.selectionId} sourceBaseUrl={owner.baseUrl} />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await waitFor(() => expect(screen.getByText('latest-199')).toBeTruthy());
+        await waitFor(() => expect(intersect).toBeDefined());
+        await act(async () => intersect?.());
+        await waitFor(() => expect(screen.getByText('older-140')).toBeTruthy());
+        const historyReads = fetchMock.mock.calls.filter(([url]) => String(url).includes('/processes/'));
+        expect(historyReads.length).toBeGreaterThan(2);
+        expect(historyReads.every(([url]) => String(url).startsWith(owner.baseUrl))).toBe(true);
+        expect(historyReads.some(([url]) => String(url).includes('beforeTurnIndex=170'))).toBe(true);
+        expect(historyReads.some(([url]) => String(url).includes('/turns/pinned?workspace=ws-member'))).toBe(true);
+    });
+    it('keeps unresolved remote selections off local hydration', async () => {
+        mockState.chatHistoryPagingEnabled = true;
+        pagedFetch();
+        render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-member" sourceSelectionId="remote:missing:ws-member" /></Wrap>);
+        await act(async () => {});
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/processes/'))).toBe(false);
+    });
+    it('starts at the bottom, keeps older pages on reconnect and resets to latest/bottom on a changed revision', async () => {
+        mockState.chatHistoryPagingEnabled = true;
+        pagedFetch();
+        vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(2000);
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+        render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" /><CacheProbe /></Wrap>);
+        await waitFor(() => expect(screen.getByText('latest-199')).toBeTruthy());
+        const sc = screen.getByTestId('activity-chat-conversation');
+        expect(sc.scrollTop).toBe(2000);
+        sc.scrollTop = 200;
+        fireEvent.scroll(sc);
+        await act(async () => intersect?.());
+        await waitFor(() => expect(screen.getByText('older-140')).toBeTruthy());
+        const latest = Array.from({ length: 30 }, (_, i) => ({
+            role: i % 2 ? 'assistant' : 'user', content: `snapshot-${170 + i}`, turnIndex: 170 + i, timeline: [],
+        }));
+        const history = { oldestTurnIndex: 170, hasMore: true, totalTurns: 200, historyRevision: 0 };
+        act(() => mockState.sseOptions.onConversationSnapshot(latest, history));
+        expect(screen.getByText('older-140')).toBeTruthy();
+        expect(screen.getByText('snapshot-199')).toBeTruthy();
+        expect(JSON.parse(screen.getByTestId('paged-cache').textContent ?? '[]')).toEqual(Array.from({ length: 30 }, (_, i) => 170 + i));
+        act(() => mockState.sseOptions.onConversationSnapshot(latest, { ...history, historyRevision: 1 }));
+        expect(screen.queryByText('older-140')).toBeNull();
+        expect(sc.scrollTop).toBe(2000);
+    });
+    it('loads through an unloaded search target through the same navigation as deep links', async () => {
+        mockState.chatHistoryPagingEnabled = true;
+        pagedFetch();
+        render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" targetTurnIndex={145} /></Wrap>);
+        await waitFor(() => expect(screen.getByText('older-145')).toBeTruthy());
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes('beforeTurnIndex=170'))).toBe(true);
+    });
+    it('deep-links to turn 5 of 200 by filling sequential pages before highlighting', async () => {
+        mockState.chatHistoryPagingEnabled = true;
+        window.location.hash = '#repos/ws-local/chats/queue_paged?turn=5';
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/turns?': (url: string) => {
+                const before = Number(new URL(url, 'http://localhost').searchParams.get('beforeTurnIndex'));
+                const start = Math.max(0, before - 30);
+                return new Response(JSON.stringify({
+                    turns: Array.from({ length: before - start }, (_, i) => ({
+                        role: (start + i) % 2 ? 'assistant' : 'user', content: `deep-${start + i}`, turnIndex: start + i, timeline: [],
+                    })), oldestTurnIndex: start, hasMore: start > 0, totalTurns: 200, historyRevision: 0,
+                }), { headers: { 'content-type': 'application/json' } });
+            },
+            '/processes/': { body: { process: makeProcess({
+                id: 'queue_paged', conversationTurns: Array.from({ length: 30 }, (_, i) => ({
+                    role: i % 2 ? 'assistant' : 'user', content: `latest-${170 + i}`, turnIndex: 170 + i, timeline: [],
+                })),
+            }), history: { oldestTurnIndex: 170, hasMore: true, totalTurns: 200, historyRevision: 0 } } },
+        });
+        render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" /></Wrap>);
+        await waitFor(() => expect(screen.getByText('deep-5')).toBeTruthy());
+        const cursors = fetchMock.mock.calls.filter(([url]) => String(url).includes('beforeTurnIndex='))
+            .map(([url]) => Number(new URL(String(url), 'http://localhost').searchParams.get('beforeTurnIndex')));
+        expect(cursors).toEqual([170, 140, 110, 80, 50, 20]);
+        await waitFor(() => expect(document.querySelector('[data-turn-index="5"]')?.classList.contains('minimap-highlight-pulse')).toBe(true));
+    });
+    it('rejects a latest-page cache when live paging is disabled and loads full history', async () => {
+        mockState.chatHistoryPagingEnabled = true;
+        pagedFetch();
+        render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" /><CacheProbe /></Wrap>);
+        await waitFor(() => expect(screen.getByText('latest-199')).toBeTruthy());
+        expect(screen.getByTestId('paged-cache').dataset.paged).toBe('true');
+        setupStandardFetch(undefined, makeProcess({
+            id: 'queue_paged', conversationTurns: Array.from({ length: 200 }, (_, i) => ({
+                role: i % 2 ? 'assistant' : 'user', content: `full-${i}`, turnIndex: i, timeline: [],
+            })),
+        }));
+        mockState.chatHistoryPagingEnabled = false;
+        act(() => window.dispatchEvent(new Event('coc-dashboard-config-updated')));
+        await waitFor(() => expect(screen.getByText('full-0')).toBeTruthy());
+        expect(JSON.parse(screen.getByTestId('paged-cache').textContent ?? '[]')).toHaveLength(200);
+        expect(screen.getByTestId('paged-cache').dataset.paged).toBe('false');
+    });
+});
 
 describe('ChatDetail Sentinel implementation banners', () => {
     const cases = [

@@ -12,6 +12,7 @@ import {
     isCommitChatLensEnabled,
     isComposerWordHintEnabled,
     isDreamsEnabled,
+    isFeatureEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isServersEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
@@ -19,6 +20,32 @@ import {
 afterEach(() => {
     _resetRuntimeConfig();
     delete (window as any).__DASHBOARD_CONFIG__;
+});
+
+describe('chat history paging runtime flag', () => {
+    it('defaults off for an absent owning-server capability', () => {
+        expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(false);
+    });
+
+    it.each([false, 'true', 1])('rejects a non-enabled capability value %s', value => {
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { chatHistoryPagingEnabled: value } },
+        });
+        expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(false);
+    });
+
+    it('reads bootstrap flags and applies live enablement and disablement', () => {
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { chatHistoryPagingEnabled: true } },
+        });
+        expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(true);
+        applyRuntimeConfigPatch({ chatHistoryPagingEnabled: false });
+        expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(false);
+        applyRuntimeConfigPatch({ chatHistoryPagingEnabled: true });
+        expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(true);
+    });
 });
 
 describe('isServersEnabled', () => {
