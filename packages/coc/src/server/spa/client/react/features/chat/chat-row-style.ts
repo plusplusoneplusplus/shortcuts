@@ -3,7 +3,9 @@
  * grid. `ChatListPane` and the repo-group aggregated list both render rows with
  * these classes so status, mode and selection styling stay identical.
  */
-import { cn } from '../../ui';
+// Direct import: these classes are built at module load, so they must not
+// depend on the `ui` barrel (tests commonly mock it without `cn`).
+import { cn } from '../../ui/cn';
 import { getProviderDotClasses, type ChatProvider } from './ProviderBadge';
 
 export type ChatRowModeKey = 'ask' | 'auto' | 'script' | 'ralph' | 'sentinel';
