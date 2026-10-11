@@ -150,13 +150,13 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, un
                     {snippet && <span className="ml-2 font-normal text-[#848484]" data-testid="repo-group-search-snippet">{snippet}</span>}
                 </span>
                 {groupSelectionId && task.parentProcessId && task.parentOwnerWorkspaceId
-                    && task.parentOwnerWorkspaceId !== row.ownerWorkspaceId && <a
+                    && (task.parentOwnerWorkspaceId !== row.ownerWorkspaceId || snippet) && <a
                         className="text-[10px] text-[#848484] shrink-0"
                         onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}
                         href={task.parentOwnerWorkspaceId === task.groupWorkspaceId
                             ? repoHashBase(groupSelectionId) + '/chats/' + encodeURIComponent(task.parentProcessId)
                             : buildRepoGroupChatHash(groupSelectionId, task.parentOwnerWorkspaceId, task.parentProcessId)}>
-                        Delegated from
+                        {task.parentOwnerWorkspaceId !== row.ownerWorkspaceId ? 'Delegated from' : 'Parent chat'}
                     </a>}
             </span>
             <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap text-[#848484] dark:text-[#999]">
@@ -256,7 +256,9 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
                     </button>)}
             </div>}
             {actionResult && <div role="status" className="px-2 text-xs">
-                {actionResult.succeeded.length} succeeded. {actionResult.failed.map(failure =>
+                {actionResult.succeeded.length} succeeded. {Object.entries(actionResult.succeededByOwner ?? {}).map(([owner, count]) =>
+                    `${owners.get(owner)?.full ?? owner}: ${count} succeeded. `)}
+                {actionResult.failed.map(failure =>
                     `${owners.get(failure.ownerWorkspaceId)?.full ?? failure.ownerWorkspaceId}: ${failure.error}`).join('; ')}
             </div>}
             {groupSelectionId && <details className="px-2 text-xs">

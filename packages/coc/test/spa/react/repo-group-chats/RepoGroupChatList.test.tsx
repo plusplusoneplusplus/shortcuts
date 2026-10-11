@@ -57,6 +57,7 @@ function renderList(m: RepoGroupChatFeedModel | null, props: Partial<Parameters<
             serverLabel={props.serverLabel ?? 'This server'}
             selectedKey={props.selectedKey ?? null}
             onSelect={props.onSelect ?? onSelect}
+            groupSelectionId={props.groupSelectionId}
         />,
     );
     return { onSelect, loadMore };
@@ -134,6 +135,14 @@ describe('partitionPinnedRows / isUnseenGroupChat', () => {
 });
 
 describe('RepoGroupChatList', () => {
+    it('keeps flattened search results linked to their concrete parent owner', () => {
+        renderList(model({
+            history: [hist('h1', 'ws-a', { parentProcessId: 'parent', parentOwnerWorkspaceId: 'ws-a' })],
+            snippets: { 'ws-a': { h1: 'Body match' } },
+        }), { groupSelectionId: 'group-ai' });
+        expect(screen.getByRole('link', { name: 'Parent chat' }).getAttribute('href'))
+            .toBe('#repos/group-ai/chats/member/ws-a/parent');
+    });
     it('reveals search excerpts in accessible and hover text without adding a metadata row', () => {
         renderList(model({ history: [hist('h1', 'ws-a')], snippets: { 'ws-a': { h1: 'Matching body text' } } }));
         const row = screen.getByTestId('repo-group-chat-row');

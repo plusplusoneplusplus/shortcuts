@@ -5,6 +5,7 @@ import type { RepoGroupChatRow } from './repoGroupChatFeed';
 export type RepoGroupChatAction = 'pin' | 'unpin' | 'archive' | 'unarchive' | 'delete' | 'cancel';
 export interface RepoGroupChatActionResult {
     succeeded: string[];
+    succeededByOwner?: Record<string, number>;
     failed: Array<{ key: string; ownerWorkspaceId: string; error: string }>;
 }
 
@@ -39,7 +40,8 @@ export async function applyRepoGroupChatAction(
     sources: RepoGroupChatSource[],
     baseUrl?: string,
 ): Promise<RepoGroupChatActionResult> {
-    const result: RepoGroupChatActionResult = { succeeded: [], failed: [] };
+    const succeededByOwner: Record<string, number> = {};
+    const result: RepoGroupChatActionResult = { succeeded: [], failed: [], succeededByOwner };
     for (const row of rows) {
         try {
             if (row.serverKey !== 'local' && !baseUrl) throw new Error('The owning server is unavailable.');
@@ -55,6 +57,7 @@ export async function applyRepoGroupChatAction(
                 body: action === 'pin' || action === 'unpin' ? { pinned: action === 'pin' } : { archived: action === 'archive' },
             });
             result.succeeded.push(row.key);
+            succeededByOwner[row.ownerWorkspaceId] = (succeededByOwner[row.ownerWorkspaceId] ?? 0) + 1;
         } catch (error) {
             result.failed.push({ key: row.key, ownerWorkspaceId: row.ownerWorkspaceId,
                 error: getSpaCocClientErrorMessage(error, 'The owning server refused the action.') });

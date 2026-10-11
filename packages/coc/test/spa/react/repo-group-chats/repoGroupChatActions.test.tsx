@@ -28,6 +28,7 @@ describe('concrete owner actions', () => {
         });
         const result = await applyRepoGroupChatAction([row('ws-a', action), row('ws-b', action)], action, sources, 'https://owner.test');
         expect(result.succeeded).toEqual(['server|ws-a|same']);
+        expect(result.succeededByOwner).toEqual({ 'ws-a': 1 });
         expect(result.failed).toEqual([{ key: 'server|ws-b|same', ownerWorkspaceId: 'ws-b', error: 'Owner B denied' }]);
         const owners = action === 'delete' ? remove.mock.calls.map(call => call[1]?.workspace)
             : action === 'cancel' ? cancel.mock.calls.map(call => call[1]?.workspace)
