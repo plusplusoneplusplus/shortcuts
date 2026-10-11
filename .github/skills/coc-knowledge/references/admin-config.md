@@ -106,6 +106,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `chatStyleSelector` | on | Chat Style chip (below) |
 | `defaultChatStyle` | `default` | Enum (`default`\|`human`\|`direct`\|`terse`\|`structured`); style new conversations start on (below) |
 | `chatProviderSwitching` | off | Concrete provider changes between idle Ask/Autopilot follow-up turns (below) |
+| `chatHistoryPaging` | off | Live chat-history paging capability, exposed as `chatHistoryPagingEnabled` in owning-server runtime config |
 | `autoAgentProviderRouting` | off | Auto provider routing; edited from Admin -> AI Provider |
 
 `features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected.

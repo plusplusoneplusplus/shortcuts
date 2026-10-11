@@ -319,6 +319,8 @@ export interface RuntimeDashboardConfig {
     chatStyleSelectorEnabled: boolean;
     /** Whether idle Ask/Autopilot follow-ups may select another concrete provider. */
     chatProviderSwitchingEnabled: boolean;
+    /** Whether this owning server enables turn-count paging for chat history. */
+    chatHistoryPagingEnabled: boolean;
     /** VS Code-style multiple editor tabs in the File Explorer (`features.explorerEditorTabs`). */
     explorerEditorTabsEnabled: boolean;
     /** Rendered Markdown preview in unified right-panel file tabs (`features.markdownPanelPreview`). */

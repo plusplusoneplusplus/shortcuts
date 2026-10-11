@@ -637,6 +637,7 @@ describe('feature toggle settings-tab placement', () => {
         // Chat
         'features.chatFolders': 'chat',
         'features.chatProviderSwitching': 'chat',
+        'features.chatHistoryPaging': 'chat',
         'features.composerWordHint': 'chat',
         'features.quickAskSidenotes': 'chat',
         'features.sessionContextAttachments': 'chat',
