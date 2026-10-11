@@ -195,7 +195,10 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // chats plus every member's, read from the group's owning server. Row keys
     // carry that server's identity so equal ids on two servers never collide.
     const aggregatedChats = useRepoGroupAggregatedChatsEnabled();
-    const remoteMarker = (remoteGroup as { remote?: { serverId?: unknown; serverLabel?: unknown } } | undefined)?.remote;
+    const remoteMarker = remoteGroup?.remote;
+    const groupOwnerAvailable = !parseRemoteCloneKey(selectionId)
+        || !!groupBaseUrl && !!remoteMarker && !remoteMarker.offline
+            && (!remoteMarker.connection || remoteMarker.connection === 'online');
     const chatServerKey = parseRemoteCloneKey(selectionId)?.serverId ?? LOCAL_CHAT_FEED_SERVER_KEY;
     const chatServerLabel = typeof remoteMarker?.serverLabel === 'string' && remoteMarker.serverLabel
         ? remoteMarker.serverLabel
@@ -206,6 +209,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         baseUrl: groupBaseUrl,
         serverKey: chatServerKey,
         enabled: aggregatedChats,
+        ownerAvailable: groupOwnerAvailable,
         filters: chatFilters,
     });
     const memberChat = useRepoGroupChatSelection(selectionId, aggregatedChats);
@@ -336,6 +340,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                 }}
                                 chatHeaderExtra={
                                     <button
+                                        disabled={aggregatedChats && !groupOwnerAvailable}
                                         type="button"
                                         className="rounded px-1.5 text-[10px] font-medium hover:bg-[#d7deec] dark:hover:bg-[#353a46]"
                                         onClick={handleSplitNewChat}
@@ -366,14 +371,15 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                                 serverLabel={chatServerLabel}
                                                 groupBaseUrl={groupBaseUrl}
                                                 rootPath={members?.find(member => member.workspaceId === memberChat.selection?.ownerWorkspaceId)?.rootPath}
-                                                unavailable={chatFeed.status === 'error' || chatFeed.model?.sources.find(source =>
+                                                unavailable={!groupOwnerAvailable || chatFeed.status === 'error' || chatFeed.model?.sources.find(source =>
                                                     source.workspaceId === memberChat.selection?.ownerWorkspaceId)?.available === false}
                                                 stale={chatFeed.model?.sources.find(source => source.workspaceId === memberChat.selection?.ownerWorkspaceId)?.stale}
                                                 noLongerInGroup={!!chatFeed.model && !chatFeed.model.sources.some(source =>
                                                     source.workspaceId === memberChat.selection?.ownerWorkspaceId)}
                                                 onBack={memberChat.backToGroupChats}
                                             />
-                                        ) : undefined}
+                                        ) : aggregatedChats && !groupOwnerAvailable
+                                            ? <div role="status">The owning server is unavailable.</div> : undefined}
                                     />
                                     </WorkspaceOwnerContext.Provider>
                                 }

@@ -59,6 +59,40 @@ afterEach(() => {
 });
 
 describe('useRepoGroupChatFeed', () => {
+    it('invalidates pending pages on a retained-endpoint offline transition and reconciles on reconnect', async () => {
+        const late = deferred<RepoGroupChatFeedResponse>();
+        getRepoGroupChats.mockResolvedValueOnce(page({
+            history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' }],
+            hasMore: true, nextCursor: 'c1',
+        })).mockReturnValueOnce(late.promise);
+        const { result, rerender } = renderHook(
+            ({ ownerAvailable }) => useRepoGroupChatFeed({
+                groupId: 'grp', serverKey: 'server-a', baseUrl: 'https://owner.test', enabled: true, ownerAvailable,
+            }), { initialProps: { ownerAvailable: true } });
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.loadMore(); });
+        const signal = getRepoGroupChats.mock.calls[1][3] as AbortSignal;
+        rerender({ ownerAvailable: false });
+        expect(signal.aborted).toBe(true);
+        expect(result.current.model?.counts.partial).toBe(true);
+        expect(result.current.model?.sources.every(source => !source.available)).toBe(true);
+        expect(result.current.model?.history.map(row => row.canonicalId)).toEqual(['p1']);
+        await act(async () => {
+            late.resolve(page({ history: [{ id: 'obsolete', ownerWorkspaceId: 'ws-a' }] }));
+            await pending;
+            await result.current.refresh();
+            await result.current.loadMore();
+        });
+        expect(getRepoGroupChats).toHaveBeenCalledTimes(2);
+        expect(result.current.model?.history.map(row => row.canonicalId)).toEqual(['p1']);
+        getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' }] }));
+        rerender({ ownerAvailable: true });
+        await waitFor(() => expect(result.current.model?.counts.partial).toBe(false));
+        expect(result.current.model?.history).toHaveLength(1);
+        expect(getRepoGroupChats.mock.calls.every(call => call[2] === 'https://owner.test')).toBe(true);
+    });
+
     it('retains cached history as unavailable after owner disconnect without ever reading locally', async () => {
         getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' }] }));
         const { result, rerender } = renderHook(

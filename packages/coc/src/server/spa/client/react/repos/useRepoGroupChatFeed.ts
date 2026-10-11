@@ -53,6 +53,8 @@ export interface UseRepoGroupChatFeedOptions {
     /** Server identity used in row keys (`local` or the remote server id). */
     serverKey: string;
     enabled: boolean;
+    /** Connection availability is separate from a retained remote endpoint. */
+    ownerAvailable?: boolean;
     filters?: RepoGroupChatFeedFilters;
     pageSize?: number;
 }
@@ -87,7 +89,7 @@ function filtersKey(filters: RepoGroupChatFeedFilters | undefined): string {
 }
 
 export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): RepoGroupChatFeedState {
-    const { groupId, baseUrl, serverKey, enabled } = options;
+    const { groupId, baseUrl, serverKey, enabled, ownerAvailable = true } = options;
     const pageSize = options.pageSize ?? REPO_GROUP_CHAT_FEED_PAGE_SIZE;
     const fKey = filtersKey(options.filters);
     const cacheKey = `${serverKey}|${groupId}|${fKey}`;
@@ -103,17 +105,20 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
     const modelRef = useRef<RepoGroupChatFeedModel | null>(null);
     modelRef.current = model;
     const abortRef = useRef<AbortController | null>(null);
+    const pageAbortRef = useRef<AbortController | null>(null);
 
     const fetchFirstPage = useCallback(async (keepDepth: boolean) => {
         const generation = ++generationRef.current;
         abortRef.current?.abort();
+        pageAbortRef.current?.abort();
+        setLoadingMore(false);
         const controller = new AbortController();
         abortRef.current = controller;
         const loaded = keepDepth ? modelRef.current?.history.length ?? 0 : 0;
         const limit = Math.min(REPO_GROUP_CHAT_FEED_MAX_PAGE, Math.max(pageSize, loaded));
         if (!keepDepth || !modelRef.current) setStatus('loading');
         try {
-            if (serverKey !== 'local' && !baseUrl) throw new Error('The owning server is unavailable.');
+            if (!ownerAvailable || serverKey !== 'local' && !baseUrl) throw new Error('The owning server is unavailable.');
             const response = await getRepoGroupChats(groupId, { ...filters, limit }, baseUrl, controller.signal);
             if (generation !== generationRef.current) return;
             let next = buildRepoGroupChatFeedModel(response, serverKey);
@@ -137,7 +142,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
             if (cached) setModel(unavailableModel(cached, errorMessage(err)));
             setStatus(cached ? 'ready' : 'error');
         }
-    }, [groupId, baseUrl, serverKey, filters, pageSize, cacheKey]);
+    }, [groupId, baseUrl, serverKey, filters, pageSize, cacheKey, ownerAvailable]);
 
     // Group, server or filters changed: drop the old rows (another scope's
     // identities must never linger) and load the first page.
@@ -145,6 +150,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         if (!enabled) {
             generationRef.current++;
             abortRef.current?.abort();
+            pageAbortRef.current?.abort();
             setModel(null);
             setStatus('idle');
             setError(undefined);
@@ -159,18 +165,21 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
     useEffect(() => () => {
         generationRef.current++;
         abortRef.current?.abort();
+        pageAbortRef.current?.abort();
     }, []);
 
     const refresh = useCallback(() => fetchFirstPage(true), [fetchFirstPage]);
 
     const loadMore = useCallback(async () => {
         const current = modelRef.current;
-        if (!enabled || !current?.hasMore || !current.nextCursor || loadingMore) return;
+        if (!enabled || !ownerAvailable || !current?.hasMore || !current.nextCursor || loadingMore) return;
         const generation = generationRef.current;
+        const controller = new AbortController();
+        pageAbortRef.current = controller;
         setLoadingMore(true);
         try {
             const response = await getRepoGroupChats(
-                groupId, { ...filters, limit: pageSize, cursor: current.nextCursor }, baseUrl,
+                groupId, { ...filters, limit: pageSize, cursor: current.nextCursor }, baseUrl, controller.signal,
             );
             // A refresh landed meanwhile: this page continues the old ordering.
             if (generation !== generationRef.current || modelRef.current?.nextCursor !== current.nextCursor) return;
@@ -195,7 +204,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         } finally {
             setLoadingMore(false);
         }
-    }, [enabled, groupId, baseUrl, filters, pageSize, loadingMore, fetchFirstPage, cacheKey]);
+    }, [enabled, ownerAvailable, groupId, baseUrl, filters, pageSize, loadingMore, fetchFirstPage, cacheKey]);
 
     // ── Live refresh ────────────────────────────────────────────────────────
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -224,7 +233,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
     // Owning server's socket: the local socket for a local group, that remote
     // server's socket otherwise — never another server's events.
     useEffect(() => {
-        if (!enabled) return;
+        if (!enabled || !ownerAvailable || serverKey !== 'local' && !baseUrl) return;
         const messageEvent = baseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message';
         const onMessage = (event: Event) => {
             const detail = (event as CustomEvent).detail;
@@ -255,7 +264,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
             if (baseUrl) window.removeEventListener('coc-remote-ws-connect', onConnect);
             else window.removeEventListener('coc-local-ws-connect', onConnect);
         };
-    }, [enabled, baseUrl, scheduleRefresh]);
+    }, [enabled, ownerAvailable, serverKey, baseUrl, scheduleRefresh]);
 
     // Local queue changes reach the SPA only through QueueContext (the local
     // socket's `queue-updated` is not rebroadcast). Remote groups skip this: the
@@ -280,5 +289,8 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         if (previous !== null && previous !== queueSignature) scheduleRefresh();
     }, [enabled, queueSignature, scheduleRefresh]);
 
-    return { model, status, error, loadingMore, loadMore, refresh };
+    return {
+        model: model && !ownerAvailable ? unavailableModel(model, 'The owning server is unavailable.') : model,
+        status, error, loadingMore, loadMore, refresh,
+    };
 }

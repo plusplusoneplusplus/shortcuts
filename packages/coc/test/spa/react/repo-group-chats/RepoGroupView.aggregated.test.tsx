@@ -150,6 +150,39 @@ describe('RepoGroupView — aggregated chats', () => {
         expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('data-chat-key')).toBe('srv-1|ws-a|queue_m1');
     });
 
+    it('retains unavailable history and selection but disables actions when a remote keeps its offline endpoint', async () => {
+        const selectionId = 'remote:srv-1:group-ai';
+        mockRemoteGroups = [{
+            id: GROUP_ID, name: 'AI', baseUrl: 'https://owner.test',
+            remote: { serverId: 'srv-1', serverLabel: 'devbox', cloneKey: selectionId, offline: false, connection: 'online' },
+        }];
+        const { rerender } = render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        fireEvent.click(screen.getAllByTestId('repo-group-chat-row')[0]);
+        expect(screen.getByTestId('stub-member-chat-pane')).toBeTruthy();
+        const calls = mockGetRepoGroupChats.mock.calls.length;
+        mockRemoteGroups = [{ ...mockRemoteGroups[0], remote: {
+            ...mockRemoteGroups[0].remote, offline: true, connection: 'offline',
+        } }];
+        rerender(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        expect(screen.queryByTestId('stub-member-chat-pane')).toBeNull();
+        expect(screen.getAllByTestId('repo-group-chat-row').every(row => row.dataset.unavailable === 'true')).toBe(true);
+        expect(screen.getByTestId('repo-group-chat-total').textContent).toBe('3+');
+        expect((screen.getByTestId('repo-group-split-new-chat') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Select chats' }));
+        fireEvent.click(screen.getAllByTestId('repo-group-chat-row')[0]);
+        expect((screen.getByRole('button', { name: 'archive' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(mockGetRepoGroupChats).toHaveBeenCalledTimes(calls);
+        mockRemoteGroups = [{ ...mockRemoteGroups[0], remote: {
+            ...mockRemoteGroups[0].remote, offline: false, connection: 'online',
+        } }];
+        rerender(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        await waitFor(() => expect(screen.getByTestId('repo-group-chat-total').textContent).toBe('3'));
+        expect(screen.getByTestId('stub-member-chat-pane').dataset.route).toBe('remote:srv-1:ws-a');
+        expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3);
+        expect(mockGetRepoGroupChats.mock.calls.every(call => call[2] === 'https://owner.test')).toBe(true);
+    });
+
     it('selects group-owned chats through the group tab and highlights its current selection', async () => {
         mockSelectedTaskId = 'queue_g1';
         render(<RepoGroupView workspaceId={GROUP_ID} />);

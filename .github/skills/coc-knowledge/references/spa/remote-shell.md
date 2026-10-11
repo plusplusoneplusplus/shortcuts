@@ -243,6 +243,10 @@ that same registry.
   `RepoChatTab.renderList` hosts the combined list; `detailOverride` shows member
   conversations while retaining group navigation. Concrete reads and mutations
   follow [clone-routing.md](clone-routing.md), not the active workspace alias.
+  `RepoGroupView` passes remote connection availability separately from retained
+  endpoints. Offline transitions abort feed/page reads, retain unavailable cached
+  history with partial counts, and disable owner actions/detail transports.
+  Reconnection refreshes the same concrete server without changing selection.
  from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.
