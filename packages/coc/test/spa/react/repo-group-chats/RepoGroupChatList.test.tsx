@@ -124,6 +124,13 @@ describe('partitionPinnedRows / isUnseenGroupChat', () => {
 });
 
 describe('RepoGroupChatList', () => {
+    it('reveals search excerpts in accessible and hover text without adding a metadata row', () => {
+        renderList(model({ history: [hist('h1', 'ws-a')], snippets: { 'ws-a': { h1: 'Matching body text' } } }));
+        const row = screen.getByTestId('repo-group-chat-row');
+        expect(row.getAttribute('aria-label')).toContain('Matching body text');
+        expect(row.getAttribute('title')).toContain('Matching body text');
+        expect(screen.getByTestId('repo-group-search-snippet').closest('.chat-title')).toBeTruthy();
+    });
     it('renders member rows as one line with a muted repo prefix and group rows with the title only', () => {
         renderList(model({ history: [hist('h1', 'ws-a'), hist('h2', 'grp')] as any }));
         const rows = screen.getAllByTestId('repo-group-chat-row');

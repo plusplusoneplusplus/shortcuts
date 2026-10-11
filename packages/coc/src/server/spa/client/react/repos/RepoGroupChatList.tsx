@@ -94,8 +94,8 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet, un
             role="option"
             tabIndex={0}
             aria-selected={selected}
-            aria-label={`${title} — ${ownerDetails}${unavailable ? ' — unavailable' : ''}`}
-            title={`${title}\n${ownerDetails}`}
+            aria-label={`${title} — ${ownerDetails}${unavailable ? ' — unavailable' : ''}${snippet ? ` — ${snippet}` : ''}`}
+            title={`${title}\n${snippet ? `${snippet}\n` : ''}${ownerDetails}`}
             className={cn(
                 CHAT_ROW_LAYOUT_CLASSES,
                 'outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/60',
