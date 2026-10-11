@@ -360,6 +360,17 @@ reported `upstream`. Unknown, failed, detached and no-upstream states never rend
 clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`
 git-info refreshes; tiles open the expanded Git half (branch overview or member).
 
+### Collapsed-rail Admin and quota
+
+`features.railStatusActions` (default off) adds a bottom rail group, below a
+separator, only when the panel has a docked `footer`. `SplitWorkspacePanel`
+provides that node through `RailStatusSlotContext` to the footer while collapsed;
+the footer's `StatusActions` portals a rail Admin gear (same `handleAdmin`, no
+`#admin-toggle` id) and passes it as `railContainer` to its
+`AgentProviderQuotaIndicator`. The indicator renders a second trigger from the same
+hook and dropdown, opening the panel `right` of the rail. Expanding the sidebar
+removes the triggers and closes a rail-anchored dropdown.
+
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
 response to provider and model selection; provider availability and choice

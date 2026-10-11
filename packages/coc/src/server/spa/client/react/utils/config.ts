@@ -114,6 +114,8 @@ interface DashboardConfig {
     repoGroupAggregatedChatsEnabled?: boolean;
     /** Whether the collapsed workspace rail shows the Git summary. Default false. */
     railGitSummaryEnabled?: boolean;
+    /** Whether the collapsed workspace rail mirrors the Admin and quota controls. Default false. */
+    railStatusActionsEnabled?: boolean;
     /** Whether chat composers show the client-side English word hint. Default true. */
     composerWordHintEnabled?: boolean;
     /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */
@@ -585,6 +587,11 @@ export function isChatFoldersEnabled(): boolean {
 /** Returns true when the collapsed workspace rail shows Git status (`features.railGitSummary`). */
 export function isRailGitSummaryEnabled(): boolean {
     return getConfig().railGitSummaryEnabled === true;
+}
+
+/** Returns true when the collapsed workspace rail mirrors Admin and quota (`features.railStatusActions`). */
+export function isRailStatusActionsEnabled(): boolean {
+    return getConfig().railStatusActionsEnabled === true;
 }
 
 /**

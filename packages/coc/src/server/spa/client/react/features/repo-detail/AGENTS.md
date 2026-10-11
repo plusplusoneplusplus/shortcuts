@@ -90,7 +90,10 @@ on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;
 `railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the
 owner-scoped reads (repo: git-info + working tree; group: one member git-info
-batch on the group's server). The group supplies a compact
+batch on the group's server). With `features.railStatusActions` on (default
+off), a docked `footer` gets a bottom rail slot (`layout/railStatusSlot.ts`)
+that the footer's `StatusActions` portals its Admin gear and quota ring into,
+sharing its admin handler and single quota hook. The group supplies a compact
 New Chat control through `chatHeaderExtra` and pins the sidebar status footer
 in the remote desktop shell. A null `gitList` removes the desktop Git section
 and lets chats fill the left column; group views pass null when membership is

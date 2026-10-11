@@ -205,4 +205,6 @@ provider-level errors. `StatusActions` passes the active clone-qualified repo or
 selection into `useAgentProvidersQuota`, so initial load, polling, and force refresh use the
 owning server. Changing owner clears the displayed snapshot, and an unresolved remote route
 shows its own error without falling through to page-origin quota. It links to
-`#admin/agents`; that Admin page remains page-origin administration.
+`#admin/agents`; that Admin page remains page-origin administration. An optional
+`railContainer` adds a collapsed-rail trigger sharing the same hook and dropdown
+(see [shell.md](shell.md), `features.railStatusActions`).
