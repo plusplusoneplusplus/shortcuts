@@ -121,6 +121,12 @@ pinned chats by pin time. A pinned parent leaves its recency bucket without muta
 `pinnedAt`/`archived`, while running For Each / Map Reduce parents stay in the Running
 section. Parent pin actions call the workspace group-pin API, never child process state.
 
+`RepoGroupChatList` renders an active body search as one flat Search results section.
+Running, queued and historical matches share latest-activity ordering through
+`getTaskTimestamp`, with owner workspace and canonical chat identity breaking ties.
+Pins retain row styling without promotion; matching children retain owner-qualified
+parent links. Without a query, the list uses Running, Queued, Pinned and History sections.
+
 Pin time is the Pinned section's sort key. Dragging a pinned row (chat or group parent)
 within the Pinned section, in both the Chats tab and Activity, reorders it: each entry is
 wrapped by `usePinnedReorderDragDrop`, and `RepoChatTab.handleReorderPins` sends the full

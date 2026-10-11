@@ -22,6 +22,7 @@ import { useChatFoldersEnabled } from '../hooks/feature-flags/useChatFoldersEnab
 import { formatRelativeTime, statusLabel } from '../utils/format';
 import { getTaskModeKey, getTaskModeLabel } from '../features/chat/ChatListPane';
 import { getChatRowTitle } from '../features/chat/latestSentinelChat';
+import { getTaskTimestamp } from '../features/chat/task-group-grouping';
 import { getTaskChatProvider } from '../features/chat/ProviderBadge';
 import {
     CHAT_ROW_LAYOUT_CLASSES,
@@ -53,13 +54,14 @@ export interface RepoGroupChatListProps {
     groupSelectionId?: string;
 }
 
-type SectionKey = 'running' | 'queued' | 'pinned' | 'history';
+type SectionKey = 'running' | 'queued' | 'pinned' | 'history' | 'search';
 
 const SECTION_LABELS: Record<SectionKey, string> = {
     running: 'Running',
     queued: 'Queued',
     pinned: 'Pinned',
     history: 'History',
+    search: 'Search results',
 };
 
 function rowTime(row: RepoGroupChatRow): string {
@@ -206,8 +208,17 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, fi
             key, rows: [] as RepoGroupChatRow[], containers: [] as ReturnType<typeof groupRepoGroupChatRows>,
         }));
         if (!model) return sections;
+        if (filters?.q?.trim()) {
+            const rows = [...model.running, ...model.queued, ...model.history].sort((a, b) =>
+                getTaskTimestamp(b.item) - getTaskTimestamp(a.item)
+                || a.ownerWorkspaceId.localeCompare(b.ownerWorkspaceId)
+                || a.canonicalId.localeCompare(b.canonicalId));
+            return rows.length ? [{
+                key: 'search' as const, rows, containers: groupRepoGroupChatRows(rows, true),
+            }] : [];
+        }
         const { pinned, rest } = partitionPinnedRows(model.history);
-        const containers = groupRepoGroupChatRows([...model.running, ...model.queued, ...pinned, ...rest], !!filters?.q, foldersEnabled);
+        const containers = groupRepoGroupChatRows([...model.running, ...model.queued, ...pinned, ...rest], false, foldersEnabled);
         for (const container of containers) {
             const key: SectionKey = container.rows.some(row => row.section === 'running') ? 'running'
                 : container.rows.some(row => row.section === 'queued') ? 'queued'

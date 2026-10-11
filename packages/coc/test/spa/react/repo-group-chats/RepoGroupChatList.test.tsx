@@ -58,6 +58,7 @@ function renderList(m: RepoGroupChatFeedModel | null, props: Partial<Parameters<
             selectedKey={props.selectedKey ?? null}
             onSelect={props.onSelect ?? onSelect}
             groupSelectionId={props.groupSelectionId}
+            filters={props.filters}
         />,
     );
     return { onSelect, loadMore };
@@ -135,6 +136,60 @@ describe('partitionPinnedRows / isUnseenGroupChat', () => {
 });
 
 describe('RepoGroupChatList', () => {
+    it('renders search matches in global activity order without promoting pins, statuses or hierarchies', () => {
+        const m = model({
+            running: [{
+                id: 'run', processId: 'queue_run', ownerWorkspaceId: 'ws-b', type: 'chat',
+                lastActivityAt: '2026-10-10T03:00:00Z',
+            }],
+            queued: [{
+                id: 'wait', ownerWorkspaceId: 'ws-a', type: 'chat',
+                createdAt: '2026-10-10T01:00:00Z',
+            }],
+            history: [
+                hist('recent', 'grp', { lastActivityAt: '2026-10-10T04:00:00Z' }),
+                hist('child', 'ws-a', {
+                    lastActivityAt: Date.parse('2026-10-10T02:00:00Z'),
+                    parentProcessId: 'parent', parentOwnerWorkspaceId: 'ws-a',
+                    taskGroup: { groupId: 'run', groupType: 'for-each' },
+                }),
+                hist('old-pin', 'ws-b', {
+                    lastActivityAt: '2026-10-09T00:00:00Z', pinnedAt: '2026-10-11T00:00:00Z',
+                }),
+            ],
+            snippets: { 'ws-a': { child: 'Body match' } },
+        });
+        const { onSelect } = renderList(m, { filters: { q: 'match' }, groupSelectionId: 'group-ai' });
+        const rows = screen.getAllByTestId('repo-group-chat-row');
+        expect(rows.map(row => row.getAttribute('data-chat-key'))).toEqual([
+            'local|grp|recent', 'local|ws-b|queue_run', 'local|ws-a|child',
+            'local|ws-a|queue_wait', 'local|ws-b|old-pin',
+        ]);
+        expect(within(screen.getByRole('listbox', { name: 'Group chats' })).getAllByRole('group')
+            .map(group => group.getAttribute('data-section'))).toEqual(['search']);
+        expect(rows[1].getAttribute('data-section')).toBe('running');
+        expect(rows[1].querySelector('.chat-row-when')!.textContent).toBe('Thinking');
+        expect(rows[4].className).toContain('border-l-amber-400');
+        expect(within(rows[2]).getByTestId('repo-group-chat-owner-prefix').textContent).toBe('connector /');
+        expect(within(rows[2]).getByRole('link', { name: 'Parent chat' }).getAttribute('href'))
+            .toBe('#repos/group-ai/chats/member/ws-a/parent');
+        fireEvent.click(rows[2]);
+        expect(onSelect).toHaveBeenCalledWith(m.history[1]);
+    });
+
+    it('breaks equal search activity ties by concrete owner and canonical chat identity', () => {
+        renderList(model({
+            running: [{ id: 'task', processId: 'a', ownerWorkspaceId: 'ws-b', lastActivityAt: 1000 }],
+            history: [
+                hist('z', 'ws-a', { lastActivityAt: 1000 }),
+                hist('a', 'ws-a', { lastActivityAt: 1000 }),
+                hist('a', 'ws-b', { lastActivityAt: 1000 }),
+            ],
+        }), { filters: { q: 'match' } });
+        expect(screen.getAllByTestId('repo-group-chat-row').map(row => row.getAttribute('data-chat-key')))
+            .toEqual(['local|ws-a|a', 'local|ws-a|z', 'local|ws-b|a']);
+    });
+
     it('keeps flattened search results linked to their concrete parent owner', () => {
         renderList(model({
             history: [hist('h1', 'ws-a', { parentProcessId: 'parent', parentOwnerWorkspaceId: 'ws-a' })],
