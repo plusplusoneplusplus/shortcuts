@@ -83,8 +83,9 @@ and rollback.
 Required `getProcessHistory(id, workspaceId?, options?)` returns `{process, page}`.
 The process contains only the page's chronological turns; `page` carries `turns`,
 `oldestTurnIndex`, `hasMore`, `totalTurns`, and `historyRevision`. An explicit workspace
-must equal the persisted owner. Browser-safe `forge/history-paging` exports the
-same `PAGE_TURNS=30` constant; limits are integers from 1–200 and
+must equal the persisted owner. Dependency-free `coc-workflow/history-paging`
+defines `PAGE_TURNS=30`; Forge root and `forge/history-paging` re-export it for
+store and browser consumers. Limits are integers from 1–200 and
 the exclusive cursor is a non-negative safe integer. A leading assistant includes
 its immediately preceding user, permitting one extra row. Empty pages have a null
 oldest index and `hasMore=false`.

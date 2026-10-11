@@ -68,6 +68,9 @@
       ],
       "connectors": [
         "dist/connectors/index.d.ts"
+      ],
+      "history-paging": [
+        "dist/process-store.d.ts"
       ]
     }
   },

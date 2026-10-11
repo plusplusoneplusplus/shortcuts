@@ -10,7 +10,7 @@ import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
 import type { ProcessOwnerProjection, RelayRequestProjection } from './relay-request-projection';
 
-export const PAGE_TURNS = 30;
+export { PAGE_TURNS } from '@plusplusoneplusplus/coc-workflow/history-paging';
 
 export interface ConversationTurnsPage {
     turns: ConversationTurn[];
