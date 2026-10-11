@@ -236,4 +236,11 @@ describe('RepoGroupView — aggregated chats', () => {
         expect(screen.getByTestId('stub-member-chat-pane').dataset.owner).toBe('ws-b');
         expect(screen.getByRole('button', { name: 'Back to group chats' })).toBeTruthy();
     });
+
+    it('does not mount a native group tab or read locally when a remote group route is unresolved', async () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId="remote:missing:group-ai" />);
+        await waitFor(() => expect(screen.getByTestId('repo-group-chat-error')).toBeTruthy());
+        expect(screen.queryByTestId('stub-chat-tab')).toBeNull();
+        expect(mockGetRepoGroupChats).not.toHaveBeenCalled();
+    });
 });

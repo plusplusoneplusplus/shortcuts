@@ -14,6 +14,7 @@ import { useFloatingChats, type FloatingChatEntry } from '../contexts/FloatingCh
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { useApp } from '../contexts/AppContext';
 import { ChatPreferencesProvider } from '../contexts/ChatPreferencesContext';
+import { WorkspaceOwnerContext } from '../repos/workspaceOwnerContext';
 
 // ── Per-chat item ─────────────────────────────────────────────────────────────
 
@@ -27,8 +28,8 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
     const [minimized, setMinimized] = useState(false);
 
     const handleClose = useCallback(() => {
-        unfloatChat(entry.taskId);
-    }, [entry.taskId, unfloatChat]);
+        unfloatChat(entry.stateKey ?? entry.taskId);
+    }, [entry.taskId, entry.stateKey, unfloatChat]);
 
     const handleMinimize = useCallback(() => setMinimized(true), []);
     const handleRestore = useCallback(() => setMinimized(false), []);
@@ -43,7 +44,7 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
         const shortTitle = entry.title || 'Chat';
         const label = repoName ? `[${repoName}] ${shortTitle}` : shortTitle;
         return {
-            id: `floating-chat-${entry.taskId}`,
+            id: `floating-chat-${entry.stateKey ?? entry.taskId}`,
             icon: '💬',
             label,
             onRestore: handleRestore,
@@ -65,12 +66,15 @@ function FloatingChatItem({ entry }: FloatingChatItemProps) {
             minHeight={400}
             className="h-[60vh] max-h-[80vh]"
             noPadding
-            id={`floating-chat-${entry.taskId}`}
+            id={`floating-chat-${entry.stateKey ?? entry.taskId}`}
             hidden={minimized}
         >
-            <ChatPreferencesProvider workspaceId={entry.workspaceId ?? ''}>
-                <FloatingChatContent taskId={entry.taskId} workspaceId={entry.workspaceId} />
-            </ChatPreferencesProvider>
+            <WorkspaceOwnerContext.Provider value={entry.owner ?? null}>
+                <ChatPreferencesProvider workspaceId={entry.workspaceId ?? ''}>
+                    <FloatingChatContent taskId={entry.taskId} workspaceId={entry.workspaceId}
+                        sourceSelectionId={entry.owner?.selectionId} sourceBaseUrl={entry.owner?.baseUrl} />
+                </ChatPreferencesProvider>
+            </WorkspaceOwnerContext.Provider>
         </FloatingDialog>
     );
 }
@@ -89,7 +93,7 @@ export function FloatingChatManager() {
     return (
         <>
             {Array.from(floatingChats.values()).map(entry => (
-                <FloatingChatItem key={entry.taskId} entry={entry} />
+                <FloatingChatItem key={entry.stateKey ?? entry.taskId} entry={entry} />
             ))}
         </>
     );

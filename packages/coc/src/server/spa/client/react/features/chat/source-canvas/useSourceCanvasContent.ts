@@ -15,6 +15,9 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useContext } from 'react';
+import { WorkspaceOwnerContext } from '../../../repos/workspaceOwnerContext';
 import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
@@ -37,6 +40,8 @@ export function useSourceCanvasContent(
     // fold the remote workspaces in for resolution — otherwise the workspace (and
     // its remote `rootPath`) is invisible and a relative path can't be anchored.
     const workspaces = useWorkspacesWithRemote();
+    const owner = useContext(WorkspaceOwnerContext);
+    const ownerClient = useCocClient(owner?.workspaceId);
 
     // Line/range is a scroll target, not part of the file identity: resolve from
     // the resolution-relevant fields only, so a `:line` change never refetches.
@@ -63,7 +68,7 @@ export function useSourceCanvasContent(
     const read = useCallback(async (signal: AbortSignal): Promise<FileBlob> => {
         if (!target || key === null) throw new Error('Failed to load file');
         // Clone-routed, so a remote workspace's preview comes from its own server.
-        const r = await getCocClientForWorkspace(target.wsId)
+        const r = await (owner ? ownerClient : getCocClientForWorkspace(target.wsId))
             .tasks.previewWorkspaceFile(target.wsId, target.path, { lines: 0 })
             // Transport-specific message mapping stays next to the transport.
             .catch((err: unknown) => {
@@ -79,7 +84,7 @@ export function useSourceCanvasContent(
             });
         }
         return toFileBlob(r);
-    }, [target?.wsId, target?.path, key]);
+    }, [target?.wsId, target?.path, key, owner, ownerClient]);
 
     const { blob, status, error } = useFileContent({ key, read });
 

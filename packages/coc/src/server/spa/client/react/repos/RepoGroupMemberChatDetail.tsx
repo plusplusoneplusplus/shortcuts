@@ -18,10 +18,11 @@ export interface RepoGroupMemberChatDetailProps {
     unavailable?: boolean;
     stale?: boolean;
     noLongerInGroup?: boolean;
+    rootPath?: string;
 }
 
 /** Remount transport-owning descendants on owner/endpoint changes, never on list refresh. */
-export function RepoGroupMemberChatDetail({ selection, row, serverLabel, groupBaseUrl, onBack, unavailable: ownerUnavailable, stale, noLongerInGroup }: RepoGroupMemberChatDetailProps) {
+export function RepoGroupMemberChatDetail({ selection, row, serverLabel, groupBaseUrl, onBack, unavailable: ownerUnavailable, stale, noLongerInGroup, rootPath }: RepoGroupMemberChatDetailProps) {
     const registeredBaseUrl = useCloneBaseUrl(selection.groupSelectionId);
     const remote = !!parseRemoteCloneKey(selection.groupSelectionId);
     const baseUrl = remote ? registeredBaseUrl ?? groupBaseUrl : undefined;
@@ -36,7 +37,8 @@ export function RepoGroupMemberChatDetail({ selection, row, serverLabel, groupBa
         workspaceId: selection.ownerWorkspaceId,
         selectionId: selection.ownerSelectionId,
         baseUrl,
-    }), [selection.ownerWorkspaceId, selection.ownerSelectionId, baseUrl]);
+        rootPath,
+    }), [selection.ownerWorkspaceId, selection.ownerSelectionId, baseUrl, rootPath]);
     const history = useMemo(() => row ? [row.item] : [], [row?.item]);
     const name = row?.ownerName ?? selection.ownerWorkspaceId;
     const unavailable = !!ownerUnavailable || remote && !baseUrl;

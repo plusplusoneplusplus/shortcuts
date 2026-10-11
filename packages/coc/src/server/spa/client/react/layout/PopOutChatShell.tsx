@@ -8,7 +8,7 @@
  * URL format: `/?workspace=<workspaceId>#popout/activity/<taskId>`
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
 import { ReposProvider } from '../contexts/ReposContext';
@@ -21,6 +21,8 @@ import { ChatDetail } from '../features/chat/ChatDetail';
 import { usePopOutChannel, type PopOutMessage } from '../features/chat/hooks/usePopOutChannel';
 import { getHostname } from '../utils/config';
 import { registerCloneBaseUrls } from '../repos/cloneRegistry';
+import { WorkspaceOwnerContext } from '../repos/workspaceOwnerContext';
+import { parseRemoteCloneKey } from '../repos/cloneIdentity';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,7 @@ export interface PopOutRouteParams {
     workspaceId?: string;
     cloneBaseUrl?: string;
     sourceSelectionId?: string;
+    ownerKey?: string;
 }
 
 export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRouteParams | null {
@@ -41,6 +44,7 @@ export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRoute
         workspaceId: searchParams.get('workspace') || undefined,
         cloneBaseUrl: searchParams.get('cloneBaseUrl') || undefined,
         sourceSelectionId: searchParams.get('sourceSelectionId') || undefined,
+        ...(searchParams.get('ownerKey') ? { ownerKey: searchParams.get('ownerKey')! } : {}),
     };
 }
 
@@ -51,14 +55,19 @@ function PopOutContent({
     workspaceId,
     cloneBaseUrl,
     sourceSelectionId,
+    ownerKey,
 }: {
     taskId: string;
     workspaceId: string | null;
     cloneBaseUrl?: string;
     sourceSelectionId?: string;
+    ownerKey?: string;
 }) {
     const { toasts, addToast, removeToast } = useToast();
     const hasNotifiedRef = useRef(false);
+    const owner = useMemo(() => ownerKey && workspaceId && sourceSelectionId
+        ? { workspaceId, selectionId: sourceSelectionId, baseUrl: cloneBaseUrl }
+        : null, [ownerKey, workspaceId, sourceSelectionId, cloneBaseUrl]);
 
     // Populate this window's own (otherwise empty) QueueProvider so ChatDetail can
     // resolve the implement-plan run's live status instead of showing 'Unknown'.
@@ -66,14 +75,14 @@ function PopOutContent({
     // runs App's connect-time bootstrap; fire the same fetch here once on mount.
     const bootstrapQueue = useQueueBootstrap();
     useEffect(() => {
-        void bootstrapQueue();
-    }, [bootstrapQueue]);
+        if (!ownerKey) void bootstrapQueue();
+    }, [bootstrapQueue, ownerKey]);
 
     const handleMessage = useCallback((msg: PopOutMessage) => {
-        if (msg.type === 'popout-restore' && msg.taskId === taskId) {
+        if (msg.type === 'popout-restore' && msg.taskId === (ownerKey ?? taskId)) {
             window.close();
         }
-    }, [taskId]);
+    }, [taskId, ownerKey]);
 
     const { postMessage } = usePopOutChannel(handleMessage);
 
@@ -81,14 +90,14 @@ function PopOutContent({
     useEffect(() => {
         if (hasNotifiedRef.current) return;
         hasNotifiedRef.current = true;
-        postMessage({ type: 'popout-opened', taskId });
+        postMessage({ type: 'popout-opened', taskId: ownerKey ?? taskId });
 
         const handleBeforeUnload = () => {
-            postMessage({ type: 'popout-closed', taskId });
+            postMessage({ type: 'popout-closed', taskId: ownerKey ?? taskId });
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [taskId, postMessage]);
+    }, [taskId, ownerKey, postMessage]);
 
     useEffect(() => {
         const hostname = getHostname();
@@ -98,6 +107,7 @@ function PopOutContent({
 
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
+            <WorkspaceOwnerContext.Provider value={owner}>
             <ChatPreferencesProvider workspaceId={workspaceId ?? ''}>
                 <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-shell">
                     <ChatDetail
@@ -109,6 +119,7 @@ function PopOutContent({
                     />
                 </div>
             </ChatPreferencesProvider>
+            </WorkspaceOwnerContext.Provider>
             <ToastContainer toasts={toasts} removeToast={removeToast} />
         </ToastProvider>
     );
@@ -136,6 +147,9 @@ export function PopOutChatShell() {
             </div>
         );
     }
+    if (parsed.ownerKey && parseRemoteCloneKey(parsed.sourceSelectionId ?? '') && !parsed.cloneBaseUrl) {
+        return <div role="status">The owning server is unavailable.</div>;
+    }
 
     return (
         <AppProvider>
@@ -147,6 +161,7 @@ export function PopOutChatShell() {
                             workspaceId={parsed.workspaceId ?? null}
                             cloneBaseUrl={parsed.cloneBaseUrl}
                             sourceSelectionId={parsed.sourceSelectionId}
+                            ownerKey={parsed.ownerKey}
                         />
                     </ThemeProvider>
                 </ReposProvider>

@@ -58,6 +58,7 @@ import { RepoGroupMemberChatDetail } from './RepoGroupMemberChatDetail';
 import { allRepoGroupChatRows } from './repoGroupChatFeed';
 import { RepoGroupChatList } from './RepoGroupChatList';
 import { useRepoGroupChatFilters } from './useRepoGroupChatFilters';
+import { WorkspaceOwnerContext } from './workspaceOwnerContext';
 import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
 
 /**
@@ -185,6 +186,11 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         return typeof url === 'string' && url.length > 0 ? url : undefined;
     }, [remoteGroup]);
     const groupRoutingRef = getRemoteCloneKey(remoteGroup) ?? null;
+    const groupOwner = useMemo(() => ({
+        workspaceId, selectionId, baseUrl: groupBaseUrl,
+        rootPath: remoteGroup?.rootPath ?? (!parseRemoteCloneKey(selectionId)
+            ? state.workspaces.find(workspace => workspace.id === workspaceId)?.rootPath : undefined),
+    }), [workspaceId, selectionId, groupBaseUrl, remoteGroup, state.workspaces]);
     // Aggregated chat list (flag `repoGroupAggregatedChats`): the group's own
     // chats plus every member's, read from the group's owning server. Row keys
     // carry that server's identity so equal ids on two servers never collide.
@@ -211,7 +217,8 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // while it is the visible tab.
     // The split panel mounts the git list with the Chats tab, so it needs the
     // members straight away rather than on first Git-tab visit.
-    const members = useRepoGroupMembers(workspaceId, groupBaseUrl, true);
+    const members = useRepoGroupMembers(workspaceId, groupBaseUrl,
+        !aggregatedChats || !parseRemoteCloneKey(selectionId) || !!groupBaseUrl);
     const splitGitAvailable = isMobile || members === undefined || members.some(member => !member.stale);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
@@ -319,8 +326,8 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                 footer={headerInTopBar ? <StatusActions variant="sidebar" /> : undefined}
                                 onNewChat={handleSplitNewChat}
                                 railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
-                                runningCount={queueRunningCount}
-                                queuedCount={queueQueuedCount}
+                                runningCount={aggregatedChats && chatFeed.model ? chatFeed.model.counts.running : queueRunningCount}
+                                queuedCount={aggregatedChats && chatFeed.model ? chatFeed.model.counts.queued : queueQueuedCount}
                                 jobPreview={{
                                     ...queueJobs,
                                     scopeLabel: `${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group queue`,
@@ -338,6 +345,11 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     </button>
                                 }
                                 chatList={
+                                    aggregatedChats && parseRemoteCloneKey(selectionId) && !groupBaseUrl
+                                    ? <RepoGroupChatList feed={chatFeed} serverLabel={chatServerLabel}
+                                        selectedKey={memberChat.selectedKey} onSelect={memberChat.selectMember}
+                                        filters={chatFilters} onFiltersChange={setChatFilters} />
+                                    : <WorkspaceOwnerContext.Provider value={aggregatedChats ? groupOwner : null}>
                                     <RepoChatTab
                                         workspaceId={workspaceId}
                                         sourceSelectionId={groupRoutingRef ?? undefined}
@@ -353,6 +365,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                                 row={memberRow}
                                                 serverLabel={chatServerLabel}
                                                 groupBaseUrl={groupBaseUrl}
+                                                rootPath={members?.find(member => member.workspaceId === memberChat.selection?.ownerWorkspaceId)?.rootPath}
                                                 unavailable={chatFeed.status === 'error' || chatFeed.model?.sources.find(source =>
                                                     source.workspaceId === memberChat.selection?.ownerWorkspaceId)?.available === false}
                                                 stale={chatFeed.model?.sources.find(source => source.workspaceId === memberChat.selection?.ownerWorkspaceId)?.stale}
@@ -362,6 +375,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                             />
                                         ) : undefined}
                                     />
+                                    </WorkspaceOwnerContext.Provider>
                                 }
                                 gitList={splitGitAvailable ? (
                                     <RepoGroupGitTab

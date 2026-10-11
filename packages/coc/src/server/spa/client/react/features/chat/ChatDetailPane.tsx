@@ -12,6 +12,7 @@ import { ChatDetail } from './ChatDetail';
 import { NewChatArea } from './NewChatArea';
 import { usePopOut } from '../../contexts/PopOutContext';
 import { useFloatingChats } from '../../contexts/FloatingChatsContext';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 
 export interface ChatDetailPaneProps {
     selectedTaskId: string | null;
@@ -38,6 +39,8 @@ export interface ChatDetailPaneProps {
 export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSelectionId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun, searchHighlightQuery }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
+    const owner = useWorkspaceOwner(workspaceId);
+    const stateKey = owner ? `${owner.selectionId}|${selectedTaskId}` : selectedTaskId;
 
     if (!selectedTaskId) {
         if (readOnly) {
@@ -53,7 +56,7 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSele
         return <NewChatArea workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} onBack={onBack} />;
     }
 
-    if (poppedOutTasks.has(selectedTaskId)) {
+    if (poppedOutTasks.has(stateKey!)) {
         return (
             <div className="flex items-center justify-center h-full text-sm text-[#848484]" data-testid="activity-popped-out-placeholder">
                 <div className="text-center space-y-3">
@@ -61,7 +64,7 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSele
                     <div>Chat is open in a separate window</div>
                     <button
                         className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] underline"
-                        onClick={() => markRestored(selectedTaskId)}
+                        onClick={() => markRestored(stateKey!)}
                         data-testid="activity-chat-restore-btn"
                     >
                         Restore inline
@@ -71,7 +74,7 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSele
         );
     }
 
-    if (floatingChats.has(selectedTaskId)) {
+    if (floatingChats.has(stateKey!)) {
         return (
             <div className="flex items-center justify-center h-full text-sm text-[#848484]" data-testid="activity-floating-placeholder">
                 <div className="text-center space-y-3">
@@ -79,7 +82,7 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSele
                     <div>Chat is floating</div>
                     <button
                         className="text-sm text-[#0078d4] hover:text-[#005a9e] dark:text-[#3794ff] dark:hover:text-[#60aeff] underline"
-                        onClick={() => unfloatChat(selectedTaskId)}
+                        onClick={() => unfloatChat(stateKey!)}
                         data-testid="activity-chat-restore-inline-btn"
                     >
                         Restore inline

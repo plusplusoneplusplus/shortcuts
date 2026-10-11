@@ -5,6 +5,7 @@ import { useFloatingChats } from '../../../contexts/FloatingChatsContext';
 import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import type { ToastItem } from '../../../ui/Toast';
 import { popOutOpened } from '../../../utils/popOutWindow';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 
 export interface UseChatWindowActionsOptions {
     task: any;
@@ -30,6 +31,7 @@ export interface OpenChatPopOutOptions {
     sourceBaseUrl?: string;
     markPoppedOut: (taskId: string) => void;
     addToast?: (message: string, type?: ToastItem['type']) => void;
+    stateKey?: string;
 }
 
 /**
@@ -38,18 +40,19 @@ export interface OpenChatPopOutOptions {
  * ChatListPane, so the URL build + blocked-popup toast + markPoppedOut logic
  * lives in exactly one place.
  */
-export function openChatPopOut({ taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, addToast }: OpenChatPopOutOptions): void {
+export function openChatPopOut({ taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, addToast, stateKey }: OpenChatPopOutOptions): void {
     const base = window.location.origin + window.location.pathname;
     // An explicit local owner must not inherit the active remote clone's endpoint.
     const cloneBaseUrl = sourceBaseUrl ?? (sourceSelectionId === workspaceId
         ? undefined
         : lookupCloneBaseUrl(sourceSelectionId ?? workspaceId));
-    const url = buildChatPopOutUrl(base, taskId, workspaceId, cloneBaseUrl, sourceSelectionId);
-    const popup = window.open(url, `coc-popout-${taskId}`, 'width=800,height=900');
+    const url = new URL(buildChatPopOutUrl(base, taskId, workspaceId, cloneBaseUrl, sourceSelectionId));
+    if (stateKey) url.searchParams.set('ownerKey', stateKey);
+    const popup = window.open(url.toString(), `coc-popout-${stateKey ?? taskId}`, 'width=800,height=900');
     if (!popOutOpened(popup)) {
         addToast?.('Pop-out blocked. Allow popups for this site and try again.', 'error');
     } else {
-        markPoppedOut(taskId);
+        markPoppedOut(stateKey ?? taskId);
     }
 }
 
@@ -60,10 +63,13 @@ export function useChatWindowActions({ task, taskId, workspaceId, sourceSelectio
     const toastCtx = useContext(ToastContext);
     const { markPoppedOut } = usePopOut();
     const { floatChat } = useFloatingChats();
+    const owner = useWorkspaceOwner(workspaceId);
+    const stateKey = owner ? `${owner.selectionId}|${taskId}` : undefined;
 
     const handlePopOut = useCallback(() => {
-        openChatPopOut({ taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, addToast: toastCtx?.addToast });
-    }, [taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, toastCtx]);
+        openChatPopOut({ taskId, workspaceId, sourceSelectionId, sourceBaseUrl: owner?.baseUrl ?? sourceBaseUrl,
+            stateKey, markPoppedOut, addToast: toastCtx?.addToast });
+    }, [taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, toastCtx, owner, stateKey]);
 
     const handleFloat = useCallback(() => {
         const title = task?.payload?.prompt || task?.payload?.promptContent || task?.prompt || 'Chat';
@@ -73,8 +79,9 @@ export function useChatWindowActions({ task, taskId, workspaceId, sourceSelectio
             workspaceId,
             title: shortTitle,
             status: task?.status ?? 'running',
+            ...(owner ? { owner, stateKey } : {}),
         });
-    }, [taskId, workspaceId, task, floatChat]);
+    }, [taskId, workspaceId, task, floatChat, owner, stateKey]);
 
     return { handlePopOut, handleFloat };
 }

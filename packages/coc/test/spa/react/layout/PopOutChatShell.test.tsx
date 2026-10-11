@@ -57,7 +57,7 @@ describe('PopOutChatShell: queue bootstrap', () => {
 
     it('fires the bootstrap once on mount inside the popout QueueProvider', () => {
         expect(SOURCE).toContain('const bootstrapQueue = useQueueBootstrap();');
-        expect(SOURCE).toMatch(/useEffect\(\(\) => \{\s*void bootstrapQueue\(\);\s*\}, \[bootstrapQueue\]\);/);
+        expect(SOURCE).toMatch(/useEffect\(\(\) => \{\s*if \(!ownerKey\) void bootstrapQueue\(\);\s*\}, \[bootstrapQueue, ownerKey\]\);/);
     });
 });
 

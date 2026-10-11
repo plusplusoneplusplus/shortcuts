@@ -17,6 +17,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuickAskSidenotesEnabled } from '../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { requestForWorkspace } from '../../../repos/cloneRegistry';
+import { useCocClient } from '../../../repos/cloneRouting';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
+import { toSpaCocRequestOptions } from '../../../api/cocClient';
 import { deriveContext } from './quick-ask-selection';
 import type { ChatSideNote, ClientSideNote, QuickAskSelection, QuickAskTurn } from './types';
 import { MAX_QUICK_ASK_TURNS } from './types';
@@ -89,6 +92,12 @@ export function useQuickAskSidenotes(
     processId?: string,
     workspaceId?: string,
 ): UseQuickAskSidenotesResult {
+    const owner = useWorkspaceOwner(workspaceId);
+    const client = useCocClient(workspaceId);
+    const request = useCallback(<T,>(path: string, options?: RequestInit): Promise<T> =>
+        owner ? options ? client.request<T>(path, toSpaCocRequestOptions(options)) : client.request<T>(path)
+            : options ? requestForWorkspace<T>(workspaceId, path, options)
+                : requestForWorkspace<T>(workspaceId, path), [owner, client, workspaceId]);
     const enabled = useQuickAskSidenotesEnabled() && !!processId && !!workspaceId;
     const [items, setItems] = useState<ClientSideNote[]>([]);
     const hydratedFor = useRef<string | null>(null);
@@ -108,7 +117,7 @@ export function useQuickAskSidenotes(
         if (hydratedFor.current === key) {return;}
         hydratedFor.current = key;
         let cancelled = false;
-        requestForWorkspace<{ sidenotes?: ChatSideNote[] }>(workspaceId, basePath)
+        request<{ sidenotes?: ChatSideNote[] }>(basePath)
             .then(data => {
                 if (cancelled || !Array.isArray(data?.sidenotes)) {return;}
                 const ready: ClientSideNote[] = data.sidenotes.map(n => ({
@@ -124,7 +133,7 @@ export function useQuickAskSidenotes(
             })
             .catch(() => { /* best-effort */ });
         return () => { cancelled = true; };
-    }, [enabled, basePath, processId, workspaceId]);
+    }, [enabled, basePath, processId, workspaceId, request]);
 
     const runLookup = useCallback((draft: ClientSideNote) => {
         if (!enabled) {return;}
@@ -135,7 +144,7 @@ export function useQuickAskSidenotes(
             contextAfter: draft.anchor.contextAfter,
             question: draft.question,
         });
-        requestForWorkspace<{ sidenote?: ChatSideNote }>(workspaceId, basePath, {
+        request<{ sidenote?: ChatSideNote }>(basePath, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body,
@@ -153,7 +162,7 @@ export function useQuickAskSidenotes(
                     p.id === draft.id ? { ...p, status: 'error' as const, error: 'Lookup failed' } : p
                 )));
             });
-    }, [enabled, basePath, workspaceId]);
+    }, [enabled, basePath, workspaceId, request]);
 
     const createSidenote = useCallback((selection: QuickAskSelection, question?: string) => {
         if (!enabled) {return;}
@@ -200,9 +209,9 @@ export function useQuickAskSidenotes(
         setItems(prev => prev.filter(p => p.id !== id));
         if (wasPersisted) {
             const delPath = `/api/processes/${encodeURIComponent(processId!)}/sidenotes/${encodeURIComponent(id)}?workspace=${encodeURIComponent(workspaceId!)}`;
-            requestForWorkspace(workspaceId, delPath, { method: 'DELETE' }).catch(() => { /* best-effort */ });
+            request(delPath, { method: 'DELETE' }).catch(() => { /* best-effort */ });
         }
-    }, [enabled, processId, workspaceId]);
+    }, [enabled, processId, workspaceId, request]);
 
     // POST one follow-up turn and reconcile it into `thread[turnIndex]`. The
     // server owns the history (it re-reads the persisted thread), so the request
@@ -212,7 +221,7 @@ export function useQuickAskSidenotes(
     const postFollowUp = useCallback((id: string, question: string, turnIndex: number) => {
         if (!enabled) {return;}
         const path = `/api/processes/${encodeURIComponent(processId!)}/sidenotes/${encodeURIComponent(id)}/follow-up?workspace=${encodeURIComponent(workspaceId!)}`;
-        requestForWorkspace<{ sidenote?: ChatSideNote }>(workspaceId, path, {
+        request<{ sidenote?: ChatSideNote }>(path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ question }),
@@ -235,7 +244,7 @@ export function useQuickAskSidenotes(
             .catch(() => {
                 setItems(prev => patchThread(prev, id, turnIndex, { status: 'error', error: 'Lookup failed' }));
             });
-    }, [enabled, processId, workspaceId]);
+    }, [enabled, processId, workspaceId, request]);
 
     const followUpSidenote = useCallback((id: string, question: string) => {
         if (!enabled) {return;}

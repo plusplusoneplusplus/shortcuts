@@ -7,6 +7,7 @@ export interface WorkspaceOwner {
     selectionId: string;
     /** Undefined means explicitly local, not an unresolved remote owner. */
     baseUrl?: string;
+    rootPath?: string;
 }
 
 export const WorkspaceOwnerContext = createContext<WorkspaceOwner | null>(null);

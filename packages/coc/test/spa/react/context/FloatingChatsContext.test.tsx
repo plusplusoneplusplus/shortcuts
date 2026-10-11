@@ -20,6 +20,16 @@ const makeEntry = (overrides: Partial<FloatingChatEntry> = {}): FloatingChatEntr
 });
 
 describe('FloatingChatsContext', () => {
+    it('retains distinct owner-qualified floating entries for equal task ids', () => {
+        const { result } = renderHook(() => useFloatingChats(), { wrapper });
+        act(() => {
+            result.current.floatChat(makeEntry({ stateKey: 'server-a|ws|task-1' }));
+            result.current.floatChat(makeEntry({ stateKey: 'server-b|ws|task-1' }));
+        });
+        expect(result.current.floatingChats.size).toBe(2);
+        act(() => result.current.unfloatChat('server-a|ws|task-1'));
+        expect(result.current.floatingChats.has('server-b|ws|task-1')).toBe(true);
+    });
     it('starts with empty floatingChats', () => {
         const { result } = renderHook(() => useFloatingChats(), { wrapper });
         expect(result.current.floatingChats.size).toBe(0);
