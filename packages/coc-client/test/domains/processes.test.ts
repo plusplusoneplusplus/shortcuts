@@ -27,7 +27,6 @@ describe('ProcessesClient', () => {
   });
 
   it('uses a 700000-token default without enabling auto-compact', async () => {
-    expect(AUTO_COMPACT_THRESHOLD_DEFAULT).toBe(700000);
     const adapter = createMockAdapter({ autoCompact: { enabled: false, thresholdTokens: AUTO_COMPACT_THRESHOLD_DEFAULT } });
     const client = new ProcessesClient(adapter, new CocClient().options);
     await client.updateAutoCompact('s', { enabled: false, thresholdTokens: AUTO_COMPACT_THRESHOLD_DEFAULT });

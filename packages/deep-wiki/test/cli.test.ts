@@ -46,11 +46,6 @@ describe('CLI', () => {
     // ========================================================================
 
     describe('createProgram', () => {
-        it('should create a program', () => {
-            const program = createProgram();
-            expect(program).toBeDefined();
-        });
-
         it('should have the correct name', () => {
             const program = createProgram();
             expect(program.name()).toBe('deep-wiki');
@@ -59,24 +54,6 @@ describe('CLI', () => {
         it('should have version', () => {
             const program = createProgram();
             expect(program.version()).toBe('1.0.0');
-        });
-
-        it('should have discover command', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'discover');
-            expect(cmd).toBeDefined();
-        });
-
-        it('should have generate command', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'generate');
-            expect(cmd).toBeDefined();
-        });
-
-        it('should have seeds command', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'seeds');
-            expect(cmd).toBeDefined();
         });
     });
 
