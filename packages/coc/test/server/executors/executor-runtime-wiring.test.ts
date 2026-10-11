@@ -169,6 +169,24 @@ describe('Executor runtime capability wiring', () => {
             expect(deps.getCreateTrigger()).toBe(createTrigger);
         });
 
+        it('passes owner-bound rule authoring to Sentinel first turns and follow-ups only when available', () => {
+            const runtime = makeSentinelRuntime();
+            const { executor } = makeBridge(runtime);
+            const parts = internals(executor);
+            const service = { list: vi.fn() };
+            const triggers = { create: vi.fn() };
+            runtime.getSentinelTodos.mockReturnValue(service as any);
+            runtime.getTriggerInfra.mockReturnValue({ sentinelTodoTriggers: triggers } as any);
+            for (const chat of [parts.chatExecutor, parts.followUpExecutor]) {
+                expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel'))
+                    .toEqual({ service, triggers, owner: { processId: 'owner-chat', workspaceId: 'owner-workspace' } });
+                expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'ask')).toBeUndefined();
+                runtime.getTriggerInfra.mockReturnValue(undefined);
+                expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel')?.triggers).toBeUndefined();
+                runtime.getTriggerInfra.mockReturnValue({ sentinelTodoTriggers: triggers } as any);
+            }
+        });
+
         it('shares one capability object with every chat executor, by identity', () => {
             const runtime = makeSentinelRuntime();
             const { executor } = makeBridge(runtime);

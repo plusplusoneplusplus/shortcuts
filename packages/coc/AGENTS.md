@@ -120,6 +120,19 @@ references before editing. Paths are package-relative.
 - PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
   `triggers/create-trigger-service.ts` creation path. Scope monitors to the calling
   workspace/conversation and canonical PR origin; arming failures preserve PR success.
+  Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
+  rule revision and owner-scoped item, and persists the terminal decision, immutable
+  wake prompt and delivery identity before queue work. Wakes use shared
+  `ProcessMessageDeliveryService.deliverOnce` admission and the existing trigger
+  scheduler for receipt reconciliation/retries. Trigger code never writes item
+  status or launches a job; external PR metadata is data, not instructions.
+  `SentinelTodoTriggerService` owns rule authoring with expected revisions,
+  eligibility and shared-cap checks. Rules use `triggers.enabled` (default on),
+  never expire and require no additional approval gate. Clearing rules hides their
+  presentation while preserving delivery and keyed authoring receipts; retries
+  must not duplicate wakes or revive removed rules.
+  Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
+  the rule owner is the invoking chat, never a tool argument.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

@@ -285,7 +285,7 @@ export interface ConversationTurn {
 }
 
 /** Metadata identifying the automated source of a conversation turn. */
-export type TurnSource = { source: 'cron' | 'wakeup' | 'trigger'; cronId?: string; wakeupId?: string; triggerId?: string };
+export type TurnSource = { source: 'cron' | 'wakeup' | 'trigger'; cronId?: string; wakeupId?: string; triggerId?: string; deliveryId?: string };
 
 /**
  * Serialized format of ConversationTurn for persistence (Date -> ISO string)

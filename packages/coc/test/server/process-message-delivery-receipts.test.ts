@@ -52,6 +52,10 @@ describe('durable review admission', () => {
     }
 
     function deliver(id = receiptId) { return service.deliverOnce(workspaceId, processId, id, review); }
+    const wakeSource = { source: 'trigger' as const, triggerId: 'rule-1', deliveryId: 'wake-1' };
+    function wake() {
+        return service.deliverOnce(workspaceId, processId, wakeSource.deliveryId, { ...review, turnSource: wakeSource });
+    }
 
     function drain() {
         const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
@@ -324,5 +328,77 @@ describe('durable review admission', () => {
         await drain();
         expect(queue.getTask(receiptId)).toBeDefined();
         expect((await store.getProcess(processId))?.pendingMessages ?? []).toEqual([]);
+    });
+
+    it('persists wake attribution on admission, buffered drain and executor repair', async () => {
+        await wake();
+        expect(queue.getTask('wake-1')?.payload.context).toEqual(wakeSource);
+        expect((await store.getProcess(processId))?.conversationTurns?.[0].turnSource).toEqual(wakeSource);
+        await store.truncateConversationTurns(processId, 0);
+        await store.updateProcess(processId, { pendingMessages: [], status: 'completed' });
+        const followUp = vi.fn().mockResolvedValue(undefined);
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const result = await runner.run(queue.getTask('wake-1')!, {
+            cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
+            executeByTypeFn: vi.fn(), executeFollowUpFn: followUp,
+        });
+        expect(result.success).toBe(true);
+        expect(followUp.mock.calls[0][8]).toEqual(wakeSource);
+        expect((await store.getProcess(processId))?.conversationTurns?.[0].turnSource).toEqual(wakeSource);
+        queue = new TaskQueueManager();
+        await store.truncateConversationTurns(processId, 0);
+        await store.updateProcess(processId, { status: 'running' });
+        await wake();
+        expect((await store.getProcess(processId))?.pendingMessages?.[0].context).toEqual(wakeSource);
+        await store.updateProcess(processId, { status: 'completed' });
+        await recover();
+        expect(queue.getTask('wake-1')?.payload.context).toEqual(wakeSource);
+        expect((await store.getProcess(processId))?.conversationTurns?.[0].turnSource).toEqual(wakeSource);
+    });
+
+    it('serializes duplicate wakes with human follow-ups without losing either', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        const proc = (await store.getProcess(processId))!;
+        await Promise.all([
+            wake(), wake(),
+            service.deliver(proc, { content: 'Human', displayContent: 'Human', deliveryMode: 'enqueue', pasteExternalized: false }),
+        ]);
+        const messages = (await store.getProcess(processId))?.pendingMessages ?? [];
+        expect(messages.map(message => message.content)).toEqual([review.content, 'Human']);
+        expect(messages[0].context).toEqual(wakeSource);
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it.each(['pending', 'turn', 'task'])('dedupes wakes by deliveryId on an existing %s', async kind => {
+        service = new ProcessMessageDeliveryService({ store, bridge, listTasks: () => queue.getAll() });
+        if (kind === 'pending') await store.appendPendingMessage(processId, {
+            id: 'other-id', content: 'Saved wake', createdAt: new Date().toISOString(), context: wakeSource,
+        });
+        if (kind === 'turn') await store.appendConversationTurn(processId, index => ({
+            role: 'user', content: 'Saved wake', timestamp: new Date(), turnIndex: index, turnSource: wakeSource,
+        }));
+        if (kind === 'task') queue.enqueue({
+            id: 'other-task-id', type: 'chat', priority: 'normal', processId,
+            payload: { kind: 'chat', processId, workspaceId, context: wakeSource },
+        });
+        expect(await wake()).toMatchObject({ reused: true, events: [] });
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects a foreign task carrying a wake delivery identity', async () => {
+        service = new ProcessMessageDeliveryService({ store, bridge, listTasks: () => queue.getAll() });
+        queue.enqueue({
+            id: 'foreign-task', type: 'chat', priority: 'normal', processId: 'foreign',
+            payload: { kind: 'chat', processId: 'foreign', workspaceId: 'foreign', context: wakeSource },
+        });
+        await expect(wake()).rejects.toThrow('conflicts');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects wake admission into a non-Sentinel owner without changing item or chat mode', async () => {
+        await store.updateProcess(processId, { metadata: { mode: 'ask', workspaceId } });
+        await expect(wake()).rejects.toThrow('owning chat');
+        expect(queue.getAll()).toEqual([]);
+        expect((await store.getProcess(processId))?.metadata?.mode).toBe('ask');
     });
 });

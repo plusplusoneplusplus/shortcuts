@@ -6,6 +6,8 @@
  *    fire the action.
  *  - Fires the action through a pluggable `ActionExecutor` (which reuses the
  *    `TaskQueueManager` / `FollowUpExecutor` follow-up path).
+ *  - Hands fires of bound one-shot triggers (Sentinel To-do PR-merge wake
+ *    rules) to an injected `OneShotFirer` instead of the action executor.
  *  - Enforces one-in-flight-fix-at-a-time suppression, TTL expiry, and
  *    evaluator-requested auto-disarm (e.g. PR merged/closed).
  *  - Re-arms active triggers from persisted `nextTickAt` on server startup.
@@ -23,9 +25,12 @@ import type {
     TriggerAction,
     TriggerEvent,
     TriggerChangeEvent,
+    TriggerDelivery,
+    TriggerOutcome,
     TriggerStatus,
 } from './trigger-types';
-import { DEFAULT_CI_POLL_INTERVAL_MS } from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS, isTriggerExpired } from './trigger-types';
+import { getPrMergedPollDelay } from './pr-merged-evaluator';
 
 // ============================================================================
 // Pluggable interfaces
@@ -47,7 +52,12 @@ export interface EvaluationOutcome {
      * If set, the trigger should terminally stop with this status/reason
      * (e.g. PR merged/closed → `disarmed`). No further ticks are scheduled.
      */
-    autoDisarm?: { status: Extract<TriggerStatus, 'disarmed' | 'expired'>; reason: string };
+    autoDisarm?: {
+        status: Extract<TriggerStatus, 'disarmed' | 'expired'>;
+        reason: string;
+        /** Terminal one-shot result recorded with the stop (e.g. `closed-unmerged`). */
+        outcome?: TriggerOutcome;
+    };
     /**
      * Optional prompt override for the action (e.g. a message naming the
      * failing checks). Falls back to `trigger.action.prompt` when absent.
@@ -60,6 +70,11 @@ export interface EvaluationOutcome {
      * change event). Cleared automatically once a new commit resets the count.
      */
     retryLimitReached?: boolean;
+    /**
+     * The persisted event changed in a way watchers should see (e.g. a merge
+     * watch entered or left its read-error state); emits `trigger-updated`.
+     */
+    changed?: boolean;
 }
 
 /** Evaluates a trigger's event each tick. One per event kind. */
@@ -76,6 +91,18 @@ export interface ActionExecutor {
     execute(trigger: Trigger, action: TriggerAction, prompt: string): Promise<void>;
 }
 
+/**
+ * Fires a one-shot (Sentinel To-do bound) trigger. Owns the item checks, the
+ * durable terminal write and the wake-message delivery, so the manager never
+ * calls the action executor for bound triggers. Shared by ticks and Run now.
+ */
+export interface OneShotFirer {
+    fire(triggerId: string, reason: TriggerDelivery['reason'], expectedRevision?: number): Promise<void>;
+    deliverPending?(triggerId: string): Promise<void>;
+}
+
+export class OneShotFireConflictError extends Error {}
+
 export type TriggerEventEmit = (event: TriggerChangeEvent) => void;
 
 export interface TriggerManagerDeps {
@@ -84,6 +111,8 @@ export interface TriggerManagerDeps {
     /** Resolve the evaluator for a given event (by type/monitor). */
     resolveEvaluator: (event: TriggerEvent) => EventEvaluator | undefined;
     actionExecutor: ActionExecutor;
+    /** Handles fires of bound one-shot triggers (Sentinel To-do wake rules). */
+    oneShotFirer?: OneShotFirer;
     emit?: TriggerEventEmit;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
@@ -96,6 +125,7 @@ export interface TriggerManagerDeps {
 export class TriggerManager {
     private readonly deps: TriggerManagerDeps;
     private readonly now: () => number;
+    private stopped = false;
 
     /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
     private readonly scheduler: PeriodicEntryScheduler<Trigger>;
@@ -105,7 +135,10 @@ export class TriggerManager {
         this.now = deps.now ?? Date.now;
         this.scheduler = new PeriodicEntryScheduler<Trigger>({
             timerRegistry: deps.timerRegistry,
-            getFallbackIntervalMs: trigger => getPollInterval(trigger.event),
+            getFallbackIntervalMs: trigger => trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
+                ? getPrMergedPollDelay({ ...trigger.event, consecutiveErrors: trigger.delivery.consecutiveErrors ?? 0 })
+                : getPollInterval(trigger.event),
+            isActive: trigger => trigger.status === 'active' || trigger.delivery?.state === 'pending',
             persist: trigger => this.deps.store.update(trigger),
             onTick: id => { void this.onTick(id); },
             logLabel: 'TriggerManager',
@@ -122,7 +155,19 @@ export class TriggerManager {
      * triggers are loaded from the DB.
      */
     armAll(): void {
-        this.scheduler.armAll(this.deps.store.getActive());
+        this.scheduler.armAll(this.deps.store.getAll().filter(trigger =>
+            trigger.status === 'active' || trigger.delivery?.state === 'pending'));
+    }
+
+    /** Reconcile durable wake receipts before ordinary queue processing starts. */
+    async reconcilePendingDeliveries(): Promise<void> {
+        for (const trigger of this.deps.store.getAll()) {
+            if (trigger.delivery?.state === 'pending') await this.retryDelivery(trigger.id);
+        }
+    }
+
+    schedulePendingDelivery(trigger: Trigger): void {
+        if (!this.stopped && trigger.delivery?.state === 'pending') this.reschedule(trigger);
     }
 
     /**
@@ -130,7 +175,7 @@ export class TriggerManager {
      * (or falls back to the event's poll cadence from now).
      */
     arm(trigger: Trigger): void {
-        this.scheduler.arm(trigger);
+        if (!this.stopped) this.scheduler.arm(trigger);
     }
 
     /** Cancel the timer for a trigger (does not mutate persisted state). */
@@ -143,6 +188,7 @@ export class TriggerManager {
      * persisted state. Active triggers re-arm on the next startup.
      */
     shutdownAll(): void {
+        this.stopped = true;
         this.scheduler.shutdownAll();
     }
 
@@ -166,16 +212,21 @@ export class TriggerManager {
     // ========================================================================
 
     private async onTick(triggerId: string): Promise<void> {
+        if (this.stopped) return;
         const logger = getLogger();
         const trigger = this.deps.store.getById(triggerId);
         if (!trigger) {
             logger.warn(LogCategory.AI, `[TriggerManager] Tick for unknown trigger ${triggerId}`);
             return;
         }
+        if (trigger.delivery?.state === 'pending') {
+            await this.retryDelivery(triggerId);
+            return;
+        }
         if (trigger.status !== 'active') return;
 
         // TTL expiry → terminal auto-disarm.
-        if (this.now() >= new Date(trigger.expiresAt).getTime()) {
+        if (isTriggerExpired(trigger, this.now())) {
             this.terminate(trigger, 'expired', 'TTL exceeded');
             return;
         }
@@ -192,19 +243,32 @@ export class TriggerManager {
             outcome = await evaluator.evaluate(trigger);
         } catch (err) {
             logger.warn(LogCategory.AI, `[TriggerManager] Evaluator error for ${triggerId}: ${err instanceof Error ? err.message : String(err)}`);
-            this.reschedule(trigger);
+            const current = this.deps.store.getById(triggerId);
+            if (current?.status === 'active') this.reschedule(current);
             return;
         }
 
         // Re-read in case state changed during the async evaluate (e.g. the
         // in-flight action completed and cleared the guard).
+        if (this.stopped) return;
         const current = this.deps.store.getById(triggerId);
         if (!current || current.status !== 'active') return;
+        if (current.revision !== trigger.revision) {
+            // Edited while evaluating (e.g. a new PR): the outcome is stale.
+            this.reschedule(current);
+            return;
+        }
         current.lastTickAt = new Date(this.now()).toISOString();
 
         // Evaluator-requested terminal auto-disarm (e.g. PR merged/closed).
         if (outcome.autoDisarm) {
-            this.terminate(current, outcome.autoDisarm.status, outcome.autoDisarm.reason);
+            current.event = outcome.event;
+            this.terminate(current, outcome.autoDisarm.status, outcome.autoDisarm.reason, outcome.autoDisarm.outcome);
+            return;
+        }
+
+        if (outcome.fire && current.binding) {
+            await this.fireOneShot(current, outcome);
             return;
         }
 
@@ -248,6 +312,8 @@ export class TriggerManager {
                 LogCategory.AI,
                 `[TriggerManager] CI auto-fix retry limit reached for ${triggerId}; pausing auto-fixes until a new commit`,
             );
+        }
+        if (outcome.retryLimitReached || outcome.changed) {
             this.emit({ type: 'trigger-updated', trigger: current });
         }
     }
@@ -258,15 +324,62 @@ export class TriggerManager {
 
     /** Persist `nextTickAt` and (re)arm the timer at the event's poll cadence. */
     private reschedule(trigger: Trigger): void {
-        this.scheduler.reschedule(trigger);
+        if (!this.stopped) this.scheduler.reschedule(trigger);
+    }
+
+    private async retryDelivery(triggerId: string): Promise<void> {
+        try {
+            if (!this.deps.oneShotFirer?.deliverPending) {
+                throw new Error('One-shot delivery admission is unavailable');
+            }
+            await this.deps.oneShotFirer.deliverPending(triggerId);
+        } catch (error) {
+            getLogger().error(LogCategory.AI, `[TriggerManager] Pending delivery failed for ${triggerId}: ${String(error)}`);
+        }
+        const current = this.deps.store.getById(triggerId);
+        if (current?.delivery?.state === 'pending') this.reschedule(current);
+        else this.disarm(triggerId);
+    }
+
+    /**
+     * Hand a bound one-shot fire to the `OneShotFirer` after persisting the
+     * observed event (merge commit/title). Failures before the terminal commit
+     * retry watching; committed pending deliveries retry through their own receipt.
+     */
+    private async fireOneShot(trigger: Trigger, outcome: EvaluationOutcome): Promise<void> {
+        const logger = getLogger();
+        trigger.event = outcome.event;
+        if (!this.deps.oneShotFirer) {
+            logger.warn(LogCategory.AI, `[TriggerManager] No one-shot firer for ${trigger.id}; rescheduling`);
+            this.reschedule(trigger);
+            return;
+        }
+        this.deps.store.update(trigger);
+        try {
+            await this.deps.oneShotFirer.fire(trigger.id, 'merged');
+        } catch (err) {
+            logger.error(LogCategory.AI, `[TriggerManager] One-shot fire failed for ${trigger.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        const after = this.deps.store.getById(trigger.id);
+        if (after?.status === 'active') this.reschedule(after);
     }
 
     /** Terminally stop a trigger (expired/disarmed) and cancel its timer. */
-    private terminate(trigger: Trigger, status: Extract<TriggerStatus, 'disarmed' | 'expired'>, reason: string): void {
+    private terminate(
+        trigger: Trigger,
+        status: Extract<TriggerStatus, 'disarmed' | 'expired'>,
+        reason: string,
+        outcome?: TriggerOutcome,
+    ): void {
         getLogger().info(LogCategory.AI, `[TriggerManager] ${status} trigger ${trigger.id}: ${reason}`);
         this.disarm(trigger.id);
         trigger.status = status;
         trigger.nextTickAt = null;
+        if (outcome) {
+            trigger.outcome = outcome;
+            trigger.outcomeReason = reason;
+            trigger.revision += 1;
+        }
         this.deps.store.update(trigger);
         this.emit({ type: status === 'expired' ? 'trigger-expired' : 'trigger-disarmed', trigger });
     }
@@ -285,8 +398,9 @@ export class TriggerManager {
 // Helpers
 // ============================================================================
 
-/** Poll cadence for an event. Only `condition-monitor` exists this iteration. */
+/** Poll cadence for an event; merge watches back off after read errors. */
 function getPollInterval(event: TriggerEvent): number {
+    if (event.type === 'condition-monitor' && event.monitor === 'pr-merged') return getPrMergedPollDelay(event);
     if (event.type === 'condition-monitor') return event.pollIntervalMs;
     return DEFAULT_CI_POLL_INTERVAL_MS;
 }

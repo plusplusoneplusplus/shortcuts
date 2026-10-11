@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'crypto';
 import type {
-    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage, GenericProcessMetadata,
+    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage, GenericProcessMetadata, TurnSource,
 } from '@plusplusoneplusplus/forge';
 import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
@@ -43,6 +43,12 @@ const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 
 /** Delivery modes accepted from the client. */
 const VALID_DELIVERY_MODES = ['immediate', 'enqueue'];
+
+function carriesDeliveryId(context: unknown, deliveryId: string, triggerId?: string): boolean {
+    return typeof context === 'object' && context !== null
+        && 'deliveryId' in context && context.deliveryId === deliveryId
+        && (triggerId === undefined || ('triggerId' in context && context.triggerId === triggerId));
+}
 
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
@@ -246,6 +252,8 @@ export interface FollowUpMessageInput {
      * process metadata that may since have changed.
      */
     provider?: ChatProvider;
+    /** Trusted automation attribution, never accepted from an HTTP body. */
+    turnSource?: TurnSource;
 }
 
 /** Which delivery branch handled the message. */
@@ -319,6 +327,8 @@ export interface ProcessMessageDeliveryDeps {
     /** ID provider — injectable for deterministic pending-message IDs in tests. */
     newId?: () => string;
     sentinelMirror?: SentinelMirrorService;
+    /** Aggregate queue snapshot for automation identity reconciliation. */
+    listTasks?: () => import('@plusplusoneplusplus/forge').QueuedTask[];
 }
 
 /**
@@ -334,6 +344,7 @@ export class ProcessMessageDeliveryService {
     private readonly now: () => Date;
     private readonly newId: () => string;
     private readonly sentinelMirror?: SentinelMirrorService;
+    private readonly listTasks?: ProcessMessageDeliveryDeps['listTasks'];
 
     constructor(deps: ProcessMessageDeliveryDeps) {
         this.store = deps.store;
@@ -342,6 +353,7 @@ export class ProcessMessageDeliveryService {
         this.now = deps.now ?? (() => new Date());
         this.newId = deps.newId ?? (() => randomUUID());
         this.sentinelMirror = deps.sentinelMirror;
+        this.listTasks = deps.listTasks;
     }
 
     async deliver(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
@@ -374,7 +386,7 @@ export class ProcessMessageDeliveryService {
     }
 
     /**
-     * Admit a server-owned review once, using a globally unique, stable receipt ID.
+     * Admit a server-owned review or Sentinel wake once, using a stable receipt ID.
      * The existing request correlation persists through pending-message drain and
      * execution. This entry point always queues and never resumes a stopped parent.
      */
@@ -382,7 +394,7 @@ export class ProcessMessageDeliveryService {
         workspaceId: string,
         processId: string,
         receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent'>,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
     ): Promise<DeliveryResult> {
         if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable review receipt is required');
         if (!this.bridge.enqueue || !this.bridge.getTask) {
@@ -393,13 +405,25 @@ export class ProcessMessageDeliveryService {
             if (!proc || proc.metadata?.workspaceId !== workspaceId) {
                 throw new ReviewDeliveryRejectedError('Review parent is unavailable in its originating workspace');
             }
-            const pending = proc.pendingMessages?.find(message => message.relayRequestId === receiptId);
+            if (input.turnSource?.source === 'trigger' && (
+                proc.metadata?.mode !== 'sentinel' || input.turnSource.deliveryId !== receiptId
+                || !input.turnSource.triggerId
+            )) {
+                throw new ReviewDeliveryRejectedError('Sentinel wake requires its owning chat and delivery identity');
+            }
+            const pending = proc.pendingMessages?.find(message => message.relayRequestId === receiptId
+                || (input.turnSource && message.context?.deliveryId === receiptId));
             const turn = proc.conversationTurns?.find(message => message.role === 'user'
-                && message.relayRequestId === receiptId);
-            const task = this.bridge.getTask!(receiptId);
-            if (task && !this.isReviewTask(task, proc, receiptId)) {
+                && (message.relayRequestId === receiptId || (input.turnSource && message.turnSource?.deliveryId === receiptId)));
+            const task = this.bridge.getTask!(receiptId) ?? (input.turnSource ? this.listTasks?.().find(task =>
+                carriesDeliveryId(task.payload.context, receiptId)) : undefined);
+            const matchesWake = task?.type === 'chat' && task.processId === processId
+                && task.payload.processId === processId && task.payload.workspaceId === workspaceId
+                && carriesDeliveryId(task.payload.context, receiptId, input.turnSource?.triggerId);
+            if (task && (input.turnSource ? !matchesWake : !this.isReviewTask(task, proc, receiptId))) {
                 throw new ReviewDeliveryRejectedError('Review receipt conflicts with another queue task');
             }
+
             if (pending || turn || task) {
                 return {
                     path: pending ? 'buffered' : 'enqueued', reused: true,
@@ -505,6 +529,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
+                ...(input.turnSource ? { context: input.turnSource } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -563,7 +588,10 @@ export class ProcessMessageDeliveryService {
                             workingDirectory: proc.workingDirectory,
                             ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
                             readonly: (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
-                            ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { context: { skills: input.selectedSkillNames } } : {}),
+                            ...(input.turnSource || input.selectedSkillNames?.length ? { context: {
+                                ...input.turnSource,
+                                ...(input.selectedSkillNames?.length ? { skills: input.selectedSkillNames } : {}),
+                            } } : {}),
                             ...(input.mode ? { mode: input.mode } : {}),
                             ...(input.model ? { model: input.model } : {}),
                             ...(input.provider ? { provider: input.provider } : {}),
@@ -616,6 +644,7 @@ export class ProcessMessageDeliveryService {
                     timestamp: this.now(),
                     turnIndex: idx,
                     ...requestCorrelation,
+                    ...(input.turnSource ? { turnSource: input.turnSource } : {}),
                     timeline: [],
                     images: input.images,
                     ...(input.pasteExternalized ? { pasteExternalized: true } : {}),

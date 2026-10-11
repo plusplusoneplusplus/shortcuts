@@ -22,6 +22,7 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
     expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
     lastTickAt: null,
     nextTickAt: new Date(Date.now() + 60_000).toISOString(),
+    revision: 1,
     ...overrides,
   };
 }
@@ -81,5 +82,32 @@ describe('TriggersClient', () => {
 
     await expect(client.list('repo-a')).resolves.toEqual([]);
     await expect(client.listAll()).resolves.toEqual([]);
+  });
+
+  it('routes all Sentinel rule operations to the qualified owner with revisions and confirmation', async () => {
+    const trigger = makeTrigger();
+    const preview = { pr: { url: 'https://github.com/example/repo/pull/1' }, snapshot: { title: 'PR', status: 'open' } };
+    const adapter = createMockAdapter({ trigger, triggers: [trigger], deleted: true, ...preview });
+    const client = new TriggersClient(adapter);
+    const input = {
+      itemId: 'item-1', prUrl: preview.pr.url, instruction: 'Ship', workspaceId: 'picked', originId: 'origin',
+    };
+    await expect(client.listSentinelTodo('owner/repo', 'sentinel/chat')).resolves.toEqual([trigger]);
+    await expect(client.previewSentinelTodo('owner/repo', 'sentinel/chat', { prUrl: input.prUrl })).resolves.toMatchObject(preview);
+    await expect(client.createSentinelTodo('owner/repo', 'sentinel/chat', { ...input, idempotencyKey: 'draft-1' })).resolves.toEqual(trigger);
+    await expect(client.editSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', { ...input, expectedRevision: 2 })).resolves.toEqual(trigger);
+    await client.pauseSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', 3);
+    await client.resumeSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', 4);
+    await client.runSentinelTodoNow('owner/repo', 'sentinel/chat', 'rule/1', 5);
+    await expect(client.removeSentinelTodo('owner/repo', 'sentinel/chat', 'rule/1', 6)).resolves.toMatchObject({ deleted: true });
+    const base = '/workspaces/owner%2Frepo/sentinel-todos/sentinel%2Fchat/triggers';
+    expect(adapter.calls.map(call => call.path)).toEqual([
+      base, `${base}/preview`, base, `${base}/rule%2F1`, `${base}/rule%2F1/pause`,
+      `${base}/rule%2F1/resume`, `${base}/rule%2F1/run-now`, `${base}/rule%2F1`,
+    ]);
+    expect(adapter.calls[3].options).toEqual({ method: 'PATCH', body: { ...input, expectedRevision: 2 } });
+    expect(adapter.calls[2].options).toEqual({ method: 'POST', body: { ...input, idempotencyKey: 'draft-1' } });
+    expect(adapter.calls[6].options).toEqual({ method: 'POST', body: { expectedRevision: 5, confirmed: true } });
+    expect(adapter.calls[7].options).toEqual({ method: 'DELETE', body: { expectedRevision: 6 } });
   });
 });

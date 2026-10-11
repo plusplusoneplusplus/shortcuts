@@ -24,6 +24,7 @@ import { toTaskId, isQueueProcessId, getLogger, LogCategory } from '@plusplusone
 import type { ActionExecutor } from './trigger-manager';
 import type { Trigger, TriggerAction } from './trigger-types';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
+import { emitDeliveryEvents, type ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 
 // ============================================================================
 // Types
@@ -36,6 +37,9 @@ export interface QueueActionExecutorDeps {
     queueManager: TaskQueueManager | null;
     /** Resolve processId → workspaceId for multi-repo routing. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    /** Shared serialized, durable admission for one-shot Sentinel wakes. */
+    messageDelivery?: Pick<ProcessMessageDeliveryService, 'deliverOnce'>;
+    recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
 }
 
 /** Process statuses that mean a turn is in flight (buffer instead of enqueue). */
@@ -58,6 +62,21 @@ export class QueueActionExecutor implements ActionExecutor {
         }
 
         const processId = action.processId;
+        if (trigger.binding) {
+            if (!this.deps.messageDelivery || !trigger.delivery || processId !== trigger.processId) {
+                throw new Error('Sentinel wake requires durable message admission');
+            }
+            const result = await this.deps.messageDelivery.deliverOnce(
+                trigger.workspaceId, processId, trigger.delivery.deliveryId, {
+                    content: prompt, displayContent: prompt,
+                    turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: trigger.delivery.deliveryId },
+                });
+            emitDeliveryEvents(this.deps.processStore, processId, result.events);
+            if (result.path === 'buffered') {
+                await this.deps.recoverPendingMessages?.(trigger.workspaceId, processId);
+            }
+            return;
+        }
         if (await this.isProcessMidTurn(processId)) {
             await this.bufferPendingMessage(trigger, action, prompt);
             return;
@@ -99,7 +118,8 @@ export class QueueActionExecutor implements ActionExecutor {
         const processId = action.processId;
         const workspaceId = await this.deps.resolveWorkspaceId(processId);
         // Explicit action mode (autopilot) wins; otherwise inherit the process default.
-        const mode = await resolveFollowUpMode(this.deps.processStore, processId, action.mode);
+        const mode = await resolveFollowUpMode(this.deps.processStore, processId,
+            action.mode === 'inherit' ? undefined : action.mode);
 
         queueManager.enqueue({
             processId,
@@ -113,6 +133,7 @@ export class QueueActionExecutor implements ActionExecutor {
                 context: {
                     triggerId: trigger.id,
                     source: 'trigger',
+                    ...(trigger.delivery ? { deliveryId: trigger.delivery.deliveryId } : {}),
                 },
             },
             config: {},
@@ -136,10 +157,12 @@ export class QueueActionExecutor implements ActionExecutor {
         const pendingMsg: PendingMessage = {
             id: crypto.randomUUID(),
             content: prompt,
-            mode: action.mode,
+            mode: await resolveFollowUpMode(this.deps.processStore, processId,
+                action.mode === 'inherit' ? undefined : action.mode),
             context: {
                 triggerId: trigger.id,
                 source: 'trigger',
+                ...(trigger.delivery ? { deliveryId: trigger.delivery.deliveryId } : {}),
             },
             createdAt: new Date().toISOString(),
         };

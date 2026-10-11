@@ -3,7 +3,7 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 export { NativeDatabase as Database };
 export type DatabaseType = NativeDatabase;
 
-export const SCHEMA_VERSION = 40;
+export const SCHEMA_VERSION = 41;
 
 /**
  * Read the current schema version from the database.
@@ -102,6 +102,7 @@ export function initializeDatabase(db: NativeDatabase): void {
                 provider          TEXT,
                 segment_id        TEXT,
                 relay_request_id  TEXT,
+                turn_source       TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -573,6 +574,9 @@ export function initializeDatabase(db: NativeDatabase): void {
         }
         if (versionBefore < 40) {
             createRelayAndMirrorSchema(db);
+        }
+        if (versionBefore < 41) {
+            ensureColumn(db, 'conversation_turns', 'turn_source', 'TEXT');
         }
         // Additive indexes preserve the V40 table/read-pool contract.
         db.exec(`

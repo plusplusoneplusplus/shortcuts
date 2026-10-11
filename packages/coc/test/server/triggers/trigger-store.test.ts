@@ -35,10 +35,32 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
         },
         inFlight: overrides.inFlight ?? false,
         createdAt: overrides.createdAt ?? '2026-01-01T00:00:00.000Z',
-        expiresAt: overrides.expiresAt ?? '2026-01-04T00:00:00.000Z',
+        expiresAt: 'expiresAt' in overrides ? overrides.expiresAt! : '2026-01-04T00:00:00.000Z',
         lastTickAt: 'lastTickAt' in overrides ? overrides.lastTickAt! : null,
         nextTickAt: 'nextTickAt' in overrides ? overrides.nextTickAt! : '2026-01-01T00:01:00.000Z',
+        revision: overrides.revision ?? 1,
+        ...(overrides.binding ? { binding: overrides.binding } : {}),
+        ...(overrides.outcome ? { outcome: overrides.outcome } : {}),
+        ...(overrides.outcomeReason ? { outcomeReason: overrides.outcomeReason } : {}),
+        ...(overrides.delivery ? { delivery: overrides.delivery } : {}),
     };
+}
+
+function makePrMergeTrigger(overrides: Partial<Trigger> = {}): Trigger {
+    return makeTrigger({
+        id: 'trigger_pr1',
+        expiresAt: null,
+        event: {
+            type: 'condition-monitor',
+            monitor: 'pr-merged',
+            pr: { provider: 'github', host: 'github.com', repoPath: 'o/r', number: 7, url: 'https://github.com/o/r/pull/7' },
+            pollIntervalMs: 300_000,
+            consecutiveErrors: 0,
+        },
+        action: { type: 'send-message', processId: 'proc_abc', prompt: '', mode: 'inherit' },
+        binding: { kind: 'sentinel-todo', itemId: 'item-1', instruction: 'ship it', armedBy: 'sentinel', armedAt: '2026-01-01T00:00:00.000Z' },
+        ...overrides,
+    });
 }
 
 describe('TriggerStore', () => {
@@ -128,5 +150,44 @@ describe('TriggerStore', () => {
         expect(() => store.insert(makeTrigger({ id: 't_overflow', status: 'active' }))).toThrow(/active trigger limit/);
         // Non-active inserts are still allowed past the limit.
         expect(() => store.insert(makeTrigger({ id: 't_paused', status: 'paused' }))).not.toThrow();
+    });
+
+    it('round-trips a never-expiring Sentinel To-do rule with binding, outcome and delivery', () => {
+        const trigger = makePrMergeTrigger({
+            status: 'disarmed',
+            outcome: 'fired',
+            outcomeReason: 'PR merged',
+            delivery: { deliveryId: 'd-1', firedAt: '2026-01-02T00:00:00.000Z', reason: 'merged', state: 'pending', itemRevision: 3 },
+            revision: 4,
+        });
+        store.insert(trigger);
+        expect(store.getById('trigger_pr1')).toEqual(trigger);
+        expect(store.getById('trigger_pr1')!.expiresAt).toBeNull();
+    });
+
+    it('updateIfRevision writes only when the stored revision matches', () => {
+        store.insert(makePrMergeTrigger({ revision: 2 }));
+        const stale = { ...store.getById('trigger_pr1')!, status: 'paused' as const, revision: 3 };
+        expect(store.updateIfRevision(stale, 1)).toBe(false);
+        expect(store.getById('trigger_pr1')!.status).toBe('active');
+        expect(store.updateIfRevision(stale, 2)).toBe(true);
+        expect(store.getById('trigger_pr1')).toMatchObject({ status: 'paused', revision: 3 });
+    });
+
+    it('adds the Sentinel To-do columns to a pre-existing triggers table', () => {
+        const legacy = createDb();
+        legacy.exec(`CREATE TABLE triggers (
+            id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, process_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active', event TEXT NOT NULL, action TEXT NOT NULL,
+            in_flight INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+            last_tick_at TEXT, next_tick_at TEXT)`);
+        legacy.prepare(`INSERT INTO triggers (id, workspace_id, process_id, status, event, action, in_flight, created_at, expires_at)
+            VALUES ('old', 'ws', 'p', 'active', '{"type":"condition-monitor","monitor":"ci-failure"}', '{"type":"send-message"}', 0, '2026-01-01T00:00:00.000Z', '2026-01-04T00:00:00.000Z')`).run();
+        const migrated = new TriggerStore(legacy);
+        new TriggerStore(legacy); // idempotent
+        expect(migrated.getById('old')).toMatchObject({ revision: 1, expiresAt: '2026-01-04T00:00:00.000Z' });
+        expect(migrated.getById('old')!.binding).toBeUndefined();
+        migrated.insert(makePrMergeTrigger());
+        expect(migrated.getById('trigger_pr1')!.binding?.itemId).toBe('item-1');
     });
 });

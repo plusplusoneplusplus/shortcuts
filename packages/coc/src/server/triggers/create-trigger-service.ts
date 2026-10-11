@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import type { TriggerStore } from './trigger-store';
 import type { TriggerManager, TriggerEventEmit } from './trigger-manager';
 import type { Trigger, TriggerEvent, TriggerAction } from './trigger-types';
-import { DEFAULT_TRIGGER_TTL_MS, DEFAULT_CI_POLL_INTERVAL_MS, MIN_POLL_INTERVAL_MS } from './trigger-types';
+import { DEFAULT_TRIGGER_TTL_MS, DEFAULT_CI_POLL_INTERVAL_MS, MIN_POLL_INTERVAL_MS, isTriggerExpired } from './trigger-types';
 
 export interface CreateTriggerContext {
     store: TriggerStore;
@@ -42,6 +42,9 @@ export interface CreateTriggerValidation {
  * accepted this iteration.
  */
 export function validateCreateTriggerBody(body: Record<string, unknown>): CreateTriggerValidation {
+    if (body.binding !== undefined || body.delivery !== undefined || body.outcome !== undefined) {
+        return { valid: false, error: 'Sentinel rules require the owner-scoped Sentinel To-do trigger API' };
+    }
     if (!isNonEmptyString(body.processId)) {
         return { valid: false, error: 'processId must be a non-empty string' };
     }
@@ -138,6 +141,7 @@ export function buildTriggerFromCreateRequest(
         expiresAt: new Date(nowMs + DEFAULT_TRIGGER_TTL_MS).toISOString(),
         lastTickAt: null,
         nextTickAt: new Date(nowMs + pollIntervalMs).toISOString(),
+        revision: 1,
     };
 }
 
@@ -184,9 +188,10 @@ export async function createTrigger(
     // No awaits between lookup and insertion: concurrent retries cannot insert duplicates.
     if (reuseCiMonitor) {
         const existing = ctx.store.getByWorkspace(workspaceId).find(t =>
-            (t.status === 'active' || t.status === 'paused') && Date.parse(t.expiresAt) > now()
+            (t.status === 'active' || t.status === 'paused') && !isTriggerExpired(t, now())
             && t.processId === processId && t.action.processId === candidate.action.processId
             && t.event.type === 'condition-monitor' && t.event.monitor === 'ci-failure'
+            && candidate.event.monitor === 'ci-failure'
             && t.event.originId === candidate.event.originId && t.event.prId === candidate.event.prId);
         if (existing) {
             if (existing.status === 'paused') {

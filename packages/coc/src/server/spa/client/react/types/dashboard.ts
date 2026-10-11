@@ -162,7 +162,7 @@ export interface ClientConversationTurn {
     /** Client-side elapsed time in ms from user send to response completion */
     costTimeMs?: number;
     /** Source metadata for automated follow-up turns (crons/wakeups/triggers). */
-    turnSource?: { source: 'cron' | 'wakeup' | 'trigger'; cronId?: string; wakeupId?: string; triggerId?: string };
+    turnSource?: { source: 'cron' | 'wakeup' | 'trigger'; cronId?: string; wakeupId?: string; triggerId?: string; deliveryId?: string };
 }
 
 /** Cached conversation data for a historical process. */

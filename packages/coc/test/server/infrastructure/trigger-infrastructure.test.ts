@@ -84,6 +84,7 @@ describe('createTriggerInfrastructure', () => {
         return createTriggerInfrastructure({
             dataDir: '/tmp/coc-trigger-infra-test',
             queueFacade: makeQueueFacade(),
+            deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn() },
             store,
             emit: vi.fn(),
             resolveWorkspaceId: async () => 'ws_a',
@@ -128,6 +129,7 @@ describe('createTriggerInfrastructure', () => {
         const infra = await createTriggerInfrastructure({
             dataDir: '/tmp/coc-trigger-infra-test',
             queueFacade,
+            deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn() },
             store,
             emit: vi.fn(),
             resolveWorkspaceId: async () => 'ws_a',

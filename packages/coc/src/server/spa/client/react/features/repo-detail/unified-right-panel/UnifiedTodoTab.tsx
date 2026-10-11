@@ -25,6 +25,7 @@ import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
+import { SentinelTodoTriggers } from './SentinelTodoTriggers';
 import {
     endSentinelTodoExcursion,
     isPinnedSentinelTodo,
@@ -300,6 +301,25 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
     }, [client, ownerKey, load]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
+    const highlightTimer = useRef<ReturnType<typeof setTimeout>>();
+    const highlightedRow = useRef<HTMLElement | null>(null);
+    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, []);
+    const followTriggerItem = (itemId: string) => {
+        setShowDone(true);
+        setShowArchived(true);
+        setExpanded(previous => new Set([...previous, itemId]));
+        clearTimeout(highlightTimer.current);
+        highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight');
+        highlightTimer.current = setTimeout(() => {
+            const row = [...(scrollRef.current?.querySelectorAll<HTMLElement>('[data-testid]') ?? [])]
+                .find(element => element.dataset.testid === `sentinel-todo-row-${itemId}`);
+            if (!row) return;
+            highlightedRow.current = row;
+            row.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+            row.setAttribute('data-sentinel-trigger-highlight', 'true');
+            highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-trigger-highlight'), 2500);
+        }, 0);
+    };
     const scrollTop = useRef(restored.scrollTop ?? 0);
     const expandedRef = useRef(expanded);
     expandedRef.current = expanded;
@@ -463,6 +483,7 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                             {renderList(sections.archived)}
                         </Section>
                     )}
+                    <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                 </>
             )}
         </div>

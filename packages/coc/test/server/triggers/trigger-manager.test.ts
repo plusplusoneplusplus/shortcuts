@@ -15,9 +15,10 @@ import type {
     EvaluationOutcome,
     EventEvaluator,
     ActionExecutor,
+    OneShotFirer,
     TriggerManagerDeps,
 } from '../../../src/server/triggers/trigger-manager';
-import type { Trigger, TriggerAction, TriggerEvent } from '../../../src/server/triggers/trigger-types';
+import type { PrMergedMonitorEvent, Trigger, TriggerAction, TriggerEvent } from '../../../src/server/triggers/trigger-types';
 
 // ============================================================================
 // Helpers & fakes
@@ -47,9 +48,11 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
         },
         inFlight: overrides.inFlight ?? false,
         createdAt: overrides.createdAt ?? '2026-01-01T00:00:00.000Z',
-        expiresAt: overrides.expiresAt ?? '2099-01-01T00:00:00.000Z',
+        expiresAt: 'expiresAt' in overrides ? overrides.expiresAt! : '2099-01-01T00:00:00.000Z',
         lastTickAt: 'lastTickAt' in overrides ? overrides.lastTickAt! : null,
         nextTickAt: 'nextTickAt' in overrides ? overrides.nextTickAt! : null,
+        revision: overrides.revision ?? 1,
+        ...(overrides.binding ? { binding: overrides.binding } : {}),
     };
 }
 
@@ -98,7 +101,11 @@ interface Harness {
 
 function makeManager(
     evaluator: EventEvaluator,
-    opts: { action?: ReturnType<typeof fakeActionExecutor>; emit?: TriggerManagerDeps['emit'] } = {},
+    opts: {
+        action?: ReturnType<typeof fakeActionExecutor>;
+        emit?: TriggerManagerDeps['emit'];
+        oneShotFirer?: OneShotFirer;
+    } = {},
 ): Harness {
     const store = new TriggerStore(new Database(':memory:'));
     const timer = createTimerRegistryStub();
@@ -109,6 +116,7 @@ function makeManager(
         timerRegistry: timer as any,
         resolveEvaluator: () => evaluator,
         actionExecutor: action,
+        oneShotFirer: opts.oneShotFirer,
         emit: opts.emit,
         now: () => clock.t,
     });
@@ -121,6 +129,38 @@ function makeManager(
 
 describe('TriggerManager', () => {
     let h: Harness;
+
+    it.each(['paused', 'disarmed', 'removed'] as const)(
+        'does not resurrect a %s rule when an in-flight evaluator fails', async status => {
+            const trigger = makeTrigger();
+            h = makeManager({ evaluate: vi.fn(async () => {
+                if (status === 'removed') h.store.delete(trigger.id);
+                else h.store.update({ ...trigger, status, revision: 2, nextTickAt: null });
+                throw new Error('Provider read failed');
+            }) });
+            h.store.insert(trigger);
+            h.manager.arm(trigger);
+            h.timer._fire(trigger.id);
+            await flush();
+            expect(h.timer.has(trigger.id)).toBe(false);
+            expect(h.store.getById(trigger.id)?.status).toBe(status === 'removed' ? undefined : status);
+            expect(h.action.calls).toEqual([]);
+        });
+
+    it('does not admit or rearm a wake after shutdown while evaluation is in flight', async () => {
+        const trigger = makeTrigger();
+        h = makeManager({ evaluate: vi.fn(async () => {
+            h.manager.shutdownAll();
+            return { fire: true, event: trigger.event };
+        }) });
+        h.store.insert(trigger);
+        h.manager.arm(trigger);
+        h.timer._fire(trigger.id);
+        await flush();
+        expect(h.action.calls).toEqual([]);
+        expect(h.timer.has(trigger.id)).toBe(false);
+        expect(h.store.getById(trigger.id)).toEqual(trigger);
+    });
 
     describe('arm + tick → fire', () => {
         beforeEach(() => {
@@ -358,6 +398,141 @@ describe('TriggerManager', () => {
             h.manager.shutdownAll();
             expect(h.timer._timers.size).toBe(0);
             expect(h.store.getById('a')!.status).toBe('active');
+        });
+    });
+
+    describe('one-shot PR-merge watch (Sentinel To-do bound)', () => {
+        const binding = { kind: 'sentinel-todo' as const, itemId: 'item_1', armedBy: 'user' as const, armedAt: '2026-01-01T00:00:00.000Z' };
+        const watch = (overrides: Partial<PrMergedMonitorEvent> = {}): PrMergedMonitorEvent => ({
+            type: 'condition-monitor', monitor: 'pr-merged',
+            pr: { provider: 'github', host: 'github.com', repoPath: 'o/r', number: 7, url: 'https://github.com/o/r/pull/7' },
+            pollIntervalMs: 300_000, consecutiveErrors: 0, ...overrides,
+        });
+        const bound = (event = watch()) => makeTrigger({ event, expiresAt: null, binding });
+
+        it('hands a merge to the one-shot firer (never the action executor) after persisting the event', async () => {
+            let seen: Trigger | null = null;
+            const firer: OneShotFirer = {
+                fire: vi.fn(async (id) => {
+                    seen = h.store.getById(id);
+                    const t = h.store.getById(id)!;
+                    h.store.update({ ...t, status: 'disarmed', outcome: 'fired', nextTickAt: null });
+                }),
+            };
+            h = makeManager(fakeEvaluator({ fire: true, event: watch({ lastSeenStatus: 'merged', mergeCommit: 'abc' }) }), { oneShotFirer: firer });
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.timer._fire('trigger_1');
+            await flush();
+
+            expect(firer.fire).toHaveBeenCalledWith('trigger_1', 'merged');
+            expect((seen!.event as PrMergedMonitorEvent).mergeCommit).toBe('abc');
+            expect(h.action.calls).toHaveLength(0);
+            expect(h.store.getById('trigger_1')!.status).toBe('disarmed');
+            expect(h.timer.has('trigger_1')).toBe(false);
+        });
+
+        it('keeps polling when the firer throws so a later tick retries', async () => {
+            const firer: OneShotFirer = { fire: vi.fn(async () => { throw new Error('boom'); }) };
+            h = makeManager(fakeEvaluator({ fire: true, event: watch({ lastSeenStatus: 'merged' }) }), { oneShotFirer: firer });
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.timer._fire('trigger_1');
+            await flush();
+
+            expect(h.store.getById('trigger_1')!.status).toBe('active');
+            expect(h.timer.has('trigger_1')).toBe(true);
+        });
+
+        it('keeps polling without a configured firer', async () => {
+            h = makeManager(fakeEvaluator({ fire: true, event: watch({ lastSeenStatus: 'merged' }) }));
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.timer._fire('trigger_1');
+            await flush();
+
+            expect(h.store.getById('trigger_1')!.status).toBe('active');
+            expect(h.action.calls).toHaveLength(0);
+            expect(h.timer.has('trigger_1')).toBe(true);
+        });
+
+        it('records closed-unmerged as a terminal outcome and bumps the revision', async () => {
+            h = makeManager(fakeEvaluator({
+                fire: false, event: watch({ lastSeenStatus: 'closed' }),
+                autoDisarm: { status: 'disarmed', reason: 'PR closed without merging', outcome: 'closed-unmerged' },
+            }));
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.timer._fire('trigger_1');
+            await flush();
+
+            const persisted = h.store.getById('trigger_1')!;
+            expect(persisted).toMatchObject({
+                status: 'disarmed', outcome: 'closed-unmerged', outcomeReason: 'PR closed without merging', revision: 2,
+            });
+            expect((persisted.event as PrMergedMonitorEvent).lastSeenStatus).toBe('closed');
+            expect(h.timer.has('trigger_1')).toBe(false);
+        });
+
+        it('never expires a rule without an expiry', async () => {
+            const evaluator = fakeEvaluator({ fire: false, event: watch({ lastSeenStatus: 'open' }) });
+            h = makeManager(evaluator);
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.clock.t = BASE + 10 * 365 * 24 * 60 * 60 * 1000;
+            h.timer._fire('trigger_1');
+            await flush();
+
+            expect(evaluator.evaluate).toHaveBeenCalled();
+            expect(h.store.getById('trigger_1')!.status).toBe('active');
+        });
+
+        it('backs off after read errors and emits the error state', async () => {
+            const emit = vi.fn();
+            h = makeManager(fakeEvaluator({
+                fire: false, changed: true,
+                event: watch({ consecutiveErrors: 2, lastError: { message: 'login failed', at: 'now' } }),
+            }), { emit });
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.timer._fire('trigger_1');
+            await flush();
+
+            expect(h.timer._delay('trigger_1')).toBe(1_200_000);
+            expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'trigger-updated' }));
+            const persisted = h.store.getById('trigger_1')!;
+            expect(persisted.status).toBe('active');
+            expect((persisted.event as PrMergedMonitorEvent).lastError?.message).toBe('login failed');
+        });
+
+        it('discards a stale outcome when the rule was edited during evaluation', async () => {
+            const firer: OneShotFirer = { fire: vi.fn(async () => {}) };
+            let release!: () => void;
+            const gate = new Promise<void>(r => { release = r; });
+            const evaluator: EventEvaluator = {
+                evaluate: vi.fn(async () => { await gate; return { fire: true, event: watch({ lastSeenStatus: 'merged' }) }; }),
+            };
+            h = makeManager(evaluator, { oneShotFirer: firer });
+            h.store.insert(bound());
+            h.manager.arm(h.store.getById('trigger_1')!);
+
+            h.timer._fire('trigger_1');
+            const edited = h.store.getById('trigger_1')!;
+            h.store.update({ ...edited, event: watch({ pr: { ...watch().pr, number: 8 } }), revision: 2 });
+            release();
+            await flush();
+
+            expect(firer.fire).not.toHaveBeenCalled();
+            const persisted = h.store.getById('trigger_1')!;
+            expect((persisted.event as PrMergedMonitorEvent).pr.number).toBe(8);
+            expect((persisted.event as PrMergedMonitorEvent).lastSeenStatus).toBeUndefined();
+            expect(h.timer.has('trigger_1')).toBe(true);
         });
     });
 });

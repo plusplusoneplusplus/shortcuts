@@ -4,8 +4,8 @@
  * secondary server-wide route at `/api/triggers`.
  *
  * Mirrors `cron-handler.ts` (same in-process route shape, validation, and
- * best-effort emit). Only the `condition-monitor` / `ci-failure` event and the
- * `send-message` action are implemented this iteration.
+ * best-effort emit). These routes manage CI monitors. Bound Sentinel To-do
+ * rules use their own owner/process-scoped routes and shared authoring service.
  */
 
 import type * as http from 'http';
@@ -20,7 +20,7 @@ import type {
     TriggerEvent,
     TriggerChangeEvent,
 } from './trigger-types';
-import { DEFAULT_CI_POLL_INTERVAL_MS } from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS, isTriggerExpired } from './trigger-types';
 import { createTrigger, CreateTriggerError, type CreateTriggerContext } from './create-trigger-service';
 export { validateCreateTriggerBody, buildTriggerFromCreateRequest, type CreateTriggerValidation } from './create-trigger-service';
 
@@ -41,7 +41,7 @@ export function resolveTriggerForWorkspace(
     triggerId: string,
 ): Trigger | null {
     const trigger = store.getById(triggerId);
-    if (!trigger) return null;
+    if (!trigger || trigger.binding?.removedAt) return null;
     if (trigger.workspaceId === workspaceId) return trigger;
     logAutomationScopeMismatch('trigger', triggerId, workspaceId, trigger.workspaceId);
     return null;
@@ -73,6 +73,11 @@ function serializeTrigger(trigger: Trigger): Record<string, unknown> {
         expiresAt: trigger.expiresAt,
         lastTickAt: trigger.lastTickAt,
         nextTickAt: trigger.nextTickAt,
+        revision: trigger.revision,
+        ...(trigger.binding ? { binding: trigger.binding } : {}),
+        ...(trigger.outcome ? { outcome: trigger.outcome } : {}),
+        ...(trigger.outcomeReason ? { outcomeReason: trigger.outcomeReason } : {}),
+        ...(trigger.delivery ? { delivery: trigger.delivery } : {}),
     };
 }
 
@@ -122,8 +127,9 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
-            const triggers = store.getByWorkspace(workspaceId);
+            const triggers = store.getByWorkspace(workspaceId).filter(trigger => !trigger.binding);
             sendJSON(res, 200, { triggers: triggers.map(serializeTrigger) });
         },
     });
@@ -135,10 +141,11 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
-            if (!trigger) {
+            if (!trigger || trigger.binding) {
                 return sendError(res, 404, 'Trigger not found');
             }
             sendJSON(res, 200, { trigger: serializeTrigger(trigger) });
@@ -152,6 +159,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const body = await parseBodyOrReject(req, res);
@@ -170,6 +178,9 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
             }
 
             const target = body.status as 'active' | 'paused' | 'disarmed';
+            if (trigger.binding) {
+                return sendError(res, 409, 'Use the owner-scoped Sentinel To-do trigger API');
+            }
 
             if (target === 'paused') {
                 manager.disarm(triggerId);
@@ -185,7 +196,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
                 safeEmit(emit, { type: 'trigger-disarmed', trigger });
             } else {
                 // Resume (→ active). Reject if the TTL already elapsed.
-                if (now() >= new Date(trigger.expiresAt).getTime()) {
+                if (isTriggerExpired(trigger, now())) {
                     manager.disarm(triggerId);
                     trigger.status = 'expired';
                     trigger.nextTickAt = null;
@@ -212,11 +223,15 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
             if (!trigger) {
                 return sendError(res, 404, 'Trigger not found');
+            }
+            if (trigger.binding) {
+                return sendError(res, 409, 'Use the owner-scoped Sentinel To-do trigger API');
             }
 
             manager.disarm(triggerId);
@@ -240,7 +255,8 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/triggers$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse) => {
-            const triggers = store.getAll();
+            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
+            const triggers = store.getAll().filter(trigger => !trigger.binding);
             sendJSON(res, 200, { triggers: triggers.map(serializeTrigger) });
         },
     });

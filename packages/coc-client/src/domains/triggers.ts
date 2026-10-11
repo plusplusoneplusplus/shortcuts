@@ -5,6 +5,9 @@ import type {
   TriggerDeleteResponse,
   TriggerMutationResponse,
   TriggerStatus,
+  CreateSentinelTodoTriggerRequest,
+  EditSentinelTodoTriggerRequest,
+  PrTriggerPreview,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -15,6 +18,10 @@ function triggersPath(workspaceId: string, suffix = ''): string {
 
 function triggerPath(workspaceId: string, triggerId: string, suffix = ''): string {
   return triggersPath(workspaceId, `/${encodePathSegment(triggerId)}${suffix}`);
+}
+
+function sentinelPath(workspaceId: string, processId: string, suffix = ''): string {
+  return `/workspaces/${encodePathSegment(workspaceId)}/sentinel-todos/${encodePathSegment(processId)}/triggers${suffix}`;
 }
 
 export class TriggersClient {
@@ -62,5 +69,59 @@ export class TriggersClient {
     return this.transport.request<TriggerDeleteResponse>(triggerPath(workspaceId, triggerId), {
       method: 'DELETE',
     });
+  }
+
+  async listSentinelTodo(workspaceId: string, processId: string): Promise<Trigger[]> {
+    const result = await this.transport.request<ListTriggersResponse>(sentinelPath(workspaceId, processId));
+    return result.triggers;
+  }
+
+  previewSentinelTodo(workspaceId: string, processId: string, input: { prUrl: string }): Promise<PrTriggerPreview> {
+    return this.transport.request<PrTriggerPreview>(sentinelPath(workspaceId, processId, '/preview'), {
+      method: 'POST', body: { ...input },
+    });
+  }
+
+  async createSentinelTodo(workspaceId: string, processId: string, input: CreateSentinelTodoTriggerRequest): Promise<Trigger> {
+    const result = await this.transport.request<TriggerMutationResponse>(sentinelPath(workspaceId, processId), {
+      method: 'POST', body: { ...input },
+    });
+    return result.trigger;
+  }
+
+  async editSentinelTodo(workspaceId: string, processId: string, triggerId: string, input: EditSentinelTodoTriggerRequest): Promise<Trigger> {
+    const result = await this.transport.request<TriggerMutationResponse>(
+      sentinelPath(workspaceId, processId, `/${encodePathSegment(triggerId)}`),
+      { method: 'PATCH', body: { ...input } },
+    );
+    return result.trigger;
+  }
+
+  pauseSentinelTodo(workspaceId: string, processId: string, triggerId: string, expectedRevision: number): Promise<Trigger> {
+    return this.sentinelAction(workspaceId, processId, triggerId, '/pause', { expectedRevision });
+  }
+
+  resumeSentinelTodo(workspaceId: string, processId: string, triggerId: string, expectedRevision: number): Promise<Trigger> {
+    return this.sentinelAction(workspaceId, processId, triggerId, '/resume', { expectedRevision });
+  }
+
+  removeSentinelTodo(workspaceId: string, processId: string, triggerId: string, expectedRevision: number): Promise<TriggerDeleteResponse> {
+    return this.transport.request<TriggerDeleteResponse>(
+      sentinelPath(workspaceId, processId, `/${encodePathSegment(triggerId)}`),
+      { method: 'DELETE', body: { expectedRevision } },
+    );
+  }
+
+  runSentinelTodoNow(workspaceId: string, processId: string, triggerId: string, expectedRevision: number): Promise<Trigger> {
+    return this.sentinelAction(workspaceId, processId, triggerId, '/run-now', { expectedRevision, confirmed: true });
+  }
+
+  private async sentinelAction(
+    workspaceId: string, processId: string, triggerId: string, suffix: string, body: Record<string, unknown>,
+  ): Promise<Trigger> {
+    const result = await this.transport.request<TriggerMutationResponse>(
+      sentinelPath(workspaceId, processId, `/${encodePathSegment(triggerId)}${suffix}`), { method: 'POST', body },
+    );
+    return result.trigger;
   }
 }

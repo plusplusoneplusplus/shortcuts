@@ -74,6 +74,9 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
         expiresAt: overrides.expiresAt ?? '2099-01-01T00:00:00.000Z',
         lastTickAt: null,
         nextTickAt: null,
+        revision: 1,
+        ...(overrides.binding ? { binding: overrides.binding } : {}),
+        ...(overrides.delivery ? { delivery: overrides.delivery } : {}),
     };
 }
 
@@ -192,6 +195,44 @@ describe('QueueActionExecutor', () => {
             const trigger = makeTrigger();
 
             await expect(exec.execute(trigger, trigger.action, 'fix it')).rejects.toThrow(/TaskQueueManager/);
+        });
+
+        describe('Sentinel wake delivery', () => {
+            function wakeTrigger() {
+                return makeTrigger({
+                    binding: { kind: 'sentinel-todo', itemId: 'item-1', armedBy: 'sentinel', armedAt: '2026-01-01T00:00:00.000Z' },
+                    delivery: { deliveryId: 'delivery-1', firedAt: '2026-01-01T00:00:00.000Z', reason: 'merged', state: 'pending' },
+                    action: { type: 'send-message', processId: PROC, prompt: 'wake', mode: 'inherit' },
+                });
+            }
+
+            it('uses the shared durable admission service with its owner and fixed identity', async () => {
+                const store = makeProcessStore();
+                const queue = makeQueueManager();
+                const deliverOnce = vi.fn().mockResolvedValue({ events: [] });
+                const exec = new QueueActionExecutor({
+                    processStore: store as any, queueManager: queue as any,
+                    resolveWorkspaceId: async () => 'ws_other',
+                    messageDelivery: { deliverOnce },
+                });
+                const trigger = wakeTrigger();
+                await exec.execute(trigger, trigger.action, 'wake');
+                expect(deliverOnce).toHaveBeenCalledWith('ws_a', PROC, 'delivery-1', {
+                    content: 'wake', displayContent: 'wake',
+                    turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: 'delivery-1' },
+                });
+                expect(queue.enqueue).not.toHaveBeenCalled();
+            });
+
+            it('never falls back to unsafe admission when the durable service is missing', async () => {
+                const store = makeProcessStore();
+                const queue = makeQueueManager();
+                const trigger = wakeTrigger();
+                await expect(makeExecutor(store, queue).execute(trigger, trigger.action, 'wake'))
+                    .rejects.toThrow('durable message admission');
+                expect(queue.enqueue).not.toHaveBeenCalled();
+                expect(store.updateProcess).not.toHaveBeenCalled();
+            });
         });
     });
 });

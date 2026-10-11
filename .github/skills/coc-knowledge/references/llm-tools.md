@@ -71,6 +71,16 @@ default `regular`; ledger metadata only, independent of status). `done`/`needs_a
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
 arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
+When `triggers.enabled` infrastructure is present, the same tool offers
+`list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`, `resume_trigger`,
+`remove_trigger` and confirmed `run_trigger_now`. The owner stays bound to the
+invoking Sentinel; `getTriggerInfra().sentinelTodoTriggers` supplies the shared
+rule service to first turns and follow-ups. Creation arms a normal eligible item's
+PR URL immediately with optional instruction, without expiry or another approval
+gate. Creation uses a stable `idempotencyKey` across retries; rule mutations use
+its `expectedRevision`. Merge wakes the Sentinel once,
+never launches or changes item status; manual-copy/conversion bypasses remain prohibited.
+
 The addon's `<sentinel_todo_ledger>` guidance tracks concrete intended outcomes
 with final-deliverable completion conditions, reuses one item across grilling/implementation/review,
 and records phase milestones/spec links in notes. Successful intermediate phases remain pending

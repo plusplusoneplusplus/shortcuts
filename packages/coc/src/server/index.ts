@@ -465,7 +465,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // can clear a trigger's in-flight guard when its fix turn completes.
         // triggerInfra is created after queue infra (like cronInfra), so read it
         // lazily through this closure.
-        () => triggerInfra ? { manager: triggerInfra.triggerManager, createTrigger: triggerInfra.createTrigger } : undefined,
+        () => triggerInfra ? {
+            manager: triggerInfra.triggerManager, createTrigger: triggerInfra.createTrigger,
+            sentinelTodoTriggers: triggerInfra.sentinelTodoTriggers,
+        } : undefined,
         // Late-bound enqueue capability for the `send_to_conversation` tool;
         // bound at the route layer below, read here once routes register.
         () => enqueueChatCapability,
@@ -599,12 +602,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const triggersEnabled = resolvedConfig.triggers?.enabled ?? true;
 
     // Trigger infrastructure — generic event → action framework (CI auto-fix
-    // monitor this iteration). Gated by triggers.enabled feature flag (default
+    // monitors and Sentinel To-do merge wakes). Gated by triggers.enabled (default
     // true). Mirrors the cron infra wiring; re-arms active triggers on startup.
     if (triggersEnabled) {
         triggerInfra = await createTriggerInfrastructure({
             dataDir,
             queueFacade,
+            deliveryBridge: bridge,
+            recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
             store,
             emit: (event) => {
                 try {
@@ -826,6 +831,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerStore: triggerInfra?.triggerStore,
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
+        sentinelTodoTriggers: triggerInfra?.sentinelTodoTriggers,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
         cronEmit: cronInfra?.emit,

@@ -121,6 +121,32 @@ Sentinel request, including existing/native-resumed, provider-switched and post-
 turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
 review recipients receive the same contract inline. Cancellation remains display-only.
 
+### Sentinel To-do trigger firing
+
+`triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
+using owner-workspace/process checks and optimistic revisions. Rules never expire,
+share the existing active cap and gate only on `triggers.enabled`. Creation/edit
+preflight reads canonical GitHub/ADO PR URLs with server credentials; already-merged
+creation requires confirmed Run now, while closed-unmerged creation rejects.
+Owner-scoped creation receipts replay a draft without rearming or duplicating it.
+Clearing a rule hides it while preserving delivery and keyed authoring receipts.
+
+`triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR-merge decisions using
+the trigger and to-do stores' shared database writer. It checks the rule revision
+and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,
+Done or archived items stop as Skipped. Eligible fires persist the terminal outcome,
+fixed delivery identity and immutable wake prompt before queue work; delivery errors
+remain pending and visible. The prompt treats PR metadata as untrusted data and asks
+the Sentinel to delegate through `send_to_conversation` with `todoItemId`.
+
+`QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
+which serializes owner checks and dedupe with human follow-ups and buffer draining.
+The fixed delivery ID survives queue tasks, pending messages and durable turn attribution.
+Trigger infrastructure reconciles pending deliveries after `armAll()`; retry/backoff
+uses the same trigger manager and timer registry, independently of PR watching.
+Accepted busy-parent buffers recover through the existing owner-routed drain.
+Trigger firing never writes item status, calls delegation admission or selects a remote target.
+
 ### Temporary chat image lifetime
 
 Admitted initial and follow-up turns retain image files at their existing managed
