@@ -34,6 +34,7 @@
  * before enqueueing. Auto defers compatibility until the target selects a provider.
  */
 
+import { createHash } from 'node:crypto';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
@@ -87,6 +88,8 @@ export interface SendToConversationArgs {
     workspaceId?: string;
     /** `autopilot` | `ask` (default), or create-only `ralph` (launch a Ralph session with `content` as the goal). */
     mode?: SendToConversationMode;
+    /** Create-only Ralph entry point; omission preserves direct execution. */
+    entryPoint?: 'grill' | 'execute';
     /** Post mode: how the follow-up is delivered. Ignored in create mode. */
     deliveryMode?: SendToConversationDeliveryMode;
     /** Create mode: persistent custom title (trimmed, non-empty, max 80 characters). Optional; ignored in post mode. */
@@ -215,6 +218,8 @@ export interface SendToConversationToolOptions {
 }
 
 export interface SendToConversationSuccess {
+    phase?: 'grilling' | 'executing';
+    owner?: { workspaceId: string; serverId?: string };
     /** Conversation process id. */
     processId: string;
     /** SPA deep-link to the conversation. */
@@ -285,7 +290,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
         description:
             'With `processId`, post to an existing local chat; without it, create a separate fire-and-forget chat. ' +
             'Returns `{ processId, openLink, turnIndex? }`. Supply a short, task-specific `title` for new chats. ' +
-            '`mode: "ralph"` starts an autonomous goal loop; returns `sessionId` too. `plan` is not supported. ' +
+            '`mode: "ralph"` starts execution by default; `entryPoint: "grill"` interviews, then awaits user Start approval. Returns sessionId, phase and owner. `plan` is not supported. ' +
             'Prefer `provider: "auto"` unless a provider/model was requested. ' +
             'Remote launches return `resultDelivery.status: "unavailable"`: no automatic result reviews or WhatsApp/Teams return; inspect `openLink`. ' +
             'Do not promise an automatic return or start a duplicate job. ' +
@@ -320,6 +325,10 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     enum: ['autopilot', 'ask', 'ralph'],
                     description: 'Ask: read-only; Autopilot: edit/run; Ralph: new goal loop only. ' +
                         'New-chat default: ask (autopilot from Sentinel). Post default: unchanged.',
+                },
+                entryPoint: {
+                    type: 'string', enum: ['grill', 'execute'],
+                    description: 'Create-only Ralph: grill interviews and awaits user Start approval; omitted/execute starts execution.',
                 },
                 deliveryMode: {
                     type: 'string',
@@ -361,7 +370,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 { properties: { action: { enum: ['send'] } }, required: ['content'] },
             ],
         },
-        handler: async (args: SendToConversationArgs): Promise<SendToConversationResult> => {
+        handler: async (args: SendToConversationArgs, invocation): Promise<SendToConversationResult> => {
             if (args.action !== undefined && args.action !== 'send' && args.action !== 'cancel') {
                 return { error: `Unknown action: '${String(args.action)}'. Valid actions: send, cancel.` };
             }
@@ -376,7 +385,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 if (processId.startsWith('remote:') || args.workspaceId?.startsWith('remote:') || args.workspaceId?.includes('@')) {
                     return { error: 'Cancellation on a remote CoC server is not supported. Cancel only accepts local conversation IDs and workspace IDs.' };
                 }
-                if ((['content', 'mode', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority', 'todoItemId'] as const)
+                if ((['content', 'mode', 'entryPoint', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority', 'todoItemId'] as const)
                     .some(field => args[field] !== undefined)) {
                     return { error: 'Cancel does not accept send-only fields; use { action: "cancel", processId, workspaceId? }.' };
                 }
@@ -394,6 +403,10 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                         ...(err instanceof APIError ? { code: err.code } : {}),
                     };
                 }
+            }
+            if (args.entryPoint !== undefined && (args.processId !== undefined || args.mode !== 'ralph'
+                || !['grill', 'execute'].includes(args.entryPoint))) {
+                return { error: 'entryPoint requires create-only mode ralph and must be grill or execute.' };
             }
             // --- content (required, non-empty) --------------------------------
             if (typeof args.content !== 'string' || !args.content.trim()) {
@@ -486,6 +499,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 launchRalph,
                 parentProcessId,
                 args,
+                ...(args.entryPoint === 'grill' ? { requestId: grillingAdmissionId(parentProcessId ?? invocation.sessionId,
+                    callerWorkspaceId, invocation.toolCallId) } : {}),
                 content,
                 mode: args.mode ?? await resolveDefaultCreateMode(store, parentProcessId),
                 model,
@@ -592,6 +607,7 @@ async function resolveDefaultCreateMode(
 }
 
 async function createNewConversation(params: {
+    requestId?: string;
     store: ProcessStore;
     directory: WorkspaceDirectory;
     callerWorkspaceId?: string;
@@ -664,7 +680,7 @@ async function createNewConversation(params: {
     if (target.kind === 'remote') {
         return withTracking(await createRemoteConversation({
             directory, target, content, mode, title, priority, model,
-            explicitProvider, effortTier, store, parentProcessId,
+            explicitProvider, effortTier, store, parentProcessId, entryPoint: args.entryPoint, requestId: params.requestId,
         }), track, { kind: 'remote', workspaceId: target.workspaceId, serverId: target.serverId, title });
     }
     const requestedWorkspaceId = target.workspaceId;
@@ -728,6 +744,8 @@ async function createNewConversation(params: {
     if (mode === 'ralph') {
         return withTracking(await launchRalphConversation({
             launchRalph,
+            entryPoint: args.entryPoint,
+            requestId: params.requestId,
             goalSpec: content,
             workspaceId: requestedWorkspaceId,
             title,
@@ -946,6 +964,8 @@ async function resolveCreateTarget(params: {
  * own model/effort inheritance. The local parent's spawn link stays local.
  */
 async function createRemoteConversation(params: {
+    requestId?: string;
+    entryPoint?: 'grill' | 'execute';
     directory: WorkspaceDirectory;
     target: Extract<CreateTarget, { kind: 'remote' }>;
     content: string;
@@ -988,6 +1008,8 @@ async function createRemoteConversation(params: {
     const body = mode === 'ralph'
         ? {
             goalSpec: content.trim(),
+            ...(params.entryPoint ? { entryPoint: params.entryPoint } : {}),
+            ...(params.requestId ? { requestId: params.requestId } : {}),
             workspaceId: target.workspaceId,
             ...(provider === 'auto' ? { autoProviderRouting: true } : provider ? { provider } : {}),
             config: {
@@ -1022,6 +1044,8 @@ async function createRemoteConversation(params: {
                     + '(including WhatsApp/Teams) is unavailable. Use openLink to inspect its outcome; do not launch a duplicate job.',
             },
             ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+            ...(params.entryPoint === 'grill' ? { phase: 'grilling' as const,
+                owner: { workspaceId: target.workspaceId, serverId: target.serverId } } : {}),
         };
     } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -1034,6 +1058,8 @@ async function createRemoteConversation(params: {
  * no worktree is requested and max iterations come from repo preferences.
  */
 async function launchRalphConversation(params: {
+    requestId?: string;
+    entryPoint?: 'grill' | 'execute';
     launchRalph?: LaunchRalphFn;
     goalSpec: string;
     workspaceId: string;
@@ -1056,6 +1082,8 @@ async function launchRalphConversation(params: {
     try {
         const result = await launchRalph({
             goalSpec: goalSpec.trim(),
+            ...(params.entryPoint ? { entryPoint: params.entryPoint } : {}),
+            ...(params.requestId ? { requestId: params.requestId } : {}),
             workspaceId,
             aiSelection: {
                 ...(provider ? { provider } : {}),
@@ -1076,6 +1104,7 @@ async function launchRalphConversation(params: {
         return {
             processId: result.processId,
             sessionId: result.sessionId,
+            ...(params.entryPoint === 'grill' ? { phase: 'grilling' as const, owner: { workspaceId } } : {}),
             openLink: `#/process/${result.processId}`,
         };
     } catch (err) {
@@ -1170,4 +1199,10 @@ function normalizeProcessProvider(proc: AIProcess): ChatProvider {
     return typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)
         ? (provider as ChatProvider)
         : 'copilot';
+}
+
+/** Same provider invocation retries share queue admission; separate calls remain separate jobs. */
+function grillingAdmissionId(parent: string, workspaceId: string | undefined, toolCallId: string): string {
+    const hex = createHash('sha256').update(JSON.stringify([parent, workspaceId, toolCallId])).digest('hex').slice(0, 32);
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

@@ -133,6 +133,8 @@ import { registerRalphMaxIterationsRoutes } from './ralph-max-iterations-routes'
 import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
+import { registerRalphGrillingApprovalRoutes } from './ralph-grilling-approval-routes';
+import { prepareRalphGrilling } from '../ralph/grilling-state';
 import { launchRalphSession, type LaunchRalphFn } from '../ralph/ralph-launch-service';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerRalphInputRoutes } from './ralph-input-routes';
@@ -456,7 +458,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             throw new Error(status.reason ?? `Provider '${provider}' is unavailable.`);
         }
     };
+    const getRalphEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.ralph?.enabled === true;
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
+        await prepareRalphGrilling(input, { dataDir, store, enabled: getRalphEnabled() });
         await prepareTaskForEnqueue(input, {
             getDefaultProvider: concreteDefaultProvider,
             resolveDefaultProvider,
@@ -546,7 +550,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         onDeliveryChange: job => sentinelTodoHooks.deliveryChanged(job),
     });
     const delegatedJobResults = new DelegatedJobResults({
-        jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
+        jobs: delegatedJobs, store, dataDir, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
         onResult: job => {
             sentinelTodoHooks.recordResult(job);
             return delegatedJobReviews.schedule(job);
@@ -578,6 +582,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     opts.setLaunchRalph?.((input) => launchRalphSession(input, {
         bridge: delegatedRalphBridge,
+        getRalphEnabled,
         dataDir,
         store,
         getGitWorktreeExecutionEnabled,
@@ -1237,13 +1242,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         ? () => opts.runtimeConfigService!.config.features?.gitWorktreeExecution ?? false
         : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
 
-    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled });
+    registerRalphGrillingApprovalRoutes(routes, { dataDir, store, getRalphEnabled, bridge,
+        onExecutionAdmitted: (workspaceId, processId) => delegatedJobResults.reconcileExecutionOwner(workspaceId, processId),
+    });
+    registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled, getRalphEnabled });
     registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
     registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphMaxIterationsRoutes(routes, { dataDir });
     registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
-    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled });
+    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled, getRalphEnabled });
     registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphInputRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getWsServer });
     registerRalphSubmitRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });

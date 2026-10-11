@@ -66,6 +66,26 @@ describe('Sentinel to-do job links', () => {
         return todos.get(at).items.find(item => item.id === itemId)!;
     }
 
+    it('returns spec-ready feature work to Todo without consuming the execution result', async () => {
+        const item = await createItem();
+        await link(item.id, 'queue_grill', { kind: 'ralph', sessionId: 'ralph-grill' });
+        const milestone = terminalJob('queue_grill', 'completed', 'spec-ready');
+        milestone.child.sessionId = 'ralph-grill'; milestone.boundary = 'grill';
+        milestone.terminal!.result.terminalEventId = 'ralph:ws-child:ralph-grill:grill';
+        milestone.terminal!.result.links = ['#spec'];
+        service.recordJobResult(milestone);
+        expect(current(item.id).status).toBe('todo');
+        expect(current(item.id).jobs[0].result).toBeUndefined();
+        expect(current(item.id).notes).toContain('awaiting implementation approval');
+        const revision = current(item.id).revision;
+        service.recordJobResult(milestone);
+        expect(current(item.id).revision).toBe(revision);
+        const execution = terminalJob('queue_grill', 'completed'); execution.child.sessionId = 'ralph-grill';
+        service.recordJobResult(execution);
+        expect(current(item.id).jobs[0].result?.outcome).toBe('completed');
+        expect(current(item.id).status).toBe('todo');
+    });
+
     it('links several jobs in different repos to one item and marks it in progress', async () => {
         const item = await createItem();
         await link(item.id, 'queue_a');

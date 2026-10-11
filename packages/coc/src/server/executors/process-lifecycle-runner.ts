@@ -18,6 +18,7 @@
  */
 
 import * as path from 'path';
+import { reconcileRalphGoal } from '../ralph/grilling-state';
 import type {
     AIProcess,
     Attachment,
@@ -585,6 +586,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
                 // Follow-up execution persists failures without throwing; only a
                 // completed response is eligible for the post-response hook.
+                const followUpProcess = await this.store.getProcess(followUpPayload.processId!);
+                if (followUpProcess && this.dataDir) await reconcileRalphGoal(followUpProcess, { dataDir: this.dataDir, store: this.store });
                 const responded = !!opts.onResponseCompleted && !opts.cancelledTasks.has(task.id)
                     && (await this.store.getProcess(followUpPayload.processId!))?.status === 'completed';
                 // Drain pending messages after follow-up completion
@@ -1061,6 +1064,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 const finalStatus = currentProc?.status === 'cancelled' ? 'cancelled' : 'completed';
                 if (!TERMINAL_STATUSES.has(currentProc?.status ?? '')) {
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
+                }
+
+                if (currentProc && this.dataDir) {
+                    await reconcileRalphGoal(currentProc, { dataDir: this.dataDir, store: this.store });
                 }
 
                 if (finalStatus === 'completed' && opts.onDrainPendingMessages) {

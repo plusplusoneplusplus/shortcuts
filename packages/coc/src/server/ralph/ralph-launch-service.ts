@@ -1,13 +1,13 @@
 /**
- * Launch a Ralph execution loop directly from a goal spec, skipping the
- * grilling/synthesis phase. Mints a new session, initialises the journal, and
- * enqueues the first Ralph execution task.
+ * Admit a target-owned native Ralph interview or direct execution session.
+ * Omitted entryPoint preserves execution. Stable admission identities recover
+ * accepted children without relaunching uncertain queue requests.
  *
  * Shared by `POST /api/ralph-launch` and the `ralph` mode of the
  * `send_to_conversation` LLM tool so both launch through one code path.
  */
 
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { RalphSessionStore } from './ralph-session-store';
@@ -18,9 +18,17 @@ import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
 import { createRalphLaunchWorktree, attachWorktreeToRalphSession } from './ralph-worktree-launch';
 import { captureRalphBaselineSha } from './capture-baseline-sha';
 import type { MessagingJobOrigin } from '../messaging/job-notices';
+import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import { getRepoDataPath } from '../paths';
+import { atomicWriteJsonUnique } from '../shared/fs-utils';
+import { processOperationAdmission } from '../processes/process-operation-admission';
+import { buildRalphGrillingSubmission } from './grilling-submission';
+import { prepareRalphGrilling } from './grilling-state';
 import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
 
 export interface RalphLaunchDeps {
+    getRalphEnabled?: () => boolean;
     bridge: MultiRepoQueueRouter;
     /** Repo-scoped data root (`~/.coc` or override). Used for the per-session journal. */
     dataDir?: string;
@@ -31,6 +39,9 @@ export interface RalphLaunchDeps {
 }
 
 export interface RalphLaunchInput {
+    /** Stable source-approved admission identity; execution retries never mint a new child. */
+    requestId?: string;
+    entryPoint?: 'grill' | 'execute';
     /** Goal spec; trimmed, must be non-empty. */
     goalSpec: unknown;
     workspaceId?: string;
@@ -57,6 +68,8 @@ export type RalphLaunchResult =
         ok: true;
         processId: string;
         sessionId: string;
+        phase?: 'grilling' | 'executing';
+        workspaceId?: string;
         worktree?: WorktreeMetadata;
         worktreeWarning?: string;
     }
@@ -70,8 +83,61 @@ function mintSessionId(): string {
 }
 
 export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLaunchDeps): Promise<RalphLaunchResult> {
+    if (input.requestId === undefined) return launchRalphSessionOnce(input, deps);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId)
+        || !deps.dataDir || !input.workspaceId || !deps.store) return { ok: false, error: 'Invalid or unavailable Ralph admission identity' };
+    const sessionId = `ralph-approved-${input.requestId}`;
+    const file = getRepoDataPath(deps.dataDir, input.workspaceId, `ralph-sessions/${sessionId}/admission.json`);
+    return processOperationAdmission.runExclusive(toQueueProcessId(input.requestId), async () => {
+        let prior: { goalSpec: unknown; entryPoint?: string; status: string; result?: RalphLaunchResult } | undefined;
+        try { prior = JSON.parse(fs.readFileSync(file, 'utf8')); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        if (prior && (prior.goalSpec !== input.goalSpec || prior.entryPoint !== input.entryPoint)) {
+            return { ok: false, error: 'Ralph admission identity already belongs to another goal or entry point' };
+        }
+        if (prior?.result?.ok) return prior.result;
+        // A rejected delegation has already settled its tracking receipt. A
+        // separate explicit tool call can create a new job, never this replay.
+        if (input.entryPoint === 'grill' && prior?.status === 'rejected') {
+            return prior.result ?? { ok: false, error: 'The native grilling request was rejected; create a new delegation to retry.' };
+        }
+        if (prior?.status === 'admitting') {
+            if (deps.bridge.getTask(input.requestId!)) {
+                const result: RalphLaunchResult = { ok: true, processId: toQueueProcessId(input.requestId!), sessionId,
+                    phase: input.entryPoint === 'grill' ? 'grilling' : 'executing', workspaceId: input.workspaceId };
+                atomicWriteJsonUnique(file, { ...prior, status: 'admitted', result });
+                return result;
+            }
+            return { ok: false, error: 'Ralph admission is uncertain; inspect the target session before retrying. No new launch was attempted.' };
+        }
+        if (deps.getRalphEnabled?.() !== true) return { ok: false, error: 'Native Ralph admission is disabled (ralph.enabled)' };
+        if (!(await deps.store!.getWorkspaces()).some(workspace => workspace.id === input.workspaceId)) {
+            return { ok: false, error: 'Native Ralph admission requires a registered owning workspace' };
+        }
+        atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, status: 'admitting' });
+        try {
+            let result = await launchRalphSessionOnce(input, deps);
+            // Queue observers can fail after acceptance. Preserve the admitted
+            // identity instead of retrying an already accepted interview.
+            if (!result.ok && deps.bridge.getTask(input.requestId!)) {
+                result = { ok: true, processId: toQueueProcessId(input.requestId!), sessionId,
+                    phase: input.entryPoint === 'grill' ? 'grilling' : 'executing', workspaceId: input.workspaceId };
+            }
+            atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, status: result.ok ? 'admitted' : 'rejected', result });
+            return result;
+        } catch (error) {
+            if (!deps.bridge.getTask(input.requestId!)) atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, status: 'rejected' });
+            throw error;
+        }
+    });
+}
+
+async function launchRalphSessionOnce(input: RalphLaunchInput, deps: RalphLaunchDeps): Promise<RalphLaunchResult> {
     const { bridge, dataDir, store, getGitWorktreeExecutionEnabled } = deps;
     const { workspaceId, folderPath, workingDirectory } = input;
+    if (input.entryPoint !== undefined && !['grill', 'execute'].includes(input.entryPoint)) {
+        return { ok: false, error: 'Invalid entryPoint: expected grill or execute' };
+    }
 
     const goalSpec = typeof input.goalSpec === 'string' ? input.goalSpec.trim() : '';
     if (!goalSpec) {
@@ -83,6 +149,36 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
         return { ok: false, error: aiSelection.error };
     }
     const { provider, model, reasoningEffort, effortTier, autoProviderRouting } = aiSelection.value;
+
+    if (input.entryPoint === 'grill') {
+        if (!dataDir || !store || !workspaceId) return { ok: false, error: 'Native Ralph grilling admission is unavailable' };
+        if (input.worktree !== undefined) return { ok: false, error: 'Worktree execution requires Start Ralph approval' };
+        const sessionId = input.requestId ? `ralph-approved-${input.requestId}` : mintSessionId();
+        const submission = buildRalphGrillingSubmission({ prompt: goalSpec, sessionId });
+        const task = {
+            id: input.requestId ?? randomUUID(), type: 'chat' as const, priority: 'normal' as const,
+            displayName: input.title ?? 'Ralph interview',
+            payload: {
+                kind: 'chat', workspaceId, mode: submission.mode, prompt: submission.prompt,
+                ...(provider ? { provider } : {}),
+                ...(input.title ? { customTitle: input.title } : {}),
+                context: {
+                    ...submission.context,
+                    ...(autoProviderRouting ? { autoProviderRouting: { requested: true } } : {}),
+                    ...(input.spawnedFromProcessId ? { spawnedFromProcessId: input.spawnedFromProcessId } : {}),
+                    ...(input.messagingOrigin ? { messagingOrigin: input.messagingOrigin } : {}),
+                },
+            },
+            config: { ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}), ...(effortTier ? { effortTier } : {}) },
+        };
+        try {
+            await prepareRalphGrilling(task, { dataDir, store, enabled: deps.getRalphEnabled?.() === true });
+            const taskId = await bridge.enqueue(task);
+            return { ok: true, processId: toQueueProcessId(taskId), sessionId, phase: 'grilling', workspaceId };
+        } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+    }
 
     // Opt-in Git worktree request. Shape is validated here; the worktree
     // itself is created below (flag-gated) before anything is queued.
@@ -103,7 +199,7 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
     }
     const maxIterations = prefMax ?? RALPH_DEFAULT_MAX_ITERATIONS;
 
-    const sessionId = mintSessionId();
+    const sessionId = input.requestId ? `ralph-approved-${input.requestId}` : mintSessionId();
 
     // Opt-in isolated Git worktree. Created BEFORE the journal is seeded
     // and BEFORE the first iteration is queued, so a Git failure aborts
@@ -158,7 +254,7 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
     }
 
     // Enqueue the first Ralph execution task
-    const task = buildRalphIterationTask({
+    const task: CreateTaskInput = buildRalphIterationTask({
         workspaceId,
         workingDirectory: executionWorkingDirectory,
         folderPath: executionFolderPath,
@@ -178,6 +274,7 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
             ...(input.messagingOrigin ? { messagingOrigin: input.messagingOrigin } : {}),
         },
     });
+    if (input.requestId) task.id = input.requestId;
     const taskId = await bridge.enqueue(
         input.title ? { ...task, payload: { ...task.payload, customTitle: input.title } } : task,
     );

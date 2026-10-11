@@ -126,7 +126,7 @@ describe('createSendToConversationTool — shape & description', () => {
         const { tool } = makeTool();
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
         expect(Object.keys(props).sort()).toEqual(
-            ['action', 'content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
+            ['action', 'content', 'deliveryMode', 'effortTier', 'entryPoint', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
         );
         expect(props.provider).toMatchObject({ type: 'string', enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'] });
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
@@ -1522,5 +1522,94 @@ describe('Auto delegation capability fallback', () => {
         else expect(result).toHaveProperty('error');
         expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(scenario === 'missing-endpoint' || scenario.endsWith('dispatch-error') ? 1 : 0);
         expect(enqueueChat).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('native Ralph grilling delegation contract', () => {
+    it.each([
+        { action: 'cancel', processId: 'queue_child', entryPoint: 'grill' },
+        { content: 'Build', processId: 'queue_child', entryPoint: 'grill', mode: 'ralph' },
+        { content: 'Build', entryPoint: 'grill', mode: 'ask' },
+        { content: 'Build', entryPoint: 'invalid', mode: 'ralph' },
+    ])('rejects invalid combinations before any admission: %j', async args => {
+        const launchRalph = vi.fn();
+        const { tool, enqueueChat } = makeTool({ launchRalph });
+        expect(await tool.handler(args as any, invocationStub)).toHaveProperty('error');
+        expect(launchRalph).not.toHaveBeenCalled(); expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('passes the grilling entry point through native launch with owner/session identity', async () => {
+        const launchRalph = vi.fn().mockResolvedValue({ ok: true, processId: 'queue_grill', sessionId: 'ralph-grill', phase: 'grilling' });
+        const { tool, enqueueChat } = makeTool({ launchRalph, runtime: { isAutoProviderRoutingAvailable: () => true },
+            parentMeta: { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' } });
+        const result = await tool.handler({ content: 'Build', mode: 'ralph', entryPoint: 'grill', provider: 'auto' }, invocationStub);
+        expect(result).toMatchObject({ processId: 'queue_grill', sessionId: 'ralph-grill', phase: 'grilling', owner: { workspaceId: 'ws-1' } });
+        expect(launchRalph.mock.calls[0][0]).toMatchObject({ entryPoint: 'grill', aiSelection: { autoProviderRouting: true, config: { effortTier: 'medium' } } });
+        expect(launchRalph.mock.calls[0][0].aiSelection).not.toHaveProperty('provider');
+        expect(launchRalph.mock.calls[0][0].aiSelection.config).not.toHaveProperty('model');
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('keeps explicit execute identical to omitted direct execution', async () => {
+        const launchRalph = vi.fn().mockResolvedValue({ ok: true, processId: 'queue_execute', sessionId: 'ralph-execute' });
+        const { tool } = makeTool({ launchRalph });
+        const result = await tool.handler({ content: 'Build', mode: 'ralph', entryPoint: 'execute' }, invocationStub);
+        expect(result).toEqual({ processId: 'queue_execute', sessionId: 'ralph-execute', openLink: '#/process/queue_execute' });
+        expect(launchRalph.mock.calls[0][0].entryPoint).toBe('execute');
+    });
+});
+
+describe('remote native grilling capability and admission boundary', () => {
+    function remote(fetchImpl: typeof fetch, online = true) {
+        const workspaceDirectory = createWorkspaceDirectory({ store: makeStore([]),
+            remoteServers: { list: () => [{ id: 'srv-grill', label: 'target', kind: 'url',
+                ...(online ? { effectiveUrl: 'http://target:4000' } : {}), status: online ? 'online' : 'offline' } as any] }, fetchImpl });
+        return makeTool({ runtime: { workspaceDirectory }, parentMeta: { provider: 'codex', model: 'gpt-5.4', reasoningEffort: 'high' } });
+    }
+    const args = { content: 'Interview the goal', mode: 'ralph' as const, entryPoint: 'grill' as const,
+        workspaceId: 'remote:srv-grill:physical-target', provider: 'auto' as const };
+
+    it('checks the owning target before admission and sends only its physical workspace and explicit AI settings', async () => {
+        const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(
+            url.endsWith('/config/runtime') ? { features: { autoAgentProviderRoutingEnabled: true } }
+                : url.endsWith('/capabilities') ? { version: 1, grilling: true }
+                    : { processId: 'queue_native', sessionId: 'ralph-native', phase: 'grilling' }), { status: 200 }));
+        const { tool, enqueueChat } = remote(fetchImpl as any);
+        const result = asSuccess(await tool.handler(args, invocationStub));
+        expect(result).toMatchObject({ phase: 'grilling', owner: { workspaceId: 'physical-target', serverId: 'srv-grill' },
+            resultDelivery: { status: 'unavailable' } });
+        expect(fetchImpl.mock.calls.map(call => call[0])).toEqual(['http://target:4000/api/config/runtime',
+            'http://target:4000/api/ralph-launch/capabilities', 'http://target:4000/api/ralph-launch']);
+        const body = JSON.parse((fetchImpl.mock.calls.at(-1) as any)[1].body);
+        expect(body).toMatchObject({ workspaceId: 'physical-target', entryPoint: 'grill', autoProviderRouting: true, config: { effortTier: 'medium' } });
+        expect(body).not.toHaveProperty('workingDirectory'); expect(body).not.toHaveProperty('folderPath');
+        expect(body).not.toHaveProperty('spawnedFromProcessId'); expect(body.config).not.toHaveProperty('model');
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each([{ version: 1, grilling: false }, {}, { version: 0, grilling: true }])('refuses old/disabled capabilities without a POST: %j', async capabilities => {
+        const fetchImpl = vi.fn(async () => new Response(JSON.stringify(capabilities), { status: 200 }));
+        const { tool, enqueueChat } = remote(fetchImpl as any);
+        const result = await tool.handler({ ...args, provider: 'codex' }, invocationStub);
+        expect(result).toHaveProperty('error'); expect(fetchImpl).toHaveBeenCalledOnce();
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('offline targets fail without any network admission or local fallback', async () => {
+        const fetchImpl = vi.fn(); const { tool, enqueueChat } = remote(fetchImpl as any, false);
+        expect(await tool.handler({ ...args, provider: 'codex' }, invocationStub)).toHaveProperty('error');
+        expect(fetchImpl).not.toHaveBeenCalled(); expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('uncertain acceptance attempts one POST and warns against relaunch', async () => {
+        const fetchImpl = vi.fn(async (url: string) => {
+            if (url.endsWith('/capabilities')) return new Response(JSON.stringify({ version: 1, grilling: true }), { status: 200 });
+            throw new Error('connection reset after request');
+        });
+        const { tool, enqueueChat } = remote(fetchImpl as any);
+        const result = await tool.handler({ ...args, provider: 'codex' }, invocationStub);
+        expect((result as any).error).toContain('Admission is uncertain');
+        expect(fetchImpl).toHaveBeenCalledTimes(2); expect(enqueueChat).not.toHaveBeenCalled();
     });
 });

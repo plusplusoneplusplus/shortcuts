@@ -376,6 +376,17 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             if (!server.effectiveUrl) {
                 throw new Error(`Remote server "${label}" is offline (no reachable endpoint). The chat was not started.`);
             }
+            const grilling = request.kind === 'ralph' && request.body.entryPoint === 'grill';
+            if (grilling) {
+                try {
+                    const capabilities = await requestJson(`${server.effectiveUrl}/api/ralph-launch/capabilities`, listTimeoutMs);
+                    if (capabilities?.version !== 1 || capabilities?.grilling !== true) {
+                        throw new Error('Native Ralph grilling is unsupported or disabled');
+                    }
+                } catch (error) {
+                    throw new Error(`Remote server "${label}" cannot admit native Ralph grilling: ${error instanceof Error ? error.message : String(error)}. No launch was attempted.`);
+                }
+            }
             const path = request.kind === 'ralph' ? '/api/ralph-launch' : '/api/queue';
             let body: any;
             try {
@@ -383,11 +394,17 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             } catch (err) {
                 const reason = err instanceof Error ? err.message : String(err);
                 const prefix = err instanceof RemoteRejectedError ? `Remote server "${label}" rejected the request` : `Remote server "${label}" is unreachable`;
-                throw new Error(`${prefix}: ${reason}. The chat was not started.`);
+                throw new Error(grilling && !(err instanceof RemoteRejectedError)
+                    ? `${prefix}: ${reason}. Admission is uncertain; inspect the remote chat list before retrying. Do not launch a duplicate job.`
+                    : `${prefix}: ${reason}. The chat was not started.`);
             }
             if (request.kind === 'ralph') {
                 if (typeof body?.processId !== 'string') {
-                    throw new Error(`Remote server "${label}" returned no processId for the Ralph launch.`);
+                    throw new Error(`Remote server "${label}" returned no processId for the Ralph launch.`
+                        + (grilling ? ' Acceptance is uncertain; inspect the remote chat list, do not relaunch.' : ''));
+                }
+                if (grilling && (body.phase !== 'grilling' || typeof body.sessionId !== 'string')) {
+                    throw new Error(`Remote server "${label}" did not confirm native grilling admission. Acceptance is uncertain; inspect the remote chat list, do not relaunch.`);
                 }
                 return { processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}) };
             }

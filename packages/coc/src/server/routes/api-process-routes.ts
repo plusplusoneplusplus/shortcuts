@@ -5,6 +5,7 @@
  */
 
 import * as url from 'url';
+import { projectRalphGrillingMetadata } from '../ralph/grilling-state';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -447,7 +448,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 }
                 return void handleAPIError(res, notFound('Process'));
             }
-            const result = projectProcess(filter.exclude ? stripExcludedFields(proc, filter.exclude) : buildMetadataProcess(proc));
+            const projected = dataDir ? await projectRalphGrillingMetadata(proc, dataDir) : proc;
+            const result = projectProcess(filter.exclude ? stripExcludedFields(projected, filter.exclude) : buildMetadataProcess(projected));
 
             if (!include.has('children')) {
                 return { process: result, children: [], total: 0 };

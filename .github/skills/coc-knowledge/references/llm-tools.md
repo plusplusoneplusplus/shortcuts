@@ -198,22 +198,24 @@ The bundled `delegate` skill requires agents to include a title in its handoff c
 The JSON schema requires `content` for send or explicit `action: "cancel"` plus `processId`
 for cancellation; titles remain optional.
 
-Create mode with `mode: "ralph"` launches a Ralph session straight into iteration 1 (no
-grilling) through the late-bound `getLaunchRalph` runtime capability, which wraps
-`launchRalphSession` (`src/server/ralph/ralph-launch-service.ts`) over the same
-resolved-defaults bridge as `POST /api/ralph-launch`. `content` is the trimmed goal spec; the
-workspace check, title, spawn link, and provider/model/effort resolution match ordinary create
-mode. No worktree is requested and max iterations come from repo preferences. It returns
-`{ processId, sessionId, openLink }`, is allowed from Ask and Autopilot callers, and is
-rejected in post mode. `plan` stays unsupported. The custom title is the iteration-1
-`customTitle`, which the SPA Ralph session row prefers over the goal-derived title.
+Create mode with `mode: "ralph"` uses the late-bound `getLaunchRalph` capability and shared
+`launchRalphSession`. Omitted `entryPoint` and `entryPoint: "execute"` launch iteration 1 with
+the existing `{ processId, sessionId, openLink }` contract. `entryPoint: "grill"` admits the
+same native Ask/grill-me interview as the Ralph composer and additionally returns
+`phase: "grilling"` and `owner: { workspaceId, serverId? }`. The target server owns identity, canonical
+goal save/revision readiness and explicit Start approval. It uses disabled-by-default
+`ralph.enabled`; no execution is admitted by interview completion. The workspace/title/spawn
+link and existing provider/model/effort rules apply. `entryPoint` is create-only Ralph; posts,
+cancel and other modes reject it. `plan` stays unsupported. See [ralph-launch.md](ralph-launch.md).
 
 Create-mode `workspaceId` accepts a local ID, a remote clone key `remote:<serverId>:<workspaceId>`,
 or a repo name matched case-insensitively over the workspace directory (exact name first, then
 `name@server` against the server display name). An ambiguous name errors with every candidate
 `id (server)`; no match errors and points at `list_workspaces`. A remote target is started on
 that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
-effective URL via `WorkspaceDirectory.startRemoteChat`, with no local fallback for offline or
+effective URL via `WorkspaceDirectory.startRemoteChat`. Native grilling first verifies version-1
+`/api/ralph-launch/capabilities`; unsupported targets fail before admission, and uncertain POST
+acceptance reports inspection/recovery without duplicate dispatch. There is no local fallback for offline or
 unreachable servers. Enabled Auto becomes the remote queue routing marker
 (Ralph: `autoProviderRouting: true`).
 Remote Auto preflights `/api/config/runtime`; a disabled/missing routing flag or a 404
@@ -276,6 +278,13 @@ Whole-session Ralph events match registered workspace/session identity and store
 receipt, outcome, final process summary, session API link and journal path. Recovery uses terminal
 reasons and final-check records; complete iteration loops with unresolved checks remain pending.
 See [ralph-lifecycle.md](ralph-lifecycle.md#delegated-session-results) for the session boundary.
+Native grilling persists a separate `grilling` milestone and delivery receipt with
+`ralph:<workspaceId>:<sessionId>:grill` identity. Only validated synthesis produces spec-ready;
+it informs the parent and returns linked feature work to Todo awaiting implementation approval.
+Explicit design-only work may receive its agreed completion verdict. This receipt never consumes
+the whole-session terminal receipt, and neither ledger state nor child output authorizes Start.
+Same-server cross-workspace execution follows its saved admitted owner while keeping the original
+parent/job/session receipt scope. Remote execution retains unavailable automatic delivery.
 Recorded results and registered terminal rows at startup invoke `DelegatedJobReviews`.
 Recovery isolates each job's admission failure so other pending results can proceed.
 
@@ -288,7 +297,7 @@ notices through `deliverNoticeOnce`, without child output, AI work or queue muta
 Busy parents defer; parent terminal events and startup recover notices. Stable assistant
 receipts reconcile transcript/ledger crash windows. Stopped parents receive notices without
 resuming; missing or mis-scoped parents settle failure. Ralph reviews require the stable
-whole-session terminal identity; remote delivery uses separate boundaries. Reused admissions reconcile ledger-write crash windows without new
+whole-session terminal identity, or the separate native spec-ready milestone identity; remote delivery uses separate boundaries. Reused admissions reconcile ledger-write crash windows without new
 realtime intents; parent review completion settles delivery, while review failure/cancellation
 settles a diagnostic failure. Permanent routing rejection settles; transient writes remain
 recoverable. Buffered admission invokes owner-queue recovery outside process admission;

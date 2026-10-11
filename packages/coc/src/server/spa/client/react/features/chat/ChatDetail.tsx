@@ -3008,12 +3008,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         surfaces (e.g. NoteChatPanel) alongside the ImplementPlanCard below. */}
                     {effectiveNav.kind === 'thread' && showImplementationBanners && (() => {
                         const ralphCtx = getRalphContext(task);
-                        const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
+                        const goalPath = (task?.metadata?.ralphGoal as { path?: string } | undefined)?.path
+                            || detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
                         // Prefer the goal file (authoritative spec) over
                         // extracting from the last assistant turn, which is
                         // often a short synthesis that drops detail.
-                        if (ralphCtx && ralphCtx.phase === 'grilling' && task?.status === 'completed') {
+                        if (ralphCtx && ralphCtx.phase === 'grilling' && task?.status === 'completed'
+                            && (task?.metadata?.ralphGoal || task?.metadata?.ralphLaunchedSession) && !task?.pendingAskUser) {
                             return (
                                 <RalphStartPanel
                                     processId={processId ?? taskId}
@@ -3022,6 +3024,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                                     sourceBaseUrl={sourceBaseUrl}
                                     turns={turns}
                                     goalFilePath={goalPath || undefined}
+                                    approvedGoalSpec={task?.metadata?.ralphApprovedGoalSpec as string | undefined}
+                                    approvedTargetKey={task?.metadata?.ralphApprovedTargetKey as string | undefined}
+                                    goalRevision={(task?.metadata?.ralphGoal as { revision?: string } | undefined)?.revision}
+                                    launchedSession={task?.metadata?.ralphLaunchedSession as RalphLaunchedSession | undefined}
                                     onStarted={(newProcessId, executionWorkspaceId) => {
                                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: executionWorkspaceId ?? workspaceId });
                                     }}

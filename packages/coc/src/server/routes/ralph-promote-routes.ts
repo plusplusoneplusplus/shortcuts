@@ -23,6 +23,7 @@ import {
     LogCategory,
 } from '@plusplusoneplusplus/forge';
 import { getRalphContext } from '../tasks/task-types';
+import { RalphGrillingStore } from '../ralph/grilling-state';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import {
     buildRalphSynthesisPrompt,
@@ -173,6 +174,8 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
                 return sendError(res, 500, 'Failed to attach Ralph context');
             }
 
+            if (dataDir && wsId) await new RalphGrillingStore(dataDir).write({ workspaceId: wsId, sessionId, processId: proc.id });
+
             // Initialise the per-session journal directory. originalGoal is
             // backfilled by /ralph-start once the user confirms the synthesised
             // goal. initSession is idempotent.
@@ -188,6 +191,7 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
                     const journal = new RalphSessionStore({ dataDir });
                     await journal.initSession(wsId, sessionId, {
                         originalGoal: '',
+                        phase: 'grilling',
                         maxIterations,
                         baselineSha,
                     });

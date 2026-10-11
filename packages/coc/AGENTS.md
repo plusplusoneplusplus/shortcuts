@@ -232,7 +232,13 @@ references before editing. Paths are package-relative.
   processes win over queue metadata. Ralph registration identifies the session at launch
   only. Tool Ralph carries the captured connector origin into iteration 1 before registration
   for parent session-result return, without tracking direct iteration notices; connector Ralph
-  grilling requires separate session registration.
+  grilling requires separate session registration. Native delegated grilling uses create-only
+  `entryPoint: "grill"` and the composer/server shared contract, gated by existing `ralph.enabled`.
+  Initialize journal phase explicitly; readiness requires server-validated canonical ## Goal plus
+  revision. `grilling.json` owns process, synthesis and Start admission. Separate milestone and
+  terminal receipts; no completion/ledger state grants implementation authority. Same-owner Start
+  reuses the session; cross-owner approval records the actual execution pointer and deduplicates
+  target admission. Remote capability failures never fall back locally or forward source paths.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
   from scoped queue/process records at startup. Verify child process ID and stored workspace

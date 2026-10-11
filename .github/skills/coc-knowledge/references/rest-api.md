@@ -269,8 +269,10 @@ All launch/continue/resume bodies take [Provider overrides](#provider-overrides)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/processes/:id/ralph-start` | Start after grilling; optional worktree created before queue admission, reused for iterations/resume/final-check |
-| POST | `/api/ralph-launch` | Direct launch; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), custom `title` (trimmed, 80 chars), target-server worktree opt-in |
+| POST | `/api/processes/:id/ralph-start/approval` | Source-owned native cross-target approval reservation and admitted execution acknowledgment; stable request identity, goal revision validation |
+| GET | `/api/ralph-launch/capabilities` | Version-1 native grilling and approved-Start support; availability follows `ralph.enabled` |
+| POST | `/api/processes/:id/ralph-start` | Explicit Start after grilling; managed interviews require goalRevision; optional worktree created before queue admission, reused for iterations/resume/final-check |
+| POST | `/api/ralph-launch` | Optional entryPoint grill/execute (omitted means direct execute); native approved launches accept stable requestId; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), custom `title` (trimmed, 80 chars), target-server worktree opt-in |
 | GET | `/api/workspaces/:wsId/ralph-sessions/attention` | Awaiting-input count, independent of seen-state |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Journal, progress, files and recovered resume defaults |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend a completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |

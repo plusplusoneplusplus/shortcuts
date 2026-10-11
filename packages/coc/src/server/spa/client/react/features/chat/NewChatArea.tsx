@@ -80,6 +80,7 @@ import {
 } from '../../utils/composerKeyboardShortcuts';
 import { RalphLaunchDialog } from '../../shared/RalphLaunchDialog';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { buildRalphGrillingSubmission } from '../../../../../ralph/grilling-submission';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
@@ -919,21 +920,18 @@ export function InitialChatComposer({
 
             let mode: string = selectedMode;
             let contextOverride: Record<string, unknown> | undefined;
+            let basePrompt = promptAfterSkillExtraction;
 
             if (selectedMode === 'ralph') {
-                // Grilling phase: submit as ask mode with ralph context.
-                // maxIterations is intentionally omitted — the server resolves
-                // it from per-repo preferences, falling back to the default.
-                const grillSetup = isRalphMultiAgentGrillEnabled() ? ralphGrillSetup : undefined;
-                mode = 'ask';
-                contextOverride = {
-                    skills: [...extractedSkills, 'grill-me'],
-                    ralph: {
-                        phase: 'grilling',
-                        sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        ...(grillSetup ? { grill: grillSetup } : {}),
-                    },
-                };
+                const submission = buildRalphGrillingSubmission({
+                    prompt: promptAfterSkillExtraction,
+                    sessionId: `ralph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    skills: extractedSkills,
+                    grill: isRalphMultiAgentGrillEnabled() ? ralphGrillSetup : undefined,
+                });
+                mode = submission.mode;
+                contextOverride = submission.context;
+                basePrompt = submission.prompt;
             } else if (selectedMode === 'for-each') {
                 mode = 'ask';
                 contextOverride = {
@@ -964,11 +962,6 @@ export function InitialChatComposer({
                 contextOverride = { skills: extractedSkills };
             }
 
-            let basePrompt = promptAfterSkillExtraction;
-
-            if (selectedMode === 'ralph') {
-                basePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
-            }
             // Pending prefix (e.g. Notes selected-text references) leads the
             // request body, ahead of any attached-context blocks and the typed
             // input, so its removable chips map to a deterministic prompt order.
