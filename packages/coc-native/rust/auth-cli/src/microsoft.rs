@@ -600,6 +600,8 @@ mod tests {
             "--scope",
             "openid",
             "--scope",
+            "profile",
+            "--scope",
             "offline_access",
             "--target",
             "fixture",
@@ -629,7 +631,7 @@ mod tests {
 
     #[tokio::test]
     async fn browser_and_device_start_with_injected_transport_and_cancel_cleanly() {
-        for flow in ["browser", "device"] {
+        for (flow, show_secrets) in [("browser", false), ("browser", true), ("device", false)] {
             let root = tempfile::tempdir().unwrap();
             let matches = args(flow, root.path());
             let cancel = CancellationToken::new();
@@ -637,7 +639,7 @@ mod tests {
             let mut writer = CancelWriter { bytes: Vec::new(), cancel: cancel.clone() };
             let error = run(
                 matches.subcommand_matches("microsoft").unwrap(),
-                false,
+                show_secrets,
                 &cancel,
                 &mut writer,
                 dependencies(http.clone()),
@@ -648,6 +650,26 @@ mod tests {
             let text = String::from_utf8(writer.bytes).unwrap();
             assert!(!text.contains("PRIVATE"));
             assert!(text.contains("signInInstructions"));
+            if show_secrets {
+                let event: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
+                let authorization = event["authorizationUrl"].as_str().unwrap();
+                let redirect = authorization
+                    .split('?')
+                    .nth(1)
+                    .unwrap()
+                    .split('&')
+                    .find(|pair| pair.starts_with("redirect_uri="))
+                    .unwrap();
+                let port = redirect
+                    .strip_prefix("redirect_uri=http%3A%2F%2Flocalhost%3A")
+                    .unwrap()
+                    .strip_suffix("%2F")
+                    .unwrap()
+                    .parse::<u16>()
+                    .unwrap();
+                assert!(port > 0);
+                assert!(!authorization.contains("callback"));
+            }
             assert!(!http.0.lock().unwrap().iter().any(|url| url.ends_with("/token")));
         }
     }
@@ -743,6 +765,8 @@ mod tests {
             "33333333-3333-4333-8333-333333333333",
             "--scope",
             "openid",
+            "--scope",
+            "profile",
             "--scope",
             "offline_access",
             "--target",

@@ -90,11 +90,23 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json`, selects the configured account, and checks its exact `host:login` key in `copilotTokens`. An absent or empty token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. TypeScript resolves
+`COPILOT_HOME/config.json` or `~/.copilot/config.json`; native
+`auth_sdk::github` owns bounded JSONC parsing, exact account/token lookup,
+same-account Windows Credential Manager/macOS Keychain reads and explicit
+`gh auth token` execution. Each request reads anew through
+`readGitHubCredential` with isolated cancellation. Rust's GitHub contracts and
+platform bounds belong in [native instructions](../../../../packages/coc-native/AGENTS.md#github-authentication).
 
-Invalid file tokens, config errors and vault failures are terminal. Other accounts, ambient tokens and CLI processes are never fallback sources. Credential subprocess failures expose sanitized errors without password output.
-
-Typed embedding credentials support explicit environment, pinned config account, gh, resolver and `copilot-cli` sources. Explicit `copilot-cli` acquisition starts a short-lived pinned CLI client, reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup; its client creates no agent session and stops on completion or cancellation. Explicit keychain acquisition returns an unverified-platform error.
+Only absent/null/empty file tokens permit OS lookup; nonempty invalid tokens,
+config errors and vault failures are terminal. Linux config reads are file-only.
+TypeScript retains Copilot allowed token-family checks, endpoint authorization,
+environment and custom resolvers. Typed embedding credentials also support
+explicit `copilot-cli`, whose short-lived SDK client reads `account.getCurrentAuth`
+and the exact matching `account.getAllUsers` token without an agent session.
+CLI metadata selects an account, not verified identity. Credentials have no
+SDK-owned persistence, expiry or refresh, and other accounts/ambient tokens
+never serve as native fallback sources.
 
 ### Direct HTTP
 

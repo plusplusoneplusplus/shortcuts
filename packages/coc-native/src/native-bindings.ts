@@ -59,6 +59,14 @@ export declare class NativeDatabaseHandle {
   upsertStreamingTurn(processId: string, content: string, streaming: boolean, timeline: string, timestamp: string): Promise<void>
 }
 
+/** One request, one cancellation token; never a cached provider or shared cancellation scope. */
+export declare class NativeGitHubCredentialRequest {
+  static copilotCliConfig(configPath: string, account?: GitHubAccount | undefined | null, timeoutMs?: number | undefined | null): NativeGitHubCredentialRequest
+  static ghCli(account: GitHubAccount, timeoutMs?: number | undefined | null): NativeGitHubCredentialRequest
+  read(): Promise<GitHubCredentialSnapshot>
+  cancel(): void
+}
+
 export declare class NativeMicrosoftOAuthSignIn {
   constructor(options: MicrosoftOAuthOptions, expectedAccount?: MicrosoftAccount | undefined | null, timeoutMs?: number | undefined | null)
   beginBrowser(): Promise<MicrosoftSignInInstructions>
@@ -443,6 +451,17 @@ export declare function gitGlobalConfigAdd(key: string, value: string, options?:
 export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOptions | undefined | null): Promise<string[]>
 
 export declare function gitHistory(repoRoot: string, args: Array<string>): Promise<GitLogCommit[]>
+
+export interface GitHubAccount {
+  host: string
+  login: string
+}
+
+export interface GitHubCredentialSnapshot {
+  host: string
+  login: string
+  token: string
+}
 
 /**
  * Read a page of the branch list, in git's own `refname` order.
@@ -1114,9 +1133,6 @@ export interface RankedFileMatch {
 
 /** Read one note's text and mtime. Rejects with a 404 when it is missing. */
 export declare function readNote(root: string, path: string, options: NotesContentOptions): Promise<NotesFileContent>
-
-/** Read the UTF-8 blob of one exact Windows generic credential. */
-export declare function readWindowsCredential(target: string): Promise<string | null>
 
 /**
  * Rename or move an entry, carrying its `.comments.json` sidecar and its place

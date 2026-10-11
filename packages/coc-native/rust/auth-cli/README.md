@@ -79,7 +79,7 @@ auth-cli --show-secrets microsoft sign-in device \
   --namespace <workspace-namespace> \
   --authority https://login.microsoftonline.com/<tenant-id> \
   --client-id <registered-client-id> \
-  --scope openid --scope offline_access --scope <resource-scope> \
+  --scope openid --scope profile --scope offline_access --scope <resource-scope> \
   --target <requested-target> \
   --coordination-directory <absolute-private-directory>
 ```
@@ -87,7 +87,9 @@ auth-cli --show-secrets microsoft sign-in device \
 Open the printed `verificationUri` and enter `userCode`. The command polls until
 completion, cancellation or timeout. Replace `device` with `browser` to obtain
 an authorization-code PKCE URL; open `authorizationUrl` in your browser.
-The registration must support the appropriate device or loopback redirect flow.
+The registration must support the device flow or browser redirect
+`http://localhost:<port>/` with an ephemeral port, as appropriate. The browser
+callback listener binds only `127.0.0.1`.
 Optional `--account-id <verified-object-id>` rejects a different signed-in account.
 Bootstrap sign-in omits this option and returns the verified account descriptor.
 The final token event is emitted only after durable refresh-credential storage.
@@ -105,7 +107,7 @@ auth-cli microsoft token oauth \
   --namespace <workspace-namespace> \
   --authority https://login.microsoftonline.com/<tenant-id> \
   --client-id <registered-client-id> \
-  --scope openid --scope offline_access --scope <resource-scope> \
+  --scope openid --scope profile --scope offline_access --scope <resource-scope> \
   --target <requested-target> \
   --coordination-directory <absolute-private-directory> \
   --account-id <verified-object-id> --refresh auto

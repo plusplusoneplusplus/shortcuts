@@ -191,6 +191,11 @@ and each hybrid Graph writer/reader startup acquisition share a thirty-second bu
 their ten-second total deadline. Standalone Graph startup,
 polling and writes share a provider. Teams MCP OAuth and Copilot credentials
 retain separate ownership.
+
+`auth_sdk::github` owns read-only Copilot config/OS and GitHub CLI acquisition;
+`src/github-auth.ts` exposes isolated one-shot cancellation without caching or
+refresh. Copilot RPC, environment/custom resolvers and service authorization
+stay in TypeScript. See the native instructions for exact-key and platform contracts.
 Shared types, storage and lifecycle remain
 vendor-neutral. Protocol/security contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).

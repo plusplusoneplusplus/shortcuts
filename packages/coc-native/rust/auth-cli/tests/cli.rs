@@ -179,6 +179,8 @@ fn configuration_and_cross_source_arguments_fail_before_acquisition() {
             "--scope",
             "openid",
             "--scope",
+            "profile",
+            "--scope",
             "offline_access",
             "--target",
             "fixture",

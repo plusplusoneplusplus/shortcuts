@@ -11,8 +11,7 @@ export type CopilotCredentialConfig =
     | { source: 'environment'; variable: string; host?: string; login?: string }
     | { source: 'resolver'; resolve: (signal: AbortSignal) => Promise<CopilotCredentialSnapshot> }
     | { source: 'cli-config'; account: 'active-cli-account' | { host: string; login: string }; configPath?: string }
-    | { source: 'gh-cli'; host: string; login: string }
-    | { source: 'keychain'; host: string; login: string };
+    | { source: 'gh-cli'; host: string; login: string };
 
 export interface CopilotModelBinding {
     api: CopilotWireApi;

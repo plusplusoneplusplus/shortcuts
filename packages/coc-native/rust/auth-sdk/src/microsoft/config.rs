@@ -117,6 +117,7 @@ impl OAuthOptions {
             || self.scopes.len() > 64
             || self.scopes.iter().any(|s| !text(s, 2048) || s.chars().any(char::is_whitespace))
             || !self.scopes.iter().any(|s| s == "openid")
+            || !self.scopes.iter().any(|s| s == "profile")
             || !self.scopes.iter().any(|s| s == "offline_access")
             || self.resource.as_ref().is_some_and(|r| !cli_argument(r))
             || !self.coordination_dir.is_absolute()

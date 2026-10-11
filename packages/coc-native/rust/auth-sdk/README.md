@@ -3,13 +3,57 @@
 Standalone, unpublished Rust library in the native Cargo workspace. It has no
 Node dependency or application policy. `auth_sdk::microsoft` implements Microsoft
 public-cloud, US-government and China-cloud OAuth, plus Azure CLI acquisition.
+`auth_sdk::github` reads existing, explicitly selected Copilot CLI and GitHub CLI credentials.
 Shared `Account`, `Token`, `Secret`, `Clock`, `CredentialStore`, lifecycle and
 `AuthError` contracts are vendor-neutral. Future vendors use separate modules,
 not a universal vendor options object.
 
 The N-API addon exports `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through
 the native package. Nothing automatically instantiates them. Existing consumers,
-credential files and Copilot's read-only Windows credential capability are separate.
+Microsoft handles have their own lifecycle; GitHub acquisition uses one-shot
+`readGitHubCredential` requests through the native package.
+
+## GitHub CLI credential acquisition
+
+`GitHubCredentialOptions` selects `CopilotCliConfig { config_path, account }` or
+`GhCli { account }`, with a positive `timeout_ms` of at most 10,000.
+`CopilotAccountSelection` is `ActiveCliAccount` or `Explicit(GitHubAccount)`.
+The host resolves the config path, including `COPILOT_HOME`, before calling Rust.
+Every call rereads selection and credentials. CLI metadata selects an account;
+it is not network-verified identity. The snapshot contains only an account and
+`Secret` token, without expiry, refresh, login, storage writes or token exchange.
+
+Config reads accept full-line JSONC comments, cap bytes at 1 MiB and reject
+non-object JSON, invalid selection and changes detected between handle metadata
+reads. Bare or HTTPS hosts retain their exact spelling for `host:login` lookup;
+only returned hostnames are lowercased. Host credentials, ports, paths other than
+the HTTPS root slash, queries and fragments are rejected.
+
+The file token wins. Only an absent, null or empty token permits OS lookup for
+the selected account: Windows generic target `copilot-cli/<stored-host>:<login>`
+or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`.
+Linux config acquisition is file-only and reports `StorageUnavailable` when
+the selected token is absent. Non-string file tokens fail. Nonempty strings
+return to the consumer for its service-specific token policy; they never
+trigger OS lookup or another source.
+
+GitHub CLI executes `gh auth token --hostname <host> --user <login>`, removing
+`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`
+from only the child environment. macOS lookup executes `/usr/bin/security`.
+Both commands cap stdout and stderr at 16 KiB and share the request deadline.
+The shared process runner starts Windows children suspended in kill-on-close
+jobs and Unix children in process groups. Cancellation and timeout drop the
+tree and let Tokio reap the child. Config and Windows reads run on blocking
+workers with cancellation/deadline checks before publication. Synchronous OS
+reads cannot be preempted; a cancelled worker may finish but cannot return a
+credential to the caller.
+
+`readGitHubCredential(options, signal?)` returns an immutable `{token,host,login}`
+snapshot and creates a separate native cancellation handle per call. Missing
+binary capabilities and sanitized `AuthError` codes propagate without a JS
+reader fallback. Environment/custom JS resolvers and Copilot SDK RPC stay in
+TypeScript, as do Copilot API authorization and allowed token-family checks.
+JavaScript token strings cannot be zeroized.
 
 ## Source selection
 
@@ -25,7 +69,7 @@ new MicrosoftTokenProvider({
         namespace: '<workspace-namespace>',
         authority: 'https://login.microsoftonline.com/<tenant-id>',
         clientId: '<registered-client-id>',
-        scopes: ['openid', 'offline_access', '<resource-scope>'],
+        scopes: ['openid', 'profile', 'offline_access', '<resource-scope>'],
         target: '<requested-target>',
         coordinationDirectory: '<absolute-private-local-directory>',
     },
@@ -58,7 +102,9 @@ listener, directory creation or browser launch. There are no inferred sources,
 client IDs, targets, ambient tokens, other-account attempts or source fallbacks.
 OAuth requires an explicit tenant UUID and a matching verified object UUID.
 Bootstrap sign-in may omit the expected account, but not the tenant/client/scopes.
-Scopes include `openid` and `offline_access`; `resource` is optional and sent only
+Scopes include `openid`, `profile` and `offline_access`. Microsoft requires
+`profile` for the object-ID claim used to verify account identity.
+`resource` is optional and sent only
 when explicitly configured for a protocol that requires it.
 
 Azure CLI accepts either an explicit account/tenant/subscription or the explicit
@@ -128,8 +174,12 @@ then call `wait()`. The SDK never opens the browser. Rust exposes the correspond
 `begin_browser`, `begin_device`, `wait`, `cancel` and `dispose` methods.
 
 Browser flow binds only `127.0.0.1` on an ephemeral port and returns an authorization
-URL. The registered client must allow this loopback redirect. The callback checks
-state and duplicate parameters, exchanges the code with its PKCE verifier, and
+URL with redirect `http://localhost:<port>/`. Authorization and token exchange
+use the same localhost root redirect; the listener stays bound to the IPv4
+loopback address. The registered client must allow this redirect; the SDK does
+not retry another host or path. The callback
+accepts only the exact root path `/`, checks state and duplicate parameters,
+exchanges the code with its PKCE verifier, and
 requires the ID-token nonce. Device polling honors pending/slow-down responses,
 denial, expiry and the handle deadline. Both flows verify RS256 signatures against
 trusted discovery/JWKS, issuer, audience, expiry/not-before, tenant and object ID.
@@ -148,6 +198,8 @@ Refresh credentials use exact `auth-sdk:v1:<digest>` keys: Windows Credential
 Manager, non-synchronizing macOS Keychain, and Linux Secret Service with encrypted
 DBus sessions. There is no plaintext or Linux keyutils fallback. Linux/macOS
 storage queries reject locked/denied stores without opening an unlock prompt.
+Windows stores UTF-8 secret blobs rather than UTF-16 passwords; its 2,560-byte
+credential limit applies to the complete encoded refresh credential.
 Unavailable, locked, denied and failed operations have explicit typed errors.
 No unrelated account enumeration, consumer-cache import or access-token persistence
 is performed. Secret-bearing Rust types have neither `Debug` nor `Serialize`.
@@ -194,8 +246,9 @@ service access and audience-specific permissions remain service constraints.
 Run `cargo test --locked -p auth-sdk` from the native Rust workspace, without Node.
 Tests use fake clocks, OAuth discovery/JWKS and synthetic identity signing keys,
 isolated memory stores, fake CLI runners/executables and competing lock processes.
-The ignored `isolated_os_store_fixture` test writes/deletes only a unique SDK entry;
-CI runs it explicitly. Linux unavailable-store tests use a separate process with
+The ignored `isolated_os_store_fixture` tests write/delete only unique SDK entries;
+CI runs them explicitly, including Windows UTF-8 storage-limit checks.
+Linux unavailable-store tests use a separate process with
 an invalid DBus address. Native CI tests Linux/macOS/Windows; release tests cover
 the six packaged targets. Cargo audits use the shared lockfile.
 
@@ -204,3 +257,7 @@ the six packaged targets. Cargo audits use the shared lockfile.
 `npm run test:run -w packages/coc-native -- test/auth.test.ts` exercises the built
 addon, typed errors, cancellation/disposal and missing-capability failures without
 real user authentication.
+`test/github-auth.test.ts` covers the GitHub addon with synthetic executables and
+config fixtures. Rust Windows tests create and remove unique generic credentials;
+the ignored `github::tests::isolated_macos_cli_keychain_fixture` checks exact
+same-account CLI Keychain import on macOS with scoped cleanup.

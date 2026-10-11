@@ -172,7 +172,11 @@ impl HttpTransport for FakeHttp {
         }
         if let Some(overrides) = self.claim_override.lock().unwrap().as_ref() {
             for (key, value) in overrides.as_object().unwrap() {
-                claims[key] = value.clone();
+                if value.is_null() {
+                    claims.as_object_mut().unwrap().remove(key);
+                } else {
+                    claims[key] = value.clone();
+                }
             }
         }
         let mut header = Header::new(Algorithm::RS256);
@@ -251,7 +255,12 @@ impl Fixture {
             namespace: "fixture".into(),
             authority: format!("https://login.microsoftonline.com/{TENANT}"),
             client_id: CLIENT.into(),
-            scopes: vec!["openid".into(), "offline_access".into(), "requested.scope".into()],
+            scopes: vec![
+                "openid".into(),
+                "profile".into(),
+                "offline_access".into(),
+                "requested.scope".into(),
+            ],
             target: "fixture-resource".into(),
             resource: None,
             coordination_dir: self.directory.path().to_path_buf(),
@@ -457,6 +466,20 @@ async fn construction_is_validation_only_and_rejects_unsafe_configuration() {
     assert_eq!(f.store.writes.load(Ordering::SeqCst), 0);
     assert_eq!(std::fs::read_dir(f.directory.path()).unwrap().count(), 0);
     p.dispose();
+    for required_scope in ["openid", "profile", "offline_access"] {
+        let mut options = f.oauth();
+        options.scopes.retain(|scope| scope != required_scope);
+        assert_eq!(code(options.validate()), ErrorCode::InvalidConfiguration);
+        assert_eq!(
+            code(MicrosoftOAuthSignIn::with_dependencies(
+                options,
+                None,
+                Duration::from_secs(30),
+                f.deps.clone(),
+            )),
+            ErrorCode::InvalidConfiguration,
+        );
+    }
     for authority in [
         "http://login.microsoftonline.com/x",
         "https://attacker.example/x",
@@ -669,6 +692,15 @@ async fn browser_pkce_state_nonce_and_durable_bootstrap() {
     assert_eq!(pairs["response_type"], "code");
     *f.http.nonce.lock().unwrap() = Some(pairs["nonce"].clone());
     let redirect = pairs["redirect_uri"].clone();
+    let redirect_url = url::Url::parse(&redirect).unwrap();
+    assert_eq!(redirect_url.scheme(), "http");
+    assert_eq!(redirect_url.host_str(), Some("localhost"));
+    assert!(redirect_url.port().is_some_and(|port| port > 0));
+    assert_eq!(redirect_url.path(), "/");
+    assert!(redirect_url.query().is_none());
+    assert!(redirect_url.fragment().is_none());
+    assert_eq!(redirect, format!("http://localhost:{}/", redirect_url.port().unwrap()));
+    assert!(tokio::net::TcpStream::connect(("::1", redirect_url.port().unwrap())).await.is_err());
     let callback = format!("{redirect}?code=fixture-code&state={}", pairs["state"]);
     let (result, request) = tokio::join!(signin.wait(), reqwest::get(callback));
     let result = result.unwrap();
@@ -676,12 +708,93 @@ async fn browser_pkce_state_nonce_and_durable_bootstrap() {
     assert_eq!(result.account.id, ACCOUNT);
     assert_eq!(f.store.writes.load(Ordering::SeqCst), 1);
     let forms = f.http.requests.lock().unwrap().clone();
+    assert!(forms[0].iter().any(|(key, value)| key == "redirect_uri" && value == &redirect));
     let verifier = forms[0].iter().find(|(k, _)| k == "code_verifier").unwrap().1.as_str();
     let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .encode(sha2::Sha256::digest(verifier.as_bytes()));
     assert_eq!(challenge, pairs["code_challenge"]);
     drop(forms);
     f.provider(Refresh::Never, true).get_token(false, &CancellationToken::new()).await.unwrap();
+}
+
+#[tokio::test]
+async fn browser_ignores_non_root_paths_before_accepting_root_callback() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let f = Fixture::new();
+    let signin = f.signin(None);
+    let instructions = signin.begin_browser().await.unwrap();
+    let url = url::Url::parse(instructions.authorization_url.as_deref().unwrap()).unwrap();
+    let pairs: HashMap<_, _> =
+        url.query_pairs().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    let redirect = url::Url::parse(&pairs["redirect_uri"]).unwrap();
+    *f.http.nonce.lock().unwrap() = Some(pairs["nonce"].clone());
+    let requests = async {
+        for path in [
+            "/callback",
+            "/callback/",
+            "/favicon.ico",
+            "//",
+            "/%2F",
+            "/callback/..",
+            "/%2e/",
+            "//other.example/",
+        ] {
+            let mut stream =
+                tokio::net::TcpStream::connect(("127.0.0.1", redirect.port().unwrap()))
+                    .await
+                    .unwrap();
+            let request = format!(
+                "GET {path}?code=fixture&state={} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                pairs["state"]
+            );
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = Vec::new();
+            tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut response))
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(response.is_empty());
+            assert_eq!(f.http.grants.load(Ordering::SeqCst), 0);
+            assert_eq!(f.store.writes.load(Ordering::SeqCst), 0);
+        }
+        reqwest::get(format!("{}?code=fixture&state={}", pairs["redirect_uri"], pairs["state"]))
+            .await
+            .unwrap()
+    };
+    let (result, response) = tokio::join!(signin.wait(), requests);
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(result.unwrap().account.id, ACCOUNT);
+    assert_eq!(f.http.grants.load(Ordering::SeqCst), 1);
+    assert_eq!(f.store.writes.load(Ordering::SeqCst), 1);
+    assert!(reqwest::get(pairs["redirect_uri"].clone()).await.is_err());
+}
+
+#[tokio::test]
+async fn browser_root_callback_rejects_invalid_parameters_without_exchange() {
+    for (query, expected) in [
+        ("state=wrong&code=fixture", ErrorCode::IdentityVerificationFailed),
+        ("code=fixture", ErrorCode::IdentityVerificationFailed),
+        ("state={state}&state={state}&code=fixture", ErrorCode::IdentityVerificationFailed),
+        ("state={state}&code=fixture&code=other", ErrorCode::InvalidTokenResponse),
+        ("state={state}&code=", ErrorCode::InvalidTokenResponse),
+        ("state={state}", ErrorCode::InvalidTokenResponse),
+        ("state={state}&error=access_denied", ErrorCode::AccessDenied),
+    ] {
+        let f = Fixture::new();
+        let signin = f.signin(None);
+        let instructions = signin.begin_browser().await.unwrap();
+        let url = url::Url::parse(instructions.authorization_url.as_deref().unwrap()).unwrap();
+        let pairs: HashMap<_, _> =
+            url.query_pairs().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let query = query.replace("{state}", &pairs["state"]);
+        let (result, _) =
+            tokio::join!(signin.wait(), reqwest::get(format!("{}?{query}", pairs["redirect_uri"])));
+        assert_eq!(code(result), expected);
+        assert_eq!(f.http.grants.load(Ordering::SeqCst), 0);
+        assert_eq!(f.store.writes.load(Ordering::SeqCst), 0);
+        assert!(reqwest::get(pairs["redirect_uri"].clone()).await.is_err());
+    }
 }
 
 #[tokio::test]
@@ -750,6 +863,8 @@ async fn device_denial_expiry_and_identity_errors_never_persist() {
         serde_json::json!({"tid":SUBSCRIPTION}),
         serde_json::json!({"iss":"https://attacker.example"}),
         serde_json::json!({"exp":NOW/1000}),
+        serde_json::json!({"oid":null}),
+        serde_json::json!({"oid":"invalid"}),
     ] {
         let f = Fixture::new();
         *f.http.claim_override.lock().unwrap() = Some(overrides);
@@ -1051,6 +1166,36 @@ fn linux_unavailable_store_is_an_explicit_failure() {
         .output()
         .unwrap();
     assert!(result.status.success(), "isolated unavailable-store test failed");
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "Writes and deletes one isolated SDK credential in Windows Credential Manager"]
+fn windows_isolated_os_store_fixture_utf8_capacity_and_roundtrip() {
+    use crate::OsCredentialStore;
+    let directory = tempfile::tempdir().unwrap();
+    let key = format!(
+        "auth-sdk:v1:{}",
+        config::hash(&["isolated-utf8-fixture", &directory.path().to_string_lossy()])
+    );
+    let result = (|| -> Result<()> {
+        assert!(OsCredentialStore.read(&key)?.is_none());
+        for value in ["x".repeat(2560), "\u{e9}".repeat(1280)] {
+            let secret = Secret::new(value);
+            OsCredentialStore.write(&key, &secret)?;
+            assert_eq!(OsCredentialStore.read(&key)?.unwrap().expose(), secret.expose());
+        }
+        assert_eq!(
+            code(OsCredentialStore.write(&key, &Secret::new("x".repeat(2561)))),
+            ErrorCode::StorageFailed,
+        );
+        assert_eq!(OsCredentialStore.read(&key)?.unwrap().expose(), "\u{e9}".repeat(1280));
+        Ok(())
+    })();
+    let deleted = OsCredentialStore.delete(&key);
+    result.unwrap();
+    deleted.unwrap();
+    assert!(OsCredentialStore.read(&key).unwrap().is_none());
 }
 
 #[cfg(target_os = "linux")]
