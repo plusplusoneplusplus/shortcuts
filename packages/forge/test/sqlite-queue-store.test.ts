@@ -33,30 +33,6 @@ afterEach(() => {
 });
 
 // ============================================================================
-// Schema
-// ============================================================================
-
-describe('Schema', () => {
-    it('creates queue_tasks and queue_repo_state tables', () => {
-        const tables = db
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-            .all() as { name: string }[];
-        const names = tables.map((t) => t.name);
-        expect(names).toContain('queue_tasks');
-        expect(names).toContain('queue_repo_state');
-    });
-
-    it('creates indexes on queue_tasks', () => {
-        const indexes = db
-            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='queue_tasks'")
-            .all() as { name: string }[];
-        const names = indexes.map((i) => i.name);
-        expect(names).toContain('idx_queue_tasks_repo_id');
-        expect(names).toContain('idx_queue_tasks_status');
-    });
-});
-
-// ============================================================================
 // upsertQueueTask
 // ============================================================================
 

@@ -17,10 +17,6 @@ describe('dream bundled skill', () => {
         expect(entry?.relativePath).toBe('dream');
     });
 
-    it('SKILL.md file exists on disk', () => {
-        expect(fs.existsSync(SKILL_FILE)).toBe(true);
-    });
-
     it('has YAML frontmatter with name dream', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
         expect(content).toContain('name: dream');

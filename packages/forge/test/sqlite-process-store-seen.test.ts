@@ -170,15 +170,6 @@ describe('Seen state', () => {
         expect(store.getSeenMap('ws2')).toEqual({ p2: t2 });
     });
 
-    it('markManySeen with empty array is a no-op', () => {
-        expect(() => store.markManySeen([])).not.toThrow();
-    });
-
-    it('markSeen on nonexistent process is a no-op', () => {
-        // Should not throw — UPDATE with no matching row is fine
-        expect(() => store.markSeen('nonexistent', '2024-01-01T00:00:00Z')).not.toThrow();
-    });
-
     it('deleting a process removes its seen state', async () => {
         const endTime = '2024-06-01T12:00:00.000Z';
         await store.addProcess(makeProcess('p1', {

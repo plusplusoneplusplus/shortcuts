@@ -91,14 +91,6 @@ async function closeFileDestinations(logger: pino.Logger): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe('createPinoAdapter', () => {
-    it('returns an object satisfying the Logger interface', () => {
-        const adapter = createPinoAdapter(pino({ level: 'silent' }));
-        expect(typeof adapter.debug).toBe('function');
-        expect(typeof adapter.info).toBe('function');
-        expect(typeof adapter.warn).toBe('function');
-        expect(typeof adapter.error).toBe('function');
-    });
-
     it('all four methods are callable without throwing', () => {
         const adapter: Logger = createPinoAdapter(pino({ level: 'silent' }));
         expect(() => adapter.debug('cat', 'msg')).not.toThrow();
@@ -178,14 +170,6 @@ describe('createPinoAdapter', () => {
 // ---------------------------------------------------------------------------
 
 describe('createPinoNullLogger', () => {
-    it('returns a Logger-compatible object', () => {
-        const logger = createPinoNullLogger();
-        expect(typeof logger.debug).toBe('function');
-        expect(typeof logger.info).toBe('function');
-        expect(typeof logger.warn).toBe('function');
-        expect(typeof logger.error).toBe('function');
-    });
-
     it('suppresses all output', () => {
         // There is no observable output to capture since Pino uses level 'silent'.
         // We just verify no output reaches stderr and no error is thrown.

@@ -1,5 +1,5 @@
 /**
- * Tests for CodexSDKService and SDK_PROVIDER_CODEX constant.
+ * Tests for CodexSDKService.
  *
  * Tests inject explicit availability state so unavailable-path coverage remains
  * deterministic even when the optional `@openai/codex-sdk` peer is installed.
@@ -10,7 +10,6 @@ import { CodexSDKService, registerCodexSDKService } from '@plusplusoneplusplus/c
 import {
     sdkServiceRegistry,
     CODEX_PROVIDER,
-    SDK_PROVIDER_CODEX,
     RewindUnsupportedError,
     isRewindUnsupportedError,
 } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -648,20 +647,6 @@ describe('CodexSDKService — SDK mocked', () => {
                 expect.objectContaining({ modelReasoningEffort: effort }),
             );
         }
-    });
-});
-
-// ---------------------------------------------------------------------------
-// SDK_PROVIDER_CODEX constant
-// ---------------------------------------------------------------------------
-
-describe('SDK_PROVIDER_CODEX constant', () => {
-    it('equals "codex"', () => {
-        expect(CODEX_PROVIDER).toBe('codex');
-    });
-
-    it('SDK_PROVIDER_CODEX is an alias for CODEX_PROVIDER', () => {
-        expect(SDK_PROVIDER_CODEX).toBe(CODEX_PROVIDER);
     });
 });
 

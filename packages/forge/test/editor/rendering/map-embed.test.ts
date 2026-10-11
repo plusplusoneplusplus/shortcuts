@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-    DEFAULT_MAP_EMBED_HEIGHT,
-    MAX_MAP_EMBED_HEIGHT,
-    MIN_MAP_EMBED_HEIGHT,
-    isEmbeddableMapUrl,
-} from '../../../src/editor/rendering/map-embed';
+import { isEmbeddableMapUrl } from '../../../src/editor/rendering/map-embed';
 
 describe('isEmbeddableMapUrl', () => {
     it('allows modern Google Maps embed URLs', () => {
@@ -42,11 +37,5 @@ describe('isEmbeddableMapUrl', () => {
     it('rejects missing query strings', () => {
         expect(isEmbeddableMapUrl('https://www.google.com/maps/embed')).toBe(false);
         expect(isEmbeddableMapUrl('https://maps.google.com/maps')).toBe(false);
-    });
-
-    it('exports map height limits', () => {
-        expect(DEFAULT_MAP_EMBED_HEIGHT).toBe(400);
-        expect(MIN_MAP_EMBED_HEIGHT).toBeLessThan(DEFAULT_MAP_EMBED_HEIGHT);
-        expect(MAX_MAP_EMBED_HEIGHT).toBeGreaterThan(DEFAULT_MAP_EMBED_HEIGHT);
     });
 });

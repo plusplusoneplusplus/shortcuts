@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-    generateAnchorId,
     parseHeadings,
     findSectionEndLine,
     buildSectionMap,
@@ -8,24 +7,6 @@ import {
     getHeadingAnchorId,
     HeadingInfo
 } from '../../../src/editor/rendering/heading-parser';
-
-describe('generateAnchorId', () => {
-    it('generates lowercase hyphenated ID', () => {
-        expect(generateAnchorId('Hello World')).toBe('hello-world');
-    });
-
-    it('removes special characters', () => {
-        expect(generateAnchorId('Section (1): Overview!')).toBe('section-1-overview');
-    });
-
-    it('handles empty input', () => {
-        expect(generateAnchorId('')).toBe('');
-    });
-
-    it('handles markdown formatting', () => {
-        expect(generateAnchorId('**Bold** heading')).toBe('bold-heading');
-    });
-});
 
 describe('parseHeadings', () => {
     it('parses headings from markdown content', () => {

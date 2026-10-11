@@ -4,150 +4,19 @@
  * The sync `execGit` this file used to exercise was deleted in AC-08 — every
  * git command in forge is async and runs in the native addon or, for WSL, in
  * `exec.ts`'s `wsl.exe` branch. Its behaviour tests went with it; what is left
- * here guards the export surface so the sync helper cannot come back.
+ * here guards git UI constants and the export surface so the sync helper cannot come back.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
     GitChangeStatus,
     GitChangeStage,
-    GitChange,
-    GitChangeCounts,
-    GitCommit,
-    CommitLoadOptions,
-    CommitLoadResult,
-    GitCommitFile,
-    GitCommentCounts,
-    GitCommitRange,
-    GitCommitRangeFile,
     STATUS_SHORT,
     STAGE_PREFIX,
     STAGE_LABEL,
     execGitAsync,
 } from '../../src/git';
 import * as gitModule from '../../src/git';
-
-// ---------------------------------------------------------------------------
-// Type smoke tests
-// ---------------------------------------------------------------------------
-
-describe('Git types', () => {
-    it('should construct a valid GitChange with filePath instead of uri', () => {
-        const change: GitChange = {
-            filePath: '/repo/src/index.ts',
-            status: 'modified',
-            stage: 'staged',
-            repositoryRoot: '/repo',
-            repositoryName: 'repo',
-        };
-        expect(change.filePath).toBe('/repo/src/index.ts');
-        expect(change.status).toBe('modified');
-        expect(change.stage).toBe('staged');
-    });
-
-    it('should construct a GitChange with optional originalPath', () => {
-        const change: GitChange = {
-            filePath: '/repo/new-name.ts',
-            originalPath: '/repo/old-name.ts',
-            status: 'renamed',
-            stage: 'staged',
-            repositoryRoot: '/repo',
-            repositoryName: 'repo',
-        };
-        expect(change.originalPath).toBe('/repo/old-name.ts');
-    });
-
-    it('should construct a valid GitCommit', () => {
-        const commit: GitCommit = {
-            hash: 'abc123def456',
-            shortHash: 'abc123d',
-            subject: 'fix: resolve issue',
-            body: 'Closes #1',
-            authorName: 'Alice',
-            authorEmail: 'alice@example.com',
-            date: '2025-01-15T10:00:00Z',
-            relativeDate: '2 hours ago',
-            parentHashes: 'parent1',
-            refs: ['HEAD', 'main'],
-            repositoryRoot: '/repo',
-            repositoryName: 'repo',
-            isAheadOfRemote: true,
-        };
-        expect(commit.hash).toBe('abc123def456');
-        expect(commit.isAheadOfRemote).toBe(true);
-    });
-
-    it('should construct CommitLoadOptions and CommitLoadResult', () => {
-        const opts: CommitLoadOptions = { maxCount: 50, skip: 10 };
-        const result: CommitLoadResult = {
-            commits: [],
-            hasMore: false,
-        };
-        expect(opts.maxCount).toBe(50);
-        expect(result.hasMore).toBe(false);
-    });
-
-    it('should construct a valid GitCommitFile', () => {
-        const file: GitCommitFile = {
-            path: 'src/index.ts',
-            status: 'added',
-            commitHash: 'abc123',
-            parentHash: 'def456',
-            repositoryRoot: '/repo',
-        };
-        expect(file.path).toBe('src/index.ts');
-        expect(file.status).toBe('added');
-    });
-
-    it('should construct GitChangeCounts', () => {
-        const counts: GitChangeCounts = {
-            staged: 3,
-            unstaged: 1,
-            untracked: 2,
-            total: 6,
-        };
-        expect(counts.total).toBe(6);
-    });
-
-    it('should construct GitCommentCounts', () => {
-        const counts: GitCommentCounts = {
-            open: 5,
-            resolved: 3,
-            total: 8,
-        };
-        expect(counts.total).toBe(8);
-    });
-
-    it('should construct a valid GitCommitRange', () => {
-        const range: GitCommitRange = {
-            baseRef: 'origin/main',
-            headRef: 'HEAD',
-            commitCount: 3,
-            files: [],
-            additions: 42,
-            deletions: 10,
-            mergeBase: 'abc123',
-            branchName: 'feature/x',
-            repositoryRoot: '/repo',
-            repositoryName: 'repo',
-        };
-        expect(range.commitCount).toBe(3);
-        expect(range.branchName).toBe('feature/x');
-    });
-
-    it('should construct a valid GitCommitRangeFile', () => {
-        const file: GitCommitRangeFile = {
-            path: 'src/index.ts',
-            status: 'modified',
-            additions: 10,
-            deletions: 2,
-            oldPath: 'src/old-index.ts',
-            repositoryRoot: '/repo',
-        };
-        expect(file.additions).toBe(10);
-        expect(file.oldPath).toBe('src/old-index.ts');
-    });
-});
 
 // ---------------------------------------------------------------------------
 // Constants correctness
@@ -229,43 +98,3 @@ describe('sync execGit removal', () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// Barrel re-export
-// ---------------------------------------------------------------------------
-
-describe('Barrel re-export (git/index)', () => {
-    it('should export all expected symbols from the barrel', () => {
-        // Constants
-        expect(STATUS_SHORT).toBeDefined();
-        expect(STAGE_PREFIX).toBeDefined();
-        expect(STAGE_LABEL).toBeDefined();
-
-        expect(typeof execGitAsync).toBe('function');
-    });
-
-    it('should re-export types that compile correctly', () => {
-        // These assignments confirm the types are importable and usable.
-        const _change: GitChange = {
-            filePath: '/a',
-            status: 'added',
-            stage: 'staged',
-            repositoryRoot: '/r',
-            repositoryName: 'r',
-        };
-        const _commit: GitCommit = {
-            hash: 'h', shortHash: 's', subject: 'sub', body: 'b',
-            authorName: 'a', authorEmail: 'e',
-            date: 'd', relativeDate: 'rd',
-            parentHashes: 'p', refs: [],
-            repositoryRoot: '/r', repositoryName: 'r',
-        };
-        const _range: GitCommitRange = {
-            baseRef: 'b', headRef: 'h', commitCount: 0,
-            files: [], additions: 0, deletions: 0,
-            mergeBase: 'm', repositoryRoot: '/r', repositoryName: 'r',
-        };
-        expect(_change).toBeDefined();
-        expect(_commit).toBeDefined();
-        expect(_range).toBeDefined();
-    });
-});

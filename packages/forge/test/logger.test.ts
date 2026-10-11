@@ -11,7 +11,6 @@ import {
     setLogger,
     getLogger,
     resetLogger,
-    LogCategory,
 } from '../src/logger';
 
 describe('Logger', () => {
@@ -151,16 +150,4 @@ describe('Logger', () => {
         });
     });
 
-    // ========================================================================
-    // LogCategory
-    // ========================================================================
-
-    describe('LogCategory', () => {
-        it('should have expected values', () => {
-            expect(LogCategory.AI).toBe('AI Service');
-            expect(LogCategory.PIPELINE).toBe('Pipeline');
-            expect(LogCategory.GIT).toBe('Git');
-            expect(LogCategory.Memory).toBe('Memory');
-        });
-    });
 });

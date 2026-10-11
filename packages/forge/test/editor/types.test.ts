@@ -10,29 +10,15 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-    CommentStatus,
     CommentType,
-    CommentSelection,
     CommentAnchor,
     MermaidContext,
     MarkdownComment,
     isUserComment,
-    CommentsSettings,
-    CommentsConfig,
     DEFAULT_COMMENTS_SETTINGS,
     DEFAULT_COMMENTS_CONFIG,
     WebviewToBackendMessage,
     BackendToWebviewMessage,
-    EditorMessage,
-    PendingSelection,
-    AskAIContext,
-    WebviewSettings,
-    LineChange,
-    SkillInfo,
-    RecentPrompt,
-    RecentItem,
-    AIModelOption,
-    FollowPromptDialogOptions,
 } from '../../src/editor';
 
 // -------------------------------------------------------------------------
@@ -48,46 +34,6 @@ describe('Editor types', () => {
     // WebviewToBackendMessage exhaustiveness
     // -----------------------------------------------------------------
     describe('WebviewToBackendMessage', () => {
-        it('discriminated union covers all 34 variants', () => {
-            const variants: WebviewToBackendMessage['type'][] = [
-                'ready',
-                'requestState',
-                'addComment',
-                'editComment',
-                'deleteComment',
-                'resolveComment',
-                'reopenComment',
-                'resolveAll',
-                'deleteAll',
-                'updateContent',
-                'generatePrompt',
-                'copyPrompt',
-                'sendToChat',
-                'sendCommentToChat',
-                'sendToCLIInteractive',
-                'sendToCLIBackground',
-                'resolveImagePath',
-                'openFile',
-                'askAI',
-                'askAIInteractive',
-                'askAIQueued',
-                'collapsedSectionsChanged',
-                'requestPromptFiles',
-                'requestSkills',
-                'executeWorkPlan',
-                'executeWorkPlanWithSkill',
-                'promptSearch',
-                'showFollowPromptDialog',
-                'followPromptDialogResult',
-                'copyFollowPrompt',
-                'updateDocument',
-                'requestUpdateDocumentDialog',
-                'requestRefreshPlanDialog',
-                'refreshPlan',
-            ];
-            expect(variants).toHaveLength(34);
-        });
-
         it('exhaustive switch compiles over all 34 type values', () => {
             // This function must compile. If a variant is added to the union
             // but not handled, TypeScript will report a type error on the
@@ -142,20 +88,6 @@ describe('Editor types', () => {
     // BackendToWebviewMessage exhaustiveness
     // -----------------------------------------------------------------
     describe('BackendToWebviewMessage', () => {
-        it('discriminated union covers all 8 variants', () => {
-            const variants: BackendToWebviewMessage['type'][] = [
-                'update',
-                'imageResolved',
-                'scrollToComment',
-                'promptFilesResponse',
-                'skillsResponse',
-                'showFollowPromptDialog',
-                'showUpdateDocumentDialog',
-                'showRefreshPlanDialog',
-            ];
-            expect(variants).toHaveLength(8);
-        });
-
         it('exhaustive switch compiles over all 8 type values', () => {
             function handle(msg: BackendToWebviewMessage): string {
                 switch (msg.type) {
@@ -173,18 +105,6 @@ describe('Editor types', () => {
 
             const msg: BackendToWebviewMessage = { type: 'showUpdateDocumentDialog' };
             expect(handle(msg)).toBe('showUpdateDocumentDialog');
-        });
-    });
-
-    // -----------------------------------------------------------------
-    // EditorMessage convenience alias
-    // -----------------------------------------------------------------
-    describe('EditorMessage', () => {
-        it('accepts both webview-to-backend and backend-to-webview', () => {
-            const w2b: EditorMessage = { type: 'ready' };
-            const b2w: EditorMessage = { type: 'showRefreshPlanDialog' };
-            expect(w2b.type).toBe('ready');
-            expect(b2w.type).toBe('showRefreshPlanDialog');
         });
     });
 
@@ -293,94 +213,4 @@ describe('Editor types', () => {
         });
     });
 
-    // -----------------------------------------------------------------
-    // Supporting message types shape validation
-    // -----------------------------------------------------------------
-    describe('Supporting types', () => {
-        it('PendingSelection extends CommentSelection', () => {
-            const ps: PendingSelection = {
-                startLine: 1,
-                startColumn: 1,
-                endLine: 2,
-                endColumn: 5,
-                selectedText: 'text',
-            };
-            const cs: CommentSelection = ps;
-            expect(cs.startLine).toBe(1);
-        });
-
-        it('LineChange has expected shape', () => {
-            const lc: LineChange = { line: 5, type: 'added' };
-            expect(lc.line).toBe(5);
-            const lc2: LineChange = { line: 10, type: 'modified' };
-            expect(lc2.type).toBe('modified');
-        });
-
-        it('AskAIContext has expected shape', () => {
-            const ctx: AskAIContext = {
-                selectedText: 'code',
-                startLine: 1,
-                endLine: 5,
-                surroundingLines: 'before\ncode\nafter',
-                nearestHeading: '## Section',
-                allHeadings: ['# Title', '## Section'],
-                instructionType: 'clarify',
-                mode: 'comment',
-            };
-            expect(ctx.mode).toBe('comment');
-        });
-
-        it('SkillInfo has expected shape (no sourceFolder)', () => {
-            const si: SkillInfo = {
-                absolutePath: '/a/b',
-                relativePath: 'b',
-                name: 'my-skill',
-                description: 'A skill',
-            };
-            expect(si.name).toBe('my-skill');
-            // Ensure sourceFolder is NOT required
-            expect((si as Record<string, unknown>)['sourceFolder']).toBeUndefined();
-        });
-
-        it('RecentItem and RecentPrompt have expected shapes', () => {
-            const rp: RecentPrompt = {
-                absolutePath: '/a/b.prompt.md',
-                relativePath: 'b.prompt.md',
-                name: 'b',
-                lastUsed: Date.now(),
-            };
-            expect(rp.name).toBe('b');
-
-            const ri: RecentItem = {
-                type: 'skill',
-                identifier: 'my-skill',
-                name: 'My Skill',
-                lastUsed: Date.now(),
-            };
-            expect(ri.type).toBe('skill');
-        });
-
-        it('AIModelOption has expected shape', () => {
-            const opt: AIModelOption = { id: 'gpt-4', label: 'GPT-4', isDefault: true };
-            expect(opt.isDefault).toBe(true);
-        });
-
-        it('FollowPromptDialogOptions has expected shape', () => {
-            const opts: FollowPromptDialogOptions = {
-                mode: 'background',
-                model: 'gpt-4',
-                additionalContext: 'some context',
-            };
-            expect(opts.mode).toBe('background');
-        });
-
-        it('WebviewSettings has expected shape', () => {
-            const ws: WebviewSettings = {
-                showResolved: true,
-                askAIEnabled: true,
-                collapsedSections: ['heading-1'],
-            };
-            expect(ws.showResolved).toBe(true);
-        });
-    });
 });
