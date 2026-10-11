@@ -247,6 +247,10 @@ references before editing. Paths are package-relative.
   Runs persist a caller-supplied child task id before queue admission, so early
   execution/terminal events stay bound. Admission rechecks cancellation after snapshot
   writes and cancels a child admitted after its run terminates.
+  Every non-skipped run queues one child, including an empty eligible snapshot.
+  Findings must cover the whole snapshot before the submission is accepted.
+  Bounded runs prioritize prior deferred items before oldest-first ordering;
+  oversized ledgers remain eligible for scheduled assessment with unchanged inputs.
   `ScrubberScheduler` uses owner-keyed shared schedule timers and future cron ticks,
   rechecking owner/config/flags before admission. Config and run events refresh timers;
   failure pause and live flag changes disarm them. Shutdown disposes schedule timers,

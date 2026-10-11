@@ -257,6 +257,8 @@ Its injected gate requires both ledger and scrubber flags. Configuration uses `e
 
 Run admission persists the supplied child task id before enqueueing. Early execution/terminal events use that identity; cancellation after snapshot writes prevents enqueue, and cancellation during admission cancels the late-admitted child without applying findings.
 
+Every non-skipped run admits one child, including empty snapshots whose open items await Sentinel review. Submission rejects omitted snapshot items without consuming the accepted batch. The 50-item bound prioritizes prior deferred items, then oldest updates; oversized ledgers do not use unchanged skips while work remains deferred.
+
 ## Task Groups
 
 Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dreams. Always registered (no feature flag).

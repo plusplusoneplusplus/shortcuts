@@ -31,7 +31,9 @@ from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat t
 ledger writers and `send_to_conversation` are excluded. Scrubber turns are unattended:
 ask-user wiring is noninteractive and enabled dangerous-command guards omit approval
 callbacks, preserving auto-deny with audit reporting. Findings remain pending until
-queue completion; cancellation, failure and timeout apply nothing.
+queue completion; cancellation, failure and timeout apply nothing. Submission must
+cover every snapshot item, including explicit unverified reasons when checks fail;
+incomplete batches leave the submission slot available.
 
 ### Per-repo overrides
 

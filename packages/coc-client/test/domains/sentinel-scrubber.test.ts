@@ -38,7 +38,7 @@ describe('Sentinel scrubber client', () => {
     const client = new SentinelTodosClient(adapter).scrubber;
     const config = { enabled: true, cron: '0 */6 * * *', expectedRevision: 7 };
     await client.updateConfig('ws one', 'chat#one', config);
-    // No child process is valid for an empty eligible snapshot.
+    // A caller may receive only the run identity when child identity is unavailable.
     expect(await client.start('ws one', 'chat#one')).toEqual({ runId: 'r' });
     await client.start('ws one', 'chat#one', { itemIds: ['one', 'two'] });
     expect(adapter.calls).toEqual([

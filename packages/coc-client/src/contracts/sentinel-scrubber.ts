@@ -111,7 +111,7 @@ export interface StartSentinelScrubRequest {
 
 export interface StartSentinelScrubResponse {
   runId: string;
-  /** Absent when no items are eligible and no child chat is queued. */
+  /** Owner-scoped child chat identity, when available. */
   processId?: string;
 }
 

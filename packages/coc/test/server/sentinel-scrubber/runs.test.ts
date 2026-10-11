@@ -192,7 +192,32 @@ describe('ScrubberRunService.start', () => {
         expect(enqueue).toHaveBeenCalledTimes(1);
         expect(scrubber.activeRun(owner)?.id).toBe(run.id);
         // Another ledger is unaffected.
-        await expect(service.start(other, { trigger: 'manual' })).resolves.toMatchObject({ status: 'completed' });
+        await expect(service.start(other, { trigger: 'manual' })).resolves.toMatchObject({ status: 'queued' });
+        expect(enqueued[1].repoId).toBe(other.workspaceId);
+    });
+
+    it('keeps one visible child even when every open item is awaiting Sentinel review', async () => {
+        const a = item('Awaiting review');
+        pendingReview.add(a.id);
+        const run = await service.start(owner, { trigger: 'manual' });
+        expect(run).toMatchObject({ status: 'queued', snapshot: [], awaitingReviewItemIds: [a.id],
+            childProcessId: `queue_${enqueued[0].id}` });
+        expect(enqueue).toHaveBeenCalledOnce();
+        const context = { ...owner, runId: run.id };
+        service.markRunning(context);
+        expect(service.submit(context, []).accepted).toBe(0);
+        await service.handleTaskTerminal(childTask(), 'completed');
+        expect(scrubber.getRun(owner, run.id)?.status).toBe('completed');
+        expect(current(a.id).status).toBe('todo');
+    });
+
+    it('rejects a second manual run even when user edits leave no eligible open items', async () => {
+        const a = item('Active run');
+        await service.start(owner, { trigger: 'manual' });
+        todos.update(owner, a.id, a.revision, { status: 'done', statusReason: 'User closed' }, 'user');
+        await expect(service.start(owner, { trigger: 'manual' })).rejects.toMatchObject({ code: 'conflict' });
+        expect(enqueue).toHaveBeenCalledOnce();
+        expect(scrubber.listRuns(owner)).toHaveLength(1);
     });
 
     it('skips a scheduled tick when nothing changed since the last completed run, but manual runs always run', async () => {
@@ -209,6 +234,22 @@ describe('ScrubberRunService.start', () => {
         await service.cancel(owner, scrubber.activeRun(owner)!.id);
         triggers = [];
         await expect(service.start(owner, { trigger: 'manual' })).resolves.toMatchObject({ status: 'queued' });
+    });
+
+    it('assesses deferred items on the next bounded run instead of treating the whole ledger as unchanged', async () => {
+        const entries = Array.from({ length: MAX_SCRUB_ITEMS + 2 }, (_, i) => item(`Deferred ${i}`));
+        scrubber.putConfig(owner, { enabled: true, cron: '0 9 * * *' }, 0);
+        const first = await service.start(owner, { trigger: 'schedule' });
+        service.markRunning({ ...owner, runId: first.id });
+        service.submit({ ...owner, runId: first.id }, first.snapshot.map(entry => ({
+            itemId: entry.itemId, verdict: 'unchanged', confidence: 'high', summary: 'Still open',
+        })));
+        await service.handleTaskTerminal(childTask(), 'completed');
+        const next = await service.start(owner, { trigger: 'schedule' });
+        expect(next.status).toBe('queued');
+        expect(next.snapshot).toHaveLength(MAX_SCRUB_ITEMS);
+        expect(next.snapshot.slice(0, 2).map(entry => entry.itemId)).toEqual(first.deferredItemIds);
+        expect(new Set([...first.snapshot, ...next.snapshot].map(entry => entry.itemId)).size).toBe(entries.length);
     });
 
     it('fails the run without applying anything when the child chat cannot be queued', async () => {
@@ -312,6 +353,23 @@ describe('ScrubberRunService findings lifecycle', () => {
         expect(() => service.submit(context, [{ itemId: a.id, verdict: 'obsolete', confidence: 'low', summary: 'Gone' }]))
             .toThrow(/evidence/);
         expect(() => service.submit({ ...context, runId: 'other' }, [])).toThrow('no longer active');
+    });
+
+    it('rejects incomplete findings without consuming the one accepted batch or saving partial results', async () => {
+        const a = item('Assessed');
+        const b = item('Unchecked');
+        const run = await service.start(owner, { trigger: 'manual' });
+        const context = { ...owner, runId: run.id };
+        service.markRunning(context);
+        const finding = { itemId: a.id, verdict: 'unchanged', confidence: 'high', summary: 'Still open' };
+        expect(() => service.submit(context, [finding])).toThrow('Findings missing for 1 snapshot item');
+        expect(scrubber.getRun(owner, run.id)?.findingsSubmittedAt).toBeUndefined();
+        expect(scrubber.listFindings(owner, run.id)).toEqual([]);
+        expect(service.submit(context, [finding, { itemId: b.id, verdict: 'unverified', confidence: 'low',
+            summary: 'Could not check', unverifiedReason: 'Remote unavailable' }]).accepted).toBe(2);
+        await service.handleTaskTerminal(childTask(), 'completed');
+        expect(scrubber.getFinding(owner, run.id, b.id)?.state).toBe('unverified');
+        expect(current(b.id).status).toBe('todo');
     });
 
     it('applies nothing when the run is cancelled after findings were submitted, and cancels the child chat', async () => {

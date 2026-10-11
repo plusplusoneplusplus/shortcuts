@@ -97,6 +97,9 @@ export class ScrubberRunService {
         if (opts.trigger === 'schedule' && this.deps.canStartScheduled?.(owner) === false) {
             throw new ScrubberStoreError('conflict', 'The scrubber schedule is disarmed');
         }
+        if (opts.trigger === 'manual' && this.deps.scrubber.activeRun(owner)) {
+            throw new ScrubberStoreError('conflict', 'A scrub run is already active');
+        }
         let open = ledger.items.filter(item => OPEN_STATUSES.has(item.status) && !item.archived);
         if (opts.itemIds) {
             const selected = new Set(opts.itemIds);
@@ -104,8 +107,10 @@ export class ScrubberRunService {
             if (!open.length) throw new ScrubberStoreError('invalid', 'None of the selected items are open');
         }
         const awaiting = open.filter(awaitingReview);
+        const previous = this.deps.scrubber.listRuns(owner).find(run => run.status === 'completed');
+        const deferred = new Set(previous?.deferredItemIds);
         const eligible = open.filter(item => !awaitingReview(item))
-            .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+            .sort((a, b) => Number(deferred.has(b.id)) - Number(deferred.has(a.id)) || a.updatedAt.localeCompare(b.updatedAt));
         const included = eligible.slice(0, MAX_SCRUB_ITEMS);
         const inputFingerprint = fingerprintInput(open, triggers);
         const base: ScrubRunRecord = {
@@ -118,14 +123,9 @@ export class ScrubberRunService {
         };
         if (opts.trigger === 'schedule') {
             const skipReason = this.deps.scrubber.activeRun(owner) ? 'overlap'
-                : this.deps.scrubber.getConfig(owner).lastInputFingerprint === inputFingerprint ? 'unchanged' : undefined;
+                : eligible.length <= MAX_SCRUB_ITEMS && this.deps.scrubber.getConfig(owner).lastInputFingerprint === inputFingerprint ? 'unchanged' : undefined;
             if (skipReason) return this.record(owner, { ...base, status: 'skipped', skipReason, finishedAt: base.createdAt });
         }
-        if (!included.length) {
-            // Nothing to assess is a finished run, not a chat.
-            return this.record(owner, { ...base, status: 'completed', startedAt: base.createdAt, finishedAt: base.createdAt });
-        }
-
         const taskId = randomUUID();
         // Persist identity before admission: execution and cancellation can race enqueue.
         const run = this.deps.scrubber.createRun(owner, { ...base, childProcessId: toQueueProcessId(taskId) });
@@ -192,6 +192,10 @@ export class ScrubberRunService {
             for (const finding of parsed.data) {
                 if (!snapshot.has(finding.itemId) || seen.has(finding.itemId)) ignoredItemIds.push(finding.itemId);
                 else { seen.add(finding.itemId); accepted.push(finding); }
+            }
+            const missing = [...snapshot].filter(itemId => !seen.has(itemId));
+            if (missing.length) {
+                throw new ScrubberStoreError('invalid', `Findings missing for ${missing.length} snapshot item(s): ${missing.join(', ')}. Report unverified with a reason when evidence cannot be checked.`);
             }
             const revisions = new Map(run.snapshot.map(entry => [entry.itemId, entry.revision]));
             this.deps.scrubber.saveFindings(owner, run.id, accepted.map(finding => ({
