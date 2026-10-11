@@ -114,6 +114,8 @@ export interface PrMergedMonitorEvent {
     lastSeenStatus?: WatchedPrStatus;
     /** PR title last read from the provider (untrusted display data). */
     lastSeenTitle?: string;
+    /** Merge commit recorded when the watch saw `merged` (untrusted display data). */
+    mergeCommit?: string;
     lastError?: { message: string; at: string };
     consecutiveErrors: number;
 }

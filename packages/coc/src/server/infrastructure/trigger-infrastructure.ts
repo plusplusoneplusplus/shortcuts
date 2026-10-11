@@ -1,6 +1,6 @@
 /**
  * Creates and wires up the trigger-related objects (`TriggerStore`,
- * `TriggerManager`, the `ci-failure` `CiFailureEvaluator`, the queue-backed
+ * `TriggerManager`, the `ci-failure` and `pr-merged` evaluators, the queue-backed
  * `QueueActionExecutor`, and a dedicated `ScheduleTimerRegistry`) used by the
  * execution server.
  *
@@ -22,6 +22,8 @@ import { TriggerManager } from '../triggers/trigger-manager';
 import type { TriggerEventEmit } from '../triggers/trigger-manager';
 import { CiFailureEvaluator } from '../triggers/ci-failure-evaluator';
 import type { CiChecksFetcher, CiLogFetcher } from '../triggers/ci-failure-evaluator';
+import { PrMergedEvaluator } from '../triggers/pr-merged-evaluator';
+import { createPrStatusFetcher, type PrStatusFetcher } from '../triggers/pr-status-fetcher';
 import { QueueActionExecutor } from '../triggers/queue-action-executor';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import type { TriggerEvent } from '../triggers/trigger-types';
@@ -65,6 +67,11 @@ export interface TriggerInfrastructureOptions {
      * omitted the prompt simply asks the agent to fetch the logs itself.
      */
     ciLogFetcher?: CiLogFetcher;
+    /**
+     * Read a PR's state by URL identity for `pr-merged` watches. Defaults to
+     * the server-credential fetcher (`createPrStatusFetcher`).
+     */
+    prStatusFetcher?: PrStatusFetcher;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
 }
@@ -100,8 +107,10 @@ export async function createTriggerInfrastructure(
     const triggerStore = new TriggerStore(db);
     const timerRegistry = new ScheduleTimerRegistry();
 
-    // The single evaluator implemented this iteration: the CI-failure monitor.
+    // Evaluators: the CI-failure monitor and the Sentinel To-do PR-merge watch.
     const ciFailureEvaluator = new CiFailureEvaluator(ciChecksFetcher, ciLogFetcher);
+    const prMergedEvaluator = new PrMergedEvaluator(
+        options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), now);
 
     // The single action executor: queue-backed send-message into a conversation.
     const actionExecutor = new QueueActionExecutor({
@@ -113,10 +122,10 @@ export async function createTriggerInfrastructure(
     const triggerManager = new TriggerManager({
         store: triggerStore,
         timerRegistry,
-        resolveEvaluator: (event: TriggerEvent) =>
-            (event.type === 'condition-monitor' && event.monitor === 'ci-failure')
-                ? ciFailureEvaluator
-                : undefined,
+        resolveEvaluator: (event: TriggerEvent) => {
+            if (event.type !== 'condition-monitor') return undefined;
+            return event.monitor === 'ci-failure' ? ciFailureEvaluator : prMergedEvaluator;
+        },
         actionExecutor,
         emit,
         ...(now ? { now } : {}),

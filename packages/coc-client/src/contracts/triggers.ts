@@ -41,6 +41,7 @@ export interface PrMergedMonitorEvent {
   lastSeenStatus?: WatchedPrStatus;
   /** Provider PR title (untrusted display text). */
   lastSeenTitle?: string;
+  mergeCommit?: string;
   lastError?: { message: string; at: string };
   consecutiveErrors: number;
 }
