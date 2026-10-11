@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting';
+import { patchSeenState } from '../../hooks/preferences/seenStateApi';
 import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
@@ -283,10 +284,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         const key = `${scopedOwner.selectionId}|${processDetails.id}|${seenAt}`;
         if (markedSeenRef.current === key) return;
         markedSeenRef.current = key;
-        void client.seenState.updateMany(scopedOwner.workspaceId, [{ processId: processDetails.id, seenAt }])
-            .then(() => window.dispatchEvent(new CustomEvent('coc-group-chat-seen', { detail: {
-                baseUrl: scopedOwner.baseUrl, workspaceId: scopedOwner.workspaceId,
-            } })))
+        void patchSeenState(scopedOwner.workspaceId, [{ processId: processDetails.id, seenAt }], { baseUrl: scopedOwner.baseUrl })
             .catch(err => {
                 markedSeenRef.current = null;
                 setError(err?.message ?? 'Could not mark this conversation as read.');

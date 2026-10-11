@@ -34,7 +34,8 @@ vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api'
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
     computeUnseenCount: vi.fn(() => 0),
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi')>(),
     fetchUnseenCount: vi.fn().mockResolvedValue(0),
 }));
 
@@ -80,7 +81,7 @@ import {
     legacyPathOnlyWorkspaceIdForRootPath,
 } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { getCocClientFor } from '../../../../src/server/spa/client/react/api/cocClient';
-import { fetchUnseenCount } from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
+import { fetchUnseenCount, patchSeenState, deleteSeenEntry } from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -341,6 +342,36 @@ describe('ReposContext', () => {
             detail: { baseUrl: remoteUrl },
         })));
         await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts[remoteKey]).toBe(3));
+    });
+
+    it('reconciles native badges after persisted owner reads and unread changes, rejecting stale counts', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        const baseUrl = 'https://owner.test';
+        const remoteKey = buildRemoteCloneKey('srv-1', 'ws-1');
+        aggregateRemoteWorkspacesMock.mockResolvedValue(remoteAggregate('srv-1', baseUrl, 'ws-1'));
+        vi.spyOn(getCocClientFor(baseUrl).workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
+        vi.spyOn(getCocClientFor(baseUrl).seenState, 'updateMany').mockResolvedValue({});
+        vi.spyOn(getCocClientFor(baseUrl).seenState, 'markUnseen').mockResolvedValue({ ok: true });
+        vi.mocked(fetchUnseenCount).mockResolvedValue(1);
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        const badges = () => JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts;
+        await waitFor(() => expect(badges()).toMatchObject({ 'ws-1': 1, [remoteKey]: 1 }));
+        let resolveOld!: (value: number) => void;
+        vi.mocked(fetchUnseenCount).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+        await act(async () => {
+            await patchSeenState('ws-1', [{ processId: 'proc', seenAt: '2026-05-02T00:00:00.000Z' }], { baseUrl });
+        });
+        expect(fetchUnseenCount).toHaveBeenLastCalledWith('ws-1', { baseUrl });
+        vi.mocked(fetchUnseenCount).mockResolvedValueOnce(0);
+        await act(async () => {
+            await patchSeenState('ws-1', [{ processId: 'proc', seenAt: '2026-05-02T00:00:00.000Z' }], { baseUrl });
+        });
+        await waitFor(() => expect(badges()[remoteKey]).toBe(0));
+        await act(async () => resolveOld(1));
+        expect(badges()).toMatchObject({ 'ws-1': 1, [remoteKey]: 0 });
+        await act(async () => { await deleteSeenEntry('ws-1', 'proc', { baseUrl }); });
+        await waitFor(() => expect(badges()[remoteKey]).toBe(1));
+        expect(badges()['ws-1']).toBe(1);
     });
 
     it('ignores a stale pause response after a newer answer response', async () => {

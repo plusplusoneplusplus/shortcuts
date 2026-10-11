@@ -670,6 +670,7 @@ describe('ChatDetail', () => {
     });
 
     it('loads a group member through its scoped server and isolates draft/cache identity from equal process ids', async () => {
+        const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
         const owner = {
             workspaceId: 'ws-member',
             selectionId: 'remote:server-a:ws-member',
@@ -689,6 +690,11 @@ describe('ChatDetail', () => {
         const seenWrite = fetchMock.mock.calls.find(([url, init]) =>
             String(url).endsWith('/workspaces/ws-member/seen-state') && init?.method === 'PATCH');
         expect(JSON.parse(String(seenWrite?.[1]?.body)).entries[0].processId).toBe('queue_chat');
+        await waitFor(() => expect(dispatchEvent.mock.calls.some(([event]) => event instanceof CustomEvent
+            && event.type === 'coc-group-chat-seen'
+            && event.detail.workspaceId === owner.workspaceId
+            && event.detail.baseUrl === owner.baseUrl
+            && event.detail.entries[0].processId === 'queue_chat')).toBe(true));
         expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('https://other.example.test/'))).toBe(false);
         expect(mockState.getDraft).toHaveBeenCalledWith('remote:server-a:ws-member|queue_chat');
         expect(mockState.getDraft).not.toHaveBeenCalledWith('queue_chat');

@@ -16,7 +16,7 @@ import {
 } from 'react';
 import { useApp } from './AppContext';
 import { useQueue } from './QueueContext';
-import { fetchUnseenCount } from '../hooks/preferences/seenStateApi';
+import { fetchUnseenCount, SEEN_STATE_CHANGED_EVENT, type SeenStateChange } from '../hooks/preferences/seenStateApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
 import { isContainerMode } from '../utils/config';
@@ -149,6 +149,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const [unseenCounts, setUnseenCounts] = useState<Record<string, number>>({});
     const [ralphAttentionCounts, setRalphAttentionCounts] = useState<Record<string, number>>({});
     const attentionRequestsRef = useRef<Record<string, number>>({});
+    const seenRequestsRef = useRef<Record<string, number>>({});
     const reposRef = useRef(repos);
     reposRef.current = repos;
 
@@ -205,16 +206,38 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     // Fetch per-repo unseen counts from the server
     const refreshUnseenCounts = useCallback(async (wsIds: string[]) => {
-        try {
-            const counts: Record<string, number> = {};
-            await Promise.all(wsIds.map(async (id) => {
-                try {
-                    counts[id] = await fetchUnseenCount(id);
-                } catch { counts[id] = 0; }
-            }));
-            setUnseenCounts(prev => ({ ...prev, ...counts }));
-        } catch { /* fire-and-forget */ }
+        await Promise.all(wsIds.map(async id => {
+            const repo = findRepoBySelectionId(reposRef.current, id);
+            const baseUrl = repo && isRemoteWorkspace(repo.workspace) ? repo.workspace.baseUrl : undefined;
+            const request = (seenRequestsRef.current[id] ?? 0) + 1;
+            seenRequestsRef.current[id] = request;
+            try {
+                const count = await fetchUnseenCount(repo?.workspace.id ?? id, repo ? { baseUrl } : undefined);
+                if (seenRequestsRef.current[id] === request && (!repo || reposRef.current.some(current =>
+                    getRepoSelectionId(current) === id
+                    && (isRemoteWorkspace(current.workspace) ? current.workspace.baseUrl : undefined) === baseUrl))) {
+                    setUnseenCounts(prev => ({ ...prev, [id]: count }));
+                }
+            } catch (err) {
+                console.warn('Could not refresh conversation unread count', err);
+            }
+        }));
     }, []);
+
+    useEffect(() => {
+        const onChanged = (event: Event) => {
+            const detail = (event as CustomEvent<SeenStateChange>).detail;
+            if (!detail?.workspaceId) return;
+            const targets = reposRef.current.filter(repo => repo.workspace.id === detail.workspaceId
+                && (isRemoteWorkspace(repo.workspace) ? repo.workspace.baseUrl : undefined) === detail.baseUrl);
+            void refreshUnseenCounts(targets.map(getRepoSelectionId));
+        };
+        window.addEventListener(SEEN_STATE_CHANGED_EVENT, onChanged);
+        return () => {
+            window.removeEventListener(SEEN_STATE_CHANGED_EVENT, onChanged);
+            seenRequestsRef.current = {};
+        };
+    }, [refreshUnseenCounts]);
 
     const fetchRepos = useCallback(async (trigger: GitInfoBatchTrigger = 'manual-refresh') => {
         try {
@@ -293,7 +316,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Seed per-repo queue stats for card badges
             seedRepoQueueStats(combined);
 
-            refreshUnseenCounts(combined.map(r => r.workspace.id));
+            refreshUnseenCounts(combined.map(getRepoSelectionId));
             void refreshRalphAttention(combined);
 
             // Clear selection if repo was removed.

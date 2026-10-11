@@ -105,6 +105,16 @@ workspace-scoped expand/collapse state behind `useTaskGroupExpansion` (pure help
 resets on workspace switch), and `task-group-copy-info.ts` holds the pure copy-run-info
 text builders.
 
+### Read-state reconciliation
+
+`seenStateApi` captures the concrete owner route before read/unread writes and
+publishes `coc-group-chat-seen` only after persistence succeeds. Native
+`useUnseenChat` and scoped `ChatDetail` share that mutation path. Mounted native
+readers merge committed entries/deletions for the matching workspace and endpoint;
+aggregate feeds refresh their rows/counts. `ReposContext` refreshes native badges
+under concrete selection keys, rejecting obsolete count responses. Failed writes
+publish no success event; failed count reads retain the last known value.
+
 ### ChatListPane
 
 Grouped expansion state is local to the mounted view; Ralph sessions, For Each runs, Map
