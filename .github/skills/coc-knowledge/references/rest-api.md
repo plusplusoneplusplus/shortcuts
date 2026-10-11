@@ -247,6 +247,12 @@ Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers
 `removeSentinelTodo` and `runSentinelTodoNow`. Every method requires the owner's
 workspace and Sentinel process; mutation methods carry the rule revision.
 
+### Scrubber route module
+
+`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. 
+
+Its injected gate requires both ledger and scrubber flags. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Composition supplies queue lifecycle, post-commit notifications and schedule re-arming; production registration is pending.
+
 ## Task Groups
 
 Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dreams. Always registered (no feature flag).

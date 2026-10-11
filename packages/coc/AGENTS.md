@@ -233,6 +233,9 @@ references before editing. Paths are package-relative.
   their revisions; badges never require per-job transcript reads or polling.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
+  Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
+  prove the Sentinel owner through `SentinelTodoService.list` before accessing
+  scrubber state, and use the engine for revision-checked Accept/Undo.
   To-do composer context reuses pointer attachments and resolves the owning ledger
   on drop and explicit send (`spa/client/react/features/chat/sentinelTodoContext.ts`).
   Bind workspace, parent Sentinel and concrete server identity; remote selections
