@@ -128,6 +128,49 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         vi.restoreAllMocks();
     });
 
+    it.each(['ws1', 'remote-owner/ws1'])('suppresses restored and newly detected Sentinel PRs without removing bindings (%s)', async workspaceId => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: { '42': { taskId: 't1' } } });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({ number: 42, title: 'Sentinel PR', status: 'open', url: GH_URL });
+        const props = { workspaceId, remoteUrl: GH_REMOTE, taskId: 't1', processId: 'proc-1' };
+        const view = render(<ChatComposerPrChips {...props} turns={[]} mode="sentinel" />);
+        await waitFor(() => expect(mocks.pullRequests.getForOrigin).toHaveBeenCalled());
+        await act(flushMicrotasks);
+        expect(view.container.innerHTML).toBe('');
+        view.rerender(<ChatComposerPrChips {...props} turns={[nativePrTurn(GH_URL_2, 99)]} mode="sentinel" />);
+        await waitFor(() => expect(mocks.pullRequests.createChatBindingForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '99', 't1'));
+        expect(view.container.innerHTML).toBe('');
+        expect(mocks.pullRequests.deleteChatBindingForOrigin).not.toHaveBeenCalled();
+    });
+
+    it('removes the whole banner and pauses only polling across live mode transitions', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: { '42': { taskId: 't1' } } });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({ number: 42, title: 'Live PR', status: 'open', url: GH_URL,
+            autoMerge: { enabled: true, state: 'queued' } });
+        const props = { workspaceId: 'ws1', remoteUrl: GH_REMOTE, taskId: 't1', turns: [] };
+        const view = render(<ChatComposerPrChips {...props} mode="autopilot" />);
+        await view.findByText('Live PR');
+        view.rerender(<ChatComposerPrChips {...props} mode="sentinel" />);
+        expect(view.container.innerHTML).toBe('');
+        const reads = mocks.pullRequests.getForOrigin.mock.calls.length;
+        vi.useFakeTimers();
+        try {
+            await act(async () => { await vi.advanceTimersByTimeAsync(90000); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(reads);
+            view.rerender(<ChatComposerPrChips {...props} mode="ask" />);
+            expect(view.queryByTestId('composer-pr-chips')).not.toBeNull();
+            await act(async () => { await vi.advanceTimersByTimeAsync(45000); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(reads + 1);
+            view.rerender(<ChatComposerPrChips {...props} mode="sentinel" />);
+            await act(async () => { await vi.advanceTimersByTimeAsync(90000); });
+            expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledTimes(reads + 1);
+            expect(view.container.innerHTML).toBe('');
+            expect(mocks.pullRequests.deleteChatBindingForOrigin).not.toHaveBeenCalled();
+        } finally {
+            view.unmount();
+            vi.useRealTimers();
+        }
+    });
+
     it.each([
         ['github', GH_URL, GH_REMOTE, GH_ORIGIN, 42],
         ['ado', ADO_URL, ADO_REMOTE, ADO_ORIGIN, 380],

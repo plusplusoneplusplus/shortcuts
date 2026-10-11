@@ -317,11 +317,14 @@ engine switches.
 
 ## Composer PR chips
 
-`features/chat/conversation/ChatComposerPrChips.tsx` docks read-only PR chips **inside
-the composer**, above the textarea, via the `prComposerChips` slot that
-`FollowUpInputArea` renders as the first child of the input card. Nothing renders when
-no PR is associated. A chat's chips cover both the PRs it created and the PRs that ship
-commits it authored.
+`features/chat/conversation/ChatComposerPrChips.tsx` owns composer PR presentation
+through `FollowUpInputArea`'s `prComposerChips` slot. Both `ChatDetail` layouts pass
+the actual conversation's normalized live/persisted mode, independent of pinned
+Sentinel origin context. Sentinel mode suppresses presentation and sets
+`usePrChatStatusItems.pollingEnabled=false`; detection, bindings and loaded state
+remain active. Other modes present associated PRs created by the chat or shipping
+its authored commits. Server automation and PR surfaces outside the composer retain
+their own lifecycles.
 
 ### Detection and binding
 

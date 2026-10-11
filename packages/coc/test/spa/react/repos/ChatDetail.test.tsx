@@ -28,6 +28,9 @@ import {
 import { attachSelectionToChat, hasActiveChatAttachSubscriber, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 import { createFileSelectionContextPayload } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { resetNewChatSeedContext, drainNewChatSeedContext } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
+import type { PrStatusCardItem } from '../../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
+import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { clearSentinelTodoExcursion, startSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
 
@@ -35,6 +38,7 @@ import { resetNewChatSeedContext, drainNewChatSeedContext } from '../../../../sr
 const { mockState } = vi.hoisted(() => ({
     mockState: {
         defaultChatStyle: 'default' as string,
+        prItems: [] as PrStatusCardItem[],
         sessionContextAttachmentsEnabled: false,
         sendFollowUp: vi.fn().mockResolvedValue(undefined),
         modelLookups: vi.fn(),
@@ -78,6 +82,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',
+    isTriggersEnabled: () => false,
     isRalphEnabled: () => true,
     isRalphMultiAgentGrillEnabled: () => false,
     isCronEnabled: () => false,
@@ -95,6 +100,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isCanvasEnabled: () => false,
     isQuickAskSidenotesEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
+}));
+
+// Keep the shared PR renderer real; isolate provider reads from chat orchestration.
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/usePrChatStatusItems', () => ({
+    usePrChatStatusItems: () => ({ items: mockState.prItems, retry: vi.fn(), refresh: vi.fn(), refreshingKeys: new Set() }),
 }));
 
 // Display settings
@@ -503,6 +513,7 @@ beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     resetCloneRegistryForTests();
     mockState.defaultChatStyle = 'default';
+    mockState.prItems = [];
     mockState.sessionContextAttachmentsEnabled = false;
     mockState.chatHistoryPagingEnabled = false;
     mockState.sseOptions = undefined;
@@ -542,6 +553,7 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     resetCloneRegistryForTests();
+    clearSentinelTodoExcursion();
     delete (globalThis as any).__useSendMessage_opts;
 });
 
@@ -693,10 +705,62 @@ describe('ChatDetail shared paged hydration', () => {
     });
 });
 
+describe('ChatDetail Sentinel composer PR banner', () => {
+    beforeEach(() => {
+        mockState.prItems = [{ key: 'gh_owner_repo:916', repoId: 'ws-1', number: 916, state: 'ready', originId: 'gh_owner_repo', prId: '916',
+            pr: { number: 916, title: 'Attached PR', status: 'open', sourceBranch: 'pr/fix', targetBranch: 'main', url: 'https://github.com/owner/repo/pull/916' } }];
+    });
+
+    it.each([['completed', false], ['running', false], ['completed', true], ['running', true]] as const)(
+        'suppresses the shared banner for a restored %s Sentinel chat (standalone=%s)', async (status, standalone) => {
+        mockState.getDraft.mockReturnValue({ text: '', mode: 'ask' });
+        setupStandardFetch(makeTask({ status, payload: { kind: 'chat', mode: 'ask' } }),
+            makeProcess({ status, metadata: { mode: 'sentinel', sessionId: 'sess-default' } }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" standalone={standalone} /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy());
+        expect(screen.queryByTestId('composer-pr-chips')).toBeNull();
+    });
+
+    it('uses the actual child mode through live transitions while Sentinel origin stays pinned', async () => {
+        startSentinelTodoExcursion({
+            owner: { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'parent-sentinel' },
+            scopeWorkspaceId: 'ws-1', chatId: 'parent-sentinel', title: 'Sentinel parent',
+            href: '#repos/ws-1/chats/parent-sentinel', linkKey: 'todo-1|ref:task-1',
+        });
+        const process = makeProcess({ metadata: { mode: 'autopilot', sessionId: 'sess-default' } });
+        setupStandardFetch(makeTask(), process);
+        const props = { taskId: 'task-1', workspaceId: 'ws-1' };
+        function Hosted({ process }: { process: any }) {
+            return <Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'task-1' }}>
+                <ProcessStateChatDetail {...props} processes={[process]} />
+            </UnifiedPanelHostProvider></Wrap>;
+        }
+        const view = render(<Hosted process={process} />);
+        await screen.findByTestId('composer-pr-chips');
+        const sentinel = { ...process, metadata: { ...process.metadata, mode: 'sentinel' } };
+        view.rerender(<Hosted process={sentinel} />);
+        await waitFor(() => expect(screen.queryByTestId('composer-pr-chips')).toBeNull());
+        view.rerender(<Hosted process={process} />);
+        await screen.findByTestId('composer-pr-chips');
+        expect(screen.getByTestId('sentinel-todo-origin-bar')).toBeTruthy();
+    });
+
+    it('uses remote conversation mode despite a colliding local Sentinel process', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'https://clone.example.test' }]);
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { mode: 'ask', sessionId: 'sess-default' } }));
+        const owner = { workspaceId: 'ws-remote', selectionId: 'remote:server-a:ws-remote', baseUrl: 'https://clone.example.test' };
+        render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <ProcessStateChatDetail taskId="task-1" workspaceId="ws-remote"
+                processes={[makeProcess({ metadata: { mode: 'sentinel' } })]} />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await screen.findByTestId('composer-pr-chips');
+    });
+});
+
 describe('ChatDetail Sentinel implementation banners', () => {
     const cases = [
         { name: 'direct goal launch', metadata: { goalFilePath: '/repo/goal.md' }, ralph: true },
-        { name: 'grilling launch', metadata: { goalFilePath: '/repo/goal.md', ralph: { phase: 'grilling' } }, ralph: true },
+        { name: 'grilling launch', metadata: { goalFilePath: '/repo/goal.md', ralphGoal: { path: '/repo/goal.md' }, ralph: { phase: 'grilling' } }, ralph: true },
         { name: 'plan file implementation', metadata: { planFilePath: '/repo/work.plan.md' }, ralph: false },
         { name: 'plan canvas implementation', metadata: { planFilePath: 'Implementation plan', planCanvasId: 'canvas-plan' }, ralph: false },
     ];

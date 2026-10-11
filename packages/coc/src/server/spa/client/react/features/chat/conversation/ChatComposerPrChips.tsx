@@ -34,8 +34,11 @@ import { partitionComposerPrChips, summarizeFoldedPrChips } from './composerPrCh
 import { usePrChatStatusItems, type UsePrChatStatusItemsOptions } from './usePrChatStatusItems';
 import { isTriggersEnabled } from '../../../utils/config';
 import type { PrStatusCardItem } from './PrStatusCard';
+import { normalizeChatMode, type ChatMode } from '../../../repos/modeConfig';
 
 export interface ChatComposerPrChipsProps extends UsePrChatStatusItemsOptions {
+    /** Actual conversation mode, independent of any pinned Sentinel origin. */
+    mode?: ChatMode;
     /**
      * The conversation's process id — the target of the CI auto-fix action
      * (AC-05). Omit to leave the auto-fix controls disabled with a tooltip.
@@ -44,8 +47,10 @@ export interface ChatComposerPrChipsProps extends UsePrChatStatusItemsOptions {
 }
 
 export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
-    const { processId, ...statusOptions } = options;
-    const { items, retry, refresh, refreshingKeys } = usePrChatStatusItems(statusOptions);
+    const { processId, mode, ...statusOptions } = options;
+    const hidden = normalizeChatMode(mode) === 'sentinel';
+    // Keep detection, bindings and loaded state alive; only banner polling stops.
+    const { items, retry, refresh, refreshingKeys } = usePrChatStatusItems({ ...statusOptions, pollingEnabled: !hidden });
     const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
     const [foldOpen, setFoldOpen] = useState(false);
 
@@ -82,7 +87,7 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
 
     const visible = items.filter(item => !dismissed.has(item.key));
     const { head, folded } = partitionComposerPrChips(visible);
-    if (head.length === 0 && folded.length === 0) return null;
+    if (hidden || (head.length === 0 && folded.length === 0)) return null;
 
     const autoFix = {
         enabled: isTriggersEnabled(),
