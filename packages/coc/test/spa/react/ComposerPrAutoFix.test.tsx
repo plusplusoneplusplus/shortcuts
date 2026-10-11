@@ -13,7 +13,7 @@
  * the one used.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, renderHook, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
         list: vi.fn(),
         create: vi.fn(),
         delete: vi.fn(),
+        repairCi: vi.fn(),
     },
     processes: {
         sendMessage: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', async (importOrigin
 });
 
 import { ChatComposerPrChips } from '../../../src/server/spa/client/react/features/chat/conversation/ChatComposerPrChips';
+import { usePrAutoFixTrigger } from '../../../src/server/spa/client/react/features/chat/conversation/usePrAutoFixTrigger';
 
 const GH_URL = 'https://github.com/owner/repo/pull/42';
 const GH_REMOTE = 'https://github.com/owner/repo';
@@ -167,6 +169,7 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
 
         mocks.triggers.list.mockResolvedValue([]);
         mocks.triggers.create.mockResolvedValue(activeMonitor());
+        mocks.triggers.repairCi.mockResolvedValue(activeMonitor({ status: 'paused' }));
         mocks.triggers.delete.mockResolvedValue({ deleted: true, trigger: activeMonitor({ status: 'disarmed' }) });
         mocks.processes.sendMessage.mockResolvedValue({});
         mocks.pullRequests.setAutoMergeForOrigin.mockResolvedValue({ enabled: false });
@@ -195,7 +198,7 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(mocks.triggers.create).toHaveBeenCalledTimes(1);
         expect(mocks.triggers.create).toHaveBeenCalledWith('ws1', {
             processId: 'proc-1',
-            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: GH_ORIGIN, prId: '42' },
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: GH_ORIGIN, prId: '42', repairScope: 'ci-and-conflicts' },
         });
         // The workspace-scoped client was used (AC-06), not the page-origin one.
         expect(mocks.getCocClientForWorkspace).toHaveBeenCalledWith('ws1');
@@ -221,7 +224,7 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(mocks.triggers.create).not.toHaveBeenCalled();
     });
 
-    it('"Fix now" sends exactly one autopilot message with the PR + check details', async () => {
+    it('"Fix now" uses serialized server CI repair admission without authorizing conflicts or polling', async () => {
         const { badge, getByTestId } = await renderWithFailingPr('proc-1');
         fireEvent.click(badge);
 
@@ -229,13 +232,11 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
             fireEvent.click(getByTestId(`composer-pr-chip-autofix-fixnow-${ITEM_KEY}`));
         });
 
-        expect(mocks.processes.sendMessage).toHaveBeenCalledTimes(1);
-        const [pid, body, query] = mocks.processes.sendMessage.mock.calls[0];
-        expect(pid).toBe('proc-1');
-        expect(body.mode).toBe('autopilot');
-        expect(body.content).toContain('#42');
-        expect(body.content).toContain('https://ci.example/c1');
-        expect(query).toEqual({ workspace: 'ws1' });
+        expect(mocks.triggers.repairCi).toHaveBeenCalledExactlyOnceWith('ws1', {
+            processId: 'proc-1', event: { type: 'condition-monitor', monitor: 'ci-failure',
+                originId: GH_ORIGIN, prId: '42', repairScope: 'ci' },
+        });
+        expect(mocks.processes.sendMessage).not.toHaveBeenCalled();
         // No monitor was armed by "Fix now".
         expect(mocks.triggers.create).not.toHaveBeenCalled();
     });
@@ -280,7 +281,7 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(mocks.triggers.create).toHaveBeenCalledTimes(1);
         expect(mocks.triggers.create).toHaveBeenCalledWith('ws1', {
             processId: 'proc-1',
-            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: GH_ORIGIN, prId: '42' },
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: GH_ORIGIN, prId: '42', repairScope: 'ci-and-conflicts' },
         });
         await waitFor(() => expect(getByTestId(`composer-pr-chip-autofix-badge-${ITEM_KEY}`)).toBeTruthy());
     });
@@ -336,12 +337,56 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(mocks.triggers.list).not.toHaveBeenCalled();
     });
 
-    it('toggle label reads "Auto-fix CI & address comments" (Phase 1 relabel)', async () => {
+    it('labels new opt-ins Auto-fix CI & conflicts', async () => {
         const { badge, getByTestId } = await renderWithFailingPr('proc-1');
         fireEvent.click(badge);
         const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
         expect(toggle.textContent).toContain('Auto-fix CI');
-        expect(toggle.textContent).toContain('address comments');
+        expect(toggle.textContent).toBe('Auto-fix CI & conflicts');
+    });
+
+    it('preserves a persisted CI-only monitor and offers an explicit upgrade with visible status', async () => {
+        const monitor = activeMonitor({ event: { ...activeMonitor().event, repairStatus: 'Waiting for provider approvals' } });
+        mocks.triggers.list.mockResolvedValue([monitor]);
+        const { badge, getByText, getByTestId } = await renderWithPendingPr('proc-1');
+        fireEvent.click(badge);
+        expect(getByText('Auto-fix CI only')).toBeTruthy();
+        expect(getByText('Waiting for provider approvals')).toBeTruthy();
+        expect(mocks.triggers.create).not.toHaveBeenCalled();
+        await act(async () => { fireEvent.click(getByText('Authorize CI & conflicts')); });
+        expect(mocks.triggers.create).toHaveBeenCalledWith('ws1', expect.objectContaining({
+            event: expect.objectContaining({ repairScope: 'ci-and-conflicts' }),
+        }));
+        expect(getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`)).toBeTruthy();
+    });
+
+    it('ignores a delayed monitor response after changing the owning workspace', async () => {
+        let resolveOld!: (value: ReturnType<typeof activeMonitor>[]) => void;
+        const old = new Promise<ReturnType<typeof activeMonitor>[]>(resolve => { resolveOld = resolve; });
+        mocks.triggers.list.mockImplementation((workspace: string) => workspace === 'ws1' ? old : Promise.resolve([]));
+        const { result, rerender } = renderHook(({ workspaceId }) => usePrAutoFixTrigger({
+            enabled: true, workspaceId, processId: 'proc-1', originId: GH_ORIGIN, prId: '42', prNumber: 42,
+        }), { initialProps: { workspaceId: 'ws1' } });
+        rerender({ workspaceId: 'remote:server:ws2' });
+        await act(async () => { resolveOld([activeMonitor()]); });
+        expect(result.current.armed).toBe(false);
+        expect(mocks.getCocClientForWorkspace).toHaveBeenCalledWith('remote:server:ws2');
+    });
+
+    it('suppresses duplicate clicks and keeps disarm available while a repair is running', async () => {
+        let resolveCreate!: (value: ReturnType<typeof activeMonitor>) => void;
+        mocks.triggers.create.mockReturnValue(new Promise(resolve => { resolveCreate = resolve; }));
+        const { badge, getByTestId } = await renderWithFailingPr('proc-1');
+        fireEvent.click(badge);
+        const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
+        fireEvent.click(toggle);
+        fireEvent.click(toggle);
+        expect(mocks.triggers.create).toHaveBeenCalledTimes(1);
+        await act(async () => { resolveCreate(activeMonitor({ inFlight: true })); });
+        expect((toggle as HTMLButtonElement).disabled).toBe(false);
+        expect((getByTestId(`composer-pr-chip-autofix-fixnow-${ITEM_KEY}`) as HTMLButtonElement).disabled).toBe(true);
+        await act(async () => { fireEvent.click(toggle); });
+        expect(mocks.triggers.delete).toHaveBeenCalledExactlyOnceWith('ws1', 'trg-1');
     });
 
     it('auto-merge indicator reflects the PR autoMerge state', async () => {

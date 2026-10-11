@@ -33,6 +33,7 @@ import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoTriggerFirer } from '../triggers/sentinel-todo-trigger-firer';
 import { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
 
 // ============================================================================
 // Types
@@ -132,6 +133,7 @@ export async function createTriggerInfrastructure(
             store, bridge: options.deliveryBridge, listTasks: () => queueFacade.getAll(),
         }),
         recoverPendingMessages: options.recoverPendingMessages,
+        validatePrOwner: createPrRepairOwnerValidator(store, resolveWorkspaceId),
     });
 
     const todos = new SentinelTodoStore(db);
@@ -158,6 +160,38 @@ export async function createTriggerInfrastructure(
         manager: triggerManager, firer: sentinelTodoFirer, enabled: true,
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
     });
+
+    // A completed persisted turn can outlive its in-memory completion callback.
+    // Do not retain a phantom PR writer or re-deliver an already admitted repair.
+    for (const trigger of triggerStore.getAll()) {
+        if (!trigger.inFlight || trigger.event.monitor !== 'ci-failure' || !trigger.event.repairDelivery) continue;
+        const receipt = trigger.event.repairDelivery;
+        const proc = await store.getProcess(trigger.action.processId, trigger.workspaceId);
+        const tasks = queueFacade.getAll().filter(task => task.processId === trigger.action.processId);
+        const running = tasks.some(task => task.status === 'queued' || task.status === 'running');
+        const pending = proc?.pendingMessages?.some(message => message.context?.deliveryId === receipt.id);
+        if (pending) {
+            try {
+                await options.recoverPendingMessages?.(trigger.workspaceId, trigger.action.processId);
+            } catch (error) {
+                trigger.event.repairStatus = 'Buffered PR repair recovery failed; inspect the owner chat';
+                triggerStore.update(trigger);
+                emit({ type: 'trigger-updated', trigger });
+                getLogger().error(LogCategory.AI, `[TriggerInfra] Buffered PR repair recovery failed for ${trigger.id}: ${String(error)}`);
+            }
+            continue;
+        }
+        if (running || (proc && ['created', 'queued', 'running', 'cancelling'].includes(proc.status))) continue;
+        const turn = proc?.conversationTurns?.find(message => message.role === 'user' && message.turnSource?.deliveryId === receipt.id);
+        if (turn) {
+            triggerManager.onActionComplete(trigger.id, proc?.status === 'completed', receipt.id);
+        } else if (receipt.state !== 'pending') {
+            trigger.event.repairStatus = 'Repair writer recovery is ambiguous; inspect the owner chat before retrying';
+            receipt.state = 'blocked';
+            triggerStore.update(trigger);
+            emit({ type: 'trigger-updated', trigger });
+        }
+    }
 
     // Restore active trigger timers from the persisted nextTickAt values.
     triggerManager.armAll();
@@ -208,6 +242,7 @@ export async function createTriggerInfrastructure(
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit, enabled: true,
             resolveWorkspaceId: options.resolveWorkspaceId, now: options.now,
+            validatePrOwner: createPrRepairOwnerValidator(store, resolveWorkspaceId),
         }, workspaceId, body, reuseCiMonitor),
     };
 }

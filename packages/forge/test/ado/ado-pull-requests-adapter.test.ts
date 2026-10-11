@@ -104,6 +104,47 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
 // ── tests ─────────────────────────────────────────────────────
 
 describe('AdoPullRequestsAdapter', () => {
+    it.each([
+        [PullRequestAsyncStatus.Conflicts, 'conflicting'],
+        [PullRequestAsyncStatus.Queued, 'unknown'],
+        [PullRequestAsyncStatus.NotSet, 'unknown'],
+        [PullRequestAsyncStatus.RejectedByPolicy, 'blocked'],
+        [PullRequestAsyncStatus.Failure, 'blocked'],
+        [PullRequestAsyncStatus.Succeeded, 'mergeable'],
+    ] as const)('maps authoritative merge preview %s independently of auto-complete', async (mergeStatus, state) => {
+        const service = makeMockService({ getPullRequestById: vi.fn().mockResolvedValue({ ...mockAdoPr, mergeStatus }) });
+        expect((await new AdoPullRequestsAdapter(service, 'project').getPullRequest('repo', 42)).mergeability?.state).toBe(state);
+    });
+
+    it('excludes stale and unqualified PR statuses from current-head checks', async () => {
+        const service = makeMockService({
+            getPullRequestIterations: vi.fn().mockResolvedValue([{ id: 2, sourceRefCommit: { commitId: 'new-head' } }]),
+            getPullRequestStatuses: vi.fn().mockResolvedValue([
+                { id: 1, state: 2, iterationId: 1, context: { name: 'stale' } },
+                { id: 2, state: 2, context: { name: 'unqualified' } },
+                { id: 3, state: 1, iterationId: 2, context: { name: 'current' } },
+            ]),
+        });
+
+        const adapter = new AdoPullRequestsAdapter(service, 'project');
+        const checks = await adapter.getChecks('repo', 42, 'new-head');
+        expect(checks.map(c => c.name)).toEqual(['current']);
+        expect(service.getCommitStatuses).toHaveBeenCalledWith('repo', 'new-head', 'project');
+        await expect(adapter.getChecks('repo', 42, 'old-head')).rejects.toThrow('head changed');
+        vi.mocked(service.getCommitStatuses).mockRejectedValueOnce(new Error('Permission denied'));
+        await expect(adapter.getChecks('repo', 42, 'new-head')).rejects.toThrow('Permission denied');
+    });
+
+    it('detects base-only branch movement and waits for a matching provider merge preview', async () => {
+        const getRefTip = vi.fn().mockResolvedValueOnce('aabbcc1122').mockResolvedValueOnce('new-base');
+        const service = makeMockService({
+            getPullRequestById: vi.fn().mockResolvedValue({ ...mockAdoPr, mergeStatus: PullRequestAsyncStatus.Conflicts }),
+            getRefTip,
+        });
+        const snapshot = await new AdoPullRequestsAdapter(service, 'project').getPullRequest('repo', 42, { freshRefs: true });
+        expect(snapshot).toMatchObject({ headSha: 'aabbcc1122', baseSha: 'new-base', mergeability: { state: 'unknown' } });
+        expect(getRefTip).toHaveBeenNthCalledWith(2, 'repo', 'refs/heads/main', 'project');
+    });
     let service: AdoPullRequestsService;
     let adapter: AdoPullRequestsAdapter;
     let mockLogger: Logger;

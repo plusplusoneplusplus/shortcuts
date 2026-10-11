@@ -127,8 +127,14 @@ references before editing. Paths are package-relative.
   Narrow views exclude static config.
   `test/server/executors/executor-runtime-wiring.test.ts` guards every hop.
 - PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
-  `triggers/create-trigger-service.ts` creation path. Scope monitors to the calling
-  workspace/conversation and canonical PR origin; arming failures preserve PR success.
+  `triggers/create-trigger-service.ts` creation path. Explicit `ci-and-conflicts`
+  scope authorizes CI/conflict repairs; missing/`ci` scope authorizes CI only.
+  Validate the PR-bound owner/workspace, poll authoritative merge previews and
+  current-head checks, and serialize automatic/manual repairs with the durable
+  PR-qualified writer and `deliverPrRepairOnce`. Conflict retries include head/base
+  identity, bounded delivery backoff and a cross-head budget; ambiguous/exhausted
+  outcomes require human action. Repairs use isolated existing-PR worktrees, never
+  submission workflows or policy bypasses. Arming failures preserve PR success.
   Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
   rule revision and owner-scoped item, and persists the terminal decision, immutable
   wake prompt and delivery identity before queue work. Wakes use shared

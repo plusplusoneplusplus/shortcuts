@@ -13,18 +13,33 @@ import {
     buildCiFailurePrompt,
     buildBranchDeliveryContract,
     buildLogExcerptBlock,
+    buildConflictRepairPrompt,
 } from '../../../src/server/triggers/ci-failure-prompt';
 
 describe('buildBranchDeliveryContract (AC-03)', () => {
     it('binds every prohibition when no branch name is known', () => {
         const text = buildBranchDeliveryContract().join('\n');
         expect(text).toContain("the PR's existing branch");
-        expect(text).toMatch(/push it to that same branch/i);
+        expect(text).toMatch(/push normally to that same branch/i);
         expect(text).toMatch(/Do NOT create a new pull request/i);
         expect(text).toContain('git checkout');
         expect(text).toContain('git switch');
         expect(text).toContain('git reset --hard');
         expect(text).toMatch(/Do NOT commit to `main`/i);
+    });
+
+    describe('conflict repair contract', () => {
+        it('binds isolated existing-PR repair, preserved intent, validation and ambiguity escalation', () => {
+            const prompt = buildConflictRepairPrompt({ prNumber: 42, prKey: 'github:host:example/repo:42',
+                headRef: 'feature', headSha: 'head', baseRef: 'main', baseSha: 'base' });
+            for (const required of ['isolated PR worktree', 'existing PR branch', 'commit history', "both sides' intended behavior",
+                'No blind ours/theirs', 'weakened coverage', 'unrelated commits', 'ambiguous', 'before pushing',
+                'targeted tests/build', 'push normally', 'submission workflow', 'approvals', 'fresh CI']) {
+                expect(prompt).toContain(required);
+            }
+            expect(prompt).toContain('head: head');
+            expect(prompt).toContain('base: base');
+        });
     });
 
     it('names the branch explicitly when known', () => {

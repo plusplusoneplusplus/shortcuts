@@ -1,37 +1,16 @@
 /**
- * CI-Failure Condition-Monitor Evaluator
- *
- * The ONE `EventEvaluator` implemented this iteration. While its owning trigger
- * is `active`, the `TriggerManager` ticks it on a steady cadence; this evaluator
- * polls the PR's checks (reusing the existing server-side checks-fetch path) and
- * decides whether the fix action should fire.
- *
- * Fire rule (transition detection): fire when ANY check is currently `failure`
- * AND its last-seen status (by check id) was NOT `failure`. This covers:
- *  - green/success → failure              (fires once)
- *  - pending/running → failure            (fires once)
- *  - a newly-appeared failing check       (fires — its id was never seen)
- *  - failure → failure (same id)          (does NOT re-fire)
- *  - currently green / no failures        (does NOT fire; keeps polling)
- *
- * The evaluator never mutates persisted state itself — it returns the refreshed
- * event (with an updated `lastSeenChecks` snapshot) and lets the manager decide
- * whether to persist it (the manager skips persisting on a suppressed fire so a
- * pending failure is re-detected once the in-flight fix completes).
- *
- * Auto-disarm: when the PR is `merged` or `closed`, the evaluator requests a
- * terminal `disarmed`. TTL expiry is handled by the manager, not here.
- *
- * Checks are fetched through an injected {@link CiChecksFetcher} so the
- * transition logic stays pure and unit-testable. The production fetcher reuses
- * the origin-scoped server-side checks path (`createPullRequestsServiceForRepo`
- * + `getChecks`/`getPullRequest`), which is workspace/remote-clone friendly.
+ * One owner-routed monitor for CI transitions and explicitly authorized conflicts.
+ * Conflict attempts use the provider-qualified PR/head/base tuple and a bounded
+ * cross-head budget. Unknown previews wait; policies remain visible blockers.
+ * Current-head CI transitions remain independent of merge readiness.
+ * Evaluation returns state only; the manager persists it, owns writer admission
+ * and delivery retries, and handles expiry. Merged/closed PRs request disarm.
  */
 
 import type { ConditionMonitorEvent, Trigger } from './trigger-types';
-import { MAX_CI_FIX_ATTEMPTS } from './trigger-types';
+import { MAX_CI_FIX_ATTEMPTS, MAX_CONFLICT_FIX_ATTEMPTS, MAX_CONFLICT_FIX_TOTAL } from './trigger-types';
 import type { EvaluationOutcome, EventEvaluator } from './trigger-manager';
-import { buildCiFailurePrompt } from './ci-failure-prompt';
+import { buildCiFailurePrompt, buildConflictRepairPrompt } from './ci-failure-prompt';
 
 // ============================================================================
 // Snapshot types (provider-agnostic; mirror the canonical PR check vocabulary)
@@ -67,6 +46,11 @@ export interface CiPrChecksSnapshot {
     headRef?: string;
     /** PR head commit SHA — keys the retry-limit attempt counter (AC-05). */
     headSha?: string;
+    baseSha?: string;
+    baseRef?: string;
+    prKey?: string;
+    checksHeadSha?: string;
+    mergeability?: { state: 'mergeable' | 'conflicting' | 'unknown' | 'blocked'; blockedReason?: string };
     checks: CiCheckSnapshot[];
 }
 
@@ -109,7 +93,7 @@ export class CiFailureEvaluator implements EventEvaluator {
         this.logFetcher = logFetcher;
     }
 
-    async evaluate(trigger: Trigger): Promise<EvaluationOutcome> {
+    async evaluate(trigger: Trigger, options?: { manualCi?: boolean }): Promise<EvaluationOutcome> {
         const event = trigger.event;
         // Defensive: this evaluator only handles ci-failure condition monitors.
         if (event.type !== 'condition-monitor' || event.monitor !== 'ci-failure') {
@@ -137,8 +121,9 @@ export class CiFailureEvaluator implements EventEvaluator {
         const newlyFailing: CiCheckSnapshot[] = [];
         for (const check of snapshot.checks) {
             nextLastSeen[check.id] = check.status;
-            const prev = event.lastSeenChecks[check.id];
-            if (check.status === 'failure' && prev !== 'failure') {
+            const prev = event.attemptSha === snapshot.headSha || !snapshot.headSha
+                ? event.lastSeenChecks[check.id] : undefined;
+            if (check.status === 'failure' && (prev !== 'failure' || options?.manualCi)) {
                 newlyFailing.push(check);
             }
         }
@@ -151,6 +136,7 @@ export class CiFailureEvaluator implements EventEvaluator {
         const sameSha = event.attemptSha === shaKey;
         const attemptCount = sameSha ? (event.attemptCount ?? 0) : 0;
         const attemptNotified = sameSha ? (event.attemptNotified ?? false) : false;
+        const priorChecks = sameSha || !snapshot.headSha ? event.lastSeenChecks : {};
 
         const nextEvent: ConditionMonitorEvent = {
             ...event,
@@ -158,15 +144,85 @@ export class CiFailureEvaluator implements EventEvaluator {
             attemptSha: shaKey,
             attemptCount,
             attemptNotified,
+            ...(snapshot.prKey ? { prKey: snapshot.prKey } : {}),
         };
 
+        const expanded = event.repairScope === 'ci-and-conflicts';
+        if (!expanded && snapshot.mergeability?.state === 'conflicting') {
+            nextEvent.repairStatus = 'Merge conflict requires explicit conflict repair authorization';
+        }
+        if (expanded) {
+            if (event.prKey && snapshot.prKey && event.prKey !== snapshot.prKey) {
+                nextEvent.prKey = event.prKey;
+                nextEvent.repairStatus = 'PR identity changed; reauthorize in the owner chat';
+                return this.noFire(event, nextEvent);
+            }
+            // Provider policy/approval blockers are display state, never a repair instruction.
+            const policy = snapshot.mergeability?.state === 'blocked' ? snapshot.mergeability.blockedReason
+                ?? 'Waiting for provider approvals or policies' : undefined;
+            nextEvent.repairStatus = policy ?? (snapshot.mergeability?.state === 'unknown' || !snapshot.mergeability
+                ? 'Waiting for provider mergeability'
+                : snapshot.checksHeadSha !== snapshot.headSha || !snapshot.headSha || snapshot.checks.length === 0
+                    ? 'Waiting for fresh current-head CI'
+                    : snapshot.checks.some(c => c.status === 'pending' || c.status === 'running' || c.status === 'unknown')
+                        ? 'Waiting for current-head CI'
+                        : 'Monitoring; provider merge policies still apply');
+            if (snapshot.mergeability?.state === 'conflicting' && !options?.manualCi) {
+                if (!snapshot.prKey || !snapshot.headSha || !snapshot.baseSha || !snapshot.headRef) {
+                    nextEvent.repairStatus = 'Conflict blocked: provider identity, branch or commit snapshot unavailable';
+                    return this.noFire(event, nextEvent);
+                }
+                const key = JSON.stringify([snapshot.prKey, snapshot.headSha, snapshot.baseSha]);
+                const attempts = event.conflictAttempts ?? {};
+                const count = attempts[key] ?? 0;
+                const total = Object.values(attempts).reduce((sum, value) => sum + value, 0);
+                nextEvent.conflictAttemptKey = key;
+                if (trigger.inFlight) {
+                    nextEvent.lastSeenChecks = priorChecks;
+                    nextEvent.repairStatus = 'Repair in flight; waiting for its new head';
+                    return this.noFire(event, nextEvent);
+                }
+                if (event.conflictBlocked && event.conflictAttemptKey === key) {
+                    nextEvent.repairStatus = event.conflictBlocked;
+                    return this.noFire(event, nextEvent);
+                }
+                if (event.conflictAwaitingHead === snapshot.headSha && event.conflictAttemptKey === key) {
+                    nextEvent.conflictBlocked = 'Conflict repair produced no new head or an ambiguous resolution; human action required';
+                    nextEvent.repairStatus = nextEvent.conflictBlocked;
+                    return this.noFire(event, nextEvent);
+                }
+                if (count >= MAX_CONFLICT_FIX_ATTEMPTS || total >= MAX_CONFLICT_FIX_TOTAL) {
+                    nextEvent.repairStatus = 'Conflict repair retry budget exhausted; human action required';
+                    return this.noFire(event, nextEvent);
+                }
+                nextEvent.conflictAttempts = { ...attempts, [key]: count + 1 };
+                nextEvent.conflictAwaitingHead = snapshot.headSha;
+                nextEvent.conflictBlocked = undefined;
+                nextEvent.repairStatus = 'Repairing confirmed merge conflict';
+                return { fire: true, repairKind: 'conflict', event: nextEvent, actionPrompt: buildConflictRepairPrompt({
+                    prNumber: snapshot.prNumber, prKey: snapshot.prKey, headRef: snapshot.headRef,
+                    headSha: snapshot.headSha, baseSha: snapshot.baseSha, baseRef: snapshot.baseRef,
+                }) };
+            }
+            if (!options?.manualCi && (snapshot.mergeability?.state === 'unknown' || !snapshot.mergeability)) {
+                return this.noFire(event, { ...nextEvent, lastSeenChecks: priorChecks });
+            }
+        }
+
+        // Authoritative production snapshots carry a checks/head receipt. Never
+        // treat a changed head's old failure/green snapshot as actionable.
+        if (snapshot.checksHeadSha !== undefined && snapshot.checksHeadSha !== snapshot.headSha) {
+            nextEvent.repairStatus = 'Waiting for fresh current-head CI';
+            return this.noFire(event, { ...nextEvent, lastSeenChecks: priorChecks });
+        }
         if (newlyFailing.length === 0) {
             // No new failure transition — track the latest state and keep polling.
-            return { fire: false, event: nextEvent };
+            return this.noFire(event, nextEvent);
         }
 
         // A failing transition is pending. Enforce the per-SHA retry cap.
         if (attemptCount >= MAX_CI_FIX_ATTEMPTS) {
+            nextEvent.repairStatus = 'CI repair retry budget exhausted for this head; human action required';
             if (attemptNotified) {
                 // Already notified for this SHA — stay armed (a new commit resets
                 // the cap) but do not fire or re-notify.
@@ -206,8 +262,14 @@ export class CiFailureEvaluator implements EventEvaluator {
         const actionPrompt = buildCiFailurePrompt(snapshot.prNumber, failingChecks, snapshot.headRef, logExcerpt);
         return {
             fire: true,
-            event: { ...nextEvent, attemptCount: attemptCount + 1 },
+            repairKind: 'ci',
+            event: { ...nextEvent, attemptCount: attemptCount + 1,
+                repairStatus: 'Repairing current-head CI; provider policies still apply' },
             actionPrompt,
         };
+    }
+
+    private noFire(previous: ConditionMonitorEvent, event: ConditionMonitorEvent): EvaluationOutcome {
+        return { fire: false, event, changed: previous.repairStatus !== event.repairStatus };
     }
 }

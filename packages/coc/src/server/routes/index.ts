@@ -165,6 +165,7 @@ import { registerCronRoutes } from '../cron/cron-handler';
 import type { CronStore } from '../cron/cron-store';
 import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import { registerTriggerRoutes } from '../triggers/trigger-handler';
+import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
 import { registerSentinelTodoTriggerRoutes } from '../triggers/sentinel-todo-trigger-routes';
 import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { TriggerStore } from '../triggers/trigger-store';
@@ -853,6 +854,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             emit: opts.triggerEmit,
             enabled: opts.resolvedConfig?.triggers?.enabled ?? true,
             resolveWorkspaceId: resolveProcessWorkspaceId,
+            validatePrOwner: createPrRepairOwnerValidator(store, resolveProcessWorkspaceId),
         });
     }
     if (opts.sentinelTodoTriggers) {

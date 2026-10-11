@@ -90,6 +90,13 @@ describe('ProcessLifecycleRunner — onTriggerActionComplete wiring', () => {
         expect(onTriggerActionComplete).toHaveBeenCalledWith('trigger_abc', true);
     });
 
+    it('qualifies PR repair completion with the exact durable delivery receipt', async () => {
+        const onTriggerActionComplete = vi.fn().mockResolvedValue(undefined);
+        const task = makeFollowUpTask({ source: 'trigger', triggerId: 'pr-monitor', deliveryId: 'repair-1' });
+        await runner.run(task, makeOpts({ onTriggerActionComplete }));
+        expect(onTriggerActionComplete).toHaveBeenCalledExactlyOnceWith('pr-monitor', true, 'repair-1');
+    });
+
     it('invokes onTriggerActionComplete(triggerId, false) after a failed trigger follow-up', async () => {
         const onTriggerActionComplete = vi.fn().mockResolvedValue(undefined);
         const executeFollowUpFn = vi.fn().mockRejectedValue(new Error('boom'));

@@ -12,6 +12,7 @@ import {
     type CreatePullRequestResult,
 } from '../../../src/server/git/create-pull-request-service';
 import type { PrBindingWriterStore } from '../../../src/server/processes/record-pull-request-binding';
+import { PullRequestChatBindingStore } from '../../../src/server/processes/pull-request-chat-binding-store';
 
 const WORKSPACE_ID = 'ws-shortcuts';
 const REMOTE_URL = 'https://github.com/plusplusoneplusplus/shortcuts.git';
@@ -148,18 +149,31 @@ describe('create_pull_request tool', () => {
         expect(out).toMatchObject({ success: true, url: RESULT.url, bound: false });
     });
     it('arms CI auto-fix after binding using canonical origin and owning conversation', async () => {
-        const createTrigger = vi.fn(async () => ({ id: 'trigger-test', status: 'active' } as any));
+        const createTrigger = vi.fn(async () => ({ id: 'trigger-test', status: 'active',
+            event: { monitor: 'ci-failure', repairScope: 'ci-and-conflicts' } } as any));
         const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
             store, createPullRequest: async () => RESULT, getCreateTrigger: () => createTrigger });
         const out = await invoke(tool, { title: 'T', autoFix: true, commits: ['abc1234'] });
         expect(createTrigger).toHaveBeenCalledWith(WORKSPACE_ID, {
             processId: PROCESS_ID,
-            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: ORIGIN_ID, prId: '77' },
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: ORIGIN_ID, prId: '77', repairScope: 'ci-and-conflicts' },
         }, true);
         expect(out).toMatchObject({ success: true, bound: true,
             autoFix: { requested: true, enabled: true, triggerId: 'trigger-test' } });
         expect(rows()).toEqual([{ workspace_id: ORIGIN_ID, pr_id: '77', task_id: BARE_TASK_ID }]);
-        expect(tool.parameters?.properties?.autoFix.description).toContain('Default false');
+        expect(tool.parameters?.properties?.autoFix.description).toContain('CI & conflicts');
+    });
+
+    it('does not steal the existing PR owner or arm a parallel monitor when auto-fix is requested elsewhere', async () => {
+        const bindings = new PullRequestChatBindingStore(db);
+        bindings.bind(ORIGIN_ID, '77', 'original-owner');
+        const createTrigger = vi.fn();
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: async () => ({ ...RESULT, existing: true }), getCreateTrigger: () => createTrigger });
+        expect(await invoke(tool, { title: 'T', autoFix: true })).toMatchObject({ success: true, bound: false,
+            autoFix: { requested: true, enabled: false, warning: expect.stringContaining('owner conversation') } });
+        expect(bindings.get(ORIGIN_ID, '77')?.taskId).toBe('original-owner');
+        expect(createTrigger).not.toHaveBeenCalled();
     });
 
     it.each([false, undefined])('does not mutate monitors when autoFix=%s', async autoFix => {

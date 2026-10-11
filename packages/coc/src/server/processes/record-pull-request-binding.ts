@@ -48,6 +48,7 @@ export async function recordPullRequestBinding(
     workspaceId: string,
     processId: string,
     prId: string | number,
+    preserveOwner = false,
 ): Promise<RecordPullRequestBindingResult | undefined> {
     const db = store.getDatabase?.();
     if (!db) return undefined;
@@ -60,6 +61,9 @@ export async function recordPullRequestBinding(
     );
     const taskId = bareTaskIdForProcess(processId);
     const id = String(prId);
-    new PullRequestChatBindingStore(db).bind(originId, id, taskId);
+    const bindings = new PullRequestChatBindingStore(db);
+    const existing = preserveOwner ? bindings.get(originId, id) : undefined;
+    if (existing) return { originId, prId: id, taskId: existing.taskId };
+    bindings.bind(originId, id, taskId);
     return { originId, prId: id, taskId };
 }

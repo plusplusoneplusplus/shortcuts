@@ -40,7 +40,7 @@ export interface GitHubProviderConfig extends IProviderConfig {
 
 export interface IPullRequestsService {
     listPullRequests(repositoryId: string, criteria?: SearchCriteria): Promise<PullRequest[]>;
-    getPullRequest(repositoryId: string, pullRequestId: number | string): Promise<PullRequest>;
+    getPullRequest(repositoryId: string, pullRequestId: number | string, options?: { freshRefs?: boolean }): Promise<PullRequest>;
     createPullRequest(repositoryId: string, input: CreatePullRequestInput): Promise<PullRequest>;
     updatePullRequest(
         repositoryId: string,
@@ -68,7 +68,7 @@ export interface IPullRequestsService {
      * request. Adapters should return the latest run per check/context (deduped
      * across retries). Optional — not all providers support this.
      */
-    getChecks?(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]>;
+    getChecks?(repositoryId: string, pullRequestId: number | string, headSha?: string): Promise<PullRequestCheck[]>;
     /**
      * Returns pull requests previously reviewed by the authenticated user, most recent first.
      * Used by the PR-suggestion feature to learn review patterns.

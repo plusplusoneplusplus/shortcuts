@@ -11,10 +11,12 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { toTaskId } from '@plusplusoneplusplus/forge';
+import { toTaskId, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { QueueActionExecutor } from '../../../src/server/triggers/queue-action-executor';
 import { buildCiFailurePrompt } from '../../../src/server/triggers/ci-failure-prompt';
 import type { Trigger, TriggerAction } from '../../../src/server/triggers/trigger-types';
+import { createPrRepairOwnerValidator } from '../../../src/server/triggers/pr-repair-owner';
+import { PullRequestChatBindingStore } from '../../../src/server/processes/pull-request-chat-binding-store';
 
 // ============================================================================
 // Fakes
@@ -97,6 +99,19 @@ function makeExecutor(
 // ============================================================================
 
 describe('QueueActionExecutor', () => {
+    it.each(['github-origin', 'ado-origin'])('validates exact bound chat/workspace for %s on its owning server', async origin => {
+        const store = new SqliteProcessStore({ dbPath: ':memory:' });
+        try {
+            const bindings = new PullRequestChatBindingStore(store.getDatabase());
+            bindings.bind(origin, '42', 'owner');
+            const validate = createPrRepairOwnerValidator(store, async id => id === 'queue_owner' ? 'remote-clone' : 'foreign');
+            await expect(validate('remote-clone', 'queue_owner', origin, '42')).resolves.toBeUndefined();
+            await expect(validate('local', 'queue_owner', origin, '42')).rejects.toThrow('workspace');
+            await expect(validate('foreign', 'another', origin, '42')).rejects.toThrow('PR-bound');
+            bindings.bind(origin, '42', 'new-owner');
+            await expect(validate('remote-clone', 'queue_owner', origin, '42')).rejects.toThrow('PR-bound');
+        } finally { store.close(); }
+    });
     describe('idle/terminal target → enqueue follow-up', () => {
         it('enqueues a follow-up carrying the templated prompt, autopilot mode, and trigger turnSource', async () => {
             const prompt = buildCiFailurePrompt(42, [
@@ -124,7 +139,7 @@ describe('QueueActionExecutor', () => {
             expect(input.payload.context).toEqual({ triggerId: 'trigger_1', source: 'trigger' });
         });
 
-        it('omits repoId when the workspace cannot be resolved', async () => {
+        it('rejects an unresolved owner rather than falling back to another workspace', async () => {
             const store = makeProcessStore({ [PROC]: { id: PROC, status: 'completed' } });
             const queue = makeQueueManager();
             const exec = new QueueActionExecutor({
@@ -134,9 +149,8 @@ describe('QueueActionExecutor', () => {
             });
             const trigger = makeTrigger();
 
-            await exec.execute(trigger, trigger.action, 'fix it');
-
-            expect(queue.enqueued[0].repoId).toBeUndefined();
+            await expect(exec.execute(trigger, trigger.action, 'fix it')).rejects.toThrow('owner workspace');
+            expect(queue.enqueued).toEqual([]);
         });
     });
 
@@ -189,6 +203,28 @@ describe('QueueActionExecutor', () => {
     });
 
     describe('guards', () => {
+        it('uses the durable PR repair receipt and validates the PR-bound owner before delivery', async () => {
+            const store = makeProcessStore();
+            const queue = makeQueueManager();
+            const validatePrOwner = vi.fn().mockResolvedValue(undefined);
+            const deliverPrRepairOnce = vi.fn().mockResolvedValue({ events: [] });
+            const exec = new QueueActionExecutor({
+                processStore: store as any, queueManager: queue as any, resolveWorkspaceId: async () => 'ws_a',
+                validatePrOwner, messageDelivery: { deliverOnce: vi.fn(), deliverPrRepairOnce },
+            });
+            const trigger = makeTrigger();
+            if (trigger.event.monitor !== 'ci-failure') throw new Error('Expected CI monitor');
+            trigger.event.repairDelivery = { id: 'repair-1', prompt: 'Resolve conflict', state: 'pending', attempts: 0 };
+            await exec.execute(trigger, trigger.action, 'Resolve conflict');
+            expect(validatePrOwner).toHaveBeenCalledWith('ws_a', PROC, 'origin_1', '42');
+            expect(deliverPrRepairOnce).toHaveBeenCalledWith('ws_a', PROC, 'repair-1', expect.objectContaining({
+                turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: 'repair-1' },
+            }));
+            expect(queue.enqueue).not.toHaveBeenCalled();
+            validatePrOwner.mockRejectedValueOnce(new Error('Owner changed'));
+            await expect(exec.execute(trigger, trigger.action, 'Resolve conflict')).rejects.toThrow('Owner changed');
+            expect(deliverPrRepairOnce).toHaveBeenCalledTimes(1);
+        });
         it('throws when no queue manager is available', async () => {
             const store = makeProcessStore({ [PROC]: { id: PROC, status: 'completed' } });
             const exec = makeExecutor(store, null);

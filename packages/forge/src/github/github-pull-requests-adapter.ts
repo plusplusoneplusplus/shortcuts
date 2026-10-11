@@ -42,10 +42,10 @@ function mapGitHubUser(user: GitHubUser | null | undefined): Identity {
 }
 
 function mapGitHubPrStatus(pr: GitHubPullRequest): PullRequestStatus {
-    if (pr.draft) { return 'draft'; }
     if (pr.state === 'closed') {
         return pr.merged_at ? 'merged' : 'closed';
     }
+    if (pr.draft) { return 'draft'; }
     return 'open';
 }
 
@@ -123,6 +123,11 @@ function mapGitHubPullRequest(pr: GitHubPullRequest, owner: string, repo: string
         labels: pr.labels.map(l => l.name),
         headSha: pr.head.sha,
         baseSha: pr.base.sha,
+        mergeability: pr.mergeable === false || pr.mergeable_state === 'dirty'
+            ? { state: 'conflicting' }
+            : pr.mergeable_state === 'blocked'
+                ? { state: 'blocked', blockedReason: 'Waiting for provider approvals or policies' }
+                : pr.mergeable === true ? { state: 'mergeable' } : { state: 'unknown' },
         autoMerge: mapGitHubAutoMerge(pr),
         raw: pr,
     };
@@ -526,14 +531,14 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         return (data as unknown as GitHubPullRequestCommit[]).map(mapGitHubPullRequestCommit);
     }
 
-    async getChecks(_repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]> {
+    async getChecks(_repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string): Promise<PullRequestCheck[]> {
         // Resolve the head SHA for the PR.
-        const { data: prData } = await this.octokit.pulls.get({
+        const prData = expectedHeadSha ? undefined : (await this.octokit.pulls.get({
             owner: this.owner,
             repo: this.repo,
             pull_number: Number(pullRequestId),
-        });
-        const headSha = (prData as unknown as GitHubPullRequest).head?.sha;
+        })).data;
+        const headSha = expectedHeadSha ?? prData?.head.sha;
         if (!headSha) return [];
 
         const checks: PullRequestCheck[] = [];
@@ -551,7 +556,8 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
             for (const run of runs) {
                 checks.push(mapCheckRun(run));
             }
-        } catch {
+        } catch (error) {
+            if (expectedHeadSha) throw error;
             // Token may lack `checks:read` — fall through to combined status.
         }
 
@@ -566,7 +572,8 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
             for (const item of items) {
                 checks.push(mapCombinedStatusItem(item));
             }
-        } catch {
+        } catch (error) {
+            if (expectedHeadSha) throw error;
             // Some repos may have neither checks nor statuses configured.
         }
 

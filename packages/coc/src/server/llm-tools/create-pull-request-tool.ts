@@ -25,7 +25,7 @@ import {
     type PullRequestMergeMethod,
 } from '../git/create-pull-request-service';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
-import { recordPullRequestBinding, type RecordPullRequestBindingResult, type PrBindingWriterStore } from '../processes/record-pull-request-binding';
+import { bareTaskIdForProcess, recordPullRequestBinding, type RecordPullRequestBindingResult, type PrBindingWriterStore } from '../processes/record-pull-request-binding';
 
 export const CREATE_PULL_REQUEST_TOOL_NAME = 'create_pull_request';
 
@@ -83,7 +83,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 body: { type: 'string', description: 'PR description (markdown).' },
                 base: { type: 'string', description: 'Target branch. Defaults to the repo\'s default branch.' },
                 draft: { type: 'boolean', description: 'Open as a draft PR. Default false.' },
-                autoFix: { type: 'boolean', description: 'Enable automatic CI fixes in this conversation for the PR. Default false; false or omitted leaves existing monitoring unchanged. Requires triggers.enabled. Set true only when authorized by the user.' },
+                autoFix: { type: 'boolean', description: 'Opt into Auto-fix CI & conflicts: authorize validated repairs, commits and pushes to this existing PR in its owner conversation, including green-CI merge conflicts. Explicit true upgrades a CI-only monitor; false/omitted preserves its scope. Requires triggers.enabled. Set true only with user authorization for both CI and conflict repairs; does not bypass approvals or auto-merge policy.' },
                 autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false. Set true only when authorized by the user, including invoking a skill with a documented auto-merge default; pass false when the user disables it.' },
                 mergeMethod: { type: 'string', enum: [...MERGE_METHODS], description: 'Auto-merge method. Default "merge".' },
                 commits: {
@@ -137,7 +137,8 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
 
             let binding: RecordPullRequestBindingResult | undefined;
             try {
-                binding = await recordPullRequestBinding(deps.store, deps.workspaceId, deps.processId, result.id);
+                binding = await recordPullRequestBinding(deps.store, deps.workspaceId, deps.processId, result.id,
+                    a.autoFix === true && result.existing);
             } catch (err) {
                 getLogger().warn(
                     LogCategory.AI,
@@ -145,7 +146,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 );
             }
 
-            const autoFix: { requested: boolean; enabled: boolean; triggerId?: string; warning?: string } = {
+            const autoFix: { requested: boolean; enabled: boolean; scope?: 'ci' | 'ci-and-conflicts'; triggerId?: string; warning?: string } = {
                 requested: a.autoFix === true, enabled: false,
             };
             if (a.autoFix === true) {
@@ -157,18 +158,22 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                     if (!binding) {
                         throw new Error('The PR could not be bound to this conversation.');
                     }
+                    if (binding.taskId !== bareTaskIdForProcess(deps.processId)) {
+                        throw new Error('This PR already belongs to another owner conversation; authorize Auto-fix CI & conflicts there.');
+                    }
                     const trigger = await createTrigger(deps.workspaceId, {
                         processId: deps.processId,
                         event: { type: 'condition-monitor', monitor: 'ci-failure',
-                            originId: binding.originId, prId: binding.prId },
+                            originId: binding.originId, prId: binding.prId, repairScope: 'ci-and-conflicts' },
                     }, true);
                     autoFix.enabled = trigger.status === 'active';
                     autoFix.triggerId = trigger.id;
+                    if (trigger.event.monitor === 'ci-failure') autoFix.scope = trigger.event.repairScope ?? 'ci';
                 } catch (err) {
                     autoFix.warning = err instanceof Error ? err.message : String(err);
                 }
             }
-            return { success: true, ...result, bound: binding !== undefined, autoFix };
+            return { success: true, ...result, bound: binding?.taskId === bareTaskIdForProcess(deps.processId), autoFix };
         },
     });
 

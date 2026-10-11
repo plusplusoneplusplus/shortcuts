@@ -1,7 +1,7 @@
 /**
  * ComposerPrChecksPopover — click-opened popover that opens from the CI badge
  * and shows live check counts, a drill-down list of the checks in the selected
- * count category, two toggles (Auto-fix CI & address comments, Auto-merge when
+ * count category, two toggles (Auto-fix CI & conflicts, Auto-merge when
  * ready), and an Auto-archive settings link.
  *
  * The three count rows (In progress / Passed / Failed) are buttons that filter
@@ -35,6 +35,9 @@ export interface ComposerPrChecksAutoFix {
     enabled: boolean;
     /** Whether a monitor is currently armed for this PR. */
     armed: boolean;
+    ciOnly?: boolean;
+    status?: string | null;
+    onUpgrade?: () => void;
     /** A network op is in flight — disables the controls. */
     busy: boolean;
     /** Non-null disables BOTH controls and supplies a tooltip (unresolved context / busy). */
@@ -395,14 +398,14 @@ export function ComposerPrChecksPopover({
                     className="flex flex-col gap-1 border-t border-[#d0d7de] dark:border-[#3c3c3c] pt-2"
                     data-testid={`composer-pr-chip-autofix-${itemKey}`}
                 >
-                    {/* Auto-fix CI & address comments */}
+                    {/* PR repair scope */}
                     <div className="flex items-center justify-between gap-2">
                         <button
                             type="button"
                             role="checkbox"
                             aria-checked={autoFix!.armed}
                             disabled={Boolean(autoFix!.disabledReason) || autoFix!.busy}
-                            title={autoFix!.disabledReason ?? (autoFix!.armed ? 'CI auto-fix is on — click to turn off' : 'Automatically fix failing CI and address review comments for this PR')}
+                            title={autoFix!.disabledReason ?? (autoFix!.armed ? 'PR auto-fix is on — click to turn off' : 'Authorize CI and merge-conflict repairs, commits and pushes to this same PR in its owner chat')}
                             data-testid={`composer-pr-chip-autofix-toggle-${itemKey}`}
                             data-armed={autoFix!.armed ? 'true' : 'false'}
                             onClick={() => autoFix!.onToggle(!autoFix!.armed)}
@@ -414,7 +417,7 @@ export function ComposerPrChecksPopover({
                             )}
                         >
                             <CheckboxMark checked={autoFix!.armed} />
-                            <span>Auto-fix CI &amp; address comments</span>
+                            <span>{autoFix!.ciOnly ? 'Auto-fix CI only' : 'Auto-fix CI & conflicts'}</span>
                         </button>
                         <button
                             type="button"
@@ -431,6 +434,15 @@ export function ComposerPrChecksPopover({
                             Fix now
                         </button>
                     </div>
+                    {autoFix!.ciOnly && (
+                        <button type="button" disabled={Boolean(autoFix!.disabledReason) || autoFix!.busy}
+                            onClick={autoFix!.onUpgrade}
+                            className="text-left text-[11px] text-[#0969da] dark:text-[#58a6ff]"
+                            title="Explicitly authorize merge-conflict resolution, commits and pushes to this existing PR">
+                            Authorize CI &amp; conflicts
+                        </button>
+                    )}
+                    {autoFix!.status && <div role="status" className="px-1.5 text-[10px] text-[#656d76] dark:text-[#8b949e]">{autoFix!.status}</div>}
 
                     {/* Auto-merge when ready */}
                     {autoMerge ? (

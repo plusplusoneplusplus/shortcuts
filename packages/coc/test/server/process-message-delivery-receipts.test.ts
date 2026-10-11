@@ -57,6 +57,23 @@ describe('durable review admission', () => {
         return service.deliverOnce(workspaceId, processId, wakeSource.deliveryId, { ...review, turnSource: wakeSource });
     }
 
+    it('serializes PR repair receipts with human delivery in an ordinary owner chat', async () => {
+        await store.updateProcess(processId, { metadata: { workspaceId, mode: 'ask', provider: 'copilot' } });
+        const source = { source: 'trigger' as const, triggerId: 'repair-monitor', deliveryId: 'repair-1' };
+        const repair = () => service.deliverPrRepairOnce(workspaceId, processId, source.deliveryId, { ...review, turnSource: source });
+        await Promise.all([repair(), repair(), repair()]);
+        expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getTask('repair-1')?.payload).toMatchObject({ workspaceId, mode: 'autopilot', context: source });
+        expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
+        restart();
+        expect(await repair()).toMatchObject({ reused: true });
+        expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
+        await expect(service.deliverPrRepairOnce('foreign', processId, 'repair-2', { ...review, turnSource: {
+            ...source, deliveryId: 'repair-2',
+        } })).rejects.toThrow('originating workspace');
+        await expect(wake()).rejects.toThrow('Sentinel wake');
+    });
+
     function drain() {
         const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
         executor.setQueueManager(queue);

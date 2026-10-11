@@ -120,6 +120,7 @@ function makeManager(
         emit: opts.emit,
         now: () => clock.t,
     });
+
     return { store, timer, manager, action, clock };
 }
 
@@ -129,6 +130,112 @@ function makeManager(
 
 describe('TriggerManager', () => {
     let h: Harness;
+    it('does not release a new PR repair writer on a stale or unqualified completion callback', async () => {
+        h = makeManager({ evaluate: vi.fn(async t => ({ fire: true, event: t.event })) });
+        h.store.insert(makeTrigger());
+        await h.manager.repairNow('trigger_1');
+        const event = h.store.getById('trigger_1')!.event;
+        if (event.monitor !== 'ci-failure') throw new Error('Expected CI monitor');
+        h.manager.onActionComplete('trigger_1', true, 'older-receipt');
+        h.manager.onActionComplete('trigger_1', true);
+        expect(h.store.getById('trigger_1')?.inFlight).toBe(true);
+        h.manager.onActionComplete('trigger_1', true, event.repairDelivery?.id);
+        expect(h.store.getById('trigger_1')?.inFlight).toBe(false);
+    });
+    it('serializes manual and automatic repairs across clones of a provider-qualified PR', async () => {
+        const event = { ...makeTrigger().event, prKey: 'github:github.com:example/repo:42' };
+        h = makeManager({ evaluate: vi.fn(async t => ({ fire: true, event: t.event, actionPrompt: 'Repair' })) });
+        const first = makeTrigger({ id: 'one', event });
+        const other = makeTrigger({ id: 'two', workspaceId: 'clone', processId: 'other', event: { ...event } });
+        h.store.insert(first);
+        h.store.insert(other);
+        await h.manager.repairNow(first.id);
+        await expect(h.manager.repairNow(other.id)).rejects.toThrow('writer');
+        expect(h.action.calls).toHaveLength(1);
+        expect(h.store.getById(other.id)?.inFlight).toBe(false);
+        h.manager.onActionComplete(first.id, true, h.action.calls[0].trigger.event.repairDelivery?.id);
+        await h.manager.repairNow(other.id);
+        expect(h.action.calls).toHaveLength(2);
+    });
+
+    it('does not conflate the same PR number on different providers or repositories', async () => {
+        h = makeManager({ evaluate: vi.fn(async t => ({ fire: true, event: t.event })) });
+        for (const [id, prKey] of [
+            ['gh', 'github:github.com:example/repo:42'],
+            ['ado', 'ado:dev.azure.com:org/project/repo:42'],
+            ['other', 'github:github.com:example/other:42'],
+        ]) {
+            const trigger = makeTrigger({ id, event: { ...makeTrigger().event, originId: id, prKey } });
+            h.store.insert(trigger);
+            await h.manager.repairNow(id);
+        }
+        expect(h.action.calls).toHaveLength(3);
+    });
+
+    it('keeps a stopped monitor writer reserved until its already admitted repair completes', async () => {
+        const event = { ...makeTrigger().event, prKey: 'github:github.com:example/repo:42' };
+        h = makeManager({ evaluate: vi.fn(async t => ({ fire: true, event: t.event })) });
+        h.store.insert(makeTrigger({ id: 'stopped', status: 'disarmed', event, inFlight: true }));
+        h.store.insert(makeTrigger({ id: 'new', event }));
+        await expect(h.manager.repairNow('new')).rejects.toThrow('writer');
+        h.manager.onActionComplete('stopped', true);
+        await h.manager.repairNow('new');
+        expect(h.action.calls).toHaveLength(1);
+    });
+
+    it('suppresses duplicate asynchronous evaluation/admission on the same monitor', async () => {
+        let release!: () => void;
+        const wait = new Promise<void>(resolve => { release = resolve; });
+        h = makeManager({ evaluate: vi.fn(async t => { await wait; return { fire: true, event: t.event }; }) });
+        h.store.insert(makeTrigger());
+        const first = h.manager.repairNow('trigger_1');
+        await expect(h.manager.repairNow('trigger_1')).rejects.toThrow('already in flight');
+        release();
+        await first;
+        expect(h.action.calls).toHaveLength(1);
+    });
+
+    it('releases failed delivery admission with a visible backoff but not an unbounded repair loop', async () => {
+        const action = fakeActionExecutor();
+        action.execute = vi.fn().mockRejectedValue(new Error('No permission'));
+        const event = { ...makeTrigger().event, conflictAwaitingHead: 'head', conflictAttempts: { key: 1 } };
+        h = makeManager(fakeEvaluator({ fire: true, event }), { action });
+        h.store.insert(makeTrigger());
+        await expect(h.manager.repairNow('trigger_1')).rejects.toThrow('No permission');
+        expect(h.store.getById('trigger_1')).toMatchObject({ inFlight: true, event: {
+            conflictAttempts: { key: 1 }, repairDelivery: { state: 'pending', attempts: 1, retryAt: BASE + 120_000 },
+            repairStatus: expect.stringContaining('delivery failed'),
+        } });
+        h.timer._fire('trigger_1');
+        await flush();
+        expect(action.execute).toHaveBeenCalledTimes(1);
+        h.clock.t = BASE + 120_000;
+        h.timer._fire('trigger_1');
+        await flush();
+        expect(action.execute).toHaveBeenCalledTimes(2);
+        expect(h.store.getById('trigger_1')).toMatchObject({ event: {
+            repairDelivery: { state: 'blocked', attempts: 2 }, repairStatus: expect.stringContaining('exhausted'),
+        } });
+        h.timer._fire('trigger_1');
+        await flush();
+        expect(action.execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('deduplicates conflict history across monitors even after the previous writer finishes', async () => {
+        const key = 'provider/head/base';
+        h = makeManager({ evaluate: vi.fn(async t => ({
+            fire: true, event: { ...t.event, conflictAttemptKey: key, conflictAwaitingHead: 'head' },
+            repairKind: 'conflict',
+        })) });
+        const event = { ...makeTrigger().event, prKey: 'github:host:example/repo:42' };
+        h.store.insert(makeTrigger({ id: 'previous', event: { ...event, conflictAttempts: { [key]: 1 } } }));
+        h.store.insert(makeTrigger({ id: 'duplicate', event }));
+        await expect(h.manager.repairNow('duplicate')).rejects.toThrow('already has a repair attempt');
+        expect(h.action.calls).toHaveLength(0);
+        expect(h.store.getById('duplicate')).toMatchObject({ event: {
+            repairStatus: expect.stringContaining('owner chat'),
+        } });
+    });
 
     it.each(['paused', 'disarmed', 'removed'] as const)(
         'does not resurrect a %s rule when an in-flight evaluator fails', async status => {
@@ -280,7 +387,7 @@ describe('TriggerManager', () => {
             expect(h.store.getById('trigger_1')!.event.lastSeenChecks).toEqual({ build: 'failure' });
 
             // The in-flight fix completes.
-            h.manager.onActionComplete('trigger_1', true);
+            h.manager.onActionComplete('trigger_1', true, h.action.calls[0].trigger.event.repairDelivery?.id);
             expect(h.store.getById('trigger_1')!.inFlight).toBe(false);
 
             // Next tick fires again.

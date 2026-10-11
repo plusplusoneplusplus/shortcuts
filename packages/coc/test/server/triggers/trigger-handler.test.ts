@@ -136,8 +136,38 @@ describe('Trigger REST API Handler', () => {
         mockManager = {
             arm: vi.fn(),
             disarm: vi.fn(),
+            repairNow: vi.fn(),
         };
         register(true);
+    });
+
+    it('manual CI repair creates a paused owner receipt without granting conflict authority', async () => {
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers/repair', {
+            processId: 'p1', event: { type: 'condition-monitor', monitor: 'ci-failure',
+                originId: 'o1', prId: '42', repairScope: 'ci-and-conflicts' },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(res.body.trigger).toMatchObject({ status: 'paused', event: { repairScope: 'ci' } });
+        expect(mockManager.repairNow).toHaveBeenCalledWith(res.body.trigger.id);
+    });
+
+    it('explicit scope authorization upgrades the same CI-only monitor in place', async () => {
+        const body = { processId: 'p1', event: { type: 'condition-monitor', monitor: 'ci-failure', originId: 'o1', prId: '42' } };
+        const first = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', body);
+        const next = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', {
+            ...body, event: { ...body.event, repairScope: 'ci-and-conflicts' },
+        });
+        expect(next.statusCode).toBe(201);
+        expect(next.body.trigger.id).toBe(first.body.trigger.id);
+        expect(next.body.trigger.event.repairScope).toBe('ci-and-conflicts');
+        expect(store.getAll()).toHaveLength(1);
+    });
+
+    it('disarming during repair preserves the PR writer receipt for completion', async () => {
+        store.insert(makeTrigger({ id: 't1', inFlight: true }));
+        const res = await dispatch(routes, 'DELETE', '/api/workspaces/ws1/triggers/t1');
+        expect(res.statusCode).toBe(200);
+        expect(store.getById('t1')).toMatchObject({ status: 'disarmed', inFlight: true });
     });
 
     // ------------------------------------------------------------------
@@ -248,12 +278,12 @@ describe('Trigger REST API Handler', () => {
             expect(store.getById('t1')!.status).toBe('paused');
         });
 
-        it('resumes a paused trigger and re-arms it', async () => {
+        it('resumes a paused trigger without releasing an admitted PR writer', async () => {
             store.insert(makeTrigger({ id: 't1', status: 'paused', nextTickAt: null, inFlight: true }));
             const res = await dispatch(routes, 'PATCH', '/api/workspaces/ws1/triggers/t1', { status: 'active' });
             expect(res.statusCode).toBe(200);
             expect(res.body.trigger.status).toBe('active');
-            expect(res.body.trigger.inFlight).toBe(false);
+            expect(res.body.trigger.inFlight).toBe(true);
             expect(res.body.trigger.nextTickAt).not.toBeNull();
             expect(mockManager.arm).toHaveBeenCalledOnce();
         });

@@ -214,6 +214,20 @@ Items carry `priority: 'high' | 'regular'` (create defaults to `regular`; items 
 
 `coc-client` exposes these as `client.sentinelTodos.get/create/update/attachReference` (contracts in `contracts/sentinel-todos.ts`); a conflict surfaces as `CocApiError` with `code: 'conflict'` and `body.current`.
 
+### PR repair monitors
+
+`triggers.enabled` gates owner-workspace monitors. Missing/`ci` repair scope
+authorizes CI only; explicit `ci-and-conflicts` upgrades a matching monitor without
+resetting history. Repairs share durable PR writer admission and never bypass merge
+policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invariants.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/workspaces/:workspaceId/triggers` | Create/reuse owner PR monitor with `{ processId, event: { type: 'condition-monitor', monitor: 'ci-failure', originId, prId, repairScope?, pollIntervalMs? } }`; unbound owner → `409` |
+| POST | `/api/workspaces/:workspaceId/triggers/repair` | One manual CI repair using the same writer; does not authorize conflicts or arm polling; competing/ambiguous writer → `409` |
+| GET | `/api/workspaces/:workspaceId/triggers` | List monitor scope, persisted repair status and in-flight writer state |
+| PATCH/DELETE | `/api/workspaces/:workspaceId/triggers/:triggerId` | Pause/resume/disarm; preserves admitted repair ownership until completion |
+
 ### PR-merge trigger rules
 
 Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers.enabled` (default on, restart required; `403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual items reject, and terminal rules cannot edit/resume/refire. Legacy `/triggers` APIs exclude bound rules and reject their mutation. Fires wake the Sentinel without changing item status or launching jobs.

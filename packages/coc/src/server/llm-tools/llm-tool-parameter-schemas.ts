@@ -70,7 +70,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             body: { type: 'string' },
             base: { type: 'string' },
             draft: { type: 'boolean' },
-            autoFix: { type: 'boolean' },
+            autoFix: { type: 'boolean', description: 'Explicitly authorize Auto-fix CI & conflicts for this PR, including commits/pushes in the existing owner chat. False/omitted preserves existing CI-only authority.' },
             autoMerge: { type: 'boolean' },
             mergeMethod: { type: 'string' },
             commits: { type: 'array', items: { type: 'string' } },

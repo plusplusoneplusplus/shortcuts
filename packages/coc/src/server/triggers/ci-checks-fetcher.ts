@@ -4,8 +4,9 @@
  * Builds the `CiChecksFetcher` injected into {@link CiFailureEvaluator} for the
  * ci-failure condition monitor. It is a thin adapter over the headless
  * server-side checks path (`fetchOriginPullRequestChecksHeadless` in
- * `repos/pr-routes.ts`) — the SAME path the SPA's
- * `/api/origins/:originId/pull-requests/:prId/checks` route uses — so polling
+ * `repos/pr-routes.ts`), using the SPA's origin-scoped provider service rather
+ * than cached UI check snapshots. Authoritative polling pins checks to the head
+ * and reads the merge preview and fresh base alongside them, so polling
  * needs no HTTP request context and works for remote clones (origin/workspace
  * scope is resolved through the shared storage-origin path).
  *
@@ -53,6 +54,11 @@ export function createCiChecksFetcher(options: CreateCiChecksFetcherOptions): Ci
             prNumber: snapshot.prNumber,
             ...(snapshot.headRef !== undefined ? { headRef: snapshot.headRef } : {}),
             ...(snapshot.headSha !== undefined ? { headSha: snapshot.headSha } : {}),
+            ...(snapshot.baseSha !== undefined ? { baseSha: snapshot.baseSha } : {}),
+            ...(snapshot.baseRef !== undefined ? { baseRef: snapshot.baseRef } : {}),
+            ...(snapshot.prKey !== undefined ? { prKey: snapshot.prKey } : {}),
+            ...(snapshot.mergeability !== undefined ? { mergeability: snapshot.mergeability } : {}),
+            ...(snapshot.checksHeadSha !== undefined ? { checksHeadSha: snapshot.checksHeadSha } : {}),
             checks,
         };
     };

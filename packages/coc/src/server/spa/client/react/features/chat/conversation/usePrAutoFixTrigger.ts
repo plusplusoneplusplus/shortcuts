@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Trigger } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
-import { buildCiFixPrompt, type CiFixCheck } from './prAutoFixPrompt';
+import type { CiFixCheck } from './prAutoFixPrompt';
 
 export interface PrAutoFixTriggerContext {
     /** Whether the triggers feature flag is on (gates all behaviour). */
@@ -40,6 +40,10 @@ export interface UsePrAutoFixTriggerResult {
     available: boolean;
     /** Whether a `ci-failure` monitor is currently armed for this PR. */
     armed: boolean;
+    ciOnly: boolean;
+    repairInFlight: boolean;
+    status: string | null;
+    upgrade: () => Promise<void>;
     /** A network op (list/arm/disarm/fix) is in flight. */
     busy: boolean;
     /**
@@ -72,90 +76,114 @@ function matchesPr(
 }
 
 export function usePrAutoFixTrigger(ctx: PrAutoFixTriggerContext): UsePrAutoFixTriggerResult {
-    const { enabled, workspaceId, processId, originId, prId, prNumber } = ctx;
+    const { enabled, workspaceId, processId, originId, prId } = ctx;
 
-    const [armedTriggerId, setArmedTriggerId] = useState<string | null>(null);
+    const [monitor, setMonitor] = useState<Trigger | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const mountedRef = useRef(true);
+    const operationRef = useRef(false);
+    const readVersionRef = useRef(0);
+    const scope = JSON.stringify([workspaceId, processId, originId, prId]);
+    const scopeRef = useRef(scope);
+    scopeRef.current = scope;
+    const isCurrent = () => mountedRef.current && scopeRef.current === scope;
+    const armedTriggerId = monitor?.status === 'active' ? monitor.id : null;
 
     const available = Boolean(enabled && workspaceId && processId && originId && prId);
 
     const fetchArmed = useCallback(() => {
         if (!available || !workspaceId || !processId || !originId || !prId) {
-            setArmedTriggerId(null);
+            setMonitor(null);
             return;
         }
+        if (operationRef.current) return;
+        const version = ++readVersionRef.current;
         getCocClientForWorkspace(workspaceId)
             .triggers.list(workspaceId)
             .then(triggers => {
-                if (!mountedRef.current) return;
+                if (!isCurrent() || readVersionRef.current !== version) return;
                 const found = triggers.find(t => matchesPr(t, originId, prId, processId));
-                setArmedTriggerId(found ? found.id : null);
+                setMonitor(found ?? null);
+                setError(null);
             })
-            .catch(() => {
-                // Best-effort — a failed list just leaves the badge off.
-                if (mountedRef.current) setArmedTriggerId(null);
+            .catch(err => {
+                if (isCurrent() && readVersionRef.current === version) setError(getSpaCocClientErrorMessage(err, 'Unable to read PR auto-fix status.'));
             });
     }, [available, workspaceId, processId, originId, prId]);
 
     useEffect(() => {
         mountedRef.current = true;
+        setMonitor(null);
+        setError(null);
         fetchArmed();
+        const timer = available ? window.setInterval(fetchArmed, 10_000) : undefined;
         return () => {
             mountedRef.current = false;
+            if (timer !== undefined) window.clearInterval(timer);
         };
     }, [fetchArmed]);
 
     const arm = useCallback(async () => {
         if (!available || !workspaceId || !processId || !originId || !prId) return;
+        if (operationRef.current) return;
+        operationRef.current = true;
+        readVersionRef.current += 1;
         setBusy(true);
         setError(null);
         try {
             const created = await getCocClientForWorkspace(workspaceId).triggers.create(workspaceId, {
                 processId,
-                event: { type: 'condition-monitor', monitor: 'ci-failure', originId, prId },
+                event: { type: 'condition-monitor', monitor: 'ci-failure', originId, prId, repairScope: 'ci-and-conflicts' },
             });
-            if (mountedRef.current) setArmedTriggerId(created.id);
+            if (isCurrent()) setMonitor(created);
         } catch (err) {
-            if (mountedRef.current) setError(getSpaCocClientErrorMessage(err, 'Failed to arm CI auto-fix.'));
+            if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Failed to arm PR auto-fix.'));
         } finally {
+            operationRef.current = false;
             if (mountedRef.current) setBusy(false);
         }
     }, [available, workspaceId, processId, originId, prId]);
 
     const disarm = useCallback(async () => {
         if (!available || !workspaceId || !armedTriggerId) return;
+        if (operationRef.current) return;
+        operationRef.current = true;
+        readVersionRef.current += 1;
         setBusy(true);
         setError(null);
         try {
             await getCocClientForWorkspace(workspaceId).triggers.delete(workspaceId, armedTriggerId);
-            if (mountedRef.current) setArmedTriggerId(null);
+            if (isCurrent()) setMonitor(null);
         } catch (err) {
-            if (mountedRef.current) setError(getSpaCocClientErrorMessage(err, 'Failed to disarm CI auto-fix.'));
+            if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Failed to disarm CI auto-fix.'));
         } finally {
+            operationRef.current = false;
             if (mountedRef.current) setBusy(false);
         }
     }, [available, workspaceId, armedTriggerId]);
 
     const fixNow = useCallback(
-        async (failingChecks: readonly CiFixCheck[]) => {
-            if (!available || !workspaceId || !processId) return;
+        async (_failingChecks: readonly CiFixCheck[]) => {
+            if (!available || !workspaceId || !processId || !originId || !prId) return;
+            if (operationRef.current) return;
+            operationRef.current = true;
+            readVersionRef.current += 1;
             setBusy(true);
             setError(null);
             try {
-                await getCocClientForWorkspace(workspaceId).processes.sendMessage(
-                    processId,
-                    { content: buildCiFixPrompt(prNumber, failingChecks), mode: 'autopilot' },
-                    { workspace: workspaceId },
-                );
+                const repaired = await getCocClientForWorkspace(workspaceId).triggers.repairCi(workspaceId, {
+                    processId, event: { type: 'condition-monitor', monitor: 'ci-failure', originId, prId, repairScope: 'ci' },
+                });
+                if (isCurrent()) setMonitor(repaired);
             } catch (err) {
-                if (mountedRef.current) setError(getSpaCocClientErrorMessage(err, 'Failed to send fix message.'));
+                if (isCurrent()) setError(getSpaCocClientErrorMessage(err, 'Failed to send fix message.'));
             } finally {
+                operationRef.current = false;
                 if (mountedRef.current) setBusy(false);
             }
         },
-        [available, workspaceId, processId, prNumber],
+        [available, workspaceId, processId, originId, prId],
     );
 
     const disabledReason = !available
@@ -167,6 +195,10 @@ export function usePrAutoFixTrigger(ctx: PrAutoFixTriggerContext): UsePrAutoFixT
     return {
         available,
         armed: armedTriggerId !== null,
+        ciOnly: Boolean(armedTriggerId && monitor?.event.monitor === 'ci-failure' && monitor.event.repairScope !== 'ci-and-conflicts'),
+        repairInFlight: Boolean(monitor?.inFlight),
+        status: error ?? (monitor?.event.monitor === 'ci-failure' ? monitor.event.repairStatus ?? null : null),
+        upgrade: arm,
         busy,
         disabledReason,
         error,
