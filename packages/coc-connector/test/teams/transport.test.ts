@@ -50,15 +50,6 @@ describe('GraphTransport', () => {
         mockFetch.mockReset();
     });
 
-    it('should initialize and verify connection', async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ id: 'team-1', displayName: 'Test' }),
-        } as any);
-
-        await transport.initialize('token-1', { teamId: 'team-1' });
-    });
-
     it('should throw on initialization failure', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: false,

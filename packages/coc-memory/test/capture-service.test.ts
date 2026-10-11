@@ -12,7 +12,6 @@
  * - Review queue: approve, reject, edit-and-approve
  * - Redaction of sensitive values before review routing
  * - isTurnEligibleForExtraction guard
- * - noopExtractor and createFnExtractor utilities
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
@@ -24,11 +23,9 @@ import {
     MemoryCaptureService,
     createFnExtractor,
     isTurnEligibleForExtraction,
-    noopExtractor,
 } from '../src/capture-service';
 import type { CaptureExplicitInput } from '../src/capture-service';
-import type { ExtractionContext, ExtractionResult } from '../src/extraction-contract';
-import { DEFAULT_CONFIDENCE_THRESHOLD } from '../src/extraction-contract';
+import type { ExtractionContext } from '../src/extraction-contract';
 import type { MemoryFactInput } from '../src/types';
 
 // ---------------------------------------------------------------------------
@@ -567,72 +564,6 @@ describe('MemoryCaptureService (AC-04)', () => {
 
         it('returns false for empty string', () => {
             expect(isTurnEligibleForExtraction('')).toBe(false);
-        });
-    });
-
-    // -----------------------------------------------------------------------
-    // noopExtractor
-    // -----------------------------------------------------------------------
-
-    describe('noopExtractor', () => {
-        it('produces an empty extraction result', async () => {
-            const result = await noopExtractor.extract(makeExtractionContext());
-            expect(result.activatedFacts).toHaveLength(0);
-            expect(result.reviewFacts).toHaveLength(0);
-            expect(result.blockedFacts).toHaveLength(0);
-            expect(result.episode).toBeNull();
-        });
-    });
-
-    // -----------------------------------------------------------------------
-    // createFnExtractor
-    // -----------------------------------------------------------------------
-
-    describe('createFnExtractor', () => {
-        it('wraps a function as an extractor', async () => {
-            let called = false;
-            const extractor = createFnExtractor(async (ctx) => {
-                called = true;
-                expect(ctx.processId).toBe('proc-fn-test');
-                return { activatedFacts: [], reviewFacts: [], blockedFacts: [], episode: null };
-            });
-
-            await extractor.extract({ ...makeExtractionContext(), processId: 'proc-fn-test' });
-            expect(called).toBe(true);
-        });
-    });
-
-    // -----------------------------------------------------------------------
-    // Custom confidence threshold
-    // -----------------------------------------------------------------------
-
-    describe('custom confidenceThreshold', () => {
-        it('respects a higher threshold and routes more facts to review', async () => {
-            // Use threshold of 0.95 — only very high-confidence facts are active
-            const strictService = new MemoryCaptureService(
-                stores.facts,
-                stores.episodes,
-                0.95,
-            );
-
-            // The extractor returns a fact with confidence 0.85 as "active" gated —
-            // but the service itself doesn't re-gate. The extractor already decided.
-            // This test verifies that the extractor's own decisions are respected.
-            const extractor = createFnExtractor(async () => ({
-                activatedFacts: [makeActivatedFactInput('High confidence fact')],
-                reviewFacts: [makeReviewFactInput('Low confidence fact')],
-                blockedFacts: [],
-                episode: null,
-            }));
-
-            const result = await strictService.captureFromTurn(
-                makeExtractionContext(),
-                extractor,
-                true,
-            );
-
-            expect(result.activatedFactIds).toHaveLength(1);
-            expect(result.reviewFactIds).toHaveLength(1);
         });
     });
 

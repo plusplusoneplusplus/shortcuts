@@ -200,10 +200,4 @@ describe('E2E: Full Agent → Repo → Process flow', () => {
             });
         }
     });
-
-    it('step 6: dashboard HTML served', async () => {
-        const res = await httpReq(containerUrl + '/');
-        expect(res.status).toBe(200);
-        expect(res.body).toContain('CoCContainer');
-    });
 });

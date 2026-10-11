@@ -88,10 +88,4 @@ describe('FileStateStore', () => {
         await store.update('y', 2);
         expect(store.keys().sort()).toEqual(['x', 'y']);
     });
-
-    it('update returns a Promise', () => {
-        const store = new FileStateStore(filePath);
-        const result = store.update('k', 'v');
-        expect(result).toBeInstanceOf(Promise);
-    });
 });

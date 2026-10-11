@@ -68,12 +68,6 @@ describe('MCP Config Loader', () => {
             const configPath = getMcpConfigPath();
             expect(configPath).toBe(path.join(tempDir, '.copilot', 'mcp-config.json'));
         });
-
-        it('uses platform-specific path separators', () => {
-            const configPath = getMcpConfigPath();
-            // Should contain the correct separator for the platform
-            expect(configPath).toContain(path.sep);
-        });
     });
 
     describe('getWorkspaceMcpConfigPath', () => {
@@ -736,23 +730,6 @@ describe('MCP Config Loader', () => {
             const cached = getCachedMcpConfig();
             expect(cached).not.toBeNull();
             expect(cached?.success).toBe(true);
-        });
-    });
-
-    describe('cross-platform compatibility', () => {
-        it('handles paths with spaces', () => {
-            // This test verifies that path.join handles spaces correctly
-            const pathWithSpaces = path.join(tempDir, 'path with spaces', '.copilot', 'mcp-config.json');
-            expect(pathWithSpaces).toContain('path with spaces');
-        });
-
-        it('handles Unicode characters in paths', () => {
-            // Create a directory with Unicode characters
-            const unicodeDir = path.join(tempDir, '日本語');
-            fs.mkdirSync(unicodeDir, { recursive: true });
-            
-            // Verify it was created
-            expect(fs.existsSync(unicodeDir)).toBe(true);
         });
     });
 

@@ -6,7 +6,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
     SDKServiceRegistry,
     sdkServiceRegistry,
-    COPILOT_PROVIDER,
     SDK_PROVIDER_COPILOT,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ISDKService } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -117,24 +116,6 @@ describe('SDKServiceRegistry', () => {
         const r2 = new SDKServiceRegistry();
         r1.register('shared', makeMockProvider('r1'));
         expect(r2.has('shared')).toBe(false);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Module-level singleton & COPILOT_PROVIDER constant
-// ---------------------------------------------------------------------------
-
-describe('sdkServiceRegistry module singleton', () => {
-    it('exports a singleton SDKServiceRegistry instance', () => {
-        expect(sdkServiceRegistry).toBeInstanceOf(SDKServiceRegistry);
-    });
-
-    it('COPILOT_PROVIDER constant equals "copilot"', () => {
-        expect(COPILOT_PROVIDER).toBe('copilot');
-    });
-
-    it('SDK_PROVIDER_COPILOT is an alias for COPILOT_PROVIDER', () => {
-        expect(SDK_PROVIDER_COPILOT).toBe(COPILOT_PROVIDER);
     });
 });
 

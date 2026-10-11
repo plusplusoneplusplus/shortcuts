@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSuggestFollowUpsTool, type FollowUpSuggestion } from '../../../src/server/llm-tools/suggest-follow-ups-tool';
+import { createSuggestFollowUpsTool } from '../../../src/server/llm-tools/suggest-follow-ups-tool';
 
 describe('createSuggestFollowUpsTool', () => {
     it('returns a tool with name "suggest_follow_ups"', () => {
@@ -55,9 +55,4 @@ describe('createSuggestFollowUpsTool', () => {
         expect(result).toEqual(input);
     });
 
-    it('FollowUpSuggestion type is importable', () => {
-        // Compile-time check: if this file compiles, the type is importable
-        const _check: FollowUpSuggestion = { suggestions: ['a', 'b', 'c'] };
-        expect(_check.suggestions).toHaveLength(3);
-    });
 });

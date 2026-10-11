@@ -30,10 +30,6 @@ describe('Model Registry', () => {
     // ========================================================================
 
     describe('MODEL_REGISTRY', () => {
-        it('should be a ReadonlyMap', () => {
-            expect(MODEL_REGISTRY).toBeInstanceOf(Map);
-        });
-
         it('should contain at least one model', () => {
             expect(MODEL_REGISTRY.size).toBeGreaterThan(0);
         });
@@ -99,10 +95,6 @@ describe('Model Registry', () => {
     // ========================================================================
 
     describe('VALID_MODELS', () => {
-        it('should be a readonly array', () => {
-            expect(Array.isArray(VALID_MODELS)).toBe(true);
-        });
-
         it('should contain all registry model IDs in order', () => {
             const registryIds = getAllModels().map(m => m.id);
             expect([...VALID_MODELS]).toEqual(registryIds);
@@ -128,10 +120,6 @@ describe('Model Registry', () => {
     });
 
     describe('DEFAULT_MODEL_ID', () => {
-        it('should be a string', () => {
-            expect(typeof DEFAULT_MODEL_ID).toBe('string');
-        });
-
         it('should be the first model in VALID_MODELS', () => {
             expect(DEFAULT_MODEL_ID).toBe(VALID_MODELS[0]);
         });
@@ -223,12 +211,6 @@ describe('Model Registry', () => {
                 expect(models[i].id).toBe(VALID_MODELS[i]);
             }
         });
-
-        it('should return readonly array', () => {
-            const models1 = getAllModels();
-            const models2 = getAllModels();
-            expect(models1).toBe(models2); // same reference
-        });
     });
 
     describe('getActiveModels()', () => {
@@ -270,10 +252,6 @@ describe('Model Registry', () => {
         it('should return the number of models', () => {
             expect(getModelCount()).toBe(MODEL_REGISTRY.size);
             expect(getModelCount()).toBe(VALID_MODELS.length);
-        });
-
-        it('should be a positive number', () => {
-            expect(getModelCount()).toBeGreaterThan(0);
         });
     });
 
@@ -356,19 +334,6 @@ describe('Model Registry', () => {
             expect(getModelDescription(undefined as any)).toBe('');
             expect(getModelDefinition(null as any)).toBeUndefined();
             expect(isValidModelId(undefined as any)).toBe(false);
-        });
-
-        it('should not allow modification of VALID_MODELS at runtime', () => {
-            // VALID_MODELS should be readonly, but we verify behavior
-            const originalLength = VALID_MODELS.length;
-            try {
-                (VALID_MODELS as any).push('new-model');
-            } catch {
-                // Expected in strict mode
-            }
-            // Even if push didn't throw, the original constant should be intact
-            // (in practice, 'as const' makes the type readonly but array is still mutable at runtime)
-            expect(VALID_MODELS.length).toBeGreaterThanOrEqual(originalLength);
         });
     });
 

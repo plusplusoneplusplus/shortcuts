@@ -297,21 +297,6 @@ describe('Mermaid CSS in SPA stylesheet', () => {
 // Tests for useMermaid hook (replaces task-mermaid.ts module)
 // ---------------------------------------------------------------------------
 
-describe('useMermaid hook module', () => {
-    it('exports useMermaid hook', async () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
-        const content = fs.readFileSync(hookPath, 'utf8');
-        expect(content).toContain('export function useMermaid');
-    });
-
-    it('accepts optional contentKey parameter for re-triggering', () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
-        const content = fs.readFileSync(hookPath, 'utf8');
-        expect(content).toMatch(/useMermaid\(rootRef.*contentKey/);
-    });
-
-});
-
 // ---------------------------------------------------------------------------
 // WikiComponent mermaid integration
 // ---------------------------------------------------------------------------

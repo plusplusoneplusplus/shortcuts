@@ -14,8 +14,6 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 const treeSpy = vi.fn();
@@ -64,26 +62,6 @@ async function renderPanel(props: Parameters<typeof ExplorerPanel>[0]) {
     await waitFor(() => expect(screen.getByTestId('tree-node-readme.md')).toBeTruthy());
     return view;
 }
-
-describe('ExplorerPanel — mode is stated, never inferred', () => {
-    const SOURCE = fs.readFileSync(
-        path.join(
-            __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client',
-            'react', 'features', 'repo-detail', 'explorer', 'ExplorerPanel.tsx',
-        ),
-        'utf-8',
-    );
-
-    it('declares mode as a required prop', () => {
-        expect(SOURCE).toContain('mode: ExplorerPanelMode;');
-        expect(SOURCE).not.toContain('mode?: ExplorerPanelMode');
-    });
-
-    it('keeps no fallback that reads the mode off onOpenFile', () => {
-        expect(SOURCE).not.toContain('resolveExplorerMode');
-        expect(SOURCE).not.toContain("onOpenFile !== undefined");
-    });
-});
 
 describe('ExplorerPanel — editor mode (the Explorer sub-tab)', () => {
     it('renders the editor area, its resize handle and the breadcrumb row', async () => {

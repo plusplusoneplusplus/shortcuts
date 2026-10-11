@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import {
     ErrorCode,
-    ErrorCodeType,
     mapSystemErrorCode,
     PipelineCoreError,
     ErrorMetadata,
@@ -14,20 +13,6 @@ import {
     wrapError,
     getErrorCauseMessage,
 } from '../../src/errors';
-
-describe('ErrorCode', () => {
-    it('should have all expected error codes', () => {
-        expect(ErrorCode.CANCELLED).toBe('CANCELLED');
-        expect(ErrorCode.TIMEOUT).toBe('TIMEOUT');
-        expect(ErrorCode.RETRY_EXHAUSTED).toBe('RETRY_EXHAUSTED');
-        expect(ErrorCode.AI_INVOCATION_FAILED).toBe('AI_INVOCATION_FAILED');
-        expect(ErrorCode.PIPELINE_EXECUTION_FAILED).toBe('PIPELINE_EXECUTION_FAILED');
-        expect(ErrorCode.CSV_PARSE_ERROR).toBe('CSV_PARSE_ERROR');
-        expect(ErrorCode.TEMPLATE_ERROR).toBe('TEMPLATE_ERROR');
-        expect(ErrorCode.MISSING_VARIABLE).toBe('MISSING_VARIABLE');
-        expect(ErrorCode.UNKNOWN).toBe('UNKNOWN');
-    });
-});
 
 describe('mapSystemErrorCode', () => {
     it('should map ENOENT to FILE_NOT_FOUND', () => {

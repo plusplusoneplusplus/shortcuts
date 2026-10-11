@@ -31,6 +31,151 @@ import {
     resetPopOutCloneRegistration,
 } from '../../../../../src/server/spa/client/react/layout/popoutGitReview/popoutGitReviewRoute';
 
+describe('parsePopOutGitReviewRoute', () => {
+    it('parses commit review route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/abc123',
+            '?workspace=ws1',
+        );
+        expect(result).toEqual({
+            workspaceId: 'ws1',
+            reviewType: 'commit',
+            commitHash: 'abc123',
+        });
+    });
+
+    it('parses branch-range review route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws1',
+        );
+        expect(result).toEqual({
+            workspaceId: 'ws1',
+            reviewType: 'branch-range',
+            baseMode: 'default-branch',
+        });
+    });
+
+    it('parses the upstream base mode for branch-range routes', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws1&base=upstream',
+        );
+        expect(result!.baseMode).toBe('upstream');
+    });
+
+    it('falls back to default-branch for an unknown base value', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws1&base=bogus',
+        );
+        expect(result!.baseMode).toBe('default-branch');
+    });
+
+    it('decodes URI-encoded commit hash', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/abc%2F123',
+            '?workspace=ws1',
+        );
+        expect(result).not.toBeNull();
+        expect(result!.commitHash).toBe('abc/123');
+    });
+
+    it('returns null for invalid hash prefix', () => {
+        expect(parsePopOutGitReviewRoute('#popout/activity/123', '?workspace=ws1')).toBeNull();
+        expect(parsePopOutGitReviewRoute('#other', '?workspace=ws1')).toBeNull();
+    });
+
+    it('returns null when workspace is missing', () => {
+        expect(parsePopOutGitReviewRoute('#popout/git-review/abc123', '')).toBeNull();
+    });
+
+    it('returns null when no commit hash or type is specified', () => {
+        expect(parsePopOutGitReviewRoute('#popout/git-review', '?workspace=ws1')).toBeNull();
+    });
+
+    it('parses PR review route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/42',
+            '?workspace=ws1&repo=myrepo&origin=gh_org_repo',
+        );
+        expect(result).toEqual({
+            workspaceId: 'ws1',
+            reviewType: 'pr',
+            prId: '42',
+            repoId: 'myrepo',
+            originId: 'gh_org_repo',
+        });
+    });
+
+    it('parses PR route with URI-encoded prId', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/some%2Fpr',
+            '?workspace=ws1&repo=r1',
+        );
+        expect(result).not.toBeNull();
+        expect(result!.prId).toBe('some/pr');
+        expect(result!.repoId).toBe('r1');
+    });
+
+    it('PR route defaults repoId to workspaceId when repo param missing', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/99',
+            '?workspace=ws1',
+        );
+        expect(result).toEqual({
+            workspaceId: 'ws1',
+            reviewType: 'pr',
+            prId: '99',
+            repoId: 'ws1',
+        });
+    });
+
+    it('returns null for PR route without prId', () => {
+        expect(parsePopOutGitReviewRoute('#popout/git-review/pr', '?workspace=ws1')).toBeNull();
+    });
+
+    it('returns null for hash with only popout prefix', () => {
+        expect(parsePopOutGitReviewRoute('#popout', '?workspace=ws1')).toBeNull();
+    });
+
+    it('parses cloneBaseUrl from URL search params for commit route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/abc123',
+            '?workspace=ws1&cloneBaseUrl=http%3A%2F%2F127.0.0.1%3A4000',
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBe('http://127.0.0.1:4000');
+    });
+
+    it('parses cloneBaseUrl for branch-range route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws2&cloneBaseUrl=http%3A%2F%2F127.0.0.1%3A4001',
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBe('http://127.0.0.1:4001');
+    });
+
+    it('parses cloneBaseUrl for PR route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/42',
+            '?workspace=ws3&repo=r1&cloneBaseUrl=http%3A%2F%2F127.0.0.1%3A4002',
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBe('http://127.0.0.1:4002');
+    });
+
+    it('omits cloneBaseUrl for local workspaces (no param in URL)', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/abc123',
+            '?workspace=ws1',
+        );
+        expect(result).not.toBeNull();
+        expect(result!.cloneBaseUrl).toBeUndefined();
+    });
+});
+
 describe('popOutGitReviewLabel', () => {
     it('shortens the commit hash to 7 chars', () => {
         expect(popOutGitReviewLabel({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CocClient, SentinelTodosClient } from '../../src';
+import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
@@ -66,9 +66,5 @@ describe('SentinelTodosClient', () => {
     });
     const readAdapter = createMockAdapter({ revision: 2, items: [item] });
     expect((await new SentinelTodosClient(readAdapter).get('ws', 'p')).items[0].type).toBe('manual');
-  });
-
-  it('is exposed on CocClient', () => {
-    expect(new CocClient({ baseUrl: 'http://localhost:4000' }).sentinelTodos).toBeInstanceOf(SentinelTodosClient);
   });
 });

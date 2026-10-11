@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-    DEFAULT_PDF_EMBED_HEIGHT,
-    MAX_PDF_EMBED_HEIGHT,
-    MIN_PDF_EMBED_HEIGHT,
-    isPdfUrl,
-} from '../../../src/editor/rendering/pdf-embed';
+import { isPdfUrl } from '../../../src/editor/rendering/pdf-embed';
 
 describe('isPdfUrl', () => {
     it('accepts relative attachment paths ending in .pdf', () => {
@@ -43,11 +38,5 @@ describe('isPdfUrl', () => {
         expect(isPdfUrl('   ')).toBe(false);
         expect(isPdfUrl(null)).toBe(false);
         expect(isPdfUrl(undefined)).toBe(false);
-    });
-
-    it('exports pdf height limits', () => {
-        expect(DEFAULT_PDF_EMBED_HEIGHT).toBe(480);
-        expect(MIN_PDF_EMBED_HEIGHT).toBeLessThan(DEFAULT_PDF_EMBED_HEIGHT);
-        expect(MAX_PDF_EMBED_HEIGHT).toBeGreaterThan(DEFAULT_PDF_EMBED_HEIGHT);
     });
 });

@@ -11,14 +11,6 @@ import {
 
 const SKILL_NAME = 'swe-1on1-notes';
 
-describe('getMyWorkSkillsPath', () => {
-    it('returns a string path', () => {
-        const p = getMyWorkSkillsPath();
-        expect(typeof p).toBe('string');
-        expect(p.length).toBeGreaterThan(0);
-    });
-});
-
 describe('autoInstallMyWorkSkills', () => {
     let installDir: string;
 

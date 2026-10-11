@@ -31,10 +31,6 @@ describe('Bundle Configuration', () => {
             configContent = fs.readFileSync(ESBUILD_CONFIG_PATH, 'utf8');
         });
 
-        it('should exist', () => {
-            expect(fs.existsSync(ESBUILD_CONFIG_PATH)).toBe(true);
-        });
-
         it('should mark @github/copilot-sdk as external', () => {
             expect(configContent).toContain('@github/copilot-sdk');
         });

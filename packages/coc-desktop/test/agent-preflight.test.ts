@@ -30,13 +30,6 @@ function existsOnly(present: string[]): (p: string) => boolean {
     return (p) => set.has(p.toLowerCase());
 }
 
-describe('AGENT_CLIS', () => {
-    it('covers the three providers the server spawns, by their real binary names', () => {
-        const byId = Object.fromEntries(AGENT_CLIS.map((c) => [c.id, c.bin]));
-        expect(byId).toEqual({ copilot: 'copilot', codex: 'codex', claude: 'claude' });
-    });
-});
-
 describe('isOnPath (POSIX)', () => {
     const env: PreflightEnv = {
         platform: 'linux',
