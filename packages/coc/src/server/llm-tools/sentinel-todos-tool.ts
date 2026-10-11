@@ -21,7 +21,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { Trigger } from '../triggers/trigger-types';
-import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
+import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
 
@@ -91,7 +91,7 @@ const DESCRIPTION =
     'error returns the newer `current` item — re-read it and only reapply your change if it still makes sense. ' +
     'Setting `status` to `done` or `needs_attention` requires a short `reason`; `done` records that reason as the ' +
     'reviewed outcome unless you pass `outcome`. Only mark `done` after checking evidence against the completion ' +
-    'condition. Choose status from the overall outcome, not linked job completion: successful intermediate phases are ' +
+    'condition. ' + SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE + ' Choose status from the overall outcome, not linked job completion: successful intermediate phases are ' +
     'neither `done` nor failures. Use `todo` for pending next steps/approval, `in_progress` for continuing authorized ' +
     'work, and `needs_attention` for failed, cancelled, blocked, or incomplete final work. After successful grilling, ' +
     'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"; do not launch ' +

@@ -201,7 +201,8 @@ references before editing. Paths are package-relative.
   returns feature work to Todo awaiting implementation approval; only explicitly
   design-only/interview-only overall requests finish at an artifact. Ask mode and
   phase-specific design handoffs never redefine coding completion conditions. Parent reviews
-  select overall-outcome status, re-read revisions, honor manual user verdicts, and require
+  are shallow by default (job/repo, outcome, commit/artifact; no code-detail review or review
+  delegation unless the user asks), select overall-outcome status, re-read revisions, honor manual user verdicts, and require
   user authorization before implementation/retry. Local assessment is durable per terminal result:
   `reviewedJobs` names exact process/event evidence with a status verdict and reason in one
   revision-checked write. Unrelated edits and delivery completion never acknowledge results.
@@ -420,7 +421,7 @@ references before editing. Paths are package-relative.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
   the source-owned starting mode directive (`chat-mode-directive.ts`), which keeps coding
   tasks pending through planning/POCs until implementation meets the completion condition.
-  The design-only completion boundary is shared with ledger/tool guidance from
+  The design-only completion boundary and shallow result-check rule are shared with ledger/tool guidance from
   `delegation/sentinel-job-review-instructions.ts`. Required review rules live in
   `delegation/sentinel-job-review-instructions.ts` and are appended by
   `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including

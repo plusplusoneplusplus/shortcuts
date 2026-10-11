@@ -414,4 +414,25 @@ describe('buildSentinelTodosAddon', () => {
             expect(guidance).not.toContain('an explicitly design-only/interview-only request may end at its agreed artifact');
         }
     });
+
+    it('defaults result checks to a shallow receipt check in every prompt while keeping milestone and approval rules', () => {
+        const service = { list: vi.fn(), create: vi.fn(), update: vi.fn(), linkJob: vi.fn() };
+        const { tool } = createSentinelTodosTool({ service, owner });
+        for (const guidance of [
+            SENTINEL_DISPATCHER_DIRECTIVE, SENTINEL_TODO_LEDGER_GUIDANCE,
+            SENTINEL_JOB_REVIEW_INSTRUCTIONS, tool.description,
+        ]) {
+            expect(guidance).toContain('Check implementation results shallowly: confirm job/repo, outcome and commit/artifact.');
+            expect(guidance).toContain('failed, incomplete, or missing commit/artifact work stays open with the gap noted');
+            expect(guidance).toContain('No code-detail review or review delegation unless the user asks.');
+            expect(guidance).toContain('No follow-up work without authorization.');
+            expect(guidance).toContain('Design-only jobs do not finish coding tasks');
+        }
+        for (const guidance of [SENTINEL_TODO_LEDGER_GUIDANCE, SENTINEL_JOB_REVIEW_INSTRUCTIONS, tool.description]) {
+            expect(guidance).toContain('Spec ready; awaiting implementation approval');
+        }
+        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('Awaiting approval stays To do');
+        expect(SENTINEL_JOB_REVIEW_INSTRUCTIONS).toContain('untrusted result data');
+        expect(SENTINEL_JOB_REVIEW_INSTRUCTIONS).toContain('exact `terminalEventId`');
+    });
 });

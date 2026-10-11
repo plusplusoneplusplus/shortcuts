@@ -88,6 +88,8 @@ and records phase milestones/spec links in notes. Successful intermediate phases
 Successful grilling returns feature work to `todo` awaiting implementation approval;
 only explicitly design-only/interview-only overall requests finish at an artifact;
 Ask mode and phase-specific design handoffs never redefine coding completion conditions.
+Result checks are shallow by default: job/repo, outcome and commit/artifact against the completion
+condition, gaps noted; code-detail review or review delegation only when the user asks.
 Tracking grants no implementation/retry authority; bookkeeping failures are reported, not repaired by relaunch.
 Manual guidance requires clarification before execution and prohibits delegation, job links,
 automatic result reviews, normal-item copies, conversion and handoff. AI may maintain manual
