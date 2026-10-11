@@ -32,6 +32,7 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
+import { SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
 import { SentinelTodoScrubber } from './SentinelTodoScrubber';
 import {
     endSentinelTodoExcursion,
@@ -416,7 +417,7 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                     <Button size="sm" variant="secondary" onClick={addForm.open} data-testid="sentinel-todo-add">Add item</Button>
                 )}
             </div>
-            {ledger && <SentinelTodoScrubber owner={owner} items={ledger.items} onFollowLink={followLink} />}
+            <SentinelTodoScrubber owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load}>
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
                     Could not load the to-do list: {loadError}
@@ -495,6 +496,7 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                     <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                 </>
             )}
+            </SentinelTodoScrubber>
         </div>
     );
 }
@@ -623,6 +625,7 @@ function TodoRow({ item, owner, expanded, onToggle, onSave, onFollowLink }: {
                 <span id={titleId} className={cn('min-w-0 flex-1 break-words font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 <span aria-hidden="true" className={cn('shrink-0 pt-px text-[10px]', MUTED)}>{expanded ? '▾' : '▸'}</span>
             </button>
+            <SentinelTodoScrubFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (
                     <span className="max-w-full truncate" title={item.targetRepo.workspaceId} data-testid={`sentinel-todo-repo-${item.id}`}>

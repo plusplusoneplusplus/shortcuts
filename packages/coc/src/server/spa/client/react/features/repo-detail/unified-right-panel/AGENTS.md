@@ -730,7 +730,13 @@ Selection contains open normal/manual items and filters closed items again at ad
 Config drafts keep their captured revision through refresh; conflicts reload
 without retrying writes. The schedule editor shares browser-safe validation and
 presets from `server/schedule/scrub-cron.ts`; Resume saves the current revision.
-Tests use isolated mock clients in `test/server/sentinel-scrubber/panel.test.tsx`.
+Completed run details feed an owner-local findings context shared by row badges.
+The newest finding wins, including hidden dismissed/suppressed/undone findings;
+auto-Done attribution requires the item's exact applied revision. Accept uses the
+snapshot revision, Undo the applied revision, and conflicts require a fresh scrub.
+Successful actions reload the ledger for derived job states. Evidence links allow
+HTTP(S) only; other references render as text. Tests use isolated mock clients in
+`test/server/sentinel-scrubber/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
 
 ### PR-merge triggers
 

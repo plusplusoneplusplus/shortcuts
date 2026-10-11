@@ -16,6 +16,8 @@ const create = vi.fn();
 const update = vi.fn();
 const connect = vi.fn();
 const scrubGet = vi.fn();
+const scrubGetRun = vi.fn();
+const scrubAccept = vi.fn();
 const clientRefs: unknown[] = [];
 
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
@@ -33,7 +35,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
 }));
 const fakeClient = {
     sentinelTodos: {
-        scrubber: { get: (...args: unknown[]) => scrubGet(...args) },
+        scrubber: { get: (...args: unknown[]) => scrubGet(...args), getRun: (...args: unknown[]) => scrubGetRun(...args), accept: (...args: unknown[]) => scrubAccept(...args) },
         get: (...args: unknown[]) => get(...args),
         create: (...args: unknown[]) => create(...args),
         update: (...args: unknown[]) => update(...args),
@@ -90,6 +92,8 @@ function conflict(current: SentinelTodoItem) {
 beforeEach(() => {
     applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false });
     scrubGet.mockReset();
+    scrubGetRun.mockReset();
+    scrubAccept.mockReset();
     get.mockReset();
     create.mockReset();
     update.mockReset();
@@ -106,6 +110,32 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
+    it('renders findings under collapsed item titles and refetches the ledger when Obsolete is accepted', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+        get.mockResolvedValue(ledger([item()]));
+        scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
+            runs: [{ id: 'r1', status: 'completed', trigger: 'manual', createdAt: '2026-10-11T00:00:00Z', counts: { done: 0, proposals: 1, unverified: 0 }, itemCount: 1, deferredCount: 0, awaitingReviewCount: 0 }] });
+        const finding = { runId: 'r1', itemId: 'i1', itemRevision: 1, state: 'proposed', fingerprint: 'f1', audit: [],
+            finding: { itemId: 'i1', verdict: 'obsolete', confidence: 'high', summary: 'Superseded', rationale: 'Replacement landed', autoApply: false,
+                evidence: [{ kind: 'pr', ref: '#902', state: 'merged', checkedAt: '2026-10-11T01:00:00Z' }] } };
+        scrubGetRun.mockResolvedValue({ findings: [finding] });
+        scrubAccept.mockImplementation(async () => {
+            get.mockResolvedValue(ledger([item({ status: 'done', archived: true, revision: 2, outcome: { summary: 'Obsolete: Superseded', recordedAt: '2026-10-11T01:00:00Z', recordedBy: 'user' } })], 2));
+            scrubGetRun.mockResolvedValue({ findings: [{ ...finding, state: 'accepted' }] });
+            return {};
+        });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByText('◇ Proposal: Obsolete (high)');
+        expect(screen.queryByTestId('sentinel-todo-i1-details')).toBeNull();
+        const row = screen.getByTestId('sentinel-todo-row-i1');
+        fireEvent.click(within(row).getByRole('button', { name: 'Accept' }));
+        await waitFor(() => expect(screen.queryByText('◇ Proposal: Obsolete (high)')).toBeNull());
+        expect(scrubAccept).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'r1', 'i1', { expectedItemRevision: 1 });
+        expect(get).toHaveBeenCalledTimes(2);
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button', { name: 'Archived (1)' }));
+        await screen.findByTestId('sentinel-todo-row-i1');
+    });
+
     it('mounts the enabled scrubber above the list only after the ledger loads', async () => {
         applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
         const read = deferred<SentinelTodoLedgerResponse>();

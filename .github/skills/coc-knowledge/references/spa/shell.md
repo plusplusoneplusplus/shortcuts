@@ -554,8 +554,11 @@ scrubber flags are enabled. Owner/endpoint remounts isolate async state and draf
 Its typed owner-routed client reads config/run summaries, starts all-open/selected
 assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
 invalidation and visibility-aware polling refresh runs; chat links share To-do
-excursion navigation. The editor uses browser-safe `schedule/scrub-cron.ts`
-validation/presets; the server remains the authority for writes and single-flight.
+excursion navigation. Completed details populate a row findings context with newest
+finding precedence. Accept/Undo use recorded revisions, conflicts require a fresh
+scrub, and actions refetch the ledger. Auto-Done attribution requires the applied
+revision; evidence URLs allow HTTP(S). The editor uses browser-safe
+`schedule/scrub-cron.ts` validation/presets; the server owns writes and single-flight.
 
 ### Sentinel To-do triggers
 

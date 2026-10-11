@@ -1,13 +1,14 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { SentinelScrubberResponse, SentinelScrubRun, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { SentinelScrubberResponse, SentinelScrubRun, SentinelScrubFindingRecord, SentinelScrubRunDetail, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
-const mock = vi.hoisted(() => ({ get: vi.fn(), start: vi.fn(), cancel: vi.fn(), updateConfig: vi.fn(), connect: vi.fn(), route: { kind: 'local' } as { kind: string; baseUrl?: string }, refs: [] as unknown[] }));
+const mock = vi.hoisted(() => ({ getRun: vi.fn(), accept: vi.fn(), dismiss: vi.fn(), undo: vi.fn(), get: vi.fn(), start: vi.fn(), cancel: vi.fn(), updateConfig: vi.fn(), connect: vi.fn(), route: { kind: 'local' } as { kind: string; baseUrl?: string }, refs: [] as unknown[] }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; } }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 const client = { sentinelTodos: { scrubber: mock }, events: { connect: mock.connect } };
 import { SentinelTodoScrubber } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber';
+import { SentinelTodoScrubFinding } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_parent' };
@@ -30,6 +31,8 @@ function deferred<T>() {
 beforeEach(() => {
     vi.clearAllMocks();
     mock.get.mockReset().mockResolvedValue(response());
+    mock.getRun.mockReset().mockResolvedValue({ findings: [] });
+    for (const action of [mock.accept, mock.dismiss, mock.undo]) action.mockReset().mockResolvedValue({});
     mock.start.mockReset().mockResolvedValue({ runId: 'run-1' });
     mock.cancel.mockReset().mockResolvedValue(active());
     mock.updateConfig.mockReset().mockResolvedValue(response().config);
@@ -209,5 +212,147 @@ describe('To-do Scrubber strip', () => {
         expect(screen.getByRole('status')).toHaveTextContent('owning server is not connected');
         expect(mock.get).not.toHaveBeenCalled();
         expect(mock.connect).not.toHaveBeenCalled();
+    });
+});
+
+function finding(state: SentinelScrubFindingRecord['state'] = 'proposed', patch: Partial<SentinelScrubFindingRecord> = {}): SentinelScrubFindingRecord {
+    return { runId: 'result', itemId: 'a', state, itemRevision: 1, fingerprint: 'evidence', audit: [],
+        finding: { itemId: 'a', verdict: 'done', confidence: 'high', autoApply: false, summary: 'Work landed', rationale: 'Completion condition met',
+            evidence: [{ kind: 'pr', ref: 'https://example.com/pr/915', state: 'merged', checkedAt: '2026-10-11T01:00:00Z' }] }, ...patch };
+}
+function results(records: SentinelScrubFindingRecord[], runId = 'result') {
+    const run = { ...active(), id: runId, status: 'completed' as const };
+    return { summary: { ...run, itemCount: records.length, deferredCount: 0, awaitingReviewCount: 0, counts: { done: 0, proposals: 1, unverified: 0 } },
+        detail: { ...run, findings: records } };
+}
+function setupFindings(record = finding()) {
+    const result = results([record]);
+    mock.get.mockResolvedValue(response({ runs: [result.summary] }));
+    mock.getRun.mockResolvedValue(result.detail);
+}
+function rows(current = item('a'), onLedgerChange = vi.fn().mockResolvedValue(undefined), own = owner) {
+    return <SentinelTodoScrubber owner={own} items={[current]} onFollowLink={follow} onLedgerChange={onLedgerChange}>
+        <SentinelTodoScrubFinding item={current} />
+    </SentinelTodoScrubber>;
+}
+
+describe('Scrubber row findings', () => {
+    it('shows proposal evidence and accepts the snapshot revision on its owning server, then refreshes ledger', async () => {
+        setupFindings(finding('proposed', { demotedBecause: 'manual' }));
+        const refresh = vi.fn().mockResolvedValue(undefined);
+        const own = { ...owner, ownerWorkspaceId: 'group', ownerRoutingRef: 'remote:srv:group' };
+        mock.route = { kind: 'remote', baseUrl: 'https://remote.example' };
+        render(rows(item('a', { type: 'manual' }), refresh, own));
+        await screen.findByText('◇ Proposal: Done (high)');
+        expect(mock.getRun).toHaveBeenCalledWith('group', 'queue_parent', 'result');
+        expect(mock.refs).toContain('remote:srv:group');
+        expect(screen.getByText('Manual item: proposal only')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('Evidence'));
+        expect(screen.getByText('Confidence: high · Completion condition met')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'https://example.com/pr/915' })).toHaveAttribute('rel', 'noopener noreferrer');
+        expect(screen.getByText(/merged · checked/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+        await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+        expect(mock.accept).toHaveBeenCalledExactlyOnceWith('group', 'queue_parent', 'result', 'a', { expectedItemRevision: 1 });
+    });
+
+    it('dismisses without duplicate admission and hides the sticky result after refresh', async () => {
+        setupFindings();
+        const pending = deferred<unknown>();
+        mock.dismiss.mockReturnValue(pending.promise);
+        render(rows());
+        await screen.findByText('◇ Proposal: Done (high)');
+        fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+        mock.getRun.mockResolvedValue(results([finding('dismissed')]).detail);
+        await act(async () => pending.resolve({}));
+        await waitFor(() => expect(screen.queryByText(/Proposal: Done/)).toBeNull());
+        expect(mock.dismiss).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', 'result', 'a', { expectedItemRevision: 1 });
+    });
+
+    it('uses the applied revision for Undo and hides attribution after newer user edits', async () => {
+        setupFindings(finding('applied', { audit: [{ action: 'applied', actor: 'scrubber', at: '2026-10-11T01:00:00Z',
+            before: { status: 'in_progress', archived: false, revision: 1 }, after: { status: 'done', archived: false, revision: 2 } }] }));
+        const view = render(rows(item('a', { revision: 2, status: 'done' })));
+        await screen.findByText('✓ Done by scrubber');
+        fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+        await waitFor(() => expect(mock.undo).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', 'result', 'a', { expectedItemRevision: 2 }));
+        view.rerender(rows(item('a', { revision: 3, status: 'in_progress' })));
+        expect(screen.queryByText('✓ Done by scrubber')).toBeNull();
+    });
+
+    it('blocks known stale proposals and reloads raced conflicts without retrying against a newer revision', async () => {
+        setupFindings();
+        const view = render(rows(item('a', { revision: 2 })));
+        await screen.findByText('Item changed since this proposal. Run a fresh scrub.');
+        expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled();
+        view.rerender(rows());
+        mock.accept.mockRejectedValue(Object.assign(new Error('stale'), { status: 409 }));
+        fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+        await screen.findByRole('alert');
+        expect(screen.getByRole('alert')).toHaveTextContent('Item changed since this proposal. Run a fresh scrub.');
+        expect(mock.accept).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows unverified reasons without actions and treats unsafe evidence refs as text', async () => {
+        const record = finding('unverified');
+        record.finding = { ...record.finding, verdict: 'unverified', unverifiedReason: 'Remote server offline',
+            evidence: [{ kind: 'other', ref: 'javascript:alert(1)', state: 'other', checkedAt: '2026-10-11T01:00:00Z' }] };
+        setupFindings(record);
+        render(rows());
+        await screen.findByText('? Unverified');
+        expect(screen.getByText('· Remote server offline')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+        expect(screen.queryByRole('link', { name: 'javascript:alert(1)' })).toBeNull();
+    });
+
+    it('keeps run controls available when findings fail to load and disables stale finding actions', async () => {
+        setupFindings();
+        render(rows());
+        await screen.findByText('◇ Proposal: Done (high)');
+        mock.get.mockResolvedValue(response({ activeRun: active(), runs: [results([finding()]).summary] }));
+        mock.getRun.mockRejectedValueOnce(new Error('offline'));
+        await act(async () => mock.connect.mock.calls[0][0].onMessage({ type: 'sentinel-scrubber-changed', workspaceId: 'ws-a', processId: owner.processId }));
+        await screen.findByText(/Could not load findings: offline/);
+        expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh findings' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled());
+    });
+
+    it('lets the newest suppressed finding hide older applied badges', async () => {
+        const newest = results([finding('suppressed')], 'new');
+        const old = results([finding('applied', { audit: [{ action: 'applied', actor: 'scrubber', at: '2026-10-11T01:00:00Z', after: { status: 'done', archived: false, revision: 1 } }] })], 'old');
+        mock.get.mockResolvedValue(response({ runs: [newest.summary, old.summary] }));
+        mock.getRun.mockImplementation((_ws, _pid, runId) => Promise.resolve(runId === 'new' ? newest.detail : old.detail));
+        render(rows());
+        await screen.findByText('Manual only');
+        expect(screen.queryByText('✓ Done by scrubber')).toBeNull();
+    });
+
+    it('discards delayed finding reads and mutations when owner changes', async () => {
+        setupFindings();
+        const pending = deferred<SentinelScrubRunDetail>();
+        mock.getRun.mockReturnValueOnce(pending.promise);
+        const view = render(rows());
+        await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());
+        mock.get.mockResolvedValue(response());
+        view.rerender(rows(item('a'), undefined, { ...owner, processId: 'other' }));
+        await screen.findByText('Manual only');
+        await act(async () => pending.resolve(results([finding()]).detail));
+        expect(screen.queryByText(/Proposal: Done/)).toBeNull();
+        setupFindings();
+        view.rerender(rows());
+        await screen.findByText('◇ Proposal: Done (high)');
+        const write = deferred<unknown>();
+        mock.accept.mockReturnValueOnce(write.promise);
+        const refresh = vi.fn().mockResolvedValue(undefined);
+        view.rerender(rows(item('a'), refresh));
+        fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+        mock.get.mockResolvedValue(response());
+        view.rerender(rows(item('a'), refresh, { ...owner, processId: 'other' }));
+        await act(async () => write.resolve({}));
+        expect(refresh).not.toHaveBeenCalled();
     });
 });
