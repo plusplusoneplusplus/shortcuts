@@ -235,7 +235,13 @@ references before editing. Paths are package-relative.
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
   Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
   prove the Sentinel owner through `SentinelTodoService.list` before accessing
-  scrubber state, and use the engine for revision-checked Accept/Undo.
+  scrubber state, and use the engine for revision-checked Accept/Undo. Route composition
+  shares the native ledger database, publishes the live flag-gated `getSentinelScrubber`
+  executor capability, and returns `scrubberReady`; server startup awaits recovery before
+  activating restored queues. Scrubber events carry workspace/process ownership and use
+  workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
+  Shutdown disposes scrubber queue subscriptions and timeout timers through the route
+  composition's WhatsApp manager disposal hook.
   To-do composer context reuses pointer attachments and resolves the owning ledger
   on drop and explicit send (`spa/client/react/features/chat/sentinelTodoContext.ts`).
   Bind workspace, parent Sentinel and concrete server identity; remote selections

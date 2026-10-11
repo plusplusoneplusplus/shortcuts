@@ -322,6 +322,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // at the route layer where the ledger service is created.
     let getSentinelTodosCapability: (() => import('./sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined) | undefined;
 
+    let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
+
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
     const mcpOauthInfra = mcpOauthEnabled
@@ -492,6 +494,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => launchRalphCapability,
         () => getSentinelTodosCapability?.(),
         () => kustoRuntime,
+        () => getSentinelScrubberCapability?.(),
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -808,7 +811,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -846,9 +849,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setLaunchRalph: (fn) => { launchRalphCapability = fn; },
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
+        setSentinelScrubber: (get) => { getSentinelScrubberCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });
+    await scrubberReady;
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
     // Arm server-side git auto-pull for every repo whose preference enables it.

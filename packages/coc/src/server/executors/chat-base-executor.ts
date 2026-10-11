@@ -736,7 +736,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected buildScrubFindingsTool(task: QueuedTask): Tool<any> | undefined {
         const context = getScrubChildContext(task.payload);
         const service = context && this.runtime.getSentinelScrubber?.();
-        if (!context || !service) return undefined;
+        if (!context) return undefined;
+        if (!service) throw new Error('Sentinel to-do scrubber is disabled');
         service.markRunning(context);
         return createSubmitScrubFindingsTool({ service, context });
     }

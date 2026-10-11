@@ -29,6 +29,7 @@ export function getScrubChildContext(payload: unknown): ScrubChildContext | unde
 
 /** Queue events the run service follows, with the registry's `(repoPath, task, …)` signature. */
 export interface ScrubQueueEvents {
+    off?(event: 'taskCompleted' | 'taskFailed' | 'taskCancelled', listener: (repoPath: string, task: QueuedTask, detail?: unknown) => void): unknown;
     on(event: 'taskCompleted' | 'taskFailed' | 'taskCancelled', listener: (repoPath: string, task: QueuedTask, detail?: unknown) => void): unknown;
 }
 
@@ -60,16 +61,27 @@ const findingsSchema = z.array(scrubFindingInputSchema).max(MAX_SCRUB_ITEMS);
 export class ScrubberRunService {
     private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
 
+    private detachQueue?: () => void;
+
     constructor(private readonly deps: ScrubberRunServiceDeps) {}
 
     attach(queue: ScrubQueueEvents): void {
+        this.detachQueue?.();
         const follow = (outcome: 'completed' | 'failed' | 'cancelled') => (_repo: string, task: QueuedTask, detail?: unknown) => {
             void this.handleTaskTerminal(task, outcome, detail).catch(error =>
                 console.error('[sentinel-scrubber] Could not settle a run:', error));
         };
-        queue.on('taskCompleted', follow('completed'));
-        queue.on('taskFailed', follow('failed'));
-        queue.on('taskCancelled', follow('cancelled'));
+        const completed = follow('completed');
+        const failed = follow('failed');
+        const cancelled = follow('cancelled');
+        queue.on('taskCompleted', completed);
+        queue.on('taskFailed', failed);
+        queue.on('taskCancelled', cancelled);
+        this.detachQueue = () => {
+            queue.off?.('taskCompleted', completed);
+            queue.off?.('taskFailed', failed);
+            queue.off?.('taskCancelled', cancelled);
+        };
     }
 
     /**
@@ -204,6 +216,8 @@ export class ScrubberRunService {
     }
 
     dispose(): void {
+        this.detachQueue?.();
+        this.detachQueue = undefined;
         for (const timer of this.timers.values()) clearTimeout(timer);
         this.timers.clear();
     }

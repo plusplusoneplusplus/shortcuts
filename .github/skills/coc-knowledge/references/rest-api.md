@@ -197,7 +197,7 @@ Repo-scoped annotations outside conversation history; all routes take `?workspac
 
 ## Sentinel To-do Ledger
 
-Bookkeeping per Sentinel chat in native SQLite `processes.db`, keyed by workspace and parent process ID (wiped with server data, never exported or restored). `features.sentinelTodoLedger` defaults off (`404` off). `:workspaceId` is the parent chat's repo or group on the owning server; non-Sentinel or mismatched owners → `404`. Writes never start, retry, or cancel jobs. Change commits broadcast `sentinel-todos-changed` (`workspaceId`, `processId`, `ledgerRevision`, `itemId`).
+Bookkeeping per Sentinel chat in native SQLite `processes.db`, keyed by workspace and parent process ID (wiped with server data, never exported or restored). `features.sentinelTodoLedger` defaults off (`404` off). `:workspaceId` is the parent chat's repo or group on the owning server; non-Sentinel or mismatched owners → `404`. Writes never start, retry, or cancel jobs. Change commits broadcast `sentinel-todos-changed` (`workspaceId`, `processId`, `ledgerRevision`, optional `itemId` for whole-ledger invalidations).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -247,11 +247,11 @@ Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers
 `removeSentinelTodo` and `runSentinelTodoNow`. Every method requires the owner's
 workspace and Sentinel process; mutation methods carry the rule revision.
 
-### Scrubber route module
+### To-do Scrubber
 
 `sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. 
 
-Its injected gate requires both ledger and scrubber flags. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Composition supplies queue lifecycle, post-commit notifications and schedule re-arming; production registration is pending.
+Its injected gate requires both ledger and scrubber flags. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Route composition shares the native ledger database and resolved-defaults enqueue path. It publishes the live-gated `getSentinelScrubber` capability, follows terminal registry events, and emits owner-scoped `sentinel-scrubber-changed` plus ledger invalidations. Server startup awaits `scrubberReady` recovery before activating restored queues; route disposal removes queue listeners and timeout timers.
 
 ## Task Groups
 

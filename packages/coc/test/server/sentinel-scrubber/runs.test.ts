@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
@@ -310,4 +311,20 @@ describe('submit_scrub_findings tool', () => {
         expect(bundle.tools.map(entry => entry.name)).toEqual([SUBMIT_SCRUB_FINDINGS_TOOL_NAME]);
         expect(bundle.toolGuidance).toBe('');
     });
+});
+
+it('replaces queue subscriptions on reattach and removes them on disposal', async () => {
+    const queue = new EventEmitter();
+    const nextQueue = new EventEmitter();
+    const settle = vi.spyOn(service, 'handleTaskTerminal').mockResolvedValue(undefined);
+    service.attach(queue);
+    service.attach(nextQueue);
+    expect(queue.listenerCount('taskCompleted')).toBe(0);
+    expect(nextQueue.listenerCount('taskCompleted')).toBe(1);
+    nextQueue.emit('taskCompleted', '/repo', {});
+    expect(settle).toHaveBeenCalledOnce();
+    service.dispose();
+    for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled']) expect(nextQueue.listenerCount(event)).toBe(0);
+    nextQueue.emit('taskCompleted', '/repo', {});
+    expect(settle).toHaveBeenCalledOnce();
 });
