@@ -235,7 +235,7 @@ export interface Trigger {
      */
     nextTickAt: string | null;
 
-    /** Optimistic-concurrency revision; bumped on every edit/state change. */
+    /** Optimistic-concurrency revision for edits and lifecycle changes, not poll bookkeeping. */
     revision: number;
 
     /** Present on Sentinel To-do wake rules. */

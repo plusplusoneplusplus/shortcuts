@@ -120,6 +120,10 @@ references before editing. Paths are package-relative.
 - PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
   `triggers/create-trigger-service.ts` creation path. Scope monitors to the calling
   workspace/conversation and canonical PR origin; arming failures preserve PR success.
+  Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
+  rule revision and owner-scoped item, and persists the terminal decision, immutable
+  wake prompt and delivery identity before queue work. Trigger code never writes item
+  status or launches a job; external PR metadata is data, not instructions.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

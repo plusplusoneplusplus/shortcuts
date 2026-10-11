@@ -58,6 +58,14 @@ export class QueueActionExecutor implements ActionExecutor {
         }
 
         const processId = action.processId;
+        if (trigger.binding) {
+            const process = await this.deps.processStore.getProcess(processId);
+            if (processId !== trigger.processId || process?.id !== processId
+                || process.metadata?.workspaceId !== trigger.workspaceId
+                || process.metadata?.mode !== 'sentinel') {
+                throw new Error('Sentinel chat not found in this workspace');
+            }
+        }
         if (await this.isProcessMidTurn(processId)) {
             await this.bufferPendingMessage(trigger, action, prompt);
             return;
@@ -98,8 +106,12 @@ export class QueueActionExecutor implements ActionExecutor {
         const queueManager = this.deps.queueManager!;
         const processId = action.processId;
         const workspaceId = await this.deps.resolveWorkspaceId(processId);
+        if (trigger.binding && workspaceId !== trigger.workspaceId) {
+            throw new Error('Sentinel workspace could not be resolved');
+        }
         // Explicit action mode (autopilot) wins; otherwise inherit the process default.
-        const mode = await resolveFollowUpMode(this.deps.processStore, processId, action.mode);
+        const mode = await resolveFollowUpMode(this.deps.processStore, processId,
+            action.mode === 'inherit' ? undefined : action.mode);
 
         queueManager.enqueue({
             processId,
@@ -113,6 +125,7 @@ export class QueueActionExecutor implements ActionExecutor {
                 context: {
                     triggerId: trigger.id,
                     source: 'trigger',
+                    ...(trigger.delivery ? { deliveryId: trigger.delivery.deliveryId } : {}),
                 },
             },
             config: {},
@@ -136,14 +149,21 @@ export class QueueActionExecutor implements ActionExecutor {
         const pendingMsg: PendingMessage = {
             id: crypto.randomUUID(),
             content: prompt,
-            mode: action.mode,
+            mode: await resolveFollowUpMode(this.deps.processStore, processId,
+                action.mode === 'inherit' ? undefined : action.mode),
             context: {
                 triggerId: trigger.id,
                 source: 'trigger',
+                ...(trigger.delivery ? { deliveryId: trigger.delivery.deliveryId } : {}),
             },
             createdAt: new Date().toISOString(),
         };
         const current = await this.deps.processStore.getProcess(processId);
+        if (trigger.binding && (current?.id !== processId
+            || current.metadata?.workspaceId !== trigger.workspaceId
+            || current.metadata?.mode !== 'sentinel')) {
+            throw new Error('Sentinel chat not found in this workspace');
+        }
         const existing = current?.pendingMessages ?? [];
         await this.deps.processStore.updateProcess(processId, {
             pendingMessages: [...existing, pendingMsg],

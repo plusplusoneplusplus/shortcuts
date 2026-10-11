@@ -107,6 +107,14 @@ export class TriggerStore {
         return this.stmtUpdateIfRevision.run({ ...toRow(trigger), expectedRevision }).changes > 0;
     }
 
+    /** Reserve the SQLite writer before reading state shared with the to-do ledger. */
+    transaction<T>(operation: () => T): T {
+        return this.db.transaction(() => {
+            this.db.prepare('UPDATE triggers SET revision = revision WHERE 0').run();
+            return operation();
+        })();
+    }
+
     /** Get a trigger by id, or null if not found. */
     getById(id: string): Trigger | null {
         const row = this.stmtGetById.get(id) as TriggerRow | undefined;

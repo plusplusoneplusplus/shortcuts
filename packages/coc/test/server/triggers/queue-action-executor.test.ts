@@ -74,6 +74,9 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
         expiresAt: overrides.expiresAt ?? '2099-01-01T00:00:00.000Z',
         lastTickAt: null,
         nextTickAt: null,
+        revision: 1,
+        ...(overrides.binding ? { binding: overrides.binding } : {}),
+        ...(overrides.delivery ? { delivery: overrides.delivery } : {}),
     };
 }
 
@@ -192,6 +195,55 @@ describe('QueueActionExecutor', () => {
             const trigger = makeTrigger();
 
             await expect(exec.execute(trigger, trigger.action, 'fix it')).rejects.toThrow(/TaskQueueManager/);
+        });
+
+        describe('Sentinel wake delivery', () => {
+            function wakeTrigger() {
+                return makeTrigger({
+                    binding: { kind: 'sentinel-todo', itemId: 'item-1', armedBy: 'sentinel', armedAt: '2026-01-01T00:00:00.000Z' },
+                    delivery: { deliveryId: 'delivery-1', firedAt: '2026-01-01T00:00:00.000Z', reason: 'merged', state: 'pending' },
+                    action: { type: 'send-message', processId: PROC, prompt: 'wake', mode: 'inherit' },
+                });
+            }
+
+            it.each(['completed', 'running'])('carries deliveryId and Sentinel mode for a %s owner', async status => {
+                const store = makeProcessStore({
+                    [PROC]: { id: PROC, status, metadata: { mode: 'sentinel', workspaceId: 'ws_a' } },
+                });
+                const queue = makeQueueManager();
+                const trigger = wakeTrigger();
+                await makeExecutor(store, queue).execute(trigger, trigger.action, 'wake');
+                const message = status === 'running'
+                    ? store.procs.get(PROC).pendingMessages[0] : queue.enqueued[0].payload;
+                expect(message.mode).toBe('sentinel');
+                expect(message.context).toEqual({ triggerId: trigger.id, deliveryId: 'delivery-1', source: 'trigger' });
+            });
+
+            it.each(['missing', 'foreign', 'not-sentinel'])('never wakes a %s owner', async state => {
+                const store = makeProcessStore(state === 'missing' ? {} : {
+                    [PROC]: { id: PROC, status: 'completed', metadata: {
+                        mode: state === 'not-sentinel' ? 'ask' : 'sentinel',
+                        workspaceId: state === 'foreign' ? 'ws_other' : 'ws_a',
+                    } },
+                });
+                const queue = makeQueueManager();
+                const trigger = wakeTrigger();
+                await expect(makeExecutor(store, queue).execute(trigger, trigger.action, 'wake'))
+                    .rejects.toThrow('Sentinel chat not found');
+                expect(queue.enqueue).not.toHaveBeenCalled();
+                expect(store.updateProcess).not.toHaveBeenCalled();
+            });
+
+            it('does not fall back to another workspace when owner routing disagrees', async () => {
+                const store = makeProcessStore({
+                    [PROC]: { id: PROC, status: 'completed', metadata: { mode: 'sentinel', workspaceId: 'ws_a' } },
+                });
+                const queue = makeQueueManager();
+                const trigger = wakeTrigger();
+                await expect(makeExecutor(store, queue, 'ws_other').execute(trigger, trigger.action, 'wake'))
+                    .rejects.toThrow('Sentinel workspace could not be resolved');
+                expect(queue.enqueue).not.toHaveBeenCalled();
+            });
         });
     });
 });

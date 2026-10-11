@@ -121,6 +121,20 @@ Sentinel request, including existing/native-resumed, provider-switched and post-
 turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
 review recipients receive the same contract inline. Cancellation remains display-only.
 
+### Sentinel To-do trigger firing
+
+`triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR-merge decisions using
+the trigger and to-do stores' shared database writer. It checks the rule revision
+and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,
+Done or archived items stop as Skipped. Eligible fires persist the terminal outcome,
+fixed delivery identity and immutable wake prompt before queue work; delivery errors
+remain pending and visible. The prompt treats PR metadata as untrusted data and asks
+the Sentinel to delegate through `send_to_conversation` with `todoItemId`.
+
+`QueueActionExecutor` checks bound Sentinel ownership, inherits its mode and carries
+`deliveryId` in queue and pending-message context. Trigger firing never writes item
+status, calls delegation admission or selects a remote execution target.
+
 ### Temporary chat image lifetime
 
 Admitted initial and follow-up turns retain image files at their existing managed
