@@ -94,7 +94,8 @@ import { collapseAllChatFolders, loadCollapsedChatFolderIds, toggleCollapsedChat
 import { useAllCrons, type ProcessCronState } from './hooks/useAllCrons';
 import { CronIcon } from './icons/CronIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
-import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
+import { getTaskChatProvider } from './ProviderBadge';
+import { CHAT_ROW_LAYOUT_CLASSES, CHAT_ROW_SELECTED_CLASSES, getChatRowDotClasses, getChatRowModeBadgeClasses } from './chat-row-style';
 import { normalizeChatMode } from '../../repos/modeConfig';
 import { compareChatRecency, getChatRowTitle } from './latestSentinelChat';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
@@ -3677,35 +3678,9 @@ export function ChatListPane({
             ? statusLabel('running', task.type)
             : (ts ? formatRelativeTime(new Date(ts).toISOString()) : '');
 
-        // Mode badge: tinted border + soft tinted background, font:9.5px/1 mono uppercase.
-        // When rendered as a group child, render a muted variant (lower-contrast border/bg,
-        // same text color) so the parent's aggregate-mode pill remains the dominant anchor.
         const isGroupChild = !!options?.isGroupChild;
-        const modeBadgeClasses = cn(
-            'inline-flex items-center justify-center border font-mono font-bold uppercase select-none',
-            'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
-            modeKey === 'ask' ? 'rounded-full' : 'rounded-[3px]',
-            !isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
-            !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
-            !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
-            !isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/70 dark:border-purple-500/60 bg-purple-50/60 dark:bg-purple-500/10',
-            !isGroupChild && modeKey === 'sentinel' && 'text-teal-600 dark:text-teal-400 border-teal-500/70 dark:border-teal-500/60 bg-teal-50/60 dark:bg-teal-500/10',
-            isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/30 dark:border-amber-500/25 bg-transparent',
-            isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-500/25 bg-transparent',
-            isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/25 dark:border-[#9d9d9d]/20 bg-transparent',
-            isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/30 dark:border-purple-500/25 bg-transparent',
-            isGroupChild && modeKey === 'sentinel' && 'text-teal-600 dark:text-teal-400 border-teal-500/30 dark:border-teal-500/25 bg-transparent',
-        );
-
-        const dotClasses = cn(
-            'w-2 h-2 rounded-full justify-self-center transition-shadow',
-            isRunning && isAwaitingInput && 'bg-amber-500 dark:bg-amber-400 shadow-[0_0_0_3px_rgba(245,158,11,0.28)]',
-            isRunning && !isAwaitingInput && getProviderDotClasses(taskProvider),
-            isRunning && !isAwaitingInput && 'animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
-            !isRunning && isFailed && 'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.20)]',
-            !isRunning && isQueued && !isFailed && 'bg-[#dcdcdc] dark:bg-[#6b6b6b]',
-            !isRunning && !isQueued && !isFailed && 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
-        );
+        const modeBadgeClasses = getChatRowModeBadgeClasses(modeKey, isGroupChild);
+        const dotClasses = getChatRowDotClasses({ isRunning, isQueued, isFailed, isAwaitingInput, provider: taskProvider });
 
         const stopAndCall = (cb: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); cb(); };
 
@@ -3736,19 +3711,13 @@ export function ChatListPane({
             >
                 <div
                     className={cn(
-                        'chat-row group relative cursor-pointer leading-none transition-colors',
-                        'grid items-center gap-2 px-4 py-2 md:px-3 md:py-1',
-                        'grid-cols-[10px_20px_minmax(0,1fr)_auto]',
-                        'text-[12.5px] min-h-[40px] md:min-h-0 md:h-[26px]',
-                        'border-b border-[#e0e0e0]/60 dark:border-[#3c3c3c]/60',
-                        'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2b]',
+                        CHAT_ROW_LAYOUT_CLASSES,
                         isFrozen && 'opacity-70 task-frozen',
                         isArchived && 'opacity-70',
                         isAwaitingInput && 'bg-amber-50/70 dark:bg-amber-500/[0.08] border-l-2 border-l-amber-400 dark:border-l-amber-500',
                         !isAwaitingInput && isPinned && !isQueued && 'border-l-2 border-l-amber-400 dark:border-l-amber-500',
                         isHistorySelected && 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10 outline outline-1 outline-[#0078d4]/40 dark:outline-[#3794ff]/40',
-                        !isHistorySelected && isRowSelected && 'bg-[#0078d4]/[0.08] dark:bg-[#3794ff]/[0.10] ring-2 ring-[#0078d4]/40 dark:ring-[#3794ff]/40',
-                        !isHistorySelected && isRowSelected && 'before:content-[""] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-[#0078d4] dark:before:bg-[#3794ff]',
+                        !isHistorySelected && isRowSelected && CHAT_ROW_SELECTED_CLASSES,
                         selectedHistoryIds.size > 0 && 'select-none',
                     )}
                     onClick={(e) => {

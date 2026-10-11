@@ -1,0 +1,160 @@
+/**
+ * RepoGroupView with `repoGroupAggregatedChats`: the group's Workspace chat list
+ * becomes the aggregated list read from the group's owning server, while the
+ * group's RepoChatTab keeps its selection and detail. Flag off keeps the native
+ * list untouched.
+ *
+ * @vitest-environment jsdom
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+const mockQueueDispatch = vi.fn();
+const mockGetRepoGroup = vi.fn();
+const mockGetRepoGroupChats = vi.fn();
+const mockSelectTask = vi.fn();
+let mockFlag = true;
+let mockRemoteGroups: any[] = [];
+let mockSelectedTaskId: string | null = null;
+
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
+    useApp: () => ({ state: mockAppState, dispatch: vi.fn() }),
+    useAppOptional: () => ({ state: mockAppState, dispatch: vi.fn() }),
+}));
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useReposOptional: () => ({ remoteGroupWorkspaces: mockRemoteGroups }),
+}));
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: {} }, dispatch: mockQueueDispatch }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: {} }, dispatch: mockQueueDispatch }),
+}));
+vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
+    const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
+    return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
+});
+vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({ StatusActions: () => null }));
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
+}));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRepoGroupAggregatedChatsEnabled', () => ({
+    useRepoGroupAggregatedChatsEnabled: () => mockFlag,
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
+    getRepoGroup: (...args: unknown[]) => mockGetRepoGroup(...args),
+    getRepoGroupChats: (...args: unknown[]) => mockGetRepoGroupChats(...args),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel', () => ({
+    UnifiedRightPanel: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost', () => ({
+    ContentSearchOverlayHost: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
+    RepoChatTab: ({ workspaceId, renderList }: any) => (
+        <div data-testid="stub-chat-tab" data-workspace={workspaceId}>
+            {renderList
+                ? renderList({ selectedTaskId: mockSelectedTaskId, selectTask: mockSelectTask })
+                : <div data-testid="native-chat-list" />}
+        </div>
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', () => ({ RepoGroupGitTab: () => null }));
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({ NotesView: () => null }));
+vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', () => ({ RepoGroupSettingsTab: () => null }));
+
+import { RepoGroupView } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
+
+const GROUP_ID = 'group-ai';
+let mockAppState: any = {};
+
+function feedPage(groupId = GROUP_ID) {
+    return {
+        groupId,
+        membershipKey: 'm1',
+        sources: [
+            { workspaceId: groupId, role: 'group', name: 'AI', available: true },
+            { workspaceId: 'ws-a', role: 'member', name: 'connector', available: true },
+            { workspaceId: 'ws-b', role: 'member', name: 'shortcuts', available: true },
+        ],
+        running: [],
+        queued: [],
+        history: [
+            { id: 'queue_m1', ownerWorkspaceId: 'ws-a', type: 'chat', status: 'completed', customTitle: 'Fix relay receipt routing' },
+            { id: 'queue_g1', ownerWorkspaceId: groupId, type: 'chat', status: 'completed', customTitle: 'Group plan' },
+            { id: 'queue_m2', ownerWorkspaceId: 'ws-b', type: 'chat', status: 'completed', customTitle: 'Delegated job' },
+        ],
+        hasMore: false,
+        counts: { total: 3, running: 0, queued: 0, history: 3, byOwner: {}, partial: false },
+    };
+}
+
+beforeEach(() => {
+    cleanup();
+    location.hash = '';
+    mockFlag = true;
+    mockRemoteGroups = [];
+    mockSelectedTaskId = null;
+    mockQueueDispatch.mockReset();
+    mockSelectTask.mockReset();
+    mockGetRepoGroup.mockReset().mockResolvedValue({ id: GROUP_ID, name: 'AI', members: [] });
+    mockGetRepoGroupChats.mockReset().mockResolvedValue(feedPage());
+    mockAppState = {
+        activeRepoSubTab: 'chats',
+        selectedNotePath: null,
+        workspaces: [{ id: GROUP_ID, name: 'AI', rootPath: `/data/repos/${GROUP_ID}` }],
+    };
+});
+
+describe('RepoGroupView — aggregated chats', () => {
+    it('keeps the native group list when the flag is off and never reads the feed', async () => {
+        mockFlag = false;
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('native-chat-list')).toBeTruthy();
+        expect(screen.queryByTestId('repo-group-chat-list')).toBeNull();
+        await act(async () => {});
+        expect(mockGetRepoGroupChats).not.toHaveBeenCalled();
+    });
+
+    it('lists group-owned and member chats from the local server with option B prefixes', async () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        expect(mockGetRepoGroupChats).toHaveBeenCalledWith(GROUP_ID, expect.any(Object), undefined, expect.any(AbortSignal));
+        expect(screen.queryByTestId('native-chat-list')).toBeNull();
+        const prefixes = screen.getAllByTestId('repo-group-chat-row')
+            .map(row => row.querySelector('[data-testid="repo-group-chat-owner-prefix"]')?.textContent ?? null);
+        expect(prefixes).toEqual(['connector /', null, 'shortcuts /']);
+        expect(screen.getByTestId('repo-group-chat-server').textContent).toBe('This server');
+        expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('data-chat-key')).toBe('local|ws-a|queue_m1');
+    });
+
+    it('reads a remote group from its own server and keys rows by that server', async () => {
+        mockRemoteGroups = [{
+            id: GROUP_ID, name: 'AI', baseUrl: 'http://remote:4000',
+            remote: { serverId: 'srv-1', serverLabel: 'devbox', baseUrl: 'http://remote:4000', cloneKey: 'remote:srv-1:group-ai' },
+        }];
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId="remote:srv-1:group-ai" />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        expect(mockGetRepoGroupChats).toHaveBeenCalledWith(GROUP_ID, expect.any(Object), 'http://remote:4000', expect.any(AbortSignal));
+        expect(screen.getByTestId('repo-group-chat-server').textContent).toBe('devbox');
+        expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('data-chat-key')).toBe('srv-1|ws-a|queue_m1');
+    });
+
+    it('selects group-owned chats through the group tab and highlights its current selection', async () => {
+        mockSelectedTaskId = 'queue_g1';
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        const rows = screen.getAllByTestId('repo-group-chat-row');
+        expect(rows[1].getAttribute('aria-selected')).toBe('true');
+        fireEvent.click(rows[1]);
+        expect(mockSelectTask).toHaveBeenCalledWith('queue_g1', expect.objectContaining({ ownerWorkspaceId: GROUP_ID }));
+    });
+
+    it('does not route member chats through the group tab selection', async () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getAllByTestId('repo-group-chat-row')).toHaveLength(3));
+        fireEvent.click(screen.getAllByTestId('repo-group-chat-row')[0]);
+        expect(mockSelectTask).not.toHaveBeenCalled();
+        expect(mockQueueDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SELECT_QUEUE_TASK', repoId: GROUP_ID, id: 'queue_m1' }));
+        expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('aria-selected')).toBe('true');
+    });
+});

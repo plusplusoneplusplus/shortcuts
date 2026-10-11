@@ -50,6 +50,11 @@ import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWo
 import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 import { getRemoteCloneKey, getWorkspaceSelectionId } from './cloneIdentity';
+import { useRepoGroupAggregatedChatsEnabled } from '../hooks/feature-flags/useRepoGroupAggregatedChatsEnabled';
+import { useRepoGroupChatFeed } from './useRepoGroupChatFeed';
+import { LOCAL_CHAT_FEED_SERVER_KEY, repoGroupChatKey, type RepoGroupChatRow } from './repoGroupChatFeed';
+import { RepoGroupChatList } from './RepoGroupChatList';
+import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
 
 /**
  * The only tabs a repo group exposes: chat ("Workspace"), Notes, and Settings.
@@ -176,6 +181,25 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         return typeof url === 'string' && url.length > 0 ? url : undefined;
     }, [remoteGroup]);
     const groupRoutingRef = getRemoteCloneKey(remoteGroup) ?? null;
+    // Aggregated chat list (flag `repoGroupAggregatedChats`): the group's own
+    // chats plus every member's, read from the group's owning server. Row keys
+    // carry that server's identity so equal ids on two servers never collide.
+    const aggregatedChats = useRepoGroupAggregatedChatsEnabled();
+    const remoteMarker = (remoteGroup as { remote?: { serverId?: unknown; serverLabel?: unknown } } | undefined)?.remote;
+    const chatServerKey = typeof remoteMarker?.serverId === 'string' && remoteMarker.serverId
+        ? remoteMarker.serverId
+        : LOCAL_CHAT_FEED_SERVER_KEY;
+    const chatServerLabel = typeof remoteMarker?.serverLabel === 'string' && remoteMarker.serverLabel
+        ? remoteMarker.serverLabel
+        : 'This server';
+    const chatFeed = useRepoGroupChatFeed({
+        groupId: workspaceId,
+        baseUrl: groupBaseUrl,
+        serverKey: chatServerKey,
+        enabled: aggregatedChats,
+    });
+    const [selectedMemberChat, setSelectedMemberChat] = useState<RepoGroupChatRow | null>(null);
+    useEffect(() => { setSelectedMemberChat(null); }, [workspaceId, chatServerKey]);
     // Member repos, for the dock's target picker and the Git tab's host. The
     // Settings tab does its own read — it needs the descriptions too, and only
     // while it is the visible tab.
@@ -203,6 +227,27 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chats';
         setSplitLastClicked('chat');
     }, [queueDispatch, workspaceId]);
+    // Group-owned rows select through the tab's native path, so the group's own
+    // selection, hash and detail pane behave exactly as in the native list.
+    const renderAggregatedList = useCallback((ctx: RepoChatTabListContext) => {
+        const selectedKey = selectedMemberChat?.key
+            ?? (ctx.selectedTaskId ? repoGroupChatKey(chatServerKey, workspaceId, ctx.selectedTaskId) : null);
+        return (
+            <RepoGroupChatList
+                feed={chatFeed}
+                serverLabel={chatServerLabel}
+                selectedKey={selectedKey}
+                onSelect={(row) => {
+                    if (row.ownerWorkspaceId === workspaceId) {
+                        setSelectedMemberChat(null);
+                        ctx.selectTask(row.item.id, row.item);
+                        return;
+                    }
+                    setSelectedMemberChat(row);
+                }}
+            />
+        );
+    }, [chatFeed, chatServerKey, chatServerLabel, selectedMemberChat, workspaceId]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;
@@ -288,6 +333,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         railShortcutContainer={splitRailShortcutNode}
                                         detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
+                                        renderList={aggregatedChats ? renderAggregatedList : undefined}
                                     />
                                 }
                                 gitList={splitGitAvailable ? (

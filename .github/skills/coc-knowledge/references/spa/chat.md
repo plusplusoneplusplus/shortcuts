@@ -166,7 +166,8 @@ state taking precedence. The menu can skip the current wait through
 
 Behind `features.chatFolders` (default off), a **Folders** section renders after
 Running/Queued/Pinned and before the date buckets, on every list surface — Activity,
-Chats, Tasks and a repo group's Workspace tab all go through `ChatListPane`, so
+Chats, Tasks and a repo group's Workspace tab all go through `ChatListPane` (except the
+flag-gated repo-group aggregated list, `RepoGroupChatList`), so
 `ChatFolderSection.tsx` is one renderer rather than four copies of the JSX. The section
 is declared as the `folders` `SectionVariant` in `list-mode-config.ts`.
 

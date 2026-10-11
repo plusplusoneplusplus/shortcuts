@@ -233,7 +233,18 @@ that same registry.
   and accepting a member result opens the panel, switches its target, and creates a
   result-owned preview without navigating away from the group. Mobile has no group panel
   or shortcut owner.
-- `listRepoGroupServerOptions()` builds `repo-group-server-select` from `/api/servers`:
+- Behind `features.repoGroupAggregatedChats` (default off) the group's Workspace chat
+  list is `repos/RepoGroupChatList.tsx`, fed by `useRepoGroupChatFeed` from the owning
+  server's `GET /api/repo-groups/:id/chats` (group + explicit members). `RepoGroupView`
+  passes it to the group's `RepoChatTab` through `renderList`, so the tab keeps the
+  group's selection, hash and detail pane. Rows are keyed
+  `serverKey|ownerWorkspaceId|canonicalId` (`local` or the remote server id) and use the
+  shared `features/chat/chat-row-style.ts` look; member rows add a muted `repo /` prefix
+  (`buildRepoGroupOwnerLabels`, shortened only while unique), group-owned rows show only
+  the title, and the owner/server lives in the row tooltip/aria label and list header.
+  Sections are Running, Queued, Pinned (loaded history with `pinnedAt`, newest pin
+  first) and History in the feed's global activity order, with one Load more.
+ from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.
 - `repos/useServerSelection.ts` reuses the same option list for the **Server** dropdown in
