@@ -4,7 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { SplitWorkspacePanel } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
-import type { RailJobPreview } from '../../../../src/server/spa/client/react/features/repo-detail/RailJobStatuses';
+import { useContext, useEffect } from 'react';
+import { RailJobOpenerContext, type RailJobPreview } from '../../../../src/server/spa/client/react/features/repo-detail/RailJobStatuses';
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false }),
@@ -302,5 +303,95 @@ describe('scoped rail job previews', () => {
         fireEvent.click(link);
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+    });
+});
+
+/** Stands in for `RepoChatTab`, publishing its selection path to the rail. */
+function OpenerChatList({ routeId, open }: { routeId: string; open: (job: any) => void }) {
+    const setOpener = useContext(RailJobOpenerContext);
+    useEffect(() => {
+        const opener = { routeId, open };
+        setOpener?.(opener);
+        return () => setOpener?.(current => (current === opener ? null : current));
+    }, [setOpener, routeId, open]);
+    return <div>Chat list</div>;
+}
+
+/** Sets the hash without a (jsdom-async) hashchange of its own. */
+function setHash(hash: string) {
+    window.history.replaceState(null, '', hash);
+}
+
+describe('rail Open job selection', () => {
+    function openerPanel(routeId: string, open: (job: any) => void, jobs = preview) {
+        return <SplitWorkspacePanel workspaceId="ws-alpha" jobPreview={jobs}
+            chatList={<OpenerChatList routeId={routeId} open={open} />} gitList={<div>Git</div>} detail={<div>Detail</div>} />;
+    }
+    function openRunning() {
+        hover();
+        tick(200);
+        return screen.getByRole('link', { name: 'Open job: Active chat' });
+    }
+    beforeEach(() => { setHash('#repos/ws-alpha/chats/queue_sentinel'); });
+
+    it('selects the job through the chat list on its owning remote route and dismisses', () => {
+        const open = vi.fn();
+        const routeId = 'remote:server-a:ws-alpha';
+        render(openerPanel(routeId, open, { ...preview, routeId }));
+        const link = openRunning();
+        expect(link).toHaveAttribute('href', '#repos/remote%3Aserver-a%3Aws-alpha/chats/queue_r1');
+        const notCanceled = fireEvent.click(link);
+        expect(notCanceled).toBe(false);
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(open).toHaveBeenCalledWith(preview.running[0]);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(window.location.hash).toBe('#repos/ws-alpha/chats/queue_sentinel');
+    });
+
+    it('opens queued jobs and an already-routed job through the same selection path', () => {
+        const open = vi.fn();
+        render(openerPanel('ws-alpha', open));
+        setHash('#repos/ws-alpha/chats/queue_r1');
+        fireEvent.click(openRunning());
+        hover('queued');
+        tick(200);
+        fireEvent.click(screen.getByRole('link', { name: 'Open job: Waiting script' }));
+        expect(open.mock.calls.map(([job]) => job.id)).toEqual(['r1', 'q1']);
+    });
+
+    it('never hands a job to another route\'s chat list; the owner href navigates instead', () => {
+        const open = vi.fn();
+        render(openerPanel('ws-alpha', open, { ...preview, routeId: 'remote:server-a:ws-alpha' }));
+        expect(fireEvent.click(openRunning())).toBe(true);
+        expect(open).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('reapplies the current route when the hash already names the job and no list is mounted', () => {
+        render(panel());
+        setHash('#repos/ws-alpha/chats/queue_r1');
+        const routed = vi.fn();
+        window.addEventListener('hashchange', routed);
+        try {
+            fireEvent.click(openRunning());
+            expect(routed).toHaveBeenCalledTimes(1);
+        } finally {
+            window.removeEventListener('hashchange', routed);
+        }
+    });
+
+    it('leaves modified clicks to the browser', () => {
+        const open = vi.fn();
+        render(openerPanel('ws-alpha', open));
+        expect(fireEvent.click(openRunning(), { ctrlKey: true })).toBe(true);
+        expect(open).not.toHaveBeenCalled();
+    });
+
+    it('clears the published opener when the chat list unmounts', () => {
+        const open = vi.fn();
+        const view = render(openerPanel('ws-alpha', open));
+        view.rerender(panel());
+        expect(fireEvent.click(openRunning())).toBe(true);
+        expect(open).not.toHaveBeenCalled();
     });
 });

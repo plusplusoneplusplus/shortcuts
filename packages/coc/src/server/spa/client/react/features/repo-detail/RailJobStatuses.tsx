@@ -1,3 +1,4 @@
+import { createContext, type Dispatch, type SetStateAction } from 'react';
 import { ChatStatusPill } from '../chat/ChatStatusPill';
 import { getTaskDef } from '../../../../../tasks/task-types';
 import type { QueueJob } from '../../queue/hooks/useRepoQueueStats';
@@ -16,13 +17,25 @@ export interface RailJobPreview {
     scopeKey: string;
 }
 
+/**
+ * The chat tab's own selection path (`RepoChatTab.selectTask`), published so
+ * Open job selects the job on its owning route instead of only changing the URL.
+ */
+export interface RailJobOpener {
+    routeId: string;
+    open: (job: QueueJob) => void;
+}
+/** `SplitWorkspacePanel` hands the chat list a setter to publish its opener. */
+export const RailJobOpenerContext = createContext<Dispatch<SetStateAction<RailJobOpener | null>> | null>(null);
+
 interface Props extends RailControls {
     runningCount: number;
     queuedCount: number;
     preview?: RailJobPreview;
+    opener?: RailJobOpener | null;
 }
 
-export function RailJobStatuses({ runningCount, queuedCount, preview, ...rail }: Props) {
+export function RailJobStatuses({ runningCount, queuedCount, preview, opener, ...rail }: Props) {
     const counts = preview
         ? { running: preview.running.length, queued: preview.queued.length }
         : { running: runningCount, queued: queuedCount };
@@ -48,12 +61,23 @@ export function RailJobStatuses({ runningCount, queuedCount, preview, ...rail }:
             renderRows: dismiss => preview?.[status].map(job => {
                 const pauseMarker = job.kind === 'pause-marker';
                 const title = job.displayName || (pauseMarker ? 'Queue pause' : getTaskDef(job.type ?? '')?.label || job.type || 'Job');
+                const href = pauseMarker ? undefined : queueJobHash(preview.routeId, job);
                 return (
                     <RailPreviewRow
                         key={job.id}
                         title={title}
-                        href={pauseMarker ? undefined : queueJobHash(preview.routeId, job)}
-                        onOpen={() => dismiss()}
+                        href={href}
+                        onOpen={event => {
+                            dismiss();
+                            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                            if (opener?.routeId === preview.routeId) {
+                                event.preventDefault();
+                                opener.open(job);
+                            } else if (window.location.hash === href) {
+                                // Assigning the current hash emits nothing; reapply the route.
+                                window.dispatchEvent(new HashChangeEvent('hashchange'));
+                            }
+                        }}
                         meta={<>
                             <ChatStatusPill status={status} showDuration={false} className="!h-[18px] !text-[10px]" />
                             <span>{getTaskDef(job.type ?? '')?.label || job.type}</span>

@@ -24,7 +24,7 @@ import {
     splitWorkspaceWidthStorageKey,
 } from './WorkspaceLeftWidth';
 import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from './WorkspaceDockToggle';
-import { RailJobStatuses, type RailJobPreview } from './RailJobStatuses';
+import { RailJobOpenerContext, RailJobStatuses, type RailJobOpener, type RailJobPreview } from './RailJobStatuses';
 import { RailControlsContext, type RailControls } from './RailHoverPreview';
 import { RailStatusSlotContext } from '../../layout/railStatusSlot';
 import { useRailStatusActionsEnabled } from '../../hooks/feature-flags/useRailStatusActionsEnabled';
@@ -529,9 +529,11 @@ export function SplitWorkspacePanel({
         },
     }), [hasFinePointer, toggleLeftCollapsed, hoverPeek.close, leftCollapsed, gitCollapsed, toggleGit]);
     const peeking = leftCollapsed && hoverPeek.isOpen;
+    const [jobOpener, setJobOpener] = useState<RailJobOpener | null>(null);
 
     return (
         <RailControlsContext.Provider value={railControls}>
+        <RailJobOpenerContext.Provider value={setJobOpener}>
         <div
             className="split-workspace-panel relative flex h-full w-full overflow-hidden"
             data-testid="split-workspace-panel"
@@ -594,6 +596,7 @@ export function SplitWorkspacePanel({
                         runningCount={runningCount}
                         queuedCount={queuedCount}
                         preview={jobPreview}
+                        opener={jobOpener}
                         {...railControls}
                     />
                     {railGit != null ? (
@@ -782,6 +785,7 @@ export function SplitWorkspacePanel({
                 {detail}
             </div>
         </div>
+        </RailJobOpenerContext.Provider>
         </RailControlsContext.Provider>
     );
 }

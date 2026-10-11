@@ -21,6 +21,7 @@ import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
 import { SentinelRailShortcut } from './SentinelRailShortcut';
 import { RailPinnedJobs } from './RailPinnedJobs';
+import { RailJobOpenerContext, type RailJobOpener } from '../repo-detail/RailJobStatuses';
 import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
 import type { ScheduleMainPaneRoute } from '../schedules/ScheduleMainPane';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
@@ -763,6 +764,18 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         onActivateDetail?.();
         selectTask(task.id, task);
     }, [onActivateDetail, selectTask]);
+
+    // The collapsed rail's Running/Queued Open job uses the same path, so the
+    // owning route's selection (clone-qualified included) follows the click.
+    const setRailJobOpener = useContext(RailJobOpenerContext);
+    const railOpenRef = useRef(handleOpenRailShortcut);
+    railOpenRef.current = handleOpenRailShortcut;
+    useEffect(() => {
+        if (!setRailJobOpener || layout !== 'split-workspace') return;
+        const opener: RailJobOpener = { routeId, open: job => railOpenRef.current(job) };
+        setRailJobOpener(opener);
+        return () => setRailJobOpener(current => (current === opener ? null : current));
+    }, [setRailJobOpener, layout, routeId]);
 
     // Auto-dismiss notification when a deep-linked task is viewed via hash URL
     useEffect(() => {
