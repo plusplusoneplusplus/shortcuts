@@ -32,6 +32,7 @@ import { createKustoTools } from '../llm-tools/kusto-tools';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
 import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
 import { createWorkspaceDirectory } from '../servers/workspace-directory';
@@ -794,7 +795,7 @@ export const SENTINEL_TODO_LEDGER_GUIDANCE = [
         'user authorization. Remote jobs show no status here; inspect their owning chat and record the reviewed state explicitly.',
     '- Mark an item `done` only after checking evidence against its completion condition, with a short reason; ' +
         'use `needs_attention` with a reason for failed, cancelled, blocked, or incomplete final work, not a successful ' +
-        'intermediate phase. Explicitly design-only/interview-only requests can finish after their agreed artifact.',
+        'intermediate phase. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE,
     '- Before a review update, re-read the item and honor manual user verdicts and latest instructions; use its current ' +
         '`expectedRevision`, and reconcile conflicts rather than overwriting user edits. Ledger changes grant no authority to act or retry.',
     '- If a ledger call fails, say the work is not tracked; never relaunch a job to repair tracking.',

@@ -21,6 +21,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { Trigger } from '../triggers/trigger-types';
+import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
 
@@ -82,7 +83,7 @@ const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
     'cancels jobs). `list` returns active items (add `includeArchived: true` for archived ones). `create` needs ' +
     '`title`; normal items also need a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
-    'the next phase (an explicitly design-only/interview-only request may end at its agreed artifact). Reuse the same ' +
+    'the next phase. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' Reuse the same ' +
     'item across grilling, implementation, and review; preserve phase milestones and spec/artifact links in `notes`. ' +
     'Pass a stable `idempotencyKey` so a retried call cannot duplicate the item. ' +
     '`priority` (`high` or default `regular`) is ledger metadata only, independent of status and job order. ' +

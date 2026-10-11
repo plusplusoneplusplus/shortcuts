@@ -26,6 +26,7 @@ import {
 } from '../../../src/server/executors/chat-mode-directive';
 import type { ChatModeInjectionCheck } from '../../../src/server/executors/chat-mode-directive';
 import type { ChatMode } from '../../../src/server/tasks/task-types';
+import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
 
 // ============================================================================
 // buildChatModeDirective
@@ -44,6 +45,21 @@ describe('buildChatModeDirective', () => {
         const plan = buildChatModeDirective({ mode: 'plan' as never })!;
 
         expect(plan).toBe(buildChatModeDirective({ mode: 'ask' }));
+    });
+
+    it('starts Sentinel coding tasks with outcome-scoped completion, not an Ask-mode POC verdict', () => {
+        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
+        expect(directive).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(directive).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+        for (const instruction of [
+            'keep one To-do through planning, POCs and implementation',
+            'Mark Done only when the implemented outcome meets its completion condition',
+            SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE,
+            'Awaiting approval stays To do; authorized work stays In progress',
+            'Never auto-archive',
+            'Do not launch implementation without user authorization',
+        ]) expect(directive).toContain(instruction);
+        expect(buildChatModeDirective({ mode: 'ask' })).not.toContain(SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE);
     });
 
     it('announces the switch when a chat leaves ask mode', () => {

@@ -86,7 +86,8 @@ with final-deliverable completion conditions, reuses one item across grilling/im
 and records phase milestones/spec links in notes. Successful intermediate phases remain pending
 (`todo` awaiting approval, `in_progress` during authorized work), not Done or failure.
 Successful grilling returns feature work to `todo` awaiting implementation approval;
-explicitly design-only/interview-only requests finish at their agreed artifact.
+only explicitly design-only/interview-only overall requests finish at an artifact;
+Ask mode and phase-specific design handoffs never redefine coding completion conditions.
 Tracking grants no implementation/retry authority; bookkeeping failures are reported, not repaired by relaunch.
 Manual guidance requires clarification before execution and prohibits delegation, job links,
 automatic result reviews, normal-item copies, conversion and handoff. AI may maintain manual
