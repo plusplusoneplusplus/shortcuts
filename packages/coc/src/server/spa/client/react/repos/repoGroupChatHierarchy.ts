@@ -26,6 +26,10 @@ export function groupRepoGroupChatRows(rows: RepoGroupChatRow[], searching = fal
         const groups = new Map<string, RepoGroupChatContainer>();
         const standalone: RepoGroupChatRow[] = [];
         for (const row of owned) {
+            if (row.item.pinnedAt && !row.item.archived) {
+                result.push({ key: row.key, label: '', rows: [row] });
+                continue;
+            }
             const ref = getTaskGroupRef(row.item);
             const ralph = getRalphSessionId(row.item);
             const each = getForEachRunId(row.item);

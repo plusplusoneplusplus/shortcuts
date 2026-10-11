@@ -38,4 +38,14 @@ describe('owner-local chat hierarchy', () => {
         expect(groups[0].label).toBe('Folder / Work');
         expect(groups[2].label).toBe('');
     });
+    it('keeps individual pins out of run and spawned-tree containers', () => {
+        const rows = [
+            row('a', 'pin', { pinnedAt: '2026-01-01', ralph: { sessionId: 'r' } }),
+            row('a', 'child', { ralph: { sessionId: 'r' }, parentProcessId: 'pin' }),
+        ];
+        const groups = groupRepoGroupChatRows(rows);
+        expect(groups[0]).toMatchObject({ key: rows[0].key, label: '' });
+        expect(groups[0].rows).toHaveLength(1);
+        expect(groups[1].rows).toHaveLength(1);
+    });
 });
