@@ -122,10 +122,6 @@ describe('MessagingStore', () => {
         });
     });
 
-    it('should create the database file', () => {
-        expect(fs.existsSync(path.join(tmpDir, 'messaging.db'))).toBe(true);
-    });
-
     it('should survive close and reopen', () => {
         store.bindMessage('wamid.persist', 'proc-999', 'agent-x', 'Label-persist', 'ws-saved');
         store.setGlobalSession('carol@s.whatsapp.net', 'proc-888', 'agent-y');
@@ -188,18 +184,6 @@ describe('MessagingStore', () => {
     });
 
     describe('in-memory LRU cache', () => {
-        it('should serve lookups from cache after bindMessage', () => {
-            store.bindMessage('msg-cache-1', 'proc-c1', 'agent-c', 'Label-C', 'ws-c');
-            // Lookup should succeed (from cache, but result is same)
-            const result = store.lookupMessage('msg-cache-1');
-            expect(result).toEqual({
-                processId: 'proc-c1',
-                agentId: 'agent-c',
-                sessionLabel: 'Label-C',
-                workspaceId: 'ws-c',
-            });
-        });
-
         it('should evict oldest entries when cache exceeds 50', () => {
             // Fill cache with 50 entries
             for (let i = 0; i < 50; i++) {

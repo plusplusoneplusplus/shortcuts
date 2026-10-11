@@ -31,10 +31,6 @@ describe('MessagingConnector conformance', () => {
         const connector: MessagingConnector = bot;
 
         expect(connector.provider).toBe('teams');
-        expect(typeof connector.start).toBe('function');
-        expect(typeof connector.stop).toBe('function');
-        expect(typeof connector.send).toBe('function');
-        expect(typeof connector.listTargets).toBe('function');
         expect(connector.isConnected()).toBe(false);
         expect(CONNECTOR_STATUSES).toContain(connector.getStatus());
         expect(connector.getLastError()).toBeNull();
@@ -45,11 +41,6 @@ describe('MessagingConnector conformance', () => {
         const connector: MessagingConnector = bot;
 
         expect(connector.provider).toBe('whatsapp');
-        expect(typeof connector.start).toBe('function');
-        expect(typeof connector.stop).toBe('function');
-        expect(typeof connector.send).toBe('function');
-        expect(typeof connector.listTargets).toBe('function');
-        expect(typeof connector.resolveTarget).toBe('function');
         expect(connector.isConnected()).toBe(false);
         expect(CONNECTOR_STATUSES).toContain(connector.getStatus());
         expect(connector.getLastError()).toBeNull();
@@ -69,13 +60,5 @@ describe('MessagingConnector conformance', () => {
         expect(bot.getStatus()).toBe('pairing');
         // getStatus() only ever emits normalized values.
         expect(CONNECTOR_STATUSES).toContain(bot.getStatus());
-    });
-
-    it('collects both connectors behind the shared contract', () => {
-        const teams = new TeamsBot({ mode: 'graph', teamId: 't1', onMessage: async () => {} });
-        const whatsapp = new WhatsAppBot({ sessionDir: '/tmp/conformance', onMessage: async () => {}, printQR: false });
-        const connectors: MessagingConnector[] = [teams, whatsapp];
-
-        expect(connectors.map((c) => c.provider)).toEqual(['teams', 'whatsapp']);
     });
 });

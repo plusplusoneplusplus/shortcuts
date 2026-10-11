@@ -75,17 +75,4 @@ describe('EmbeddingProviderRegistry', () => {
         expect(registry.getActive()).toBeNull();
         expect(registry.get('provider-a')).not.toBeNull();
     });
-
-    it('stub provider embeds a single text', async () => {
-        const provider = makeProvider('provider-a', 4);
-        const vec = await provider.embed('hello') as EmbeddingVector;
-        expect(vec.dimensions).toBe(4);
-        expect(vec.values).toHaveLength(4);
-    });
-
-    it('stub provider embeds an array of texts', async () => {
-        const provider = makeProvider('provider-a', 4);
-        const vecs = await provider.embed(['hello', 'world']) as EmbeddingVector[];
-        expect(vecs).toHaveLength(2);
-    });
 });

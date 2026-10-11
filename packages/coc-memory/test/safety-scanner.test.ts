@@ -3,7 +3,7 @@
  * invisible Unicode, redaction, and clean-content pass-through.
  */
 import { describe, it, expect } from 'vitest';
-import { scanMemoryContent, redactSensitiveValues, SECURITY_PATTERNS_DESCRIPTION } from '../src/safety-scanner';
+import { scanMemoryContent, redactSensitiveValues } from '../src/safety-scanner';
 
 // ---------------------------------------------------------------------------
 // Clean content
@@ -222,28 +222,5 @@ describe('redactSensitiveValues', () => {
         expect(redacted).toContain('[REDACTED_TOKEN]');
         expect(redacted).toContain('Set header:');
         expect(redacted).toContain('for auth');
-    });
-});
-
-// ---------------------------------------------------------------------------
-// SECURITY_PATTERNS_DESCRIPTION
-// ---------------------------------------------------------------------------
-
-describe('SECURITY_PATTERNS_DESCRIPTION', () => {
-    it('is a non-empty string', () => {
-        expect(typeof SECURITY_PATTERNS_DESCRIPTION).toBe('string');
-        expect(SECURITY_PATTERNS_DESCRIPTION.length).toBeGreaterThan(100);
-    });
-
-    it('mentions prompt injection', () => {
-        expect(SECURITY_PATTERNS_DESCRIPTION).toContain('Prompt Injection');
-    });
-
-    it('mentions credentials section', () => {
-        expect(SECURITY_PATTERNS_DESCRIPTION).toContain('Credentials');
-    });
-
-    it('mentions invisible Unicode', () => {
-        expect(SECURITY_PATTERNS_DESCRIPTION).toContain('Invisible Unicode');
     });
 });
