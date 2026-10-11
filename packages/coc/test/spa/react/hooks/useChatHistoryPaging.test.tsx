@@ -117,6 +117,7 @@ describe('owner-scoped conversation history paging', () => {
         expect(get).toHaveBeenCalledWith('chat', { workspace: 'workspace', turnsLimit: PAGE_TURNS }, { signal: expect.any(AbortSignal) });
         expect(pinned).toHaveBeenCalledWith('chat', { workspace: 'workspace' }, { signal: expect.any(AbortSignal) });
         expect(Observer.latest.options.root).toBe(screen.getByTestId('activity-chat-conversation'));
+        expect(Observer.latest.options.root?.contains(screen.getByTestId('history-sentinel'))).toBe(true);
         expect(Observer.latest.options.rootMargin).toBe('600px 0px 0px 0px');
     });
     it('bounds cached live appends to the latest paired page', async () => {
@@ -265,6 +266,13 @@ describe('owner-scoped conversation history paging', () => {
         list.mockImplementation((_id, options) => Promise.resolve(page(Math.max(0, options.beforeTurnIndex - PAGE_TURNS), options.beforeTurnIndex)));
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Go to turn #5' })));
         expect(list).toHaveBeenCalledTimes(6);
+    });
+    it('surfaces independent pin read failures and clears the error after recovery', async () => {
+        pinned.mockRejectedValueOnce(new Error('offline'));
+        await mount();
+        await waitFor(() => expect(screen.getByText("Couldn't load pinned messages")).toBeTruthy());
+        await act(async () => current.refreshPins());
+        await waitFor(() => expect(screen.queryByText("Couldn't load pinned messages")).toBeNull());
     });
     it('flag off preserves full hydration and never probes pages or pins', async () => {
         get.mockResolvedValue({ process: { conversationTurns: turns(0, 200) } });

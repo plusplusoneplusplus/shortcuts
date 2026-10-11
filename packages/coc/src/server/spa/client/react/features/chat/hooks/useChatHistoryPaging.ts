@@ -50,6 +50,7 @@ export function useChatHistoryPaging({
     const [error, setError] = useState(false);
     const [target, setTarget] = useState<number | null>(null);
     const [pins, setPins] = useState<ClientConversationTurn[]>([]);
+    const [pinsError, setPinsError] = useState(false);
     const [sentinel, sentinelRef] = useState<HTMLDivElement | null>(null);
     const requests = useRef(new Set<AbortController>());
     const pinsRequest = useRef<AbortController | null>(null);
@@ -83,7 +84,7 @@ export function useChatHistoryPaging({
         setTarget(null);
         failures.current = 0;
         setPins([]);
-        failures.current = 0;
+        setPinsError(false);
         intersecting.current = false;
         return () => {
             generation.current++;
@@ -112,6 +113,7 @@ export function useChatHistoryPaging({
             if (retry.current) clearTimeout(retry.current);
             setLoading(false);
             setError(false);
+            failures.current = 0;
             setTarget(null);
             callbacks.current.onReset();
         }
@@ -278,14 +280,17 @@ export function useChatHistoryPaging({
         void client.processes.pinnedTurns(processId, { workspace: workspaceId }, { signal: controller.signal })
             .then(data => {
                 if (!controller.signal.aborted && epoch === generation.current) setPins(clientTurns(data.turns));
-            }).catch(() => {}).finally(() => requests.current.delete(controller));
+                if (!controller.signal.aborted && epoch === generation.current) setPinsError(false);
+            }).catch(() => {
+                if (!controller.signal.aborted && epoch === generation.current) setPinsError(true);
+            }).finally(() => requests.current.delete(controller));
     }, [enabled, processId, client, workspaceId]);
     useEffect(() => {
         if (history) refreshPins();
     }, [refreshPins, history?.historyRevision]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return {
-        history, loading, error, target, pins, sentinelRef, readProcess, acceptSnapshot, navigateToTurn, refreshPins,
+        history, loading, error, target, pins, pinsError, sentinelRef, readProcess, acceptSnapshot, navigateToTurn, refreshPins,
         cacheTurns: (all: ClientConversationTurn[]) => {
             if (!enabled) return all;
             const latest = latestBoundary.current == null ? [] : all.filter(t => t.turnIndex != null && t.turnIndex >= latestBoundary.current!);

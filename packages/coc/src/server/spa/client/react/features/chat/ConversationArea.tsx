@@ -337,6 +337,12 @@ export function ConversationArea({
             aria-label="Chat conversation"
             data-current-turn={currentTurnIndex ?? undefined}
         >
+            <div
+                ref={scrollRef}
+                data-testid="activity-chat-conversation"
+                className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
+                style={historyPaging ? { overflowAnchor: 'none' } : undefined}
+            >
             {!loading && !isPending && historyPaging?.history && (
                 <>
                     <div ref={historyPaging.sentinelRef} data-testid="history-sentinel" style={{ overflowAnchor: 'none' }} />
@@ -351,14 +357,13 @@ export function ConversationArea({
                         <div role="status" aria-live="polite" className="animate-pulse text-xs text-[#848484]"
                             data-testid="history-jump-placeholder">Loading turn #{historyPaging.target}...</div>
                     )}
+                    {historyPaging.pinsError && (
+                        <div role="status" aria-live="polite" className="text-xs text-[#848484] dark:text-[#999]">
+                            Couldn't load pinned messages
+                        </div>
+                    )}
                 </>
             )}
-            <div
-                ref={scrollRef}
-                data-testid="activity-chat-conversation"
-                className={cn('flex-1 min-h-0 overflow-y-auto h-full space-y-3 min-w-0', variant === 'floating' ? 'p-2' : 'p-4')}
-                style={historyPaging ? { overflowAnchor: 'none' } : undefined}
-            >
                 {isPending ? (
                     <PendingTaskInfoPanel task={fullTask || task} onCancel={onCancel} onMoveToTop={onMoveToTop} />
                 ) : loading ? (
