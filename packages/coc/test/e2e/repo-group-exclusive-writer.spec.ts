@@ -70,7 +70,14 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     await page.goto(`${serverUrl}/#repos/${secondId}/settings`);
     const row = page.getByTestId(`repo-group-member-row-${memberId}`);
     await expect(row).toContainText('Read-only');
-    await page.getByTestId(`repo-group-member-read-only-${memberId}`).uncheck();
+    // A rejected save may roll back before uncheck() verifies its final state.
+    const [rejection] = await Promise.all([
+        page.waitForResponse(response => response.url() === `${serverUrl}/api/repo-groups/${secondId}`
+            && response.request().method() === 'PATCH'),
+        page.getByTestId(`repo-group-member-read-only-${memberId}`).click(),
+    ]);
+    expect(rejection.status()).toBe(409);
+    expect(rejection.request().postDataJSON()).toEqual({ readOnly: { [memberId]: false } });
     await expect(row.getByRole('alert')).toContainText('Writer conflict');
     await expect(page.getByTestId(`repo-group-member-read-only-${memberId}`)).toBeChecked();
     expect((await read(secondId)).members[0].readOnly).toBe(true);
@@ -201,8 +208,20 @@ test('remote owner capability, authoritative save and writer links stay separate
         await page.goto(`${serverUrl}/?remoteFixture#repos/remote%3Afixture-owner%3Agroup-remote-second/settings`);
         const row = page.getByTestId(`repo-group-member-row-${memberId}`);
         await expect(row).toContainText('Shared repository');
-        await page.getByTestId(`repo-group-member-read-only-${memberId}`).uncheck();
+        const savedToggle = page.getByTestId(`repo-group-member-read-only-${memberId}`);
+        await expect(savedToggle).toBeChecked();
+        // Assert rejection and rollback, rather than a transient unchecked state.
+        const [rejection] = await Promise.all([
+            page.waitForResponse(response => response.url() === `${remote.url}/api/repo-groups/group-remote-second`
+                && response.request().method() === 'PATCH'),
+            savedToggle.click(),
+        ]);
+        expect(rejection.status()).toBe(409);
+        expect(rejection.request().postDataJSON()).toEqual({ readOnly: { [memberId]: false } });
         await expect(row.getByRole('alert')).toContainText('Writer conflict');
+        await expect(savedToggle).toBeChecked();
+        const rejectedGroup = JSON.parse((await request(`${remote.url}/api/repo-groups/group-remote-second`)).body);
+        expect(rejectedGroup.members[0].readOnly).toBe(true);
         await expect(row.getByRole('link', { name: 'Open writer group' })).toHaveAttribute('href', remoteLink);
         await row.getByRole('link', { name: 'Open writer group' }).click();
         await expect(page).toHaveURL(new RegExp(`remote%3Afixture-owner%3A${remoteOwnerId}/settings$`));
