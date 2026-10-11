@@ -85,6 +85,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             processId: { type: 'string' },
             workspaceId: { type: 'string' },
             mode: { type: 'string' },
+            entryPoint: { type: 'string' },
             deliveryMode: { type: 'string' },
             title: { type: 'string' },
             model: { type: 'string' },
