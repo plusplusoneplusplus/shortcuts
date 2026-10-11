@@ -287,6 +287,21 @@ describe('ReposContext', () => {
         expect(groupBadgeMocks.getRepoGroupChats).not.toHaveBeenCalled();
     });
 
+    it('marks a group unread badge partial when its owner cannot supply unread counts', async () => {
+        groupBadgeMocks.enabled = true;
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([{ ...makeWorkspace('group-unknown'), virtual: true }]);
+        groupBadgeMocks.getRepoGroupChats.mockResolvedValue({
+            groupId: 'group-unknown', membershipKey: 'm1', running: [], queued: [], history: [], hasMore: false,
+            sources: [{ workspaceId: 'group-unknown', role: 'group', available: true }],
+            counts: { total: 0, running: 0, queued: 0, history: 0, byOwner: {}, partial: false },
+        });
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(groupBadgeMocks.getRepoGroupChats).toHaveBeenCalled());
+        const value = JSON.parse(screen.getByTestId('attention').textContent!);
+        expect(value.badgeCounts['group-unknown']).toBe(0);
+        expect(value.badgePartial['group-unknown']).toBe(true);
+    });
+
     it('shows awaiting-input attention after reload and clears it on answer or stop independently of unread', async () => {
         repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
         vi.mocked(fetchUnseenCount).mockResolvedValueOnce(2);

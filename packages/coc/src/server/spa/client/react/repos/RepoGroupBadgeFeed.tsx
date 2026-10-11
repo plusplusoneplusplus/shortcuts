@@ -25,7 +25,7 @@ export function RepoGroupBadgeFeed({ workspace, onChange }: {
         pageSize: 1,
     });
     const unread = feed.model?.counts.unread ?? 0;
-    const partial = !feed.model || feed.model.counts.partial;
+    const partial = feed.model?.counts.unread === undefined || feed.model.counts.partial;
     useEffect(() => {
         onChange(selectionId, { unread, partial });
     }, [selectionId, unread, partial, onChange]);
