@@ -276,6 +276,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [retryingTask, setRetryingTask] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
+    const markedSeenRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!scopedOwner || !processDetails?.endTime || !['completed', 'failed'].includes(processDetails.status)) return;
+        const seenAt = new Date(processDetails.endTime).toISOString();
+        const key = `${scopedOwner.selectionId}|${processDetails.id}|${seenAt}`;
+        if (markedSeenRef.current === key) return;
+        markedSeenRef.current = key;
+        void client.seenState.updateMany(scopedOwner.workspaceId, [{ processId: processDetails.id, seenAt }])
+            .then(() => window.dispatchEvent(new CustomEvent('coc-group-chat-seen', { detail: {
+                baseUrl: scopedOwner.baseUrl, workspaceId: scopedOwner.workspaceId,
+            } })))
+            .catch(err => {
+                markedSeenRef.current = null;
+                setError(err?.message ?? 'Could not mark this conversation as read.');
+            });
+    }, [client, scopedOwner, processDetails]);
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);

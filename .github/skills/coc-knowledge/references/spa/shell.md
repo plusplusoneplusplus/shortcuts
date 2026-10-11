@@ -75,6 +75,11 @@ member ids never select group tasks. New Chat returns to the same group's
 `/chats` route. `RepoGroupMemberChatDetail` supplies `RepoChatTab.detailOverride`,
 an owner header and explicit repo navigation; mobile back clears the member
 route without unmounting the list.
+Group list search and repo/status/archive filters persist under
+`coc.group-chat-filters:<groupSelectionId>`. Narrow layouts use a filter
+disclosure; matching rows retain their owner prefixes and plain-text excerpts.
+Member conversation completion writes the owner's existing seen-state and
+invalidates the group feed through an owner-qualified event.
 
 Workspace switchers use `useWorkspaceNavigation()`, so TopBar, the repo grid,
 process-sidebar links, and clone completion all write full hashes. `RepoDetail` treats

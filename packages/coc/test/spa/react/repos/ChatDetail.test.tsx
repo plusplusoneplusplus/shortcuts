@@ -676,13 +676,19 @@ describe('ChatDetail', () => {
             baseUrl: 'https://owner.example.test',
         };
         registerCloneBaseUrls([{ workspaceId: 'ws-member', serverId: 'server-b', baseUrl: 'https://other.example.test' }]);
-        setupStandardFetch(undefined, makeProcess({ id: 'queue_chat', metadata: { workspaceId: 'ws-member', mode: 'ask' } }));
+        setupStandardFetch(undefined, makeProcess({ id: 'queue_chat', endTime: '2026-01-01T00:00:00Z', metadata: { workspaceId: 'ws-member', mode: 'ask' } }));
         const view = render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
             <ChatDetail taskId="queue_chat" workspaceId="ws-member" sourceSelectionId={owner.selectionId} />
         </WorkspaceOwnerContext.Provider></Wrap>);
         await waitFor(() => expect(screen.queryByTestId('activity-chat-loading')).toBeNull());
         await waitFor(() => expect(fetchMock.mock.calls.some(([url]) =>
             String(url) === 'https://owner.example.test/api/processes/queue_chat?workspace=ws-member')).toBe(true));
+        await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) =>
+            String(url) === 'https://owner.example.test/api/workspaces/ws-member/seen-state'
+            && init?.method === 'PATCH')).toBe(true));
+        const seenWrite = fetchMock.mock.calls.find(([url, init]) =>
+            String(url).endsWith('/workspaces/ws-member/seen-state') && init?.method === 'PATCH');
+        expect(JSON.parse(String(seenWrite?.[1]?.body)).entries[0].processId).toBe('queue_chat');
         expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('https://other.example.test/'))).toBe(false);
         expect(mockState.getDraft).toHaveBeenCalledWith('remote:server-a:ws-member|queue_chat');
         expect(mockState.getDraft).not.toHaveBeenCalledWith('queue_chat');

@@ -8,14 +8,14 @@
  * source is read through the same queue snapshot and terminal-history query
  * its own repo list uses, so visibility rules are unchanged.
  *
- * History pages merge every source by latest activity. The cursor records how
- * far each source has been consumed (k-way merge over per-source offsets), so
- * consecutive pages neither skip nor repeat a chat; it also pins the source
- * set and filters, so a page for an older membership or query is rejected.
+ * History pages merge eligible metadata snapshots by latest activity. Cursors
+ * bind per-source offsets to membership, query and snapshot identities; changed
+ * activity restarts pagination rather than skipping conversations.
  */
 
 import { createHash } from 'crypto';
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type {
     RepoGroupChatArchivedFilter,
@@ -38,6 +38,7 @@ export const REPO_GROUP_CHAT_MAX_LIMIT = 200;
 type FeedStore = ProcessStore & {
     getSeenMap?: (workspaceId: string) => Record<string, string>;
     getUnseenCount?: (workspaceId: string) => number;
+    getDatabase?: () => NativeDatabase;
 };
 
 export interface RepoGroupChatFeedDeps {
@@ -54,6 +55,7 @@ export interface NormalizedFeedQuery {
     statuses: RepoGroupChatStatus[];
     archived: RepoGroupChatArchivedFilter;
     type?: string;
+    q?: string;
 }
 
 /** Raised for a cursor from another membership/filter set; the client restarts from page one. */
@@ -102,6 +104,7 @@ export function parseRepoGroupChatFeedQuery(params: URLSearchParams): Normalized
         statuses: [...new Set(statuses as RepoGroupChatStatus[])].sort(),
         archived,
         ...(params.get('type') ? { type: params.get('type')! } : {}),
+        ...(params.get('q')?.trim() ? { q: params.get('q')!.trim() } : {}),
     };
 }
 
@@ -114,13 +117,14 @@ interface FeedCursor {
     m: string;
     f: string;
     o: Record<string, number>;
+    snapshot?: string;
 }
 
 function encodeCursor(cursor: FeedCursor): string {
     return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
 }
 
-function decodeCursor(raw: string, membershipKey: string, filterKey: string): Record<string, number> {
+function decodeCursor(raw: string, membershipKey: string, filterKey: string, snapshot?: string): Record<string, number> {
     let parsed: FeedCursor;
     try {
         parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as FeedCursor;
@@ -130,7 +134,7 @@ function decodeCursor(raw: string, membershipKey: string, filterKey: string): Re
     if (!parsed || parsed.v !== 1 || typeof parsed.o !== 'object' || parsed.o === null) {
         throw new InvalidRepoGroupChatQueryError('Invalid "cursor" parameter');
     }
-    if (parsed.m !== membershipKey || parsed.f !== filterKey) throw new StaleRepoGroupCursorError();
+    if (parsed.m !== membershipKey || parsed.f !== filterKey || parsed.snapshot !== snapshot) throw new StaleRepoGroupCursorError();
     return parsed.o;
 }
 
@@ -157,54 +161,21 @@ interface SourceState {
     activeIds: Set<string>;
     running: OwnedTask[];
     queued: OwnedTask[];
+    history?: AIProcess[];
+    hits?: Map<string, string>;
 }
 
-/**
- * Lazily pulls one source's terminal history in its store order (latest
- * activity first), skipping rows hidden by the archive filter or currently
- * shown as running/queued. `rawIndex` is the row's position in the unfiltered
- * terminal query, which is what the cursor records.
- */
+/** Walks one eligible, deterministically ordered source snapshot. */
 class SourceHistoryStream {
-    private buffer: Array<{ proc: AIProcess; rawIndex: number }> = [];
-    private nextRaw: number;
-    private exhausted = false;
-
-    constructor(
-        private readonly store: FeedStore,
-        private readonly workspaceId: string,
-        private readonly statuses: TerminalStatus[],
-        private readonly query: NormalizedFeedQuery,
-        private readonly activeIds: Set<string>,
-        startRaw: number,
-        private readonly chunk: number,
-    ) {
-        this.nextRaw = startRaw;
-    }
+    constructor(private readonly rows: AIProcess[], private nextRaw: number) {}
 
     async peek(): Promise<{ proc: AIProcess; rawIndex: number } | undefined> {
-        while (this.buffer.length === 0 && !this.exhausted) {
-            const rows = await this.store.getAllProcesses({
-                workspaceId: this.workspaceId,
-                status: this.statuses,
-                exclude: ['conversation'],
-                ...(this.query.type ? { type: this.query.type as AIProcess['type'] } : {}),
-                limit: this.chunk,
-                offset: this.nextRaw,
-            });
-            rows.forEach((proc, index) => {
-                if (!matchesArchived(proc.archived, this.query.archived)) return;
-                if (this.activeIds.has(proc.id)) return;
-                this.buffer.push({ proc, rawIndex: this.nextRaw + index });
-            });
-            this.nextRaw += rows.length;
-            if (rows.length < this.chunk) this.exhausted = true;
-        }
-        return this.buffer[0];
+        const proc = this.rows[this.nextRaw];
+        return proc ? { proc, rawIndex: this.nextRaw } : undefined;
     }
 
     take(): void {
-        this.buffer.shift();
+        this.nextRaw++;
     }
 }
 
@@ -219,6 +190,27 @@ function compareHeads(
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+/** Reuse the existing FTS index; eligibility and archive rules are applied by the feed. */
+function searchFeedBodies(store: FeedStore, workspaceId: string, query: string): Map<string, string> {
+    const db = store.getDatabase?.();
+    if (!db) throw new Error('Conversation search requires the process search index.');
+    const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
+    if (!terms.length) return new Map();
+    const match = terms.map(term => `"${term}"`).join(' AND ');
+    const rows = db.prepare(`
+        SELECT t.process_id AS processId,
+            snippet(conversation_search, 0, '', '', '...', 32) AS snippet
+        FROM conversation_search
+        JOIN conversation_turns t ON t.id = conversation_search.rowid
+        JOIN processes p ON p.id = t.process_id
+        WHERE conversation_search MATCH ? AND p.workspace_id = ? AND t.interrupted = 0
+        ORDER BY t.turn_index DESC
+    `).all(match, workspaceId) as Array<{ processId: string; snippet: string }>;
+    const hits = new Map<string, string>();
+    for (const row of rows) if (!hits.has(row.processId)) hits.set(row.processId, row.snippet);
+    return hits;
 }
 
 /**
@@ -245,8 +237,7 @@ export async function buildRepoGroupChatFeed(
             })),
     ];
     const membershipKey = shortHash(allSources.map(source => source.workspaceId));
-    const filterKey = shortHash({ owners: query.owners, statuses: query.statuses, archived: query.archived, type: query.type });
-    const offsets = query.cursor ? decodeCursor(query.cursor, membershipKey, filterKey) : {};
+    const filterKey = shortHash({ owners: query.owners, statuses: query.statuses, archived: query.archived, type: query.type, q: query.q });
     const firstPage = !query.cursor;
 
     const ownerFilter = query.owners ? new Set(query.owners) : undefined;
@@ -278,6 +269,46 @@ export async function buildRepoGroupChatFeed(
     }));
     const selected = states.filter(state => !ownerFilter || ownerFilter.has(state.source.workspaceId));
     const matchesType = (task: Record<string, unknown>) => !query.type || task.type === query.type;
+    const snippets: Record<string, Record<string, string>> = {};
+    // Counts and ordering share one eligible snapshot. Stable ties inside each
+    // owner are essential: sorting only page-sized chunks can skip equal times.
+    for (const state of selected) {
+        if (!state.source.available) continue;
+        try {
+            if (query.q) {
+                state.hits = searchFeedBodies(deps.store, state.source.workspaceId, query.q);
+            }
+            state.history = terminal.length ? await deps.store.getAllProcesses({
+                workspaceId: state.source.workspaceId,
+                status: terminal,
+                exclude: ['conversation'],
+                ...(query.type ? { type: query.type as AIProcess['type'] } : {}),
+            }) : [];
+            state.history = state.history
+                .filter(proc => matchesArchived(proc.archived, query.archived)
+                    && !state.activeIds.has(proc.id) && (!state.hits || state.hits.has(proc.id)))
+                .sort((a, b) => activityMs(b) - activityMs(a) || a.id.localeCompare(b.id));
+            if (query.q) {
+                const matches = (task: OwnedTask) => {
+                    const id = activeProcessId(task);
+                    if (id && state.hits?.has(id)) return true;
+                    const text = JSON.stringify(task).toLocaleLowerCase();
+                    return query.q!.toLocaleLowerCase().split(/\s+/).every(term => text.includes(term));
+                };
+                state.running = state.running.filter(matches);
+                state.queued = state.queued.filter(matches);
+            }
+        } catch (err) {
+            state.source.available = false;
+            state.source.error = errorMessage(err);
+        }
+    }
+    const snapshot = shortHash(selected.map(state => [
+        state.source.workspaceId, state.source.available,
+        state.history?.map(proc => [proc.id, activityMs(proc), proc.pinnedAt, proc.archived]),
+        state.running.map(activeProcessId), state.queued.map(activeProcessId),
+    ]));
+    const offsets = query.cursor ? decodeCursor(query.cursor, membershipKey, filterKey, snapshot) : {};
 
     const running = wantRunning ? selected.flatMap(state => state.running.filter(matchesType)) : [];
     const queued = wantQueued ? selected.flatMap(state => state.queued.filter(matchesType)) : [];
@@ -292,8 +323,8 @@ export async function buildRepoGroupChatFeed(
             .map(state => ({
                 state,
                 stream: new SourceHistoryStream(
-                    deps.store, state.source.workspaceId, terminal, query, state.activeIds,
-                    Math.max(0, Math.floor(offsets[state.source.workspaceId] ?? 0)), query.limit + 1,
+                    (state.history ?? []).filter(proc => !proc.pinnedAt || proc.archived || !!query.q),
+                    Math.max(0, Math.floor(offsets[state.source.workspaceId] ?? 0)),
                 ),
             }));
         const seenMaps = new Map<string, Record<string, string>>();
@@ -341,7 +372,28 @@ export async function buildRepoGroupChatFeed(
         }
     }
 
+    if (firstPage && !query.q) {
+        const pinned = selected.filter(state => state.source.available).flatMap(state =>
+            (state.history ?? []).filter(proc => proc.pinnedAt && !proc.archived).map(proc => ({
+                ...toProcessHistoryItem(proc, deps.store.getSeenMap?.(state.source.workspaceId)[proc.id], deps.botControlEnabled),
+                ownerWorkspaceId: state.source.workspaceId,
+            })));
+        pinned.sort((a, b) => new Date(b.pinnedAt!).getTime() - new Date(a.pinnedAt!).getTime()
+            || a.ownerWorkspaceId.localeCompare(b.ownerWorkspaceId) || a.id.localeCompare(b.id));
+        history.unshift(...pinned);
+    }
     const counts = await countFeed(deps.store, states, selected, query, terminal, { wantRunning, wantQueued, matchesType });
+    if (query.q) {
+        for (const state of selected) {
+            const visibleIds = new Set([
+                ...history.filter(row => row.ownerWorkspaceId === state.source.workspaceId).map(row => row.id),
+                ...running.filter(row => row.ownerWorkspaceId === state.source.workspaceId).map(activeProcessId),
+                ...queued.filter(row => row.ownerWorkspaceId === state.source.workspaceId).map(activeProcessId),
+            ]);
+            snippets[state.source.workspaceId] = Object.fromEntries(
+                [...state.hits ?? []].filter(([id]) => visibleIds.has(id)));
+        }
+    }
     return {
         groupId,
         membershipKey,
@@ -349,8 +401,9 @@ export async function buildRepoGroupChatFeed(
         running: firstPage ? running : [],
         queued: firstPage ? queued : [],
         history,
+        ...(query.q ? { snippets } : {}),
         hasMore,
-        ...(hasMore ? { nextCursor: encodeCursor({ v: 1, m: membershipKey, f: filterKey, o: nextOffsets }) } : {}),
+        ...(hasMore ? { nextCursor: encodeCursor({ v: 1, m: membershipKey, f: filterKey, o: nextOffsets, snapshot }) } : {}),
         counts,
     };
 }
@@ -378,7 +431,7 @@ async function countFeed(
         let ownerHistory = 0;
         if (terminal.length > 0 && state.source.available) {
             try {
-                ownerHistory = await countHistory(store, id, terminal, query, state.activeIds);
+                ownerHistory = state.history?.length ?? await countHistory(store, id, terminal, query, state.activeIds);
             } catch (err) {
                 state.source.available = false;
                 state.source.error = errorMessage(err);

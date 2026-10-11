@@ -139,6 +139,51 @@ describe('buildRepoGroupChatFeed', () => {
         expect(seen).toEqual(expected);
     });
 
+    it('searches body text across owners, orders by activity, counts every unique chat and respects archives', async () => {
+        await addChat('older-a', A, 1);
+        await addChat('newer-b', B, 5);
+        await addChat('archived-a', A, 10, { archived: true });
+        await addChat('not-match', GROUP, 20);
+        for (const id of ['older-a', 'newer-b', 'archived-a']) {
+            await store.appendConversationTurn(id, turnIndex => ({ turnIndex, role: 'user', content: 'A rare cobalt capacitor body term', timestamp: new Date('2026-01-01T02:00:00Z') }));
+            await store.appendConversationTurn(id, turnIndex => ({ turnIndex, role: 'assistant', content: 'The cobalt capacitor was fixed', timestamp: new Date(id === 'older-a' ? '2026-01-01T02:01:00Z' : '2026-01-01T02:02:00Z') }));
+        }
+        const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt capacitor', limit: '1' }));
+        expect(feed.history.map(row => row.id)).toEqual(['newer-b']);
+        expect(feed.counts.total).toBe(2);
+        expect(feed.snippets?.[B]['newer-b']).toContain('cobalt capacitor');
+        expect(feed.snippets?.[A]['archived-a']).toBeUndefined();
+        const next = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt capacitor', limit: '1', cursor: feed.nextCursor! }));
+        expect(next.history.map(row => row.id)).toEqual(['older-a']);
+        expect(next.hasMore).toBe(false);
+        const archived = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt capacitor', archived: 'only' }));
+        expect(archived.history.map(row => row.id)).toEqual(['archived-a']);
+        expect(archived.counts.total).toBe(1);
+    });
+
+    it('breaks equal-activity ties within an owner across page boundaries and rejects changed snapshots', async () => {
+        for (const id of ['z', 'a', 'm']) await addChat(id, A, 1);
+        const first = await buildRepoGroupChatFeed(deps, GROUP, members, query({ limit: '1' }));
+        expect(first.history[0].id).toBe('a');
+        const next = await buildRepoGroupChatFeed(deps, GROUP, members, query({ limit: '1', cursor: first.nextCursor! }));
+        expect(next.history[0].id).toBe('m');
+        await addChat('new', B, 4);
+        await expect(buildRepoGroupChatFeed(deps, GROUP, members, query({ limit: '1', cursor: next.nextCursor! })))
+            .rejects.toBeInstanceOf(StaleRepoGroupCursorError);
+    });
+
+    it('returns old pins on page one without duplicating them in global history pages', async () => {
+        await addChat('old-pin', A, 1, { pinnedAt: '2026-01-01T01:00:00Z' });
+        await addChat('recent', B, 10);
+        await addChat('middle', GROUP, 5);
+        const first = await buildRepoGroupChatFeed(deps, GROUP, members, query({ limit: '1' }));
+        expect(first.history.map(row => row.id)).toEqual(['old-pin', 'recent']);
+        expect(first.counts.total).toBe(3);
+        const next = await buildRepoGroupChatFeed(deps, GROUP, members, query({ limit: '1', cursor: first.nextCursor! }));
+        expect(next.history.map(row => row.id)).toEqual(['middle']);
+        expect(next.hasMore).toBe(false);
+    });
+
     it('shows a re-queued follow-up only in its active section, never also as history', async () => {
         await addChat('a1', A, 1);
         await addChat('a2', A, 2);

@@ -71,6 +71,7 @@ function filtersKey(filters: RepoGroupChatFeedFilters | undefined): string {
         statuses: filters.statuses ? [...filters.statuses].sort() : undefined,
         archived: filters.archived,
         type: filters.type,
+        q: filters.q,
     });
 }
 
@@ -205,10 +206,16 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
         const onConnect = (event: Event) => {
             if ((event as CustomEvent).detail?.baseUrl === baseUrl) scheduleRefresh();
         };
+        const onSeen = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (detail?.baseUrl === baseUrl && liveRef.current.sourceIds.has(detail.workspaceId)) scheduleRefresh();
+        };
         window.addEventListener(messageEvent, onMessage);
+        window.addEventListener('coc-group-chat-seen', onSeen);
         if (baseUrl) window.addEventListener('coc-remote-ws-connect', onConnect);
         return () => {
             window.removeEventListener(messageEvent, onMessage);
+            window.removeEventListener('coc-group-chat-seen', onSeen);
             if (baseUrl) window.removeEventListener('coc-remote-ws-connect', onConnect);
         };
     }, [enabled, baseUrl, scheduleRefresh]);

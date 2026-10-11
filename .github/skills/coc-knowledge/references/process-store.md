@@ -37,6 +37,12 @@ processes and interrupted turns are excluded; other filters and pagination
 retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 `ConversationSearchResult` and reports malformed FTS syntax as an empty result.
 
+The repo-group chat feed reads the same `conversation_search` index with literal
+AND-token matching and plain-text excerpts, including archives when requested.
+It intersects matches with the existing eligible process read before projecting
+rows or snippets. Its activity-ordered metadata snapshot supplies both counts
+and pagination; it creates no aggregate process records or search index.
+
 `getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
 `listRecentProcesses` use typed Rust read-pool tasks with the same schema check.
 Forge maps returned SQLite rows into the existing date- and JSON-rich

@@ -24,6 +24,8 @@ import {
     getChatRowModeBadgeClasses,
 } from '../features/chat/chat-row-style';
 import type { RepoGroupChatFeedState } from './useRepoGroupChatFeed';
+import type { RepoGroupChatFeedFilters } from './useRepoGroupChatFeed';
+import { RepoGroupChatFilters } from './RepoGroupChatFilters';
 import type { RepoGroupChatRow } from './repoGroupChatFeed';
 import {
     buildRepoGroupOwnerLabels,
@@ -38,6 +40,8 @@ export interface RepoGroupChatListProps {
     serverLabel: string;
     selectedKey: string | null;
     onSelect: (row: RepoGroupChatRow) => void;
+    filters?: RepoGroupChatFeedFilters;
+    onFiltersChange?: (filters: RepoGroupChatFeedFilters) => void;
 }
 
 type SectionKey = 'running' | 'queued' | 'pinned' | 'history';
@@ -56,12 +60,13 @@ function rowTime(row: RepoGroupChatRow): string {
     return ts ? formatRelativeTime(new Date(ts).toISOString()) : '';
 }
 
-function GroupChatRow({ row, owner, serverLabel, selected, onSelect }: {
+function GroupChatRow({ row, owner, serverLabel, selected, onSelect, snippet }: {
     row: RepoGroupChatRow;
     owner: RepoGroupOwnerLabel | undefined;
     serverLabel: string;
     selected: boolean;
     onSelect: (row: RepoGroupChatRow) => void;
+    snippet?: string;
 }) {
     const task = row.item;
     const isRunning = row.section === 'running';
@@ -129,6 +134,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect }: {
                     )}
                 >
                     {title}
+                    {snippet && <span className="ml-2 font-normal text-[#848484]" data-testid="repo-group-search-snippet">{snippet}</span>}
                 </span>
             </span>
             <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap text-[#848484] dark:text-[#999]">
@@ -138,7 +144,7 @@ function GroupChatRow({ row, owner, serverLabel, selected, onSelect }: {
     );
 }
 
-export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect }: RepoGroupChatListProps) {
+export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect, filters, onFiltersChange }: RepoGroupChatListProps) {
     const { model, status, error, loadingMore, loadMore } = feed;
     const [collapsed, setCollapsed] = useState<Set<SectionKey>>(() => new Set());
     const owners = useMemo(() => buildRepoGroupOwnerLabels(model?.sources ?? []), [model?.sources]);
@@ -162,6 +168,7 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect }: 
 
     return (
         <div className="flex flex-col h-full min-h-0" data-testid="repo-group-chat-list">
+            {filters && onFiltersChange && <RepoGroupChatFilters filters={filters} sources={model?.sources ?? []} onChange={onFiltersChange} />}
             <div
                 className="flex items-center gap-1.5 px-3 py-1 text-[10px] text-[#848484] dark:text-[#a0a0a0] border-b border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80"
                 data-testid="repo-group-chat-list-header"
@@ -174,6 +181,8 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect }: 
                         {model.counts.total}{model.counts.partial || unavailable.length > 0 ? '+' : ''}
                     </span>
                 )}
+                {model?.counts.unread !== undefined && <span aria-label={`${model.counts.unread} unread chats${model.counts.partial ? ', partial' : ''}`}
+                    data-testid="repo-group-chat-unread">{model.counts.unread} unread{model.counts.partial ? '+' : ''}</span>}
             </div>
             {unavailable.length > 0 && (
                 <div className="px-3 py-1 text-[10px] text-amber-700 dark:text-amber-400" role="status" data-testid="repo-group-chat-partial">
@@ -217,6 +226,7 @@ export function RepoGroupChatList({ feed, serverLabel, selectedKey, onSelect }: 
                                 <GroupChatRow
                                     key={row.key}
                                     row={row}
+                                    snippet={model?.snippets?.[row.ownerWorkspaceId]?.[row.canonicalId]}
                                     owner={owners.get(row.ownerWorkspaceId)}
                                     serverLabel={serverLabel}
                                     selected={row.key === selectedKey}

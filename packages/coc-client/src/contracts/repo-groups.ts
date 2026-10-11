@@ -40,6 +40,8 @@ export interface RepoGroupChatFeedQuery {
   statuses?: RepoGroupChatStatus[];
   archived?: RepoGroupChatArchivedFilter;
   type?: string;
+  /** Body-text search across every eligible owner conversation. */
+  q?: string;
 }
 
 /** One workspace whose chats feed the group list: the group itself or a member. */
@@ -81,6 +83,8 @@ export interface RepoGroupChatFeedResponse<TTask = Record<string, unknown>, THis
   running: Array<TTask & { ownerWorkspaceId: string }>;
   queued: Array<TTask & { ownerWorkspaceId: string }>;
   history: Array<THistory & { ownerWorkspaceId: string }>;
+  /** Plain-text search excerpts keyed by owner workspace, then canonical process id. */
+  snippets?: Record<string, Record<string, string>>;
   hasMore: boolean;
   nextCursor?: string;
   counts: RepoGroupChatCounts;

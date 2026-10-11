@@ -126,6 +126,7 @@ export function getRepoGroupChats(
     if (query.statuses && query.statuses.length > 0) params.statuses = query.statuses.join(',');
     if (query.archived) params.archived = query.archived;
     if (query.type) params.type = query.type;
+    if (query.q) params.q = query.q;
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}/chats`, { query: params, signal });
 }
 

@@ -50,6 +50,7 @@ export interface RepoGroupChatFeedModel {
     hasMore: boolean;
     nextCursor?: string;
     counts: RepoGroupChatCounts;
+    snippets?: Record<string, Record<string, string>>;
 }
 
 /** Server identity for the dashboard's own registry. */
@@ -129,6 +130,7 @@ export function buildRepoGroupChatFeedModel(
         hasMore: response.hasMore,
         ...(response.nextCursor ? { nextCursor: response.nextCursor } : {}),
         counts: response.counts,
+        snippets: response.snippets,
     };
 }
 
@@ -153,6 +155,9 @@ export function appendRepoGroupChatFeedPage(
         ...rest,
         sources: response.sources,
         history: [...model.history, ...more],
+        snippets: Object.fromEntries(response.sources.map(source => [source.workspaceId, {
+            ...model.snippets?.[source.workspaceId], ...response.snippets?.[source.workspaceId],
+        }])),
         hasMore: response.hasMore,
         ...(response.nextCursor ? { nextCursor: response.nextCursor } : {}),
         counts: response.counts,

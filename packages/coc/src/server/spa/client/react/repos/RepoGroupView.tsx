@@ -57,6 +57,7 @@ import { useRepoGroupChatSelection } from './useRepoGroupChatSelection';
 import { RepoGroupMemberChatDetail } from './RepoGroupMemberChatDetail';
 import { allRepoGroupChatRows } from './repoGroupChatFeed';
 import { RepoGroupChatList } from './RepoGroupChatList';
+import { useRepoGroupChatFilters } from './useRepoGroupChatFilters';
 import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
 
 /**
@@ -195,11 +196,13 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const chatServerLabel = typeof remoteMarker?.serverLabel === 'string' && remoteMarker.serverLabel
         ? remoteMarker.serverLabel
         : 'This server';
+    const [chatFilters, setChatFilters] = useRepoGroupChatFilters(selectionId);
     const chatFeed = useRepoGroupChatFeed({
         groupId: workspaceId,
         baseUrl: groupBaseUrl,
         serverKey: chatServerKey,
         enabled: aggregatedChats,
+        filters: chatFilters,
     });
     const memberChat = useRepoGroupChatSelection(selectionId, aggregatedChats);
     const memberRow = chatFeed.model && memberChat.selectedKey
@@ -242,6 +245,8 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                 feed={chatFeed}
                 serverLabel={chatServerLabel}
                 selectedKey={selectedKey}
+                filters={chatFilters}
+                onFiltersChange={setChatFilters}
                 onSelect={(row) => {
                     if (row.ownerWorkspaceId === workspaceId) {
                         memberChat.clearSelection();
@@ -252,7 +257,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                 }}
             />
         );
-    }, [chatFeed, chatServerKey, chatServerLabel, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
+    }, [chatFeed, chatFilters, chatServerKey, chatServerLabel, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;
