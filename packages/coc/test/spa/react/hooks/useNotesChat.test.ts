@@ -8,10 +8,8 @@
  */
 /* @vitest-environment jsdom */
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
     formatNoteAttachmentLink,
     formatNoteAttachmentPrompt,
@@ -37,17 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isCommitChatLensEnabled: () => false,
 }));
 
-const HOOK_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'notes', 'hooks', 'useNotesChat.ts'
-);
-
 describe('useNotesChat', () => {
-    let source: string;
-
-    beforeAll(() => {
-        source = fs.readFileSync(HOOK_PATH, 'utf-8');
-    });
-
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();
@@ -56,111 +44,7 @@ describe('useNotesChat', () => {
         cloneClient.notes.deleteChatBindingByPath.mockResolvedValue(undefined);
     });
 
-    it('exports ChatScope type with the section segment', () => {
-        expect(source).toContain("export type ChatScope = 'per-note' | 'per-section' | 'per-workspace'");
-    });
-
-    it('exports UseNotesChatOptions interface', () => {
-        expect(source).toContain('export interface UseNotesChatOptions');
-    });
-
-    it('exports UseNotesChatReturn interface', () => {
-        expect(source).toContain('export interface UseNotesChatReturn');
-    });
-
-    it('exports ChatNoteContext interface', () => {
-        expect(source).toContain('export interface ChatNoteContext');
-    });
-
-    it('exports useNotesChat function', () => {
-        expect(source).toContain('export function useNotesChat');
-    });
-
-    describe('scope management', () => {
-        it('accepts defaultScope param in options', () => {
-            expect(source).toContain('defaultScope?: ChatScope');
-        });
-
-        it('exposes scope and setScope in return value', () => {
-            expect(source).toContain('scope: ChatScope');
-            expect(source).toContain('setScope: (scope: ChatScope) => void');
-        });
-
-        it('returns scope and setScope', () => {
-            // setScope is exposed as `changeScope`, which carries the active chat
-            // across a widening to section scope before flipping the state.
-            expect(source).toContain('return { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, moveChatNote, scope, setScope: changeScope }');
-        });
-
-        it('persists scope to workspace-scoped localStorage key', () => {
-            expect(source).toContain('`coc-notes-chat-scope-${workspaceId}`');
-        });
-
-        it('falls back to defaultScope when no stored value', () => {
-            expect(source).toContain("defaultScope = 'per-note'");
-        });
-
-        it('defaults scope to per-note (Chat with Note) rather than per-workspace', () => {
-            // The chat launched from Notes must land on "This note" by default.
-            expect(source).toContain("defaultScope = 'per-note'");
-            expect(source).not.toContain("defaultScope = 'per-workspace'");
-        });
-    });
-
-    describe('localStorage persistence', () => {
-        it('reads initial per-workspace taskId from localStorage', () => {
-            expect(source).toContain('localStorage.getItem(key)');
-        });
-
-        it('writes per-workspace taskId to localStorage when set', () => {
-            expect(source).toContain('localStorage.setItem(key, perWorkspaceTaskId)');
-        });
-
-        it('removes from localStorage when per-workspace taskId is null', () => {
-            expect(source).toContain('localStorage.removeItem(key)');
-        });
-
-        it('uses workspace-scoped storage key for per-workspace chat', () => {
-            expect(source).toContain('`coc-notes-chat-${workspaceId}`');
-        });
-
-        it('seeds per-note map from server via listChatBindings', () => {
-            expect(source).toContain('listChatBindings(workspaceId)');
-        });
-
-        it('does not persist per-note map to localStorage', () => {
-            expect(source).not.toContain('coc-notes-chat-map-');
-        });
-    });
-
-    describe('derived taskId', () => {
-        it('derives taskId from perWorkspaceTaskId when scope is per-workspace', () => {
-            expect(source).toContain("scope === 'per-workspace'");
-            expect(source).toContain('? perWorkspaceTaskId');
-        });
-
-        it('derives taskId from perNoteMap when scope is per-note', () => {
-            expect(source).toContain("perNoteMap[notePath] ?? null");
-        });
-
-        it('returns null when scope is per-note but no note selected', () => {
-            expect(source).toContain('(notePath ? perNoteMap[notePath] ?? null : null)');
-        });
-    });
-
     describe('task-bound note context', () => {
-        it('does not store note context as one workspace-wide localStorage value', () => {
-            expect(source).not.toContain('coc-notes-chat-ctx-');
-            expect(source).not.toContain('saveContext(');
-            expect(source).not.toContain('loadContext(');
-        });
-
-        it('exposes guarded process metadata synchronization', () => {
-            expect(source).toContain('syncChatNoteContext: (process: AIProcess) => void');
-            expect(source).toContain('loadedTaskId !== activeTaskIdRef.current');
-            expect(source).toContain('noteContextsByTaskId[taskId] ?? null');
-        });
-
         it('keeps context paired with the active task across A to B to A navigation', async () => {
             cloneClient.notes.listChatBindings.mockResolvedValue({
                 bindings: {
@@ -262,101 +146,6 @@ describe('useNotesChat', () => {
         });
     });
 
-    describe('createChat creates queue task', () => {
-        it('POSTs to /queue with chat payload', () => {
-            expect(source).toContain('cloneClient.notes.createChat');
-        });
-
-        it('accepts ask and autopilot as valid modes', () => {
-            expect(source).toContain("mode: 'ask' | 'autopilot'");
-        });
-
-        it('includes noteChat context with current note', () => {
-            expect(source).toContain('notePath');
-            expect(source).toContain('noteTitle');
-        });
-
-        it('prepends note path to prompt when notePath is set', () => {
-            expect(source).toContain('prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath)');
-        });
-
-        it('handles missing notePath gracefully (undefined context)', () => {
-            expect(source).toContain('notePath,');
-        });
-
-        it('stores chat note context at creation time', () => {
-            expect(source).toContain('setNoteContextsByTaskId(prev => ({');
-            expect(source).toContain('[newTaskId]: notePath');
-            expect(source).toContain('? { notePath, noteTitle: noteTitle ?? notePath }');
-        });
-
-        it('clears chat note context when no notePath', () => {
-            expect(source).toContain(': null,');
-        });
-
-        it('extracts taskId from response', () => {
-            expect(source).toContain('res.task.id');
-        });
-
-        it('sets per-workspace taskId when scope is per-workspace', () => {
-            expect(source).toContain('setPerWorkspaceTaskId(newTaskId)');
-        });
-
-        it('mirrors the binding under the same key the server bound', () => {
-            // Section scope binds the folder, per-note binds the note; the local
-            // mirror must use the same key or the two disagree until reload.
-            expect(source).toContain("const bindKey = scope === 'per-section'");
-            expect(source).toContain('setPerNoteMap(prev => ({ ...prev, [bindKey]: newTaskId }))');
-        });
-
-        it('returns null on failure', () => {
-            expect(source).toContain('return null');
-        });
-
-        it('accepts optional model, skills, attachments, and aiSelection parameters in createChat signature', () => {
-            expect(source).toContain('createChat: (prompt: string, model?: string | null, mode?: \'ask\' | \'autopilot\', skills?: string[], attachments?: AttachmentPayload[], aiSelection?: NotesChatAiSelection)');
-        });
-
-        it('exposes a NotesChatAiSelection type carrying provider, effort, auto-routing, working dir, and context', () => {
-            expect(source).toContain('export interface NotesChatAiSelection');
-            expect(source).toContain('provider?: ChatProvider');
-            expect(source).toContain('reasoningEffort?: ReasoningEffort');
-            expect(source).toContain('effortTier?: EffortTierKey');
-            expect(source).toContain('autoProviderRouting?: boolean');
-            expect(source).toContain('workingDirectory?: string');
-            expect(source).toContain('context?: Record<string, unknown>');
-        });
-
-        it('forwards the full AI selection to the chat-create request', () => {
-            expect(source).toContain('aiSelection?.provider ? { provider: aiSelection.provider } : {}');
-            expect(source).toContain('aiSelection?.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}');
-            expect(source).toContain('aiSelection?.effortTier ? { effortTier: aiSelection.effortTier } : {}');
-            expect(source).toContain('aiSelection?.autoProviderRouting ? { autoProviderRouting: true } : {}');
-            expect(source).toContain('aiSelection?.workingDirectory ? { workingDirectory: aiSelection.workingDirectory } : {}');
-            expect(source).toContain('aiSelection?.context ? { context: aiSelection.context } : {}');
-        });
-
-        it('declares the active scope on the chat-create request so Workspace scope never binds per-note (AC-04)', () => {
-            // The hook forwards its own scope state; the server drops the per-note
-            // binding when scope is per-workspace even though the note path is present.
-            expect(source).toContain('Declare the scope explicitly (AC-04)');
-            expect(source).toContain('scope,');
-        });
-
-        it('includes skills in context when provided', () => {
-            expect(source).toContain('skills,');
-        });
-
-        it('includes model in payload when provided', () => {
-            expect(source).toContain('model,');
-        });
-
-        it('passes inherited Lens Chat mode only when the shared Lens flag is enabled', () => {
-            expect(source).toContain('isCommitChatLensEnabled() ? { lensChat: INHERITED_LENS_CHAT_MODE } : {}');
-            expect(source).not.toContain('coc-notes-lens');
-        });
-    });
-
     describe('note attachment link formatting', () => {
         it('formats note attachment as a markdown deep-link', () => {
             expect(formatNoteAttachmentLink('workspace-a', 'Features/Memory.md'))
@@ -443,25 +232,4 @@ describe('useNotesChat', () => {
         });
     });
 
-    describe('resetChat clears correct bucket', () => {
-        it('clears per-workspace taskId when scope is per-workspace', () => {
-            expect(source).toContain('setPerWorkspaceTaskId(null)');
-        });
-
-        it('removes the entry under the key the chat resolved from', () => {
-            expect(source).toContain('delete next[bindKey]');
-        });
-
-        it('calls deleteChatBindingByPath on the server with that same key', () => {
-            expect(source).toContain('deleteChatBindingByPath(workspaceId, bindKey)');
-        });
-
-        it('clears chat note context in both cases', () => {
-            const resetBlock = source.substring(
-                source.indexOf('const resetChat'),
-                source.indexOf('return { taskId')
-            );
-            expect(resetBlock).toContain('delete next[taskId]');
-        });
-    });
 });

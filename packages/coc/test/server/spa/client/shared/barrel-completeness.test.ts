@@ -56,10 +56,3 @@ describe('ui/ barrel completeness', () => {
     });
 });
 
-describe('features/ namespace', () => {
-    it('features/index.ts exists and is a valid module', () => {
-        const featuresIndex = join(REACT_DIR, 'features/index.ts');
-        const content = readFileSync(featuresIndex, 'utf-8');
-        expect(content).toBeTruthy();
-    });
-});

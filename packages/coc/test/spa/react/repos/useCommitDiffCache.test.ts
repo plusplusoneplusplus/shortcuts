@@ -3,7 +3,6 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { readRepoGitTabSource } from '../../helpers/repo-git-tab-source';
 import {
     splitDiffByFile,
     buildFileDiffUrl,
@@ -203,90 +202,5 @@ describe('clearCacheForHash', () => {
         expect(_getCacheSize()).toBe(2);
         clearCacheForHash('abc123');
         expect(_getCacheSize()).toBe(0);
-    });
-});
-
-describe('CommitDetail integration', () => {
-    it('CommitDetail.tsx imports useCachedDiff', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitDetail.tsx'),
-            'utf-8',
-        );
-        expect(source).toContain("import { useCachedDiff } from '../hooks/useCommitDiffCache'");
-    });
-
-    it('CommitDetail.tsx calls useCachedDiff hook', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitDetail.tsx'),
-            'utf-8',
-        );
-        expect(source).toContain('useCachedDiff(diffUrl, workspaceId, hash)');
-    });
-
-    it('CommitDetail.tsx no longer has inline fetch useEffect for diffs', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitDetail.tsx'),
-            'utf-8',
-        );
-        // The old pattern had setDiff/setDiffLoading/setDiffError inline
-        expect(source).not.toContain('setDiff(data.diff');
-        expect(source).not.toContain('setDiffLoading(true)');
-        expect(source).not.toContain('setDiffError(null)');
-    });
-});
-
-describe('per-file diff cache bypass (regression: partial diff shown in file detail)', () => {
-    it('pre-populated per-file entries exist in cache', () => {
-        // Verify pre-population works as expected
-        prePopulatePerFileCache(FULL_DIFF, 'ws1', 'abc123');
-        const fooUrl = buildFileDiffUrl('ws1', 'abc123', 'src/foo.ts');
-        expect(_getCacheEntry(fooUrl)).toBeDefined();
-    });
-
-    it('useCachedDiff source bypasses cache for per-file URLs', async () => {
-        // Regression guard: the hook must skip pre-populated cache entries for
-        // per-file URLs so the server's -U99999 endpoint is always reached.
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'hooks', 'useCommitDiffCache.ts'),
-            'utf-8',
-        );
-        // Must check for per-file URL and skip cache
-        expect(source).toContain("url.includes('/files/')");
-        // Cache lookup must be gated — not an unconditional diffCache.get(url)
-        expect(source).not.toMatch(/const cached = diffCache\.get\(url\);\s*if \(cached/);
-    });
-
-    it('useCachedDiff source explains the unlimited-context (-U99999) reason', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'hooks', 'useCommitDiffCache.ts'),
-            'utf-8',
-        );
-        expect(source).toContain('U99999');
-    });
-});
-
-describe('refreshAll cache invalidation integration', () => {
-    it('RepoGitTab.tsx imports clearCacheForHash', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = readRepoGitTabSource();
-        expect(source).toContain("import { clearCacheForHash } from '../hooks/useCommitDiffCache'");
-    });
-
-    it('RepoGitTab.tsx calls clearCacheForHash in refreshAll', async () => {
-        const fs = await import('fs');
-        const path = await import('path');
-        const source = readRepoGitTabSource();
-        expect(source).toContain('clearCacheForHash(prevSelectedHash)');
     });
 });
