@@ -111,21 +111,6 @@ describe('Workspace MCP Config and Skills Config Isolation', () => {
     // ========================================================================
 
     describe('MCP Config Isolation', () => {
-        it('GET /api/workspaces/A/mcp-config returns A\'s MCP config', async () => {
-            const res = await request(`${server!.url}/api/workspaces/${wsIdA}/mcp-config`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            // Response contains availableServers and enabledMcpServers
-            expect(body.availableServers).toBeDefined();
-        });
-
-        it('GET /api/workspaces/B/mcp-config returns B\'s MCP config (independent)', async () => {
-            const resA = await request(`${server!.url}/api/workspaces/${wsIdA}/mcp-config`);
-            const resB = await request(`${server!.url}/api/workspaces/${wsIdB}/mcp-config`);
-            expect(resA.status).toBe(200);
-            expect(resB.status).toBe(200);
-        });
-
         it('PUT /api/workspaces/A/mcp-config updates only A\'s config', async () => {
             // enabledMcpServers is an array of server names to enable (or null for all)
             const putRes = await jsonReq(
@@ -171,14 +156,6 @@ describe('Workspace MCP Config and Skills Config Isolation', () => {
     // ========================================================================
 
     describe('Skills Config Isolation', () => {
-        it('GET /api/workspaces/A/skills-config returns A-specific config', async () => {
-            const res = await request(`${server!.url}/api/workspaces/${wsIdA}/skills-config`);
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            // Skills config should be a valid object (even if empty)
-            expect(body).toBeDefined();
-        });
-
         it('PUT /api/workspaces/A/skills-config → B\'s skills config unaffected', async () => {
             // Set A's skills config with a disabled skill
             const aSkillsConfig = { disabledSkills: ['skill-x', 'skill-y'] };

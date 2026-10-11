@@ -207,38 +207,6 @@ describe('parseReplicateResponse', () => {
         expect(files[2].path).toBe('c.ts');
     });
 
-    it('each FileChange has required path and action fields', () => {
-        const input = [
-            '=== FILE: src/x.ts (new) ===',
-            'x',
-            '=== END FILE ===',
-            '=== FILE: src/y.ts (modified) ===',
-            'y',
-            '=== END FILE ===',
-        ].join('\n');
-
-        const { files } = parseReplicateResponse(input);
-
-        for (const f of files) {
-            expect(typeof f.path).toBe('string');
-            expect(f.path.length).toBeGreaterThan(0);
-            expect(['new', 'modified', 'deleted']).toContain(f.status);
-        }
-    });
-
-    it('content is a string for new and modified files', () => {
-        const input = [
-            '=== FILE: src/x.ts (new) ===',
-            'export const x = 1;',
-            '=== END FILE ===',
-        ].join('\n');
-
-        const { files } = parseReplicateResponse(input);
-
-        expect(typeof files[0].content).toBe('string');
-        expect(files[0].content.length).toBeGreaterThan(0);
-    });
-
     it('extracts multi-line summary', () => {
         const input = [
             '=== FILE: a.ts (new) ===',

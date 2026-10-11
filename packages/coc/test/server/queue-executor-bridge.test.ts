@@ -4369,12 +4369,6 @@ describe('Queue execution via HTTP API', () => {
         });
     });
 
-    it('should have CLITaskExecutor as a proper TaskExecutor', () => {
-        const executor = new CLITaskExecutor(store);
-        expect(typeof executor.execute).toBe('function');
-        expect(typeof executor.cancel).toBe('function');
-    });
-
     it('should handle store errors gracefully', async () => {
         // Make store.addProcess throw
         const failingStore = createMockProcessStore();

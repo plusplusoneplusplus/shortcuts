@@ -22,14 +22,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
-import * as apiHandler from '../../src/server/core/api-handler';
 import { execGitArgsAsync } from '../../src/server/core/api-handler';
-
-describe('execGitShellAsync', () => {
-    it('is gone: the shell-string runner has no callers and no caret hack to keep', () => {
-        expect('execGitShellAsync' in apiHandler).toBe(false);
-    });
-});
 
 describe('execGitArgsAsync', () => {
     beforeEach(() => {

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-    QUEUE_PROCESS_PREFIX,
     toQueueProcessId,
     toTaskId,
     isQueueProcessId,
@@ -8,12 +7,6 @@ import {
 } from '../src/queue/types';
 
 describe('queue process ID helpers', () => {
-    describe('QUEUE_PROCESS_PREFIX', () => {
-        it('is the string "queue_"', () => {
-            expect(QUEUE_PROCESS_PREFIX).toBe('queue_');
-        });
-    });
-
     describe('toQueueProcessId', () => {
         it('prepends the prefix to a task ID', () => {
             expect(toQueueProcessId('abc123')).toBe('queue_abc123');

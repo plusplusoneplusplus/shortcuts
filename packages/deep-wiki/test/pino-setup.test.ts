@@ -62,25 +62,6 @@ describe('createDeepWikiPinoLogger', () => {
     // Logger validity
     // ========================================================================
 
-    describe('logger methods', () => {
-        it('returns a valid pino logger with standard methods', () => {
-            const logger = createDeepWikiPinoLogger({ level: 'silent' });
-            expect(typeof logger.info).toBe('function');
-            expect(typeof logger.debug).toBe('function');
-            expect(typeof logger.warn).toBe('function');
-            expect(typeof logger.error).toBe('function');
-        });
-
-        it('logger.info does not throw', () => {
-            const logger = createDeepWikiPinoLogger({ level: 'silent' });
-            expect(() => logger.info('test message')).not.toThrow();
-        });
-
-        it('logger.debug does not throw', () => {
-            const logger = createDeepWikiPinoLogger({ level: 'silent' });
-            expect(() => logger.debug('debug msg')).not.toThrow();
-        });
-    });
 });
 
 // ============================================================================
@@ -95,17 +76,5 @@ describe('pinoAdapterForPipelineCore (deep-wiki)', () => {
         expect(typeof adapter.debug).toBe('function');
         expect(typeof adapter.warn).toBe('function');
         expect(typeof adapter.error).toBe('function');
-    });
-
-    it('adapter.info does not throw', () => {
-        const pinoLogger = createDeepWikiPinoLogger({ level: 'silent' });
-        const adapter = pinoAdapterForPipelineCore(pinoLogger);
-        expect(() => adapter.info('category', 'message')).not.toThrow();
-    });
-
-    it('adapter.error with Error does not throw', () => {
-        const pinoLogger = createDeepWikiPinoLogger({ level: 'silent' });
-        const adapter = pinoAdapterForPipelineCore(pinoLogger);
-        expect(() => adapter.error('category', 'error', new Error('test'))).not.toThrow();
     });
 });

@@ -208,19 +208,3 @@ describe('WikiGraph — D3 CDN error', () => {
         });
     });
 });
-
-describe('WikiGraph — COMPLEXITY_RADIUS', () => {
-    it('COMPLEXITY_RADIUS constants match expected values', async () => {
-        vi.resetModules();
-        // Read the source file to verify the constants
-        const fs = await import('fs');
-        const path = await import('path');
-        const src = fs.readFileSync(
-            path.resolve(__dirname, '../../../../src/server/spa/client/react/wiki/WikiGraph.tsx'),
-            'utf-8'
-        );
-        expect(src).toContain('low: 8');
-        expect(src).toContain('medium: 12');
-        expect(src).toContain('high: 18');
-    });
-});

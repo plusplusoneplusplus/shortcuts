@@ -18,8 +18,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { createRequestHandler } from '@plusplusoneplusplus/coc-server';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { getClientBundle } from './spa-test-helpers';
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -267,31 +265,6 @@ describe('wiki static file MIME types', () => {
 
 // Deep-link routing is now handled by React Router (Router.tsx) —
 // no vanilla core.ts routing in the bundle. See test/spa/react/ for React routing tests.
-
-// ============================================================================
-// State Tests (client bundle)
-// ============================================================================
-
-describe('client bundle — wiki state', () => {
-    let bundle: string;
-
-    beforeAll(() => {
-        bundle = getClientBundle();
-    });
-
-    it('DashboardTab type includes wiki', () => {
-        // The bundled output uses double quotes for string literals
-        expect(bundle).toContain('"wiki"');
-    });
-
-    it('appState includes selectedWikiId initialized to null', () => {
-        expect(bundle).toContain('selectedWikiId');
-    });
-
-    it('appState includes selectedWikiComponentId initialized to null', () => {
-        expect(bundle).toContain('selectedWikiComponentId');
-    });
-});
 
 // ============================================================================
 // Router without getWikiDir (no wiki support)

@@ -105,17 +105,13 @@ describe('TaskCacheService', () => {
     // invalidateAll / clear
     // ========================================================================
 
-    describe('invalidateAll', () => {
-        it('removes all entries', () => {
+    describe('invalidateAll / clear', () => {
+        it('removes all entries (both APIs delegate to the same backing clear)', () => {
             cache.set('ws1:/a', 1);
             cache.set('ws2:/b', 2);
             cache.invalidateAll();
             expect(cache.size).toBe(0);
-        });
-    });
 
-    describe('clear', () => {
-        it('removes all entries', () => {
             cache.set('k1', 1);
             cache.set('k2', 2);
             cache.clear();

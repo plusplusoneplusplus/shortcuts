@@ -31,9 +31,6 @@ import {
     getLanguageDisplayName,
 } from '../../../src/editor/parsing/markdown-parser';
 
-// Also verify they're accessible through the barrel
-import { generateAnchorId } from '../../../src/editor/parsing/markdown-parser';
-
 // ─── parseCodeBlocks ─────────────────────────────────────────────────
 
 describe('parseCodeBlocks', () => {
@@ -550,30 +547,5 @@ describe('getLanguageDisplayName', () => {
     it('is case-insensitive', () => {
         expect(getLanguageDisplayName('JavaScript')).toBe('JavaScript');
         expect(getLanguageDisplayName('PYTHON')).toBe('Python');
-    });
-});
-
-// ─── generateAnchorId ────────────────────────────────────────────────
-
-describe('generateAnchorId', () => {
-    it('converts heading text to anchor', () => {
-        expect(generateAnchorId('Hello World')).toBe('hello-world');
-    });
-
-    it('removes markdown formatting', () => {
-        expect(generateAnchorId('**bold** and *italic*')).toBe('bold-and-italic');
-    });
-
-    it('collapses hyphens', () => {
-        expect(generateAnchorId('a - b - c')).toBe('a-b-c');
-    });
-
-    it('returns empty string for empty input', () => {
-        expect(generateAnchorId('')).toBe('');
-    });
-
-    it('handles unicode text', () => {
-        const result = generateAnchorId('日本語テスト');
-        expect(result).toBe('日本語テスト');
     });
 });

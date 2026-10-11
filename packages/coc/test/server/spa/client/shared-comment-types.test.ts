@@ -88,17 +88,6 @@ describe('AnyComment union type', () => {
         expect(c.status).toBe('orphaned');
     });
 
-    it('shared fields are accessible without narrowing', () => {
-        const comments: AnyComment[] = [taskComment, diffComment];
-        for (const c of comments) {
-            expect(c.id).toBeDefined();
-            expect(c.selectedText).toBeDefined();
-            expect(c.comment).toBeDefined();
-            expect(c.status).toBeDefined();
-            expect(c.createdAt).toBeDefined();
-            expect(c.updatedAt).toBeDefined();
-        }
-    });
 });
 
 describe('AnyCommentReply union type', () => {

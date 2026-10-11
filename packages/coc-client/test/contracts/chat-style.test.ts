@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
     CHAT_STYLES,
     CHAT_STYLE_LABELS,
-    DEFAULT_CHAT_STYLE,
     isChatStyle,
     type ChatStyle,
 } from '../../src/contracts/common';
@@ -10,10 +9,6 @@ import {
 describe('ChatStyle wire contract', () => {
     it('lists the five stable values with Default first', () => {
         expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'terse', 'structured']);
-    });
-
-    it('starts on default', () => {
-        expect(DEFAULT_CHAT_STYLE).toBe('default');
     });
 
     it('labels every value', () => {

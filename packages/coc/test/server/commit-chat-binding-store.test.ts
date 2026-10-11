@@ -13,7 +13,7 @@ describe('CommitChatBindingStore', () => {
         store = new CommitChatBindingStore(db);
     });
 
-    it('load returns empty object when file does not exist', () => {
+    it('load returns empty object when the workspace has no bindings', () => {
         expect(store.load('ws1')).toEqual({});
     });
 
@@ -86,11 +86,6 @@ describe('CommitChatBindingStore', () => {
         expect(all['hash1'].taskId).toBe('task-1');
         expect(all['hash2'].taskId).toBe('task-2');
         expect(all['hash3'].taskId).toBe('task-3');
-    });
-
-    it('load returns empty object on corrupt JSON file', () => {
-        // SQLite store doesn't have corrupt JSON scenarios — verify empty workspace returns {}
-        expect(store.load('ws1')).toEqual({});
     });
 
     it('multiple workspaces are isolated', () => {

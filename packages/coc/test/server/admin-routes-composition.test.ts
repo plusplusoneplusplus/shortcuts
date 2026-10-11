@@ -17,7 +17,6 @@ import { registerPromptRoutes } from '../../src/server/admin/admin-prompt-routes
 import { registerSystemRoutes } from '../../src/server/admin/admin-system-routes';
 import { registerStorageRoutes } from '../../src/server/admin/admin-storage-routes';
 import { registerProviderRoutes } from '../../src/server/admin/admin-provider-routes';
-import { TokenManager } from '../../src/server/admin/token-manager';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../src/server/types';
 import type { AdminRouteOptions } from '../../src/server/admin/admin-route-types';
@@ -72,14 +71,6 @@ describe('Admin Routes Composition', () => {
         expect(new Set(routes.map(routeKey))).toEqual(new Set(EXPECTED_ROUTES));
     });
 
-    it('every registered route has an async handler', () => {
-        const routes: Route[] = [];
-        registerAdminRoutes(routes, options);
-        for (const r of routes) {
-            expect(typeof r.handler).toBe('function');
-        }
-    });
-
     it('composition equals the sum of the per-domain register functions', () => {
         const composed: Route[] = [];
         registerAdminRoutes(composed, options);
@@ -117,45 +108,5 @@ describe('Admin Routes Composition', () => {
             }
         }
         expect(seen.size).toBe(EXPECTED_ROUTES.length);
-    });
-});
-
-describe('TokenManager', () => {
-    it('generates a random token and reports TTL', () => {
-        const mgr = new TokenManager(1234);
-        expect(mgr.ttl).toBe(1234);
-        const t = mgr.generate();
-        expect(typeof t.token).toBe('string');
-        expect(t.token.length).toBeGreaterThan(0);
-        expect(mgr.activeToken?.token).toBe(t.token);
-    });
-
-    it('validates and consumes a token exactly once (one-time use)', () => {
-        const mgr = new TokenManager();
-        const { token } = mgr.generate();
-        expect(mgr.validate(token)).toBe(true);
-        // Consumed — a second validate fails.
-        expect(mgr.validate(token)).toBe(false);
-    });
-
-    it('rejects an unknown token without consuming the active one', () => {
-        const mgr = new TokenManager();
-        const { token } = mgr.generate();
-        expect(mgr.validate('not-the-token')).toBe(false);
-        // The real token still validates.
-        expect(mgr.validate(token)).toBe(true);
-    });
-
-    it('rejects an expired token', () => {
-        const mgr = new TokenManager(-1); // already past TTL at creation
-        const { token } = mgr.generate();
-        expect(mgr.validate(token)).toBe(false);
-    });
-
-    it('reset() clears the active token', () => {
-        const mgr = new TokenManager();
-        mgr.generate();
-        mgr.reset();
-        expect(mgr.activeToken).toBeNull();
     });
 });

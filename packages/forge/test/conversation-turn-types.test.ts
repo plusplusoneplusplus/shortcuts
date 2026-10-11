@@ -9,7 +9,6 @@ import {
     AIProcess,
     SerializedAIProcess,
     ConversationTurn,
-    SerializedConversationTurn,
     TimelineItem,
     ToolCall,
     serializeProcess,
@@ -170,47 +169,6 @@ describe('ConversationTurn serialization', () => {
         expect(roundTripped.sdkSessionId).toBe(process.sdkSessionId);
         expect(roundTripped.backend).toBe(process.backend);
         expect(roundTripped.workingDirectory).toBe(process.workingDirectory);
-    });
-});
-
-// ============================================================================
-// ConversationTurn Type Shape
-// ============================================================================
-
-describe('ConversationTurn type', () => {
-    it('should have role and content fields', () => {
-        const turn: ConversationTurn = {
-            role: 'user',
-            content: 'Hello',
-            timestamp: new Date(),
-            turnIndex: 0,
-            timeline: [],
-        };
-        expect(turn.role).toBe('user');
-        expect(turn.content).toBe('Hello');
-        expect(turn.turnIndex).toBe(0);
-    });
-
-    it('should accept optional streaming field', () => {
-        const turnWithStreaming: ConversationTurn = {
-            role: 'assistant',
-            content: 'Streaming...',
-            timestamp: new Date(),
-            turnIndex: 1,
-            timeline: [],
-            streaming: true,
-            timeline: [],
-        };
-        expect(turnWithStreaming.streaming).toBe(true);
-
-        const turnWithout: ConversationTurn = {
-            role: 'assistant',
-            content: 'Done',
-            timestamp: new Date(),
-            turnIndex: 2,
-            timeline: [],
-        };
-        expect(turnWithout.streaming).toBeUndefined();
     });
 });
 

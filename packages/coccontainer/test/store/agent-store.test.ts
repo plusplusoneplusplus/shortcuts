@@ -52,6 +52,12 @@ describe('AgentStore', () => {
         expect(store.get('nonexistent')).toBeUndefined();
     });
 
+    it('get() does not resolve inbound agents by WebSocket registration id (use address lookup)', () => {
+        const added = store.add('inbound://ws-id-456', 'TestAgent');
+        expect(store.get('ws-id-456')).toBeUndefined();
+        expect(store.list().find(a => a.address === 'inbound://ws-id-456')?.id).toBe(added.id);
+    });
+
     it('should remove by id', () => {
         const agent = store.add('http://localhost:4000', 'test');
         expect(store.remove(agent.id)).toBe(true);

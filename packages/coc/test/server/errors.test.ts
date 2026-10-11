@@ -154,14 +154,6 @@ describe('Factory functions', () => {
         expect(err.code).toBe('INTERNAL_ERROR');
     });
 
-    it('all factory functions return APIError instances', () => {
-        expect(badRequest('x')).toBeInstanceOf(APIError);
-        expect(notFound('x')).toBeInstanceOf(APIError);
-        expect(forbidden('x')).toBeInstanceOf(APIError);
-        expect(invalidJSON()).toBeInstanceOf(APIError);
-        expect(missingFields(['x'])).toBeInstanceOf(APIError);
-        expect(internalError()).toBeInstanceOf(APIError);
-    });
 });
 
 // ============================================================================

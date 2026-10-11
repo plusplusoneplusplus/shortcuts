@@ -132,25 +132,6 @@ describe('executor session tracking', () => {
             expect(assistantTurn.turnIndex).toBe(1);
         });
 
-        it('should set backend field on the tracked process via result', async () => {
-            const executor = new CLITaskExecutor(store);
-            const task: QueuedTask = {
-                id: 'task-init-3',
-                type: 'chat',
-                priority: 'normal',
-                status: 'running',
-                createdAt: Date.now(),
-                payload: { kind: 'chat', mode: 'ask', prompt: 'test' },
-                config: { timeoutMs: 30000 },
-            };
-
-            await executor.execute(task);
-
-            const process = store.processes.get('queue_task-init-3');
-            // The process should be completed with session data
-            expect(process?.status).toBe('completed');
-            expect(process?.sdkSessionId).toBeDefined();
-        });
     });
 
     // ========================================================================

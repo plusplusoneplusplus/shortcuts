@@ -672,12 +672,6 @@ describe('MultiRepoQueueRouter', () => {
     // --------------------------------------------------------------------
 
     describe('requeueForFollowUp', () => {
-        it('exposes requeueForFollowUp method', () => {
-            const { bridge } = createBridge();
-            expect(typeof (bridge as any).requeueForFollowUp).toBe('function');
-            bridge.dispose();
-        });
-
         it('succeeds when task is in completed history', async () => {
             const { bridge } = createBridge();
             bridge.getOrCreateBridge('/repo/requeue-test');

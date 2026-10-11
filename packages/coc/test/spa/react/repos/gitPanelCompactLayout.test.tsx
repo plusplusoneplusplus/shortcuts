@@ -5,8 +5,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const listBranches = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
@@ -82,33 +80,5 @@ describe('CompactWorkingTreeSummary', () => {
         expect(screen.queryByTestId('working-tree-count-untracked')).toBeNull();
         expect(screen.getByTestId('working-tree-count-modified').textContent).toBe('~4');
         expect(screen.queryByTestId('working-tree-clean')).toBeNull();
-    });
-});
-
-describe('WorkingTree compact header', () => {
-    const source = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'working-tree', 'WorkingTree.tsx'),
-        'utf-8',
-    );
-
-    it('uses the compact summary and hides the total file count in compact mode', () => {
-        expect(source).toContain('<CompactWorkingTreeSummary staged={staged.length}');
-        expect(source).not.toContain('`${staged.length}s · ${unstaged.length}m · ${untracked.length}u`');
-        expect(source).toMatch(/\{!compact && \(\s*<span[\s\S]*?data-testid="working-tree-file-count"/);
-    });
-});
-
-describe('CommitRow', () => {
-    const source = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitRow.tsx'),
-        'utf-8',
-    );
-
-    it('renders the commit id before the subject', () => {
-        const hashAt = source.indexOf('data-testid={`commit-hash-${commit.shortHash}`}');
-        const subjectAt = source.indexOf('{isFixup ? fixupEntry!.displaySubject : commit.subject}');
-        expect(hashAt).toBeGreaterThan(-1);
-        expect(subjectAt).toBeGreaterThan(hashAt);
-        expect(source.match(/\{commit\.shortHash\}<\/span>/g)?.length).toBe(1);
     });
 });

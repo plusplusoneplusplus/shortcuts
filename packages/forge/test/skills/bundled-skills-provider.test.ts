@@ -13,14 +13,6 @@ import {
 } from '../../src/skills/bundled-skills-provider';
 import type { BundledSkill } from '../../src/skills/types';
 
-describe('getBundledSkillsPath', () => {
-    it('returns a string path', () => {
-        const p = getBundledSkillsPath();
-        expect(typeof p).toBe('string');
-        expect(p.length).toBeGreaterThan(0);
-    });
-});
-
 describe('getBundledSkills', () => {
     it('returns an array (even if bundled path does not exist in test env)', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));

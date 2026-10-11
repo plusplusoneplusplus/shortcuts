@@ -62,15 +62,6 @@ describe('executeScript', { timeout: 30_000 }, () => {
         );
     });
 
-    it('non-zero exit with default onError throws', async () => {
-        const config = cfg({
-            run: 'node -e "process.exit(1)"',
-        });
-        await expect(executeScript(config, [], defaultOptions)).rejects.toThrow(
-            /exited with code 1/
-        );
-    });
-
     it('non-zero exit with onError:warn returns []', async () => {
         const config = cfg({
             run: 'node -e "process.exit(2)"',

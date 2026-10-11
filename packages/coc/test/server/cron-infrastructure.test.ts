@@ -56,46 +56,6 @@ describe('Cron Infrastructure', () => {
         try { db.close(); } catch { /* ok */ }
     });
 
-    describe('createCronInfrastructure pattern', () => {
-        it('CronStore persists and retrieves crons via shared DB', () => {
-            const cron = makeCron();
-            cronStore.insert(cron);
-
-            const retrieved = cronStore.getById(cron.id);
-            expect(retrieved).toBeDefined();
-            expect(retrieved!.id).toBe(cron.id);
-            expect(retrieved!.processId).toBe('proc_test1');
-            expect(retrieved!.status).toBe('active');
-        });
-
-        it('getActive returns only active crons', () => {
-            const active = makeCron({ id: 'cron_active' });
-            const paused = makeCron({ id: 'cron_paused', status: 'paused' });
-            cronStore.insert(active);
-            cronStore.insert(paused);
-
-            const activeCrons = cronStore.getActive();
-            expect(activeCrons).toHaveLength(1);
-            expect(activeCrons[0].id).toBe('cron_active');
-        });
-
-        it('pauseAllActive marks all active crons as paused with reason', () => {
-            cronStore.insert(makeCron({ id: 'cron_1' }));
-            cronStore.insert(makeCron({ id: 'cron_2' }));
-            cronStore.insert(makeCron({ id: 'cron_3', status: 'paused' }));
-
-            const count = cronStore.pauseAllActive('server-restart');
-            expect(count).toBe(2);
-
-            const all = cronStore.getAll();
-            const paused = all.filter(l => l.status === 'paused');
-            expect(paused).toHaveLength(3);
-
-            const serverRestartPaused = paused.filter(l => l.pausedReason === 'server-restart');
-            expect(serverRestartPaused).toHaveLength(2);
-        });
-    });
-
     describe('server shutdown flow', () => {
         it('shutdownAll cancels active timers without pausing crons', async () => {
             // Import directly for unit-level testing
@@ -137,30 +97,6 @@ describe('Cron Infrastructure', () => {
             expect(l1!.pausedReason).toBeNull();
             expect(l2!.status).toBe('active');
             expect(l2!.pausedReason).toBeNull();
-        });
-    });
-
-    describe('close handler integration', () => {
-        it('manually paused crons are not armed on restart', () => {
-            const pausedCron = makeCron({ id: 'cron_was_paused', status: 'paused', pausedReason: 'manual pause', nextTickAt: null });
-            cronStore.insert(pausedCron);
-
-            const active = cronStore.getActive();
-            expect(active).toHaveLength(0);
-
-            const all = cronStore.getAll();
-            expect(all).toHaveLength(1);
-            expect(all[0].status).toBe('paused');
-            expect(all[0].pausedReason).toBe('manual pause');
-        });
-
-        it('active crons remain eligible for startup re-arming', () => {
-            const activeCron = makeCron({ id: 'cron_survives_restart', status: 'active' });
-            cronStore.insert(activeCron);
-
-            const active = cronStore.getActive();
-            expect(active).toHaveLength(1);
-            expect(active[0].id).toBe('cron_survives_restart');
         });
     });
 

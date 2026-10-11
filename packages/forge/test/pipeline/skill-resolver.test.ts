@@ -18,7 +18,6 @@ import {
     getSkillDirectory,
     getSkillPromptPath,
     SkillResolverError,
-    DEFAULT_SKILLS_DIRECTORY,
     SKILL_PROMPT_FILENAME
 } from '../../src/skills/skill-resolver';
 
@@ -53,16 +52,6 @@ describe('Skill Resolver', () => {
         
         return skillDir;
     }
-
-    describe('Constants', () => {
-        it('DEFAULT_SKILLS_DIRECTORY is correct', () => {
-            expect(DEFAULT_SKILLS_DIRECTORY).toBe('.github/skills');
-        });
-
-        it('SKILL_PROMPT_FILENAME is correct', () => {
-            expect(SKILL_PROMPT_FILENAME).toBe('SKILL.md');
-        });
-    });
 
     describe('Path Resolution', () => {
         it('getSkillsDirectory returns correct path', () => {

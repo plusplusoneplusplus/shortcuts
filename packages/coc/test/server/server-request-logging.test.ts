@@ -125,18 +125,6 @@ describe('Request logging in shared/router.ts', () => {
         expect(errEntry.method).toBe('GET');
     });
 
-    it('logs static file 404 at debug level (level 20)', async () => {
-        const before = records().length;
-        await makeRequest(server, { path: '/nonexistent-static-file.js' });
-        await new Promise(r => setTimeout(r, 20));
-
-        const after = records().slice(before);
-        // SPA fallback serves 200 for unknown paths — but if 404 occurs it should be debug
-        // In the default setup above, static handler returns 200 SPA for unknown paths.
-        // Verify that the request log is present.
-        const entry = after.find(e => e.msg === 'request');
-        expect(entry).toBeDefined();
-    });
 });
 
 // ============================================================================

@@ -16,10 +16,6 @@ describe('ultra-ralph bundled skill', () => {
         expect(entry?.relativePath).toBe('ultra-ralph');
     });
 
-    it('SKILL.md file exists on disk', () => {
-        expect(fs.existsSync(SKILL_FILE)).toBe(true);
-    });
-
     it('contains the required sections', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
         expect(content).toContain('## Section: grill');

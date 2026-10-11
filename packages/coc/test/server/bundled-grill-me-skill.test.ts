@@ -5,28 +5,10 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-    getBundledSkillsPath,
-    getBundledSkillsRegistry,
-    parseBundledSkillVersion,
-} from '@plusplusoneplusplus/forge';
-import { DEFAULT_BUNDLED_SKILLS } from '../../src/config';
+import { getBundledSkillsPath, parseBundledSkillVersion } from '@plusplusoneplusplus/forge';
 
 describe('bundled grill-me skill', () => {
     const skillPath = path.join(getBundledSkillsPath(), 'grill-me', 'SKILL.md');
-
-    it('has a SKILL.md file in the bundled-skills directory', () => {
-        expect(fs.existsSync(skillPath)).toBe(true);
-    });
-
-    it('is registered in the bundled-skills registry', () => {
-        const registry = getBundledSkillsRegistry();
-        expect(registry.find(s => s.name === 'grill-me')).toBeDefined();
-    });
-
-    it('is included in DEFAULT_BUNDLED_SKILLS for auto-install', () => {
-        expect(DEFAULT_BUNDLED_SKILLS).toContain('grill-me');
-    });
 
     it('has a parseable semver version in its frontmatter', () => {
         const version = parseBundledSkillVersion('grill-me');

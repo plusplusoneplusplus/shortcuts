@@ -16,10 +16,6 @@ describe('handoff bundled skill', () => {
         expect(entry?.relativePath).toBe('handoff');
     });
 
-    it('SKILL.md file exists on disk', () => {
-        expect(fs.existsSync(SKILL_FILE)).toBe(true);
-    });
-
     it('has YAML frontmatter with name, description and a parsable version', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
         expect(content).toContain('name: handoff');

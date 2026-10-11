@@ -11,7 +11,6 @@ import * as os from 'os';
 
 import {
     FileProcessStore,
-    getDefaultDataDir,
     ensureDataDir,
     AIProcess,
     AIProcessStatus,
@@ -277,12 +276,6 @@ describe('FileProcessStore — per-workspace layout', () => {
     });
 
     // --- Utility exports ---
-    it('getDefaultDataDir should return a string path', () => {
-        const dir = getDefaultDataDir();
-        expect(typeof dir).toBe('string');
-        expect(dir.length).toBeGreaterThan(0);
-    });
-
     it('ensureDataDir should create directory recursively', async () => {
         const nested = path.join(tmpDir, 'a', 'b', 'c');
         await ensureDataDir(nested);
