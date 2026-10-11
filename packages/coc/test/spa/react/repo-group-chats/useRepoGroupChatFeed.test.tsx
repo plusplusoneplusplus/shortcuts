@@ -59,6 +59,39 @@ afterEach(() => {
 });
 
 describe('useRepoGroupChatFeed', () => {
+    it('loads older active search matches on later pages without inserting ahead of the loaded prefix', async () => {
+        getRepoGroupChats.mockResolvedValueOnce(page({
+            history: [{ id: 'newest', ownerWorkspaceId: 'ws-a', lastActivityAt: 30 }],
+            hasMore: true, nextCursor: 'c1',
+        })).mockResolvedValueOnce(page({
+            history: [{ id: 'middle', ownerWorkspaceId: 'ws-a', lastActivityAt: 20 }],
+            hasMore: true, nextCursor: 'c2',
+        })).mockResolvedValueOnce(page({
+            running: [{ id: 'task', processId: 'old-active', queueTaskId: 'task', ownerWorkspaceId: 'ws-a', lastActivityAt: 10 }],
+            hasMore: true, nextCursor: 'c3',
+        })).mockResolvedValueOnce(page({
+            queued: [{ id: 'old-queued', processId: 'old-queued', ownerWorkspaceId: 'ws-a', lastActivityAt: 5 }],
+        }));
+        const { result } = renderHook(() => useRepoGroupChatFeed({
+            groupId: 'grp', serverKey: 'local', enabled: true, pageSize: 1, filters: { q: 'cobalt' },
+        }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        const order = () => [...result.current.model!.history, ...result.current.model!.running, ...result.current.model!.queued]
+            .sort((a, b) => b.item.lastActivityAt - a.item.lastActivityAt).map(row => row.canonicalId);
+        expect(order()).toEqual(['newest']);
+        for (const expected of [['newest', 'middle'], ['newest', 'middle', 'old-active'], ['newest', 'middle', 'old-active', 'old-queued']]) {
+            await act(async () => { await result.current.loadMore(); });
+            expect(order()).toEqual(expected);
+        }
+        expect(result.current.model?.running[0].queueTaskId).toBe('task');
+        expect(result.current.model?.queued[0].queueTaskId).toBeUndefined();
+        expect(result.current.model?.hasMore).toBe(false);
+        expect(getRepoGroupChats.mock.calls.map(call => call[1])).toEqual([
+            { q: 'cobalt', limit: 1 }, { q: 'cobalt', limit: 1, cursor: 'c1' },
+            { q: 'cobalt', limit: 1, cursor: 'c2' }, { q: 'cobalt', limit: 1, cursor: 'c3' },
+        ]);
+    });
+
     it('keeps the full list cache independent from a one-row unread badge reader', async () => {
         getRepoGroupChats.mockImplementation(async (_groupId, query) => page({
             history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' },

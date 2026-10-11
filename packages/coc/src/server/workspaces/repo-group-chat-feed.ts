@@ -140,7 +140,7 @@ function decodeCursor(raw: string, membershipKey: string, filterKey: string, sna
 }
 
 function activityMs(proc: AIProcess): number {
-    const value = proc.lastEventAt ?? proc.startTime;
+    const value = proc.lastEventAt ?? proc.endTime ?? proc.startTime;
     const ms = value instanceof Date ? value.getTime() : new Date(value as unknown as string).getTime();
     return Number.isFinite(ms) ? ms : 0;
 }
@@ -161,6 +161,14 @@ function activeProcessId(task: Record<string, unknown>): string | undefined {
 }
 
 type OwnedTask = Record<string, unknown> & { ownerWorkspaceId: string };
+
+function activeActivityMs(task: OwnedTask): number {
+    const value = task.lastActivityAt ?? task.endTime ?? task.completedAt
+        ?? task.startedAt ?? task.startTime ?? task.createdAt;
+    const ms = typeof value === 'number' ? value
+        : typeof value === 'string' || value instanceof Date ? new Date(value).getTime() : 0;
+    return Number.isFinite(ms) ? ms : 0;
+}
 
 interface SourceState {
     source: RepoGroupChatSource;
@@ -348,12 +356,13 @@ export async function buildRepoGroupChatFeed(
     const snapshot = shortHash(selected.map(state => [
         state.source.workspaceId, state.source.available,
         state.history?.map(proc => [proc.id, activityMs(proc), proc.pinnedAt, proc.archived]),
-        state.running.map(activeProcessId), state.queued.map(activeProcessId),
+        state.running.map(task => [activeProcessId(task), activeActivityMs(task)]),
+        state.queued.map(task => [activeProcessId(task), activeActivityMs(task)]),
     ]));
     const offsets = query.cursor ? decodeCursor(query.cursor, membershipKey, filterKey, snapshot) : {};
 
-    const running = wantRunning ? selected.flatMap(state => state.running.filter(matchesType)) : [];
-    const queued = wantQueued ? selected.flatMap(state => state.queued.filter(matchesType)) : [];
+    let running = wantRunning ? selected.flatMap(state => state.running.filter(matchesType)) : [];
+    let queued = wantQueued ? selected.flatMap(state => state.queued.filter(matchesType)) : [];
     const parentContext = (parentProcessId: unknown) => typeof parentProcessId === 'string' && parentOwners.has(parentProcessId)
         ? { parentOwnerWorkspaceId: parentOwners.get(parentProcessId), groupWorkspaceId: groupId } : {};
     for (const task of [...running, ...queued]) Object.assign(task, parentContext(task.parentProcessId));
@@ -362,7 +371,34 @@ export async function buildRepoGroupChatFeed(
     const history: Array<ProcessHistoryItem & { ownerWorkspaceId: string }> = [];
     const nextOffsets: Record<string, number> = { ...offsets };
     let hasMore = false;
-    if (terminal.length > 0) {
+    if (query.q) {
+        // One search page is a prefix of all statuses, not a history page plus active pins.
+        const matches = [
+            ...running.map(task => ({ section: 'running' as const, task, ms: activeActivityMs(task),
+                workspaceId: task.ownerWorkspaceId, id: activeProcessId(task)! })),
+            ...queued.map(task => ({ section: 'queued' as const, task, ms: activeActivityMs(task),
+                workspaceId: task.ownerWorkspaceId, id: activeProcessId(task)! })),
+            ...selected.filter(state => state.source.available).flatMap(state =>
+                (state.history ?? []).map(proc => ({ section: 'history' as const, proc, ms: activityMs(proc),
+                    workspaceId: state.source.workspaceId, id: proc.id }))),
+        ].sort(compareHeads);
+        const offset = Math.max(0, Math.floor(offsets.search ?? 0));
+        const page = matches.slice(offset, offset + query.limit);
+        running = [];
+        queued = [];
+        for (const match of page) {
+            if (match.section === 'history') {
+                history.push({
+                    ...toProcessHistoryItem(match.proc, deps.store.getSeenMap?.(match.workspaceId)[match.id], deps.botControlEnabled),
+                    ownerWorkspaceId: match.workspaceId,
+                    ...parentContext(match.proc.parentProcessId),
+                });
+            } else if (match.section === 'running') running.push(match.task);
+            else queued.push(match.task);
+        }
+        nextOffsets.search = offset + page.length;
+        hasMore = nextOffsets.search < matches.length;
+    } else if (terminal.length > 0) {
         const streams = selected
             .filter(state => state.source.available)
             .map(state => ({
@@ -461,8 +497,8 @@ export async function buildRepoGroupChatFeed(
         groupId,
         membershipKey,
         sources: allSources,
-        running: firstPage ? running : [],
-        queued: firstPage ? queued : [],
+        running: firstPage || query.q ? running : [],
+        queued: firstPage || query.q ? queued : [],
         history,
         ...(query.q ? { snippets } : {}),
         hasMore,

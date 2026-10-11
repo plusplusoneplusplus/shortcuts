@@ -40,8 +40,10 @@ retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 The repo-group chat feed reads the same `conversation_search` index with literal
 AND-token matching and plain excerpts, including requested archives. It excludes
 non-visible task definitions and internal Dream steps before projecting rows,
-counts or snippets. Its activity-ordered metadata snapshot supplies counts and
-pagination without aggregate records or a new index. Group unread uses each
+counts or snippets. Search paginates one globally activity-ordered sequence of
+active and terminal matches, with owner/canonical identity ties and a cursor bound
+to membership, filters and activity snapshots. Non-search views retain first-page
+active rows/pins and history pagination. Group unread uses each
 owner's existing seen map against eligible completed/failed, unarchived chats,
 independently of list filters.
 Active feed rows carry `queueTaskId` only when read from a queue snapshot;

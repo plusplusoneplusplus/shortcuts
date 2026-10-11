@@ -78,7 +78,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | POST | `/api/repo-groups` | Create virtual group; members must be registered non-virtual repos, description/read-only keys must be members |
 | GET | `/api/repo-groups/:id` | Resolved membership and description/read-only metadata; missing members marked stale |
 | GET | `/api/repo-groups/:id/search` | Search live member indexes by `q`; ranked cross-repo results and completeness status, `limit` 1–200 |
-| GET | `/api/repo-groups/:id/chats` | Read-only group/member feed on the owning server: `ownerWorkspaceId` rows, first-page active rows and unarchived pins, globally activity-ordered history with stable identity ties; `limit` 1–200, `owners`, `statuses`, `archived`, `type`, body FTS `q` and plain `snippets`; cursor binds membership, filters and eligible snapshot (409 `STALE_CURSOR` on changes); exact counts/unread, partial for unavailable sources |
+| GET | `/api/repo-groups/:id/chats` | Read-only owning-server group/member feed with `ownerWorkspaceId` rows; non-search returns first-page active rows/pins and activity-ordered history; body FTS `q` paginates one global activity-ordered sequence across all statuses with owner/canonical ties and plain `snippets`; `limit` 1–200, `owners`, `statuses`, `archived`, `type`; cursor binds membership, filters and activity snapshot (409 `STALE_CURSOR` on changes); exact counts/unread, partial for unavailable sources |
 | PATCH | `/api/repo-groups/:id` | Rename/replace members; partially patch descriptions/read-only flags, pruning removed members |
 | DELETE | `/api/repo-groups/:id` | Deregister group, retain its data |
 

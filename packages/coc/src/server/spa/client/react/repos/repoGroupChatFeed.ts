@@ -115,7 +115,7 @@ function uniqueRows(rows: RepoGroupChatRow[], taken: Set<string>): RepoGroupChat
  * chat's process id).
  */
 export function buildRepoGroupChatFeedModel(
-    response: RepoGroupChatFeedResponse,
+    response: RepoGroupChatFeedResponse<object, object>,
     serverKey: string,
 ): RepoGroupChatFeedModel {
     const sources = new Map(response.sources.map(source => [source.workspaceId, source]));
@@ -139,13 +139,13 @@ export function buildRepoGroupChatFeedModel(
 }
 
 /**
- * Append a "Load more" page. History rows already shown (in any section) are
+ * Append a "Load more" page. Rows already shown (in any section) are
  * skipped, so an overlap between pages never duplicates a chat. Sources and
  * counts come from the newer page.
  */
 export function appendRepoGroupChatFeedPage(
     model: RepoGroupChatFeedModel,
-    response: RepoGroupChatFeedResponse,
+    response: RepoGroupChatFeedResponse<object, object>,
 ): RepoGroupChatFeedModel {
     const sources = new Map(response.sources.map(source => [source.workspaceId, source]));
     const taken = new Set<string>([
@@ -153,11 +153,15 @@ export function appendRepoGroupChatFeedPage(
         ...model.queued.map(row => row.key),
         ...model.history.map(row => row.key),
     ]);
+    const running = uniqueRows(toRows(response.running, 'running', model.serverKey, sources), taken);
+    const queued = uniqueRows(toRows(response.queued, 'queued', model.serverKey, sources), taken);
     const more = uniqueRows(toRows(response.history, 'history', model.serverKey, sources), taken);
     const { nextCursor: _previousCursor, ...rest } = model;
     return {
         ...rest,
         sources: response.sources,
+        running: running.length ? [...model.running, ...running] : model.running,
+        queued: queued.length ? [...model.queued, ...queued] : model.queued,
         history: [...model.history, ...more],
         snippets: Object.fromEntries(response.sources.map(source => [source.workspaceId, {
             ...model.snippets?.[source.workspaceId], ...response.snippets?.[source.workspaceId],

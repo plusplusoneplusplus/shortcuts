@@ -72,8 +72,9 @@ export interface RepoGroupChatCounts {
 /**
  * One page of a repo group's aggregated chats. Every row carries
  * `ownerWorkspaceId`; rows keep their owner's native shape (queue task summary
- * or process history item). `running`/`queued` are returned in full on the
- * first page only.
+ * or process history item). Without a search query, `running`/`queued` are
+ * returned in full on the first page only. Search pages share one global
+ * activity-ordered limit across all three arrays.
  */
 export interface RepoGroupChatFeedResponse<TTask = Record<string, unknown>, THistory = Record<string, unknown>> {
   groupId: string;

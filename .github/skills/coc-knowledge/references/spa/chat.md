@@ -134,8 +134,10 @@ section. Parent pin actions call the workspace group-pin API, never child proces
 `RepoGroupChatList` renders an active body search as one flat Search results section.
 Running, queued and historical matches share latest-activity ordering through
 `getTaskTimestamp`, with owner workspace and canonical chat identity breaking ties.
-Pins retain row styling without promotion; matching children retain owner-qualified
-parent links. Without a query, the list uses Running, Queued, Pinned and History sections.
+Server search pages limit this combined sequence; Load more appends matches from
+all statuses, preserving the displayed prefix. Pins retain row styling without
+promotion; matching children retain owner-qualified parent links. Without a query,
+the list uses Running, Queued, Pinned and History sections.
 
 `repoGroupChatHierarchy` retains native owner-local run entries and recursive spawned
 trees. `RepoGroupChatContainer` reuses the native Ralph, For Each, Map Reduce,
