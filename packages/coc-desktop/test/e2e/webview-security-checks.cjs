@@ -112,7 +112,11 @@ async function checkDomCompositing(main, guest) {
     main.webContents.sendInputEvent({ type: 'mouseUp', x: 460, y: 100, button: 'left', clickCount: 1 });
     for (let i = 0; i < 100 && !await renderer('window.__menuClicked'); i++) await sleep(25);
     assert.equal(await renderer('window.__menuClicked'), true);
-    const ticks = await guest.executeJavaScript('window.__liveTicks');
+    let ticks = await guest.executeJavaScript('window.__liveTicks');
+    for (let i = 0; i < 100 && ticks <= firstTicks; i++) {
+        await sleep(25);
+        ticks = await guest.executeJavaScript('window.__liveTicks');
+    }
     assert(ticks > firstTicks);
     await renderer(`document.getElementById('overlay-menu').remove()`);
     await guest.executeJavaScript('clearInterval(window.__tickTimer);document.documentElement.style.background=""');
