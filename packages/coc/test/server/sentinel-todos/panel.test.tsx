@@ -178,6 +178,33 @@ describe('UnifiedTodoTab', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('shows each job’s own compact mode in collapsed and expanded rows and refreshes follow-up changes', async () => {
+        const jobs: SentinelTodoItem['jobs'] = [
+            { processId: 'queue_design', workspaceId: 'ws-child', kind: 'local', title: 'Design', mode: 'ask',
+                openLink: '#/process/queue_design', linkedAt: item().createdAt, execution: { state: 'completed' } },
+            { processId: 'queue_build', workspaceId: 'ws-child', kind: 'local', title: 'Build', mode: 'autopilot',
+                openLink: '#/process/queue_build', linkedAt: item().createdAt, execution: { state: 'queued' } },
+        ];
+        get.mockResolvedValue(ledger([item({ jobs })]));
+        render(<div style={{ width: 180 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(within(row).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
+        expect(within(row).queryByText('Ask', { exact: true })).toBeNull();
+        fireEvent.click(within(row).getByRole('button', { expanded: false, name: /Fix login/ }));
+        const designRow = within(row).getByRole('link', { name: 'Design' }).closest('li')!;
+        const buildRow = within(row).getByRole('link', { name: 'Build' }).closest('li')!;
+        expect(within(designRow).getByTestId('sentinel-todo-job-mode').textContent).toBe('Ask');
+        expect(within(buildRow).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
+        expect(within(buildRow).getByTestId('sentinel-todo-job-mode').getAttribute('tabindex')).toBeNull();
+        expect(buildRow.className).toContain('flex-wrap');
+        expect(within(buildRow).getByRole('link').parentElement?.className).toContain('flex-wrap');
+        get.mockResolvedValue(ledger([item({ jobs: [{ ...jobs[0], mode: 'autopilot' }, jobs[1]] })]));
+        act(() => connect.mock.calls[0][0].onMessage({ type: 'sentinel-todos-changed',
+            workspaceId: OWNER.ownerWorkspaceId, processId: OWNER.processId, ledgerRevision: 1, itemId: 'i1' }));
+        await waitFor(() => expect(within(designRow).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot'));
+        expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled();
+    });
+
     it('uses persisted Ralph kind even without session lookup and never guesses from ordinary titles or IDs', async () => {
         get.mockResolvedValue(ledger([item({ jobs: [
             { processId: 'queue_child', workspaceId: 'ws-child', kind: 'ralph', title: 'Writer',

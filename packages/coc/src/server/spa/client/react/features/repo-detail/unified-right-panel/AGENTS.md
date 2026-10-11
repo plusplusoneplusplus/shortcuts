@@ -695,8 +695,12 @@ never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual trackin
 `Tracked only · never run` tag. Referenced conversations
 (`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
 below jobs, with no execution or review label. `SentinelTodoJobPreview` wraps every
-shown job title, including earlier jobs when expanded, with a delayed hover/focus
-preview and an explicit persistent info action. A bounded pane/viewport portal
+shown job title, including earlier jobs when expanded, with the same noninteractive
+Ask/Autopilot/Ralph pill before execution/review labels, a delayed hover/focus preview
+and an explicit persistent info action. Pills use the ledger's compact current-mode
+projection, shared chat normalization/palette and the Ralph session indication.
+Unknown modes stay omitted; session identity takes precedence. Titles and pills wrap
+within narrow rows without adding reads, polling or focus targets. A bounded pane/viewport portal
 keeps the list layout stable. Escape/Close restore focus; outside presses and
 focus departure dismiss. Title and Open job anchors share excursion navigation
 and retain modifier clicks. The existing ledger flag gates this surface.

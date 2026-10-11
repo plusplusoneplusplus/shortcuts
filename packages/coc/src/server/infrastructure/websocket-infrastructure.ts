@@ -8,7 +8,7 @@
 import * as http from 'http';
 import { ProcessWebSocketServer, toProcessSummary, attachWebSocketUpgradeHandler } from '../streaming/websocket';
 import { gitInfoCache } from '../git/git-info-cache';
-import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { RepoQueueRegistry, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { ScheduleManager } from '../schedule/schedule-manager';
@@ -39,6 +39,7 @@ export function createWebSocketInfrastructure(
     terminalWsServer?: TerminalWebSocketServer,
     languageServerWsServer?: LanguageServerWebSocketServer,
     botManagedConversationsEnabled: () => boolean = () => false,
+    onProcessModeChanged?: (process: AIProcess) => void,
 ): ProcessWebSocketServer {
     const wsServer = new ProcessWebSocketServer();
     wsServer.attachConnectionHandler();
@@ -63,6 +64,7 @@ export function createWebSocketInfrastructure(
     });
 
     // Store process change → WS broadcast
+    const processModeSnapshots = new Map<string, string>();
     const processControlSnapshots = new Map<string, string>();
     store.onProcessChange = (event) => {
         const enabled = botManagedConversationsEnabled();
@@ -77,11 +79,18 @@ export function createWebSocketInfrastructure(
                     if (enabled) processControlSnapshots.set(summary.id, controlSnapshot);
                     else processControlSnapshots.delete(summary.id);
                     wsServer.broadcastProcessEvent({ type: event.type, process: summary });
+                    const modeSnapshot = JSON.stringify([summary.workspaceId, event.process.metadata?.mode ?? null]);
+                    if (onProcessModeChanged && processModeSnapshots.get(summary.id) !== modeSnapshot) {
+                        processModeSnapshots.set(summary.id, modeSnapshot);
+                        try { onProcessModeChanged(event.process); }
+                        catch (error) { console.error('[sentinel-todos] Could not invalidate job mode:', error); }
+                    }
                 }
                 break;
             case 'process-removed':
                 if (event.process) {
                     processControlSnapshots.delete(event.process.id);
+                    processModeSnapshots.delete(event.process.id);
                     wsServer.broadcastProcessEvent({
                         type: 'process-removed',
                         processId: event.process.id,
@@ -90,6 +99,7 @@ export function createWebSocketInfrastructure(
                 break;
             case 'processes-cleared':
                 processControlSnapshots.clear();
+                processModeSnapshots.clear();
                 wsServer.broadcastProcessEvent({
                     type: 'processes-cleared',
                     count: 0,

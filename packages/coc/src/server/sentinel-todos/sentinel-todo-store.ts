@@ -211,6 +211,9 @@ export class SentinelTodoStore {
             );
             CREATE INDEX IF NOT EXISTS sentinel_todo_jobs_process
                 ON sentinel_todo_jobs (workspace_id, parent_process_id, process_id, server_key);
+            CREATE INDEX IF NOT EXISTS sentinel_todo_jobs_local_process
+                ON sentinel_todo_jobs (process_id, job_workspace_id)
+                WHERE server_key = '' AND kind = 'local' AND session_id IS NULL;
             CREATE TABLE IF NOT EXISTS sentinel_todo_references (
                 workspace_id TEXT NOT NULL,
                 parent_process_id TEXT NOT NULL,
@@ -529,6 +532,26 @@ export class SentinelTodoStore {
         this.writeReferences(owner, item);
         this.advanceLedger(owner, ledger.revision);
         return { item, ledgerRevision: ledger.revision + 1 };
+    }
+
+    /** One transcript-free query for local linked conversations, including completed jobs. */
+    getJobModeProjections(owner: SentinelTodoOwner): Map<string, { workspaceId: unknown; mode: unknown }> {
+        const rows = this.db.prepare(`SELECT DISTINCT p.id,
+            CASE WHEN json_valid(p.metadata) THEN json_extract(p.metadata, '$.workspaceId') END AS workspaceId,
+            CASE WHEN json_valid(p.metadata) THEN json_extract(p.metadata, '$.mode') END AS mode
+            FROM sentinel_todo_jobs j JOIN processes p ON p.id = j.process_id
+            WHERE j.workspace_id = ? AND j.parent_process_id = ?
+                AND j.server_key = '' AND j.kind = 'local' AND j.session_id IS NULL`)
+            .all<{ id: string; workspaceId: unknown; mode: unknown }>(owner.workspaceId, owner.processId);
+        return new Map(rows.map(row => [row.id, row]));
+    }
+
+    /** Exact local owners to invalidate when a linked conversation changes mode. */
+    getJobOwners(processId: string, workspaceId: string): SentinelTodoOwner[] {
+        return this.db.prepare(`SELECT DISTINCT workspace_id AS workspaceId, parent_process_id AS processId
+            FROM sentinel_todo_jobs WHERE process_id = ? AND job_workspace_id = ?
+                AND server_key = '' AND kind = 'local' AND session_id IS NULL`)
+            .all<SentinelTodoOwner>(processId, workspaceId);
     }
 
     private read(owner: SentinelTodoOwner): SentinelTodoLedger {

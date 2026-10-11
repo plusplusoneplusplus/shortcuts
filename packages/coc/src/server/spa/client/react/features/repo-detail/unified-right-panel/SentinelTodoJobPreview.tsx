@@ -6,6 +6,8 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { buildRemoteCloneKey } from '../../../repos/cloneIdentity';
 import { useAnchoredPanelPosition } from '../../../shared/useAnchoredPanelPosition';
 import { usePortalContainer } from '../../../ui/usePortalContainer';
+import { WORKFLOW_REGISTRY, normalizeChatMode } from '../../../repos/modeConfig';
+import { getChatRowModeBadgeClasses } from '../../chat/chat-row-style';
 import { formatRelativeTime } from '../../../utils/format';
 import { sentinelTodoJobStateLabel, sentinelTodoReviewLabel, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
@@ -20,6 +22,9 @@ export function SentinelTodoJobPreview({ job, owner, repoLabel, linkKey, onFollo
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
 }) {
     const ralph = job.kind === 'ralph' || !!job.sessionId;
+    const mode = ralph ? 'ralph' : normalizeChatMode(job.mode);
+    const badgeMode = mode === 'ask' || mode === 'autopilot' || mode === 'ralph' ? mode : undefined;
+    const badgeLabel = WORKFLOW_REGISTRY.find(entry => entry.mode === badgeMode)?.label;
     const routeRef = job.serverId ? buildRemoteCloneKey(job.serverId, job.workspaceId) : owner.ownerRoutingRef ?? undefined;
     const route = resolveCloneRoute(routeRef ?? null);
     const unavailable = !job.workspaceId || route.kind === 'unresolved-remote' || (job.kind === 'remote' && !job.serverId);
@@ -144,7 +149,7 @@ export function SentinelTodoJobPreview({ job, owner, repoLabel, linkKey, onFollo
     const reason = 'reason' in job.execution ? job.execution.reason : undefined;
     const stale = !!data && (unavailable || loading || !!error || Date.now() - data.fetchedAt >= CACHE_MS);
     return <>
-        <span ref={triggerRef} className="inline-flex min-w-0 items-center gap-1" onPointerEnter={event => {
+        <span ref={triggerRef} className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1" onPointerEnter={event => {
             if (event.pointerType !== 'mouse') return;
             pointerWithin.current = true; suppressed.current = false; clear(); enter.current = setTimeout(() => show(), 200);
         }} onPointerLeave={() => { pointerWithin.current = false; scheduleLeave(); }} onFocus={event => {
@@ -155,7 +160,14 @@ export function SentinelTodoJobPreview({ job, owner, repoLabel, linkKey, onFollo
                 event.preventDefault(); show(true);
             }
         }}>
-            <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} aria-description="Focus to preview; ArrowDown enters preview actions." className={LINK} aria-disabled={!navigable || undefined}>{title}</a>
+            <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} aria-description="Focus to preview; ArrowDown enters preview actions." className={`${LINK} min-w-0 break-words [overflow-wrap:anywhere]`} aria-disabled={!navigable || undefined}>{title}</a>
+            {badgeMode && <span title={badgeMode === 'ralph' ? 'Ralph session' : `${badgeLabel} mode`}
+                data-testid="sentinel-todo-job-mode"
+                className={badgeMode === 'ralph'
+                    ? 'inline-flex shrink-0 items-center rounded bg-[#8764b8]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#7150a2] dark:text-[#c5a5ed]'
+                    : `${getChatRowModeBadgeClasses(badgeMode === 'autopilot' ? 'auto' : 'ask')} !w-auto !rounded-full !py-0.5 px-1.5 shrink-0 !font-sans !font-medium !normal-case !tracking-normal !text-[11px]`}>
+                {badgeLabel}
+            </span>}
             <button type="button" aria-label={`Preview job: ${title}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
                 className={`${LINK} shrink-0 px-1 text-[11px]`} onClick={event => {
                     returnRef.current = event.currentTarget;

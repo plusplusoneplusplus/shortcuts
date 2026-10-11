@@ -39,7 +39,8 @@ export type SentinelTodoJobExecution =
             reason?: string;
         };
     };
-export type SentinelTodoJobLinkView = SentinelTodoJobLink & { execution: SentinelTodoJobExecution };
+export type SentinelTodoJobMode = 'ask' | 'autopilot' | 'ralph';
+export type SentinelTodoJobLinkView = SentinelTodoJobLink & { execution: SentinelTodoJobExecution; mode?: SentinelTodoJobMode };
 export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & { jobs: SentinelTodoJobLinkView[] };
 export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItemView[] };
 
@@ -68,11 +69,15 @@ export class SentinelTodoService {
             try { delegated = this.deps.jobs?.list(owner.workspaceId) ?? []; }
             catch { /* Execution status degrades to the recorded link result. */ }
         }
+        const modes = this.deps.todos.getJobModeProjections(owner);
         return {
             revision: ledger.revision,
             items: ledger.items.map(item => ({
                 ...item,
-                jobs: item.jobs.map(link => ({ ...link, execution: this.execution(link, owner, delegated, item.userVerdictRevision) })),
+                jobs: item.jobs.map(link => ({ ...link,
+                    mode: this.jobMode(link, modes),
+                    execution: this.execution(link, owner, delegated, item.userVerdictRevision),
+                })),
             })),
         };
     }
@@ -166,6 +171,32 @@ export class SentinelTodoService {
         if (!item) return;
         const owner = job.parent;
         this.emit({ owner, item, ledgerRevision: this.deps.todos.get(owner).revision });
+    }
+
+    /** Mode is derived presentation; notifications never advance ledger/item revisions. */
+    notifyJobModeChanged(processId: string, workspaceId: string): void {
+        for (const owner of this.deps.todos.getJobOwners(processId, workspaceId)) {
+            const ledger = this.deps.todos.get(owner);
+            const item = ledger.items.find(item => item.jobs.some(link => link.processId === processId
+                && link.workspaceId === workspaceId && link.kind === 'local' && !link.serverId && !link.sessionId));
+            if (item) this.emit({ owner, item, ledgerRevision: ledger.revision });
+        }
+    }
+
+    private jobMode(link: SentinelTodoJobLink,
+        modes: ReturnType<SentinelTodoStore['getJobModeProjections']>): SentinelTodoJobMode | undefined {
+        // Session identity describes the whole Ralph run, including its Ask/grilling turns.
+        if (link.kind === 'ralph' || link.sessionId) return 'ralph';
+        // Remote ordinary conversations cannot be verified on this server.
+        if (link.serverId || link.kind === 'remote') return undefined;
+        const process = modes.get(link.processId);
+        const task = !process && isQueueProcessId(link.processId)
+            ? this.deps.getTask?.(toTaskId(link.processId)) : undefined;
+        const live = task?.type === 'chat' && (task.status === 'queued' || task.status === 'running') ? task : undefined;
+        const workspaceId = process ? process.workspaceId : live?.payload.workspaceId ?? live?.repoId;
+        if (workspaceId !== link.workspaceId) return undefined;
+        const mode = normalizeChatMode(process ? process.mode : live?.payload.mode);
+        return mode === 'ask' || mode === 'autopilot' || mode === 'ralph' ? mode : undefined;
     }
 
     private execution(link: SentinelTodoJobLink, owner: SentinelTodoOwner, delegated: DelegatedJob[],
