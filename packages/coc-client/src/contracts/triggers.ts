@@ -131,3 +131,31 @@ export interface TriggerDeleteResponse {
   deleted: boolean;
   trigger: Trigger;
 }
+
+export interface SentinelTodoTriggerInput {
+  itemId: string;
+  prUrl: string;
+  instruction?: string;
+  workspaceId?: string;
+  originId?: string;
+}
+
+export interface CreateSentinelTodoTriggerRequest extends SentinelTodoTriggerInput {
+  runNow?: boolean;
+  confirmed?: true;
+}
+
+export interface EditSentinelTodoTriggerRequest extends SentinelTodoTriggerInput {
+  expectedRevision: number;
+}
+
+export interface PrTriggerPreview {
+  pr: PrIdentity;
+  snapshot: {
+    status: WatchedPrStatus;
+    title: string;
+    url: string;
+    mergeCommit?: string;
+    mergedAt?: string;
+  };
+}
