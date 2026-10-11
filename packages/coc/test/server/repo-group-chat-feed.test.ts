@@ -128,6 +128,17 @@ describe('buildRepoGroupChatFeed', () => {
         expect(feed.counts).toMatchObject({ total: 2, running: 1, queued: 1, byOwner: { [A]: 2 } });
     });
 
+    it('includes visible active process-store jobs absent from the owner queue without duplicating queued representations', async () => {
+        await addChat('direct-running', A, 1, { status: 'running', endTime: undefined });
+        await addChat('represented', B, 2, { status: 'running', endTime: undefined });
+        queues[B] = { running: [{ id: 'task', processId: 'represented' }], queued: [] };
+        const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query());
+        expect(feed.running.map(row => [row.processId, row.ownerWorkspaceId])).toEqual([
+            ['direct-running', A], ['represented', B],
+        ]);
+        expect(feed.counts).toMatchObject({ total: 2, running: 2 });
+    });
+
     it('pages through every chat once with stable global order (no omissions or duplicates)', async () => {
         const expected: string[] = [];
         for (let i = 0; i < 17; i++) {

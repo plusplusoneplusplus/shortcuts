@@ -294,6 +294,20 @@ export async function buildRepoGroupChatFeed(
     for (const state of selected) {
         if (!state.source.available) continue;
         try {
+            const activeProcesses = await deps.store.getAllProcesses({
+                workspaceId: state.source.workspaceId, status: ['running', 'queued'], exclude: ['conversation'],
+            });
+            for (const proc of activeProcesses) {
+                if (!eligibleProcess(proc.type, proc.metadata) || state.activeIds.has(proc.id)) continue;
+                const task: OwnedTask = {
+                    ...toProcessHistoryItem(proc, undefined, deps.botControlEnabled),
+                    processId: proc.id, ownerWorkspaceId: state.source.workspaceId,
+                };
+                if (proc.status === 'running') state.running.push(task);
+                else state.queued.push(task);
+                state.activeIds.add(proc.id);
+                parentOwners.set(proc.id, state.source.workspaceId);
+            }
             if (query.q) {
                 state.hits = searchFeedBodies(deps.store, state.source.workspaceId, query.q);
             }
