@@ -1,13 +1,14 @@
 use super::*;
 use crate::{Account, AuthError, Clock, CredentialStore, ErrorCode, Refresh, Result, Secret};
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use openssl::rsa::Rsa;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
     time::Duration,
 };
@@ -19,11 +20,45 @@ const CLIENT: &str = "33333333-3333-4333-8333-333333333333";
 const SUBSCRIPTION: &str = "44444444-4444-4444-8444-444444444444";
 const NOW: u64 = 2_000_000_000_000;
 
-// Generated, test-only RSA key; never used by production or any identity service.
-const DER: &str =
-    "MIIEpAIBAAKCAQEAm6RcDBDH7nFWabGG35Mgsghz00bBbi1c/HVtH1GRpac4u7yS0opFgoAv/ZTiN0tZUcJpBRHE5e0uMORjEN5yX6BMpzIOe2tsbETigtB/Ggq8DfYAPMUGVBha3qjvP71Ni2VAf2E4YROxUOPHM2/FyjH8VIZlzBY+CG8ot0R+G4ZE9c27fUqqRU+Urh/QmQi+vNHTwskJLPbxUBx3ZojCm1RNKhOcTC2vE0+v5acdGTDAPt/vubXR/2dFyFX8w47yhCeteCWQKF67hzN1USPK2RfJTi7JskT7ahwwKvmuFkwOWZcEa8j0GeTeWOnQFdmf9c4bb7jHEIelKDnLoZdWCwIDAQABAoIBADsI2okRDGSaxKYOWhQPYEVnA1fN7Kx3tF9lwuAwNkhY5yH+YspM/BSFvq42fJ9wiw6B6QetN7vmfLC60ACj/0naKXj5eZjCpDtk3W2026DrFW1OM8TZDo9zNXRjK2xHx1PqMc6e952KtKTz4KjX6nPJBeahm5cPkLPuRclNx290pIZ2FFGJyzHRDZYScvKbc6sfrpv0dsb4K2CFDZf5vA0ayeH4kLM2ez5jmHetNSlAgiZGhq9TG9ELyD3zY6NARjKnG5TaM/RfKWs/uZQTOXbwmtMHesWd0tsfhX0fapIR8y1nKRR60y3UxtzpPNsZ5YoiugX9LtQ//0xyp07JFPECgYEA1dk9ZO9ojMGVEksR32yx9i4emLbNCZllkzLYGRzHta1zo80wLOog4zbcTYKtCjZvbKiiT/NtEpr69N0rjThgcJmcQaiM319xa9vYZG9kjxlltm7ji6dEOaHoULAg/TqH5x3U52SChEQYmMsdT5MSOUAJjYZYhRuPuqPB7OV1ORUCgYEAulIHAosE5WRLhK6lIlPMeMeDaD2HmOK7oQwlg0pRMB7uU+swO/7s0znULm2L5E+s68pipcpYChiRisyFb/1+8cTWs2LI5loKudJv4YgJ8YP79SJK9L9ioQXoRpTu+t5ltAVBUMBMhDgrbDJzPK51FssagQKyqGQ+1g9f9Z+52p8CgYEA0B861w8BK2wDTuhsnotEr5i3Al12M09tQdML6XTPEIucreA2cJ/0He34fh8dlYDg9FkyjqkUkDTw5HqTtj8V7MAzCNunLoXO9u/hK+4VageHrANDxVim14gxdsXTdWAPf+jSmdiCBYPYhGu5PQafh8RBB9GmOPVX7ocNZybx7PkCgYAqFPDEYEXA0cBEvXVKpYafGODTIGKJ41vhae7nElf3+GR3y7zfMBqpMnx75/4amOxDbTiOnX74+MeWg873llefn4emiH87l8aoZaEjXShxxg+YNCCd2sQZ/k2R831uZ+Csois4Y9ZkXpNgIpzobbbAaSsZTFSxt8KBcoOH5IWDnQKBgQCoEysDk5OkMw4YhMSSjRX8uBJUxcQ8WnttTi1qAn+0X+gZDKvhjRDdMg67Q+ccx+jHI6UzOG9Qxy9lGPMoifiIARpOdjXElP7D+vLzvG+ol4b5D/w41oPz9lZYYhsR5lZYhLqm870v2sS3J++ynllyHJtjFkNsSeiP0wYNDl9sAQ=="
-;
-const MODULUS: &str = "m6RcDBDH7nFWabGG35Mgsghz00bBbi1c_HVtH1GRpac4u7yS0opFgoAv_ZTiN0tZUcJpBRHE5e0uMORjEN5yX6BMpzIOe2tsbETigtB_Ggq8DfYAPMUGVBha3qjvP71Ni2VAf2E4YROxUOPHM2_FyjH8VIZlzBY-CG8ot0R-G4ZE9c27fUqqRU-Urh_QmQi-vNHTwskJLPbxUBx3ZojCm1RNKhOcTC2vE0-v5acdGTDAPt_vubXR_2dFyFX8w47yhCeteCWQKF67hzN1USPK2RfJTi7JskT7ahwwKvmuFkwOWZcEa8j0GeTeWOnQFdmf9c4bb7jHEIelKDnLoZdWCw";
+struct TestSigningKey {
+    encoding: EncodingKey,
+    modulus: String,
+    exponent: String,
+}
+impl TestSigningKey {
+    fn generate() -> Self {
+        let rsa = Rsa::generate(2048).unwrap();
+        Self {
+            encoding: EncodingKey::from_rsa_der(&rsa.private_key_to_der().unwrap()),
+            modulus: URL_SAFE_NO_PAD.encode(rsa.n().to_vec()),
+            exponent: URL_SAFE_NO_PAD.encode(rsa.e().to_vec()),
+        }
+    }
+}
+fn signing_key() -> &'static TestSigningKey {
+    static KEY: OnceLock<TestSigningKey> = OnceLock::new();
+    KEY.get_or_init(TestSigningKey::generate)
+}
+
+#[test]
+fn runtime_signing_keys_match_their_jwk_and_reject_other_keys() {
+    use jsonwebtoken::{decode, DecodingKey, Validation};
+
+    let key = signing_key();
+    let other = TestSigningKey::generate();
+    assert_ne!(key.modulus, other.modulus);
+    let claims = serde_json::json!({"aud":CLIENT,"exp":NOW/1000+86400});
+    let token = encode(&Header::new(Algorithm::RS256), &claims, &key.encoding).unwrap();
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.set_audience(&[CLIENT]);
+    let matching = DecodingKey::from_rsa_components(&key.modulus, &key.exponent).unwrap();
+    assert!(decode::<serde_json::Value>(&token, &matching, &validation).is_ok());
+    let mismatched = DecodingKey::from_rsa_components(&other.modulus, &other.exponent).unwrap();
+    assert_eq!(
+        decode::<serde_json::Value>(&token, &mismatched, &validation).unwrap_err().kind(),
+        &jsonwebtoken::errors::ErrorKind::InvalidSignature
+    );
+}
 
 struct FakeClock(AtomicU64);
 impl Clock for FakeClock {
@@ -104,7 +139,8 @@ impl HttpTransport for FakeHttp {
             return Ok(output(
                 200,
                 serde_json::json!({"keys":[
-                    {"kty":"RSA","kid":"fixture","use":"sig","alg":"RS256","n":MODULUS,"e":"AQAB"}
+                    {"kty":"RSA","kid":"fixture","use":"sig","alg":"RS256",
+                        "n":signing_key().modulus,"e":signing_key().exponent}
                 ]}),
             ));
         }
@@ -141,9 +177,7 @@ impl HttpTransport for FakeHttp {
         }
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some("fixture".into());
-        let id =
-            encode(&header, &claims, &EncodingKey::from_rsa_der(&STANDARD.decode(DER).unwrap()))
-                .unwrap();
+        let id = encode(&header, &claims, &signing_key().encoding).unwrap();
         let mut response = serde_json::json!({
             "access_token":format!("opaque-fixture-{grant}"),"token_type":"Bearer","expires_in":3600,
             "refresh_token":format!("rotated-fixture-{grant}"),"scope":"actual.granted",

@@ -6,6 +6,7 @@ import { readCopilotCredential, getDirectCopilotConfigPath, validateCredentialCo
 import { validateTransport } from '../../src/copilot-http/config';
 import { CopilotHttpClient } from '../../src/copilot-http/client';
 import type { CopilotCredentialConfig } from '../../src/copilot-http/types';
+import { testCopilotToken } from './token-fixture';
 
 const exec = vi.hoisted(() => vi.fn());
 const windowsCredential = vi.hoisted(() => vi.fn());
@@ -36,52 +37,52 @@ beforeEach(async () => { platform('linux'); dir = await mkdtemp(join(tmpdir(), '
 afterEach(async () => { Object.defineProperty(process, 'platform', originalPlatform); vi.unstubAllEnvs(); await rm(dir, { recursive: true, force: true }); });
 const config = (): CopilotCredentialConfig => ({ source: 'cli-config', account: 'active-cli-account', configPath: path });
 async function write(data: unknown) { await writeFile(path, JSON.stringify(data)); }
-const stored = () => ({ lastLoggedInUser: { host: 'github.com', login: 'active' }, copilotTokens: { 'github.com:other': 'gho_wrong', 'github.com:active': 'gho_right' } });
+const stored = () => ({ lastLoggedInUser: { host: 'github.com', login: 'active' }, copilotTokens: { 'github.com:other': testCopilotToken('gho', 'other'), 'github.com:active': testCopilotToken('gho', 'active') } });
 
 describe('explicit read-only credential acquisition', () => {
     it('selects only the configured variable and never falls through to valid ambient tokens', async () => {
-        vi.stubEnv('SELECTED_TOKEN', 'gho_selected'); vi.stubEnv('GH_TOKEN', 'gho_other'); vi.stubEnv('GITHUB_TOKEN', 'gho_another');
-        expect(await readCopilotCredential({ source: 'environment', variable: 'SELECTED_TOKEN' }, signal())).toMatchObject({ token: 'gho_selected' });
-        vi.stubEnv('SELECTED_TOKEN', 'ghp_unsupported');
+        vi.stubEnv('SELECTED_TOKEN', testCopilotToken('gho', 'selected')); vi.stubEnv('GH_TOKEN', testCopilotToken('gho', 'ambient')); vi.stubEnv('GITHUB_TOKEN', testCopilotToken('gho', 'ambient_other'));
+        expect(await readCopilotCredential({ source: 'environment', variable: 'SELECTED_TOKEN' }, signal())).toMatchObject({ token: testCopilotToken('gho', 'selected') });
+        vi.stubEnv('SELECTED_TOKEN', testCopilotToken('ghp', 'unsupported'));
         await expect(readCopilotCredential({ source: 'environment', variable: 'SELECTED_TOKEN' }, signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(exec).not.toHaveBeenCalled();
     });
-    it.each(['gho_test', 'ghu_test', 'github_pat_test'])('supports preliminary token family %s', async token => {
+    it.each([testCopilotToken('gho', 'oauth'), testCopilotToken('ghu', 'user'), testCopilotToken('github_pat', 'fine_grained')])('supports preliminary token family %s', async token => {
         vi.stubEnv('SELECTED_TOKEN', token);
         expect((await readCopilotCredential({ source: 'environment', variable: 'SELECTED_TOKEN' }, signal())).token).toBe(token);
     });
     it('uses exact active account key in JSONC while preserving URL strings and never writes the file', async () => {
         const text = '// CLI header\n' + JSON.stringify({ ...stored(), url: 'https://github.com' }); await writeFile(path, text);
-        expect(await readCopilotCredential(config(), signal())).toEqual({ host: 'github.com', login: 'active', token: 'gho_right' });
+        expect(await readCopilotCredential(config(), signal())).toEqual({ host: 'github.com', login: 'active', token: testCopilotToken('gho', 'active') });
         expect(await readFile(path, 'utf8')).toBe(text); expect(exec).not.toHaveBeenCalled();
     });
     it('uses a pinned account without changing the CLI active account', async () => {
         await write(stored());
-        expect(await readCopilotCredential({ source: 'cli-config', configPath: path, account: { host: 'github.com', login: 'other' } }, signal())).toMatchObject({ login: 'other', token: 'gho_wrong' });
+        expect(await readCopilotCredential({ source: 'cli-config', configPath: path, account: { host: 'github.com', login: 'other' } }, signal())).toMatchObject({ login: 'other', token: testCopilotToken('gho', 'other') });
     });
     it('prefers the config token on Windows without accessing Credential Manager', async () => {
-        platform('win32'); await write(stored()); windowsCredential.mockResolvedValue('gho_vault');
-        expect((await readCopilotCredential(config(), signal())).token).toBe('gho_right');
+        platform('win32'); await write(stored()); windowsCredential.mockResolvedValue(testCopilotToken('gho', 'windows_vault'));
+        expect((await readCopilotCredential(config(), signal())).token).toBe(testCopilotToken('gho', 'active'));
         expect(windowsCredential).not.toHaveBeenCalled();
     });
     it.each([undefined, null, ''])('reads the exact Windows account when the config token is %j', async token => {
         platform('win32');
         await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },
-            copilotTokens: { 'https://github.com:active': token, 'github.com:active': 'gho_wrong' } });
-        windowsCredential.mockResolvedValue('gho_vault');
-        expect(await readCopilotCredential(config(), signal())).toEqual({ host: 'github.com', login: 'active', token: 'gho_vault' });
+            copilotTokens: { 'https://github.com:active': token, 'github.com:active': testCopilotToken('gho', 'other') } });
+        windowsCredential.mockResolvedValue(testCopilotToken('gho', 'windows_vault'));
+        expect(await readCopilotCredential(config(), signal())).toEqual({ host: 'github.com', login: 'active', token: testCopilotToken('gho', 'windows_vault') });
         expect(windowsCredential).toHaveBeenCalledExactlyOnceWith('copilot-cli/https://github.com:active');
         expect(exec).not.toHaveBeenCalled();
     });
     it('reads the pinned Windows account without using the active account', async () => {
-        platform('win32'); await write(stored()); windowsCredential.mockResolvedValue('gho_pinned');
+        platform('win32'); await write(stored()); windowsCredential.mockResolvedValue(testCopilotToken('gho', 'pinned'));
         expect(await readCopilotCredential({ ...config(), account: { host: 'github.com', login: 'pinned' } }, signal()))
-            .toEqual({ host: 'github.com', login: 'pinned', token: 'gho_pinned' });
+            .toEqual({ host: 'github.com', login: 'pinned', token: testCopilotToken('gho', 'pinned') });
         expect(windowsCredential).toHaveBeenCalledExactlyOnceWith('copilot-cli/github.com:pinned');
     });
     it('generates a direct HTTP title with Windows-only credentials and no CLI process', async () => {
         platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
-        windowsCredential.mockResolvedValue('gho_vault');
+        windowsCredential.mockResolvedValue(testCopilotToken('gho', 'windows_vault'));
         const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith('/models')
             ? { data: [{ id: 'gpt-6-luna', supported_endpoints: ['/responses'] }] }
             : { model: 'gpt-6-luna', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed',
@@ -99,22 +100,22 @@ describe('explicit read-only credential acquisition', () => {
         } finally { client.dispose(); }
     });
     it('does not access secure credentials on Linux', async () => {
-        platform('linux'); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue('gho_vault');
+        platform('linux'); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue(testCopilotToken('gho', 'windows_vault'));
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(windowsCredential).not.toHaveBeenCalled(); expect(exec).not.toHaveBeenCalled();
     });
     it('prefers the file token on macOS without accessing Keychain', async () => {
         platform('darwin'); await write(stored());
-        expect((await readCopilotCredential(config(), signal())).token).toBe('gho_right');
+        expect((await readCopilotCredential(config(), signal())).token).toBe(testCopilotToken('gho', 'active'));
         expect(exec).not.toHaveBeenCalled(); expect(windowsCredential).not.toHaveBeenCalled();
     });
     it.each([undefined, null, ''])('reads the exact macOS account when the config token is %j', async token => {
         platform('darwin');
         await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },
-            copilotTokens: { 'https://github.com:active': token, 'github.com:active': 'gho_wrong' } });
-        exec.mockImplementation((_file, _args, _options, cb) => cb(null, 'gho_keychain\n'));
+            copilotTokens: { 'https://github.com:active': token, 'github.com:active': testCopilotToken('gho', 'other') } });
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, testCopilotToken('gho', 'mac_keychain') + '\n'));
         const abortSignal = signal();
-        expect(await readCopilotCredential(config(), abortSignal)).toEqual({ host: 'github.com', login: 'active', token: 'gho_keychain' });
+        expect(await readCopilotCredential(config(), abortSignal)).toEqual({ host: 'github.com', login: 'active', token: testCopilotToken('gho', 'mac_keychain') });
         expect(exec).toHaveBeenCalledExactlyOnceWith('/usr/bin/security',
             ['find-generic-password', '-s', 'copilot-cli', '-a', 'https://github.com:active', '-w'],
             { signal: abortSignal, timeout: 10_000, maxBuffer: 16_384 }, expect.any(Function));
@@ -123,18 +124,18 @@ describe('explicit read-only credential acquisition', () => {
     it('reads the pinned macOS account without changing the config', async () => {
         platform('darwin'); await write(stored());
         const before = await readFile(path, 'utf8');
-        exec.mockImplementation((_file, _args, _options, cb) => cb(null, 'gho_pinned'));
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, testCopilotToken('gho', 'pinned')));
         expect(await readCopilotCredential({ ...config(), account: { host: 'github.com', login: 'pinned' } }, signal()))
-            .toEqual({ host: 'github.com', login: 'pinned', token: 'gho_pinned' });
+            .toEqual({ host: 'github.com', login: 'pinned', token: testCopilotToken('gho', 'pinned') });
         expect(exec.mock.calls[0][1]).toEqual(['find-generic-password', '-s', 'copilot-cli', '-a', 'github.com:pinned', '-w']);
         expect(await readFile(path, 'utf8')).toBe(before);
     });
-    it.each(['ghp_invalid', 'invalid', 123, {}])('does not replace an invalid macOS file token %j', async token => {
+    it.each([testCopilotToken('ghp', 'invalid_family'), 'invalid', 123, {}])('does not replace an invalid macOS file token %j', async token => {
         platform('darwin'); await write({ ...stored(), copilotTokens: { 'github.com:active': token } });
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(exec).not.toHaveBeenCalled();
     });
-    it.each(['', 'ghp_invalid', 'invalid'])('rejects missing or invalid Keychain tokens %j', async token => {
+    it.each(['', testCopilotToken('ghp', 'invalid_family'), 'invalid'])('rejects missing or invalid Keychain tokens %j', async token => {
         platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
         exec.mockImplementation((_file, _args, _options, cb) => cb(null, token));
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
@@ -142,8 +143,8 @@ describe('explicit read-only credential acquisition', () => {
     });
     it.each([44, 36, 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'])('sanitizes Keychain failure %s without another source', async code => {
         platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
-        vi.stubEnv('GH_TOKEN', 'gho_other'); vi.stubEnv('GITHUB_TOKEN', 'gho_another');
-        exec.mockImplementation((_file, _args, _options, cb) => cb(Object.assign(new Error('gho_secret'), { code }), 'gho_secret'));
+        vi.stubEnv('GH_TOKEN', testCopilotToken('gho', 'ambient')); vi.stubEnv('GITHUB_TOKEN', testCopilotToken('gho', 'ambient_other'));
+        exec.mockImplementation((_file, _args, _options, cb) => cb(Object.assign(new Error(testCopilotToken('gho', 'error_payload')), { code }), testCopilotToken('gho', 'error_payload')));
         const error = await readCopilotCredential(config(), signal()).catch(e => e);
         expect(error).toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE', message: 'Selected Copilot macOS Keychain credential could not be read.' });
         expect(exec).toHaveBeenCalledTimes(1); expect(windowsCredential).not.toHaveBeenCalled();
@@ -171,7 +172,7 @@ describe('explicit read-only credential acquisition', () => {
     });
     it('generates a direct HTTP title using macOS Keychain credentials without a Copilot CLI process', async () => {
         platform('darwin'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
-        exec.mockImplementation((_file, _args, _options, cb) => cb(null, 'gho_keychain'));
+        exec.mockImplementation((_file, _args, _options, cb) => cb(null, testCopilotToken('gho', 'mac_keychain')));
         const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith('/models')
             ? { data: [{ id: 'gpt-6-luna', supported_endpoints: ['/responses'] }] }
             : { model: 'gpt-6-luna', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed',
@@ -189,20 +190,20 @@ describe('explicit read-only credential acquisition', () => {
             expect(windowsCredential).not.toHaveBeenCalled();
         } finally { client.dispose(); }
     });
-    it.each(['ghp_invalid', 'invalid', 123, {}])('does not replace an invalid file token %j with a Windows credential', async token => {
+    it.each([testCopilotToken('ghp', 'invalid_family'), 'invalid', 123, {}])('does not replace an invalid file token %j with a Windows credential', async token => {
         platform('win32'); await write({ ...stored(), copilotTokens: { 'github.com:active': token } });
-        windowsCredential.mockResolvedValue('gho_vault');
+        windowsCredential.mockResolvedValue(testCopilotToken('gho', 'windows_vault'));
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(windowsCredential).not.toHaveBeenCalled();
     });
-    it.each([null, 'ghp_invalid', 'invalid'])('rejects missing or invalid Windows tokens %j', async token => {
+    it.each([null, testCopilotToken('ghp', 'invalid_family'), 'invalid'])('rejects missing or invalid Windows tokens %j', async token => {
         platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser }); windowsCredential.mockResolvedValue(token);
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(windowsCredential).toHaveBeenCalledTimes(1); expect(exec).not.toHaveBeenCalled();
     });
     it('sanitizes native credential failures without another source', async () => {
         platform('win32'); await write({ lastLoggedInUser: stored().lastLoggedInUser });
-        windowsCredential.mockRejectedValue(new Error('gho_secret'));
+        windowsCredential.mockRejectedValue(new Error(testCopilotToken('gho', 'error_payload')));
         const error = await readCopilotCredential(config(), signal()).catch(e => e);
         expect(error).toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE', message: 'Selected Copilot Windows credential could not be read.' });
         expect(exec).not.toHaveBeenCalled();
@@ -226,17 +227,17 @@ describe('explicit read-only credential acquisition', () => {
     });
     it.each(['active-cli-account', { host: 'https://github.com', login: 'active' }] as const)('reads URL-form CLI host with exact stored key for account %j', async account => {
         await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },
-            copilotTokens: { 'https://github.com:active': 'gho_right', 'github.com:active': 'gho_wrong' } });
-        expect(await readCopilotCredential({ ...config(), account }, signal())).toEqual({ host: 'github.com', login: 'active', token: 'gho_right' });
+            copilotTokens: { 'https://github.com:active': testCopilotToken('gho', 'active'), 'github.com:active': testCopilotToken('gho', 'other') } });
+        expect(await readCopilotCredential({ ...config(), account }, signal())).toEqual({ host: 'github.com', login: 'active', token: testCopilotToken('gho', 'active') });
         expect(exec).not.toHaveBeenCalled();
     });
     it('does not substitute a normalized account key when the exact URL-form key is missing', async () => {
-        await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' }, copilotTokens: { 'github.com:active': 'gho_wrong' } });
+        await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' }, copilotTokens: { 'github.com:active': testCopilotToken('gho', 'other') } });
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
     });
     it.each(['http://github.com', 'https://github.com:8443', 'https://user:pass@github.com', 'https://github.com/path',
         'https://github.com?query', 'https://github.com#fragment'])('rejects unsafe CLI config host %s', async host => {
-        await write({ lastLoggedInUser: { host, login: 'active' }, copilotTokens: { [`${host}:active`]: 'gho_right' } });
+        await write({ lastLoggedInUser: { host, login: 'active' }, copilotTokens: { [`${host}:active`]: testCopilotToken('gho', 'active') } });
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(() => validateCredentialConfig({ source: 'cli-config', account: { host, login: 'active' } })).toThrow();
         expect(exec).not.toHaveBeenCalled();
@@ -245,9 +246,9 @@ describe('explicit read-only credential acquisition', () => {
         await write(stored()); const first = await readCopilotCredential(config(), signal());
         await write({ ...stored(), lastLoggedInUser: { host: 'github.com', login: 'other' } });
         const next = await readCopilotCredential(config(), signal());
-        expect(first.token).toBe('gho_right'); expect(next.token).toBe('gho_wrong'); expect(Object.isFrozen(first)).toBe(true);
+        expect(first.token).toBe(testCopilotToken('gho', 'active')); expect(next.token).toBe(testCopilotToken('gho', 'other')); expect(Object.isFrozen(first)).toBe(true);
     });
-    it.each([null, [], 'string', {}, { copilotTokens: { 'github.com:first': 'gho_first' } },
+    it.each([null, [], 'string', {}, { copilotTokens: { 'github.com:first': testCopilotToken('gho', 'first') } },
         { ...stored(), lastLoggedInUser: { host: 'github.com', login: 'missing' } }, { ...stored(), copilotTokens: {} }])('rejects invalid/missing active record %# without trying another source', async value => {
         await write(value); await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' }); expect(exec).not.toHaveBeenCalled();
     });
@@ -256,9 +257,10 @@ describe('explicit read-only credential acquisition', () => {
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE', message: expect.stringContaining('changed during reading') });
     });
     it('sanitizes parser errors containing credential records', async () => {
-        await writeFile(path, '{"gho_secret":');
+        await writeFile(path, `{"${testCopilotToken('gho', 'error_payload')}":`);
         const error = await readCopilotCredential(config(), signal()).catch(e => e);
         expect(error.code).toBe('DIRECT_CREDENTIAL_UNAVAILABLE'); expect(error.message).not.toContain('secret');
+        expect(error.message).not.toContain(testCopilotToken('gho', 'error_payload'));
     });
     it('rejects oversized files and missing files', async () => {
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
@@ -266,9 +268,9 @@ describe('explicit read-only credential acquisition', () => {
         await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
     });
     it('uses only selected resolver and sanitizes failures', async () => {
-        const resolve = vi.fn(async () => { throw new Error('gho_secret'); });
+        const resolve = vi.fn(async () => { throw new Error(testCopilotToken('gho', 'error_payload')); });
         const error = await readCopilotCredential({ source: 'resolver', resolve }, signal()).catch(e => e);
-        expect(error).toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' }); expect(error.message).not.toContain('gho_secret'); expect(exec).not.toHaveBeenCalled();
+        expect(error).toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' }); expect(error.message).not.toContain(testCopilotToken('gho', 'error_payload')); expect(exec).not.toHaveBeenCalled();
     });
     it('returns an explicit unverified-keychain error without reading plaintext or invoking gh', async () => {
         await write(stored());
@@ -276,9 +278,9 @@ describe('explicit read-only credential acquisition', () => {
         expect(exec).not.toHaveBeenCalled();
     });
     it('only explicitly selected gh-cli uses bounded argument-array execution for the pinned account', async () => {
-        vi.stubEnv('GH_TOKEN', 'gho_wrong'); vi.stubEnv('GITHUB_TOKEN', 'gho_another');
-        exec.mockImplementation((_file, _args, _options, callback) => callback(null, 'gho_selected\n'));
-        expect(await readCopilotCredential({ source: 'gh-cli', host: 'github.com', login: 'active' }, signal())).toMatchObject({ token: 'gho_selected', login: 'active' });
+        vi.stubEnv('GH_TOKEN', testCopilotToken('gho', 'other')); vi.stubEnv('GITHUB_TOKEN', testCopilotToken('gho', 'ambient_other'));
+        exec.mockImplementation((_file, _args, _options, callback) => callback(null, testCopilotToken('gho', 'selected') + '\n'));
+        expect(await readCopilotCredential({ source: 'gh-cli', host: 'github.com', login: 'active' }, signal())).toMatchObject({ token: testCopilotToken('gho', 'selected'), login: 'active' });
         expect(exec).toHaveBeenCalledWith('gh', ['auth', 'token', '--hostname', 'github.com', '--user', 'active'], expect.objectContaining({ timeout: 10_000, maxBuffer: 16_384, windowsHide: true, signal: expect.any(AbortSignal) }), expect.any(Function));
         expect(exec.mock.calls[0][2].env).not.toHaveProperty('GH_TOKEN'); expect(exec.mock.calls[0][2].env).not.toHaveProperty('GITHUB_TOKEN');
     });

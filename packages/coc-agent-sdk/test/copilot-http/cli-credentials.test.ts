@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readCopilotCredential } from '../../src/copilot-http/credentials';
 import { CopilotHttpClient } from '../../src/copilot-http/client';
+import { testCopilotToken } from './token-fixture';
 
 const runtime = vi.hoisted(() => ({ load: vi.fn(), create: vi.fn() }));
 vi.mock('../../src/sdk-esm-loader', () => ({ loadCopilotSdk: runtime.load }));
@@ -19,7 +20,7 @@ beforeEach(() => {
     start.mockResolvedValue(undefined);
     stop.mockResolvedValue(undefined);
     current.mockResolvedValue({ authInfo: user() });
-    users.mockResolvedValue([{ authInfo: user('other'), token: 'gho_wrong' }, { authInfo: user(), token: 'gho_active' }]);
+    users.mockResolvedValue([{ authInfo: user('other'), token: testCopilotToken('gho', 'other') }, { authInfo: user(), token: testCopilotToken('gho', 'cli_active') }]);
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -35,29 +36,29 @@ describe('automatic Copilot CLI credentials', () => {
             current.mockResolvedValue({ authInfo: user('other') });
             expect((await client.complete(request)).text).toBe('yes');
             const headers = (fetcher.mock.calls as unknown as [string, RequestInit][]).map(([, init]) => init.headers as Record<string, string>);
-            expect(headers.map(header => header.Authorization)).toEqual(['Bearer gho_active', 'Bearer gho_active', 'Bearer gho_wrong', 'Bearer gho_wrong']);
+            expect(headers.map(header => header.Authorization)).toEqual(['Bearer ' + testCopilotToken('gho', 'cli_active'), 'Bearer ' + testCopilotToken('gho', 'cli_active'), 'Bearer ' + testCopilotToken('gho', 'other'), 'Bearer ' + testCopilotToken('gho', 'other')]);
             expect(stop).toHaveBeenCalledTimes(2);
         } finally { client.dispose(); }
     });
     it('reads the active CLI account, including tokens from its secure store, without a session', async () => {
-        expect(await read()).toEqual({ host: 'github.com', login: 'active', token: 'gho_active' });
+        expect(await read()).toEqual({ host: 'github.com', login: 'active', token: testCopilotToken('gho', 'cli_active') });
         expect(runtime.create).toHaveBeenCalledWith({});
         expect(stop).toHaveBeenCalledOnce();
     });
     it('rereads account selection on each request', async () => {
-        expect((await read()).token).toBe('gho_active');
+        expect((await read()).token).toBe(testCopilotToken('gho', 'cli_active'));
         current.mockResolvedValue({ authInfo: user('other') });
-        expect((await read()).token).toBe('gho_wrong');
+        expect((await read()).token).toBe(testCopilotToken('gho', 'other'));
         expect(current).toHaveBeenCalledTimes(2);
     });
     it.each(['env', 'gh-cli', 'token'])('uses the CLI-selected %s token without choosing a stored account', async type => {
-        current.mockResolvedValue({ authInfo: { type, host: 'https://github.com', login: 'active', token: 'ghu_selected' } });
-        vi.stubEnv('GH_TOKEN', 'gho_other');
-        expect((await read()).token).toBe('ghu_selected');
+        current.mockResolvedValue({ authInfo: { type, host: 'https://github.com', login: 'active', token: testCopilotToken('ghu', 'cli_selected') } });
+        vi.stubEnv('GH_TOKEN', testCopilotToken('gho', 'ambient'));
+        expect((await read()).token).toBe(testCopilotToken('ghu', 'cli_selected'));
         expect(users).not.toHaveBeenCalled();
     });
     it('never selects another host or account when the active token is missing', async () => {
-        users.mockResolvedValue([{ authInfo: user('active', 'https://enterprise.example'), token: 'gho_wrong' }]);
+        users.mockResolvedValue([{ authInfo: user('active', 'https://enterprise.example'), token: testCopilotToken('gho', 'other') }]);
         await expect(read()).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(stop).toHaveBeenCalledOnce();
     });
@@ -68,10 +69,11 @@ describe('automatic Copilot CLI credentials', () => {
         expect(stop).toHaveBeenCalledOnce();
     });
     it('sanitizes RPC failures and stops the client', async () => {
-        current.mockRejectedValue(new Error('gho_secret'));
+        current.mockRejectedValue(new Error(testCopilotToken('gho', 'error_payload')));
         const error = await read().catch(error => error);
         expect(error.code).toBe('DIRECT_CREDENTIAL_UNAVAILABLE');
         expect(error.message).not.toContain('secret');
+        expect(error.message).not.toContain(testCopilotToken('gho', 'error_payload'));
         expect(stop).toHaveBeenCalledOnce();
     });
     it('stops on cancellation while authentication is pending', async () => {
