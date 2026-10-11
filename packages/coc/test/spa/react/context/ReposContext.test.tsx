@@ -15,6 +15,13 @@ const webSocketMock = vi.hoisted(() => ({
     connect: vi.fn(),
     disconnect: vi.fn(),
 }));
+const groupBadgeMocks = vi.hoisted(() => ({ enabled: false, getRepoGroupChats: vi.fn() }));
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRepoGroupAggregatedChatsEnabled', () => ({
+    useRepoGroupAggregatedChatsEnabled: () => groupBadgeMocks.enabled,
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
+    getRepoGroupChats: groupBadgeMocks.getRepoGroupChats,
+}));
 vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
     useWebSocket: vi.fn((options: { onMessage: (message: any) => void; onConnect?: () => void }) => {
         webSocketMock.options = options;
@@ -144,8 +151,8 @@ function RepoStatsConsumer() {
 }
 
 function AttentionConsumer() {
-    const { badgeCounts, unseenCounts } = useRepos();
-    return <div data-testid="attention">{JSON.stringify({ badgeCounts, unseenCounts })}</div>;
+    const { badgeCounts, badgePartial, unseenCounts } = useRepos();
+    return <div data-testid="attention">{JSON.stringify({ badgeCounts, badgePartial, unseenCounts })}</div>;
 }
 
 function ProviderWithConsumer() {
@@ -203,6 +210,8 @@ function SelectedRepoConsumer() {
 
 describe('ReposContext', () => {
     beforeEach(() => {
+        groupBadgeMocks.enabled = false;
+        groupBadgeMocks.getRepoGroupChats.mockReset();
         vi.spyOn(getCocClientFor().workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
         vi.mocked(fetchUnseenCount).mockResolvedValue(0);
         webSocketMock.options = null;
@@ -217,6 +226,65 @@ describe('ReposContext', () => {
         _resetRemoteSelectionForTests();
         _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
+    });
+
+    it('publishes eligible group unread across concrete servers and refreshes member read/membership changes without a group view', async () => {
+        groupBadgeMocks.enabled = true;
+        const groupId = 'group-shared';
+        const remoteKey = buildRemoteCloneKey('srv-1', groupId);
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([{ ...makeWorkspace(groupId), virtual: true }]);
+        const remoteGroups = tagRemoteWorkspaces({ id: 'srv-1', label: 'Remote' }, 'https://owner.test',
+            [{ id: groupId, name: 'Shared', rootPath: '/repos/group' }], false, { connection: 'online' });
+        aggregateRemoteWorkspacesMock.mockResolvedValue({ ...emptyAggregate(), groupWorkspaces: remoteGroups });
+        let localUnread = 3;
+        let members = ['ws-a', 'ws-b'];
+        groupBadgeMocks.getRepoGroupChats.mockImplementation(async (_id, _query, baseUrl) => ({
+            groupId, membershipKey: members.join(','), running: [], queued: [], history: [], hasMore: false,
+            sources: [
+                { workspaceId: groupId, role: 'group', available: true },
+                ...members.map(workspaceId => ({ workspaceId, role: 'member', available: true })),
+            ],
+            counts: { total: 20, running: 0, queued: 0, history: 20, byOwner: {},
+                unread: baseUrl ? 7 : localUnread, partial: false },
+        }));
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        const counts = () => JSON.parse(screen.getByTestId('attention').textContent!);
+        await waitFor(() => expect(counts().badgeCounts).toMatchObject({ [groupId]: 3, [remoteKey]: 7 }));
+        expect(counts().badgePartial).toMatchObject({ [groupId]: false, [remoteKey]: false });
+        expect(groupBadgeMocks.getRepoGroupChats.mock.calls.every(call => call[1].limit === 1 && !call[1].q)).toBe(true);
+        const calls = groupBadgeMocks.getRepoGroupChats.mock.calls.length;
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-group-chat-seen', {
+            detail: { workspaceId: 'ws-a', baseUrl: 'https://wrong.test' },
+        })));
+        expect(groupBadgeMocks.getRepoGroupChats).toHaveBeenCalledTimes(calls);
+        localUnread = 2;
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-group-chat-seen', {
+            detail: { workspaceId: 'ws-a' },
+        })));
+        await waitFor(() => expect(counts().badgeCounts[groupId]).toBe(2));
+        expect(counts().badgeCounts[remoteKey]).toBe(7);
+        members = ['ws-a'];
+        localUnread = 1;
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'workspace-topology-changed', workspaceId: groupId },
+        })));
+        await waitFor(() => expect(counts().badgeCounts[groupId]).toBe(1));
+        aggregateRemoteWorkspacesMock.mockResolvedValue({
+            ...emptyAggregate(), groupWorkspaces: remoteGroups.map(workspace => ({
+                ...workspace, remote: { ...workspace.remote, offline: true, connection: 'offline' },
+            })),
+        });
+        await act(async () => webSocketMock.options?.onMessage({ type: 'server-topology-changed' }));
+        await waitFor(() => expect(counts().badgePartial[remoteKey]).toBe(true));
+        expect(counts().badgeCounts).toMatchObject({ [groupId]: 1, [remoteKey]: 7 });
+        expect(groupBadgeMocks.getRepoGroupChats.mock.calls.filter(call => call[2] === 'https://owner.test')).toHaveLength(1);
+    });
+
+    it('does not load group badge feeds with the aggregate gate disabled', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([{ ...makeWorkspace('group-shared'), virtual: true }]);
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(repositoryServiceMocks.listWorkspaces).toHaveBeenCalled());
+        expect(groupBadgeMocks.getRepoGroupChats).not.toHaveBeenCalled();
     });
 
     it('shows awaiting-input attention after reload and clears it on answer or stop independently of unread', async () => {

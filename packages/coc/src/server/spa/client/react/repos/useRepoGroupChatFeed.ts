@@ -92,7 +92,7 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
     const { groupId, baseUrl, serverKey, enabled, ownerAvailable = true } = options;
     const pageSize = options.pageSize ?? REPO_GROUP_CHAT_FEED_PAGE_SIZE;
     const fKey = filtersKey(options.filters);
-    const cacheKey = `${serverKey}|${groupId}|${fKey}`;
+    const cacheKey = `${serverKey}|${groupId}|${fKey}|${pageSize}`;
     // Filters are compared by value so a fresh object each render does not refetch.
     const filters = useMemo(() => options.filters, [fKey]); // eslint-disable-line react-hooks/exhaustive-deps
 

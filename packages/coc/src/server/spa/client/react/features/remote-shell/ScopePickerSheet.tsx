@@ -125,7 +125,7 @@ export function ScopePickerSheet({ open, onClose, repos, repo }: ScopePickerShee
                                     colorDot={pin.color}
                                     name={pin.label}
                                     onClick={() => model.selectScope(pin.targetId)}
-                                    badges={pin.unseen > 0 ? <UnseenBadge count={pin.unseen} /> : undefined}
+                                    badges={pin.unseen > 0 || pin.partial ? <UnseenBadge count={pin.unseen} partial={pin.partial} /> : undefined}
                                     rowMenu={renderPinToggle(pin.ref, pin.label)}
                                 />
                             ))}

@@ -20,6 +20,7 @@ let mockQueueState: any = { repoQueueMap: {} };
 let mockRepos: any[] = [];
 let mockRemoteGroupWorkspaces: any[] = [];
 let mockUnseenCounts: Record<string, number> = {};
+let mockBadgePartial: Record<string, boolean> = {};
 let mockPinnedScopesEnabled = true;
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -35,6 +36,8 @@ vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({
         repos: mockRepos,
         unseenCounts: mockUnseenCounts,
+        badgeCounts: mockUnseenCounts,
+        badgePartial: mockBadgePartial,
         fetchRepos: vi.fn(),
         remoteGroupWorkspaces: mockRemoteGroupWorkspaces,
     }),
@@ -106,6 +109,7 @@ beforeEach(() => {
     mockRepos = [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS), repo('c', 'forge', FORGE)];
     mockRemoteGroupWorkspaces = [];
     mockUnseenCounts = {};
+    mockBadgePartial = {};
     mockPinnedScopesEnabled = true;
     location.hash = '';
 });
@@ -348,6 +352,30 @@ describe('pinned segments — active scope and the chip identity clash', () => {
         await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
 
         expect(pinSegments().every(el => el.getAttribute('aria-selected') === 'false')).toBe(true);
+    });
+});
+
+describe('aggregate group badges', () => {
+    it('shows partial eligible unread counts on a pinned group, including partial zero', async () => {
+        mockUnseenCounts = { 'group-ai-repos': 4 };
+        mockBadgePartial = { 'group-ai-repos': true };
+        const { rerender } = render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        await waitFor(() => expect(pinSegment(AI_GROUP_PIN)).toBeTruthy());
+        const badge = pinSegment(AI_GROUP_PIN)!.querySelector('[data-testid="scope-pin-unseen-badge"]')!;
+        expect(badge.textContent).toBe('4+');
+        expect(badge.getAttribute('aria-label')).toBe('4 unread, partial');
+        mockUnseenCounts = { 'group-ai-repos': 0 };
+        rerender(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        expect(badge.textContent).toBe('0+');
+    });
+
+    it('shows the aggregate unread badge on an unpinned active group', async () => {
+        getGlobal.mockResolvedValue({ pinnedScopes: [] });
+        mockAppState.selectedRepoId = 'group-ai-repos';
+        mockUnseenCounts = { 'group-ai-repos': 6 };
+        mockBadgePartial = { 'group-ai-repos': false };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        await waitFor(() => expect(screen.getByTestId('group-scope-unseen-badge').textContent).toBe('6'));
     });
 });
 

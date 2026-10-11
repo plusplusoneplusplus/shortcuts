@@ -59,6 +59,24 @@ afterEach(() => {
 });
 
 describe('useRepoGroupChatFeed', () => {
+    it('keeps the full list cache independent from a one-row unread badge reader', async () => {
+        getRepoGroupChats.mockImplementation(async (_groupId, query) => page({
+            history: [{ id: 'p1', ownerWorkspaceId: 'ws-a' },
+                ...(query.limit > 1 ? [{ id: 'p2', ownerWorkspaceId: 'ws-a' }] : [])],
+        }));
+        const list = renderHook(({ ownerAvailable }) => useRepoGroupChatFeed({
+            groupId: 'grp', serverKey: 'server-a', baseUrl: 'https://owner.test',
+            enabled: true, ownerAvailable,
+        }), { initialProps: { ownerAvailable: true } });
+        await waitFor(() => expect(list.result.current.model?.history).toHaveLength(2));
+        const badge = renderHook(() => useRepoGroupChatFeed({
+            groupId: 'grp', serverKey: 'server-a', baseUrl: 'https://owner.test', enabled: true, pageSize: 1,
+        }));
+        await waitFor(() => expect(badge.result.current.model?.history).toHaveLength(1));
+        list.rerender({ ownerAvailable: false });
+        expect(list.result.current.model?.history.map(row => row.canonicalId)).toEqual(['p1', 'p2']);
+    });
+
     it('invalidates pending pages on a retained-endpoint offline transition and reconciles on reconnect', async () => {
         const late = deferred<RepoGroupChatFeedResponse>();
         getRepoGroupChats.mockResolvedValueOnce(page({

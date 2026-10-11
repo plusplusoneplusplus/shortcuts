@@ -247,6 +247,11 @@ that same registry.
   endpoints. Offline transitions abort feed/page reads, retain unavailable cached
   history with partial counts, and disable owner actions/detail transports.
   Reconnection refreshes the same concrete server without changing selection.
+  `ReposProvider` mounts unfiltered `RepoGroupBadgeFeed` readers for registered
+  groups while the gate is enabled, independently of the selected group view.
+  Eligible aggregate unread counts and partial availability project into
+  server-qualified `badgeCounts`/`badgePartial` for active group chips and pinned
+  scopes, including mobile pickers. Badge/list page-size caches remain separate.
  from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.

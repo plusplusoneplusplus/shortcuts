@@ -52,6 +52,9 @@ import {
 } from '../repos/cloneIdentity';
 import { setActiveCloneForRouting } from '../repos/cloneRegistry';
 import { getCocClientFor } from '../api/cocClient';
+import { useRepoGroupAggregatedChatsEnabled } from '../hooks/feature-flags/useRepoGroupAggregatedChatsEnabled';
+import { RepoGroupBadgeFeed, type RepoGroupUnreadBadge } from '../repos/RepoGroupBadgeFeed';
+import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 
 import type { RepoData } from '../repos/repoGrouping';
 import type { AggregatedRemoteWorkspaces, RemoteWorkspaceInfo } from '../repos/remoteWorkspaceAggregation';
@@ -78,6 +81,8 @@ export interface ReposContextValue {
     ralphAttentionCounts: Record<string, number>;
     /** Combined badge projection; neither source count is mutated. */
     badgeCounts: Record<string, number>;
+    /** Incomplete aggregate counts, keyed by concrete group selection. */
+    badgePartial?: Record<string, boolean>;
     refreshUnseenCounts: (wsIds: string[]) => Promise<void>;
 }
 
@@ -117,6 +122,20 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
     const [remoteWarnings, setRemoteWarnings] = useState<string[]>([]);
     const [remoteGroupWorkspaces, setRemoteGroupWorkspaces] = useState<RemoteWorkspaceInfo[]>([]);
+    const aggregatedChats = useRepoGroupAggregatedChatsEnabled();
+    const [groupBadges, setGroupBadges] = useState<Record<string, RepoGroupUnreadBadge>>({});
+    const updateGroupBadge = useCallback((key: string, badge: RepoGroupUnreadBadge | undefined) => {
+        setGroupBadges(prev => {
+            if (prev[key]?.unread === badge?.unread && prev[key]?.partial === badge?.partial) return prev;
+            const next = { ...prev };
+            if (badge) next[key] = badge; else delete next[key];
+            return next;
+        });
+    }, []);
+    const badgeGroups = useMemo(() => aggregatedChats ? [
+        ...appState.workspaces.filter(workspace => isRepoGroupWorkspaceId(workspace.id)),
+        ...remoteGroupWorkspaces,
+    ] : [], [aggregatedChats, appState.workspaces, remoteGroupWorkspaces]);
 
     const selectedRepoIdRef = useRef<string | null>(null);
 
@@ -576,15 +595,28 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             combined[key] = (unseen ?? 0)
                 + (ralphAttentionCounts[key] ?? 0);
         }
+        for (const workspace of badgeGroups) {
+            const key = getWorkspaceSelectionId(workspace);
+            combined[key] = groupBadges[key]?.unread ?? 0;
+        }
         return combined;
-    }, [repos, unseenCounts, ralphAttentionCounts]);
+    }, [repos, unseenCounts, ralphAttentionCounts, badgeGroups, groupBadges]);
+    const badgePartial = useMemo(() => Object.fromEntries(badgeGroups.map(workspace => {
+        const key = getWorkspaceSelectionId(workspace);
+        return [key, groupBadges[key]?.partial !== false
+            || isRemoteWorkspace(workspace) && (workspace.remote.offline || workspace.remote.connection !== 'online')];
+    })), [badgeGroups, groupBadges]);
 
     const value = useMemo<ReposContextValue>(
-        () => ({ repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, ralphAttentionCounts, badgeCounts, refreshUnseenCounts }),
-        [repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, ralphAttentionCounts, badgeCounts, refreshUnseenCounts]
+        () => ({ repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, ralphAttentionCounts, badgeCounts, badgePartial, refreshUnseenCounts }),
+        [repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, ralphAttentionCounts, badgeCounts, badgePartial, refreshUnseenCounts]
     );
 
-    return <ReposContext.Provider value={value}>{children}</ReposContext.Provider>;
+    return <ReposContext.Provider value={value}>
+        {badgeGroups.map(workspace => <RepoGroupBadgeFeed key={getWorkspaceSelectionId(workspace)}
+            workspace={workspace} onChange={updateGroupBadge} />)}
+        {children}
+    </ReposContext.Provider>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
