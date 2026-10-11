@@ -694,6 +694,19 @@ below jobs, with no execution or review label. Job links only navigate; nothing 
 the tab starts, retries, or cancels a job. Tests live in
 `test/server/sentinel-todos/panel.test.tsx`, `panel-model.test.ts` and `excursion.test.tsx`.
 
+### PR-merge triggers
+
+`SentinelTodoTriggers` is a separate section below the cards, gated by existing
+`triggers.enabled`. Its owner-qualified `client.triggers` calls use the ledger's
+workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
+Waiting/Paused/terminal/error and delivery state separate from item/job/review
+states; rule rows link the canonical PR and highlight the owning item.
+`SentinelTodoTriggerEditor` selects eligible normal items and accepts a PR URL,
+local picker and optional instruction with server preview. Lifecycle writes carry
+the rule revision; Run now requires confirmation. Clearing terminal presentation
+does not cancel a committed wake receipt. Rules never expire or launch jobs
+directly. `triggers-panel.test.tsx` covers states, controls and ownership.
+
 ### To-do excursions
 
 A plain primary click on an in-app (`#…`) Job or Ref link starts one in-memory

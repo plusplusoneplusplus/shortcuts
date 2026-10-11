@@ -516,6 +516,13 @@ bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do
 never persisted; Back restores the list's scroll, expanded rows and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+`SentinelTodoTriggers` adds a separate rule section below the cards when existing
+`triggers.enabled` is on. The editor uses eligible normal items, URL/local PR
+selection and server preview. Rule lifecycle and pending delivery are independent
+of item/job/review states; writes use the owning client's typed trigger API and
+expected rule revision. Run now confirms a one-shot Sentinel wake, never a direct
+job launch; terminal Clear preserves durable delivery receipts.
+
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
 visible Explorer navigator column. Content tabs keep their own find behavior,
 including Monaco and diff find widgets, while panel chrome falls through to
