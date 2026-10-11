@@ -49,8 +49,11 @@ independently of list filters.
 Active feed rows carry `queueTaskId` only when read from a queue snapshot.
 Each owner's conversation-free process snapshot supplies durable activity for
 represented queue rows, including follow-ups whose durable status is terminal.
-Queue identity, status and payload remain authoritative; unmatched rows retain
-queue timing. This activity drives global search ordering and cursor invalidation.
+The native history projection supplies parent and Ralph/For Each/Map Reduce/task-group
+presentation fields. Durable ownership qualifies parent links; recursive trees stay
+owner-local and cross-owner delegation remains a link. Queue identity, status and
+payload remain authoritative; unmatched rows retain queue timing. Durable activity
+drives global search ordering and cursor invalidation.
 Process-store-only rows retain canonical process identity without queue provenance.
 Queued task/follow-up cancellation uses that task id, while process-only cancellation
 uses the existing process endpoint with an exact owner workspace.

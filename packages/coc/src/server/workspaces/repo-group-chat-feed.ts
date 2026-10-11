@@ -312,10 +312,17 @@ export async function buildRepoGroupChatFeed(
             const queueRows = new Map([...state.running, ...state.queued].map(task => [activeProcessId(task), task]));
             for (const proc of processes) {
                 if (!eligibleProcess(proc.type, proc.metadata)) continue;
+                if (queueRows.has(proc.id) || proc.status === 'running' || proc.status === 'queued') {
+                    parentOwners.set(proc.id, state.source.workspaceId);
+                }
                 const represented = queueRows.get(proc.id);
                 if (represented) {
                     // Follow-ups can still have terminal durable status; queue identity/status stay authoritative.
                     represented.lastActivityAt = activityMs(proc);
+                    const presentation = toProcessHistoryItem(proc, undefined, deps.botControlEnabled);
+                    for (const field of ['parentProcessId', 'ralph', 'forEach', 'mapReduce', 'taskGroup'] as const) {
+                        if (presentation[field] !== undefined) represented[field] = presentation[field];
+                    }
                     continue;
                 }
                 if (proc.status !== 'running' && proc.status !== 'queued') continue;
