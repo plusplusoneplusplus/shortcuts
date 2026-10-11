@@ -212,6 +212,12 @@ references before editing. Paths are package-relative.
   transitions invalidate linked ledgers without advancing their revisions.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
+  To-do composer context reuses pointer attachments and resolves the owning ledger
+  on drop and explicit send (`spa/client/react/features/chat/sentinelTodoContext.ts`).
+  Bind workspace, parent Sentinel and concrete server identity; remote selections
+  never fall back locally. Serialize only user-facing tracking fields, not job links
+  or internal audit metadata. Attaching is read-only and grants no execution authority;
+  manual items remain tracking-only. See the composer knowledge reference for lifecycle rules.
 - Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are

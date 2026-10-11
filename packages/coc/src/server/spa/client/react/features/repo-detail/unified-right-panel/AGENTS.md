@@ -683,7 +683,11 @@ missing value (older owning server) as Regular. Priority never reorders sections
 active normal count and, when nonzero, how many normal items display Needs attention (stored or derived).
 A collapsed row is the toggle (status, High, title, chevron), a muted meta line (target repo, Updated time),
 a one-line truncated reason preview for Needs attention, the latest job only (`+N earlier jobs`), and
-`Ref` links. Expanding lists every job (with its workspace), notes when the displayed status is derived
+`Ref` links. With session-context attachments enabled, rows are copy-drag sources
+and expose an accessible Attach action for their owning Sentinel composer. Payloads
+contain the stable item reference and owner, not notes or job data; attaching never
+writes the ledger or starts a job. The shared composer reads authoritative details
+on drop and send (see the composer knowledge reference). Expanding lists every job (with its workspace), notes when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
 start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is

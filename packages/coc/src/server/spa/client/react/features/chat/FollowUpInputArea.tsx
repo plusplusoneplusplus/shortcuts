@@ -54,7 +54,9 @@ import {
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import type { ChatAttachment } from '../../types/attachments';
 import { getPrewarmDebounceMs, isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
-import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
+import { SENTINEL_TODO_CONTEXT_DRAG_KIND, type SessionContextAttachmentDragPayload } from './sessionContextDrag';
+import { resolveSentinelTodoContext, sentinelTodoContextScopeError } from './sentinelTodoContext';
+import { sentinelTodoOwnerKey, type SentinelTodoOwner } from '../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import {
     buildFilePathInsertion,
     dataTransferHasAnyData,
@@ -121,6 +123,7 @@ export interface FollowUpInputAreaProps {
         clearPaste: () => void;
     } | null;
     attachedContext?: AttachedContextItem[];
+    getAttachedContext?: () => AttachedContextItem[];
     onRemoveAttachedContext?: (id: string) => void;
     onAttachSessionContext?: (payload: SessionContextAttachmentDragPayload) => void;
     /**
@@ -133,6 +136,7 @@ export interface FollowUpInputAreaProps {
     /** Concrete panel owner for editor attachments; payload validation uses workspaceId. */
     attachmentDestinationId?: string;
     currentProcessId?: string | null;
+    sentinelTodoOwner?: SentinelTodoOwner | null;
     sessionContextAttachmentsEnabled?: boolean;
     canRetrieveConversations?: boolean | null;
     task: any;
@@ -278,7 +282,7 @@ export function FollowUpInputArea({
     setFollowUpInput,
     selectedMode,
     setSelectedMode,
-    onSend,
+    onSend: send,
     onRetry,
     onStop,
     skills,
@@ -289,12 +293,14 @@ export function FollowUpInputArea({
     attachmentError,
     pastePreview,
     attachedContext,
+    getAttachedContext,
     onRemoveAttachedContext,
     onAttachSessionContext,
     prComposerChips,
     workspaceId,
     attachmentDestinationId,
     currentProcessId,
+    sentinelTodoOwner,
     sessionContextAttachmentsEnabled: sessionContextAttachmentsEnabledProp,
     canRetrieveConversations: canRetrieveConversationsProp,
     task,
@@ -337,6 +343,27 @@ export function FollowUpInputArea({
     ralphGrillEffortLevelsEnabled = true,
     ralphGrillComposerUsesEffortTierMode = false,
 }: FollowUpInputAreaProps) {
+    const [pendingContextReads, setPendingContextReads] = useState(0);
+    const contextOwnerKey = sentinelTodoOwner ? sentinelTodoOwnerKey(sentinelTodoOwner) : '';
+    const contextOwnerRef = useRef(contextOwnerKey);
+    contextOwnerRef.current = contextOwnerKey;
+    const pendingTodoReads = useRef(new Set<string>());
+    const todoReadEpoch = useRef(0);
+    useEffect(() => {
+        contextOwnerRef.current = contextOwnerKey;
+        todoReadEpoch.current += 1;
+        pendingTodoReads.current.clear();
+        setPendingContextReads(0);
+        setSessionContextDropError(null);
+        return () => { contextOwnerRef.current = ''; todoReadEpoch.current += 1; };
+    }, [contextOwnerKey]);
+    function onSend(content?: string, mode?: DeliveryMode): Promise<void> {
+        if (pendingTodoReads.current.size > 0) {
+            setSessionContextDropError('Wait for the to-do context to finish loading before sending.');
+            return Promise.resolve();
+        }
+        return mode === undefined ? send(content) : send(content, mode);
+    }
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     // Container-width signal for the compact composer footer: the toolbar
@@ -750,8 +777,9 @@ export function FollowUpInputArea({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
             currentProcessId: activeProcessId,
-            existingItems: attachedContext ?? [],
+            existingItems: getAttachedContext?.() ?? attachedContext ?? [],
             canRetrieveConversations,
+            sentinelTodoOwner,
         });
         return validation.ok ? 'Drop a supported CoC context item from this workspace to attach it as context.' : validation.error;
     }
@@ -846,15 +874,71 @@ export function FollowUpInputArea({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
             currentProcessId: activeProcessId,
-            existingItems: attachedContext ?? [],
+            existingItems: getAttachedContext?.() ?? attachedContext ?? [],
             canRetrieveConversations,
+            sentinelTodoOwner,
         });
         if (!validation.ok) {
             setSessionContextDropError(validation.error);
             return;
         }
-        onAttachSessionContext?.(validation.payload);
         setSessionContextDropError(null);
+        attachValidatedContext(validation.payload);
+    }
+
+    const commitContextRef = useRef<(payload: SessionContextAttachmentDragPayload) => void>(() => undefined);
+    commitContextRef.current = payload => {
+        if (inputDisabled || sending || !isContextComposerVisible(rootRef.current)) {
+            setSessionContextDropError('The composer is unavailable. Try attaching context when it is ready.');
+            return;
+        }
+        const validation = validateSessionContextDrop({
+            payload, featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId, currentProcessId: activeProcessId,
+            existingItems: getAttachedContext?.() ?? attachedContext ?? [], canRetrieveConversations, sentinelTodoOwner,
+        });
+        if (!validation.ok) setSessionContextDropError(validation.error);
+        else {
+            onAttachSessionContext?.(validation.payload);
+            setSessionContextDropError(null);
+            richTextRef.current?.focus();
+        }
+    };
+
+    function attachValidatedContext(payload: SessionContextAttachmentDragPayload) {
+        if (payload.kind !== SENTINEL_TODO_CONTEXT_DRAG_KIND) {
+            onAttachSessionContext?.(payload);
+            return;
+        }
+        if (inputDisabled || sending) {
+            setSessionContextDropError('The composer is unavailable. Try attaching context when it is ready.');
+            return;
+        }
+        if (!sentinelTodoOwner) {
+            setSessionContextDropError('Attach this to-do only to its owning Sentinel chat.');
+            return;
+        }
+        const owner = sentinelTodoOwner;
+        const key = `${contextOwnerKey}\n${payload.todoItemId}`;
+        if (pendingTodoReads.current.has(key)) {
+            setSessionContextDropError('This to-do context is already loading.');
+            return;
+        }
+        pendingTodoReads.current.add(key);
+        setPendingContextReads(pendingTodoReads.current.size);
+        const capturedOwnerKey = contextOwnerKey;
+        const capturedEpoch = todoReadEpoch.current;
+        void resolveSentinelTodoContext(payload, owner).then(item => {
+            if (todoReadEpoch.current !== capturedEpoch || contextOwnerRef.current !== capturedOwnerKey || !pendingTodoReads.current.has(key)) return;
+            commitContextRef.current({ ...payload, sourceRoutingRef: owner.ownerRoutingRef ?? null, title: item.title });
+        }).catch(error => {
+            if (todoReadEpoch.current === capturedEpoch && contextOwnerRef.current === capturedOwnerKey && pendingTodoReads.current.has(key)) {
+                setSessionContextDropError(error instanceof Error ? error.message : 'Could not load the to-do context.');
+            }
+        }).finally(() => {
+            if (todoReadEpoch.current !== capturedEpoch || contextOwnerRef.current !== capturedOwnerKey || !pendingTodoReads.current.delete(key)) return;
+            setPendingContextReads(pendingTodoReads.current.size);
+        });
     }
 
     // Accept selections attached from a Monaco editor pill in this repo view
@@ -862,19 +946,22 @@ export function FollowUpInputArea({
     // subscription always validates against the latest attached items.
     function handleActiveChatAttach(payload: SessionContextAttachmentDragPayload): boolean {
         if (!isContextComposerVisible(rootRef.current)) return false;
+        if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND
+            && sentinelTodoContextScopeError(payload, sentinelTodoOwner)) return false;
         const validation = validateSessionContextDrop({
             payload,
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
             currentProcessId: activeProcessId,
-            existingItems: attachedContext ?? [],
+            existingItems: getAttachedContext?.() ?? attachedContext ?? [],
             canRetrieveConversations,
+            sentinelTodoOwner,
         });
         if (!validation.ok) {
             setSessionContextDropError(validation.error);
         } else {
-            onAttachSessionContext?.(validation.payload);
             setSessionContextDropError(null);
+            attachValidatedContext(validation.payload);
         }
         richTextRef.current?.focus();
         return true;
@@ -884,15 +971,18 @@ export function FollowUpInputArea({
     const activeChatAttachBumpRef = useRef<(() => void) | null>(null);
     const canAttachFromEditor = Boolean(onAttachSessionContext) && sessionContextAttachmentsEnabled;
     const activeAttachmentDestinationId = attachmentDestinationId ?? activeWorkspaceId;
+    const todoAttachmentDestinationId = sentinelTodoOwner
+        ? sentinelTodoOwner.ownerRoutingRef ?? sentinelTodoOwner.ownerWorkspaceId : undefined;
     useEffect(() => {
         if (!activeWorkspaceId || !activeAttachmentDestinationId || !canAttachFromEditor) return;
-        const sub = subscribeActiveChatAttach(activeAttachmentDestinationId, payload => activeChatAttachHandlerRef.current(payload));
-        activeChatAttachBumpRef.current = sub.bump;
+        const destinations = new Set([activeAttachmentDestinationId, ...(todoAttachmentDestinationId ? [todoAttachmentDestinationId] : [])]);
+        const subscriptions = [...destinations].map(destination => subscribeActiveChatAttach(destination, payload => activeChatAttachHandlerRef.current(payload)));
+        activeChatAttachBumpRef.current = () => subscriptions.forEach(sub => sub.bump());
         return () => {
-            sub.unsubscribe();
+            subscriptions.forEach(sub => sub.unsubscribe());
             activeChatAttachBumpRef.current = null;
         };
-    }, [activeWorkspaceId, activeAttachmentDestinationId, canAttachFromEditor]);
+    }, [activeWorkspaceId, activeAttachmentDestinationId, todoAttachmentDestinationId, canAttachFromEditor]);
 
     function focusInputAndInsertSlash() {
         const cur = richTextRef.current?.getValue() ?? followUpInput;
@@ -1034,10 +1124,16 @@ export function FollowUpInputArea({
                 </div>
             )}
             {attachedContext && onRemoveAttachedContext && (
-                <AttachedContextPreviews items={attachedContext} onRemove={onRemoveAttachedContext} />
+                <AttachedContextPreviews items={attachedContext} onRemove={id => {
+                    onRemoveAttachedContext(id);
+                    setSessionContextDropError(null);
+                }} />
             )}
             {sessionContextDropError && (
-                <div className="text-xs text-[#f14c4c]" data-testid="follow-up-session-context-error">{sessionContextDropError}</div>
+                <div role="alert" className="text-xs text-[#f14c4c]" data-testid="follow-up-session-context-error">{sessionContextDropError}</div>
+            )}
+            {pendingContextReads > 0 && (
+                <div role="status" className="text-xs text-[#616161] dark:text-[#9d9d9d]">Loading to-do context…</div>
             )}
             {attachmentError && (
                 <div className="text-xs text-[#f14c4c]" data-testid="follow-up-attachment-error">{attachmentError}</div>
@@ -1453,7 +1549,7 @@ export function FollowUpInputArea({
                             <WarmIndicatorDot status={warmStatus} className="mr-1 self-center" />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
-                                    disabled={inputDisabled || sending}
+                                    disabled={inputDisabled || sending || pendingContextReads > 0}
                                     ctrlHeld={modHeld}
                                     onSend={(dm) => { void onSend(undefined, dm); }}
                                     label={selectedMode === 'ralph' ? 'Promote to Ralph' : 'Send'}

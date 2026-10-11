@@ -23,6 +23,11 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
+import { attachSelectionToChat } from '../../chat/activeChatAttach';
+import { createSentinelTodoContextPayload } from '../../chat/sentinelTodoContext';
+import { writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
@@ -373,6 +378,7 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
         <ul className="flex flex-col gap-1" role="list">
             {items.map(item => (
                 <TodoRow key={item.id} item={item} expanded={expanded.has(item.id)}
+                    owner={owner}
                     onToggle={() => toggle(item.id)} onSave={saveItem} onFollowLink={followLink} />
             ))}
         </ul>
@@ -511,12 +517,14 @@ type SaveItem = (
     expectedRevision?: number,
 ) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
 
-function TodoRow({ item, expanded, onToggle, onSave, onFollowLink }: {
+function TodoRow({ item, owner, expanded, onToggle, onSave, onFollowLink }: {
     item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem; onFollowLink: FollowLink;
+    owner: SentinelTodoOwner;
 }) {
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(null);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [attachError, setAttachError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [notesOpen, setNotesOpen] = useState(false);
     const lastAction = useRef<(() => Promise<void>) | null>(null);
@@ -572,11 +580,34 @@ function TodoRow({ item, expanded, onToggle, onSave, onFollowLink }: {
     const shownJobs = expanded ? item.jobs : item.jobs.slice(-1);
     const hiddenJobs = item.jobs.length - shownJobs.length;
     const foldNotes = sentinelTodoFoldNotes(item.notes);
+    const canAttach = isSessionContextAttachmentsEnabled();
+    const attachmentOwner = {
+        ...owner,
+        ownerRoutingRef: owner.ownerRoutingRef === null
+            || resolveCloneRoute(owner.ownerRoutingRef ?? owner.ownerWorkspaceId).kind === 'local'
+            ? null : owner.ownerRoutingRef ?? owner.ownerWorkspaceId,
+    };
+    const attach = () => {
+        const target = attachSelectionToChat(
+            owner.ownerRoutingRef ?? owner.ownerWorkspaceId,
+            createSentinelTodoContextPayload(attachmentOwner, item),
+        );
+        setAttachError(target === 'unavailable' ? 'Open the owning Sentinel chat to attach this to-do.' : null);
+    };
     // Identifies a followed link within the list, so Back can focus it again.
     const linkKey = (link: string) => `${item.id}|${link}`;
     // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
         <li className="relative rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]" data-testid={`sentinel-todo-row-${item.id}`}
+            draggable={canAttach}
+            onDragStart={event => {
+                if (!canAttach || (event.target instanceof Element && event.target.closest('input, textarea, select, a'))) {
+                    event.preventDefault();
+                    return;
+                }
+                writePointerContextDragData(event.dataTransfer, createSentinelTodoContextPayload(attachmentOwner, item));
+                event.stopPropagation();
+            }}
             data-priority={high ? 'high' : 'regular'}>
             {high && (
                 <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
@@ -597,7 +628,13 @@ function TodoRow({ item, expanded, onToggle, onSave, onFollowLink }: {
                 )}
                 {item.targetRepo && <span aria-hidden="true">·</span>}
                 <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
+                {canAttach && <button type="button" onClick={attach} aria-label={`Attach ${item.title} as context`}
+                    title="Attach to owning Sentinel as context"
+                    className="ml-auto rounded px-1 hover:bg-black/[0.04] focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
+                    Attach
+                </button>}
             </div>
+            {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             {reasonPreview && (
                 <div className="truncate px-2 pb-1.5 text-[11px] text-[#b5650f] dark:text-[#cca700]" title={reasonPreview}
                     data-testid={`sentinel-todo-reason-preview-${item.id}`}>

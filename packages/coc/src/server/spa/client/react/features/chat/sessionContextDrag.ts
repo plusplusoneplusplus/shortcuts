@@ -21,6 +21,7 @@ export const SESSION_CONTEXT_BUNDLE_DRAG_MIME = 'application/vnd.coc.session-con
 export const FILE_PATH_DRAG_MIME = 'application/vnd.coc.file-path+json';
 export const FILE_PATH_DRAG_KIND = 'coc.file-path';
 export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
+export const SENTINEL_TODO_CONTEXT_DRAG_KIND = 'coc.sentinel-todo-context';
 export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
 export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
 export const PULL_REQUEST_CONTEXT_DRAG_KIND = 'coc.pull-request-context';
@@ -81,6 +82,13 @@ export interface WorkItemContextDragPayload extends BasePointerContextDragPayloa
     workItemNumber?: number;
     status?: string;
     type?: string;
+}
+
+export interface SentinelTodoContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof SENTINEL_TODO_CONTEXT_DRAG_KIND;
+    sourceRoutingRef: string | null;
+    sourceProcessId: string;
+    todoItemId: string;
 }
 
 export interface GitCommitContextDragPayload extends BasePointerContextDragPayload {
@@ -158,6 +166,7 @@ export interface FileSelectionContextPayload {
 }
 
 export type PointerContextDragPayload =
+    | SentinelTodoContextDragPayload
     | WorkItemContextDragPayload
     | GitCommitContextDragPayload
     | GitRangeContextDragPayload

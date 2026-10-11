@@ -386,6 +386,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const { toasts, addToast, removeToast } = useToast();
     const textPaste = useTextPaste();
     const attachedContext = useAttachedContext();
+    useEffect(() => {
+        for (const item of attachedContext.getItems()) {
+            if (item.kind === 'sentinel-todo') attachedContext.remove(item.id);
+        }
+    }, [taskId, workspaceId, sourceSelectionId, attachedContext.getItems, attachedContext.remove]);
     // Attaching a snippet (Quick Ask "Attach" pill, turn context menu) is a
     // prelude to typing, so hand focus to the composer right away.
     const handleAttachContext = useCallback((turnIndex: number, role: 'user' | 'assistant', snippet: string) => {
@@ -751,8 +756,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // workspace and process — so the panel can offer and auto-open its To-do
     // tab. The panel applies the feature flag; withdrawal follows the host.
     const sentinelTodoOwnerWorkspaceId = resolveLoadedTaskMode(task) === 'sentinel' && processId
-        ? workspaceId ?? unifiedPanelHost?.workspaceId ?? null
+        ? parseRemoteCloneKey(owningWorkspaceId ?? '')?.workspaceId
+            ?? owningWorkspaceId ?? workspaceId ?? unifiedPanelHost?.workspaceId ?? null
         : null;
+    const sentinelTodoOwner = useMemo(() => sentinelTodoOwnerWorkspaceId && processId ? {
+        ownerWorkspaceId: sentinelTodoOwnerWorkspaceId,
+        ownerRoutingRef: resolveCloneRoute(sourceSelectionId ?? workspaceId).kind === 'local'
+            ? null : sourceSelectionId ?? workspaceId,
+        processId,
+    } : null, [sentinelTodoOwnerWorkspaceId, owningWorkspaceId, processId, sourceSelectionId, workspaceId]);
     const chatTitle: string | undefined = (task?.customTitle as string | undefined) || title || task?.title || task?.displayName;
     useEffect(() => {
         if (chatChangesScopeId === null || sentinelTodoOwnerWorkspaceId === null || !processId) return;
@@ -1644,6 +1656,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
         conversationRetrievalAvailable: canRetrieveConversations,
+        sentinelTodoOwner,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
         // recomputes (the chat now has a ralph context) and the Ralph pill
         // disappears; reset the selector to a value that still exists so we
@@ -3086,6 +3099,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     )}
                     {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (
                         <FollowUpInputArea
+                            getAttachedContext={attachedContext.getItems}
+                            sentinelTodoOwner={sentinelTodoOwner}
                             attachmentDestinationId={sourceSelectionId}
                             workspaceRoot={workspaceRootPath || undefined}
                             richTextRef={richTextRef}
@@ -3237,6 +3252,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             )}
             {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea
+                    getAttachedContext={attachedContext.getItems}
+                    sentinelTodoOwner={sentinelTodoOwner}
                     attachmentDestinationId={sourceSelectionId}
                     workspaceRoot={workspaceRootPath || undefined}
                     richTextRef={richTextRef}

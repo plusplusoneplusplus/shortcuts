@@ -2643,6 +2643,11 @@ describe('ChatDetail', () => {
             render(<Wrap><ChatDetail taskId="queue_pending-scope" workspaceId={selection} /></Wrap>);
             await waitFor(() => expect(screen.getByTestId('remove-pending-pm-owner')).toBeTruthy());
             expect((globalThis as any).__useSendMessage_opts.owningWorkspaceId).toBe(owner);
+            expect((globalThis as any).__useSendMessage_opts.sentinelTodoOwner).toEqual({
+                ownerWorkspaceId: owner,
+                ownerRoutingRef: baseUrl ? selection : null,
+                processId: 'queue_pending-scope',
+            });
             fireEvent.click(screen.getByTestId('remove-pending-pm-owner'));
             await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true));
             const [url] = fetchMock.mock.calls.find(([, init]) => init?.method === 'DELETE')!;

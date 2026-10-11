@@ -297,6 +297,7 @@ function formatContextCount(count: number, singular: string, plural: string): st
 }
 
 function getPointerContextKindLabel(kind: ParsedPointerContextBlock['kind']): string {
+    if (kind === 'sentinel-todo') return 'To-do';
     if (kind === 'work-item') return 'Work Item';
     if (kind === 'commit') return 'Commit';
     if (kind === 'range') return 'Range';
@@ -309,7 +310,10 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
         ['Label', context.label],
         ['Workspace ID', context.sourceWorkspaceId],
     ];
-    if (context.kind === 'work-item') {
+    if (context.kind === 'sentinel-todo') {
+        rows.push(['To-do ID', context.todoItemId], ['Sentinel ID', context.sourceProcessId],
+            ['Status', context.status], ['Type', context.type]);
+    } else if (context.kind === 'work-item') {
         rows.push(
             ['Work item ID', context.workItemId],
             ['Work item number', context.workItemNumber === undefined ? undefined : String(context.workItemNumber)],
@@ -341,6 +345,7 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
 }
 
 function getPointerContextSummaryMeta(context: ParsedPointerContextBlock): string {
+    if (context.kind === 'sentinel-todo') return [context.status, context.type, context.todoItemId].filter(Boolean).join(' · ');
     if (context.kind === 'work-item') return [context.status, context.type, context.workItemId].filter(Boolean).join(' · ');
     if (context.kind === 'commit') return context.shortHash || (context.commitHash ? shortenSessionProcessId(context.commitHash) : '');
     if (context.kind === 'range') {

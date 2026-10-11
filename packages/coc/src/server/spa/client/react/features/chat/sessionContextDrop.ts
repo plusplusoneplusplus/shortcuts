@@ -19,6 +19,7 @@ import {
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
     WORK_ITEM_CONTEXT_DRAG_KIND,
+    SENTINEL_TODO_CONTEXT_DRAG_KIND,
     createDiffSelectionContextDragPayload,
     createFileSelectionContextPayload,
     type DiffSelectionContextDragPayload,
@@ -33,7 +34,10 @@ import {
     type SessionContextDragPayload,
     type SessionContextSourceStatus,
     type WorkItemContextDragPayload,
+    type SentinelTodoContextDragPayload,
 } from './sessionContextDrag';
+import { sentinelTodoContextScopeError } from './sentinelTodoContext';
+import type { SentinelTodoOwner } from '../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getSourceCanvasDisplayPath } from './source-canvas/resolve';
 
@@ -78,6 +82,7 @@ type AttachedLogicalSessionContextItem =
 
 type AttachedLogicalContextItem =
     | AttachedLogicalSessionContextItem
+    | Extract<AttachedContextItem, { kind: 'sentinel-todo' }>
     | Extract<AttachedContextItem, { kind: 'work-item' }>
     | Extract<AttachedContextItem, { kind: 'commit' }>
     | Extract<AttachedContextItem, { kind: 'range' }>
@@ -91,6 +96,7 @@ function isLogicalSessionContextItem(item: AttachedContextItem): item is Attache
 
 function isLogicalContextItem(item: AttachedContextItem): item is AttachedLogicalContextItem {
     return isLogicalSessionContextItem(item)
+        || item.kind === 'sentinel-todo'
         || item.kind === 'work-item'
         || item.kind === 'commit'
         || item.kind === 'range'
@@ -522,9 +528,28 @@ export function readPointerContextDragPayload(dataTransfer: SessionContextDataTr
     const raw = dataTransfer.getData(POINTER_CONTEXT_DRAG_MIME);
     if (!raw) return null;
     try {
-        return normalizePointerContextPayload(JSON.parse(raw));
+        const value: unknown = JSON.parse(raw);
+        return normalizeSentinelTodoContextPayload(value) ?? normalizePointerContextPayload(value);
     } catch {
         return null;
+    }
+
+    function normalizeSentinelTodoContextPayload(value: unknown): SentinelTodoContextDragPayload | null {
+        if (!value || typeof value !== 'object') return null;
+        const record = value as Partial<SentinelTodoContextDragPayload>;
+        if (record.kind !== SENTINEL_TODO_CONTEXT_DRAG_KIND || record.version !== 1) return null;
+        const sourceWorkspaceId = normalizePointerId(record.sourceWorkspaceId);
+        const sourceProcessId = normalizePointerId(record.sourceProcessId);
+        const todoItemId = normalizePointerId(record.todoItemId);
+        const sourceRoutingRef = record.sourceRoutingRef === null ? null : normalizePointerId(record.sourceRoutingRef);
+        if (!sourceWorkspaceId || !sourceProcessId || !todoItemId
+            || (record.sourceRoutingRef !== null && !sourceRoutingRef)) return null;
+        return {
+            kind: SENTINEL_TODO_CONTEXT_DRAG_KIND, version: 1, sourceWorkspaceId, sourceProcessId, todoItemId,
+            sourceRoutingRef,
+            label: `To-do ${todoItemId}`,
+            title: normalizeOptionalDisplayText(record.title),
+        };
     }
 }
 
@@ -557,6 +582,7 @@ export function readSessionContextDropPayload(dataTransfer: SessionContextDataTr
 function normalizeAttachmentDragPayload(value: unknown): SessionContextAttachmentDragPayload | null {
     if (!value || typeof value !== 'object') return null;
     const kind = (value as { kind?: unknown }).kind;
+    if (kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) return normalizeSentinelTodoContextPayload(value);
     if (kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return normalizeRalphSessionContextPayload(value);
     if (kind === SESSION_CONTEXT_DRAG_KIND) return normalizeSessionContextPayload(value);
     if (kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) return normalizeDiffSelectionContextPayload(value);
@@ -614,6 +640,9 @@ function payloadIncludesProcess(payload: SessionContextAttachmentDragPayload, pr
 }
 
 export function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayload): string {
+    if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) {
+        return `sentinel-todo\0${payload.sourceRoutingRef ?? ''}\0${payload.sourceWorkspaceId}\0${payload.sourceProcessId}\0${payload.todoItemId}`;
+    }
     if (payload.kind === SESSION_CONTEXT_DRAG_KIND) {
         return `session\0${payload.sourceWorkspaceId}\0${payload.sourceProcessId}`;
     }
@@ -654,6 +683,9 @@ function fileSelectionLogicalKey(source: { sourceWorkspaceId: string; filePath: 
 }
 
 function getItemLogicalKey(item: AttachedLogicalContextItem): string {
+    if (item.kind === 'sentinel-todo') {
+        return `sentinel-todo\0${item.sourceRoutingRef ?? ''}\0${item.sourceWorkspaceId}\0${item.sourceProcessId}\0${item.todoItemId}`;
+    }
     if (item.kind === 'session') return `session\0${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
     if (item.kind === 'ralph-session') return `ralph-session\0${item.sourceWorkspaceId}\0${item.sourceRalphSessionId}`;
     if (item.kind === 'work-item') return `work-item\0${item.sourceWorkspaceId}\0${item.workItemId}`;
@@ -666,6 +698,7 @@ function getItemLogicalKey(item: AttachedLogicalContextItem): string {
 }
 
 function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload): string {
+    if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) return 'This to-do is already attached to the message.';
     if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return 'This Ralph session is already attached to the message.';
     if (payload.kind === WORK_ITEM_CONTEXT_DRAG_KIND) return 'This work item is already attached to the message.';
     if (payload.kind === GIT_COMMIT_CONTEXT_DRAG_KIND) return 'This commit is already attached to the message.';
@@ -677,6 +710,7 @@ function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload):
 }
 
 function duplicateErrorForItem(item: AttachedLogicalContextItem): string {
+    if (item.kind === 'sentinel-todo') return 'This to-do is already attached to the message.';
     if (item.kind === 'ralph-session') return 'This Ralph session is already attached to the message.';
     if (item.kind === 'work-item') return 'This work item is already attached to the message.';
     if (item.kind === 'commit') return 'This commit is already attached to the message.';
@@ -707,6 +741,7 @@ export function validateSessionContextDrop(options: {
     currentProcessId?: string | null;
     existingItems: AttachedContextItem[];
     canRetrieveConversations: boolean | null;
+    sentinelTodoOwner?: SentinelTodoOwner | null;
 }): SessionContextDropValidation {
     if (!options.featureEnabled) {
         return { ok: false, error: 'Session context attachments are disabled.' };
@@ -714,12 +749,17 @@ export function validateSessionContextDrop(options: {
     if (!options.payload) {
         return { ok: false, error: 'Drop a supported CoC context item from this workspace to attach it as context.' };
     }
+    if (options.payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) {
+        const error = sentinelTodoContextScopeError(options.payload, options.sentinelTodoOwner);
+        if (error) return { ok: false, error };
+    }
     if (!options.activeWorkspaceId) {
         return { ok: false, error: 'Open a workspace before attaching context.' };
     }
     // A diff or file selection carries its own text and names its source repo,
     // so it can be attached to a chat of any workspace (multi-repo).
-    if (!carriesOwnSnippet(options.payload) && options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
+    if (options.payload.kind !== SENTINEL_TODO_CONTEXT_DRAG_KIND
+        && !carriesOwnSnippet(options.payload) && options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
         return { ok: false, error: 'Only context from the active workspace can be attached.' };
     }
     if (payloadIncludesProcess(options.payload, options.currentProcessId)) {
@@ -755,9 +795,15 @@ export function validateSessionContextAttachmentsForSend(options: {
     currentProcessId?: string | null;
     items: AttachedContextItem[];
     canRetrieveConversations: boolean | null | undefined;
+    sentinelTodoOwner?: SentinelTodoOwner | null;
 }): string | null {
     const contextItems = getLogicalContextItems(options.items);
     if (contextItems.length === 0) return null;
+    for (const item of contextItems) {
+        if (item.kind !== 'sentinel-todo') continue;
+        const error = sentinelTodoContextScopeError(item, options.sentinelTodoOwner);
+        if (error) return error;
+    }
 
     if (!options.featureEnabled) {
         return 'Session context attachments are disabled.';
@@ -765,7 +811,7 @@ export function validateSessionContextAttachmentsForSend(options: {
     if (!options.activeWorkspaceId) {
         return 'Open a workspace before attaching context.';
     }
-    if (contextItems.some(item => item.kind !== 'diff-selection' && item.kind !== 'file-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
+    if (contextItems.some(item => item.kind !== 'sentinel-todo' && item.kind !== 'diff-selection' && item.kind !== 'file-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
         return 'Only context from the active workspace can be attached.';
     }
     const selfAttachedItem = getSessionContextItems(options.items).find(item =>
