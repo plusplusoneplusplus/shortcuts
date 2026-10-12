@@ -237,8 +237,12 @@ mod tests {
             tokio::time::Instant::now() + std::time::Duration::from_secs(10),
             || {
                 std::fs::write(&path, replacement).unwrap();
-                File::options().write(true).open(&path).unwrap()
-                    .set_times(std::fs::FileTimes::new().set_modified(modified)).unwrap();
+                File::options()
+                    .write(true)
+                    .open(&path)
+                    .unwrap()
+                    .set_times(std::fs::FileTimes::new().set_modified(modified))
+                    .unwrap();
             },
         );
         assert_eq!(result.err().unwrap().code, ErrorCode::InvalidTokenResponse);
@@ -248,14 +252,16 @@ mod tests {
     async fn accepts_unchanged_config_during_verification() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.json");
-        std::fs::write(&path, r#"{"lastLoggedInUser":{"host":"github.com","login":"fixture"}}"#).unwrap();
+        std::fs::write(&path, r#"{"lastLoggedInUser":{"host":"github.com","login":"fixture"}}"#)
+            .unwrap();
         let (account, token) = read_with_hook(
             &path,
             &CopilotAccountSelection::ActiveCliAccount,
             &CancellationToken::new(),
             tokio::time::Instant::now() + std::time::Duration::from_secs(10),
             || {},
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(account.login, "fixture");
         assert!(token.is_none());
     }
