@@ -13,6 +13,7 @@ import { ensureFolderTrusted } from './trusted-folder';
 import { getAIServiceLogger } from './logger';
 import { getCachedCopilotSdk } from './sdk-esm-loader';
 import { preferUnpackedPath } from './asar-path';
+import { readCliStoredToken } from './cli-stored-token';
 import {
     resolveWorkspaceExecutionContext,
     translatePathForHostFilesystem,
@@ -389,6 +390,13 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
         };
     }
 
-    aiLog.debug({ clientOptions }, 'Creating new CopilotClient');
+    // Keyring-less hosts: fall back to the CLI's stored token before the
+    // runtime falls through to `gh`, which may be a different account.
+    if (clientOptions.gitHubToken === undefined && !defaultInProcess) {
+        const storedToken = readCliStoredToken({ ...process.env, ...clientOptions.env });
+        if (storedToken) clientOptions.gitHubToken = storedToken;
+    }
+
+    aiLog.debug({ clientOptions: { ...clientOptions, gitHubToken: clientOptions.gitHubToken ? '[redacted]' : undefined } }, 'Creating new CopilotClient');
     return new sdk.CopilotClient(clientOptions);
 }
