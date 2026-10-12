@@ -643,7 +643,9 @@ export class OpenCodeSDKService implements ISDKService {
 
     private emitToolEvent(part: OpenCodeResponsePart, options: SendMessageOptions, toolCalls: Map<string, ToolCall>): void {
         const toolCallId = part.toolCallID ?? (typeof part.callID === 'string' ? part.callID : crypto.randomUUID());
-        const toolName = part.toolName ?? (typeof part.tool === 'string' ? part.tool : undefined);
+        const rawToolName = part.toolName ?? (typeof part.tool === 'string' ? part.tool : undefined);
+        const prefix = `${COC_LLM_TOOLS_MCP_SERVER_NAME}_`;
+        const toolName = rawToolName?.startsWith(prefix) ? rawToolName.slice(prefix.length) : rawToolName;
         const structuredState = typeof part.state === 'object' ? part.state : undefined;
         const state = structuredState?.status ?? part.state;
         const input = structuredState?.input ?? part.input;

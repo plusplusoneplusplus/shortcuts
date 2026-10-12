@@ -372,7 +372,7 @@ describe('OpenCodeSDKService', () => {
             const client = createMockClient();
             const part = {
                 type: 'tool', id: 'part-shot', sessionID: 'new-session-1', messageID: 'msg-1',
-                callID: 'shot', tool: 'browser', state: {
+                callID: 'shot', tool: 'coc_llm_tools_browser', state: {
                     status: 'completed', input: { action: 'screenshot' }, output: 'ok',
                     attachments: [
                         { type: 'file', mime: 'image/jpeg', url: 'data:image/jpeg;base64,aW1hZ2U=' },
@@ -397,11 +397,15 @@ describe('OpenCodeSDKService', () => {
             const result = await svc.sendMessage({ prompt: 'screenshot',
                 ...(capture === 'without-callback' ? {} : { onToolEvent }) });
             expect(result.toolCalls).toHaveLength(1);
+            expect(result.toolCalls![0].name).toBe('browser');
             expect(JSON.parse(result.toolCalls![0].result!)).toEqual({ content: [
                 { type: 'text', text: 'ok' }, { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/jpeg' },
             ] });
             expect(onToolEvent).toHaveBeenCalledTimes(capture === 'without-callback' ? 0 : 1);
-            if (capture !== 'without-callback') expect(onToolEvent.mock.calls[0][0].result).toBe(result.toolCalls![0].result);
+            if (capture !== 'without-callback') {
+                expect(onToolEvent.mock.calls[0][0].toolName).toBe('browser');
+                expect(onToolEvent.mock.calls[0][0].result).toBe(result.toolCalls![0].result);
+            }
         });
 
         it('returns error when SDK is unavailable', async () => {
