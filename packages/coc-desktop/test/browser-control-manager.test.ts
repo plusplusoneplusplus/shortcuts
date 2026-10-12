@@ -6,7 +6,7 @@ import { BROWSER_CONTROL_REVEAL_CHANNEL } from '../src/browser-control-command';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-function harness() {
+function harness(redirectTo?: string) {
     const views: BrowserHostedView[] = [];
     const sinks: BrowserEventSink[] = [];
     const host: BrowserEngineHost = {
@@ -14,7 +14,7 @@ function harness() {
         clearData: async () => {}, dispose: async () => {},
         create: async (request, sink) => {
             sinks.push(sink);
-            let url = request.url;
+            let url = redirectTo ?? request.url;
             const view: BrowserHostedView = {
                 snapshot: () => ({ viewId: request.viewId, engine: 'electron', url, title: 'Fixture', canGoBack: true, canGoForward: false, loading: false }),
                 navigate: vi.fn(async next => { url = next; }), nav: vi.fn(),
@@ -51,6 +51,14 @@ function harness() {
 }
 
 describe('main browser control scope and selection', () => {
+    it('does not navigate a newly opened redirected tab twice', async () => {
+        const h = harness('https://fixture.test/destination');
+        const opened = await h.run({ action: 'open', url: 'https://fixture.test/start' });
+        expect(opened.url).toBe('https://fixture.test/destination');
+        expect(h.views[0].navigate).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
     it('returns a separate full interactive baseline for subtree and all snapshots', async () => {
         const h = harness();
         const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });

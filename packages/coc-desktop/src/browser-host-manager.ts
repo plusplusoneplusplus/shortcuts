@@ -93,6 +93,7 @@ export class BrowserHostManager {
         }
         const target = command.action === 'select' ? command.tab : request.selectedTab;
         let entry = target ? entries.find(entry => this.controlId(entry) === target) : undefined;
+        let created = false;
         // Select fails closed; open can replace a vanished remembered selection.
         if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
         if (command.action === 'open' && (command.newTab || !entry)) {
@@ -107,6 +108,7 @@ export class BrowserHostManager {
             if (!result.ok) throw new Error(result.message ?? result.reason);
             entries = this.scopedEntries(ownerId, request.workspaceId);
             entry = entries.find(entry => entry.ownerId === ownerId && entry.viewId === viewId);
+            created = true;
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
@@ -121,7 +123,7 @@ export class BrowserHostManager {
             this.scopedEntries(ownerId, request.workspaceId);
             switch (command.action) {
                 case 'open':
-                    if (view.snapshot().url !== command.url) await view.navigate(command.url!);
+                    if (!created && view.snapshot().url !== command.url) await view.navigate(command.url!);
                     break;
                 case 'select': break;
                 case 'snapshot': {
