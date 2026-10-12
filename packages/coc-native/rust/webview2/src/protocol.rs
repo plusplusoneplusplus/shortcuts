@@ -30,6 +30,27 @@ pub struct Command {
     pub action: Option<String>,
     pub cookies: Option<Vec<ImportCookie>>,
     pub page_zoom_percent: Option<f64>,
+    pub method: Option<String>,
+    pub params: Option<serde_json::Map<String, Value>>,
+}
+
+pub fn cdp_arguments(command: &Command) -> Option<(&str, String)> {
+    let method = command.method.as_deref()?;
+    // A protocol method is Domain.command, not a script or a transport endpoint.
+    let (domain, name) = method.split_once('.')?;
+    if domain.is_empty()
+        || name.is_empty()
+        || method.len() > 256
+        || !domain.bytes().chain(name.bytes()).all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
+        return None;
+    }
+    Some((method, serde_json::to_string(&command.params.clone().unwrap_or_default()).ok()?))
+}
+
+pub fn cdp_response(id: u64, json: &str) -> std::result::Result<Value, serde_json::Error> {
+    let result: Value = serde_json::from_str(json)?;
+    Ok(serde_json::json!({ "id": id, "ok": true, "result": result }))
 }
 
 pub fn allowed_page_zoom(percent: f64) -> bool {
@@ -124,6 +145,36 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cdp_validates_methods_and_preserves_json_results_and_request_ids() {
+        let command: Command = serde_json::from_str(
+            r#"{"id":42,"op":"cdp","viewId":"7:tab:1","method":"Runtime.evaluate","params":{"expression":"'quoted\\value'","returnByValue":true}}"#,
+        ).unwrap();
+        let (method, params) = cdp_arguments(&command).unwrap();
+        assert_eq!(method, "Runtime.evaluate");
+        assert_eq!(
+            serde_json::from_str::<Value>(&params).unwrap(),
+            serde_json::json!(command.params)
+        );
+        for method in
+            ["", "Runtime", ".evaluate", "Runtime.", "Runtime.evaluate()", "A.B.C", "A.\nB"]
+        {
+            let command: Command =
+                serde_json::from_value(serde_json::json!({"id":1,"op":"cdp","method":method}))
+                    .unwrap();
+            assert!(cdp_arguments(&command).is_none());
+        }
+        assert!(serde_json::from_str::<Command>(
+            r#"{"id":1,"op":"cdp","method":"Runtime.evaluate","params":[]}"#
+        )
+        .is_err());
+        assert_eq!(
+            cdp_response(42, r#"{"result":{"value":42}}"#).unwrap(),
+            serde_json::json!({"id":42,"ok":true,"result":{"result":{"value":42}}})
+        );
+        assert!(cdp_response(42, "malformed").is_err());
+    }
 
     #[test]
     fn page_zoom_is_bounded_stepped_and_uses_a_typed_controller_command() {

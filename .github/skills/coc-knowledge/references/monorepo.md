@@ -241,7 +241,11 @@ shared browser-control logic. Electron's `ElectronBrowserCdp` uses the adopted
 guest's debugger, attaches on the first command and detaches its own attachment
 on close. Commands reject on guest destruction, renderer crash, debugger detach
 or a 30-second timeout; pending timers and lifecycle listeners retire on settlement
-and disposal. File previews omit this capability. This primitive has no renderer
+and disposal. WebView2 uses the same capability through owner-qualified helper
+requests and Rust `CallDevToolsProtocolMethod` completion callbacks. Its transport
+returns correlated JSON results, rejects on tab close/page or helper crash/shutdown,
+and retires timed-out CDP requests after 30 seconds without stopping other tabs.
+File previews omit this capability. This primitive has no renderer
 IPC surface by itself.
 
 ### Container image

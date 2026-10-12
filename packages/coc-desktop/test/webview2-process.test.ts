@@ -125,3 +125,120 @@ it('cold-starts the helper and preserves quoted cookie values in the JSON transp
     native.stdin.write.mockImplementation(() => { native.exitCode = 0; native.emit('exit', 0, null); });
     await transport.dispose();
 });
+
+// Exercise the actual framed transport, not a mock of request().
+describe('WebView2 CDP transport', () => {
+    async function started() {
+        vi.useFakeTimers();
+        const native = child();
+        mocks.spawn.mockReturnValue(native);
+        const failure = vi.fn();
+        const transport = new WebView2Process(() => 'native-host', 'profile', vi.fn(), failure);
+        const opening = transport.request('open', { viewId: 'owner:tab' });
+        native.stdout.emit('data', '{"event":"ready"}\n');
+        await Promise.resolve();
+        native.stdout.emit('data', '{"id":1,"ok":true}\n');
+        await opening;
+        native.stdin.write.mockClear();
+        return { native, transport, failure };
+    }
+
+    it('correlates concurrent out-of-order JSON results and preserves protocol errors', async () => {
+        const { native, transport, failure } = await started();
+        const first = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate', params: { expression: '6 * 7' } });
+        const second = transport.request('cdp', { viewId: 'owner:b', method: 'Page.captureScreenshot', params: {} });
+        await Promise.resolve();
+        const requests = native.stdin.write.mock.calls.map(([line]) => JSON.parse(line));
+        expect(requests).toEqual([
+            { id: 2, op: 'cdp', viewId: 'owner:a', method: 'Runtime.evaluate', params: { expression: '6 * 7' } },
+            { id: 3, op: 'cdp', viewId: 'owner:b', method: 'Page.captureScreenshot', params: {} },
+        ]);
+        native.stdout.emit('data', '{"id":3,"ok":true,"result":{"data":"jpeg"}}\n{"id":2,"ok":true,"result":{"result":{"value":42}}}\n');
+        await expect(first).resolves.toEqual({ result: { value: 42 } });
+        await expect(second).resolves.toEqual({ data: 'jpeg' });
+        const invalid = transport.request('cdp', { viewId: 'owner:a', method: 'Bad.command' });
+        await Promise.resolve();
+        native.stdout.emit('data', '{"id":4,"ok":false,"reason":"invalid","message":"Unknown protocol method"}\n');
+        await expect(invalid).rejects.toThrow('Unknown protocol method');
+        expect(failure).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('times out one CDP request, ignores its late reply and leaves other tabs running', async () => {
+        const { native, transport, failure } = await started();
+        const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const rejected = expect(pending).rejects.toThrow('timed out after 30s');
+        await vi.advanceTimersByTimeAsync(30_000);
+        await rejected;
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(failure).not.toHaveBeenCalled();
+        native.stdout.emit('data', '{"id":2,"ok":true,"result":"late"}\n');
+        const next = transport.request('cdp', { viewId: 'owner:b', method: 'Runtime.evaluate' });
+        await Promise.resolve();
+        native.stdout.emit('data', '{"id":3,"ok":true,"result":null}\n');
+        await expect(next).resolves.toBeNull();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects on tab close including a close racing command admission', async () => {
+        const { native, transport } = await started();
+        const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const rejected = expect(pending).rejects.toMatchObject({ reason: 'not-found' });
+        transport.rejectView('owner:a');
+        const closing = transport.request('close', { viewId: 'owner:a' });
+        await Promise.resolve();
+        await rejected;
+        native.stdout.emit('data', '{"id":2,"ok":true}\n');
+        expect(native.stdin.write).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(native.stdin.write.mock.calls[0][0]).op).toBe('close');
+        await closing;
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects an already dispatched call on close and ignores its late result', async () => {
+        const { native, transport } = await started();
+        const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const rejected = expect(pending).rejects.toMatchObject({ reason: 'not-found' });
+        await Promise.resolve();
+        transport.rejectView('owner:a');
+        await rejected;
+        native.stdout.emit('data', '{"id":2,"ok":true,"result":"late"}\n');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects only the crashed page, then rejects all work on helper exit', async () => {
+        const { native, transport } = await started();
+        const a = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const b = transport.request('cdp', { viewId: 'owner:b', method: 'Runtime.evaluate' });
+        const rejectedA = expect(a).rejects.toThrow('Page crashed');
+        const rejectedB = expect(b).rejects.toMatchObject({ reason: 'runtime-crashed' });
+        await Promise.resolve();
+        native.stdout.emit('data', '{"event":"state","viewId":"owner:a","state":{"errorCode":"runtime-crashed","error":"Page crashed"}}\n');
+        await rejectedA;
+        expect(vi.getTimerCount()).toBe(1);
+        native.emit('exit', 1, null);
+        await rejectedB;
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects a page crash racing admission before writing a CDP command', async () => {
+        const { native, transport } = await started();
+        const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const rejected = expect(pending).rejects.toThrow('Page crashed');
+        native.stdout.emit('data', '{"event":"state","viewId":"owner:a","state":{"errorCode":"runtime-crashed","error":"Page crashed"}}\n');
+        await rejected;
+        expect(native.stdin.write).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects pending CDP immediately when disposing the helper', async () => {
+        const { native, transport } = await started();
+        const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const rejected = expect(pending).rejects.toThrow('host is closing');
+        await Promise.resolve();
+        native.stdin.write.mockImplementation(() => { native.exitCode = 0; native.emit('exit', 0, null); });
+        await transport.dispose();
+        await rejected;
+        expect(vi.getTimerCount()).toBe(0);
+    });
+});

@@ -93,6 +93,11 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             throw error;
         }
         return {
+            cdp: async (method, params = {}) => {
+                if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
+                if (entry.state.errorCode === 'runtime-crashed') { throw new BrowserHostError('runtime-crashed', entry.state.error ?? 'Browser page crashed.'); }
+                return this.process.request('cdp', { viewId: id, method, params });
+            },
             importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
@@ -126,6 +131,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private remove(id: string, entry: NativeEntry): void {
         if (this.views.get(id) !== entry) { return; }
         this.views.delete(id);
+        this.process.rejectView(id);
         entry.window.removeListener('move', entry.reposition);
         entry.window.removeListener('resize', entry.reposition);
         if (entry.fullscreen && !entry.wasFullscreen && !entry.window.isDestroyed()) { entry.window.setFullScreen(false); }

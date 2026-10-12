@@ -9,6 +9,7 @@ import * as path from 'node:path';
 const mocks = vi.hoisted(() => ({
     request: vi.fn().mockResolvedValue(undefined),
     running: true,
+    rejectView: vi.fn(),
     window: {
         isDestroyed: () => false,
         isFullScreen: () => false,
@@ -39,6 +40,7 @@ vi.mock('../src/webview2-process', async importOriginal => ({
         }
         get running() { return mocks.running; }
         request = mocks.request;
+        rejectView = mocks.rejectView;
     },
 }));
 
@@ -46,6 +48,24 @@ const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.f
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
 describe('WebView2 native focus handoff', () => {
+    it('exposes CDP results only for the live owner-qualified native tab', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test' }, sink);
+        mocks.request.mockResolvedValueOnce({ result: { value: 42 } });
+        await expect(view.cdp!('Runtime.evaluate', { expression: '6 * 7' })).resolves.toEqual({ result: { value: 42 } });
+        expect(mocks.request).toHaveBeenLastCalledWith('cdp', { viewId: '7:tab:1', method: 'Runtime.evaluate', params: { expression: '6 * 7' } });
+        mocks.request.mockRejectedValueOnce(new Error('Protocol error'));
+        await expect(view.cdp!('Bad.command')).rejects.toThrow('Protocol error');
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+            url: 'https://example.test', title: '', canGoBack: false, canGoForward: false, loading: false,
+            errorCode: 'runtime-crashed', error: 'Page crashed',
+        } });
+        await expect(view.cdp!('Runtime.evaluate')).rejects.toThrow('Page crashed');
+        await view.close();
+        expect(mocks.rejectView).toHaveBeenCalledWith('7:tab:1');
+        await expect(view.cdp!('Runtime.evaluate')).rejects.toThrow('Browser tab is closed');
+    });
+
     it('initializes, changes and restores page zoom through native controller commands', async () => {
         const host = new WebView2BrowserHost('profile');
         const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test', pageZoomPercent: 150 }, sink);

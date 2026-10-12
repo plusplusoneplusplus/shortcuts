@@ -229,7 +229,12 @@ It uses `webview2-com` with a statically linked loader; the installed Evergreen
 runtime remains required. Its main thread initializes COM as STA and owns all
 windows/controllers. A stdin reader only queues typed JSON commands and wakes
 the UI message pump. COM callbacks and controller operations stay on that
-thread. The helper-process boundary isolates this lifecycle from Electron's
+thread. Typed `cdp` commands target an existing view and call
+`CallDevToolsProtocolMethod`; completion callbacks return JSON results with the
+original request id. Method names use `Domain.command` and params are objects.
+The desktop transport retires CDP requests on tab close, page/helper crash,
+shutdown or a 30-second timeout, ignoring late replies. CDP timeouts preserve
+other tabs and the helper process. The helper-process boundary isolates this lifecycle from Electron's
 Node event loop and from server N-API capabilities.
 Embedded bounds are renderer-relative DIP plus a physical screen `contentOrigin`
 from Electron's content bounds. The helper maps that origin into the parent HWND's

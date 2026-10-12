@@ -574,6 +574,47 @@ fn dispatch(state: &State, command: Command) {
         protocol::failure(command.id, "not-found", "Browser view not found.");
         return;
     };
+    if command.op == "cdp" {
+        let Some((method, params)) = protocol::cdp_arguments(&command) else {
+            protocol::failure(
+                command.id,
+                "invalid",
+                "CDP requires Domain.command and object params.",
+            );
+            return;
+        };
+        let id = command.id;
+        let weak = Rc::downgrade(&view);
+        let result = unsafe {
+            view.webview.CallDevToolsProtocolMethod(
+                &HSTRING::from(method),
+                &HSTRING::from(params),
+                &CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                    move |result, json| {
+                        if weak.upgrade().is_none_or(|view| view.closed.get()) {
+                            protocol::failure(
+                                id,
+                                "not-found",
+                                "Browser tab closed during CDP command.",
+                            );
+                        } else if let Err(error) = result {
+                            protocol::failure(id, "invalid", error);
+                        } else {
+                            match protocol::cdp_response(id, &json) {
+                                Ok(response) => protocol::emit(response),
+                                Err(error) => protocol::failure(id, "invalid", error),
+                            }
+                        }
+                        Ok(())
+                    },
+                )),
+            )
+        };
+        if let Err(error) = result {
+            protocol::failure(id, "invalid", error);
+        }
+        return;
+    }
     if command.op == "import-cookies" {
         let result = import_cookies(&view, command.cookies.as_deref().unwrap_or_default());
         match result {
@@ -1329,6 +1370,8 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     action: None,
                     cookies: None,
                     page_zoom_percent: None,
+                    method: None,
+                    params: None,
                 };
                 start_controller(
                     &callback_state,
