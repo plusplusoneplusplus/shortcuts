@@ -325,6 +325,8 @@ export interface CLIConfig {
         sentinelTodoLedger?: boolean;
         /** Native prerequisite authoring and admission. Requires the ledger; disabled by default. */
         sentinelTodoDependencies?: boolean;
+        /** Compact Sentinel item list beside selected details. Disabled by default. */
+        sentinelTodoSplitLayout?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Requires `sentinelTodoLedger`. Disabled by default. */
         sentinelTodoScrubber?: boolean;
         sentinelDesktopMirror?: boolean;
@@ -733,6 +735,7 @@ export interface ResolvedCLIConfig {
         /** Per-chat Sentinel to-do ledger (REST, AI tools, right-panel tab). Disabled by default. */
         sentinelTodoLedger: boolean;
         sentinelTodoDependencies: boolean;
+        sentinelTodoSplitLayout: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Requires `sentinelTodoLedger`. Disabled by default. */
         sentinelTodoScrubber: boolean;
         sentinelDesktopMirror: boolean;
@@ -1059,6 +1062,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsMessageReaction: false,
         sentinelTodoLedger: false,
         sentinelTodoDependencies: false,
+        sentinelTodoSplitLayout: false,
         sentinelTodoScrubber: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,

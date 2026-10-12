@@ -94,9 +94,9 @@ beforeEach(() => {
     mocks.prList.mockReset().mockResolvedValue({ pullRequests: [{ title: 'Local PR', number: 7, webUrl: preview().pr.url }], total: 1 });
     mocks.get.mockReset().mockResolvedValue({ items: [item()], revision: 1 });
     mocks.route.mockReturnValue({ kind: 'remote', baseUrl: 'https://server.example.test' });
-    applyRuntimeConfigPatch({ triggersEnabled: true });
+    applyRuntimeConfigPatch({ triggersEnabled: true, sentinelTodoSplitLayoutEnabled: false });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false }); });
+afterEach(() => { cleanup(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false, sentinelTodoSplitLayoutEnabled: false }); });
 
 describe('Sentinel To-do Triggers', () => {
     it('hides the section with no rules, but retains a first-add entry point', async () => {
@@ -472,6 +472,48 @@ describe('Sentinel To-do Triggers', () => {
         await waitFor(() => expect(card.dataset.sentinelTriggerHighlight).toBe('true'));
         expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
         expect(screen.getByText('Tests pass')).toBeTruthy();
+    });
+
+    it.each([
+        ['normal', 'todo', false, []],
+        ['normal', 'done', false, ['done']],
+        ['normal', 'done', true, ['archived']],
+        ['manual', 'todo', false, ['manual']],
+        ['manual', 'done', false, ['manual', 'manual-done']],
+        ['manual', 'done', true, ['manual', 'manual-archived']],
+    ] as const)('split navigation selects only the target and required %s / %s / archived=%s containers', async (type, status, archived, opened) => {
+        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: true });
+        const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+        try {
+            mocks.get.mockResolvedValue({ items: [
+                item({ type, status, archived }),
+                ...(['normal', 'manual'] as const).flatMap(type => [
+                    item({ id: `${type}-active`, title: `${type} active`, type }),
+                    item({ id: `${type}-done`, title: `${type} done`, type, status: 'done' }),
+                    item({ id: `${type}-archived`, title: `${type} archived`, type, archived: true }),
+                ]),
+            ], revision: 1 });
+            mocks.list.mockResolvedValue([rule()]);
+            render(<UnifiedTodoTab owner={owner} />);
+            const link = await screen.findByRole('link', { name: '→ Follow-up work' });
+            fireEvent.click(screen.getByTestId('sentinel-todo-manual-toggle'));
+            fireEvent.click(link);
+            const target = await screen.findByTestId('sentinel-todo-row-item-1');
+            await waitFor(() => expect(target.dataset.sentinelTriggerHighlight).toBe('true'));
+            const button = within(target).getByRole('button', { pressed: true });
+            expect(document.activeElement).toBe(button);
+            expect(screen.getByRole('heading', { name: /Follow-up work/ })).toBeTruthy();
+            const requiredSections: readonly string[] = opened;
+            for (const section of ['done', 'archived', 'manual', 'manual-done', 'manual-archived']) {
+                if (section.startsWith('manual-') && !requiredSections.includes('manual')) continue;
+                const toggle = section === 'manual' ? screen.getByTestId('sentinel-todo-manual-toggle')
+                    : within(screen.getByTestId(`sentinel-todo-${section}-section`)).getAllByRole('button')[0];
+                expect(toggle.getAttribute('aria-expanded')).toBe(String(requiredSections.includes(section)));
+            }
+            expect(screen.queryByTestId('sentinel-todo-detail-normal-active')).toBeNull();
+            expect(mocks.processGet).not.toHaveBeenCalled();
+            expect(mocks.runNow).not.toHaveBeenCalled();
+        } finally { width.mockRestore(); }
     });
 
     it.each([

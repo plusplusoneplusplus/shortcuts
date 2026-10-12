@@ -48,6 +48,14 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: false }); });
 
 describe('owner-scoped dependency details', () => {
+    it.each([
+        [{ ownerWorkspaceId: 'ws-owner', processId: 'queue_parent', ownerRoutingRef: null }, undefined],
+        [{ ownerWorkspaceId: 'ws-owner', processId: 'queue_parent' }, 'ws-owner'],
+    ])('pins dependency reads to explicit local ownership or the owning workspace', async (ledgerOwner, reference) => {
+        render(<SentinelTodoDependencies {...props()} owner={ledgerOwner} />);
+        await screen.findByText('Waiting');
+        expect(references).toContain(reference);
+    });
     it('is default-off and adds no tracking or launch actions when disabled', () => {
         applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: false });
         const view = render(<SentinelTodoDependencies {...props()} />);

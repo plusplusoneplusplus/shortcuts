@@ -66,10 +66,11 @@ import {
     useSentinelTodoChat,
     withdrawSentinelTodoChat,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
-import { clearSentinelTodoExcursion } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
+import { clearSentinelTodoExcursion, recallSentinelTodoView, returnFromSentinelTodoExcursion } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 import { POINTER_CONTEXT_DRAG_MIME } from '../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { resetActiveChatAttach, subscribeActiveChatAttach } from '../../../src/server/spa/client/react/features/chat/activeChatAttach';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
 
@@ -102,7 +103,8 @@ function conflict(current: SentinelTodoItem) {
 }
 
 beforeEach(() => {
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelTodoSplitLayoutEnabled: false });
+    resetCloneRegistryForTests();
     dependencyEvaluate.mockReset();
     scrubGet.mockReset();
     scrubGetRun.mockReset();
@@ -120,7 +122,7 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelTodoSplitLayoutEnabled: false });
 });
 
 describe('UnifiedTodoTab', () => {
@@ -357,6 +359,7 @@ describe('UnifiedTodoTab', () => {
     });
 
     it('renders an accessible derived In review badge and refreshes assessment from the exact remote owner', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'srv-2', baseUrl: 'https://owner.example' }]);
         const pending = item({
             status: 'in_progress', revision: 4, jobs: [{
                 processId: 'queue_child', workspaceId: 'ws-child', kind: 'local',
@@ -394,6 +397,10 @@ describe('UnifiedTodoTab', () => {
     });
 
     it('discards old-server review evidence after changing only the clone route', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'srv-1', baseUrl: 'https://first.example' },
+            { workspaceId: 'ws-1', serverId: 'srv-2', baseUrl: 'https://second.example' },
+        ]);
         const slow = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValueOnce(slow.promise).mockResolvedValue(ledger([item({ status: 'todo' })]));
         const { rerender } = render(<UnifiedTodoTab owner={{ ...OWNER, ownerRoutingRef: 'remote:srv-1:ws-1' }} />);
@@ -906,6 +913,307 @@ describe('UnifiedTodoTab', () => {
             expect(within(archived).queryByRole('button', { name: 'Edit' })).toBeNull();
             expect(within(archived).getByRole('button', { name: 'Restore' })).toBeTruthy();
         });
+    });
+});
+
+describe('UnifiedTodoTab split layout', () => {
+    let panelWidth: number;
+    let observers: Set<ResizeObserverCallback>;
+    beforeEach(() => {
+        panelWidth = 800;
+        observers = new Set();
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => panelWidth);
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(private callback: ResizeObserverCallback) { observers.add(callback); }
+            observe() {}
+            disconnect() { observers.delete(this.callback); }
+        });
+        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: true, sessionContextAttachmentsEnabled: false });
+    });
+    afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+    async function resize(width: number) {
+        panelWidth = width;
+        act(() => { observers.forEach(callback => callback([], {} as ResizeObserver)); });
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-tab').dataset.layout).toBe(width >= 660 ? 'split' : 'single'));
+    }
+    function select(id = 'i1') {
+        fireEvent.click(screen.getByTestId(`sentinel-todo-row-${id}`).querySelector('[data-todo-select]')!);
+    }
+    function detail(id = 'i1') { return screen.getByTestId(`sentinel-todo-detail-${id}`); }
+
+    it('reacts live to the default-off gate and retains an inline edit through both layout changes', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: false });
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(screen.getByTestId('sentinel-todo-tab').dataset.layout).toBe('inline');
+        expect(screen.queryByTestId('sentinel-todo-details')).toBeNull();
+        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+        fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Unsaved title' } });
+        act(() => applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: true }));
+        select();
+        expect((within(detail()).getByLabelText('Title') as HTMLInputElement).value).toBe('Unsaved title');
+        act(() => applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: false }));
+        expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Unsaved title');
+        expect(update).not.toHaveBeenCalled();
+        expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('measures the panel rather than viewport and keeps the same draft DOM across the 660px boundary and Back', async () => {
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        expect(screen.getByText('Select an item to view its details.')).toBeTruthy();
+        select();
+        expect(screen.getByRole('region', { name: /Fix login/ })).toBe(screen.getByTestId('sentinel-todo-details'));
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Edit' }));
+        const notes = within(detail()).getByLabelText('Notes');
+        fireEvent.change(notes, { target: { value: 'Keep draft on resize' } });
+        await resize(659);
+        expect(screen.queryByRole('button', { name: /Second/ })).toBeNull();
+        expect(within(detail()).getByLabelText('Notes')).toBe(notes);
+        fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('sentinel-todo-row-i1').querySelector('[data-todo-select]')));
+        expect(screen.queryByRole('heading', { name: /Fix login/ })).toBeNull();
+        expect(screen.getByRole('button', { pressed: true, name: /Fix login/ })).toBeTruthy();
+        select();
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: /Fix login/ })));
+        await resize(660);
+        expect(within(detail()).getByLabelText('Notes')).toBe(notes);
+        expect((notes as HTMLTextAreaElement).value).toBe('Keep draft on resize');
+        expect(screen.getByRole('button', { name: /Second/ })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Back to list' })).toBeNull();
+    });
+
+    it('keeps independent item drafts and conflicts, and saves the captured title, notes, condition and priority revision', async () => {
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Edit' }));
+        fireEvent.change(within(detail()).getByLabelText('Title'), { target: { value: 'Draft one' } });
+        fireEvent.change(within(detail()).getByLabelText('Notes'), { target: { value: 'Personal draft' } });
+        fireEvent.change(within(detail()).getByLabelText('Done when'), { target: { value: 'Finish review' } });
+        fireEvent.change(within(detail()).getByLabelText('Priority'), { target: { value: 'high' } });
+        select('i2');
+        fireEvent.click(within(detail('i2')).getByRole('button', { name: 'Edit' }));
+        fireEvent.change(within(detail('i2')).getByLabelText('Title'), { target: { value: 'Draft two' } });
+        select();
+        const fresh = item({ title: 'Server edit', revision: 3 });
+        get.mockResolvedValue(ledger([fresh, item({ id: 'i2', title: 'Second' })], 3));
+        update.mockRejectedValueOnce(conflict(fresh)).mockResolvedValue({});
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Save' }));
+        await within(detail()).findByRole('alert');
+        expect((within(detail()).getByLabelText('Title') as HTMLInputElement).value).toBe('Draft one');
+        select('i2');
+        expect((within(detail('i2')).getByLabelText('Title') as HTMLInputElement).value).toBe('Draft two');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 3, title: 'Draft one', notes: 'Personal draft', completionCondition: 'Finish review', priority: 'high',
+        }));
+    });
+
+    it('keeps a pending status reason when selecting another item', async () => {
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second' })]));
+        update.mockResolvedValue({});
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        chooseStatus(detail(), 'Needs attention');
+        fireEvent.change(within(detail()).getByLabelText('Reason for Needs attention'), { target: { value: 'Waiting for review' } });
+        select('i2');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Set status' }));
+        await waitFor(() => expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 1, status: 'needs_attention', statusReason: 'Waiting for review',
+        }));
+    });
+
+    it('returns narrow details to the scrollable list for Add without losing the selected draft', async () => {
+        panelWidth = 360;
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Edit' }));
+        fireEvent.change(within(detail()).getByLabelText('Title'), { target: { value: 'Keep this draft' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
+        expect(screen.getByRole('form', { name: 'Add item' })).toBeTruthy();
+        expect(screen.queryByRole('heading', { name: /Fix login/ })).toBeNull();
+        fireEvent.click(within(screen.getByRole('form', { name: 'Add item' })).getByRole('button', { name: 'Cancel' }));
+        select();
+        expect((within(detail()).getByLabelText('Title') as HTMLInputElement).value).toBe('Keep this draft');
+    });
+
+    it('keeps scrubber chat excursions independent of item selection and preserves findings/actions', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+        get.mockResolvedValue(ledger([item()]));
+        scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
+            runs: [{ id: 'r1', childProcessId: 'scrub-chat', status: 'completed', trigger: 'manual', createdAt: '2026-10-11T00:00:00Z',
+                counts: { done: 0, proposals: 1, unverified: 0 }, itemCount: 1, deferredCount: 0, awaitingReviewCount: 0 }] });
+        scrubGetRun.mockResolvedValue({ findings: [{ runId: 'r1', itemId: 'i1', itemRevision: 1, state: 'proposed', fingerprint: 'f1', audit: [],
+            finding: { itemId: 'i1', verdict: 'obsolete', confidence: 'high', summary: 'Superseded', rationale: 'Replacement landed', autoApply: false,
+                evidence: [{ kind: 'pr', ref: '#902', state: 'merged', checkedAt: '2026-10-11T01:00:00Z' }] } }] });
+        render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" chatId={OWNER.processId} />);
+        await screen.findByText('◇ Proposal: Obsolete (high)');
+        select();
+        fireEvent.click(within(screen.getByTestId('sentinel-scrubber-strip')).getByRole('link', { name: 'Open chat' }));
+        expect(screen.getByRole('heading', { name: /Fix login/ })).toBeTruthy();
+        expect(screen.getByRole('button', { pressed: true, name: /Fix login/ })).toBeTruthy();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Accept' }));
+        await waitFor(() => expect(scrubAccept).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'r1', 'i1', { expectedItemRevision: 1 }));
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each(['normal', 'manual'] as const)('retains compact %s context drag and Attach without writes', async type => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item({ type })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const setData = vi.fn();
+        fireEvent.dragStart(row, { dataTransfer: { setData, effectAllowed: 'none' } });
+        const payload = JSON.parse(setData.mock.calls.find(call => call[0] === POINTER_CONTEXT_DRAG_MIME)![1]);
+        const receive = vi.fn();
+        subscribeActiveChatAttach('ws-1', receive);
+        fireEvent.click(within(row).getByRole('button', { name: 'Attach Fix login as context' }));
+        expect(receive).toHaveBeenCalledWith(payload);
+        expect(payload).toMatchObject({ todoItemId: 'i1', sourceProcessId: OWNER.processId, sourceRoutingRef: null });
+        expect(payload).not.toHaveProperty('notes');
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('keeps dependency authoring mounted when selection changes and retains separate readiness semantics', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: true });
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Edit dependencies' }));
+        const editor = within(detail()).getByRole('button', { name: 'Save dependencies' }).closest('section');
+        select('i2');
+        select();
+        expect(within(detail()).getByRole('button', { name: 'Save dependencies' }).closest('section')).toBe(editor);
+        expect(within(detail()).getByRole('group', { name: 'Status' })).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('keeps normal/manual, Done and Archived separate and mounts archived editors only on selection', async () => {
+        get.mockResolvedValue(ledger([
+            item(), item({ id: 'm', title: 'Reminder', type: 'manual' }),
+            item({ id: 'd', status: 'done' }), item({ id: 'a', archived: true }),
+            item({ id: 'md', type: 'manual', status: 'done' }), item({ id: 'ma', type: 'manual', archived: true }),
+        ]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        expect(screen.queryByTestId('sentinel-todo-row-a')).toBeNull();
+        expect(screen.queryByTestId('sentinel-todo-detail-a')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-manual-done-section')).toBeTruthy();
+        expect(screen.getByTestId('sentinel-todo-manual-archived-section')).toBeTruthy();
+        select('m');
+        expect(within(detail('m')).getByText('Tracked only · never run')).toBeTruthy();
+        expect(within(detail('m')).queryByRole('button', { name: /Launch|Retry job|Cancel job/ })).toBeNull();
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button'));
+        select('a');
+        expect(within(detail('a')).getByRole('button', { name: 'Restore' })).toBeTruthy();
+        expect(within(detail('a')).queryByRole('button', { name: 'Edit' })).toBeNull();
+        expect(within(screen.getByTestId('sentinel-todo-done-section')).getByRole('button').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('uses native pressed buttons: arrows move focus only, and explicit activation selects', async () => {
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        const first = screen.getByTestId('sentinel-todo-row-i1').querySelector<HTMLButtonElement>('[data-todo-select]')!;
+        const second = screen.getByTestId('sentinel-todo-row-i2').querySelector<HTMLButtonElement>('[data-todo-select]')!;
+        first.focus();
+        fireEvent.keyDown(first, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(second);
+        expect(second.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.click(second);
+        expect(second.getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByRole('heading', { name: /Second/ })).toBeTruthy();
+        fireEvent.keyDown(second, { key: 'Home' });
+        expect(document.activeElement).toBe(first);
+        expect(second.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('restores owner-qualified excursion selection, scroll, containing sections and link focus', async () => {
+        const tracked = item({ status: 'done', references: [{ processId: 'ref', workspaceId: 'ws-1', title: 'Reference',
+            openLink: '#repos/ws-1/chats/ref', attachedAt: item().createdAt, attachedBy: 'user' }] });
+        get.mockResolvedValue(ledger([tracked]));
+        const first = render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" chatId={OWNER.processId} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Done (1)' }));
+        select();
+        const scroller = screen.getByTestId('sentinel-todo-list');
+        scroller.scrollTop = 120;
+        fireEvent.scroll(scroller);
+        fireEvent.click(within(detail()).getByRole('link', { name: 'Reference' }));
+        first.unmount();
+        returnFromSentinelTodoExcursion();
+        render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" chatId={OWNER.processId} />);
+        await screen.findByRole('heading', { name: /Fix login/ });
+        expect(recallSentinelTodoView(OWNER).selectedId).toBe('i1');
+        expect(screen.getByTestId('sentinel-todo-list').scrollTop).toBe(120);
+        expect(document.activeElement).toBe(within(detail()).getByRole('link', { name: 'Reference' }));
+    });
+
+    it('does not show old owner selection or late reads/writes on the new ledger', async () => {
+        const pending = deferred<unknown>();
+        get.mockResolvedValue(ledger([item()]));
+        update.mockReturnValue(pending.promise);
+        const mounted = render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Edit' }));
+        fireEvent.change(within(detail()).getByLabelText('Title'), { target: { value: 'Old owner draft' } });
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Save' }));
+        const oldRead = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(oldRead.promise).mockResolvedValue(ledger([item({ title: 'New owner' })]));
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER, processId: 'other-chat' }} />);
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER, ownerWorkspaceId: 'other-repo', processId: 'other-chat' }} />);
+        await screen.findByRole('button', { name: /New owner/ });
+        expect(screen.getByText('Select an item to view its details.')).toBeTruthy();
+        const readCount = get.mock.calls.length;
+        await act(async () => { pending.resolve({}); oldRead.resolve(ledger([item({ title: 'Late old owner' })])); });
+        expect(get).toHaveBeenCalledTimes(readCount);
+        expect(screen.queryByText('Late old owner')).toBeNull();
+        select();
+        expect(within(detail()).queryByLabelText('Title')).toBeNull();
+    });
+
+    it('labels simultaneous owner panes by their own heading even when item ids match', async () => {
+        get.mockImplementation(async (workspaceId: string) => ledger([item({ title: workspaceId })]));
+        const first = render(<UnifiedTodoTab owner={{ ...OWNER, ownerWorkspaceId: 'first-owner' }} />);
+        const second = render(<UnifiedTodoTab owner={{ ...OWNER, ownerWorkspaceId: 'second-owner' }} />);
+        const firstRow = await within(first.container).findByTestId('sentinel-todo-row-i1');
+        const secondRow = await within(second.container).findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(firstRow.querySelector('[data-todo-select]')!);
+        fireEvent.click(secondRow.querySelector('[data-todo-select]')!);
+        expect(within(first.container).getByRole('region', { name: /first-owner/ })).toBeTruthy();
+        expect(within(second.container).getByRole('region', { name: /second-owner/ })).toBeTruthy();
+        fireEvent.click(within(first.container).getByRole('button', { name: 'Edit' }));
+        fireEvent.click(within(second.container).getByRole('button', { name: 'Edit' }));
+        const firstTitle = within(first.container).getByLabelText('Title') as HTMLInputElement;
+        const secondTitle = within(second.container).getByLabelText('Title') as HTMLInputElement;
+        expect(firstTitle.value).toBe('first-owner');
+        expect(secondTitle.value).toBe('second-owner');
+        expect(firstTitle.id).not.toBe(secondTitle.id);
+    });
+
+    it('shows explicit loading/error/empty states and never reads an unresolved owner locally', async () => {
+        const read = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValue(read.promise);
+        const mounted = render(<UnifiedTodoTab owner={OWNER} />);
+        expect(screen.getByTestId('sentinel-todo-loading')).toBeTruthy();
+        await act(async () => read.resolve(ledger([])));
+        expect(screen.getByTestId('sentinel-todo-empty')).toBeTruthy();
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER, ownerRoutingRef: 'remote:offline:ws-1' }} />);
+        await screen.findByRole('alert');
+        expect(screen.getByText('Details unavailable until the list loads.')).toBeTruthy();
+        expect(get).toHaveBeenCalledTimes(1);
     });
 });
 
