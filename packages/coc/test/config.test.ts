@@ -71,6 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
@@ -1106,6 +1107,8 @@ timeout: 300
                 '  enabled: true',
                 'sentinel:',
                 '  enabled: true',
+                'browserControl:',
+                '  enabled: true',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1244,6 +1247,7 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+            expect(result.resolved.browserControl.enabled).toBe(true);
         });
 
         describe.each(['sentinelTodoDependencies', 'railManualRefresh'] as const)('%s', feature => {
@@ -1456,6 +1460,9 @@ timeout: 300
                     },
                   },
                   "approvePermissions": true,
+                  "browserControl": {
+                    "enabled": false,
+                  },
                   "canvas": {
                     "enabled": true,
                   },
@@ -1706,6 +1713,7 @@ timeout: 300
                   "LLMToolSystemOne.enabled": "default",
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
+                  "browserControl.enabled": "default",
                   "canvas.enabled": "default",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
