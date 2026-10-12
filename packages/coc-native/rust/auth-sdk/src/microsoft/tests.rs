@@ -867,7 +867,8 @@ async fn cancelled_waiter_does_not_cancel_another_provider() {
     assert_eq!(f.http.grants.load(Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
+// Isolation assertions must not depend on hosted-runner filesystem latency.
+#[tokio::test(start_paused = true)]
 async fn source_tenant_client_scopes_and_namespace_never_share_access_tokens() {
     let f = Fixture::new();
     f.seed(&f.oauth());

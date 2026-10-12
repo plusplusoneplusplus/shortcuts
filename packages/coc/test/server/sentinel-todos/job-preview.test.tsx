@@ -2,9 +2,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SentinelTodoJobLink } from '@plusplusoneplusplus/coc-client';
-const { getProcess, getGroup, refs } = vi.hoisted(() => ({ getProcess: vi.fn(), getGroup: vi.fn(), refs: [] as unknown[] }));
+import type { SentinelTodoOwnerWorkspace } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoJobOwner';
+const { getProcess, getGroup, refs, ownerWorkspaces } = vi.hoisted(() => ({
+    getProcess: vi.fn(), getGroup: vi.fn(), refs: [] as unknown[], ownerWorkspaces: [] as SentinelTodoOwnerWorkspace[],
+}));
 const client = { processes: { get: getProcess }, taskGroups: { get: getGroup } };
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { refs.push(ref); return client; } }));
+vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({ useAppOptional: () => null }));
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useReposOptional: () => ({ repos: ownerWorkspaces.map(workspace => ({ workspace })), remoteGroupWorkspaces: [] }),
+}));
 import { SentinelTodoJobPreview } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoJobPreview';
 import { registerCloneBaseUrls } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 const owner = { ownerWorkspaceId: 'parent', processId: 'sentinel', ownerRoutingRef: null };
@@ -16,10 +23,58 @@ function mount(value = job()) { return render(<SentinelTodoJobPreview job={value
 function focus() { act(() => screen.getByRole('link', { name: 'Fix selection' }).focus()); }
 beforeEach(() => {
     vi.clearAllMocks(); registerCloneBaseUrls([]); refs.length = 0;
+    ownerWorkspaces.length = 0;
     getProcess.mockResolvedValue({ process: { id: 'job1', workspaceId: 'repo1', jobPreview: { excerpt: 'Verifying focus after refresh', source: 'progress', updatedAt: new Date().toISOString() } } });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe('To-do job previews', () => {
+    it('responds to directory/current scope changes without new reads or stale labels', () => {
+        const value = job({ mode: 'autopilot' });
+        const view = mount(value);
+        expect(screen.getByTestId('sentinel-todo-job-owner').textContent).toBe('Unknown repo');
+        ownerWorkspaces.push({ id: 'repo1', name: 'shortcuts-2' });
+        view.rerender(<SentinelTodoJobPreview job={value} owner={owner} linkKey="job-key" onFollowLink={follow} />);
+        expect(screen.getByTestId('sentinel-todo-job-owner').textContent).toBe('shortcuts-2');
+        view.rerender(<SentinelTodoJobPreview job={value} owner={owner} currentWorkspaceId="repo1" linkKey="job-key" onFollowLink={follow} />);
+        expect(screen.queryByTestId('sentinel-todo-job-owner')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
+        expect(getProcess).not.toHaveBeenCalled(); expect(getGroup).not.toHaveBeenCalled();
+    });
+    it('shares the accessible owner label with the preview, preserving mode and lazy reads', async () => {
+        ownerWorkspaces.push({ id: 'repo1', name: 'shortcuts-2' });
+        mount(job({ kind: 'ralph', sessionId: 'session' }));
+        const badge = screen.getByTestId('sentinel-todo-job-owner');
+        expect(badge.textContent).toBe('shortcuts-2');
+        expect(badge.getAttribute('title')).toBe(badge.getAttribute('aria-label'));
+        expect(screen.getByRole('note', { name: /Job owner:.*shortcuts-2/ })).toBe(badge);
+        expect(badge.getAttribute('tabindex')).toBeNull();
+        expect(badge.className).toContain('truncate');
+        expect(badge.className).toContain('dark:');
+        expect(screen.getByTestId('sentinel-todo-job-mode').textContent).toBe('Ralph');
+        expect(getProcess).not.toHaveBeenCalled(); expect(getGroup).not.toHaveBeenCalled();
+        getGroup.mockResolvedValue({ workspaceId: 'repo1', groupId: 'session', type: 'ralph', status: 'running' });
+        focus();
+        expect(within(await screen.findByRole('dialog')).getByRole('note', { name: /shortcuts-2/ })).toBeTruthy();
+        expect(getGroup).toHaveBeenCalledTimes(1);
+    });
+    it('keeps cached offline labels even when preview routing is unresolved', () => {
+        ownerWorkspaces.push({ id: 'repo1', name: 'Saved checkout', remote: { serverId: 'offline', serverLabel: 'Build machine', offline: true } });
+        mount(job({ kind: 'remote', serverId: 'offline' }));
+        const badge = screen.getByTestId('sentinel-todo-job-owner');
+        expect(badge.textContent).toBe('Build machine / Saved checkout');
+        expect(screen.getByRole('note', { name: /Build machine.*Server offline/ })).toBe(badge);
+        expect(screen.getByRole('link').getAttribute('href')).toBeNull();
+        expect(getProcess).not.toHaveBeenCalled();
+    });
+    it('retains a remote group owner transport for an uncatalogued same-server member', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'group-review', serverId: 'host', baseUrl: 'https://owner.example' }]);
+        render(<SentinelTodoJobPreview job={job()} owner={{ ...owner, ownerRoutingRef: 'remote:host:group-review' }}
+            linkKey="job-key" onFollowLink={follow} />);
+        focus();
+        await screen.findByText('Verifying focus after refresh');
+        expect(refs).toContain('remote:host:group-review');
+        expect(getProcess).toHaveBeenCalledWith('job1', { workspace: 'repo1', exclude: ['conversation', 'toolCalls'], preview: true }, { signal: expect.any(AbortSignal) });
+    });
     it.each((['ask', 'autopilot', 'ralph'] as const).flatMap(mode =>
         (['queued', 'running', 'completed'] as const).map(state => ({ mode, state }))))(
         'renders $mode for $state without extra metadata reads or focus targets', ({ mode, state }) => {

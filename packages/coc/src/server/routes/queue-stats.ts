@@ -27,6 +27,7 @@ import {
 } from './queue-shared';
 import { processToHistorySummary, processToTaskDetail } from '../shared/process-history-mapper';
 import { projectBotControl, projectQueueTaskBotControl } from '../processes/bot-control-read-model';
+import { projectQueueJobModes } from '../shared/queue-job-mode';
 
 type QueueReadContext = Pick<QueueRouteContext, 'bridge' | 'store' | 'botManagedConversationsEnabled'>;
 
@@ -56,8 +57,16 @@ export async function readRepoQueueSnapshot(
     const enabled = ctx.botManagedConversationsEnabled?.() === true;
     const mgr = await getManagerByRepoIdentifier(repoId, ctx.bridge, ctx.store);
     if (!mgr) return { queued: [], running: [], stats: EMPTY_REPO_QUEUE_STATS };
-    const queued = await Promise.all(mgr.getQueueItems().map(item => serializeReadItem(ctx, item, enabled)));
-    const running = await Promise.all(mgr.getRunning().map(task => serializeReadTask(ctx, task, enabled)));
+    const queueItems = mgr.getQueueItems();
+    const runningTasks = mgr.getRunning();
+    const queued = await Promise.all(queueItems.map(item => serializeReadItem(ctx, item, enabled)));
+    const running = await Promise.all(runningTasks.map(task => serializeReadTask(ctx, task, enabled)));
+    const tasks = [...queueItems, ...runningTasks].filter((item): item is QueuedTask => !('kind' in item));
+    const modes = projectQueueJobModes(ctx.store, tasks);
+    const byId = new Map(tasks.map(task => [task.id, modes.get(task)]));
+    for (const row of [...queued, ...running]) {
+        if (row.type === 'chat') row.executionMode = byId.get(String(row.id)) ?? null;
+    }
     await enrichPendingAskUserCounts(ctx.store, running);
     const repoGate = mgr.getRepoGate(repoId);
     return { queued, running, stats: repoGate ? { ...mgr.getStats(), repoGate } : mgr.getStats() };

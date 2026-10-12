@@ -50,6 +50,68 @@ afterEach(() => {
 });
 
 describe('scoped rail job previews', () => {
+    it.each(['running', 'queued'] as const)('renders separate current-mode pills in %s rows, with wrapping metadata', status => {
+        const modes = ['ask', 'autopilot', 'ralph', 'sentinel', 'for-each', 'map-reduce'];
+        render(panel({ ...preview, [status]: modes.map(mode => ({
+            id: mode, type: 'chat', displayName: `Job ${mode}`, executionMode: mode, payload: { mode: 'ask' },
+        })) }));
+        hover(status);
+        tick(200);
+        const dialog = within(screen.getByRole('dialog'));
+        expect(dialog.getAllByTestId('rail-job-mode').map(pill => pill.textContent?.trim()))
+            .toEqual(['Ask', 'Autopilot', 'Ralph', 'Sentinel', 'For Each', 'Map Reduce']);
+        for (const pill of dialog.getAllByTestId('rail-job-mode')) {
+            expect(pill).toHaveClass('shrink-0', 'whitespace-nowrap', '!rounded-full');
+            expect(pill.parentElement).toHaveClass('flex-wrap');
+            expect(pill.getAttribute('title')).toMatch(/ mode$/);
+            expect(pill.className).toContain('dark:text-');
+        }
+        expect(dialog.getAllByText(status === 'running' ? 'Thinking' : 'Queued')).toHaveLength(6);
+        expect(dialog.queryByText('ask')).toBeNull();
+        expect(dialog.getAllByText('Chat')).toHaveLength(6);
+    });
+
+    it('recognizes existing Ralph context and normalizes legacy Plan without guessing missing modes', () => {
+        render(panel({ ...preview, running: [
+            { id: 'grill', type: 'chat', payload: { mode: 'ask', context: { ralph: { sessionId: 'one' } } } },
+            { id: 'plan', type: 'chat', payload: { mode: 'plan' } },
+        ] }));
+        hover();
+        tick(200);
+        expect(screen.getAllByTestId('rail-job-mode').map(pill => pill.textContent?.trim())).toEqual(['Ralph', 'Ask']);
+    });
+
+    it('omits unknown modes and never labels scripts/workflows or queue markers as chat modes', () => {
+        render(panel({ ...preview, running: [
+            { id: 'unknown', type: 'chat', executionMode: null, payload: { mode: 'autopilot' } },
+            { id: 'future', type: 'chat', executionMode: 'future-mode' },
+            { id: 'missing', type: 'chat' },
+            { id: 'script', type: 'run-script', payload: { mode: 'ask' } },
+            { id: 'workflow', type: 'run-workflow', payload: { mode: 'autopilot' } },
+            { id: 'pause', kind: 'pause-marker', payload: { mode: 'sentinel' } },
+        ] }));
+        hover();
+        tick(200);
+        expect(screen.queryByTestId('rail-job-mode')).toBeNull();
+        expect(screen.getByRole('dialog')).toHaveTextContent('Run Script');
+        expect(screen.getByRole('dialog')).toHaveTextContent('Run Workflow');
+        expect(screen.getByRole('dialog')).not.toHaveTextContent('Autopilot');
+    });
+
+    it.each(['remote:server-a:ws-alpha', 'remote:server-a:group-alpha'])('updates mode live without borrowing the owner Sentinel identity on %s', routeId => {
+        const jobs = { ...preview, routeId, running: [{ ...preview.running[0], executionMode: 'ask' }] };
+        const view = render(panel(jobs));
+        hover();
+        tick(200);
+        expect(screen.getByTestId('rail-job-mode')).toHaveTextContent('Ask');
+        view.rerender(panel({ ...jobs, running: [{ ...jobs.running[0], executionMode: 'autopilot' }] }));
+        expect(screen.getByTestId('rail-job-mode')).toHaveTextContent('Autopilot');
+        expect(screen.getByRole('link', { name: 'Open job: Active chat' }))
+            .toHaveAttribute('href', `#repos/${encodeURIComponent(routeId)}/chats/queue_r1`);
+        view.rerender(panel({ ...jobs, running: [{ ...jobs.running[0], executionMode: null }] }));
+        expect(screen.queryByTestId('rail-job-mode')).toBeNull();
+    });
+
     it('opens only matching jobs after 200ms, never the full sidebar', () => {
         render(panel());
         hover();

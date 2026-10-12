@@ -1,0 +1,9 @@
+.scheduler-delay-toolbar {
+    container-type: inline-size;
+}
+
+@container (max-width: 360px) {
+    .scheduler-delay-interval {
+        display: none;
+    }
+}

@@ -23,6 +23,7 @@ import { findSdkBinaryPath } from './sdk-loader';
 import { loadCopilotSdk } from './sdk-esm-loader';
 import { getAIServiceLogger } from './logger';
 import { createSdkClient, getLastCopilotElectronSpawn } from './sdk-client-factory';
+import { resolveCliStoredToken } from './cli-stored-token';
 import {
     SendMessageOptions,
     SDKInvocationResult,
@@ -253,7 +254,9 @@ export class CopilotSDKService implements ISDKService {
 
     public async createClient(cwd?: string): Promise<CopilotClient> {
         if (this.disposed) throw new Error('CopilotSDKService has been disposed');
-        return createSdkClient({ workingDirectory: cwd });
+        const gitHubToken = await resolveCliStoredToken(() => createSdkClient());
+        if (this.disposed) throw new Error('CopilotSDKService has been disposed');
+        return createSdkClient({ workingDirectory: cwd, ...(gitHubToken ? { gitHubToken } : {}) });
     }
 
     /**

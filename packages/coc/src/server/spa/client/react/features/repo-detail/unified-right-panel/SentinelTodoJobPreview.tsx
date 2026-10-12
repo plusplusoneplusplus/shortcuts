@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import type { SentinelTodoJobLink } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoJobLink, SentinelTodoTargetRepo } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { buildRemoteCloneKey } from '../../../repos/cloneIdentity';
+import { useAppOptional } from '../../../contexts/AppContext';
+import { useReposOptional } from '../../../contexts/ReposContext';
 import { useAnchoredPanelPosition } from '../../../shared/useAnchoredPanelPosition';
 import { usePortalContainer } from '../../../ui/usePortalContainer';
 import { WORKFLOW_REGISTRY, normalizeChatMode } from '../../../repos/modeConfig';
 import { getChatRowModeBadgeClasses } from '../../chat/chat-row-style';
 import { formatRelativeTime } from '../../../utils/format';
 import { sentinelTodoJobStateLabel, sentinelTodoReviewLabel, type SentinelTodoOwner } from './sentinelTodoPanelModel';
+import { resolveSentinelTodoJobOwner } from './sentinelTodoJobOwner';
 
 interface PreviewData { excerpt: string; source: string; at?: string; fetchedAt: number }
 const CACHE_MS = 15_000;
@@ -17,14 +20,25 @@ const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 const LINK = 'rounded text-[#0078d4] hover:underline focus-visible:outline focus-visible:outline-[#0078d4] dark:text-[#3794ff]';
 
 /** One ledger-validated job reference. Reads only compact owner-scoped metadata, never transcripts. */
-export function SentinelTodoJobPreview({ job, owner, repoLabel, linkKey, onFollowLink }: {
-    job: SentinelTodoJobLink; owner: SentinelTodoOwner; repoLabel?: string; linkKey: string;
+export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspaceId, linkKey, onFollowLink }: {
+    job: SentinelTodoJobLink; owner: SentinelTodoOwner; targetRepo?: SentinelTodoTargetRepo; currentWorkspaceId?: string; linkKey: string;
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
 }) {
     const ralph = job.kind === 'ralph' || !!job.sessionId;
     const mode = ralph ? 'ralph' : normalizeChatMode(job.mode);
     const badgeMode = mode === 'ask' || mode === 'autopilot' || mode === 'ralph' ? mode : undefined;
     const badgeLabel = WORKFLOW_REGISTRY.find(entry => entry.mode === badgeMode)?.label;
+    const app = useAppOptional();
+    const repos = useReposOptional();
+    const workspaces = useMemo(() => [
+        ...(repos?.repos.map(repo => repo.workspace) ?? []),
+        ...(app?.state.workspaces ?? []),
+        ...(repos?.remoteGroupWorkspaces ?? []),
+    ], [repos?.repos, app?.state.workspaces, repos?.remoteGroupWorkspaces]);
+    const jobOwner = resolveSentinelTodoJobOwner({
+        job, owner, targetRepo, workspaces,
+        currentWorkspaceId: currentWorkspaceId ?? app?.state.selectedRepoId ?? undefined,
+    });
     const routeRef = job.serverId ? buildRemoteCloneKey(job.serverId, job.workspaceId) : owner.ownerRoutingRef ?? undefined;
     const route = resolveCloneRoute(routeRef ?? null);
     const unavailable = !job.workspaceId || route.kind === 'unresolved-remote' || (job.kind === 'remote' && !job.serverId);
@@ -161,6 +175,11 @@ export function SentinelTodoJobPreview({ job, owner, repoLabel, linkKey, onFollo
             }
         }}>
             <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} aria-description="Focus to preview; ArrowDown enters preview actions." className={`${LINK} min-w-0 break-words [overflow-wrap:anywhere]`} aria-disabled={!navigable || undefined}>{title}</a>
+            {jobOwner.showBadge && <span role="note" data-testid="sentinel-todo-job-owner" title={jobOwner.description} aria-label={jobOwner.description}
+                className="inline-block min-w-0 max-w-full truncate rounded-full border border-[#d0d7de] bg-black/[0.04] px-1.5 py-0.5 text-[10px] text-[#616161] dark:border-[#4a4a4a] dark:bg-white/[0.06] dark:text-[#bbbbbb]"
+                style={{ maxWidth: 'min(100%, 15rem)' }}>
+                <span aria-hidden="true">{jobOwner.label}</span>
+            </span>}
             {badgeMode && <span title={badgeMode === 'ralph' ? 'Ralph session' : `${badgeLabel} mode`}
                 data-testid="sentinel-todo-job-mode"
                 className={badgeMode === 'ralph'
@@ -185,7 +204,9 @@ export function SentinelTodoJobPreview({ job, owner, repoLabel, linkKey, onFollo
             }}>
             <header className="flex items-start justify-between gap-2"><h3 id={`${id}-title`} className="font-medium">{title}</h3>
                 <button type="button" aria-label="Close job preview" className={LINK} onClick={() => dismiss(true)}>×</button></header>
-            <p className={`mt-1 text-[11px] ${MUTED}`}>{repoLabel ?? job.workspaceId} · {job.serverId ?? (owner.ownerRoutingRef ? owner.ownerRoutingRef : 'Local workstation')}</p>
+            <p role="note" className={`mt-1 text-[11px] ${MUTED}`} title={jobOwner.description} aria-label={jobOwner.description}>
+                <span aria-hidden="true">{jobOwner.label}</span>
+            </p>
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px]">
                 <dt className={MUTED}>Execution</dt><dd>{sentinelTodoJobStateLabel(job)} · {ralph ? 'Ralph session' : 'Ordinary job'}</dd>
                 <dt className={MUTED}>Review</dt><dd>{sentinelTodoReviewLabel(job) ?? 'No terminal review recorded'}</dd>

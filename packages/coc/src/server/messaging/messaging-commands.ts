@@ -16,7 +16,7 @@ import type { MessagingJobOrigin } from './job-notices';
 import type { CompactProcessOutcome } from '../processes/compact-process';
 import { resolveChatWorkspace, resolveWorkspace } from './chat-target';
 import { listRemotesReply, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
-import { localTopicsReply, resolveLocalTopic, type LocalTopicSlot } from './local-topics';
+import { localTopicsReply, resolveLocalTopic, type LocalTopicQueue, type LocalTopicSlot } from './local-topics';
 import { localGitStatusReply, type MessagingGitStatusReader } from './git-status';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
@@ -65,6 +65,7 @@ export interface MessagingCommandContext {
     remoteRefs?: RemoteRefSlot;
     /** This chat's last local list, preserving cross-repo numbering across activity changes. */
     localTopics?: LocalTopicSlot;
+    topicQueue?: LocalTopicQueue;
     /** Clock for topic ages; `Date.now` by default. */
     now?: () => number;
 }
@@ -196,11 +197,11 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
 
     if (command.type === 'list-topics') {
         return localTopicsReply(ctx.store, workspaces, ctx.localTopics, format,
-            id => resolveChatWorkspace(workspaces, ctx.selection.repoId())?.id === id ? ctx.selection.topicId(id) : null, now, command.verbose);
+            id => resolveChatWorkspace(workspaces, ctx.selection.repoId())?.id === id ? ctx.selection.topicId(id) : null, now, command.verbose, '', ctx.topicQueue);
     }
     if (command.type === 'select-topic') {
-        const topic = await resolveLocalTopic(ctx.store, workspaces, ctx.localTopics, command.args, now);
-        if (!topic) return '❌ Topic not found or ambiguous. Use `list topics -v`.';
+        const topic = await resolveLocalTopic(ctx.store, workspaces, ctx.localTopics, command.args, now, ctx.topicQueue);
+        if (!topic || ['failed', 'cancelled'].includes(topic.status)) return '❌ Topic not found, unavailable or ambiguous. Use `list topics -v`.';
         const workspaceId = String(topic.metadata?.workspaceId);
         ctx.selection.selectRepo(workspaceId);
         ctx.selection.selectTopic(workspaceId, topic.id);

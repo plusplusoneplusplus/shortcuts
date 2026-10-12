@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AIProcess } from '@plusplusoneplusplus/forge';
+import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import { LocalTopicMemory, listLocalTopics, localTopicsReply, resolveLocalTopic, LOCAL_TOPICS_EMPTY } from '../../../src/server/messaging/local-topics';
 
 const NOW = Date.parse('2026-10-06T12:00:00Z');
@@ -103,5 +103,74 @@ describe('local messaging topics', () => {
         expect(teams.slot('channel\0root-b').get()).toBeUndefined();
         const s = store([topic('old', 'b', { startTime: new Date(NOW - DAY * 10) })]);
         expect((await resolveLocalTopic(s, workspaces, undefined, 'old', NOW))?.id).toBe('old');
+    });
+});
+
+function queued(id: string, workspaceId = 'a', patch: Partial<QueuedTask> = {}): QueuedTask {
+    return { id, repoId: workspaceId, processId: `queue_${id}`, type: 'chat', priority: 'normal',
+        status: 'queued', createdAt: NOW - 1000, config: {},
+        payload: { kind: 'chat', workspaceId, prompt: `Prompt ${id}` }, ...patch };
+}
+
+describe('new queued messaging topics', () => {
+    it('merges real first turns across owners, labels them and preserves priority, limit and creation age', async () => {
+        const tasks = [queued('new', 'b', { createdAt: NOW }), queued('boundary', 'a', { createdAt: NOW - DAY }),
+            queued('old', 'a', { createdAt: NOW - DAY - 1 }), queued('future', 'a', { createdAt: NOW + 1 }),
+            queued('removed', 'removed'), queued('bad-age', 'a', { createdAt: NaN }), queued('other')];
+        const queue = { getAll: () => tasks };
+        const s = store([topic('pin', 'a', { pinnedAt: 'pin' }), topic('run', 'b', { status: 'running' }), topic('completed')]);
+        expect((await listLocalTopics(s, workspaces, NOW, queue)).map(t => t.id))
+            .toEqual(['pin', 'run', 'queue_new', 'queue_other', 'queue_boundary']);
+        const reply = await localTopicsReply(s, workspaces, undefined, format, () => null, NOW, true, '', queue);
+        expect(reply).toContain('Prompt new (queued) · Beta · now · b/queue_new');
+        expect(reply.split('\n')).toHaveLength(7);
+    });
+
+    it('deduplicates saved first turns and ignores follow-ups, compaction, markers, automation and nonchat tasks', async () => {
+        const tasks = [queued('saved'), queued('follow', 'a', { payload: { kind: 'chat', workspaceId: 'a', prompt: 'Follow', processId: 'queue_saved' } }),
+            queued('compact', 'a', { payload: { kind: 'compact', workspaceId: 'a' } }),
+            queued('marker', 'a', { type: 'pause-marker' }), queued('job', 'a', { type: 'run-script' }),
+            queued('automation', 'a', { payload: { kind: 'chat', workspaceId: 'a', prompt: 'Auto', context: { source: 'cron' } } }),
+            queued('bad-owner', 'a', { payload: { kind: 'chat', workspaceId: 'b', prompt: 'Bad' } }),
+            queued('bad-id', 'a', { processId: 'queue_another' }), queued('cancelled', 'a', { status: 'cancelled' })];
+        const saved = topic('queue_saved');
+        expect(await listLocalTopics(store([saved]), workspaces, NOW, { getAll: () => tasks })).toEqual([saved]);
+    });
+
+    it('keeps numeric and qualified selection stable through start, and rejects cancelled, disappeared or removed owners', async () => {
+        const tasks = [queued('new', 'b')];
+        const topics: AIProcess[] = [];
+        const s = store(topics);
+        const queue = { getAll: () => tasks };
+        const slot = new LocalTopicMemory().slot('chat');
+        await localTopicsReply(s, workspaces, slot, format, () => null, NOW, true, '', queue);
+        expect((await resolveLocalTopic(s, workspaces, slot, '1', NOW, queue))?.id).toBe('queue_new');
+        expect(await resolveLocalTopic(s, [workspaces[0]], slot, '1', NOW, queue)).toBeUndefined();
+        tasks[0].status = 'running';
+        expect((await resolveLocalTopic(s, workspaces, slot, 'b/queue_new', NOW, queue))?.status).toBe('running');
+        tasks[0].status = 'cancelled';
+        expect(await resolveLocalTopic(s, workspaces, slot, '1', NOW, queue)).toBeUndefined();
+        tasks.splice(0);
+        expect(await resolveLocalTopic(s, workspaces, slot, 'b/queue_new', NOW, queue)).toBeUndefined();
+        const started = topic('queue_new', 'b', { status: 'running' });
+        topics.push(started);
+        expect(await resolveLocalTopic(s, workspaces, slot, '1', NOW, queue)).toBe(started);
+        expect(await resolveLocalTopic(s, workspaces, slot, 'b/queue_new', NOW, queue)).toBe(started);
+    });
+
+    it('qualifies identical queued IDs by owner and deduplicates only the saved owner', async () => {
+        const queue = { getAll: () => [queued('same', 'a'), queued('same', 'b', { processId: undefined })] };
+        const s = store([topic('queue_same', 'a')]);
+        const refs = (await listLocalTopics(s, workspaces, NOW, queue)).map(t => `${t.metadata?.workspaceId}/${t.id}`);
+        expect(refs).toEqual(['b/queue_same', 'a/queue_same']);
+        expect(await resolveLocalTopic(s, workspaces, undefined, 'queue_same', NOW, queue)).toBeUndefined();
+        expect((await resolveLocalTopic(s, workspaces, undefined, 'b/queue_same', NOW, queue))?.metadata?.workspaceId).toBe('b');
+    });
+
+    it('recognizes a start racing the saved lookup without history reads during listing', async () => {
+        const started = topic('queue_race', 'b');
+        const s = store([]);
+        s.getProcess.mockResolvedValueOnce(undefined).mockResolvedValueOnce(started);
+        expect(await resolveLocalTopic(s, workspaces, undefined, 'b/queue_race', NOW, { getAll: () => [] })).toBe(started);
     });
 });

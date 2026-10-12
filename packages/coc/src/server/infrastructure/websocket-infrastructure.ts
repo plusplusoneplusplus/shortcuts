@@ -16,6 +16,8 @@ import type { TerminalWebSocketServer } from '../terminal/index';
 import type { LanguageServerWebSocketServer } from '../language-servers/ws-bridge';
 import { projectQueueTaskBotControl } from '../processes/bot-control-read-model';
 import { getServerLogger } from '../logging/server-logger';
+import { projectQueueJobModes } from '../shared/queue-job-mode';
+import { isRalphTask } from '../tasks/task-types';
 
 // ============================================================================
 // Factory
@@ -69,6 +71,7 @@ export function createWebSocketInfrastructure(
     store.onProcessChange = (event) => {
         const enabled = botManagedConversationsEnabled();
         let controlChanged = false;
+        let modeChanged = false;
         switch (event.type) {
             case 'process-added':
             case 'process-updated':
@@ -79,10 +82,11 @@ export function createWebSocketInfrastructure(
                     if (enabled) processControlSnapshots.set(summary.id, controlSnapshot);
                     else processControlSnapshots.delete(summary.id);
                     wsServer.broadcastProcessEvent({ type: event.type, process: summary });
-                    const modeSnapshot = JSON.stringify([summary.workspaceId, event.process.metadata?.mode ?? null]);
-                    if (onProcessModeChanged && processModeSnapshots.get(summary.id) !== modeSnapshot) {
+                    const modeSnapshot = JSON.stringify([summary.workspaceId, event.process.metadata?.mode ?? null, isRalphTask(event.process)]);
+                    modeChanged = processModeSnapshots.get(summary.id) !== modeSnapshot;
+                    if (modeChanged) {
                         processModeSnapshots.set(summary.id, modeSnapshot);
-                        try { onProcessModeChanged(event.process); }
+                        try { onProcessModeChanged?.(event.process); }
                         catch (error) { console.error('[sentinel-todos] Could not invalidate job mode:', error); }
                     }
                 }
@@ -106,12 +110,12 @@ export function createWebSocketInfrastructure(
                 });
                 break;
         }
-        if (enabled && controlChanged && event.process
+        if (((enabled && controlChanged) || modeChanged) && event.process
             && (event.type === 'process-added' || event.type === 'process-updated')) {
             const process = event.process;
             for (const [repoPath, manager] of registry.getAllQueues()) {
                 const affectedRepoIds = new Set([...manager.getQueued(), ...manager.getRunning()]
-                    .filter(task => task.payload.kind === 'chat'
+                    .filter(task => task.type === 'chat'
                         && (task.payload.processId ?? task.processId ?? toQueueProcessId(task.id)) === process.id)
                     .map(task => task.repoId));
                 for (const repoId of affectedRepoIds) {
@@ -122,8 +126,9 @@ export function createWebSocketInfrastructure(
     };
 
     // Helper to map task arrays to WS-friendly summaries
-    const mapQueued = (t: any) => ({
+    const mapQueued = (t: any, executionMode?: string | null) => ({
         id: t.id, repoId: t.repoId, type: t.type, priority: t.priority,
+        ...(t.type === 'chat' ? { executionMode: executionMode ?? null } : {}),
         status: t.status, displayName: t.displayName, createdAt: t.createdAt,
         // Freeze state has to ride along: this payload replaces the SPA's queue
         // wholesale on every change, so anything omitted here makes the frozen
@@ -146,8 +151,8 @@ export function createWebSocketInfrastructure(
             } : undefined,
         },
     });
-    const mapRunning = (t: any) => ({
-        ...mapQueued(t), startedAt: t.startedAt,
+    const mapRunning = (t: any, executionMode?: string | null) => ({
+        ...mapQueued(t, executionMode), startedAt: t.startedAt,
     });
     const taskKey = (task: { id: string; repoId?: string }) => JSON.stringify([task.repoId, task.id]);
     let queueRevision = 0;
@@ -164,12 +169,13 @@ export function createWebSocketInfrastructure(
         repoRevisions.set(event.repoId, revision);
         const repoQueued = repoManager.getQueued();
         const repoRunning = repoManager.getRunning();
+        const repoModes = projectQueueJobModes(store, [...repoQueued, ...repoRunning]);
         const repoSnapshot = {
             type: 'queue-updated',
             queue: {
                 repoId: event.repoId,
-                queued: repoQueued.map(mapQueued),
-                running: repoRunning.map(mapRunning),
+                queued: repoQueued.map(task => mapQueued(task, repoModes.get(task))),
+                running: repoRunning.map(task => mapRunning(task, repoModes.get(task))),
                 stats: {
                     queued: repoStats.queued,
                     running: repoStats.running,
@@ -202,6 +208,7 @@ export function createWebSocketInfrastructure(
         }
         combinedStats.isPaused = anyManager && allPaused;
         combinedStats.isDraining = anyDraining;
+        const allModes = projectQueueJobModes(store, [...allQueued, ...allRunning]);
 
         const taskInfo = event.taskId ? ` task=${event.taskId}` : '';
         process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${combinedStats.queued} running=${combinedStats.running} ws_clients=${wsServer.clientCount}\n`);
@@ -209,8 +216,8 @@ export function createWebSocketInfrastructure(
         const aggregateSnapshot = {
             type: 'queue-updated',
             queue: {
-                queued: allQueued.map(mapQueued),
-                running: allRunning.map(mapRunning),
+                queued: allQueued.map(task => mapQueued(task, allModes.get(task))),
+                running: allRunning.map(task => mapRunning(task, allModes.get(task))),
                 stats: combinedStats,
             },
         } as const;

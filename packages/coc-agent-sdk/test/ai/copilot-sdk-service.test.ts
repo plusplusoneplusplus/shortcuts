@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-service';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
+import { resolveCliStoredToken } from '../../src/cli-stored-token';
 import * as trustedFolder from '../../src/trusted-folder';
 import {
     createMockSDKModule,
@@ -30,6 +31,7 @@ vi.mock('../../src/mcp-config-loader', () => ({
 }));
 
 // Mock sdk-client-factory so tests can control CopilotClient instantiation
+vi.mock('../../src/cli-stored-token', () => ({ resolveCliStoredToken: vi.fn().mockResolvedValue(undefined) }));
 const createSdkClientMock = vi.fn();
 vi.mock('../../src/sdk-client-factory', () => ({
     createSdkClient: (...args: any[]) => createSdkClientMock(...args),
@@ -59,6 +61,17 @@ describe('CopilotSDKService - Client Initialization', () => {
         await service.createClient('/some/project/path');
 
         expect(createSdkClientMock).toHaveBeenCalledWith({ workingDirectory: '/some/project/path' });
+    });
+
+    it('passes the fallback credential to each workspace client without retaining it', async () => {
+        const { MockCopilotClient } = createMockSDKModule();
+        createSdkClientMock.mockImplementation(options => new MockCopilotClient(options));
+        vi.mocked(resolveCliStoredToken).mockResolvedValueOnce('gho_fixture_first');
+        vi.mocked(resolveCliStoredToken).mockResolvedValueOnce('gho_fixture_second');
+        await service.createClient('/workspace/first');
+        await service.createClient('/workspace/second');
+        expect(createSdkClientMock).toHaveBeenNthCalledWith(1, { workingDirectory: '/workspace/first', gitHubToken: 'gho_fixture_first' });
+        expect(createSdkClientMock).toHaveBeenNthCalledWith(2, { workingDirectory: '/workspace/second', gitHubToken: 'gho_fixture_second' });
     });
 
     it('should not call ensureFolderTrusted when no working directory is given', async () => {

@@ -95,6 +95,23 @@ afterEach(() => {
 });
 
 describe('collapsed-rail pinned jobs', () => {
+    it('shares mode pills for unloaded pins and live rows without additional owner reads', async () => {
+        serverEntries = [
+            entry('queue_a', '2026-10-03T00:00:00.000Z', { mode: 'sentinel' }),
+            entry('queue_old', '2026-09-01T00:00:00.000Z', { executionMode: 'ralph', mode: 'ask' }),
+        ];
+        const a = historyRow('queue_a', '2026-10-03T00:00:00.000Z', { mode: 'ask' });
+        const view = render(panel({ history: [a] }));
+        await flush();
+        hover();
+        tick(200);
+        expect(screen.getAllByTestId('rail-job-mode').map(pill => pill.textContent?.trim())).toEqual(['Ask', 'Ralph']);
+        const reads = pinned.mock.calls.length;
+        view.rerender(panel({ history: [{ ...a, mode: 'autopilot' }] }));
+        expect(screen.getAllByTestId('rail-job-mode').map(pill => pill.textContent?.trim())).toEqual(['Autopilot', 'Ralph']);
+        expect(pinned).toHaveBeenCalledTimes(reads);
+    });
+
     it('counts the full pinned set, including completed and unloaded pins, in pin order', async () => {
         render(panel({ history: [historyRow('queue_a', '2026-10-03T00:00:00.000Z')] }));
         await flush();

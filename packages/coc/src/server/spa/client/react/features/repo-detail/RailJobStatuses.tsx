@@ -1,5 +1,5 @@
 import { createContext, type Dispatch, type SetStateAction } from 'react';
-import { ChatStatusPill } from '../chat/ChatStatusPill';
+import { RailJobMetadata } from '../chat/RailJobMetadata';
 import { getTaskDef } from '../../../../../tasks/task-types';
 import type { QueueJob } from '../../queue/hooks/useRepoQueueStats';
 import { queueJobHash } from '../../queue/queueJobRoute';
@@ -78,11 +78,7 @@ export function RailJobStatuses({ runningCount, queuedCount, preview, opener, ..
                                 window.dispatchEvent(new HashChangeEvent('hashchange'));
                             }
                         }}
-                        meta={<>
-                            <ChatStatusPill status={status} showDuration={false} className="!h-[18px] !text-[10px]" />
-                            <span>{getTaskDef(job.type ?? '')?.label || job.type}</span>
-                            {job.payload?.mode && <span>{job.payload.mode}</span>}
-                        </>}
+                        meta={<RailJobMetadata job={job} status={status} />}
                     />
                 );
             }),

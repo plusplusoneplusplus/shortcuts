@@ -45,7 +45,10 @@ references before editing. Paths are package-relative.
 - Collapsed workspace-rail job previews share `RailHoverPreview`. Pinned rows come
   from the owning workspace's full pinned-process read, overlaid with the chat
   list's live pin/archive state and tab/type visibility; do not derive them from
-  queue status arrays or aggregate member pins for a selected group.
+  queue status arrays or aggregate member pins for a selected group. `RailJobMetadata`
+  keeps status/type separate from execution-mode pills. Queue and pinned snapshots
+  project owner-verified current process modes in a transcript-free batch; Ralph
+  identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.
   Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
   owner's git-info/working tree (groups: per-member git-info, never a group branch),
   and never show unknown, no-upstream or detached state as clean or 0/0.
@@ -131,8 +134,12 @@ references before editing. Paths are package-relative.
   scope authorizes CI/conflict repairs; missing/`ci` scope authorizes CI only.
   Validate the PR-bound owner/workspace, poll authoritative merge previews and
   current-head checks, and serialize automatic/manual repairs with the durable
-  PR-qualified writer and `deliverPrRepairOnce`. Conflict retries include head/base
-  identity, bounded delivery backoff and a cross-head budget; ambiguous/exhausted
+  PR-qualified writer and `deliverPrRepairOnce`. Repair execution uses high-priority
+  FIFO with `respectQueueBarriers`; pending messages retain scheduling metadata
+  through drain/promotion/recovery. Running turns, conversation predecessors,
+  pauses/delays/freezes and PR gates remain authoritative. Other triggers/reviews
+  keep normal priority. Conflict retries include head/base identity, bounded
+  delivery backoff and a cross-head budget; ambiguous/exhausted
   outcomes require human action. Repairs use isolated existing-PR worktrees, never
   submission workflows or policy bypasses. Arming failures preserve PR success.
   Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
@@ -644,10 +651,17 @@ references before editing. Paths are package-relative.
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
   memory per WhatsApp group / Teams thread; remote repos are never selectable, and
   replies carry only server/repo names (failures logged server-side). Bare `list topics`
-  stays local. Every topic list (local, remote, Teams thread) renders through
+  uses `local-topics.ts`: five chats created within 24 hours across registered local
+  workspaces, ranked pinned, running, queued, then activity. Transcript-free saved
+  pages merge owner-verified first-turn queue tasks; follow-ups and internal jobs
+  never create extra topics. Numbering retains the last displayed owner/process
+  refs; queue IDs survive startup. Queued selections use durable connector receipts
+  and queue dependencies for follow-ups, including Teams threads. Remote lists read
+  saved processes only. Every topic list (local, remote, Teams thread) renders through
   `formatTopicList` (status emoji, ≤40-char escaped title, relative age; ids only with
-  `-v`; no Markdown list syntax so Teams keeps the numbering). `listRecentTopics` sorts
-  its bounded page by last activity and `resolveTopic` indexes that same order.
+  `-v`; no Markdown list syntax so Teams keeps the numbering). `localTopicsReply`
+  and `resolveLocalTopic` share owner-qualified selection refs; cancelled or missing
+  queued targets reject selection and delivery.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

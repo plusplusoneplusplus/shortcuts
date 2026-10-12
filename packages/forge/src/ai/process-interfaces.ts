@@ -7,6 +7,7 @@
  */
 
 import { AIBackendType } from './types';
+import type { TaskPriority } from '../queue/types';
 import type { TokenUsage, Attachment, SupportedProvider } from '@plusplusoneplusplus/coc-agent-sdk';
 import type {
     CodeReviewProcessMetadata,
@@ -525,6 +526,9 @@ export interface ActiveProviderSession {
  * Persisted on the AIProcess so it survives chat switches and page refreshes.
  */
 export interface PendingMessage {
+    /** Trusted scheduling metadata retained through buffering and recovery. */
+    queuePriority?: TaskPriority;
+    respectQueueBarriers?: boolean;
     /** Strict native session to resume for a stopped-chat continuation. */
     resumeSessionId?: string;
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';

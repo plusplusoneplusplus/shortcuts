@@ -22,7 +22,9 @@ and mark it as paged, so disabling the flag cannot reuse it as full history.
 An IntersectionObserver loads shared `PAGE_TURNS` pages through the owner client, with
 one in-flight read, layout anchoring and automatic capped backoff. Hash `turn`/`turnIndex`,
 `coc-jump-to-turn`, minimap and pinned navigation load contiguous pages before highlighting.
-Pins have an independent owner-scoped read; find searches loaded turns. Owner/chat changes
+Pins have an independent owner-scoped read; find searches loaded turns. `ChatDetail` mounts
+the conversation minimap only after hydration for non-Sentinel displayed modes, resolved
+from owner-scoped process state independently of pinned Sentinel origins. Owner/chat changes
 abort requests and discard delayed results. Flag-off hydration and rendering remain full-history.
 
 ### ConversationTurnBubble
@@ -40,6 +42,13 @@ assistant avatar, provider label, and model metadata, falling back to the active
 conversation provider only for unattributed records. `ConversationArea` derives a
 non-persisted `Continued with <Provider>` separator before the first assistant response
 of each provable provider segment. Error and script-output turns keep their own palettes.
+
+`AssistantStatsBadge` reads per-turn token usage and elapsed time in the shared bubble
+across chat modes and pop-outs. It reuses `ContextUsagePopover`'s token formatter and
+button reset, retains exact cache/total/time details, and exposes disclosure state to
+assistive technology. Streaming turns omit metrics; partial usage keeps zero defaults
+and derives missing totals from input/output. Header wrapping preserves complete values
+and the non-shrinking action group; keyboard focus reveals actions.
 
 Native rewind and edit-and-resend are available only for user turns in the active
 provider segment. Earlier-segment controls stay visible but disabled with the

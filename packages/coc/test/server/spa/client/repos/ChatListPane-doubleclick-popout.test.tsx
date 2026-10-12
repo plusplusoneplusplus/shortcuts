@@ -40,6 +40,7 @@ vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
+    isFeatureEnabled: () => false,
     isChatFoldersEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',

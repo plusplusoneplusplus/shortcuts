@@ -152,9 +152,13 @@ The same `ci-failure` monitor polls authoritative merge previews and current-hea
 checks. Conflict identity includes provider/host/repository/PR and head/base SHAs;
 unknown previews wait, policies remain blockers, and terminal PRs stop. Database
 writer admission and durable owner-chat delivery serialize CI/conflict/manual
-repairs. Delivery retries reuse their receipt with backoff; ambiguous resolutions
-and exhausted per-tuple/cross-head budgets require human action. Conflict prompts
-require isolated existing-PR worktrees and forbid submission or policy bypasses.
+repairs. Repair execution uses high-priority FIFO behind existing pause markers,
+conversation predecessors and scheduler gates; running jobs keep their slots.
+Pending messages retain `queuePriority` and `respectQueueBarriers` through drain,
+router promotion and recovery. Other triggers/reviews keep ordinary priority.
+Delivery retries reuse receipts with backoff; ambiguous/exhausted outcomes require
+human action. Conflict prompts require isolated existing-PR worktrees without
+submission or policy bypasses.
 
 ### send_to_conversation
 

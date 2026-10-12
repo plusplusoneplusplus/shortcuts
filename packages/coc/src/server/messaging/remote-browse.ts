@@ -78,6 +78,7 @@ export interface TopicListOptions extends RemoteBrowseFormat {
     selectionId?: (topic: TopicSummary) => string;
     /** Append each topic's id. */
     verbose?: boolean;
+    labelQueued?: boolean;
     now: number;
 }
 
@@ -110,7 +111,7 @@ export function formatTopicList(topics: readonly TopicSummary[], options: TopicL
         const title = truncateTitle(topic.title ?? topic.customTitle ?? topic.promptPreview ?? '') || '(untitled)';
         const marker = (options.isCurrent?.(topic) ?? (topic.id === options.currentId)) ? CURRENT_TOPIC_MARKER : TOPIC_INDENT;
         return [
-            `${marker}${i + 1}. ${TOPIC_STATUS_EMOJI.get(topic.status ?? '') ?? '❔'} ${options.escape(title)}`,
+            `${marker}${i + 1}. ${TOPIC_STATUS_EMOJI.get(topic.status ?? '') ?? '❔'} ${options.escape(title)}${options.labelQueued && topic.status === 'queued' ? ' (queued)' : ''}`,
             options.repoName ? options.escape(options.repoName(topic)) : undefined,
             formatRelativeAge(topicActivityMs(topic), options.now),
             options.verbose ? options.code(options.selectionId?.(topic) ?? topic.id) : undefined,

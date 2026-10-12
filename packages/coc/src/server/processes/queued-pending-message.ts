@@ -6,7 +6,7 @@ export function pendingMessageTask(proc: AIProcess, message: PendingMessage): Cr
         id: `pending-${proc.id}-${message.id}`,
         processId: proc.id,
         type: 'chat',
-        priority: 'normal',
+        priority: message.queuePriority ?? 'normal',
         payload: {
             kind: 'chat', processId: proc.id, prompt: message.content,
             workingDirectory: proc.workingDirectory, workspaceId: proc.metadata?.workspaceId,
@@ -21,7 +21,7 @@ export function pendingMessageTask(proc: AIProcess, message: PendingMessage): Cr
             imageTempDir: message.imageTempDir, fileAttachmentMeta: message.fileAttachmentMeta,
             context: { ...message.context, ...(message.skillNames?.length ? { skills: message.skillNames } : {}) },
         },
-        config: { ...(message.reasoningEffort ? { reasoningEffort: message.reasoningEffort } : {}) },
+        config: { ...(message.respectQueueBarriers ? { respectQueueBarriers: true } : {}), ...(message.reasoningEffort ? { reasoningEffort: message.reasoningEffort } : {}) },
         displayName: message.content.trim().slice(0, 60),
     };
 }

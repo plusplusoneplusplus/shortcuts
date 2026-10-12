@@ -327,6 +327,7 @@ export interface WorkspacePinnedEntry {
   pinnedAt?: string;
   archived?: boolean;
   mode?: string;
+  executionMode?: string | null;
   workItemId?: string;
   sessionCategory?: string;
 }

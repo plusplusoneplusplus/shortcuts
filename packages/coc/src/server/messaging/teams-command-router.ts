@@ -26,7 +26,7 @@ import {
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import type { MessagingHandOff, MessagingHandOffTarget } from './job-handoff';
 import type { MessagingJobOrigin } from './job-notices';
-import { LocalTopicMemory, localTopicsReply, resolveLocalTopic } from './local-topics';
+import { LocalTopicMemory, localTopicsReply, resolveLocalTopic, type LocalTopicQueue } from './local-topics';
 import { IncomingImagesError, MAX_MESSAGING_IMAGES } from './incoming-images';
 import { PendingImages, PendingImagesError, PENDING_IMAGE_TTL_MS, type PendingImageContext, type PendingImageScope } from './pending-images';
 import { createCache } from '../cache';
@@ -67,7 +67,7 @@ export interface TeamsCommandRouterDeps {
     admitNewChat?: (msg: InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) => Promise<{ taskId: string; duplicate: boolean }>;
     acknowledgeNewChat?: (taskId: string) => Promise<void>;
     admitFollowUp?: (msg: InboundTeamsMessage, process: AIProcess, message: string, mode?: MessagingChatMode) => Promise<{ duplicate: boolean }>;
-    admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode) => Promise<{ duplicate: boolean } | null>;
+    admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode, workspaceId?: string) => Promise<{ duplicate: boolean } | null>;
     resolveThreadReply?: (msg: InboundTeamsMessage) => Promise<{ process?: AIProcess; taskId?: string; workspaceId: string } | null>;
     getThreadSelection?: (msg: InboundTeamsMessage) => { workspaceId: string } | null;
     /** Persist a shared selection for an already-bound channel thread. */
@@ -86,6 +86,7 @@ export interface TeamsCommandRouterDeps {
     compact?: MessagingCompactor;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
     remotes?: MessagingRemoteDirectory;
+    topicQueue?: LocalTopicQueue;
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
     admitImageHandOff?: (msg: InboundTeamsMessage, target: MessagingHandOffTarget, message: string, origin: MessagingJobOrigin) => Promise<{ taskId: string; duplicate: boolean }>;
@@ -229,14 +230,16 @@ export class TeamsCommandRouter {
             const state = this.userState.get(msg.senderAadId ?? msg.senderName ?? 'anonymous');
             const targetId = command.type === 'chat-explicit' ? command.chatId : state.selectedTopic ?? state.lastActiveTopic;
             if (targetId) {
-                const process = await this.deps.store.getProcess(targetId)
+                const expectedOwner = command.type !== 'chat-explicit' && state.selectedTopic ? state.selectedRepo ?? undefined : undefined;
+                const process = await this.deps.store.getProcess(targetId, expectedOwner)
                     ?? (!isQueueProcessId(targetId) ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
                 if (process) {
+                    if (expectedOwner && process.metadata?.workspaceId !== expectedOwner) throw new Error('Teams conversation target is unavailable');
                     workspaceId = typeof process.metadata?.workspaceId === 'string' ? process.metadata.workspaceId : undefined;
                     chatId = process.id;
                 } else {
                     const queued = this.deps.resolvePendingImageTarget?.(targetId);
-                    if (!queued) throw new Error('Teams conversation target is unavailable');
+                    if (!queued || (expectedOwner && queued.workspaceId !== expectedOwner)) throw new Error('Teams conversation target is unavailable');
                     workspaceId = queued.workspaceId;
                     chatId = queued.chatId;
                 }
@@ -357,7 +360,7 @@ export class TeamsCommandRouter {
                     return;
                 }
                 const threadTarget = binding.process?.id ?? (binding.taskId ? toQueueProcessId(binding.taskId) : undefined);
-                if (await this.tryHandOff(msg, threadTarget, message, mode, observe)) return;
+                if (await this.tryHandOff(msg, threadTarget, message, mode, observe, binding.workspaceId)) return;
                 const newChat = !binding.process && !binding.taskId;
                 const admission: { duplicate: boolean; taskId?: string } | null | undefined = binding.process
                     ? await this.deps.admitFollowUp?.(msg, binding.process, message, mode)
@@ -457,6 +460,7 @@ export class TeamsCommandRouter {
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
             localTopics: this.localTopics.slot(`user\0${chatKey}`),
+            topicQueue: this.deps.topicQueue,
             // Compact the chat plain messages currently continue.
             compactTarget: () => {
                 const state = this.userState.get(userKey);
@@ -528,11 +532,11 @@ export class TeamsCommandRouter {
             this.deps.recordThreadCommand?.(msg);
             await reply(await localTopicsReply(this.deps.store, workspaces, slot, TEAMS_FORMAT,
                 id => id === selection?.workspaceId ? (selection as { process?: AIProcess })?.process?.id : null,
-                Date.now(), command.verbose, '/'));
+                Date.now(), command.verbose, '/', this.deps.topicQueue));
             return;
         }
         if (command.type === 'select-topic') {
-            const process = await resolveLocalTopic(this.deps.store, workspaces, slot, command.args, Date.now());
+            const process = await resolveLocalTopic(this.deps.store, workspaces, slot, command.args, Date.now(), this.deps.topicQueue);
             if (!process || ['failed', 'cancelled'].includes(process.status)) {
                 this.deps.recordThreadCommand?.(msg);
                 await reply('❌ Topic not found or unavailable. Use `/list topics -v` here.');
@@ -580,7 +584,7 @@ export class TeamsCommandRouter {
             await this.deps.sendReply(`❌ Chat "${chatId}" not found.`, msg.messageId);
             return;
         }
-        if (await this.tryHandOff(msg, process.id, message, mode, observe)) return;
+        if (await this.tryHandOff(msg, process.id, message, mode, observe, String(process.metadata?.workspaceId))) return;
 
         if (this.deps.admitFollowUp) {
             const admission = await this.deps.admitFollowUp(msg, process, message, mode);
@@ -610,15 +614,18 @@ export class TeamsCommandRouter {
         let targetProcess: AIProcess | undefined;
         if (targetId) {
             // Verify the process still exists
-            targetProcess = await this.deps.store.getProcess(targetId)
+            targetProcess = await this.deps.store.getProcess(targetId, state.selectedTopic ? state.selectedRepo ?? undefined : undefined)
                 ?? (!targetId.startsWith('queue_')
                     ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
+            if (targetProcess && state.selectedTopic && targetProcess.metadata?.workspaceId !== state.selectedRepo) {
+                throw new Error('Teams conversation target is unavailable');
+            }
             const handOffTarget = targetProcess?.id ?? (targetId.startsWith('queue_') ? targetId : toQueueProcessId(targetId));
-            if (await this.tryHandOff(msg, handOffTarget, message, mode, observe)) return;
+            if (await this.tryHandOff(msg, handOffTarget, message, mode, observe, state.selectedTopic ? state.selectedRepo ?? undefined : undefined)) return;
             if (targetProcess) {
                 targetId = targetProcess.id;
             } else {
-                const pending = await this.deps.admitPendingFollowUp?.(msg, targetId, message, mode);
+                const pending = await this.deps.admitPendingFollowUp?.(msg, targetId, message, mode, state.selectedTopic ? state.selectedRepo ?? undefined : undefined);
                 if (pending) {
                     if (pending.duplicate) return;
                     observe?.('dispatch-follow-up');
@@ -626,8 +633,19 @@ export class TeamsCommandRouter {
                         this.deps.acknowledgeFollowUp?.(msg));
                     return;
                 }
-                if (msg.images?.length) throw new Error('Teams conversation target is unavailable');
-                targetId = null;
+                // The first turn may have completed while pending admission was resolving.
+                targetProcess = await this.deps.store.getProcess(handOffTarget, state.selectedTopic ? state.selectedRepo ?? undefined : undefined);
+                if (targetProcess) {
+                    if (state.selectedTopic && targetProcess.metadata?.workspaceId !== state.selectedRepo) {
+                        throw new Error('Teams conversation target is unavailable');
+                    }
+                    if (await this.tryHandOff(msg, targetProcess.id, message, mode, observe,
+                        state.selectedTopic ? state.selectedRepo ?? undefined : undefined)) return;
+                    targetId = targetProcess.id;
+                } else {
+                    if (msg.images?.length || state.selectedTopic) throw new Error('Teams conversation target is unavailable');
+                    targetId = null;
+                }
             }
         }
 
@@ -673,10 +691,11 @@ export class TeamsCommandRouter {
      */
     private async tryHandOff(
         msg: InboundTeamsMessage, targetProcessId: string | undefined, message: string,
-        mode: MessagingChatMode | undefined, observe?: (type: TeamsEventType) => void,
+        mode: MessagingChatMode | undefined, observe?: (type: TeamsEventType) => void, workspaceId?: string,
     ): Promise<boolean> {
         const target = await this.deps.handOff?.resolve(targetProcessId, mode);
         if (!target) return false;
+        if (workspaceId && target.workspaceId !== workspaceId) throw new Error('Teams conversation target is unavailable');
         const origin = this.deps.handOffOrigin?.(msg);
         if (!origin) throw new Error('Teams hand-off origin is unavailable');
         if (msg.images?.length) {

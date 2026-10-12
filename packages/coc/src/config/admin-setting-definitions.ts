@@ -982,6 +982,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.schedulerDelayHint', default: false, runtime: 'live', runtimeFlag: 'schedulerDelayHintEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 75, label: 'Scheduler delay hint', badge: 'experimental',
+            hint: 'Shows the configured delay between tasks on the ALL and AP scheduler buttons for each scope. Disabled by default.',
+            testId: 'toggle-scheduler-delay-hint-enabled',
+        },
+    }),
+    bool({
         key: 'features.railStatusActions', default: false, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 74, label: 'Admin and quota on collapsed sidebar', badge: 'experimental',

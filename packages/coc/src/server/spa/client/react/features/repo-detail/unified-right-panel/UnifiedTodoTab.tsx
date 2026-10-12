@@ -381,7 +381,7 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
         <ul className="flex flex-col gap-1" role="list">
             {items.map(item => (
                 <TodoRow key={item.id} item={item} expanded={expanded.has(item.id)}
-                    owner={owner}
+                    owner={owner} currentWorkspaceId={scopeWorkspaceId}
                     onToggle={() => toggle(item.id)} onSave={saveItem} onFollowLink={followLink} />
             ))}
         </ul>
@@ -523,9 +523,10 @@ type SaveItem = (
     expectedRevision?: number,
 ) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
 
-function TodoRow({ item, owner, expanded, onToggle, onSave, onFollowLink }: {
+function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, onFollowLink }: {
     item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem; onFollowLink: FollowLink;
     owner: SentinelTodoOwner;
+    currentWorkspaceId?: string;
 }) {
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(null);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(null);
@@ -657,8 +658,7 @@ function TodoRow({ item, owner, expanded, onToggle, onSave, onFollowLink }: {
                             <li key={`${job.serverId ?? ''}:${job.processId}`} className="flex flex-wrap items-center gap-1">
                                 <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
                                     job={job} owner={owner} linkKey={jobLink} onFollowLink={onFollowLink}
-                                    repoLabel={item.targetRepo?.workspaceId === job.workspaceId ? item.targetRepo.label : undefined} />
-                                {expanded && job.workspaceId && <span className={MUTED}>· {job.serverId ? `${job.workspaceId} @ ${job.serverId}` : job.workspaceId}</span>}
+                                    targetRepo={item.targetRepo} currentWorkspaceId={currentWorkspaceId} />
                                 <span className={MUTED}>· {sentinelTodoJobStateLabel(job)}</span>
                                 {review && <span className={MUTED}>· {review}</span>}
                             </li>

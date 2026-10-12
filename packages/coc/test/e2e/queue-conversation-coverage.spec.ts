@@ -1113,37 +1113,48 @@ test.describe('Context Window Indicator', () => {
 test.describe('Loading Spinner', () => {
     test('shows loading spinner during initial conversation fetch', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'spinner-1');
+        let delayResolve!: () => void;
+        const delayPromise = new Promise<void>((resolve) => { delayResolve = resolve; });
         try {
             const task = await seedAndWaitForTask(serverUrl, wsId, {
                 payload: { prompt: 'Loading spinner test' },
             });
-            const processId = (task as any).processId ?? `queue_${task.id}`;
+            const processPath = `/api/processes/${encodeURIComponent(`queue_${task.id}`)}`;
+            const isProcessRequest = (url: URL) =>
+                url.origin === serverUrl && url.pathname === processPath;
 
-            // Delay the specific process fetch so we can observe loading state
-            let delayResolve!: () => void;
-            const delayPromise = new Promise<void>((r) => { delayResolve = r; });
-
-            await page.route(`**/api/processes/${encodeURIComponent(processId)}`, async (route) => {
+            // Match the owning server's process read, including workspace query parameters.
+            await page.route(isProcessRequest, async (route) => {
                 await delayPromise;
                 await route.continue();
             });
 
-            // Navigate to task using new URL
-            const navProcessId = `queue_${task.id}`;
-            page.goto(
-                `${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity/${encodeURIComponent(navProcessId)}`,
-            ).catch(() => {});
+            await Promise.all([
+                page.waitForRequest(request =>
+                    request.method() === 'GET' && isProcessRequest(new URL(request.url())), { timeout: 15_000 }),
+                gotoQueueTask(page, serverUrl, wsId, task.id as string),
+            ]);
 
-            // Wait for the component to render, then check loading state before delay resolves
-            await page.waitForSelector('[data-testid="activity-chat-detail"]', { timeout: 8_000 }).catch(() => {});
+            const chatDetail = page.getByTestId('activity-chat-detail');
+            const loading = chatDetail.getByText('Loading conversation...', { exact: true });
+            await expect(loading).toBeVisible();
+            await expect(chatDetail.locator('.chat-message')).toHaveCount(0);
 
-            const hasLoadingText = await page.locator('text=Loading conversation...').count() > 0;
-            expect(hasLoadingText).toBe(true);
-
-            // Resolve so the test finishes cleanly
+            const processResponse = page.waitForResponse(response =>
+                response.request().method() === 'GET' && isProcessRequest(new URL(response.url())), { timeout: 8_000 });
             delayResolve();
+            expect((await processResponse).ok()).toBe(true);
+            await expect(loading).toBeHidden();
+            await waitForConversation(page, 2);
+            await expect(chatDetail.locator('.chat-message.user .chat-message-content'))
+                .toContainText('Loading spinner test');
         } finally {
-            cleanup();
+            delayResolve();
+            try {
+                await page.unrouteAll({ behavior: 'wait' });
+            } finally {
+                cleanup();
+            }
         }
     });
 });

@@ -687,23 +687,31 @@ a one-line truncated reason preview for Needs attention, the latest job only (`+
 and expose an accessible Attach action for their owning Sentinel composer. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
-on drop and send (see the composer knowledge reference). Expanding lists every job (with its workspace), notes when the displayed status is derived
+on drop and send (see the composer knowledge reference). Expanding lists every job, notes when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
 start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
 `Tracked only · never run` tag. Referenced conversations
 (`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
-below jobs, with no execution or review label. `SentinelTodoJobPreview` wraps every
-shown job title, including earlier jobs when expanded, with the same noninteractive
-Ask/Autopilot/Ralph pill before execution/review labels, a delayed hover/focus preview
-and an explicit persistent info action. Pills use the ledger's compact current-mode
-projection, shared chat normalization/palette and the Ralph session indication.
-Unknown modes stay omitted; session identity takes precedence. Titles and pills wrap
-within narrow rows without adding reads, polling or focus targets. A bounded pane/viewport portal
-keeps the list layout stable. Escape/Close restore focus; outside presses and
-focus departure dismiss. Title and Open job anchors share excursion navigation
-and retain modifier clicks. The existing ledger flag gates this surface.
+below jobs, with no execution or review label.
+
+`SentinelTodoJobPreview` shares owner labels across latest/earlier titles and previews.
+`sentinelTodoJobOwner` resolves each job's server-qualified workspace from cached
+App/Repos local, remote and group metadata. Local jobs inherit the ledger's server;
+unqualified remote jobs have unknown ownership. The current concrete repo omits its
+badge; other local repos show their name, remote repos their configured server / repo.
+`targetRepo.label` is a fallback only for an exact owner match. Offline names retain
+their provenance; missing metadata has accessible qualified-identity details.
+
+Noninteractive Ask/Autopilot/Ralph pills use the ledger's compact current-mode
+projection, shared chat normalization/palette and Ralph session identity.
+Unknown modes stay omitted; session identity takes precedence. Owner pills truncate
+with full accessible descriptions; titles and pills wrap without extra reads,
+polling or focus targets. Delayed hover/focus and persistent info actions share a
+bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
+departure dismiss. Title and Open job anchors retain excursion navigation and
+modifier clicks. The existing ledger flag gates this surface.
 
 Preview reads are lazy and abortable, pinned to the job's workspace and concrete
 server or ledger-owner route. Unresolved remote owners never fall through locally;

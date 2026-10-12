@@ -7,7 +7,9 @@ import { sendJSON } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { ProcessIndexEntry } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { projectProcessIndexBotControl } from './bot-control-read-model';
+import { projectQueueJobModes } from '../shared/queue-job-mode';
 
 // ============================================================================
 // Types
@@ -117,8 +119,15 @@ export function registerPinArchiveRoutes(
         handler: async (_req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
             const entries = store.getPinnedProcesses(workspaceId);
+            const jobs = entries.map(entry => ({
+                ...entry, repoId: workspaceId, processId: entry.id, payload: { mode: entry.mode },
+            }));
+            const modes = projectQueueJobModes(store instanceof SqliteProcessStore ? store : undefined, jobs);
             const enabled = getBotManagedConversationsEnabled?.() === true;
-            sendJSON(res, 200, { entries: entries.map(entry => projectProcessIndexBotControl(entry, enabled)) });
+            sendJSON(res, 200, { entries: entries.map((entry, index) => ({
+                ...projectProcessIndexBotControl(entry, enabled),
+                ...(entry.type === 'chat' ? { executionMode: modes.get(jobs[index]) ?? null } : {}),
+            })) });
         },
     });
 }

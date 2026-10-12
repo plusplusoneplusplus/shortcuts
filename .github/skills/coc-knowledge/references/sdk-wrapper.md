@@ -72,6 +72,17 @@ Copilot requests create fresh session objects. Cold requests own their client pr
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 Copilot child processes receive `COPILOT_AUTO_UPDATE=false` through `CopilotClientOptions.env`, keeping the installed CLI version in use without changing the host process or caller-owned connections. The SDK and CLI pins are recorded in [monorepo.md](monorepo.md).
 
+### SDK credential fallback
+
+`cli-stored-token.ts` preserves explicit environment credentials and in-process authentication.
+For SDK service clients with a CLI config file, a bounded session-free runtime probe
+preserves keyring authentication. If the runtime reports `gh-cli` or no auth, the selected
+CLI account's exact `authTokens` entry (then `copilotTokens`) supplies `gitHubToken`;
+an absent token leaves runtime gh fallback intact. Invalid config or tokens fail visibly,
+without trying other accounts or retrying rejected credentials. Probe clients stop on
+every outcome; credentials and client environments are excluded from factory logs.
+SDK and direct HTTP share exact-account file token selection and validation through `readCliAccountToken`.
+
 ### Account quota contract
 
 `IAccountQuotaSnapshot.remainingPercentage` is a **0-1 fraction** for every provider; the dashboard, auto-provider router, and quota pause watcher all read it that way. The Copilot CLI's `account.getQuota` RPC reports it on a 0-100 scale, so `CopilotSDKService.getAccountQuota()` divides by 100 and clamps it through `normalizeCopilotAccountQuota`. Codex and Claude build fractions directly. `usageAllowedWithExhaustedQuota` means the provider lets usage continue past the limit; the AI Provider page's quota cell shows an `Overage allowed` caption for it, adding `(N over)` when `overage > 0`.
@@ -90,7 +101,9 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json`, selects the configured account, and checks its exact `host:login` key in `copilotTokens`. An absent or empty token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json` and selects the configured account. Shared file lookup checks `authTokens[host:login:github].token`, `authTokens[host:login].token`, then `copilotTokens[host:login]`, skipping absent or empty tokens. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+
+An absent file token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output.
 
 Invalid file tokens, config errors and vault failures are terminal. Other accounts, ambient tokens and CLI processes are never fallback sources. Credential subprocess failures expose sanitized errors without password output.
 

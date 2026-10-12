@@ -58,6 +58,43 @@ describe('WhatsApp workspace command routing', () => {
     });
     afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+    it('lists and selects an external queued chat and admits subsequent messages to the same owner', async () => {
+        const queue = new TaskQueueManager();
+        queue.enqueue({ id: 'external', type: 'chat', repoId: 'ws-b', processId: 'queue_external', priority: 'normal',
+            payload: { kind: 'chat', workspaceId: 'ws-b', prompt: 'External chat' }, config: {} });
+        router = new WhatsAppCommandRouter({ store, bindings, groupJid: () => 'group@g.us', enqueue, send, react,
+            getTask: id => queue.getTask(id), topicQueue: queue });
+        await router.handle(inbound('list topics -v', 'queued-list'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('ws-b/queue_external'), 'queued-list');
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('(queued)'), 'queued-list');
+        await router.handle(inbound('select topic 1', 'queued-select'));
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('queue_external');
+        await router.handle(inbound('Continue', 'queued-follow'));
+        expect(enqueue).toHaveBeenCalledWith('ws-b', 'Continue', undefined, 'queue_external', expect.any(String), undefined);
+        queue.cancelTask('external');
+        enqueue.mockClear();
+        await router.handle(inbound('Again', 'cancelled-follow'));
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('unavailable'), 'cancelled-follow');
+    });
+
+    it('continues the same owner when the selected queue entry becomes a saved process during delivery', async () => {
+        const queue = new TaskQueueManager();
+        queue.enqueue({ id: 'race', type: 'chat', repoId: 'ws-b', processId: 'queue_race', priority: 'normal',
+            payload: { kind: 'chat', workspaceId: 'ws-b', prompt: 'Race' }, config: {} });
+        router = new WhatsAppCommandRouter({ store, bindings, groupJid: () => 'group@g.us', enqueue, send, react,
+            getTask: id => queue.getTask(id), topicQueue: queue });
+        await router.handle(inbound('select topic ws-b/queue_race', 'select-race'));
+        queue.cancelTask('race');
+        vi.mocked(store.getProcess).mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+            id: 'queue_race', status: 'running', metadata: { workspaceId: 'ws-b' },
+        } as any);
+        await router.handle(inbound('Continue after start', 'race-follow'));
+        expect(enqueue).toHaveBeenCalledWith('ws-b', 'Continue after start', undefined, 'queue_race', expect.any(String), undefined);
+        expect(store.getProcess).toHaveBeenLastCalledWith('queue_race', 'ws-b');
+    });
+
     it('lists and selects across workspaces, defaulting chat to Global until a repo is selected', async () => {
         await router.handle(inbound('what files?', 'unselected'));
         expect(enqueue).toHaveBeenCalledWith(GLOBAL, 'what files?', undefined, expect.any(String), expect.any(String), undefined);

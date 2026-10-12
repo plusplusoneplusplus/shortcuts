@@ -223,6 +223,7 @@ export function registerTeamsMessagingRoutes(
                     ? { workspaceId: task.repoId, chatId: normalized } : null;
             },
             store: opts.store,
+            topicQueue: opts.relayQueue?.getAll ? { getAll: () => opts.relayQueue!.getAll!() } : undefined,
             enqueueChat: enqueueOrdinaryChat,
             ...(!relay ? { admitNewChat: async (msg: InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) => {
                 if (msg.images?.length) throw new IncomingImagesError('storage');
@@ -238,7 +239,7 @@ export function registerTeamsMessagingRoutes(
                 recordThreadCommand: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
                     relay.recordCommand(msg),
                 selectThreadTarget: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, processId: string | null) =>
-                    relay.selectThreadTarget(msg, workspaceId, processId) } : {}),
+                    relay.selectThreadTarget(msg, workspaceId, processId, true) } : {}),
             ...(relay ? {
                 ...(opts.enqueueRelayChat ? {
                     admitThreadNew: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) =>
@@ -299,11 +300,11 @@ export function registerTeamsMessagingRoutes(
                     ? relay?.acknowledgedMessage(msg) ?? Promise.resolve() : Promise.resolve(),
             } : {}),
             ...(relay && opts.enqueuePendingRelayFollowUp ? {
-                admitPendingFollowUp: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode) =>
+                admitPendingFollowUp: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode, workspaceId?: string) =>
                     relay.admitPendingFollowUp(msg, taskId, (workspaceId, processId, requestId, followUpTaskId) =>
                         withImages(msg, workspaceId, followUpTaskId, images =>
                             opts.enqueuePendingRelayFollowUp!(workspaceId, processId, message, requestId, mode, followUpTaskId, ...(images ? [images] : []))),
-                    message, !getAnswerRelayEnabled()),
+                    message, !getAnswerRelayEnabled(), workspaceId),
             } : {}),
             executeFollowUp: opts.executeFollowUp,
             getQuota: opts.getQuota,

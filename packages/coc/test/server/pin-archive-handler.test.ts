@@ -268,6 +268,26 @@ describe('Pin & Archive REST API', () => {
     // ── GET pinned processes ───────────────────────────────────────────
 
     describe('GET /api/workspaces/:id/pinned', () => {
+        it('projects current chat modes and Ralph identity without assigning modes to non-chat pins', async () => {
+            for (const [id, type, mode, ralph] of [
+                ['ask-pin', 'chat', 'ask', undefined],
+                ['ralph-pin', 'chat', 'ask', { sessionId: 'session-one', phase: 'grilling' }],
+                ['unknown-pin', 'chat', 'future-mode', undefined],
+                ['script-pin', 'run-script', 'autopilot', undefined],
+            ] as const) {
+                await store.addProcess({ id, type, status: 'completed', startTime: new Date(),
+                    metadata: { type, workspaceId: wsId, mode, ralph } });
+                store.pinProcess(id, '2026-04-01T12:00:00.000Z');
+            }
+            const response = await getJSON(`${baseUrl}/api/workspaces/${wsId}/pinned`);
+            expect(response.status).toBe(200);
+            const entries = JSON.parse(response.body).entries;
+            expect(entries.find((entry: { id: string }) => entry.id === 'ask-pin').executionMode).toBe('ask');
+            expect(entries.find((entry: { id: string }) => entry.id === 'ralph-pin').executionMode).toBe('ralph');
+            expect(entries.find((entry: { id: string }) => entry.id === 'unknown-pin').executionMode).toBeNull();
+            expect(entries.find((entry: { id: string }) => entry.id === 'script-pin')).not.toHaveProperty('executionMode');
+        });
+
         it('returns pinned processes for workspace', async () => {
             await addProcess('gp1');
             await addProcess('gp2');

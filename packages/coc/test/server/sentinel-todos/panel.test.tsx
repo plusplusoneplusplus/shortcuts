@@ -10,6 +10,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, configure, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import type { SentinelTodoItem, SentinelTodoLedgerResponse } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoOwnerWorkspace } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoJobOwner';
+
+const { ownerWorkspaces } = vi.hoisted(() => ({ ownerWorkspaces: [] as SentinelTodoOwnerWorkspace[] }));
+vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({ useAppOptional: () => null }));
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useReposOptional: () => ({ repos: ownerWorkspaces.map(workspace => ({ workspace })), remoteGroupWorkspaces: [] }),
+}));
 
 // The first cold render of the tab and scrubber can exceed the 1s default on slow CI runners.
 configure({ asyncUtilTimeout: 5000 });
@@ -102,6 +109,7 @@ beforeEach(() => {
     update.mockReset();
     connect.mockReset().mockReturnValue({ close: vi.fn() });
     clientRefs.length = 0;
+    ownerWorkspaces.length = 0;
     // Remembered views are per owner, and every case here shares OWNER.
     clearSentinelTodoExcursion();
     resetActiveChatAttach();
@@ -157,6 +165,47 @@ describe('UnifiedTodoTab', () => {
         expect(strip.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
+    it('resolves latest and earlier job owners independently of targetRepo and preserves links', async () => {
+        ownerWorkspaces.push(
+            { id: 'ws-1', name: 'shortcuts' },
+            { id: 'ws-child', name: 'shortcuts-2' },
+            { id: 'ws-child', name: 'remote-checkout', remote: { serverId: 'server-a', serverLabel: 'Build machine' } },
+            { id: 'ws-child', name: 'other-checkout', remote: { serverId: 'server-b', serverLabel: 'Test machine' } },
+        );
+        const jobs: SentinelTodoItem['jobs'] = [
+            { processId: 'current', workspaceId: 'ws-1', kind: 'local', title: 'Current job', mode: 'ask',
+                openLink: '#repos/ws-1/chats/current', linkedAt: '2026-10-11', execution: { state: 'completed' } },
+            { processId: 'remote-a', workspaceId: 'ws-child', kind: 'remote', serverId: 'server-a', title: 'First remote job', mode: 'autopilot',
+                openLink: 'https://owner-a.example/#repos/ws-child/chats/remote-a', linkedAt: '2026-10-11', execution: { state: 'unavailable' } },
+            { processId: 'remote-b', workspaceId: 'ws-child', kind: 'remote', serverId: 'server-b', title: 'Other remote job', mode: 'ask',
+                openLink: 'https://owner-b.example/#repos/ws-child/chats/remote-b', linkedAt: '2026-10-11', execution: { state: 'unavailable' } },
+            { processId: 'latest', workspaceId: 'ws-child', kind: 'ralph', sessionId: 'session', title: 'Latest local job',
+                openLink: '#repos/ws-child/activity/ralph/session', linkedAt: '2026-10-11', execution: { state: 'running' } },
+        ];
+        get.mockResolvedValue(ledger([item({ jobs, targetRepo: { workspaceId: 'ws-child', serverId: 'server-b', label: 'Wrong target label' } })]));
+        render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(within(row).getByTestId('sentinel-todo-job-owner').textContent).toBe('shortcuts-2');
+        expect(within(row).getByTestId('sentinel-todo-job-mode').textContent).toBe('Ralph');
+        expect(within(row).getByTestId('sentinel-todo-earlier-jobs-i1').textContent).toBe('+3 earlier jobs');
+        fireEvent.click(within(row).getByRole('button', { name: /Fix login/ }));
+        for (const [title, label, mode] of [
+            ['Current job', null, 'Ask'],
+            ['First remote job', 'Build machine / remote-checkout', 'Autopilot'],
+            ['Other remote job', 'Test machine / other-checkout', 'Ask'],
+            ['Latest local job', 'shortcuts-2', 'Ralph'],
+        ] as const) {
+            const link = within(row).getByRole('link', { name: title, exact: true });
+            const jobRow = within(link.closest('li')!);
+            expect(jobRow.queryByTestId('sentinel-todo-job-owner')?.textContent ?? null).toBe(label);
+            expect(jobRow.getByTestId('sentinel-todo-job-mode').textContent).toBe(mode);
+            expect(link.getAttribute('href')).toBe(jobs.find(job => job.title === title)!.openLink);
+        }
+        expect(row.textContent).not.toContain('ws-child @');
+        expect(get).toHaveBeenCalledTimes(1);
+        expect(connect).toHaveBeenCalledTimes(1);
+        expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled();
+    });
     it.each(['normal', 'manual'] as const)('copy-drags and attaches a %s row without ledger writes or execution', async type => {
         applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
         get.mockResolvedValue(ledger([item({ type })]));

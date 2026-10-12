@@ -67,6 +67,35 @@ describe('TeamsAnswerRelay new topics', () => {
         });
     }
 
+    it('selects an external queued chat in a thread and durably deduplicates follow-ups without an origin receipt', async () => {
+        const task = { id: 'external', processId: 'queue_external', repoId: 'workspace-b', type: 'chat',
+            status: 'queued', createdAt: Date.now(), payload: { kind: 'chat', workspaceId: 'workspace-b', prompt: 'External' },
+            config: {}, priority: 'normal' } as QueuedTask;
+        tasks.set(task.id, task);
+        const command = { ...message('select-external'), replyToMessageId: 'external-thread' };
+        await relay.selectThreadTarget(command, 'workspace-b', task.processId!, true);
+        const follow = { ...message('external-follow'), replyToMessageId: 'external-thread' };
+        expect(await relay.resolveThread(follow)).toEqual({ taskId: 'external', workspaceId: 'workspace-b' });
+        const enqueue = vi.fn(async (workspaceId, processId, requestId, id) => {
+            tasks.set(id, { ...task, id, repoId: workspaceId, processId,
+                payload: { kind: 'chat', workspaceId, processId, prompt: follow.text, relayRequestId: requestId } });
+            return id;
+        });
+        expect(await relay.admitPendingFollowUp(follow, 'external', enqueue, follow.text, false, 'workspace-a')).toBeNull();
+        const results = await Promise.all([1, 2].map(() =>
+            relay.admitPendingFollowUp(follow, 'external', enqueue, follow.text, false, 'workspace-b')));
+        expect(results).toEqual([{ duplicate: false }, { duplicate: true }]);
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(enqueue).toHaveBeenCalledWith('workspace-b', 'queue_external', expect.any(String), expect.any(String));
+        expect(fs.readdirSync(getRepoDataPath(dataDir, 'workspace-b', 'teams-answer-relay'))).toHaveLength(1);
+        processes.set('queue_external', { id: 'queue_external', status: 'running', metadata: { workspaceId: 'workspace-b' } });
+        expect(await relay.resolveThread(follow)).toEqual({ process: processes.get('queue_external'), workspaceId: 'workspace-b' });
+        processes.clear();
+        task.status = 'cancelled';
+        await expect(relay.resolveThread(follow)).rejects.toThrow('unavailable');
+        await expect(relay.selectThreadTarget(command, 'workspace-b', 'queue_external', true)).rejects.toThrow('unavailable');
+    });
+
     it('relays an AI-job table as HTML to its original thread without Markdown pipes', async () => {
         const root = message('table-root');
         const admitted = await relay.admitNew(root, 'workspace-a', async id => {

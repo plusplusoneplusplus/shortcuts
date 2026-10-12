@@ -389,6 +389,10 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
         };
     }
 
-    aiLog.debug({ clientOptions }, 'Creating new CopilotClient');
+    aiLog.debug({
+        workingDirectory: clientOptions.workingDirectory,
+        connectionKind: clientOptions.connection?.kind,
+        hasExplicitToken: clientOptions.gitHubToken !== undefined,
+    }, 'Creating new CopilotClient');
     return new sdk.CopilotClient(clientOptions);
 }

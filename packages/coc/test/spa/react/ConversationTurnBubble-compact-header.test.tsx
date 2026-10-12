@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ConversationTurnBubble, formatShortTimestamp, formatCostTime } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../src/server/spa/client/react/types/dashboard';
 
@@ -110,7 +111,8 @@ describe('ConversationTurnBubble — merged assistant stats badge', () => {
         expect(badge!.textContent).toContain('↓114.8k');
         expect(badge!.textContent).toContain('↑761');
         expect(badge!.textContent).toContain('16.8s');
-        expect(badge!.textContent).toContain('·');
+        expect(badge!.querySelector('[title="Elapsed time: 16,800ms"]')?.className).toContain('border-l');
+        expect(badge!.textContent).not.toContain('·');
     });
 
     it('expands to show full detail on click', () => {
@@ -180,6 +182,65 @@ describe('ConversationTurnBubble — merged assistant stats badge', () => {
             />
         );
         expect(container.querySelector('.assistant-stats-badge')).toBeNull();
+    });
+
+    it('keeps the screenshot values compact, with explicit token tooltips and an accessible disclosure', () => {
+        const { container, getByRole } = render(
+            <ConversationTurnBubble turn={makeTurn({
+                tokenUsage: { ...sampleTokenUsage, inputTokens: 329900, outputTokens: 387 },
+                costTimeMs: 22400,
+            })} />
+        );
+        const badge = getByRole('button', { name: /Token usage and elapsed time: Input: 329,900.*Output: 387.*Show details/ });
+        expect(badge.textContent).toBe('↓329.9k↑38722.4s');
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+        expect(badge.querySelector('[title="Input tokens: 329,900"]')).toBeTruthy();
+        expect(badge.querySelector('[title="Output tokens: 387"]')).toBeTruthy();
+        expect(badge.className).toContain('bg-transparent');
+        expect(badge.className).toContain('shrink-0');
+        expect(badge.querySelectorAll('.whitespace-nowrap')).toHaveLength(2);
+        expect(container.querySelector('.turn-header-actions')?.className).toContain('shrink-0');
+    });
+
+    it('supports keyboard expansion, Escape dismissal, and Space toggling without losing focus', async () => {
+        const user = userEvent.setup();
+        const { getByRole } = render(
+            <ConversationTurnBubble turn={makeTurn({ tokenUsage: sampleTokenUsage, costTimeMs: 16800 })} />
+        );
+        const badge = getByRole('button', { name: /Token usage and elapsed time/ });
+        badge.focus();
+        await user.keyboard('{Enter}');
+        expect(badge.getAttribute('aria-expanded')).toBe('true');
+        expect(badge.textContent).toContain('Total: 115,561');
+        await user.keyboard('{Escape}');
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(badge);
+        await user.keyboard(' ');
+        expect(badge.getAttribute('aria-expanded')).toBe('true');
+        await user.keyboard(' ');
+        expect(badge.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('omits missing metrics and preserves zero values', () => {
+        const { container, rerender } = render(<ConversationTurnBubble turn={makeTurn()} />);
+        expect(container.querySelector('.assistant-stats-badge')).toBeNull();
+        rerender(<ConversationTurnBubble turn={makeTurn({ costTimeMs: 0 })} />);
+        const badge = container.querySelector('.assistant-stats-badge')!;
+        expect(badge.textContent).toBe('0ms');
+        expect(badge.querySelector('.border-l')).toBeNull();
+    });
+
+    it.each([
+        [999, 999, '999', '999ms'],
+        [1000, 1000, '1.0k', '1.0s'],
+        [1000000, 61200, '1.0M', '1m 1s'],
+    ])('preserves token and duration precision for %i tokens and %i ms', (tokens, ms, tokenText, timeText) => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({
+            tokenUsage: { ...sampleTokenUsage, inputTokens: tokens }, costTimeMs: ms,
+        })} />);
+        const badge = container.querySelector('.assistant-stats-badge')!;
+        expect(badge.textContent).toContain(`↓${tokenText}`);
+        expect(badge.textContent).toContain(timeText);
     });
 });
 
@@ -253,14 +314,28 @@ describe('ConversationTurnBubble — compact header layout', () => {
         expect(headerRow!.className).not.toContain('gap-2');
     });
 
-    it('header row has flex-nowrap', () => {
+    it('assistant header wraps between complete metrics and action groups', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn()} />
         );
         const bubble = container.querySelector('.group');
         const headerRow = bubble?.querySelector('.flex.items-center');
         expect(headerRow).toBeTruthy();
-        expect(headerRow!.className).toContain('flex-nowrap');
+        expect(headerRow!.className).toContain('flex-wrap');
+        expect(headerRow!.className).not.toContain('flex-nowrap');
+        const actions = headerRow!.querySelector('.turn-header-actions')!;
+        expect(actions.querySelector('.bubble-raw-btn')).toBeTruthy();
+        expect(actions.querySelector('.bubble-copy-btn')).toBeTruthy();
+        expect(actions.querySelector('.bubble-copy-html-btn')).toBeTruthy();
+        expect(actions.className).toContain('whitespace-nowrap');
+        for (const button of actions.querySelectorAll('button')) {
+            expect(button.className).toContain('group-focus-within:opacity-100');
+        }
+    });
+
+    it('preserves the user hover strip as a single row', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user' })} />);
+        expect(container.querySelector('.turn-header')?.className).toContain('flex-nowrap');
     });
 
     it('role label has min-w-0 and truncate for overflow protection', () => {

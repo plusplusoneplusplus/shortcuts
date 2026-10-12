@@ -577,6 +577,18 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatFolders: true } }).chatFoldersEnabled).toBe(true);
     });
 
+    it('exposes the scheduler delay hint as a default-off live Appearance setting', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.schedulerDelayHint')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('schedulerDelayHintEnabled');
+        expect(def.ui?.tab).toBe('appearance');
+        expect(def.ui?.badge).toBe('experimental');
+        expect(DEFAULT_CONFIG.features.schedulerDelayHint).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).schedulerDelayHintEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { schedulerDelayHint: true } }).schedulerDelayHintEnabled).toBe(true);
+    });
+
     it('exposes the collapsed-rail Git summary as a default-off experimental feature', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railGitSummary');
         expect(def, 'features.railGitSummary must be an admin setting').toBeDefined();
@@ -689,6 +701,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.pinnedScopes': 'appearance',
         'features.railGitSummary': 'appearance',
         'features.railStatusActions': 'appearance',
+        'features.schedulerDelayHint': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.htmlPageTab': 'appearance',

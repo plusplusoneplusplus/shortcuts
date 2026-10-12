@@ -178,14 +178,19 @@ Pause selections offer until-resumed, hour presets, or a custom float in (0, 24]
 `durationHours` is sent only for timed markers, which render a duration suffix until
 the executor consumes them.
 
-The ALL and AP pause pills use the same menu for per-scope repeating task delays. The
-delay section offers fixed minute presets, Off, and integer custom minutes from 1 through
-1440, and marks the configured value from queue stats. `RepoChatTab` sends changes through
-the workspace-routed `QueueClient.setTaskDelay` and refreshes queue state after success;
-request failures remain inline without replacing the last confirmed value. Active cooldown
-deadlines render on their scope pill using the existing one-second clock, with manual pause
-state taking precedence. The menu can skip the current wait through
-`QueueClient.skipTaskDelay` without clearing the configured delay.
+The ALL and AP pause pills share per-scope repeating delay settings: presets, Off,
+and custom integer minutes from 1 through 1440. `RepoChatTab` reads queue stats and
+writes through the workspace-routed `QueueClient.setTaskDelay`, refreshing after success;
+failures retain confirmed configuration. With live Appearance flag
+`features.schedulerDelayHint` enabled (default off), `SchedulerDelayHint` displays each
+scope's confirmed interval, independent of pause state and active cooldowns. Unknown,
+invalid or mixed aggregate values produce no hint. Narrow containers retain the clock
+and accessible interval while hiding interval text.
+
+`QueueContext` treats omitted delay configuration/deadlines in a stats snapshot as
+Off/expired; updates without stats retain confirmed values. Active cooldown deadlines
+use the existing one-second clock, with manual pause taking precedence over countdowns.
+`QueueClient.skipTaskDelay` skips the current wait without clearing configuration.
 
 `RepoChatTab` persists the Activity chat-list collapsed state and left-panel width under
 `activity-list-collapsed-{workspaceId}` and `activity-left-panel-width-{workspaceId}`.

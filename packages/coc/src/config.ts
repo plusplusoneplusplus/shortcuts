@@ -345,6 +345,7 @@ export interface CLIConfig {
         railGitSummary?: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
         railStatusActions?: boolean;
+        schedulerDelayHint?: boolean;
         /** Gray inline hint that finishes the English word being typed in chat composers. Enabled by default. */
         composerWordHint?: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
@@ -746,6 +747,7 @@ export interface ResolvedCLIConfig {
         railGitSummary: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
         railStatusActions: boolean;
+        schedulerDelayHint: boolean;
         /** Gray inline hint that finishes the English word being typed in chat composers. Enabled by default. */
         composerWordHint: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
@@ -1057,6 +1059,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatFolders: false,
         railGitSummary: false,
         railStatusActions: false,
+        schedulerDelayHint: false,
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,

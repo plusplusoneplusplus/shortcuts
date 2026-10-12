@@ -145,7 +145,7 @@ export class QueueActionExecutor implements ActionExecutor {
         queueManager.enqueue({
             processId,
             type: 'chat',
-            priority: 'normal',
+            priority: trigger.event.monitor === 'ci-failure' ? 'high' : 'normal',
             payload: {
                 kind: 'chat',
                 mode,
@@ -157,7 +157,7 @@ export class QueueActionExecutor implements ActionExecutor {
                     ...(trigger.delivery ? { deliveryId: trigger.delivery.deliveryId } : {}),
                 },
             },
-            config: {},
+            config: trigger.event.monitor === 'ci-failure' ? { respectQueueBarriers: true } : {},
             displayName: `[Trigger] ${prompt.substring(0, 40)}`,
             ...(workspaceId ? { repoId: workspaceId } : {}),
         });
@@ -177,6 +177,7 @@ export class QueueActionExecutor implements ActionExecutor {
         const processId = action.processId;
         const pendingMsg: PendingMessage = {
             id: crypto.randomUUID(),
+            ...(trigger.event.monitor === 'ci-failure' ? { queuePriority: 'high' as const, respectQueueBarriers: true } : {}),
             content: prompt,
             mode: await resolveFollowUpMode(this.deps.processStore, processId,
                 action.mode === 'inherit' ? undefined : action.mode),

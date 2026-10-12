@@ -1506,7 +1506,9 @@ export class TaskQueueManager extends EventEmitter {
      *  3. All other exclusive tasks use standard priority insertion.
      */
     private insertTask(task: QueuedTask): void {
-        if (task.continuationOfSessionId) {
+        if (task.config.respectQueueBarriers) {
+            this.insertByPriority(task);
+        } else if (task.continuationOfSessionId) {
             this.insertAsContinuation(task, task.continuationOfSessionId);
         } else if (this.isExclusiveFn && !this.isExclusiveFn(task)) {
             this.insertBeforeFirstExclusive(task);
@@ -1567,13 +1569,23 @@ export class TaskQueueManager extends EventEmitter {
     /**
      * Insert a task into the queue maintaining priority order.
      * Uses a linear scan because pause markers can interrupt the sorted order.
-     * Markers are transparent in priority comparison — the task is inserted before
+     * With respectQueueBarriers, insertion starts after the last pause marker.
+     * Otherwise markers are transparent — the task is inserted before
      * the first task with strictly lower priority, which may place it before or
      * after existing markers.
      */
     private insertByPriority(task: QueuedTask): void {
         let insertAt = this.queue.length;
-        for (let i = 0; i < this.queue.length; i++) {
+        let start = 0;
+        if (task.config.respectQueueBarriers) {
+            for (let i = this.queue.length - 1; i >= 0; i--) {
+                if (isPauseMarker(this.queue[i])) {
+                    start = i + 1;
+                    break;
+                }
+            }
+        }
+        for (let i = start; i < this.queue.length; i++) {
             const item = this.queue[i];
             if (!isPauseMarker(item) && comparePriority(task, item as QueuedTask) < 0) {
                 insertAt = i;

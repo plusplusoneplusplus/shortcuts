@@ -234,14 +234,18 @@ The folder routes begin with `resolveWorkspaceOrFail`, so a local-origin call fo
 workspace 404s: the create surfaces "Could not create folder", and the list fetch's catch
 keeps the previous list, leaving the Folders section silently empty.
 
-### Collapsed-rail job openers
+### Chat selection keys and rail job openers
 
-The Router stores a URL selection under the route id (a clone key for remotes), while
-`RepoChatTab` reads `selectedTaskIdByRepo[workspaceId]`. Rail Open job links therefore
-select through the tab's `selectTask`: pinned and Sentinel shortcuts are portaled from
-the tab, and Running/Queued rows (`RailJobStatuses`, rendered by `SplitWorkspacePanel`)
-use the `{ routeId, open }` the tab publishes via `RailJobOpenerContext`. A row uses it
-only when `routeId` matches the preview's; otherwise its owner-qualified href navigates.
+The Router files a URL selection under the route id (a clone key for a remote workspace
+or group), while `RepoChatTab` selects under the bare `workspaceId`. When the two differ,
+the tab adopts each change to `selectedTaskIdByRepo[routeId]`, so reloads, history and
+job links select on the owning clone; other clone keys are never read.
+
+Rail Open job links select through the tab's `selectTask`: pinned and Sentinel shortcuts
+are portaled from the tab, and Running/Queued rows (`RailJobStatuses`, rendered by
+`SplitWorkspacePanel`) use the `{ routeId, open }` the tab publishes via
+`RailJobOpenerContext`. A row uses it only when `routeId` matches the preview's;
+otherwise its owner-qualified href navigates.
 
 ### Activity, workflows, and events
 

@@ -70,6 +70,7 @@ const { mockState } = vi.hoisted(() => ({
         // tests keep the pre-experiment toolbar.
         chatStyleSelectorEnabled: false,
         chatHistoryPagingEnabled: false,
+        realMinimap: false,
         sseOptions: undefined as any,
     },
 }));
@@ -289,10 +290,16 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
-// ConversationMiniMap — stub
-vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap', () => ({
-    ConversationMiniMap: () => React.createElement('div', { 'data-testid': 'conversation-minimap' }),
-}));
+// Keep the real minimap available for mode/visibility regressions.
+vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMiniMap')>();
+    return {
+        ...actual,
+        ConversationMiniMap: (props: React.ComponentProps<typeof actual.ConversationMiniMap>) => mockState.realMinimap
+            ? <actual.ConversationMiniMap {...props} />
+            : React.createElement('div', { 'data-testid': 'conversation-minimap' }),
+    };
+});
 
 // ConversationTurnBubble — stub that renders turn content
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
@@ -516,6 +523,7 @@ beforeEach(() => {
     mockState.prItems = [];
     mockState.sessionContextAttachmentsEnabled = false;
     mockState.chatHistoryPagingEnabled = false;
+    mockState.realMinimap = false;
     mockState.sseOptions = undefined;
     resetActiveChatAttach();
     // Reset mock state
@@ -603,6 +611,7 @@ describe('ChatDetail shared paged hydration', () => {
         await waitFor(() => expect(intersect).toBeDefined());
         await act(async () => intersect?.());
         await waitFor(() => expect(screen.getByText('older-140')).toBeTruthy());
+        expect(!!screen.queryByTestId('conversation-minimap')).toBe(props.mode !== 'sentinel');
     });
     it('routes group/remote/popout page and pin reads exclusively to the concrete owner', async () => {
         const owner = { workspaceId: 'ws-member', selectionId: 'remote:owner:ws-member', baseUrl: 'https://owner.example.test' };
@@ -652,14 +661,14 @@ describe('ChatDetail shared paged hydration', () => {
         expect(screen.queryByText('older-140')).toBeNull();
         expect(sc.scrollTop).toBe(2000);
     });
-    it('loads through an unloaded search target through the same navigation as deep links', async () => {
+    it.each(['ask', 'sentinel'])('loads an unloaded search target in %s through the same navigation as deep links', async mode => {
         mockState.chatHistoryPagingEnabled = true;
-        pagedFetch();
+        pagedFetch(mode);
         render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" targetTurnIndex={145} /></Wrap>);
         await waitFor(() => expect(screen.getByText('older-145')).toBeTruthy());
         expect(fetchMock.mock.calls.some(([url]) => String(url).includes('beforeTurnIndex=170'))).toBe(true);
     });
-    it('deep-links to turn 5 of 200 by filling sequential pages before highlighting', async () => {
+    it.each(['ask', 'sentinel'])('deep-links to turn 5 of 200 in %s by filling sequential pages before highlighting', async mode => {
         mockState.chatHistoryPagingEnabled = true;
         window.location.hash = '#repos/ws-local/chats/queue_paged?turn=5';
         setupFetch({
@@ -677,6 +686,7 @@ describe('ChatDetail shared paged hydration', () => {
                 id: 'queue_paged', conversationTurns: Array.from({ length: 30 }, (_, i) => ({
                     role: i % 2 ? 'assistant' : 'user', content: `latest-${170 + i}`, turnIndex: 170 + i, timeline: [],
                 })),
+                metadata: { mode, sessionId: 'session' },
             }), history: { oldestTurnIndex: 170, hasMore: true, totalTurns: 200, historyRevision: 0 } } },
         });
         render(<Wrap><ChatDetail taskId="queue_paged" workspaceId="ws-local" /></Wrap>);
@@ -702,6 +712,155 @@ describe('ChatDetail shared paged hydration', () => {
         await waitFor(() => expect(screen.getByText('full-0')).toBeTruthy());
         expect(JSON.parse(screen.getByTestId('paged-cache').textContent ?? '[]')).toHaveLength(200);
         expect(screen.getByTestId('paged-cache').dataset.paged).toBe('false');
+    });
+});
+
+describe('ChatDetail Sentinel minimap', () => {
+    const turns = Array.from({ length: 12 }, (_, turnIndex) => ({
+        role: turnIndex % 2 ? 'assistant' : 'user', content: `minimap-turn-${turnIndex}`, turnIndex, timeline: [],
+    }));
+    const history = { oldestTurnIndex: 0, hasMore: false, totalTurns: 12, historyRevision: 0 };
+    let mediaListener: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+        mockState.realMinimap = true;
+        mediaListener = vi.fn();
+        vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+            matches: false, addEventListener: mediaListener, removeEventListener: vi.fn(),
+        }));
+        vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    function minimapFetch(mode: string, paging: boolean, status = 'completed', id = 'proc-1') {
+        fetchMock.mockClear();
+        mockState.chatHistoryPagingEnabled = paging;
+        const process = makeProcess({ id, status, conversationTurns: turns, metadata: { mode, sessionId: 'session' } });
+        setupFetch({
+            '/config/runtime': { body: { features: { chatHistoryPagingEnabled: paging } } },
+            '/turns/pinned': { body: { turns: [] } },
+            '/queue/': { body: { task: makeTask({ status, payload: { kind: 'chat', mode: 'ask' } }) } },
+            '/processes/': { body: { process, ...(paging ? { history } : {}) } },
+        });
+        return process;
+    }
+    function expectNoMinimap() {
+        expect(document.querySelector('[class*="minimap-"]')).toBeNull();
+        expect(screen.queryByLabelText('Conversation minimap')).toBeNull();
+        expect(screen.getByTestId('activity-chat-conversation').classList.contains('overflow-y-auto')).toBe(true);
+    }
+
+    it.each([false, true])('omits all minimap DOM and effects for restored/running Sentinel with paging=%s', async paging => {
+        for (const status of ['completed', 'running']) {
+            mockState.getDraft.mockReturnValue({ text: '', mode: 'ask' });
+            minimapFetch('sentinel', paging, status);
+            const view = render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+            await screen.findByText('minimap-turn-11');
+            expectNoMinimap();
+            expect(mediaListener).not.toHaveBeenCalled();
+            expect(!!screen.queryByTestId('history-sentinel')).toBe(paging);
+            fireEvent.keyDown(document, { key: 'm', code: 'KeyM', altKey: true });
+            expectNoMinimap();
+            view.unmount();
+        }
+    });
+
+    it.each([
+        { isPopOut: true }, { standalone: true }, { hideHeader: true, hidePlanBanners: true }, { variant: 'floating' as const },
+    ])('omits Sentinel minimap on shared surface %j', async surface => {
+        minimapFetch('sentinel', true, 'running');
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" {...surface} /></Wrap>);
+        await screen.findByText('minimap-turn-11');
+        expectNoMinimap();
+        expect(mediaListener).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('follows actual child mode while Sentinel origin remains pinned, paging=%s', async paging => {
+        startSentinelTodoExcursion({
+            owner: { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'parent-sentinel' },
+            scopeWorkspaceId: 'ws-1', chatId: 'parent-sentinel', title: 'Sentinel parent',
+            href: '#repos/ws-1/chats/parent-sentinel', linkKey: 'todo-1|ref:task-1',
+        });
+        const process = minimapFetch('autopilot', paging, 'running');
+        function Hosted({ process }: { process: any }) {
+            return <Wrap><UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'task-1' }}>
+                <ProcessStateChatDetail taskId="task-1" workspaceId="ws-1" processes={[process]} />
+            </UnifiedPanelHostProvider></Wrap>;
+        }
+        const view = render(<Hosted process={process} />);
+        await screen.findByTestId('minimap-panel');
+        fireEvent.click(screen.getByTestId('minimap-collapse-btn'));
+        expect(screen.getByTestId('minimap-collapsed')).toBeTruthy();
+        view.rerender(<Hosted process={{ ...process, metadata: { ...process.metadata, mode: 'sentinel' } }} />);
+        await waitFor(expectNoMinimap);
+        view.rerender(<Hosted process={process} />);
+        await screen.findByTestId('minimap-panel');
+        expect(screen.getByTestId('sentinel-todo-origin-bar')).toBeTruthy();
+    });
+
+    it.each([false, true])('resolves actual owner mode despite colliding local processes, paging=%s', async paging => {
+        for (const owner of [
+            { workspaceId: 'group-local', selectionId: 'group-local' },
+            { workspaceId: 'group-remote', selectionId: 'remote:server:group-remote', baseUrl: 'https://owner.example.test' },
+        ]) {
+            for (const mode of ['sentinel', 'ask']) {
+                minimapFetch(mode, paging, 'running');
+                const view = render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+                    <ProcessStateChatDetail taskId="task-1" workspaceId={owner.workspaceId} isPopOut
+                        sourceSelectionId={owner.selectionId} sourceBaseUrl={owner.baseUrl}
+                        processes={[makeProcess({ metadata: { mode: mode === 'sentinel' ? 'ask' : 'sentinel' } })]} />
+                </WorkspaceOwnerContext.Provider></Wrap>);
+                await screen.findByText('minimap-turn-11');
+                if (mode === 'sentinel') expectNoMinimap();
+                else await screen.findByTestId('minimap-panel');
+                const reads = fetchMock.mock.calls.filter(([url]) => String(url).includes('/processes/'));
+                expect(reads.length).toBeGreaterThan(0);
+                expect(reads.every(([url]) => String(url).startsWith(owner.baseUrl ?? '/api/'))).toBe(true);
+                view.unmount();
+            }
+        }
+    });
+
+    it.each([
+        { paging: false, scoped: true }, { paging: true, scoped: true },
+        { paging: false, scoped: false }, { paging: true, scoped: false },
+    ])('tracks owner mode changes without sibling notifications, paging=$paging scoped=$scoped', async ({ paging, scoped }) => {
+        const owner = { workspaceId: 'group-remote', selectionId: 'remote:server:group-remote', baseUrl: 'https://owner.example.test' };
+        const process = minimapFetch('ask', paging, 'running');
+        render(<Wrap><WorkspaceOwnerContext.Provider value={scoped ? owner : null}>
+            <ChatDetail taskId="task-1" workspaceId={owner.workspaceId} sourceSelectionId={owner.selectionId} sourceBaseUrl={owner.baseUrl} />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await screen.findByTestId('minimap-panel');
+        const notify = (baseUrl: string) => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
+            detail: { baseUrl, message: { type: 'process-updated', process: { id: process.id, workspaceId: owner.workspaceId } } },
+        }));
+        process.metadata.mode = 'sentinel';
+        const previousReads = fetchMock.mock.calls.length;
+        await act(async () => { notify('https://sibling.example.test'); });
+        expect(fetchMock.mock.calls).toHaveLength(previousReads);
+        expect(screen.getByTestId('minimap-panel')).toBeTruthy();
+        await act(async () => { notify(owner.baseUrl); });
+        await waitFor(expectNoMinimap);
+        process.metadata.mode = 'ask';
+        await act(async () => { notify(owner.baseUrl); });
+        await screen.findByTestId('minimap-panel');
+    });
+
+    it('prefers the displayed persisted mode over a Sentinel queue payload and draft', async () => {
+        mockState.getDraft.mockReturnValue({ text: '', mode: 'sentinel' });
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'sentinel' } }),
+            makeProcess({ metadata: { mode: 'ask', sessionId: 'session' }, conversationTurns: turns }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await screen.findByTestId('minimap-panel');
+    });
+
+    it.each(['sentinel', 'ask'])('uses remote %s mode without an owner provider', async mode => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'https://owner.example.test' }]);
+        minimapFetch(mode, true);
+        render(<Wrap><ProcessStateChatDetail taskId="task-1" workspaceId="ws-remote"
+            processes={[makeProcess({ metadata: { mode: mode === 'sentinel' ? 'ask' : 'sentinel' } })]} /></Wrap>);
+        await screen.findByText('minimap-turn-11');
+        if (mode === 'sentinel') expectNoMinimap();
+        else await screen.findByTestId('minimap-panel');
     });
 });
 

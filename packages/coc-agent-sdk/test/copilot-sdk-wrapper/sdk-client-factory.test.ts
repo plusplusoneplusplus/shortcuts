@@ -114,6 +114,14 @@ describe('createSdkClient', () => {
         expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
+    it('leaves runtime authentication intact and preserves an explicit token', () => {
+        createSdkClient();
+        expect(capturedOptions[0].gitHubToken).toBeUndefined();
+
+        createSdkClient({ gitHubToken: 'gho_explicit' });
+        expect(capturedOptions[1].gitHubToken).toBe('gho_explicit');
+    });
+
     it('disables updates for spawned CLI without changing the host environment', () => {
         vi.stubEnv('COPILOT_AUTO_UPDATE', 'true');
         try {

@@ -239,6 +239,13 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const { state: appState, dispatch: appDispatch } = useApp();
     const { refreshUnseenCounts } = useRepos();
     const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
+    // The Router files a URL selection under the route id — a clone key for a
+    // remote workspace or group — while this tab selects under the bare id.
+    // Adopt route changes so reloads, history and job links select here too.
+    const routedTaskId = routeId === workspaceId ? undefined : queueState.selectedTaskIdByRepo[routeId];
+    useEffect(() => {
+        if (routedTaskId !== undefined) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: routedTaskId, repoId: workspaceId });
+    }, [routedTaskId, workspaceId, queueDispatch]);
     const { isMobile, isTablet } = useBreakpoint();
     const activityLeftPanelWidthStorageKey = getActivityLeftPanelWidthStorageKey(workspaceId);
     const activityListCollapsedStorageKey = getActivityListCollapsedStorageKey(workspaceId);

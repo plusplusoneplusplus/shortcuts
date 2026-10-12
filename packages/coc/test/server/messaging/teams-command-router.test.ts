@@ -116,6 +116,40 @@ describe('TeamsCommandRouter', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
+    it('selects an external queued chat and uses pending admission without starting another conversation', async () => {
+        const task = { id: 'external', processId: 'queue_external', repoId: 'ws-2', type: 'chat', status: 'queued',
+            createdAt: Date.now(), payload: { kind: 'chat', workspaceId: 'ws-2', prompt: 'External chat' }, config: {}, priority: 'normal' };
+        deps.topicQueue = { getAll: () => [task] as any };
+        deps.admitPendingFollowUp = vi.fn().mockResolvedValue({ duplicate: false });
+        await router.handle(makeMsg('/list topics -v'));
+        expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('ws-2/queue_external'), expect.any(String));
+        await router.handle(makeMsg('/select topic ws-2/queue_external'));
+        const follow = makeMsg('Continue');
+        await router.handle(follow);
+        expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(follow, 'queue_external', 'Continue', undefined, 'ws-2');
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        vi.mocked(deps.admitPendingFollowUp!).mockResolvedValue(null);
+        await router.handle(makeMsg('After cancel'));
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('❌'), expect.any(String));
+    });
+
+    it('continues the selected owner when a queued task becomes a process during pending admission', async () => {
+        const task = { id: 'race', processId: 'queue_race', repoId: 'ws-2', type: 'chat', status: 'queued',
+            createdAt: Date.now(), payload: { kind: 'chat', workspaceId: 'ws-2', prompt: 'Race' } };
+        deps.topicQueue = { getAll: () => [task] as any };
+        await router.handle(makeMsg('/select topic ws-2/queue_race'));
+        const process = { id: 'queue_race', status: 'running', metadata: { workspaceId: 'ws-2' } } as any;
+        vi.mocked(deps.store.getProcess).mockResolvedValueOnce(undefined).mockResolvedValueOnce(process);
+        deps.admitPendingFollowUp = vi.fn().mockResolvedValue(null);
+        deps.admitFollowUp = vi.fn().mockResolvedValue({ duplicate: false });
+        const follow = makeMsg('Continue after start');
+        await router.handle(follow);
+        expect(deps.admitFollowUp).toHaveBeenCalledWith(follow, process, 'Continue after start', undefined);
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(deps.store.getProcess).toHaveBeenLastCalledWith('queue_race', 'ws-2');
+    });
+
     // ── list agents / list repos ──────────────────────────────
 
     it('lists agents/repos', async () => {

@@ -344,6 +344,11 @@ from stats-only placeholders, and `taskDataSource` records the server/API owner.
 the selected group's queue stays independent of its members. Owner-aware readers
 exclude mismatched sources and unresolved remote selections. `RailHoverPreview`
 provides anchored pointer/focus previews for running, queued and pinned controls.
+`RailJobMetadata` shares status/type and execution-mode presentation. Queue and
+pinned reads use `shared/queue-job-mode.ts` to batch current process modes without
+transcripts, verify each execution workspace, preserve Ralph identity and omit
+unknown modes. Committed mode changes invalidate active queue snapshots through
+the existing WebSocket channel; pills add no browser reads or polling.
 Pinned rows use the owner's complete pinned-process endpoint plus the chat list's
 live pin/archive state and visibility rules; group scope does not aggregate member
 pins. Scope or transport changes dispose previews. Icon clicks retain sidebar
@@ -536,7 +541,11 @@ persists. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. Collapsed/latest and expanded/earlier titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and
-unknown modes omitted. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
+unknown modes omitted. Owner labels resolve each job's server-qualified workspace
+from cached local/remote/group metadata; the current repo omits its badge and
+remote labels include the configured server name. Exact-owner target labels and
+last-known offline names provide fallbacks; unavailable metadata stays explicit
+and accessible. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
 reference-only conversations keep navigation without job badges. Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
