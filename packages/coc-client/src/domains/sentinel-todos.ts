@@ -22,7 +22,7 @@ import type {
   UpdateSentinelTodoRequest,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
-import { encodePathSegment } from '../url';
+import { buildQueryString, encodePathSegment } from '../url';
 
 function ledgerPath(workspaceId: string, processId: string, suffix = ''): string {
   return `/workspaces/${encodePathSegment(workspaceId)}/sentinel-todos/${encodePathSegment(processId)}${suffix}`;
@@ -40,8 +40,19 @@ export class SentinelTodosClient {
     this.scrubber = new SentinelScrubberClient(transport);
   }
 
-  get(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoLedgerResponse> {
-    return this.transport.request<SentinelTodoLedgerResponse>(ledgerPath(workspaceId, processId), options);
+  get(workspaceId: string, processId: string, options?: {
+    signal?: AbortSignal;
+    limit?: number;
+    offset?: number;
+    itemId?: string;
+    /** Complete snapshot for dependency authoring, triggers and assessment projections. */
+    full?: boolean;
+  }): Promise<SentinelTodoLedgerResponse> {
+    const { signal, limit, offset, itemId, full } = options ?? {};
+    const query = buildQueryString({ limit, offset, itemId, full });
+    return this.transport.request<SentinelTodoLedgerResponse>(
+      ledgerPath(workspaceId, processId) + query, signal ? { signal } : undefined,
+    );
   }
 
   create(workspaceId: string, processId: string, request: CreateSentinelTodoRequest): Promise<SentinelTodoWriteResponse> {

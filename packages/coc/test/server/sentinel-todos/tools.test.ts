@@ -95,6 +95,38 @@ describe('sentinel_todos tool', () => {
         expect(listed.ledgerRevision).toBe(1);
     });
 
+    it('lists 50 recent eligible items, supports older lookup and never caps tracking or retained records at 50', async () => {
+        const items = Array.from({ length: 60 }, (_, index) => todos.create(owner, {
+            title: `Item ${index}`, completionCondition: 'Delivered',
+        }, { actor: 'user' }).item);
+        todos.update(owner, items[59].id, 1, { archived: true }, 'user');
+        const recent = await call({ action: 'list' });
+        expect(recent.items.map((item: SentinelTodoItem) => item.id)).toEqual(items.slice(9, 59).map(item => item.id));
+        expect(recent).toMatchObject({ total: 59, archivedCount: 1, hasMore: true, nextOffset: 50 });
+        const older = await call({ action: 'list', offset: recent.nextOffset });
+        expect(older.items.map((item: SentinelTodoItem) => item.id)).toEqual(items.slice(0, 9).map(item => item.id));
+        expect(older).toMatchObject({ hasMore: false, nextOffset: null });
+        expect((await call({ action: 'list', itemId: items[0].id })).items).toEqual([items[0]]);
+        expect((await call({ action: 'list', includeArchived: true })).items.map((item: SentinelTodoItem) => item.id))
+            .toEqual(items.slice(10).map(item => item.id));
+        expect((await call({ action: 'list', itemId: items[59].id, includeArchived: true })).items[0].archived).toBe(true);
+        expect((await call({ action: 'list', limit: 500, includeArchived: true })).items).toHaveLength(60);
+        expect(await call({ action: 'list', itemId: items[0].id }, other)).toMatchObject({ code: 'not_found' });
+        const tracking = createSentinelTodoTracking({ service, owner });
+        expect(await tracking.check(items[0].id)).toBeUndefined();
+        expect(await tracking.prepare?.(items[0].id, {})).toMatchObject({ dependencyBound: false });
+        expect(await call({ action: 'update', itemId: items[0].id, expectedRevision: 1, notes: 'Older record' }))
+            .toMatchObject({ item: { notes: 'Older record' } });
+        expect((await service.list(owner)).items).toHaveLength(60);
+        expect(todos.get(owner).items).toHaveLength(60);
+    });
+
+    it.each([{ limit: 0 }, { limit: 501 }, { limit: 1.5 }, { offset: -1 }, { offset: 1.5 }])(
+        'rejects invalid list paging: %s', async options => {
+            expect(await call({ action: 'list', ...options })).toMatchObject({ code: 'invalid' });
+        },
+    );
+
     it('requires a completion condition on create', async () => {
         const result = await call({ action: 'create', title: 'Vague idea' });
         expect(result).toMatchObject({ code: 'invalid' });

@@ -157,15 +157,21 @@ describe('WhatsApp list todos', () => {
         todos.create(owner, { title: 'Manual tail', type: 'manual' }, { actor: 'user' });
         bindings.selectRepo('ws-a');
         bindings.selectTopic('ws-a', 'sent-a');
+        const before = todos.get(owner);
         await router.handle(inbound('list todos', 'long'));
         const parts = send.mock.calls.map(call => call[0] as string);
         expect(parts.length).toBeGreaterThan(1);
         for (const part of parts) expect(part.length).toBeLessThanOrEqual(4096);
         const text = parts.join('');
         expect(text).toContain('— 106 not done');
-        expect(text).toContain('100. [To do] Item 99 ');
-        expect(text).not.toContain('Item 100 ');
-        expect(text).toContain('…6 more not shown.');
+        expect(text).toContain('1. [To do] Item 56 ');
+        expect(text).toContain('49. [To do] Item 104 ');
+        expect(text).toContain('50. [To do] Manual tail');
+        expect(text).not.toContain('Item 55 ');
+        expect(text).toContain('…56 more not shown.');
+        expect((text.match(/^\d+\. \[/gm) ?? [])).toHaveLength(50);
+        expect(todos.get(owner)).toEqual(before);
+        expect((await service.list(owner)).items).toHaveLength(106);
         for (let i = 1; i <= parts.length; i++) expect(bindings.isKnownMessage(`out-long-${i}`)).toBe(true);
     });
 

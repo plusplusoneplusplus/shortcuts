@@ -8,6 +8,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import {
     SENTINEL_TODO_STATUS_LABELS,
     sentinelTodoDisplayStatus,
@@ -18,7 +19,7 @@ import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sen
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 
 /** Items listed per reply; the rest are counted, never silently dropped. */
-export const MAX_LISTED_TODOS = 100;
+export const MAX_LISTED_TODOS = SENTINEL_TODO_RECENT_LIMIT;
 
 export const TODOS_NO_TARGET_REPLY = '❌ No topic selected. Reply to a Sentinel chat message, or use `list topics`, then `select topic <n>`.';
 export const TODOS_DISABLED_REPLY = 'To-do lists are turned off on this server.';
@@ -37,9 +38,11 @@ function itemLine(n: number, item: SentinelTodoItem): string {
 
 /** Plain-text list of non-Done, non-archived items, normal first, then Manual tracking. */
 export function formatTodosReply(title: string, items: readonly SentinelTodoItem[], limit = MAX_LISTED_TODOS): string {
-    const normal = sentinelTodoSections(items, 'normal').active;
-    const manual = sentinelTodoSections(items, 'manual').active;
-    const total = normal.length + manual.length;
+    const unfinished = items.filter(item => !item.archived && item.status !== 'done');
+    const recent = unfinished.slice(Math.max(0, unfinished.length - limit));
+    const normal = sentinelTodoSections(recent, 'normal').active;
+    const manual = sentinelTodoSections(recent, 'manual').active;
+    const total = unfinished.length;
     if (!total) return `📋 To-do · "${title}"\nNo unfinished items.`;
     const lines = [`📋 To-do · "${title}" — ${total} not done`];
     let n = 0;

@@ -18,6 +18,7 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 import { SentinelTodoError } from './sentinel-todo-store';
 import type { SentinelTodoService } from './sentinel-todo-service';
+import { sentinelTodoRecentList } from './sentinel-todo-list';
 
 const LEDGER = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)$/;
 const ITEMS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items$/;
@@ -89,11 +90,21 @@ export function registerSentinelTodoRoutes(opts: {
     routes.push({
         method: 'GET',
         pattern: LEDGER,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const target = owner(res, match);
             if (!target) return;
             try {
-                sendJSON(res, 200, await service.list(target));
+                const query = new URL(req.url!, 'http://localhost').searchParams;
+                const full = query.get('full');
+                if (full !== null && full !== 'true' && full !== 'false') {
+                    throw new SentinelTodoError('invalid', 'Invalid full snapshot option');
+                }
+                const ledger = await service.list(target);
+                sendJSON(res, 200, full === 'true' ? ledger : sentinelTodoRecentList(ledger, {
+                    ...(query.has('limit') ? { limit: Number(query.get('limit')) } : {}),
+                    ...(query.has('offset') ? { offset: Number(query.get('offset')) } : {}),
+                    ...(query.has('itemId') ? { itemId: query.get('itemId') } : {}),
+                }));
             } catch (error) {
                 fail(res, error);
             }

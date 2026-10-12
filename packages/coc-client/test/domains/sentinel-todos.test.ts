@@ -3,6 +3,20 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('routes older pages, exact item lookup and explicit full snapshots while preserving cancellation', async () => {
+    const adapter = createMockAdapter({ revision: 0, items: [], total: 0, hasMore: false, nextOffset: null });
+    const client = new SentinelTodosClient(adapter);
+    const signal = new AbortController().signal;
+    await client.get('owner ws', 'parent/a', { limit: 50, offset: 50, signal });
+    await client.get('owner ws', 'parent/a', { itemId: 'older/item' });
+    await client.get('owner ws', 'parent/a', { full: true });
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa?limit=50&offset=50', options: { signal } },
+      { path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa?itemId=older%2Fitem', options: undefined },
+      { path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa?full=true', options: undefined },
+    ]);
+  });
+
   it('preserves durable requires-review warnings independently of fulfillment and readiness', async () => {
     const item = { id: 'dependent', status: 'done', notes: 'Explicit owner verdict', outcome: {
       summary: 'Accepted result', recordedBy: 'user', recordedAt: '2026-01-01T00:00:00.000Z',

@@ -670,14 +670,18 @@ withdraws it with the host; the panel applies the flag. The `todo` descriptor is
 one tab per concrete owner and chat: `resourceId` is the parent process id.
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
 including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
-(`client.sentinelTodos`, routed like the chat) and refreshed by that server's
+(`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
 `sentinel-todos-changed` events on a workspace-subscribed socket. Flag-off hides
 stored `todo` tabs in `useUnifiedPanelTabs` without deleting them (the flag loads
 asynchronously), and hides the `+` menu's To-do entry.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
-and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` splits the ledger by item type
+and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` presents the last
+50 stored items, with Show older items revealing 50 more. Existing section ordering
+is applied within that recent window. Explicit prerequisite/rule links and restored
+open details reveal older rows. Dependencies, triggers and Scrubber projections
+receive the full snapshot independently of visible rows. The tab splits the visible items by type
 (`sentinelTodoType`; a missing type reads as normal) through
 `sentinelTodoSections(items, type)`. `sentinelTodoDisplayStatus` derives In review
 from local pending assessment evidence, independently of persisted fulfillment status

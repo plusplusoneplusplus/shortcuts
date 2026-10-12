@@ -565,8 +565,10 @@ panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-
 copy action and no save or dirty-state registration. With
 `features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
-ledger from the owning server through `client.sentinelTodos`; only the descriptor
-persists. Job-title previews use owner-scoped compact process reads or Ralph
+ledger from the owning server through `client.sentinelTodos.get` with `full: true`;
+only the descriptor persists. The list presents the last 50 stored items with
+older-item expansion and unchanged section sorting; dependency, trigger and Scrubber
+controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. Collapsed/latest and expanded/earlier titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and

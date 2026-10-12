@@ -20,6 +20,7 @@ import type {
     SentinelTodoType,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
+import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { Button } from '../../../ui/Button';
@@ -260,6 +261,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const { width } = useContainerWidth(panelRef, { throttleMs: 0, wideThreshold: SENTINEL_TODO_SPLIT_MIN_WIDTH });
     const wide = width >= SENTINEL_TODO_SPLIT_MIN_WIDTH;
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
+    const [visibleLimit, setVisibleLimit] = useState(SENTINEL_TODO_RECENT_LIMIT);
     const [loadError, setLoadError] = useState<string | null>(null);
     // The owner's remembered view: the origin tab and its pinned copy share it.
     const [restored] = useState(() => recallSentinelTodoView(owner));
@@ -287,7 +289,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             return;
         }
         try {
-            const next = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId);
+            // Dependencies, triggers and Scrubber projections need the full snapshot, not just visible rows.
+            const next = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { full: true });
             if (!mounted.current || seq !== loadSeq.current) return;
             setLedger(next);
             setLoadError(null);
@@ -310,8 +313,18 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
 
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
 
-    const sections = useMemo(() => sentinelTodoSections(ledger?.items ?? [], 'normal'), [ledger]);
-    const manual = useMemo(() => sentinelTodoSections(ledger?.items ?? [], 'manual'), [ledger]);
+    const recentItems = useMemo(() => ledger?.items.slice(-visibleLimit) ?? [], [ledger, visibleLimit]);
+    const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
+    const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
+    useEffect(() => {
+        if (!ledger) {
+            return;
+        }
+        const firstOpen = ledger.items.findIndex(item => expanded.has(item.id) || item.id === selectedId);
+        if (firstOpen >= 0) {
+            setVisibleLimit(limit => Math.max(limit, ledger.items.length - firstOpen));
+        }
+    }, [ledger, expanded, selectedId]);
     const normalCount = sections.active.length + sections.done.length + sections.archived.length;
     const manualCount = manual.active.length + manual.done.length + manual.archived.length;
     const attentionCount = sections.active.filter(item => sentinelTodoDisplayStatus(item) === 'needs_attention').length;
@@ -363,13 +376,13 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         if (currentView.current.ownerKey !== ownerKey) return;
         const item = ledger?.items.find(candidate => candidate.id === itemId);
         if (!item) return;
+        setVisibleLimit(limit => Math.max(limit, ledger.items.length - ledger.items.indexOf(item)));
         const isManual = sentinelTodoType(item) === 'manual';
-        const groups = isManual ? manual : sections;
         if (isManual) setShowManual(true);
-        if (groups.done.some(candidate => candidate.id === itemId)) {
+        if (!item.archived && item.status === 'done') {
             if (isManual) setShowManualDone(true); else setShowDone(true);
         }
-        if (groups.archived.some(candidate => candidate.id === itemId)) {
+        if (item.archived) {
             if (isManual) setShowManualArchived(true); else setShowArchived(true);
         }
         setExpanded(previous => new Set([...previous, itemId]));
@@ -562,8 +575,9 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     {normalCount === 0 ? (
                         !addForm.adding && (
                             <div className={cn('flex flex-col items-start gap-2 p-2', MUTED)} data-testid="sentinel-todo-empty">
-                                <span>Nothing is tracked yet. Sentinel records concrete work requests, agreed next actions,
-                                    and the jobs it delegates for them here; you can add items too.</span>
+                                <span>{ledger.items.some(item => sentinelTodoType(item) === 'normal')
+                                    ? 'No normal items in this recent view. Show older items to see more.'
+                                    : 'Nothing is tracked yet. Sentinel records concrete work requests, agreed next actions, and the jobs it delegates for them here; you can add items too.'}</span>
                                 <Button size="sm" onClick={openAddForm}>Add item</Button>
                             </div>
                         )
@@ -594,7 +608,11 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                                 {manualForm.adding && <AddItemForm form={manualForm} testIdPrefix="sentinel-todo-manual-add" label="Add manual item" manual />}
                                 {manual.active.length > 0 ? renderList(manual.active) : (
                                     <span className={cn('px-1', MUTED)} data-testid="sentinel-todo-manual-empty">
-                                        {manualCount === 0 ? 'No manual items yet.' : 'No active manual items.'}
+                                        {manualCount === 0
+                                            ? ledger.items.some(item => sentinelTodoType(item) === 'manual')
+                                                ? 'No manual items in this recent view.'
+                                                : 'No manual items yet.'
+                                            : 'No active manual items.'}
                                     </span>
                                 )}
                                 {manual.done.length > 0 && (
@@ -619,6 +637,13 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => setShowArchived(v => !v)} testId="sentinel-todo-archived-section">
                             {renderList(sections.archived)}
                         </Section>
+                    )}
+                    {ledger.items.length > visibleLimit && (
+                        <Button size="sm" variant="secondary"
+                            onClick={() => setVisibleLimit(limit => limit + SENTINEL_TODO_RECENT_LIMIT)}
+                            data-testid="sentinel-todo-show-older">
+                            Show older items ({ledger.items.length - visibleLimit})
+                        </Button>
                     )}
                     <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                 </>

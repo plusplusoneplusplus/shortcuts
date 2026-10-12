@@ -9,6 +9,7 @@
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
+    MAX_TODO_ITEMS,
     SentinelTodoError,
     type SentinelTodoItem,
     type SentinelTodoDependency,
@@ -23,7 +24,9 @@ import type { SendToConversationTodoTracking } from './send-to-conversation-tool
 import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { Trigger } from '../triggers/trigger-types';
 import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance } from '@plusplusoneplusplus/coc-client';
+import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
+import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
 
@@ -53,6 +56,8 @@ export interface SentinelTodosArgs {
         | 'remove_trigger' | 'run_trigger_now';
     type?: SentinelTodoType;
     includeArchived?: boolean;
+    limit?: number;
+    offset?: number;
     itemId?: string;
     expectedRevision?: number;
     title?: string;
@@ -80,7 +85,7 @@ export interface SentinelTodosArgs {
 }
 
 export type SentinelTodosResult =
-    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number }
+    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null }
     | { item: SentinelTodoItem; created?: boolean; attached?: boolean }
     | { trigger: Trigger; removed?: boolean }
     | { triggers: Trigger[] }
@@ -92,7 +97,8 @@ const REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs
 
 const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
-    'cancels jobs). `list` returns active items (add `includeArchived: true` for archived ones). `create` needs ' +
+    'cancels jobs). `list` returns the last 50 unarchived items in stored order (add `includeArchived: true` for archived ones). ' +
+    'Use `offset`/`nextOffset` for older pages, `limit` for an explicit page size, or `itemId` to read an exact older item. `create` needs ' +
     '`title`; normal items also need a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
     'the next phase. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' Reuse the same ' +
     'item across grilling, implementation, and review; preserve phase milestones and spec/artifact links in `notes`. ' +
@@ -199,7 +205,10 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     ...(dependenciesEnabled ? ['set_dependencies', 'bind_pr_output', 'accept_artifact', 'evaluate_dependencies'] : []), ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
-                itemId: { type: 'string', description: 'update/attach_reference/create_trigger/edit_trigger: the owning item.' },
+                limit: { type: 'integer', minimum: 1, maximum: MAX_TODO_ITEMS, default: SENTINEL_TODO_RECENT_LIMIT,
+                    description: 'list: page size, default 50; does not limit storage or execution eligibility.' },
+                offset: { type: 'integer', minimum: 0, description: 'list: skip this many recent eligible items to read older pages.' },
+                itemId: { type: 'string', description: 'list: exact item lookup, including older records; update/attach_reference/create_trigger/edit_trigger: the owning item.' },
                 expectedRevision: { type: 'number', description: 'The item revision for item edits, or rule revision for trigger lifecycle actions.' },
                 conversationId: { type: 'string', description: 'attach_reference: process ID of the existing conversation to reference.' },
                 conversationWorkspaceId: { type: 'string', description: 'attach_reference: that conversation\'s workspace (default: this chat\'s).' },
@@ -342,11 +351,15 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     }
                     case 'list': {
                         const ledger = await service.list(owner);
-                        const items = args.includeArchived ? ledger.items : ledger.items.filter(item => !item.archived);
+                        const page = sentinelTodoRecentList(ledger, {
+                            limit: args.limit, offset: args.offset, itemId: args.itemId,
+                            includeArchived: args.includeArchived ?? false,
+                        });
                         return {
-                            items,
+                            items: page.items,
                             ledgerRevision: ledger.revision,
                             archivedCount: ledger.items.filter(item => item.archived).length,
+                            total: page.total, hasMore: page.hasMore, nextOffset: page.nextOffset,
                         };
                     }
                     case 'create': {

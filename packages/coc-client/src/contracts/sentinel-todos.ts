@@ -7,6 +7,7 @@
  */
 
 export type SentinelTodoStatus = 'todo' | 'in_progress' | 'needs_attention' | 'done';
+export const SENTINEL_TODO_RECENT_LIMIT = 50;
 export type SentinelTodoType = 'normal' | 'manual';
 /** Ledger metadata only, independent of status and of job queue priority. */
 export type SentinelTodoPriority = 'high' | 'regular';
@@ -227,6 +228,10 @@ export interface SentinelTodoItem {
 export interface SentinelTodoLedgerResponse {
   revision: number;
   items: SentinelTodoItem[];
+  /** Recent-list pagination; full snapshots omit these fields. */
+  total?: number;
+  hasMore?: boolean;
+  nextOffset?: number | null;
 }
 
 export interface CreateSentinelTodoRequest {

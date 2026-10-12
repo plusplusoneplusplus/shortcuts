@@ -212,6 +212,10 @@ references before editing. Paths are package-relative.
   the process store's native `processes.db` handle; ledger, item and job rows are scoped
   by workspace and parent chat. Mutations acquire the database writer before reading
   and compare revisions; stale item writers receive `409` with the current item.
+  Recent REST/tool lists default to the last 50 items in stored order, with explicit
+  limit/offset paging and item-ID lookup. `SentinelTodoService.list` and store reads
+  remain full-ledger; the 500-item storage capacity is independent of presentation.
+  REST `full=true` supplies complete authoring/projection snapshots.
   The internal `setDependencies` graph command replaces ordered, typed prerequisites
   in the same writer transaction as item/ledger revisions. Edges resolve only in the
   owning parent ledger, regardless of execution workspace; self/duplicate/foreign/
@@ -676,8 +680,9 @@ references before editing. Paths are package-relative.
   not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
   `SentinelTodoService.list` (non-Sentinel → explicit reply; ledger flag off → off reply;
   non-local workspace → unsupported reply). Status labels come from the client's
-  dependency-free `sentinelTodoStatusModel.ts`; Manual tracking is grouped separately; at most
-  100 items, the rest counted; replies chunk via `chunkWhatsAppText`. Read-only: no ledger
+  dependency-free `sentinelTodoStatusModel.ts`; the last 50 unfinished items are grouped
+  by Normal/Manual tracking, with omitted items counted. Replies chunk via
+  `chunkWhatsAppText`. Read-only: no ledger
   write, enqueue, selection change or result acknowledgement.
   Git reads reuse native parsers and forge's WSL runner with optional locks disabled,
   without safe-directory writes or fetch. Replies report changes/conflicts, detached/unborn
