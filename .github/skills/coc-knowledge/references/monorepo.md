@@ -262,7 +262,10 @@ the source conversation. Visibility is keyed by routing owner and concrete clone
 reference; token-qualified completion cannot erase or restore another turn.
 
 `browser-control-page.ts` shares snapshots, trusted input, waits, markdown reads,
-eval and cropped inline JPEG capture across engines. Its monotonic counter seeds
+eval and cropped inline JPEG capture across engines. macOS replacement uses CDP's
+`selectAll` editing command; native dropdowns use bounded trusted typeahead with
+exact-value verification, while list boxes use Home/arrow input. Dropdown options
+without searchable labels fail explicitly. Its monotonic counter seeds
 self-contained DOM/ARIA maps covering same-origin frames and open shadows.
 Navigation and inaccessible frame documents expire refs. Targets scroll and translate
 frame bounds before input; screenshots account for pixel ratio. Large snapshots stage
@@ -275,7 +278,8 @@ through the parser/tool/WebSocket/SPA/preload/main/CDP chain. Desktop CI builds 
 artifacts and runs the workflow on Linux/macOS and Windows WebView2; feature admission
 uses default-off `browserControl.enabled` ([tools](llm-tools.md)).
 Linux native-frame assertions require a window manager on the isolated display;
-framed control windows are mapped before measuring decoration extents.
+framed control windows are mapped before measuring decoration extents. Relay
+fixtures close active HTTP connections before awaiting server shutdown.
 
 ### Container image
 

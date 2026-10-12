@@ -1,6 +1,6 @@
 const { app, BrowserWindow, nativeImage } = require('electron');
 const { buildSync } = require('esbuild');
-const { createServer } = require('node:http');
+const { createServer, get } = require('node:http');
 const path = require('node:path');
 
 app.setPath('userData', process.env.COC_BROWSER_E2E_USER_DATA);
@@ -52,7 +52,9 @@ const renderer = buildSync({
     loader: { '.css': 'empty' }, define: { 'process.env.NODE_ENV': '"production"' },
 }).outputFiles[0].text;
 const server = createServer((request, response) => {
-    if (request.url === '/renderer.js') {
+    if (request.url === '/pending') {
+        response.write('fixture');
+    } else if (request.url === '/renderer.js') {
         response.setHeader('content-type', 'application/javascript'); response.end(renderer);
     } else if (request.url.startsWith('/page')) {
         response.setHeader('content-type', 'text/html');
@@ -119,6 +121,10 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     if (!popup) throw new Error('Workspace popup missing from tabs');
     const popupSelection = await execute({ action: 'select', tab: popup.id });
     const popupRead = await execute({ action: 'read' }, popup.id);
+    // Keep an active HTTP response so fixture shutdown must drain lingering browser connections.
+    await new Promise((resolve, reject) => {
+        get(origin + '/pending', response => { response.resume(); resolve(); }).on('error', reject);
+    });
     console.log('E2E::' + JSON.stringify({
         initialTabs: tabs.tabs.length, tabs: listed.tabs.length, selected: opened.tab === listed.tabs[0].id,
         read: read.text, value: JSON.parse(evaluated.valueJson), imageType: screenshot.image.mimeType, size, cropSize,
@@ -127,6 +133,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     win.destroy();
     await disposeBrowserViews();
     sockets.closeAll();
+    server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
     app.exit(0);
 })().catch(async error => {

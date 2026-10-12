@@ -33,6 +33,7 @@ export interface BrowserDomTarget {
     width: number;
     height: number;
     optionSteps?: number;
+    optionSearch?: { text: string; selected: boolean; count: number };
 }
 
 export type BrowserDomCommand =
@@ -40,7 +41,7 @@ export type BrowserDomCommand =
     | { action: 'snapshot-chunk'; token: number; offset: number }
     | { action: 'text'; text: string }
     | { action: 'read'; ref?: string; paged?: true; offset?: number }
-    | { action: 'target'; ref: string; editable?: boolean; option?: string };
+    | { action: 'target'; ref: string; editable?: boolean; option?: string; resetTypeAhead?: true };
 
 /** Keep this function self-contained: its compiled source runs in either engine. */
 function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomSnapshotChunk | BrowserDomReadPage | BrowserDomTarget | boolean | string {
@@ -276,12 +277,17 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
             || input.readOnly) throw new Error('Element is not editable');
     }
     let optionSteps: number | undefined;
+    let optionSearch: BrowserDomTarget['optionSearch'];
     if (command.option !== undefined) {
         if (element.localName !== 'select') throw new Error('Element is not a select');
         const options = Array.from((element as HTMLSelectElement).options).filter(option => !option.disabled && !option.parentElement?.matches('optgroup[disabled]'));
         const index = options.findIndex(option => option.value === command.option);
         if (index < 0) throw new Error('Option value is missing or disabled');
         optionSteps = index;
+        const select = element as HTMLSelectElement;
+        if (!select.multiple && select.size <= 1) {
+            optionSearch = { text: options[index].label.trimStart(), selected: options[index].selected, count: options.length };
+        }
     }
     element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
     const frames: Element[] = [];
@@ -302,8 +308,11 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         width *= scaleX;
         height *= scaleY;
     }
-    if (command.option !== undefined) (element as HTMLElement).focus();
-    return { x, y, width, height, ...(optionSteps === undefined ? {} : { optionSteps }) };
+    if (command.option !== undefined) {
+        if (command.resetTypeAhead) (element as HTMLElement).blur();
+        (element as HTMLElement).focus();
+    }
+    return { x, y, width, height, ...(optionSteps === undefined ? {} : { optionSteps }), ...(optionSearch ? { optionSearch } : {}) };
 }
 
 export function buildBrowserDomExpression(command: BrowserDomCommand): string {

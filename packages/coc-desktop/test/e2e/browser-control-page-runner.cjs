@@ -6,6 +6,7 @@ const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
 const { BrowserControlQueue } = require('../../dist/browser-control-queue.js');
+const { BrowserControlPage } = require('../../dist/browser-control-page.js');
 let win;
 let cdp;
 
@@ -20,7 +21,7 @@ const server = http.createServer((request, response) => {
     response.end(`<!doctype html><title>Control fixture</title>
         <style>body { margin:20px; } iframe { width:500px; height:100px; }</style>
         <label>Name <input id="name" value="replace me"></label><button id="save" onclick="document.querySelector('#out').textContent=document.querySelector('#name').value">Save</button>
-        <label>Plan <select id="plan"><option value="a">A</option><option disabled value="skip">Skip</option><option value="b">B</option><option value="c">C</option></select></label>
+        <label>Plan <select id="plan"><option value="a">A</option><option disabled value="skip">Choice</option><option value="b">B</option><option value="c1">Choice</option><option value="c">Choice</option></select></label>
         <label>Choices <select id="choices" multiple><option value="a" selected>A</option><option value="b">B</option><option value="c">C</option></select></label>
         <output id="out"></output><iframe src="/frame"></iframe><div id="shadow"></div>
         <script>
@@ -64,6 +65,12 @@ const server = http.createServer((request, response) => {
     await queue.run(page => page.type(ref('Name'), 'Ada'));
     await queue.run(page => page.click(ref('Save')));
     await queue.run(page => page.selectOption(ref('Plan'), 'c'));
+    const macPage = new BrowserControlPage((method, params) => cdp.send(method, params), 'darwin');
+    const typeAheadSelections = [];
+    for (const value of ['c1', 'c', 'c1', 'c']) {
+        await macPage.selectOption(ref('Plan'), value);
+        typeAheadSelections.push(await macPage.evaluate('document.querySelector("#plan").value'));
+    }
     await queue.run(page => page.selectOption(ref('Choices'), 'b'));
     await queue.run(page => page.type(ref('Frame text'), 'Nested'));
     await queue.run(page => page.click(ref('Frame action')));
@@ -79,7 +86,7 @@ const server = http.createServer((request, response) => {
     const after = await queue.run(page => page.snapshot());
     let stale;
     try { await queue.run(page => page.click(ref('Save'))); } catch (error) { stale = error.message; }
-    console.log('E2E::' + JSON.stringify({ report: report.result.value, cancelled, stoppedField: stoppedField.result.value, stable: repeated.elements.map(e => e.ref).join() === before.elements.map(e => e.ref).join(), reused: after.elements.some(e => before.elements.some(old => old.ref === e.ref)), stale }));
+    console.log('E2E::' + JSON.stringify({ report: report.result.value, typeAheadSelections, cancelled, stoppedField: stoppedField.result.value, stable: repeated.elements.map(e => e.ref).join() === before.elements.map(e => e.ref).join(), reused: after.elements.some(e => before.elements.some(old => old.ref === e.ref)), stale }));
     cdp.dispose();
     win.destroy();
     await new Promise(resolve => server.close(resolve));

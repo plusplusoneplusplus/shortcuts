@@ -79,16 +79,55 @@ describe('engine-neutral trusted CDP actions', () => {
         ]);
     });
 
-    it('uses Meta select-all on macOS without submitting by default', async () => {
+    it('uses the native selectAll editing command on macOS without submitting by default', async () => {
         const { send } = fixture();
         await new BrowserControlPage(send, 'darwin').type('e1', 'new');
-        expect(send.mock.calls.slice(4)).toEqual([...key('a', 'KeyA', 65, 4), ['Input.insertText', { text: 'new' }]]);
+        expect(send.mock.calls.slice(4)).toEqual([
+            ['Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 4, commands: ['selectAll'] }],
+            key('a', 'KeyA', 65, 4)[1], ['Input.insertText', { text: 'new' }],
+        ]);
+    });
+
+    it('cycles macOS native dropdown labels with trusted typeahead and verifies the exact option value', async () => {
+        const { send } = fixture();
+        const target = { x: 0, y: 0, width: 10, height: 10, optionSteps: 2,
+            optionSearch: { text: 'Choice', selected: false, count: 3 } };
+        let snapshots = 0;
+        send.mockImplementation(async method => method === 'Runtime.evaluate'
+            ? { result: { value: { ...target, optionSearch: { ...target.optionSearch, selected: ++snapshots === 3 } } } } : {});
+        await new BrowserControlPage(send, 'darwin').selectOption('e1', 'third');
+        expect(send.mock.calls.filter(call => call[0] === 'Input.dispatchKeyEvent')).toEqual([
+            ['Input.dispatchKeyEvent', { type: 'char', text: 'C' }],
+            ['Input.dispatchKeyEvent', { type: 'char', text: 'C' }],
+        ]);
+        expect(snapshots).toBe(3);
+        expect(send.mock.calls[0][1]?.expression).toContain('"resetTypeAhead":true');
+    });
+
+    it.each([
+        [{ text: 'Choice', selected: true, count: 3 }, undefined],
+        [{ text: '', selected: false, count: 3 }, 'no searchable label'],
+        [{ text: 'Choice', selected: false, count: 2 }, 'did not respond'],
+    ] as const)('bounds macOS typeahead and surfaces unselectable options: %j', async (optionSearch, error) => {
+        const { send } = fixture();
+        send.mockImplementation(async method => method === 'Runtime.evaluate'
+            ? { result: { value: { x: 0, y: 0, width: 10, height: 10, optionSearch } } } : {});
+        const selection = new BrowserControlPage(send, 'darwin').selectOption('e1', 'third');
+        if (error) await expect(selection).rejects.toThrow(error);
+        else await selection;
+        expect(send.mock.calls.filter(call => call[0] === 'Input.dispatchKeyEvent')).toHaveLength(error === 'did not respond' ? 2 : 0);
     });
 
     it('selects a native option through trusted keyboard events', async () => {
         const { send, page } = fixture();
         await page.selectOption('e5', 'third');
         expect(send.mock.calls[0][1]?.expression).toContain('"option":"third"');
+        expect(send.mock.calls.slice(1)).toEqual([...key('Home', 'Home', 36), ...key('ArrowDown', 'ArrowDown', 40), ...key('ArrowDown', 'ArrowDown', 40)]);
+    });
+
+    it('retains trusted Home/arrow selection for macOS list boxes', async () => {
+        const { send } = fixture();
+        await new BrowserControlPage(send, 'darwin').selectOption('e5', 'third');
         expect(send.mock.calls.slice(1)).toEqual([...key('Home', 'Home', 36), ...key('ArrowDown', 'ArrowDown', 40), ...key('ArrowDown', 'ArrowDown', 40)]);
     });
 

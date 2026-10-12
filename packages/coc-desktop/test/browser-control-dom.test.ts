@@ -292,4 +292,25 @@ describe('ref resolution before trusted input', () => {
         expect(() => run({ action: 'target', ref, option: 'group' })).toThrow('missing or disabled');
         expect(() => run({ action: 'target', ref, option: 'missing' })).toThrow('missing or disabled');
     });
+
+    it('reports native-menu typeahead state and resets only the requested select focus', () => {
+        document.body.innerHTML = '<select><option value="a">A</option><option value="b" label="  Choice">Other</option></select>';
+        layout();
+        const ref = snapshot().elements[0].ref;
+        const select = document.querySelector('select')!;
+        const blur = vi.spyOn(select, 'blur');
+        expect(run<BrowserDomTarget>({ action: 'target', ref, option: 'b' }).optionSearch)
+            .toEqual({ text: 'Choice', selected: false, count: 2 });
+        expect(blur).not.toHaveBeenCalled();
+        select.value = 'b';
+        expect(run<BrowserDomTarget>({ action: 'target', ref, option: 'b', resetTypeAhead: true }).optionSearch)
+            .toEqual({ text: 'Choice', selected: true, count: 2 });
+        expect(blur).toHaveBeenCalledOnce();
+        expect(document.activeElement).toBe(select);
+        select.multiple = true;
+        expect(run<BrowserDomTarget>({ action: 'target', ref, option: 'b' }).optionSearch).toBeUndefined();
+        select.multiple = false;
+        select.size = 3;
+        expect(run<BrowserDomTarget>({ action: 'target', ref, option: 'b' }).optionSearch).toBeUndefined();
+    });
 });

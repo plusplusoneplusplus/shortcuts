@@ -120,7 +120,22 @@ export class BrowserControlPage {
     }
 
     async selectOption(ref: string, value: string): Promise<void> {
-        const target = await this.dom<BrowserDomTarget>({ action: 'target', ref, option: value });
+        const command: BrowserDomCommand = { action: 'target', ref, option: value,
+            ...(this.platform === 'darwin' ? { resetTypeAhead: true } : {}) };
+        let target = await this.dom<BrowserDomTarget>(command);
+        // macOS arrow keys open an OS menu that CDP cannot drive. Trusted typeahead stays in the page.
+        if (this.platform === 'darwin' && target.optionSearch) {
+            if (target.optionSearch.selected) return;
+            const { text, count } = target.optionSearch;
+            if (!text) throw new Error('Option has no searchable label');
+            for (let index = 0; index < count; index++) {
+                if (target.optionSearch?.selected) return;
+                await this.send('Input.dispatchKeyEvent', { type: 'char', text: text[0] });
+                target = await this.dom<BrowserDomTarget>(command);
+            }
+            if (!target.optionSearch?.selected) throw new Error('Option did not respond to trusted keyboard input');
+            return;
+        }
         // Keyboard selection preserves Chromium's trusted input/change events.
         await this.press('Home');
         for (let index = 0; index < target.optionSteps!; index++) await this.press('ArrowDown');
@@ -161,7 +176,10 @@ export class BrowserControlPage {
         const key = modifiers & 8 ? shifted[baseKey] ?? (/^[a-z]$/.test(baseKey) ? baseKey.toUpperCase() : baseKey) : baseKey;
         const text = unmodifiedText && unmodifiedText === baseKey ? key : unmodifiedText;
         const params = { key, code, windowsVirtualKeyCode, modifiers };
-        await this.send('Input.dispatchKeyEvent', { type: 'keyDown', ...params, ...(text && !(modifiers & 7) ? { text, unmodifiedText } : {}) });
+        await this.send('Input.dispatchKeyEvent', {
+            type: 'keyDown', ...params, ...(text && !(modifiers & 7) ? { text, unmodifiedText } : {}),
+            ...(this.platform === 'darwin' && baseKey.toLowerCase() === 'a' && modifiers === 4 ? { commands: ['selectAll'] } : {}),
+        });
         await this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
     }
 

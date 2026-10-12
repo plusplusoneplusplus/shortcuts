@@ -38,6 +38,7 @@ describe.skipIf(skip)('shared browser-control page in real Electron', () => {
             expect(result).toMatchObject({
                 stable: true, reused: false, stale: expect.stringContaining('stale ref, re-snapshot'),
                 cancelled: 'Fixture Stop', stoppedField: 'replace me',
+                typeAheadSelections: ['c1', 'c', 'c1', 'c'],
                 report: { value: 'Ada', plan: 'c', choices: ['b'], frameText: 'Nested', frameClicked: true, shadowClicked: true },
             });
             expect(result.report.events).toContainEqual({ type: 'input', trusted: true });
