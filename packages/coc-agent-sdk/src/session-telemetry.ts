@@ -8,6 +8,7 @@ import type { ToolCall } from './tool-call';
 import type { TokenUsage, ToolEvent } from './types';
 import type { MidTurnTokenUsage } from './mid-turn-usage';
 import { tryConvertImageFileToDataUrl } from './image-converter';
+import { serializeToolResultWithImages, type CapturedToolExecutionResult } from './tool-result-images';
 
 // ============================================================================
 // Types
@@ -168,7 +169,7 @@ export class SessionTelemetry {
     recordToolComplete(data: {
         toolCallId?: string;
         success?: boolean;
-        result?: { content?: string };
+        result?: CapturedToolExecutionResult;
         error?: { message?: string; code?: string };
         parentToolCallId?: string;
     }): { event: ToolEvent; tracked?: ActiveToolCall; durationMs?: number } {
@@ -178,7 +179,7 @@ export class SessionTelemetry {
         this.activeToolCalls.delete(toolCallId);
 
         const capturedTool = this.toolCallsMap.get(toolCallId);
-        let resultContent  = data.result?.content;
+        let resultContent  = serializeToolResultWithImages(data.result) ?? data.result?.content;
 
         if (capturedTool) {
             if (data.parentToolCallId) {

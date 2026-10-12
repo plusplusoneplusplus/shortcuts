@@ -368,6 +368,42 @@ describe('OpenCodeSDKService', () => {
             ]);
         });
 
+        it.each(['response', 'stream', 'both', 'without-callback'])('preserves native %s screenshot attachments in events and persisted calls', async capture => {
+            const client = createMockClient();
+            const part = {
+                type: 'tool', id: 'part-shot', sessionID: 'new-session-1', messageID: 'msg-1',
+                callID: 'shot', tool: 'browser', state: {
+                    status: 'completed', input: { action: 'screenshot' }, output: 'ok',
+                    attachments: [
+                        { type: 'file', mime: 'image/jpeg', url: 'data:image/jpeg;base64,aW1hZ2U=' },
+                        { type: 'file', mime: 'image/jpeg', url: 'file:///not-read.jpeg' },
+                        { type: 'file', mime: 'image/jpeg', url: 'https://example.invalid/not-fetched.jpeg' },
+                    ],
+                },
+            };
+            client.session.prompt.mockResolvedValue({
+                data: { info: { id: 'msg-1', sessionID: 'new-session-1', role: 'assistant' },
+                    parts: capture === 'stream' ? [] : [part] },
+            });
+            client.event.subscribe.mockResolvedValue({ stream: (async function* () {
+                yield { type: 'message.chunk', sessionID: 'new-session-1', content: 'done' };
+                if (capture === 'stream' || capture === 'both') {
+                    yield { type: 'message.part.updated', properties: { part: { ...part, sessionID: 'other-session' } } };
+                    yield { type: 'message.part.updated', properties: { part } };
+                }
+            })() });
+            stubSDKWithClient(client);
+            const onToolEvent = vi.fn();
+            const result = await svc.sendMessage({ prompt: 'screenshot',
+                ...(capture === 'without-callback' ? {} : { onToolEvent }) });
+            expect(result.toolCalls).toHaveLength(1);
+            expect(JSON.parse(result.toolCalls![0].result!)).toEqual({ content: [
+                { type: 'text', text: 'ok' }, { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/jpeg' },
+            ] });
+            expect(onToolEvent).toHaveBeenCalledTimes(capture === 'without-callback' ? 0 : 1);
+            if (capture !== 'without-callback') expect(onToolEvent.mock.calls[0][0].result).toBe(result.toolCalls![0].result);
+        });
+
         it('returns error when SDK is unavailable', async () => {
             stubSDKNotInstalled();
 

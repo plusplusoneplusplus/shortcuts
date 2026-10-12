@@ -20,6 +20,7 @@
 
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
+import { serializeToolResultWithImages } from './tool-result-images';
 import { denyAllPermissions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, PrewarmOptions, RewindResult, CompactResult } from './sdk-service-interface';
 import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-interface';
@@ -1999,6 +2000,8 @@ export class CodexSDKService implements ISDKService {
     }
 
     private stringifyCodexResult(result: unknown): string | undefined {
+        const withImages = serializeToolResultWithImages(result);
+        if (withImages !== undefined) return withImages;
         if (result == null) return undefined;
         if (typeof result === 'string') return result;
         if (typeof result === 'object' && Array.isArray((result as { content?: unknown }).content)) {

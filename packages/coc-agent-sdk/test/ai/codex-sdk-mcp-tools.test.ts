@@ -55,6 +55,23 @@ describe('CodexSDKService MCP tool wiring', () => {
         cocToolBridgeServer.closeAll();
     });
 
+    it('preserves mixed MCP screenshot images in events and persisted calls', async () => {
+        svc = new CodexSDKService();
+        const content = [{ type: 'text', text: 'ok' }, { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/jpeg' }];
+        const item = { id: 'shot', type: 'mcp_tool_call', server: COC_LLM_TOOLS_MCP_SERVER_NAME,
+            tool: 'browser', arguments: { action: 'screenshot' }, result: { content } };
+        (svc as unknown as { sdk: unknown }).sdk = {
+            startThread: vi.fn(() => makeThread('thread-shot', [
+                { type: 'item.started', item }, { type: 'item.completed', item },
+            ])), resumeThread: vi.fn(),
+        };
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+        const onToolEvent = vi.fn();
+        const result = await svc.sendMessage({ prompt: 'screenshot', onToolEvent });
+        expect(JSON.parse(result.toolCalls![0].result!)).toEqual({ content });
+        expect(onToolEvent.mock.calls.find(([event]) => event.type === 'tool-complete')?.[0].result).toBe(result.toolCalls![0].result);
+    });
+
     it('builds a per-request Codex client with generated mcp_servers config when tools are present', async () => {
         svc = new CodexSDKService();
         const { ctor, instances } = makeCodexCtor();

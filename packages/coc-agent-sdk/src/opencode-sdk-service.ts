@@ -45,6 +45,8 @@
 
 import type { SendMessageOptions, TokenUsage } from './types';
 import type { ToolEvent } from './types';
+import type { ToolCall } from './tool-call';
+import { serializeToolResultWithImages } from './tool-result-images';
 import { denyAllPermissions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, RewindResult, CompactResult } from './sdk-service-interface';
 import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-interface';
@@ -153,7 +155,13 @@ interface OpenCodeResponsePart {
     text?: string;
     toolCallID?: string;
     toolName?: string;
-    state?: string;
+    state?: string | {
+        status: string;
+        input?: Record<string, unknown>;
+        output?: string;
+        error?: string;
+        attachments?: unknown[];
+    };
     input?: unknown;
     output?: string;
     error?: string;
@@ -457,6 +465,7 @@ export class OpenCodeSDKService implements ISDKService {
         // every request longer than the window. Wall-clock covers that case.
         let idleTimedOut = false;
         const activeToolCalls = new Set<string>();
+        const toolCalls = new Map<string, ToolCall>();
         const idleWatchdog = new IdleWatchdog({
             idleTimeoutMs: options.idleTimeoutMs,
             // A tool call still running (e.g. ask_user blocked on a user widget)
@@ -544,7 +553,7 @@ export class OpenCodeSDKService implements ISDKService {
                 idleWatchdog.start();
                 eventStreamPromise = this.consumeEventStream(
                     client, sessionId, abortController.signal, options, chunks,
-                    idleWatchdog, activeToolCalls,
+                    idleWatchdog, activeToolCalls, toolCalls,
                 );
             }
 
@@ -572,9 +581,12 @@ export class OpenCodeSDKService implements ISDKService {
                     if (part.type === 'text' && part.text) {
                         chunks.push(part.text);
                         options.onStreamingChunk?.(part.text);
-                    } else if (part.type === 'tool-invocation' || part.type === 'tool_use') {
-                        this.emitToolEvent(part, options);
                     }
+                }
+            }
+            for (const part of result.data?.parts ?? []) {
+                if (part.type === 'tool' || part.type === 'tool-invocation' || part.type === 'tool_use') {
+                    this.emitToolEvent(part, options, toolCalls);
                 }
             }
 
@@ -596,6 +608,7 @@ export class OpenCodeSDKService implements ISDKService {
                 response,
                 sessionId,
                 effectiveModel,
+                ...(toolCalls.size ? { toolCalls: [...toolCalls.values()] } : {}),
                 ...(tokenUsage ? { tokenUsage } : {}),
                 ...(userMessageEventId ? { userMessageEventId } : {}),
             };
@@ -628,42 +641,60 @@ export class OpenCodeSDKService implements ISDKService {
         }
     }
 
-    private emitToolEvent(part: OpenCodeResponsePart, options: SendMessageOptions): void {
-        if (!options.onToolEvent) return;
+    private emitToolEvent(part: OpenCodeResponsePart, options: SendMessageOptions, toolCalls: Map<string, ToolCall>): void {
+        const toolCallId = part.toolCallID ?? (typeof part.callID === 'string' ? part.callID : crypto.randomUUID());
+        const toolName = part.toolName ?? (typeof part.tool === 'string' ? part.tool : undefined);
+        const structuredState = typeof part.state === 'object' ? part.state : undefined;
+        const state = structuredState?.status ?? part.state;
+        const input = structuredState?.input ?? part.input;
+        const parameters = typeof input === 'object' && input !== null ? input as Record<string, unknown> : undefined;
+        const captured = toolCalls.get(toolCallId) ?? {
+            id: toolCallId, name: toolName ?? 'unknown', status: 'running',
+            startTime: new Date(), args: parameters ?? {},
+        } satisfies ToolCall;
+        if (parameters) captured.args = parameters;
+        toolCalls.set(toolCallId, captured);
 
-        const toolCallId = part.toolCallID ?? crypto.randomUUID();
-        const toolName = part.toolName;
-
-        if (part.state === 'pending' || part.state === 'running' || !part.state) {
+        if (state === 'pending' || state === 'running' || !state) {
             const event: ToolEvent = {
                 type: 'tool-start',
                 toolCallId,
                 toolName,
-                parameters: typeof part.input === 'object' && part.input !== null
-                    ? part.input as Record<string, unknown>
-                    : undefined,
+                parameters,
             };
-            options.onToolEvent(event);
+            options.onToolEvent?.(event);
         }
 
-        if (part.state === 'completed' || part.state === 'done') {
+        if (state === 'completed' || state === 'done') {
+            const output = structuredState?.output ?? part.output ?? part.text;
+            const result = serializeToolResultWithImages({
+                output,
+                attachments: structuredState?.attachments ?? part.attachments,
+            }) ?? output;
+            if (captured.status === 'completed' && captured.result === result) return;
+            captured.status = 'completed';
+            captured.endTime = new Date();
+            captured.result = result;
             const event: ToolEvent = {
                 type: 'tool-complete',
                 toolCallId,
                 toolName,
-                result: part.output ?? part.text,
+                result,
             };
-            options.onToolEvent(event);
+            options.onToolEvent?.(event);
         }
 
-        if (part.state === 'error' || part.error) {
+        if (state === 'error' || part.error) {
+            captured.status = 'failed';
+            captured.endTime = new Date();
+            captured.error = structuredState?.error ?? part.error ?? 'Tool execution failed';
             const event: ToolEvent = {
                 type: 'tool-failed',
                 toolCallId,
                 toolName,
-                error: part.error ?? 'Tool execution failed',
+                error: captured.error,
             };
-            options.onToolEvent(event);
+            options.onToolEvent?.(event);
         }
     }
 
@@ -681,6 +712,7 @@ export class OpenCodeSDKService implements ISDKService {
         chunks: string[],
         idleWatchdog?: IdleWatchdog,
         activeToolCalls?: Set<string>,
+        toolCalls = new Map<string, ToolCall>(),
     ): Promise<void> {
         try {
             const { stream } = await client.event.subscribe();
@@ -690,10 +722,21 @@ export class OpenCodeSDKService implements ISDKService {
                 if (signal.aborted) break;
 
                 // Only process events for our session
-                const eventSessionId = event.sessionID ?? event.properties?.['sessionID'] as string | undefined;
+                const updatedPart = event.properties?.['part'] as OpenCodeResponsePart | undefined;
+                const eventSessionId = event.sessionID ?? event.properties?.['sessionID'] ?? updatedPart?.sessionID;
                 if (eventSessionId && eventSessionId !== sessionId) continue;
 
                 switch (event.type) {
+                    case 'message.part.updated': {
+                        if (updatedPart?.type === 'tool') {
+                            const id = typeof updatedPart.callID === 'string' ? updatedPart.callID : undefined;
+                            const state = typeof updatedPart.state === 'object' ? updatedPart.state.status : updatedPart.state;
+                            if (id && (state === 'pending' || state === 'running')) activeToolCalls?.add(id);
+                            else if (id) activeToolCalls?.delete(id);
+                            this.emitToolEvent(updatedPart, options, toolCalls);
+                        }
+                        break;
+                    }
                     case 'message.chunk':
                     case 'content.delta':
                     case 'text': {
@@ -711,7 +754,7 @@ export class OpenCodeSDKService implements ISDKService {
                         const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
                         if (part) {
                             if (part.toolCallID) activeToolCalls?.add(part.toolCallID);
-                            this.emitToolEvent({ ...part, state: part.state ?? 'running' }, options);
+                            this.emitToolEvent({ ...part, state: part.state ?? 'running' }, options, toolCalls);
                         }
                         break;
                     }
@@ -720,7 +763,7 @@ export class OpenCodeSDKService implements ISDKService {
                         const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
                         if (part) {
                             if (part.toolCallID) activeToolCalls?.delete(part.toolCallID);
-                            this.emitToolEvent({ ...part, state: 'completed' }, options);
+                            this.emitToolEvent({ ...part, state: 'completed' }, options, toolCalls);
                         }
                         break;
                     }
@@ -728,7 +771,7 @@ export class OpenCodeSDKService implements ISDKService {
                         const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
                         if (part) {
                             if (part.toolCallID) activeToolCalls?.delete(part.toolCallID);
-                            this.emitToolEvent({ ...part, state: 'error' }, options);
+                            this.emitToolEvent({ ...part, state: 'error' }, options, toolCalls);
                         }
                         break;
                     }
