@@ -541,7 +541,11 @@ persists. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. Collapsed/latest and expanded/earlier titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and
-unknown modes omitted. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
+unknown modes omitted. Owner labels resolve each job's server-qualified workspace
+from cached local/remote/group metadata; the current repo omits its badge and
+remote labels include the configured server name. Exact-owner target labels and
+last-known offline names provide fallbacks; unavailable metadata stays explicit
+and accessible. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
 reference-only conversations keep navigation without job badges. Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do

@@ -13,14 +13,24 @@ test.beforeAll(async () => {
             import React from 'react';
             import { createRoot } from 'react-dom/client';
             import { UnifiedTodoTab } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
+            import { registerCloneBaseUrls } from './src/server/spa/client/react/repos/cloneRegistry';
             const at = new Date().toISOString();
             const job = (id, kind, execution) => ({ processId: id, workspaceId: 'repo1', kind, execution,
                 title: id, sessionId: kind === 'ralph' ? 'session' : undefined,
                 openLink: '#repos/repo1/chats/' + id, linkedAt: at });
+            window.ownerWorkspaces = [
+                { id: 'parent', name: 'shortcuts' },
+                { id: 'repo1', name: 'shortcuts-2' },
+                { id: 'repo1', name: 'remote-checkout-with-a-long-friendly-name',
+                    remote: { serverId: 'build-server', serverLabel: 'Build machine with a long configured display name' } }
+            ];
+            registerCloneBaseUrls([{ workspaceId: 'repo1', serverId: 'build-server', baseUrl: 'https://owner.example' }]);
             const item = { id: 'item', title: 'Keep selection', notes: '', completionCondition: 'Checks pass',
                 type: 'normal', priority: 'regular', status: 'in_progress', archived: false, revision: 1,
                 createdAt: at, updatedAt: at, createdBy: 'sentinel', updatedBy: 'sentinel',
-                jobs: [job('Earlier job', 'local', { state: 'failed', reason: 'Previous attempt failed' }),
+                targetRepo: { workspaceId: 'repo1', serverId: 'build-server', label: 'Wrong current target' },
+                jobs: [{ ...job('Earlier job', 'remote', { state: 'failed', reason: 'Previous attempt failed' }),
+                        serverId: 'build-server', openLink: '#repos/remote:build-server:repo1/chats/Earlier-job' },
                     job('Ralph job', 'ralph', { state: 'running' })],
                 references: [{ processId: 'ref', workspaceId: 'repo1', title: 'Reference only', openLink: '#ref', attachedAt: at, attachedBy: 'user' }] };
             window.reads = [];
@@ -30,11 +40,13 @@ test.beforeAll(async () => {
                 processes: { get: async (...args) => { window.reads.push(args); return { process: { id: args[0], workspaceId: 'repo1', jobPreview: { excerpt: 'Verified keyboard focus. '.repeat(100), source: 'progress', updatedAt: at } } }; } },
                 taskGroups: { get: async (...args) => { window.reads.push(args); return { groupId: 'session', workspaceId: 'repo1', type: 'ralph', status: 'running', updatedAt: at, extra: { detailStatus: 'executing', currentIteration: 3, maxIterations: 10 } }; } }
             };
-            createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab owner={{ ownerWorkspaceId: 'repo1', ownerRoutingRef: null, processId: 'sentinel' }} />);
+            createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab scopeWorkspaceId="parent" owner={{ ownerWorkspaceId: 'parent', ownerRoutingRef: null, processId: 'sentinel' }} />);
         ` },
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
         plugins: [{ name: 'read-only-owner-client', setup(builder) {
             builder.onLoad({ filter: /[/\\]cloneRouting\.ts$/ }, () => ({ contents: 'export const useCocClient = () => window.fakeClient;', loader: 'ts' }));
+            builder.onLoad({ filter: /[/\\]ReposContext\.tsx$/ }, () => ({ contents: 'export const useReposOptional = () => ({ repos: window.ownerWorkspaces.map(workspace => ({ workspace })), remoteGroupWorkspaces: [] });', loader: 'ts' }));
+            builder.onLoad({ filter: /[/\\]AppContext\.tsx$/ }, () => ({ contents: 'export const useAppOptional = () => null;', loader: 'ts' }));
         } }],
     });
     script = result.outputFiles[0].text;
@@ -52,6 +64,12 @@ for (const dark of [false, true]) {
         const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
         await page.setViewportSize({ width: 360, height: 500 }); await mount(page, dark);
         const title = page.getByRole('link', { name: 'Ralph job', exact: true });
+        const ownerBadge = page.getByTestId('sentinel-todo-job-owner');
+        await expect(ownerBadge).toHaveText('shortcuts-2');
+        await expect(page.getByTestId('sentinel-todo-job-mode')).toHaveText('Ralph');
+        expect(await page.evaluate(() => (window as Window & { reads: unknown[] }).reads.length)).toBe(0);
+        expect(await ownerBadge.evaluate(el => getComputedStyle(el).color)).toBe(dark ? 'rgb(187, 187, 187)' : 'rgb(97, 97, 97)');
+        expect(await page.getByTestId('sentinel-todo-row-item').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
         const before = await title.boundingBox();
         await title.hover(); const panel = page.getByRole('dialog'); await expect(panel).toBeVisible();
         await expect(panel).toContainText('Iteration 3 of 10 · executing');
@@ -68,6 +86,14 @@ for (const dark of [false, true]) {
         await expect(title).toBeFocused(); await page.waitForTimeout(300); await expect(panel).toBeHidden();
         await page.getByRole('button', { name: 'In progress Keep selection' }).click();
         const earlier = page.getByRole('link', { name: 'Earlier job', exact: true }); await expect(earlier).toBeVisible();
+        const earlierOwner = earlier.locator('..').getByTestId('sentinel-todo-job-owner');
+        const fullOwner = 'Build machine with a long configured display name / remote-checkout-with-a-long-friendly-name';
+        await expect(earlierOwner).toHaveText(fullOwner);
+        await expect(earlierOwner).toHaveAttribute('title', `Job owner: ${fullOwner}`);
+        await expect(earlierOwner).toHaveAttribute('aria-label', `Job owner: ${fullOwner}`);
+        expect(await earlierOwner.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+        expect(await page.getByTestId('sentinel-todo-row-item').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+        await page.screenshot({ path: info.outputPath('native-owner-badges.png') });
         await earlier.focus(); await expect(panel).toBeVisible(); await expect(panel).toContainText('Previous attempt failed');
         await expect(panel).toContainText('Verified keyboard focus.');
         await expect(page.getByRole('link', { name: 'Reference only' })).toBeVisible();
