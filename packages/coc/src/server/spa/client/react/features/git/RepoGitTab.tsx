@@ -885,6 +885,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
                         <div
                             className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#1e1e1e]"
                             data-testid="git-split-workspace-detail"
+                            data-pane="detail"
                         >
                             <div className="flex-1 min-h-0 overflow-hidden">
                                 {!view && selection.restoreNotFound ? (

@@ -6,7 +6,7 @@
 
 import { useRef } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import {
     useAnchoredPanelPosition,
     type AnchoredPanelPlacement,
@@ -41,6 +41,7 @@ function Harness({
     constrainHeight = false,
     contentHeight,
     boundaryRect,
+    onAnchorHidden,
 }: {
     placement: AnchoredPanelPlacement;
     triggerRect: DOMRect;
@@ -48,15 +49,17 @@ function Harness({
     constrainHeight?: boolean;
     contentHeight?: number;
     boundaryRect?: DOMRect;
+    onAnchorHidden?: () => void;
 }) {
     const triggerRef = useRef<HTMLDivElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const boundaryRef = useRef<HTMLDivElement | null>(null);
-    const pos = useAnchoredPanelPosition({ open: true, placement, triggerRef, panelRef, constrainHeight, boundaryRef: boundaryRect ? boundaryRef : undefined });
+    const pos = useAnchoredPanelPosition({ open: true, placement, triggerRef, panelRef, constrainHeight, boundaryRef: boundaryRect ? boundaryRef : undefined, onAnchorHidden });
     return (
         <>
             <div ref={el => { boundaryRef.current = el; if (el && boundaryRect) el.getBoundingClientRect = () => boundaryRect; }} />
             <div
+                data-testid="anchor"
                 ref={el => {
                     triggerRef.current = el;
                     if (el) el.getBoundingClientRect = () => triggerRect;
@@ -91,6 +94,26 @@ function readPos() {
 
 describe('useAnchoredPanelPosition', () => {
     afterEach(() => vi.unstubAllGlobals());
+    it.each(['hidden', 'detached'])('dismisses a %s anchor without moving its menu to zero coordinates and retires observers', async state => {
+        const onAnchorHidden = vi.fn();
+        const view = render(<Harness placement="down"
+            triggerRect={rect({ top: 100, left: 800, width: 60, height: 30 })}
+            panelRect={rect({ top: 0, left: 0, width: 340, height: 400 })}
+            onAnchorHidden={onAnchorHidden} />);
+        const initial = readPos();
+        const panel = screen.getByTestId('panel');
+        expect(onAnchorHidden).not.toHaveBeenCalled();
+        const ancestor = screen.getByTestId('anchor').parentElement!;
+        if (state === 'hidden') ancestor.style.display = 'none';
+        else ancestor.remove();
+        await waitFor(() => expect(onAnchorHidden).toHaveBeenCalledTimes(1));
+        expect({ top: Number(panel.dataset.top), left: Number(panel.dataset.left) }).toEqual(initial);
+        view.unmount();
+        onAnchorHidden.mockClear();
+        ancestor.style.visibility = 'hidden';
+        await act(async () => { await Promise.resolve(); });
+        expect(onAnchorHidden).not.toHaveBeenCalled();
+    });
     // jsdom viewport defaults: innerWidth 1024, innerHeight 768.
     it('places rail previews beside the icon, flips left at the edge and constrains scrolling', () => {
         const view = render(<Harness placement="right"

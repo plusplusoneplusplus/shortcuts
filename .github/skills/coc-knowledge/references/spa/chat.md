@@ -169,14 +169,24 @@ For Each and Map Reduce groups are backed by `client.forEach.list(workspaceId)` 
 `payload.context.forEach` / `payload.context.mapReduce`, persisted metadata, or
 `generationProcessId`, so children never duplicate as standalone rows.
 
+### Queue controls and preview ownership
+
 Queue pause insert zones and ALL/AP pills share `PauseDurationMenu`, a body-portaled
 overlay positioned by `useAnchoredPanelPosition` with constrained height and width.
 The hook tracks ancestor scrolling/resizing, panel resizing, and visual-viewport resize/pan;
-the menu owns contained vertical scrolling across sidebar splits. Outside interaction
-checks include the portal, and Escape returns focus to its owning trigger.
+its `onAnchorHidden` callback disposes menus when a keep-alive anchor hides or detaches.
+the menu owns contained vertical scrolling across sidebar splits. Opening focuses its
+first action; Escape dismisses the menu and returns focus to its owning trigger.
 Pause selections offer until-resumed, hour presets, or a custom float in (0, 24].
 `durationHours` is sent only for timed markers, which render a duration suffix until
 the executor consumes them.
+
+`useHoverPeek.panelProps` captures React-owned portal presses and focus in workspace,
+Activity and Notes previews. Event identity keeps owned presses inside without suppressing
+other overlays; portal Escape belongs to the nested UI. Pointer or owned focus retains the
+preview, while outside interaction and `data-pane="detail"` content dismiss normally.
+Owner changes cancel preview timers and scheduling editors; delay/skip completions can
+close only the menu session that admitted them.
 
 The ALL and AP pause pills share per-scope repeating delay settings: presets, Off,
 and custom integer minutes from 1 through 1440. `RepoChatTab` reads queue stats and

@@ -13,7 +13,7 @@
  * Constrained panels receive width and height limits for internal scrolling.
  */
 
-import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
 export type AnchoredPanelPlacement = 'up' | 'down' | 'right';
 
@@ -38,6 +38,8 @@ export interface AnchoredPanelPositionOptions {
     anchorKey?: string;
     /** Optional pane whose edges constrain the preview, intersected with the viewport. */
     boundaryRef?: RefObject<HTMLElement | null>;
+    /** Dismiss a keep-alive overlay when its anchor is detached or hidden. */
+    onAnchorHidden?: () => void;
 }
 
 export interface AnchoredPanelPosition {
@@ -58,13 +60,28 @@ export function useAnchoredPanelPosition({
     constrainHeight = false,
     anchorKey,
     boundaryRef,
+    onAnchorHidden,
 }: AnchoredPanelPositionOptions): AnchoredPanelPosition {
     const [pos, setPos] = useState<AnchoredPanelPosition>({ top: 0, left: 0 });
+    const hiddenRef = useRef(onAnchorHidden);
+    hiddenRef.current = onAnchorHidden;
+    const trackAnchorVisibility = onAnchorHidden !== undefined;
 
     const recompute = useCallback(() => {
         const trigger = triggerRef.current;
         const panel = panelRef.current;
         if (!trigger || !panel) return;
+
+        if (trackAnchorVisibility) {
+            if (!trigger.isConnected) { hiddenRef.current?.(); return; }
+            for (let anchor: HTMLElement | null = trigger; anchor; anchor = anchor.parentElement) {
+                const style = window.getComputedStyle(anchor);
+                if (anchor.hidden || style.display === 'none' || style.visibility === 'hidden') {
+                    hiddenRef.current?.();
+                    return;
+                }
+            }
+        }
 
         const t = trigger.getBoundingClientRect();
         const p = panel.getBoundingClientRect();
@@ -125,7 +142,7 @@ export function useAnchoredPanelPosition({
         if (top < viewportTop + margin) top = viewportTop + margin;
 
         setPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }));
-    }, [placement, triggerRef, panelRef, gap, margin, align, constrainHeight, boundaryRef]);
+    }, [placement, triggerRef, panelRef, gap, margin, align, constrainHeight, boundaryRef, trackAnchorVisibility]);
 
     useLayoutEffect(() => {
         if (!open) return;
@@ -137,17 +154,23 @@ export function useAnchoredPanelPosition({
         viewport?.addEventListener('resize', recompute);
         viewport?.addEventListener('scroll', recompute);
         const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(recompute);
+        const visibilityObserver = trackAnchorVisibility && typeof MutationObserver !== 'undefined'
+            ? new MutationObserver(recompute) : undefined;
         // Split resizing can move a fixed-size trigger without resizing the button.
-        for (let anchor = triggerRef.current; anchor; anchor = anchor.parentElement) observer?.observe(anchor);
+        for (let anchor = triggerRef.current; anchor; anchor = anchor.parentElement) {
+            observer?.observe(anchor);
+            visibilityObserver?.observe(anchor, { attributes: true, attributeFilter: ['class', 'style', 'hidden'], childList: true });
+        }
         if (panelRef.current) observer?.observe(panelRef.current);
         return () => {
             observer?.disconnect();
+            visibilityObserver?.disconnect();
             window.removeEventListener('resize', recompute);
             window.removeEventListener('scroll', recompute, true);
             viewport?.removeEventListener('resize', recompute);
             viewport?.removeEventListener('scroll', recompute);
         };
-    }, [open, recompute, anchorKey]);
+    }, [open, recompute, anchorKey, trackAnchorVisibility]);
 
     return pos;
 }

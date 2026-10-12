@@ -5,7 +5,7 @@
  * pause markers, context menus, and selection highlighting.
  */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPanelPosition } from '../../shared/useAnchoredPanelPosition';
 import { Card, Button, cn } from '../../ui';
@@ -1319,7 +1319,11 @@ function PauseDurationMenu({
     const position = useAnchoredPanelPosition({
         open: true, placement: 'down', constrainHeight: true,
         triggerRef: anchorRef, panelRef,
+        onAnchorHidden: onClose,
     });
+    useLayoutEffect(() => {
+        panelRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    }, []);
     useEffect(() => {
         const outside = (event: MouseEvent | TouchEvent) => {
             const target = event.target as Node;
@@ -2015,6 +2019,14 @@ export function ChatListPane({
     const [summarizeDialogIds, setSummarizeDialogIds] = useState<string[]>([]);
     const [renameTarget, setRenameTarget] = useState<{ taskId: string; title: string } | null>(null);
     const [pauseMenuScope, setPauseMenuScope] = useState<PauseMenuScope | null>(null);
+    const pauseMenuSession = useMemo(() => ({}), [pauseMenuScope, workspaceId, quotaRoutingTarget, cloneClient]);
+    const pauseMenuSessionRef = useRef(pauseMenuSession);
+    pauseMenuSessionRef.current = pauseMenuSession;
+    useLayoutEffect(() => {
+        setPauseMenuScope(null);
+        setInsertingPauseAt(null);
+        setPauseMarkerMenuIndex(null);
+    }, [workspaceId, quotaRoutingTarget, cloneClient]);
     const queuePauseRemaining = formatPauseRemaining(pausedUntil, now);
     const autopilotPauseRemaining = formatPauseRemaining(autopilotPausedUntil, now);
     const queueTaskDelayRemaining = formatPauseRemaining(taskDelayUntil, now);
@@ -2032,13 +2044,15 @@ export function ChatListPane({
     }, [onPauseResume, onPauseResumeAutopilot]);
 
     const selectTaskDelay = useCallback(async (scope: PauseMenuScope, minutes: number | null) => {
+        const session = pauseMenuSessionRef.current;
         await onSetTaskDelay(scope, minutes);
-        setPauseMenuScope(null);
+        if (pauseMenuSessionRef.current === session) setPauseMenuScope(null);
     }, [onSetTaskDelay]);
 
     const skipTaskDelay = useCallback(async (scope: PauseMenuScope) => {
+        const session = pauseMenuSessionRef.current;
         await onSkipTaskDelay(scope);
-        setPauseMenuScope(null);
+        if (pauseMenuSessionRef.current === session) setPauseMenuScope(null);
     }, [onSkipTaskDelay]);
 
     const { taskCardDensity, historyGrouping } = useDisplaySettings();

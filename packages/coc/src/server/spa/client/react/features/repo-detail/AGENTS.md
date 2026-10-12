@@ -108,6 +108,15 @@ in the remote desktop shell. A null `gitList` removes the desktop Git section
 and lets chats fill the left column; group views pass null when membership is
 loaded and has no healthy member. Mobile publishes no live left width.
 
+Temporary full-sidebar previews use `useHoverPeek`; attach its `panelProps` to
+the keep-alive column so React-owned dropdown portals share press, hover and
+focus ownership. Use the server-qualified preview scope to invalidate timers.
+Long-lived chat and Git detail portals carry `data-pane="detail"` and remain
+outside the sidebar interaction boundary. Queue menus retain their anchors
+through selection, dismiss through `useAnchoredPanelPosition.onAnchorHidden`
+when the column hides, dismiss independently on Escape and discard scheduling
+editors when the workspace or server owner changes.
+
 With `repoGroupAggregatedChats` enabled, `RepoChatTab.detailOverride` hosts the
 member conversation beside the combined list. `RepoGroupMemberChatDetail` keeps
 the raw member workspace separate from its concrete server route through

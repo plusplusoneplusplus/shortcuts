@@ -301,6 +301,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const hoverPeek = useHoverPeek({
         enabled: !isMobile && listCollapsed && hasFinePointer,
         panelRef: peekPanelRef,
+        scopeKey: `${routeId}:${source}:${workspaceId}`,
     });
     // Drive a one-shot slide-in once the peek mounts (matches the ~200ms drawer timing).
     const [peekVisible, setPeekVisible] = useState(false);
@@ -1605,6 +1606,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                         )}
                         style={{ width: leftPanelWidth }}
                         data-testid="activity-list-peek"
+                        {...hoverPeek.panelProps}
                         onMouseEnter={hoverPeek.onPanelPointerEnter}
                         onMouseLeave={hoverPeek.onPanelPointerLeave}
                     >

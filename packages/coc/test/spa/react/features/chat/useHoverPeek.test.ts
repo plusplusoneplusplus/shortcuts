@@ -228,4 +228,22 @@ describe('useHoverPeek', () => {
         // Advancing past the delay after unmount must not throw / update state.
         expect(() => { act(() => { vi.advanceTimersByTime(400); }); }).not.toThrow();
     });
+
+    it('invalidates open and pending previews when the workspace/server owner changes', () => {
+        const { result, rerender } = renderHook(
+            ({ scopeKey }) => useHoverPeek({ enabled: true, scopeKey }),
+            { initialProps: { scopeKey: 'server-a:workspace-a' } },
+        );
+        act(() => { result.current.onRailPointerEnter(); });
+        rerender({ scopeKey: 'server-b:workspace-a' });
+        act(() => { vi.advanceTimersByTime(400); });
+        expect(result.current.isOpen).toBe(false);
+        openPeek(result);
+        act(() => { result.current.onPanelPointerLeave(); });
+        rerender({ scopeKey: 'server-b:workspace-b' });
+        expect(result.current.isOpen).toBe(false);
+        openPeek(result);
+        act(() => { vi.advanceTimersByTime(300); });
+        expect(result.current.isOpen).toBe(true);
+    });
 });
