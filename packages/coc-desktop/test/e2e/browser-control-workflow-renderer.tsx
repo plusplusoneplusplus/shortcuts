@@ -8,6 +8,8 @@ import { useDockOpen, workspaceDockOpenStorageKey } from '../../../coc/src/serve
 import { createBrowserSocketRelay } from '../../../coc/src/server/spa/client/react/shared/file-path/browser-control-relay';
 import { desktopBrowserBridge, type BrowserViewState } from '../../../coc/src/server/spa/client/react/shared/file-path/browser-bridge';
 import { getActiveMetaCommands, parseSlashCommands } from '../../../coc/src/server/spa/client/react/features/chat/slash-command-parser';
+import { getBrowserControlActivity } from '../../../coc/src/server/spa/client/react/shared/file-path/browser-control-activity';
+import { applyRuntimeConfigPatch } from '../../../coc/src/server/spa/client/react/utils/config';
 
 const workspaceId = new URLSearchParams(location.search).get('workspace')!;
 const socket = new WebSocket(location.origin.replace('http:', 'ws:') + '/ws');
@@ -43,6 +45,17 @@ function Fixture() {
         get messages() { return messages; },
         get reveals() { return reveals; },
         get states() { return states; },
+        get activity() {
+            return readUnifiedPanelState(workspaceId).workspaceTabs.map(tab => getBrowserControlActivity(workspaceId, tab.id)).find(Boolean) ?? null;
+        },
+        setBrowserEnabled(enabled: boolean) { applyRuntimeConfigPatch({ browserControlEnabled: enabled }); },
+        async exerciseInactiveCloneRelay() {
+            const inactive = createBrowserSocketRelay({ send: () => true }, location.origin);
+            inactive.onOpen();
+            await inactive.update(workspaceId);
+            inactive.onMessage({ type: 'config-changed' });
+            inactive.dispose();
+        },
         get panelOpen() { return open; },
         get tabs() { return readUnifiedPanelState(workspaceId).workspaceTabs; },
         collapse() { if (open) toggle(); },
@@ -58,6 +71,7 @@ function Fixture() {
         <div id="panel" data-open={open} style={{ position: 'fixed', left: 80, top: 40, ...size, display: 'flex' }}>
             {open && state.workspaceTabs.filter(tab => tab.kind === 'browser').map((tab, index, tabs) =>
                 <UnifiedBrowserTab key={tab.id} tabId={tab.id} viewId={tab.resourceId}
+                    workspaceId={tab.ownerWorkspaceId} routingRef={tab.ownerRoutingRef}
                     sessionKey={tab.ownerRoutingRef || tab.ownerWorkspaceId} url={tab.browserUrl}
                     active={index === tabs.length - 1} visible onNavigate={noop} onPageState={noop} />)}
             {file && <UnifiedHtmlPageTab tabId="file-tab" pageId="excluded-file" wsId={workspaceId}

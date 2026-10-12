@@ -46,6 +46,8 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
                 activation: ['browser'], sticky: true, panelRevealed: true,
                 ownerScoped: true, workspaceScoped: true, conversationScoped: true, fileExcluded: true,
                 exactSourceGuard: true, liveDisabled: true, nativePopups: true,
+                crossOwnerFollowUp: true, ownerBadgeStop: true,
+                nativeChromeStop: true, nativeStopCancelledWait: true, largePayloadsBounded: true,
                 popupReport: { bridge: 'undefined', require: 'undefined' },
                 report: { bridge: 'undefined', require: 'undefined' },
             });
