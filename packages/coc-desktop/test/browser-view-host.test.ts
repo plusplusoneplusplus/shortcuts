@@ -5,15 +5,16 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
+import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
-    handlers: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
+    handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
     sinks: [] as any[], clearData: vi.fn(async () => {}), dialog: vi.fn(async () => ({ response: 0 })),
 }));
 vi.mock('electron', () => ({
     app: { on: vi.fn() }, webContents: { getAllWebContents: () => [] },
     BrowserWindow: { fromWebContents: (sender: unknown) => mocks.windows.get(sender) },
-    ipcMain: { handle: (channel: string, handler: any) => mocks.handlers.set(channel, handler), on: vi.fn() },
+    ipcMain: { handle: (channel: string, handler: any) => mocks.handlers.set(channel, handler), on: (channel: string, handler: any) => mocks.events.set(channel, handler) },
     dialog: { showMessageBox: (...args: any[]) => mocks.dialog(...args) }, shell: { openExternal: vi.fn() },
 }));
 vi.mock('../src/server-controller', () => ({ defaultDataDir: () => 'unused' }));
@@ -25,7 +26,8 @@ vi.mock('../src/electron-browser-host', () => ({ ElectronBrowserHost: class {
     async create(request: any, sink: any) {
         mocks.sinks.push(sink);
         return { snapshot: () => ({ viewId: request.viewId, engine: this.engine, url: request.url, title: '', loading: false, canGoBack: false, canGoForward: false }),
-            close: async () => {}, navigate: async () => {}, nav: async () => {}, setBounds: async () => {}, focus: async () => {} };
+            close: async () => {}, navigate: async () => {}, nav: async () => {}, setBounds: async () => {}, focus: async () => {},
+            cdp: async () => ({ result: { value: { title: 'Fixture', url: request.url, elements: [], nextRef: 1 } } }) };
     }
 } }));
 vi.mock('../src/webview2-browser-host', async () => {
@@ -40,7 +42,7 @@ function owner(id: number, url = 'http://localhost:4000/') {
     const contents = Object.assign(new EventEmitter(), {
         id, mainFrame: {}, getURL: () => url, isDestroyed: () => false, send: vi.fn(),
     });
-    const window = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: () => false });
+    const window = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: () => false, show: vi.fn(), focus: vi.fn() });
     mocks.windows.set(contents, window);
     host.registerBrowserEmbedder(window as any, 'http://localhost:4000/');
     return { contents, window, event: { sender: contents, senderFrame: contents.mainFrame } };
@@ -52,7 +54,7 @@ const query = (event: any, ...args: unknown[]) => invoke(policy.BROWSER_HISTORY_
 
 beforeEach(async () => {
     vi.resetModules(); vi.clearAllMocks();
-    mocks.handlers.clear(); mocks.windows.clear(); mocks.sinks.length = 0;
+    mocks.handlers.clear(); mocks.events.clear(); mocks.windows.clear(); mocks.sinks.length = 0;
     mocks.clearData.mockResolvedValue(); mocks.dialog.mockResolvedValue({ response: 0 });
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-history-ipc-'));
     host = await import('../src/browser-view-host');
@@ -64,6 +66,42 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    it('restricts browser-control IPC to exact-source registered SPA main frames', async () => {
+        const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
+        for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} }]) {
+            expect(() => invoke(BROWSER_CONTROL_SCOPE_CHANNEL, event, 'w', 'w')).toThrow('registered SPA main frame');
+            await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } })).rejects.toThrow('registered SPA main frame');
+        }
+        expect(invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'w', 'w')).toEqual({ ownerId: 1 });
+        expect(await invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } })).toEqual({ tabs: [] });
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'other', processId: 'p', command: { action: 'tabs' } })).rejects.toThrow('scope changed');
+    });
+
+    it('cancels only the caller-owned request and rejects closed-window/reloaded-document calls promptly', async () => {
+        const spa = owner(1), other = owner(2);
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'w', 'w');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'view', 'https://fixture.test/', 'w');
+        const request = { id: 'r', workspaceId: 'w', processId: 'p', selectedTab: 't1:view', command: { action: 'wait', ms: 30_000 } };
+        const result = invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, request);
+        mocks.events.get(BROWSER_CONTROL_CANCEL_CHANNEL)!(other.event, 'r');
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, request)).rejects.toThrow('Duplicate');
+        mocks.events.get(BROWSER_CONTROL_CANCEL_CHANNEL)!(spa.event, 'r');
+        await expect(result).rejects.toThrow('cancelled');
+        const closing = invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { ...request, id: 'close' });
+        spa.window.emit('closed');
+        await expect(closing).rejects.toThrow('window closed');
+    });
+
+    it('reveals a selected URL tab in its existing desktop owner without exposing debugger/CDP IPC', async () => {
+        const spa = owner(1);
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'w', 'w');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'view', 'https://fixture.test/', 'w');
+        const result = await invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'select', tab: 't1:view' } });
+        expect(result).toMatchObject({ tab: 't1:view', elements: [] });
+        expect(spa.window.show).toHaveBeenCalled();
+        expect(spa.window.focus).toHaveBeenCalled();
+        expect([...mocks.handlers.keys()].filter(key => /debugger|cdp/.test(key))).toEqual([]);
+    });
     it('rejects guests, subframes, unregistered windows and arbitrary same-origin documents on every channel', async () => {
         const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
         const guest = { id: 3, mainFrame: {} };

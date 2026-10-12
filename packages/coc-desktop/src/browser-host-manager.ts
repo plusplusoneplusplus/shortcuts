@@ -10,6 +10,10 @@ import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
 import { BrowserControlQueue } from './browser-control-queue';
 import type { BrowserControlPage } from './browser-control-page';
+import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab } from '@plusplusoneplusplus/coc-client';
+import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
     ownerId: number;
@@ -24,6 +28,7 @@ interface Entry {
     view?: BrowserHostedView;
     startupFailed?: boolean;
     control?: BrowserControlQueue;
+    popout?: boolean;
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -45,6 +50,7 @@ export interface BrowserManagerOptions {
 }
 
 export class BrowserHostManager {
+    private readonly controlScopes = new Map<number, { workspaceId: string; sessionKey: string }>();
     private readonly owners = new Map<number, Map<string, Entry>>();
     private readonly clearing = new Set<BrowserEngine>();
     private disposed = false;
@@ -52,6 +58,105 @@ export class BrowserHostManager {
     private zoomUpdate: Promise<unknown> = Promise.resolve();
 
     constructor(private readonly options: BrowserManagerOptions) {}
+
+    bindControlScope(ownerId: number, workspaceId: unknown, sessionKey: unknown): void {
+        if (workspaceId === null && sessionKey === null) { this.controlScopes.delete(ownerId); return; }
+        if (typeof workspaceId !== 'string' || !isValidBrowserSessionKey(workspaceId) || !isValidBrowserSessionKey(sessionKey)) throw new TypeError('Invalid browser workspace scope');
+        this.controlScopes.set(ownerId, { workspaceId, sessionKey });
+    }
+
+    private controlId(entry: Entry): string { return `t${entry.ownerId}:${entry.viewId}`; }
+
+    private scopedEntries(ownerId: number, workspaceId: string): Entry[] {
+        const scope = this.controlScopes.get(ownerId);
+        if (!scope || scope.workspaceId !== workspaceId) throw new Error('Browser workspace scope changed');
+        return [...this.owners.values()].flatMap(entries => [...entries.values()]).filter(entry =>
+            !entry.closed && entry.sourceKind === 'url' && entry.sessionKey === scope.sessionKey);
+    }
+
+    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal): Promise<BrowserCommandResult> {
+        const request = validateBrowserCommandRequest(input);
+        signal?.throwIfAborted();
+        let entries = this.scopedEntries(ownerId, request.workspaceId);
+        const command = request.command;
+        if (command.action === 'tabs') {
+            const tabs: BrowserControlTab[] = [];
+            for (const entry of entries) {
+                const view = await entry.ready;
+                signal?.throwIfAborted();
+                if (entry.closed) continue;
+                const state = view.snapshot();
+                if (!validateBrowserUrl(state.url).ok) continue;
+                tabs.push({ id: this.controlId(entry), title: state.title, url: state.url, engine: entry.engine });
+            }
+            return { tabs };
+        }
+        const target = command.action === 'select' ? command.tab : request.selectedTab;
+        let entry = target ? entries.find(entry => this.controlId(entry) === target) : undefined;
+        // Select fails closed; open can replace a vanished remembered selection.
+        if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
+        if (command.action === 'open' && (command.newTab || !entry)) {
+            const viewId = `browser-${randomUUID()}`;
+            const scope = this.controlScopes.get(ownerId)!;
+            const opened = this.open(ownerId, viewId, command.url!, scope.sessionKey);
+            // Publish through the existing unified panel before Electron waits for guest adoption.
+            this.options.send(ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
+                workspaceId: request.workspaceId, processId: request.processId, viewId, url: command.url, routingRef: scope.sessionKey,
+            });
+            const result = await opened;
+            if (!result.ok) throw new Error(result.message ?? result.reason);
+            entries = this.scopedEntries(ownerId, request.workspaceId);
+            entry = entries.find(entry => entry.ownerId === ownerId && entry.viewId === viewId);
+        }
+        if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
+        const selected = entry;
+        if (command.action === 'select' || command.action === 'open') {
+            if (selected.popout) await (await selected.ready).focus();
+            else this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
+                workspaceId: request.workspaceId, processId: request.processId, viewId: selected.viewId,
+                url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey,
+            });
+        }
+        return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
+            this.scopedEntries(ownerId, request.workspaceId);
+            switch (command.action) {
+                case 'open':
+                    if (view.snapshot().url !== command.url) await view.navigate(command.url!);
+                    break;
+                case 'select': break;
+                case 'snapshot': {
+                    const snapshot = await page.snapshot({ ref: command.ref, all: command.all });
+                    const interactive = command.ref || command.all ? await page.snapshot() : snapshot;
+                    return {
+                        tab: this.controlId(selected), title: snapshot.title, url: snapshot.url,
+                        elements: snapshot.elements, interactiveElements: interactive.elements,
+                    };
+                }
+                case 'read': {
+                    const text = await page.read(command.ref);
+                    const offset = command.offset ?? 0;
+                    return { tab: this.controlId(selected), text: text.slice(offset, offset + 8000), textTotal: text.length };
+                }
+                case 'eval': return { tab: this.controlId(selected), value: await page.evaluate(command.js!) };
+                case 'screenshot': return { tab: this.controlId(selected), image: await page.screenshot(command.ref) };
+                case 'click': await page.click(command.ref!); break;
+                case 'type': await page.type(command.ref!, command.text!, command.submit); break;
+                case 'select_option': await page.selectOption(command.ref!, command.value!); break;
+                case 'press': await page.press(command.key!); break;
+                case 'scroll': await page.scroll((command.direction ?? 'down') as 'up' | 'down' | 'left' | 'right', command.ref); break;
+                case 'navigate': await view.nav(command.direction as 'back' | 'forward' | 'reload'); break;
+                case 'wait': await page.wait(command.text ?? command.ms!, activeSignal); break;
+            }
+            activeSignal.throwIfAborted();
+            await view.waitForControlReady?.(activeSignal);
+            while (view.snapshot().loading) {
+                await delay(25, undefined, { signal: activeSignal });
+                activeSignal.throwIfAborted();
+            }
+            const snapshot = await page.snapshot();
+            return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements };
+        }, signal);
+    }
 
     private entry(ownerId: number, viewId: unknown): Entry | undefined {
         return isValidBrowserViewId(viewId) ? this.owners.get(ownerId)?.get(viewId) : undefined;
@@ -239,6 +344,28 @@ export class BrowserHostManager {
             },
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
             closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
+            controlPopoutOpened: (viewId, view) => {
+                if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.cdp) return;
+                const popout: Entry = {
+                    ownerId: entry.ownerId, viewId, sessionKey: entry.sessionKey, engine: entry.engine,
+                    sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true,
+                };
+                popout.control = new BrowserControlQueue((method, params) => {
+                    if (popout.closed || this.disposed) throw new Error('Browser popout closed');
+                    return view.cdp!(method, params);
+                });
+                this.owners.get(entry.ownerId)?.set(viewId, popout);
+            },
+            controlPopoutClosed: viewId => {
+                const popout = this.entry(entry.ownerId, viewId);
+                if (!popout?.popout) return;
+                popout.closed = true;
+                popout.control?.cancel(new Error('Browser popout closed'));
+                this.owners.get(entry.ownerId)?.delete(viewId);
+            },
+            controlFocused: () => {
+                if (!entry.closed && entry.sourceKind === 'url') this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+            },
         });
         if (entry.closed) {
             await view.close();
@@ -334,7 +461,7 @@ export class BrowserHostManager {
     /** Internal main-process control path; unlike UI commands, results and errors reach the caller. */
     async withControlPage<T>(
         ownerId: number, viewId: unknown, sessionKey: unknown,
-        operation: (page: BrowserControlPage, signal: AbortSignal) => Promise<T>, signal?: AbortSignal,
+        operation: (page: BrowserControlPage, signal: AbortSignal, view: BrowserHostedView) => Promise<T>, signal?: AbortSignal,
     ): Promise<T> {
         const entry = this.entry(ownerId, viewId);
         if (!entry || entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab not found');
@@ -346,7 +473,9 @@ export class BrowserHostManager {
             const view = await entry.ready;
             commandSignal.throwIfAborted();
             if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
-            return operation(page, commandSignal);
+            await view.waitForControlReady?.(commandSignal);
+            while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
+            return operation(page, commandSignal, view);
         }, signal);
     }
 
@@ -388,6 +517,7 @@ export class BrowserHostManager {
     }
 
     async closeOwner(ownerId: number): Promise<void> {
+        this.controlScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
         this.owners.delete(ownerId);
         const results = await Promise.allSettled([...entries?.values() ?? []].map(entry => this.closeEntry(entry)));

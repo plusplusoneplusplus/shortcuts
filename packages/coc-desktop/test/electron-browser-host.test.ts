@@ -377,7 +377,7 @@ describe('Electron successful history events', () => {
             ...mocks.contents, id: 90, getTitle: () => 'Popup',
             on: (name: string, handler: (...args: any[]) => void) => handlers.set(name, handler),
         };
-        mocks.handlers.get('did-create-window')![0]({ webContents: popup, once: vi.fn(), isDestroyed: () => true });
+        mocks.handlers.get('did-create-window')![0]({ webContents: popup, once: vi.fn(), on: vi.fn(), isDestroyed: () => true });
         vi.mocked(sink.state).mockClear();
         handlers.get('did-navigate')!({}, 'https://popup.test/final', 200);
         handlers.get('did-frame-finish-load')!({}, false);

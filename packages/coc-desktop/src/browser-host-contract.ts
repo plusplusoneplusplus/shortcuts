@@ -31,6 +31,9 @@ export interface BrowserEventSink {
     focusAddressRequested?(): void;
     /** The host expired or lost its guest; remove the manager handle as well. */
     closed?(): void;
+    controlPopoutOpened?(viewId: string, view: BrowserHostedView): void;
+    controlPopoutClosed?(viewId: string): void;
+    controlFocused?(): void;
 }
 
 export interface BrowserHostedView {
@@ -44,6 +47,7 @@ export interface BrowserHostedView {
     nav(action: BrowserNavAction): void | Promise<void>;
     /** URL views only. Shared browser-control logic sends engine-neutral CDP commands. */
     cdp?(method: string, params?: Record<string, unknown>): Promise<unknown>;
+    waitForControlReady?(signal: AbortSignal): Promise<void>;
     /** Web content only; file previews deliberately omit this capability. */
     setPageZoom?(percent: number): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;
