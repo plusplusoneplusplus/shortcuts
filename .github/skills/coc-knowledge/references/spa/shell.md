@@ -556,6 +556,17 @@ concrete server, preserving matching group routes and reapplying an unchanged ha
 Back restores the list's scroll, expanded rows and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+### Sentinel To-do dependencies
+
+Default-off `sentinelTodoDependenciesEnabled` adds `SentinelTodoDependencies` to
+each owner-ledger row. Typed graph and exact PR-binding drafts retain captured
+revisions through conflicts; rebasing is explicit. Abortable readiness reads
+refresh on any ledger revision. A prerequisite-first accessible chain navigates
+the same ledger; artifact evidence opens the owner's read-only workspace preview.
+Readiness chips, saved action settings/authority and review warnings supplement
+fulfillment status. Manual items remain tracking-only; the tab adds no job
+launch/retry/cancel or authorization controls.
+
 ### Sentinel To-do Scrubber
 
 `SentinelTodoScrubber` mounts after the ledger loads when both live ledger and

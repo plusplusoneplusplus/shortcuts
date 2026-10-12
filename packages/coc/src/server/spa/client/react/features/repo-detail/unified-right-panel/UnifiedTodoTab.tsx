@@ -32,6 +32,10 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
+import { SentinelTodoDependencies } from './SentinelTodoDependencies';
+import { openUnifiedPanelTab } from './unifiedPanelOpen';
+import { resourcePathName } from './unifiedPanelOpenMenuModel';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
 import { SentinelTodoScrubber } from './SentinelTodoScrubber';
 import {
@@ -401,6 +405,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: Unif
             {items.map(item => (
                 <TodoRow key={item.id} item={item} expanded={expanded.has(item.id)}
                     owner={owner} currentWorkspaceId={scopeWorkspaceId}
+                    items={ledger?.items ?? []} ledgerRevision={ledger?.revision ?? 0}
+                    onLedgerChange={load} onItemLink={followTriggerItem}
+                    onArtifactLink={reference => openUnifiedPanelTab(scopeWorkspaceId ?? owner.ownerRoutingRef ?? owner.ownerWorkspaceId, {
+                        kind: 'file', ownerWorkspaceId: owner.ownerWorkspaceId, ownerRoutingRef: owner.ownerRoutingRef,
+                        chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
+                    })}
                     onToggle={() => toggle(item.id)} onSave={saveItem} onFollowLink={followLink} />
             ))}
         </ul>
@@ -542,8 +552,10 @@ type SaveItem = (
     expectedRevision?: number,
 ) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
 
-function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, onFollowLink }: {
+function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink }: {
     item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem; onFollowLink: FollowLink;
+    items: readonly SentinelTodoItem[]; ledgerRevision: number; onLedgerChange: () => Promise<void>; onItemLink: (itemId: string) => void;
+    onArtifactLink: (reference: string) => void;
     owner: SentinelTodoOwner;
     currentWorkspaceId?: string;
 }) {
@@ -705,6 +717,8 @@ function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, 
                     ))}
                 </ul>
             )}
+            <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
+                expanded={expanded} onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} />
             {expanded && (
                 <div id={`sentinel-todo-${item.id}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">
                     {error && (
