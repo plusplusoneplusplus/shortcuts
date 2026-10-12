@@ -35,9 +35,10 @@ test.beforeAll(async () => {
                 item('archived', { title: 'Archived work', archived: true })];
             window.ownerWorkspaces = [{ id: 'parent', name: 'Parent repo' }, { id: 'child', name: 'Child repo' }];
             window.reads = [];
+            window.todoReadCount = 0;
             window.fakeClient = {
                 sentinelTodos: {
-                    get: async () => ({ revision: 1, items }),
+                    get: async () => { window.todoReadCount += 1; return { revision: 1, items }; },
                     update: async (workspace, process, id, patch) => {
                         window.reads.push(['update', workspace, process, id, patch]);
                         const found = items.find(item => item.id === id);
@@ -84,6 +85,37 @@ async function width(page: Page, pixels: number) {
 }
 
 for (const dark of [false, true]) {
+    test(`refresh stays beside Add item in narrow and wide layouts in ${dark ? 'dark' : 'light'} theme`, async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await mount(page, dark);
+        const refresh = page.getByRole('button', { name: 'Refresh to-do list' });
+        const add = page.getByTestId('sentinel-todo-add');
+        const readCount = () => page.evaluate(() => (window as Window & { todoReadCount: number }).todoReadCount);
+        for (const split of [false, true]) {
+            await setLayout(page, split);
+            for (const pixels of [220, 800]) {
+                await page.locator('#fixture').evaluate((element, size) => { element.style.width = `${size}px`; }, pixels);
+                await expect(page.getByTestId('sentinel-todo-tab')).toHaveAttribute('data-layout', split ? (pixels >= 660 ? 'split' : 'single') : 'inline');
+                await expect(refresh).toBeVisible();
+                await expect(refresh).toHaveAttribute('title', 'Refresh to-do list');
+                await expect(add).toBeVisible();
+                const refreshBox = (await refresh.boundingBox())!;
+                const addBox = (await add.boundingBox())!;
+                expect(refreshBox.x + refreshBox.width).toBeLessThanOrEqual(addBox.x);
+                expect(Math.abs(refreshBox.y + refreshBox.height / 2 - addBox.y - addBox.height / 2)).toBeLessThan(1);
+                expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+                const before = await readCount();
+                await refresh.focus();
+                await page.keyboard.press(pixels === 220 ? 'Enter' : 'Space');
+                await expect.poll(readCount).toBe(before + 1);
+                await expect(refresh).toHaveAttribute('aria-busy', 'false');
+                await expect(refresh).toBeEnabled();
+                await expect(page.getByTestId('sentinel-todo-row-first')).toBeVisible();
+            }
+        }
+        expect(await page.evaluate(() => (window as Window & { reads: unknown[] }).reads)).toEqual([]);
+    });
+
     test(`selected detail and responsive drafts fit the actual panel in ${dark ? 'dark' : 'light'} theme`, async ({ page }, info) => {
         const errors: string[] = [];
         page.on('pageerror', error => errors.push(error.message));

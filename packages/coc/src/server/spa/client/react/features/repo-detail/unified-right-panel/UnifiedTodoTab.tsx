@@ -263,6 +263,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [visibleLimit, setVisibleLimit] = useState(SENTINEL_TODO_RECENT_LIMIT);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const pendingLoads = useRef(0);
     // The owner's remembered view: the origin tab and its pinned copy share it.
     const [restored] = useState(() => recallSentinelTodoView(owner));
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(restored.expandedIds));
@@ -288,6 +290,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             setLoadError('Owning server is not connected.');
             return;
         }
+        pendingLoads.current += 1;
+        setLoading(true);
         try {
             // Dependencies, triggers and Scrubber projections need the full snapshot, not just visible rows.
             const next = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { full: true });
@@ -297,10 +301,18 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         } catch (error) {
             if (!mounted.current || seq !== loadSeq.current) return;
             setLoadError(error instanceof Error && error.message ? error.message : 'Could not load the to-do list.');
+        } finally {
+            pendingLoads.current -= 1;
+            if (mounted.current) setLoading(pendingLoads.current > 0);
         }
         // `ownerKey` covers the owner fields read above.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, ownerKey, unavailable]);
+
+    const refresh = () => {
+        if (pendingLoads.current > 0) return;
+        void load();
+    };
 
     useEffect(() => {
         mounted.current = true;
@@ -536,9 +548,19 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 )}
                 <span className="flex-1" />
                 <AcceptAllScrubProposals />
-                {!addForm.adding && normalCount > 0 && (
-                    <Button size="sm" variant="secondary" onClick={openAddForm} data-testid="sentinel-todo-add">Add item</Button>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                    <button type="button" aria-label="Refresh to-do list" title="Refresh to-do list"
+                        aria-busy={loading} disabled={loading} onClick={refresh} data-testid="sentinel-todo-refresh"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#848484] transition-colors hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg className={cn(loading && 'motion-safe:animate-spin')} width="14" height="14" viewBox="0 0 16 16"
+                            fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                            <path d="M13 6a5.2 5.2 0 1 0 .1 4M13 2v4H9" />
+                        </svg>
+                    </button>
+                    {!addForm.adding && normalCount > 0 && (
+                        <Button size="sm" variant="secondary" onClick={openAddForm} data-testid="sentinel-todo-add">Add item</Button>
+                    )}
+                </div>
             </div>}>
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>

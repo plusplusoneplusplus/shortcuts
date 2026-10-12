@@ -88,8 +88,9 @@ function ledger(items: SentinelTodoItem[], revision = items.length): SentinelTod
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>(r => { resolve = r; });
-    return { promise, resolve };
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((r, j) => { resolve = r; reject = j; });
+    return { promise, resolve, reject };
 }
 
 /** Presses one of an expanded row's compact status choices. */
@@ -140,14 +141,21 @@ describe('UnifiedTodoTab', () => {
         expect(rows()).toHaveLength(50);
         expect(rows()[0].getAttribute('data-testid')).toBe('sentinel-todo-row-item-80');
         expect(screen.queryByTestId('sentinel-todo-row-item-0')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        expect(rows()).toHaveLength(50);
+        expect(rows()[0].getAttribute('data-testid')).toBe('sentinel-todo-row-item-80');
         fireEvent.click(screen.getByTestId('sentinel-todo-show-older'));
         expect(rows()).toHaveLength(100);
         expect(screen.queryByTestId('sentinel-todo-row-item-0')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        expect(rows()).toHaveLength(100);
         fireEvent.click(screen.getByTestId('sentinel-todo-show-older'));
         expect(rows()).toHaveLength(105);
         expect(screen.getByTestId('sentinel-todo-row-item-0')).toBeTruthy();
         expect(screen.queryByTestId('sentinel-todo-show-older')).toBeNull();
-        expect(get).toHaveBeenCalledTimes(1);
+        expect(get).toHaveBeenCalledTimes(3);
         expect(items).toHaveLength(105);
     });
 
@@ -783,6 +791,146 @@ describe('UnifiedTodoTab', () => {
         await screen.findByTestId('sentinel-todo-empty');
     });
 
+    it.each([false, true])('manually reloads without writes, retains rows while loading and blocks duplicate admission (split=%s)', async split => {
+        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: split });
+        const initial = deferred<SentinelTodoLedgerResponse>();
+        const pending = deferred<SentinelTodoLedgerResponse>();
+        get.mockReturnValueOnce(initial.promise);
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const refresh = screen.getByRole('button', { name: 'Refresh to-do list' });
+        expect(refresh.getAttribute('title')).toBe('Refresh to-do list');
+        expect(refresh.getAttribute('aria-busy')).toBe('true');
+        expect((refresh as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(refresh);
+        expect(get).toHaveBeenCalledTimes(1);
+        await act(async () => initial.resolve(ledger([item()])));
+        expect(refresh.nextElementSibling).toBe(screen.getByTestId('sentinel-todo-add'));
+        expect((refresh as HTMLButtonElement).disabled).toBe(false);
+        // Re-enter before React paints disabled to exercise synchronous admission.
+        get.mockImplementationOnce(() => { fireEvent.click(refresh); return pending.promise; });
+        fireEvent.click(refresh);
+        fireEvent.click(refresh);
+        expect(get).toHaveBeenCalledTimes(2);
+        expect(get).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', { full: true });
+        expect(refresh.getAttribute('aria-busy')).toBe('true');
+        expect(refresh.querySelector('svg')?.classList.contains('motion-safe:animate-spin')).toBe(true);
+        expect(screen.getByTestId('sentinel-todo-row-i1')).toBeTruthy();
+        await act(async () => pending.resolve(ledger([item({ title: 'Fresh title', revision: 2 }), item({ id: 'i2', title: 'New item' })], 3)));
+        expect(screen.getByText('Fresh title')).toBeTruthy();
+        expect(screen.getByTestId('sentinel-todo-row-i2')).toBeTruthy();
+        expect(refresh.getAttribute('aria-busy')).toBe('false');
+        expect((refresh as HTMLButtonElement).disabled).toBe(false);
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(scrubGet).not.toHaveBeenCalled();
+        expect(scrubAccept).not.toHaveBeenCalled();
+    });
+
+    it('keeps refresh busy across overlapping event reads and ignores the superseded manual response', async () => {
+        const manual = deferred<SentinelTodoLedgerResponse>();
+        const event = deferred<SentinelTodoLedgerResponse>();
+        get.mockResolvedValueOnce(ledger([item()])).mockReturnValueOnce(manual.promise).mockReturnValueOnce(event.promise);
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        const refresh = screen.getByRole('button', { name: 'Refresh to-do list' });
+        fireEvent.click(refresh);
+        const { onMessage } = connect.mock.calls[0][0];
+        act(() => onMessage({ type: 'sentinel-todos-changed', workspaceId: 'ws-1', processId: OWNER.processId, ledgerRevision: 3 }));
+        await act(async () => event.resolve(ledger([item({ title: 'Newest' })], 3)));
+        expect(screen.getByText('Newest')).toBeTruthy();
+        expect(refresh.getAttribute('aria-busy')).toBe('true');
+        fireEvent.click(refresh);
+        expect(get).toHaveBeenCalledTimes(3);
+        await act(async () => manual.resolve(ledger([item({ title: 'Stale manual read' })], 2)));
+        expect(screen.queryByText('Stale manual read')).toBeNull();
+        expect(refresh.getAttribute('aria-busy')).toBe('false');
+    });
+
+    it.each([false, true])('surfaces manual read failures without clearing the ledger and permits retry (split=%s)', async split => {
+        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: split });
+        const pending = deferred<SentinelTodoLedgerResponse>();
+        const onErrorChange = vi.fn();
+        get.mockResolvedValueOnce(ledger([item()])).mockReturnValueOnce(pending.promise).mockResolvedValue(ledger([item({ title: 'Recovered' })]));
+        render(<UnifiedTodoTab owner={OWNER} onErrorChange={onErrorChange} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        const refresh = screen.getByRole('button', { name: 'Refresh to-do list' });
+        fireEvent.click(refresh);
+        await act(async () => pending.reject(new Error('Read unavailable')));
+        expect(screen.getByTestId('sentinel-todo-load-error').textContent).toContain('Read unavailable');
+        expect(onErrorChange).toHaveBeenLastCalledWith(true);
+        expect(screen.getByTestId('sentinel-todo-row-i1')).toBeTruthy();
+        expect(screen.queryByTestId('sentinel-todo-empty')).toBeNull();
+        expect((refresh as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(refresh);
+        await screen.findByText('Recovered');
+        expect(screen.queryByTestId('sentinel-todo-load-error')).toBeNull();
+        expect(onErrorChange).toHaveBeenLastCalledWith(false);
+        expect(refresh.getAttribute('aria-busy')).toBe('false');
+    });
+
+    it.each(['workspace', 'process', 'server'] as const)('isolates pending refresh success, failure and loading after a %s switch', async scope => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'a', baseUrl: 'https://a.example' },
+            { workspaceId: 'ws-1', serverId: 'b', baseUrl: 'https://b.example' },
+        ]);
+        const oldOwner = { ...OWNER, ownerRoutingRef: 'remote:a:ws-1' };
+        const nextOwner = scope === 'workspace' ? { ...OWNER, ownerWorkspaceId: 'ws-2' }
+            : scope === 'process' ? { ...oldOwner, processId: 'other-chat' }
+            : { ...oldOwner, ownerRoutingRef: 'remote:b:ws-1' };
+        const oldRefresh = deferred<SentinelTodoLedgerResponse>();
+        const newRefresh = deferred<SentinelTodoLedgerResponse>();
+        get.mockResolvedValueOnce(ledger([item()])).mockReturnValueOnce(oldRefresh.promise)
+            .mockResolvedValueOnce(ledger([item({ title: 'New owner' })])).mockReturnValueOnce(newRefresh.promise);
+        const mounted = render(<UnifiedTodoTab owner={oldOwner} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        mounted.rerender(<UnifiedTodoTab owner={nextOwner} />);
+        await screen.findByText('New owner');
+        const refresh = screen.getByRole('button', { name: 'Refresh to-do list' });
+        expect((refresh as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(refresh);
+        expect(get).toHaveBeenLastCalledWith(nextOwner.ownerWorkspaceId, nextOwner.processId, { full: true });
+        expect(clientRefs).toContain(nextOwner.ownerRoutingRef ?? nextOwner.ownerWorkspaceId);
+        await act(async () => {
+            if (scope === 'process') oldRefresh.reject(new Error('Old owner failure'));
+            else oldRefresh.resolve(ledger([item({ title: 'Old owner stale' })]));
+        });
+        expect(refresh.getAttribute('aria-busy')).toBe('true');
+        expect(screen.queryByText('Old owner stale')).toBeNull();
+        expect(screen.queryByTestId('sentinel-todo-load-error')).toBeNull();
+        await act(async () => newRefresh.resolve(ledger([item({ title: 'Current owner' })])));
+        expect(screen.getByText('Current owner')).toBeTruthy();
+        expect(refresh.getAttribute('aria-busy')).toBe('false');
+    });
+
+    it('retains inline edits, both add drafts and section filters on manual refresh', async () => {
+        get.mockResolvedValueOnce(ledger([item(), item({ id: 'done', status: 'done' })]))
+            .mockResolvedValue(ledger([item({ title: 'Server edit', revision: 2 }), item({ id: 'done', status: 'done' })], 3));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(within(row).getByRole('button', { expanded: false }));
+        fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+        const edit = within(row).getByLabelText('Title');
+        fireEvent.change(edit, { target: { value: 'Unsaved edit' } });
+        fireEvent.click(screen.getByTestId('sentinel-todo-add'));
+        const add = within(screen.getByTestId('sentinel-todo-add-form')).getByLabelText('Title');
+        fireEvent.change(add, { target: { value: 'Normal draft' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add manual item' }));
+        const manual = within(screen.getByTestId('sentinel-todo-manual-add-form')).getByLabelText('Title');
+        fireEvent.change(manual, { target: { value: 'Manual draft' } });
+        fireEvent.click(screen.getByRole('button', { name: /Done \(1\)/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        expect(within(row).getByLabelText('Title')).toBe(edit);
+        expect((edit as HTMLInputElement).value).toBe('Unsaved edit');
+        expect((add as HTMLInputElement).value).toBe('Normal draft');
+        expect((manual as HTMLInputElement).value).toBe('Manual draft');
+        expect(screen.getByTestId('sentinel-todo-row-done')).toBeTruthy();
+        expect(screen.getByRole('button', { name: /Done \(1\)/ }).getAttribute('aria-expanded')).toBe('true');
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it('refreshes on this ledger\'s change events from the owner workspace', async () => {
         get.mockResolvedValueOnce(ledger([])).mockResolvedValue(ledger([item()]));
         render(<UnifiedTodoTab owner={OWNER} />);
@@ -1001,6 +1149,31 @@ describe('UnifiedTodoTab split layout', () => {
         fireEvent.click(screen.getByTestId(`sentinel-todo-row-${id}`).querySelector('[data-todo-select]')!);
     }
     function detail(id = 'i1') { return screen.getByTestId(`sentinel-todo-detail-${id}`); }
+
+    it.each([
+        { width: 360, kind: 'edit' }, { width: 800, kind: 'edit' },
+        { width: 360, kind: 'status' }, { width: 800, kind: 'status' },
+    ])('retains selection and the same $kind draft DOM when refreshing a $width px panel', async ({ width, kind }) => {
+        panelWidth = width;
+        get.mockResolvedValueOnce(ledger([item()])).mockResolvedValue(ledger([item({ title: 'Fresh item', revision: 2 })], 2));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        if (kind === 'edit') fireEvent.click(within(detail()).getByRole('button', { name: 'Edit' }));
+        else chooseStatus(detail(), 'Needs attention');
+        const label = kind === 'edit' ? 'Title' : 'Reason for Needs attention';
+        const draft = within(detail()).getByLabelText(label);
+        fireEvent.change(draft, { target: { value: 'Keep unsaved draft' } });
+        const refresh = screen.getByRole('button', { name: 'Refresh to-do list' });
+        fireEvent.click(refresh);
+        await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBe('false'));
+        expect(within(detail()).getByLabelText(label)).toBe(draft);
+        expect((draft as HTMLInputElement).value).toBe('Keep unsaved draft');
+        expect(screen.getByRole('region', { name: /Fresh item/ })).toBeTruthy();
+        if (width < 660) fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+        expect(screen.getByRole('button', { pressed: true, name: /Fresh item/ })).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+    });
 
     it('reacts live to the default-off gate and retains an inline edit through both layout changes', async () => {
         applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: false });

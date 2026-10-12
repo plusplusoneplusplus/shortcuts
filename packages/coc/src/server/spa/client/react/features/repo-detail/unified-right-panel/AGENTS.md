@@ -700,7 +700,12 @@ active list. The tab never offers delegation, conversion or copying. Each add fo
 owns its draft and idempotency key (`useAddItemForm`). Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
-Late loads are dropped by a sequence counter. Choosing Needs attention from the status group requires a
+Event invalidation, manual toolbar refresh and post-write reloads share the
+owner-scoped full-snapshot loader. Pending reads disable manual refresh with a
+synchronous admission guard and busy indicator; reloads retain rows, selection,
+drafts, section visibility and older-item expansion. Read failures use the existing
+retry notice without clearing the snapshot. Late loads are dropped by a sequence counter.
+Choosing Needs attention from the status group requires a
 reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
 Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Add and Edit forms carry a Priority select
 (Regular default, High); a High row draws an `aria-hidden` red leading band over the card's
