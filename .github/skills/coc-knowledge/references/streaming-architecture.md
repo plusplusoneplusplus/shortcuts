@@ -170,6 +170,23 @@ The bot-presentation observer uses those owner-scoped events without adding sock
 or joining remote ownership through the page-origin process index; see
 [spa/chat-conversation.md](spa/chat-conversation.md).
 
+### Targeted desktop browser control
+
+`ProcessWebSocketServer.browserControl` implements `BrowserControlRuntime` through
+`streaming/browser-control-relay.ts`. Its injected live enabled getter defaults to
+false. Desktop sockets advertise a concrete wire workspace and focus transitions;
+commands target the most recently focused capable socket for that workspace.
+Absent clients fail immediately. Commands and replies are correlated by request
+id and socket identity, outside global broadcasts and container forwarding.
+
+Requests carry `id`, `workspaceId`, `processId`, `command` and the server-owned
+`selectedTab` separately. Each pending call has a 30-second deadline. Abort and
+timeout forward `browser-command-cancel`; socket close, capability withdrawal and
+workspace changes reject pending calls. Invalid, foreign and stale replies are
+ignored. Disabling admission allows an already admitted request to finish.
+The SPA forwards structured requests through preload, not raw debugger messages;
+desktop ownership and tab validation are described in [spa/shell.md](spa/shell.md).
+
 ## Cross-Origin Policy (REST + WS) — loopback only
 
 The SPA may talk directly to a *different* CoC server forwarded at

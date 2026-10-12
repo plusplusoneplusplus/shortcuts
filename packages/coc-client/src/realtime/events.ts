@@ -1,5 +1,14 @@
 import type { AIProcess } from '../contracts/processes';
 import type { QueueTaskSummary } from '../contracts/queue';
+import type { BrowserCommandRequest, BrowserCommandReply } from '../browser-control';
+
+export type BrowserControlServerEvent =
+  | { type: 'browser-command'; request: BrowserCommandRequest }
+  | { type: 'browser-command-cancel'; id: string };
+export type BrowserControlClientEvent =
+  | { type: 'browser-capability'; workspaceId: string; focused: boolean }
+  | { type: 'browser-capability-clear' }
+  | { type: 'browser-command-result'; reply: BrowserCommandReply };
 
 export interface ProcessEvent {
   type: string;

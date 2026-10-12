@@ -3,6 +3,12 @@ import { buildWebSocketUrl } from '../url';
 import { isProcessEvent } from './events';
 
 export class ProcessWebSocketConnection {
+  /** Send a targeted client protocol message over the current connection. */
+  send(message: object): boolean {
+    if (this.manuallyClosed || this.socket?.readyState !== this.webSocketImpl.OPEN) return false;
+    this.socket.send(JSON.stringify(message));
+    return true;
+  }
   private socket: CocWebSocket | undefined;
   private reconnectDelayMs: number;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;

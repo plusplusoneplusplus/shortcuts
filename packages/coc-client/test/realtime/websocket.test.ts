@@ -69,6 +69,23 @@ describe('EventsClient WebSocket', () => {
     conn.close();
   });
 
+  it('sends browser protocol replies only on the current open socket and preserves command envelopes', () => {
+    const onMessage = vi.fn();
+    const client = new CocClient({ baseUrl: 'http://localhost:4000', WebSocket: FakeWebSocket });
+    const conn = client.events.connect({ onMessage });
+    const message = { type: 'browser-capability', workspaceId: 'w', focused: true };
+    expect(conn.send(message)).toBe(false);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    expect(conn.send(message)).toBe(true);
+    expect(socket.sent).toEqual([JSON.stringify(message)]);
+    const command = { type: 'browser-command', request: { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } } };
+    socket.message(command);
+    expect(onMessage).toHaveBeenCalledWith(command);
+    conn.close();
+    expect(conn.send(message)).toBe(false);
+  });
+
   it('manual close prevents reconnect', () => {
     vi.useFakeTimers();
     const client = new CocClient({

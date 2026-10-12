@@ -1,0 +1,158 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BrowserControlRelay } from '../../src/server/streaming/browser-control-relay';
+import { ProcessWebSocketServer } from '../../src/server/streaming/websocket';
+import { createServer } from 'node:http';
+import { WebSocket } from 'ws';
+
+const client = (id: string) => ({ id, send: vi.fn<(data: string) => void>() });
+const request = (client: ReturnType<typeof client>) => JSON.parse(client.send.mock.calls.at(-1)![0]).request;
+const enabled = () => { const relay = new BrowserControlRelay(); relay.setEnabledGetter(() => true); return relay; };
+afterEach(() => vi.useRealTimers());
+
+describe('browser control relay', () => {
+    it('accepts the raw subtree interactive baseline and paged read metadata, rejecting malformed extensions', async () => {
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        const snapshot = relay.execute('w', 'p', { action: 'snapshot', all: true });
+        const id = request(a).id;
+        relay.reply(a, { id, ok: true, result: { interactiveElements: 'invalid' } });
+        const result = { elements: [], interactiveElements: [{ ref: 'e1', role: 'button', name: 'Save', depth: 0 }], text: 'page', textTotal: 16003 };
+        relay.reply(a, { id, ok: true, result });
+        await expect(snapshot).resolves.toEqual(result);
+        const read = relay.execute('w', 'p', { action: 'read', offset: 8000 });
+        const readId = request(a).id;
+        relay.reply(a, { id: readId, ok: true, result: { text: 'x', textTotal: -1 } });
+        relay.reply(a, { id: readId, ok: true, result: { text: 'x', textTotal: 8001 } });
+        await expect(read).resolves.toEqual({ text: 'x', textTotal: 8001 });
+    });
+    it('defaults off, applies the live gate without activation checks, and fails immediately without a capable workspace client', async () => {
+        const relay = new BrowserControlRelay();
+        await expect(relay.execute('a', 'p', { action: 'tabs' })).rejects.toThrow('Browser control is disabled');
+        relay.setEnabledGetter(() => true);
+        await expect(relay.execute('a', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window is open for this workspace');
+        const other = client('other');
+        relay.advertise(other, 'b', true);
+        await expect(relay.execute('a', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window');
+        relay.advertise(other, {}, true);
+        expect(other.send).not.toHaveBeenCalled();
+    });
+
+    it('routes exactly to the latest focused correct-workspace socket and preserves selectedTab separately from explicit tab', async () => {
+        const relay = enabled(), a = client('a'), b = client('b'), other = client('other');
+        relay.advertise(a, 'w', true);
+        relay.advertise(b, 'w', true);
+        relay.advertise(other, 'other', true);
+        relay.advertise(a, 'w', false);
+        const first = relay.execute('w', 'p', { action: 'snapshot', tab: 'explicit' }, 'remembered');
+        expect(a.send).not.toHaveBeenCalled();
+        expect(other.send).not.toHaveBeenCalled();
+        expect(request(b)).toMatchObject({ workspaceId: 'w', processId: 'p', selectedTab: 'remembered', command: { action: 'snapshot', tab: 'explicit' } });
+        relay.reply(b, { id: request(b).id, ok: true, result: { tab: 'explicit', elements: [] } });
+        await expect(first).resolves.toEqual({ tab: 'explicit', elements: [] });
+        relay.advertise(a, 'w', true);
+        const second = relay.execute('w', 'q', { action: 'tabs' });
+        relay.reply(a, { id: request(a).id, ok: true, result: { tabs: [] } });
+        await expect(second).resolves.toEqual({ tabs: [] });
+    });
+
+    it('ignores malformed, foreign and stale replies; propagates valid error replies', async () => {
+        const relay = enabled(), a = client('a'), b = client('b');
+        relay.advertise(a, 'w', true);
+        const result = relay.execute('w', 'p', { action: 'tabs' });
+        const id = request(a).id;
+        relay.reply(b, { id, ok: true, result: {} });
+        for (const malformed of [null, { id, ok: true }, { id, ok: true, result: { tabs: [null] } },
+            { id, ok: true, result: { elements: [{ depth: NaN }] } }, { id, ok: true, result: { image: { data: '/path', mimeType: 'image/png' } } },
+            { id, ok: true, result: { unknown: true } }, { id, ok: false, error: {} }]) relay.reply(a, malformed);
+        relay.reply(a, { id: 'stale', ok: true, result: {} });
+        relay.reply(a, { id, ok: false, error: 'stale ref, re-snapshot' });
+        await expect(result).rejects.toThrow('stale ref, re-snapshot');
+        relay.reply(a, { id, ok: true, result: {} });
+    });
+
+    it('times out after 30s, forwards cancellation, and releases all timers/listeners', async () => {
+        vi.useFakeTimers();
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        const result = relay.execute('w', 'p', { action: 'read' });
+        const assertion = expect(result).rejects.toThrow('timed out after 30s');
+        const id = request(a).id;
+        await vi.advanceTimersByTimeAsync(30_000);
+        await assertion;
+        expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('forwards abort, handles pre-abort and allows an admitted call to finish after disable', async () => {
+        const relay = enabled(), a = client('a'), controller = new AbortController();
+        relay.advertise(a, 'w', true);
+        const result = relay.execute('w', 'p', { action: 'wait', ms: 5 }, undefined, controller.signal);
+        const id = request(a).id;
+        controller.abort(new Error('Stopped'));
+        await expect(result).rejects.toThrow('Stopped');
+        expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id });
+        await expect(relay.execute('w', 'p', { action: 'tabs' }, undefined, controller.signal)).rejects.toThrow('Stopped');
+        const inflight = relay.execute('w', 'p', { action: 'tabs' });
+        const nextId = request(a).id;
+        relay.setEnabledGetter(() => false);
+        relay.reply(a, { id: nextId, ok: true, result: { tabs: [] } });
+        await expect(inflight).resolves.toEqual({ tabs: [] });
+    });
+
+    it('rejects every pending call on disconnect or workspace rebind without affecting other clients', async () => {
+        const relay = enabled(), a = client('a'), b = client('b');
+        relay.advertise(a, 'a', true); relay.advertise(b, 'b', true);
+        const one = relay.execute('a', 'p', { action: 'tabs' });
+        const two = relay.execute('a', 'q', { action: 'tabs' });
+        const other = relay.execute('b', 'p', { action: 'tabs' });
+        relay.disconnect(a);
+        await expect(one).rejects.toThrow('disconnected');
+        await expect(two).rejects.toThrow('disconnected');
+        relay.reply(b, { id: request(b).id, ok: true, result: {} });
+        await expect(other).resolves.toEqual({});
+        relay.advertise(a, 'a', true);
+        const rebound = relay.execute('a', 'p', { action: 'tabs' });
+        relay.advertise(a, 'new', false);
+        await expect(rebound).rejects.toThrow('disconnected');
+    });
+
+    it('cleans pending calls if socket send throws', async () => {
+        const relay = enabled(), a = client('a');
+        a.send.mockImplementation(() => { throw new Error('closed socket'); });
+        relay.advertise(a, 'w', true);
+        await expect(relay.execute('w', 'p', { action: 'tabs' })).rejects.toThrow('closed socket');
+    });
+});
+
+describe('real existing WebSocket protocol', () => {
+    it('wires advertisement, targeted requests/replies and socket-close rejection without broadcasting commands', async () => {
+        const server = createServer();
+        const sockets = new ProcessWebSocketServer();
+        sockets.attach(server);
+        sockets.browserControl.setEnabledGetter(() => true);
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const ws = new WebSocket(`ws://127.0.0.1:${(server.address() as { port: number }).port}/ws`);
+        const broadcasts = vi.fn();
+        sockets.onBroadcast(broadcasts);
+        try {
+            await new Promise<void>(resolve => ws.once('open', resolve));
+            ws.send(JSON.stringify({ type: 'browser-capability', workspaceId: 'w', focused: true }));
+            ws.send(JSON.stringify({ type: 'ping' }));
+            await new Promise<void>(resolve => ws.on('message', data => { if (JSON.parse(String(data)).type === 'pong') resolve(); }));
+            ws.on('message', data => {
+                const message = JSON.parse(String(data));
+                if (message.type === 'browser-command') ws.send(JSON.stringify({ type: 'browser-command-result', reply: { id: message.request.id, ok: true, result: { tabs: [] } } }));
+            });
+            await expect(sockets.browserControl.execute('w', 'p', { action: 'tabs' })).resolves.toEqual({ tabs: [] });
+            expect(broadcasts).not.toHaveBeenCalled();
+            ws.removeAllListeners('message');
+            const inflight = sockets.browserControl.execute('w', 'p', { action: 'tabs' });
+            ws.close();
+            await expect(inflight).rejects.toThrow('disconnected');
+        } finally {
+            ws.terminate();
+            sockets.closeAll();
+            await new Promise<void>(resolve => server.close(() => resolve()));
+        }
+    });
+});
