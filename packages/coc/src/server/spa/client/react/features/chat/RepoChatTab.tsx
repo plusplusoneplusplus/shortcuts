@@ -326,9 +326,8 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         fetchGenerationRef.current++;
         historyGenerationRef.current++;
     }
-    const localProcesses = cloneClient.options?.baseUrl ? null : appState.processes;
-    const liveRef = useRef({ queue: repoQueue, processes: localProcesses });
-    liveRef.current = { queue: repoQueue, processes: localProcesses };
+    const liveRef = useRef({ queue: repoQueue });
+    liveRef.current = { queue: repoQueue };
     const pinnedRefreshRef = useRef<(() => Promise<void>) | null>(null);
     const registerPinnedRefresh = useCallback((refresh: (() => Promise<void>) | null) => {
         pinnedRefreshRef.current = refresh;
@@ -366,11 +365,9 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const fetchHistory = useCallback(async (offset = 0) => {
         if (unresolvedRemote) return;
         const request = ++historyGenerationRef.current;
-        const live = liveRef.current;
         try {
             const data = await cloneClient.workspaces.history(workspaceId, { limit: 100, offset });
-            if (request !== historyGenerationRef.current || ownerRef.current !== ownerKey
-                || live.queue !== liveRef.current.queue || live.processes !== liveRef.current.processes) return;
+            if (request !== historyGenerationRef.current || ownerRef.current !== ownerKey) return;
             const items = withPendingChatStamps(data.history as ProcessHistoryItem[]);
             const nextHasMore = data.hasMore ?? false;
             if (offset === 0) {
@@ -447,8 +444,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 });
             }
 
-            if (historyData && historyGeneration === historyGenerationRef.current
-                && live.queue === liveRef.current.queue && live.processes === liveRef.current.processes) {
+            if (historyData && historyGeneration === historyGenerationRef.current) {
                 const items = withPendingChatStamps((historyData.history as ProcessHistoryItem[]) || []);
                 const nextHasMore = historyData.hasMore ?? false;
                 setHistory(items);
@@ -617,7 +613,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             });
             return changed ? next : prev;
         });
-    }, [appState.processes]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [appState.processes, history]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Clear selection if the selected task is no longer reachable.
     // Tasks from deep-links may not appear in the paginated history list,

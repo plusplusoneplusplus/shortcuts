@@ -41,7 +41,9 @@ references before editing. Paths are package-relative.
 - Workspace/process REST, SSE, and WebSockets target their owner:
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
-  Reject late responses after scope changes.
+  Reject late responses after scope changes. Sidebar queue snapshots supersede
+  stale queue reads, not independent history reads; reconcile admitted history
+  against current active jobs and local process title/preview updates.
 - Collapsed workspace-rail job previews share `RailHoverPreview`. Pinned rows come
   from the owning workspace's full pinned-process read, overlaid with the chat
   list's live pin/archive state and tab/type visibility; do not derive them from

@@ -1830,6 +1830,61 @@ describe('RepoChatTab: reactive title updates from AppContext', () => {
         return null;
     }
 
+    it('admits delayed bootstrap history after queue hydration and overlays current live data', async () => {
+        let finish!: (value: any) => void;
+        const normalRead = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation((url: string, init?: any) => url.includes('/history')
+            ? new Promise(resolve => { finish = resolve; }) : normalRead(url, init));
+        const queueRef: { current: ((queue: any) => void) | null } = { current: null };
+        const appRef: { current: ((process: any) => void) | null } = { current: null };
+        await act(async () => renderWithProviders(React.createElement(React.Fragment, null,
+            React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
+            React.createElement(WsSimulator, { dispatchRef: queueRef }),
+            React.createElement(AppDispatcher, { dispatchRef: appRef }))));
+        await waitFor(() => expect(finish).toBeTypeOf('function'));
+        act(() => {
+            queueRef.current!({ running: [makeRunningTask('active', { processId: 'queue_active' })], queued: [] });
+            appRef.current!({ id: 'queue_done', title: 'Live title' });
+        });
+        await act(async () => finish({ history: [
+            makeHistoryTask('queue_active'),
+            makeHistoryTask('queue_done', { title: 'Stale title' }),
+        ], hasMore: false }));
+        await waitFor(() => {
+            const list = mockListPane.mock.calls.at(-1)![0];
+            expect(list.running[0].id).toBe('active');
+            expect(list.history).toHaveLength(1);
+            expect(list.history[0]).toMatchObject({ id: 'queue_done', title: 'Live title', displayName: 'Live title' });
+        });
+    });
+
+    it('admits independent history refreshes after unrelated live snapshots change', async () => {
+        setupFetchMock({ history: [makeHistoryTask('queue_done')] });
+        const queueRef: { current: ((queue: any) => void) | null } = { current: null };
+        const appRef: { current: ((process: any) => void) | null } = { current: null };
+        await act(async () => renderWithProviders(React.createElement(React.Fragment, null,
+            React.createElement(RepoChatTab, { workspaceId: 'ws-1' }),
+            React.createElement(WsSimulator, { dispatchRef: queueRef }),
+            React.createElement(AppDispatcher, { dispatchRef: appRef }))));
+        await waitFor(() => expect(screen.getByTestId('task-queue_done')).toBeInTheDocument());
+        let finish!: (value: any) => void;
+        const normalRead = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation((url: string, init?: any) => url.includes('/history')
+            ? new Promise(resolve => { finish = resolve; }) : normalRead(url, init));
+        act(() => window.dispatchEvent(new CustomEvent('ralph-session-awaiting-input', { detail: { repoId: 'ws-1' } })));
+        await waitFor(() => expect(finish).toBeTypeOf('function'));
+        act(() => {
+            queueRef.current!({ running: [], queued: [] });
+            appRef.current!({ id: 'queue_done', title: 'Live title' });
+        });
+        await act(async () => finish({ history: [
+            makeHistoryTask('queue_done', { title: 'Stale title' }),
+            makeHistoryTask('queue_new'),
+        ], hasMore: false }));
+        await waitFor(() => expect(screen.getByTestId('task-queue_new')).toBeInTheDocument());
+        expect(mockListPane.mock.calls.at(-1)![0].history[0].title).toBe('Live title');
+    });
+
     it('merges title from process-updated WS event into history items', async () => {
         const historyTask = makeHistoryTask('queue_proc-h1', { title: 'Original title' });
         setupFetchMock({ history: [historyTask] });
