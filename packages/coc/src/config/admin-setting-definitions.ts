@@ -990,10 +990,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.railManualRefresh', default: false, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
+        key: 'features.railManualRefresh', default: true, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 76, label: 'Refresh on collapsed sidebar', badge: 'experimental',
-            hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Disabled by default.',
+            hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Enabled by default.',
             testId: 'toggle-rail-manual-refresh-enabled',
         },
     }),
@@ -1014,10 +1014,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.railStatusActions', default: false, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
+        key: 'features.railStatusActions', default: true, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 74, label: 'Admin and quota on collapsed sidebar', badge: 'experimental',
-            hint: 'Also shows the Admin gear and the provider quota ring at the bottom of the collapsed workspace sidebar, reusing the status bar\'s actions and quota data. Disabled by default.',
+            hint: 'Also shows the Admin gear and the provider quota ring at the bottom of the collapsed workspace sidebar, reusing the status bar\'s actions and quota data. Enabled by default.',
             testId: 'toggle-rail-status-actions-enabled',
         },
     }),

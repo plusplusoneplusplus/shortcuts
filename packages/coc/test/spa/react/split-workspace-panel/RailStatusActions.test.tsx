@@ -97,14 +97,14 @@ describe('collapsed-rail Admin and quota shortcuts', () => {
         mocks.localQuota.mockReset().mockResolvedValue(quota(0.4));
         mocks.remoteQuota.mockReset().mockResolvedValue(quota(0.9));
         mocks.getCocClientFor.mockReset();
-        applyRuntimeConfigPatch({ railStatusActionsEnabled: true });
+        _resetRuntimeConfig();
     });
 
     afterEach(() => {
         _resetRuntimeConfig();
     });
 
-    it('shows the Admin gear and quota ring in a bottom rail group, after the other rail controls', async () => {
+    it('shows the Admin gear and quota ring by default in a bottom rail group, after the other rail controls', async () => {
         renderPanel();
         const group = within(rail()).getByTestId('split-workspace-left-status');
         expect(group.className).toContain('mt-auto');
@@ -213,7 +213,7 @@ describe('collapsed-rail Admin and quota shortcuts', () => {
     });
 
     it('leaves the rail and footer unchanged while the flag is off, and follows live flag updates', async () => {
-        _resetRuntimeConfig();
+        applyRuntimeConfigPatch({ railStatusActionsEnabled: false });
         renderPanel();
         expect(within(rail()).queryByTestId('split-workspace-left-status')).toBeNull();
         expect(screen.queryByTestId('rail-admin-toggle')).toBeNull();
@@ -226,6 +226,11 @@ describe('collapsed-rail Admin and quota shortcuts', () => {
         expect(within(rail()).getByTestId('rail-admin-toggle')).toBeTruthy();
         expect(within(rail()).getByTestId('rail-agent-provider-quota-indicator')).toBeTruthy();
         // Enabling the rail copy does not start another quota read.
+        expect(mocks.localQuota).toHaveBeenCalledTimes(1);
+
+        act(() => applyRuntimeConfigPatch({ railStatusActionsEnabled: false }));
+        expect(within(rail()).queryByTestId('split-workspace-left-status')).toBeNull();
+        expect(screen.getByTestId('sidebar-admin-toggle')).toBeTruthy();
         expect(mocks.localQuota).toHaveBeenCalledTimes(1);
     });
 

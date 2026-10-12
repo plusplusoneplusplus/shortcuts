@@ -191,6 +191,30 @@ describe('admin validate/apply round-trip', () => {
 // ── resolved config merge ─────────────────────────────────────────────────────
 
 describe('resolved config merge honors file overrides', () => {
+    describe.each(['railManualRefresh', 'railStatusActions'] as const)('%s default-on contract', feature => {
+        const key = `features.${feature}`;
+        const flag = `${feature}Enabled`;
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
+
+        it.each([{}, { features: {} }])('enables an absent setting consistently (%j)', config => {
+            const resolved = mergeConfig(DEFAULT_CONFIG, config);
+            expect(resolved.features[feature]).toBe(true);
+            expect(readAdminSettingValue(def, config)).toBe(true);
+            expect(buildRuntimeFeatureFlags(config)[flag]).toBe(true);
+            expect(buildRuntimeFeatures(resolved)[flag]).toBe(true);
+        });
+
+        it.each([false, true])('preserves an explicit saved value consistently (%s)', value => {
+            const config = nestedConfigWith(key, value);
+            const resolved = mergeConfig(DEFAULT_CONFIG, config);
+            expect(resolved.features[feature]).toBe(value);
+            expect(readAdminSettingValue(def, config)).toBe(value);
+            expect(buildRuntimeFeatureFlags(config)[flag]).toBe(value);
+            expect(buildRuntimeFeatures(resolved)[flag]).toBe(value);
+            expect(getNamespaceFieldSource(key, config)).toBe('file');
+        });
+    });
+
     it('keeps bot identification disabled independently of Teams relay features', () => {
         expect(DEFAULT_CONFIG.features.botManagedConversations).toBe(false);
         expect(buildRuntimeFeatureFlags({}).botManagedConversationsEnabled).toBe(false);
@@ -599,14 +623,15 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { schedulerDelayHint: true } }).schedulerDelayHintEnabled).toBe(true);
     });
 
-    it('exposes sidebar refresh as a default-off Appearance setting', () => {
+    it('exposes sidebar refresh as a default-on Appearance setting', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railManualRefresh')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.ui?.tab).toBe('appearance');
         expect(def.ui?.testId).toBe('toggle-rail-manual-refresh-enabled');
-        expect(DEFAULT_CONFIG.features.railManualRefresh).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).railManualRefreshEnabled).toBe(false);
+        expect(def.ui?.hint).toMatch(/enabled by default/i);
+        expect(DEFAULT_CONFIG.features.railManualRefresh).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).railManualRefreshEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ features: { railManualRefresh: true } }).railManualRefreshEnabled).toBe(true);
     });
 
@@ -624,17 +649,19 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { railGitSummary: true } }).railGitSummaryEnabled).toBe(true);
     });
 
-    it('exposes the collapsed-rail Admin and quota shortcuts as a default-off experimental feature', () => {
+    it('exposes the collapsed-rail Admin and quota shortcuts as a default-on Appearance setting', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railStatusActions');
         expect(def, 'features.railStatusActions must be an admin setting').toBeDefined();
         expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default).toBe(false);
+        expect(def!.default).toBe(true);
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('railStatusActionsEnabled');
+        expect(def!.ui!.tab).toBe('appearance');
         expect(def!.ui!.badge).toBe('experimental');
-        expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(DEFAULT_CONFIG.features.railStatusActions).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).railStatusActionsEnabled).toBe(false);
+        expect(def!.ui!.hint).toMatch(/enabled by default/i);
+        expect(def!.ui!.testId).toBe('toggle-rail-status-actions-enabled');
+        expect(DEFAULT_CONFIG.features.railStatusActions).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).railStatusActionsEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ features: { railStatusActions: true } }).railStatusActionsEnabled).toBe(true);
     });
 

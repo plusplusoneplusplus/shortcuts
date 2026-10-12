@@ -28,6 +28,7 @@ import { TabFeatureSettingsCard } from '../../../src/server/spa/client/react/adm
 import {
     useAdminFeatureSettings,
     getTabFeatureSettings,
+    readRuntimeFeatureValues,
 } from '../../../src/server/spa/client/react/admin/useAdminFeatureSettings';
 import type { AdminFeatureSettings } from '../../../src/server/spa/client/react/admin/useAdminFeatureSettings';
 import type { FeatureSettingTab } from '../../../src/config/admin-setting-definitions';
@@ -78,6 +79,44 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
+    it.each([undefined, false, true])('keeps collapsed-sidebar controls and runtime values consistent (%s)', enabled => {
+        render(<Harness tabs={['appearance']} />);
+        const features = enabled === undefined
+            ? {}
+            : { railManualRefresh: enabled, railStatusActions: !enabled };
+        act(() => controller.hydrate({ features }));
+        const refreshEnabled = enabled ?? true;
+        const statusEnabled = enabled === undefined ? true : !enabled;
+        expect(screen.getByTestId('toggle-rail-manual-refresh-enabled')).toHaveProperty('checked', refreshEnabled);
+        expect(screen.getByTestId('toggle-rail-status-actions-enabled')).toHaveProperty('checked', statusEnabled);
+        expect(readRuntimeFeatureValues(controller.featureValues)).toMatchObject({
+            railManualRefreshEnabled: refreshEnabled,
+            railStatusActionsEnabled: statusEnabled,
+        });
+        expect(screen.getByText('Refresh on collapsed sidebar').closest('.ar-row')?.textContent).not.toContain('Experimental');
+        expect(screen.getByText('Admin and quota on collapsed sidebar').closest('.ar-row')?.textContent).not.toContain('Experimental');
+        expect(controller.isTabDirty('appearance')).toBe(false);
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(applyRuntimeConfigPatch).not.toHaveBeenCalled();
+    });
+
+    it('saves explicit opt-outs through the existing Appearance controls and runtime patch', async () => {
+        render(<Harness tabs={['appearance']} />);
+        fireEvent.click(screen.getByTestId('toggle-rail-manual-refresh-enabled'));
+        fireEvent.click(screen.getByTestId('toggle-rail-status-actions-enabled'));
+        await act(async () => { await controller.handleSaveTab('appearance'); });
+        expect(updateConfig).toHaveBeenCalledTimes(1);
+        expect(updateConfig.mock.calls[0][0]).toMatchObject({
+            'features.railManualRefresh': false,
+            'features.railStatusActions': false,
+        });
+        expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({
+            railManualRefreshEnabled: false,
+            railStatusActionsEnabled: false,
+        });
+        expect(controller.isTabDirty('appearance')).toBe(false);
+    });
+
     it('defaults to Direct HTTP and saves an explicit SDK choice without credential fields', async () => {
         render(<Harness tabs={['ai']} />);
         const select = screen.getByTestId('select-copilot-transform-transport') as HTMLSelectElement;

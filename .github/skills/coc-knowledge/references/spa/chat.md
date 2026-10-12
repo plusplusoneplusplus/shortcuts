@@ -207,7 +207,8 @@ use the existing one-second clock, with manual pause taking precedence over coun
 
 ### Sidebar refresh ownership
 
-`features.railManualRefresh` is a default-off Appearance setting.
+`features.railManualRefresh` is a default-on live Appearance setting. Missing
+config or SPA bootstrap flags enable it; explicit saved false disables it.
 `RepoChatTab.handleRefresh` admits one manual refresh at a time and shares the
 expanded list's queue, history, workflow-run and group-pin scope. Collapsed
 surfaces also await `RailPinnedJobs`' full pinned read; aggregate groups supply

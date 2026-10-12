@@ -395,14 +395,15 @@ git-info refreshes; tiles open the expanded Git half (branch overview or member)
 
 ### Collapsed-rail Admin and quota
 
-`features.railStatusActions` (default off) adds a bottom rail group, below a
-separator, only when the panel has a docked `footer`. `SplitWorkspacePanel`
+`features.railStatusActions` (default on, live Appearance setting) adds a bottom
+rail group below a separator, only when the panel has a docked `footer`. `SplitWorkspacePanel`
 provides that node through `RailStatusSlotContext` to the footer while collapsed;
 the footer's `StatusActions` portals a rail Admin gear (same `handleAdmin`, no
 `#admin-toggle` id) and passes it as `railContainer` to its
 `AgentProviderQuotaIndicator`. The indicator renders a second trigger from the same
 hook and dropdown, opening the panel `right` of the rail. Expanding the sidebar
-removes the triggers and closes a rail-anchored dropdown.
+removes the triggers and closes a rail-anchored dropdown. An absent config or SPA
+bootstrap flag enables the controls; an explicit saved false disables them.
 
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same

@@ -88,19 +88,21 @@ collapsed rail. Running and queued previews share `RailJobMetadata` with pinned
 previews: status, current execution mode and task type remain distinct. Modes
 come from owner-verified compact snapshots; unknown modes are omitted and Ralph
 session identity is preserved. Nonzero count controls expand the left column
-when selected. `features.railManualRefresh` (default off, Appearance) gates
+when selected. `features.railManualRefresh` (default on, Appearance) gates
 `RefreshSidebarButton`; `RepoChatTab.handleRefresh` shares the expanded list's
 queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read and
 an optional `refreshList` for aggregate groups. Reads retain owner/source and
 reject superseded/live-stale snapshots; unavailable owners report errors without
 local fallback. Refresh keeps navigation, selection and collapse state and never
-mutates scheduling. With `features.railGitSummary`
+mutates scheduling. Missing config/bootstrap settings enable refresh; explicit
+saved false disables it. With `features.railGitSummary`
 on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;
 `railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the
 owner-scoped reads (repo: git-info + working tree; group: one member git-info
-batch on the group's server). With `features.railStatusActions` on (default
-off), a docked `footer` gets a bottom rail slot (`layout/railStatusSlot.ts`)
+batch on the group's server). `features.railStatusActions` defaults on, with
+explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
+rail slot (`layout/railStatusSlot.ts`)
 that the footer's `StatusActions` portals its Admin gear and quota ring into,
 sharing its admin handler and single quota hook. The group supplies a compact
 New Chat control through `chatHeaderExtra` and pins the sidebar status footer

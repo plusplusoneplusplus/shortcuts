@@ -1250,7 +1250,7 @@ timeout: 300
             expect(result.resolved.browserControl.enabled).toBe(true);
         });
 
-        describe.each(['sentinelTodoDependencies', 'railManualRefresh'] as const)('%s', feature => {
+        describe.each(['sentinelTodoDependencies', 'railManualRefresh', 'railStatusActions'] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
                 fs.writeFileSync(configPath, value === undefined
@@ -1258,7 +1258,7 @@ timeout: 300
                     : `features:\n  ${feature}: ${value}\n`);
 
                 const result = getResolvedConfigWithSource(configPath);
-                expect(result.resolved.features[feature]).toBe(value ?? false);
+                expect(result.resolved.features[feature]).toBe(value ?? DEFAULT_CONFIG.features[feature]);
                 expect(result.sources[`features.${feature}`]).toBe(value === undefined ? 'default' : 'file');
             });
         });
@@ -1536,8 +1536,8 @@ timeout: 300
                     "pinnedScopes": true,
                     "quickAskSidenotes": true,
                     "railGitSummary": false,
-                    "railManualRefresh": false,
-                    "railStatusActions": false,
+                    "railManualRefresh": true,
+                    "railStatusActions": true,
                     "ralphMultiAgentGrill": false,
                     "repoGroupAggregatedChats": false,
                     "repoGroupExclusiveWriter": false,

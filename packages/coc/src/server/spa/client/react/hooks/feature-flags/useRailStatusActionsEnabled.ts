@@ -4,7 +4,7 @@ import { DASHBOARD_CONFIG_UPDATED_EVENT, isRailStatusActionsEnabled } from '../.
 /**
  * Live `features.railStatusActions` flag; tracks runtime config updates.
  * Gates the collapsed workspace rail's Admin and quota shortcuts.
- * Global admin setting; disabled by default.
+ * Global admin setting; enabled by default.
  */
 export function useRailStatusActionsEnabled(): boolean {
     const [enabled, setEnabled] = useState(isRailStatusActionsEnabled());
