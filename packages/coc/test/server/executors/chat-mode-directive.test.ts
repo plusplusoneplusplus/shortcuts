@@ -819,6 +819,19 @@ describe('sentinel dispatcher directive', () => {
         }
     });
 
+    it('keeps lengthy ledger audits and result assessment with the parent, excluding child and API ledger mutations', () => {
+        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
+        const lines = directive.split('\n');
+        const handOffAt = lines.findIndex(line => line.startsWith('- For anything that edits code'));
+        const exception = lines[handOffAt + 1];
+
+        expect(exception).toContain('- Exception to this hand-off rule:');
+        expect(exception).toContain('manage this chat\'s To-do ledger and assess results yourself via `sentinel_todos`');
+        expect(exception).toContain('even for lengthy audits');
+        expect(exception).toContain('Never delegate ledger updates or use ledger API writes');
+        expect(exception).toContain('hand off only authorized implementation work, reusing its To-do');
+    });
+
     it('never carries a plan destination', () => {
         const ctx = { tasksRoot: '/data/repos/ws-a/notes/Plans', existingFolders: ['x'] };
         expect(buildChatModeDirective({ mode: 'sentinel', planSaveContext: ctx }))
@@ -854,6 +867,29 @@ describe('sentinel dispatcher directive', () => {
         expect(shouldInjectChatModeDirective({ ...base, turns })).toBe(false);
         // Prompt side, with authoritative (absent) instructions and plan context.
         expect(shouldInjectChatModeDirective({ ...base, turns, checkInstructionDrift: true, checkPlanContextDrift: true })).toBe(false);
+        expect(shouldInjectChatModeDirective({ ...base, turns, canResumeSession: false })).toBe(true);
+        expect(shouldInjectChatModeDirective({ ...base, turns, compaction: {
+            state: 'completed', completedAt: '2026-01-02T00:00:00.000Z',
+        } as ChatModeInjectionCheck['compaction'] })).toBe(true);
+        expect(shouldInjectChatModeDirective({ ...base, turns, mode: 'ask' })).toBe(true);
+    });
+
+    it.each([undefined, 'ASK-ONLY'])('re-injects the ledger exception once for an older marker (instructions: %s)', (modeInstructions) => {
+        const current = buildChatModeDirective({ mode: 'sentinel', modeInstructions })!;
+        const previous = current.split('\n').filter(line => !line.startsWith('- Exception to this hand-off rule:')).join('\n');
+        expect(previous).not.toBe(current);
+        const check: ChatModeInjectionCheck = {
+            mode: 'sentinel', previousMode: 'sentinel', canResumeSession: true,
+            modeInstructions, checkInstructionDrift: true, compaction: undefined,
+            turns: [{ role: 'user', content: 'Hi', timestamp: new Date('2026-01-01T00:00:00.000Z'), chatModeContext: previous }],
+        };
+
+        // Exact matching treats outdated dispatcher text as instructions, forcing refresh.
+        expect(parseChatModeMarker(previous).prose).toBe(READ_ONLY_SYSTEM_MESSAGE.trim());
+        expect(shouldInjectChatModeDirective(check)).toBe(true);
+        check.turns![0].chatModeContext = current;
+        expect(parseChatModeMarker(current).instructions).toBe(modeInstructions);
+        expect(shouldInjectChatModeDirective(check)).toBe(false);
     });
 
     it('re-injects Auto guidance into a resumed sentinel whose stored directive lacks it', () => {
