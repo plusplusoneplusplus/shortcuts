@@ -35,12 +35,14 @@ import {
 } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
 import { authorizeBrowserWebview, isBrowserEmbedder } from './browser-webview-guard';
+import { ElectronBrowserCdp } from './electron-browser-cdp';
 
 interface BrowserEntry {
     win: BrowserWindow;
     /** SPA webContents id, kept because `win.webContents` is unreadable once the window is destroyed. */
     ownerId: number;
     contents?: WebContents;
+    cdp?: ElectronBrowserCdp;
     shown: boolean;
     pageZoom: number;
     authorization?: ReturnType<typeof authorizeBrowserWebview>;
@@ -92,6 +94,7 @@ function pushState(entry: BrowserEntry): void {
 function destroyEntry(entry: BrowserEntry): void {
     if (entry.closed) { return; }
     entry.closed = true;
+    entry.cdp?.dispose();
     entries.delete(entry);
     for (const popup of [...entry.popups]) {
         if (!popup.isDestroyed()) {
@@ -222,6 +225,7 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
 
 function wireView(entry: BrowserEntry): void {
     const wc = entry.contents!;
+    entry.cdp = new ElectronBrowserCdp(wc);
     // Hidden web tabs must still process shared zoom and layout changes.
     wc.setBackgroundThrottling(false);
     const applyZoom = () => {
@@ -390,6 +394,11 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
+            cdp: (method, params) => {
+                if (entry.closed) { return Promise.reject(new BrowserHostError('not-found', 'Browser tab is closed.')); }
+                if (!entry.cdp) { return Promise.reject(new BrowserHostError('busy', 'Browser guest is not attached yet.')); }
+                return entry.cdp.send(method, params);
+            },
             setPageZoom: percent => {
                 entry.pageZoom = percent;
                 if (entry.contents && !entry.contents.isDestroyed()) { entry.contents.setZoomFactor(percent / 100); }

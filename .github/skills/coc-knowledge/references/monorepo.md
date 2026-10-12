@@ -236,6 +236,14 @@ with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.
 `packages/coc-desktop/electron-builder.container.cjs` selects the container variant.
 
+URL browser hosts expose optional `BrowserHostedView.cdp(method, params)` for
+shared browser-control logic. Electron's `ElectronBrowserCdp` uses the adopted
+guest's debugger, attaches on the first command and detaches its own attachment
+on close. Commands reject on guest destruction, renderer crash, debugger detach
+or a 30-second timeout; pending timers and lifecycle listeners retire on settlement
+and disposal. File previews omit this capability. This primitive has no renderer
+IPC surface by itself.
+
 ### Container image
 
 The root `Dockerfile` ships the CoC server, distinct from the `coccontainer`

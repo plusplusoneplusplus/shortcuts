@@ -42,6 +42,8 @@ export interface BrowserHostedView {
     snapshot(): BrowserViewState;
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;
+    /** URL views only. Shared browser-control logic sends engine-neutral CDP commands. */
+    cdp?(method: string, params?: Record<string, unknown>): Promise<unknown>;
     /** Web content only; file previews deliberately omit this capability. */
     setPageZoom?(percent: number): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;
