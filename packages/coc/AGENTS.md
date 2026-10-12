@@ -221,6 +221,9 @@ references before editing. Paths are package-relative.
   owner/item/PR merge rules can own transport without rule mutation or duplicate wakes.
   Explicit user-only, confirmed, revision-checked action authorization snapshots
   mode, concrete provider/model, registered local target, prompt and scope.
+  Target validation materializes the registered concrete workspace's lazy queue
+  through the existing router before synchronous availability checks; it admits
+  no task and never falls back to the parent's queue.
   Tools cannot create authority; manual items remain tracking-only. Central enqueue
   consumes authority under the native writer and first execution rechecks current
   evidence, graph/action revisions and provider/target availability. Preparation

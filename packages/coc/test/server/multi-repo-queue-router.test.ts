@@ -34,6 +34,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
 import * as queueExecutorBridgeMod from '../../src/server/queue/queue-executor-bridge';
+import { createSentinelDependencyTargetValidator } from '../../src/server/sentinel-todos/sentinel-dependency-target';
+import * as path from 'node:path';
 
 // ============================================================================
 // Helpers
@@ -60,6 +62,47 @@ function repoId(id: string): string {
 describe('MultiRepoQueueRouter', () => {
     beforeEach(() => {
         sdkMocks.resetAll();
+    });
+
+    it('materializes a registered dependency target lazily without admitting work or using the parent queue', async () => {
+        const { bridge, registry, store } = createBridge();
+        const parentRoot = path.join(process.cwd(), 'parent-fixture');
+        const targetRoot = path.join(process.cwd(), 'target-fixture');
+        store.getWorkspaces = vi.fn().mockResolvedValue([
+            { id: 'ws-parent', name: 'Parent', rootPath: parentRoot },
+            { id: 'ws-target', name: 'Target', rootPath: targetRoot },
+        ]);
+        const validate = createSentinelDependencyTargetValidator(store, bridge);
+        try {
+            bridge.registerRepoId('ws-parent', parentRoot);
+            bridge.getOrCreateBridge(parentRoot);
+            expect(bridge.getManagerByRepoId('ws-target')).toBeUndefined();
+            await validate('ws-target');
+            const manager = bridge.getManagerByRepoId('ws-target');
+            expect(manager).toBeDefined();
+            expect(manager).not.toBe(bridge.getManagerByRepoId('ws-parent'));
+            expect(manager?.getAll()).toEqual([]);
+            expect(registry.getAllQueues().size).toBe(2);
+            await validate('ws-target');
+            expect(bridge.getManagerByRepoId('ws-target')).toBe(manager);
+            expect(registry.getAllQueues().size).toBe(2);
+        } finally { bridge.dispose(); }
+    });
+
+    it('rejects unknown, virtual, empty-root and remote dependency targets without materializing a fallback queue', async () => {
+        const { bridge, registry, store } = createBridge();
+        store.getWorkspaces = vi.fn().mockResolvedValue([
+            { id: 'virtual', name: 'Virtual', rootPath: process.cwd(), virtual: true },
+            { id: 'empty', name: 'Empty', rootPath: '' },
+            { id: 'remote:server:ws', name: 'Foreign', rootPath: process.cwd() },
+        ]);
+        const validate = createSentinelDependencyTargetValidator(store, bridge);
+        try {
+            for (const workspaceId of ['unknown', 'virtual', 'empty', 'remote:server:ws']) {
+                await expect(validate(workspaceId)).rejects.toThrow('registered local concrete workspace');
+            }
+            expect(registry.getAllQueues().size).toBe(0);
+        } finally { bridge.dispose(); }
     });
 
     it('recovers pending messages only on the recorded parent workspace queue', async () => {

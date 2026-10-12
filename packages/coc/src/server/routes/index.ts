@@ -49,6 +49,7 @@ import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
 import { SentinelDependencyActions } from '../sentinel-todos/sentinel-dependency-actions';
+import { createSentinelDependencyTargetValidator } from '../sentinel-todos/sentinel-dependency-target';
 import { createPrStatusFetcher } from '../triggers/pr-status-fetcher';
 import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-routes';
 import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
@@ -583,11 +584,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 throw new Error('Native dependency owner workspace is unavailable');
             }
         },
-        validateTarget: async workspaceId => {
-            if (!(await store.getWorkspaces()).some(workspace => workspace.id === workspaceId)) {
-                throw new Error('Dependency action requires an exact registered local workspace; remote targets are unsupported');
-            }
-        },
+        validateTarget: createSentinelDependencyTargetValidator(store, bridge),
         validateCurrent: (provider, workspaceId, mode, owner) => {
             const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
             if (!sentinelTodos.dependenciesEnabled()) throw new Error('Sentinel dependency admission is disabled');

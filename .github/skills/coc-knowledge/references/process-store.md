@@ -177,7 +177,9 @@ Callers re-evaluate before using readiness; stale external-I/O snapshots conflic
 `sentinel_dependency_admissions` and `sentinel_dependency_ralph_starts`. The
 ledger wipe clears them transactionally; snapshot import/export excludes them.
 Actions bind an item/graph revision to concrete saved execution settings and a
-fixed task identity. Admissions retain started whole-session proof independently
+fixed task identity. Target validation uses the canonical router to materialize a
+registered concrete workspace's lazy queue without admitting a task or falling
+back to the parent. Admissions retain started whole-session proof independently
 of replacement authorization. Ralph step-start keys prevent replay across task IDs.
 
 `SentinelDependencyActions` commits immutable ready evidence and one wake per
