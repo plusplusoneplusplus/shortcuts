@@ -25,10 +25,11 @@ export interface BrowserDomTarget {
 export type BrowserDomCommand =
     | { action: 'snapshot'; ref?: string; all?: boolean; nextRef: number }
     | { action: 'text'; text: string }
+    | { action: 'read'; ref?: string }
     | { action: 'target'; ref: string; editable?: boolean; option?: string };
 
 /** Keep this function self-contained: its compiled source runs in either engine. */
-function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomTarget | boolean {
+function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomTarget | boolean | string {
     interface Registry {
         document: Document;
         url: string;
@@ -57,8 +58,15 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         if (root.host) return root.host;
         return element.ownerDocument.defaultView?.frameElement ?? null;
     };
-    const current = (element: Element): boolean => element.isConnected
-        && element.ownerDocument.defaultView?.document === element.ownerDocument;
+    const current = (element: Element): boolean => {
+        if (!element.isConnected) return false;
+        try {
+            return element.ownerDocument.defaultView?.document === element.ownerDocument;
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'SecurityError') return false;
+            throw error;
+        }
+    };
     const hidden = (element: Element): boolean => {
         for (let node: Element | null = element; node; node = parent(node)) {
             const style = node.ownerDocument.defaultView!.getComputedStyle(node);
@@ -145,6 +153,45 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         };
         if (document.body) text(document.body);
         return clean(parts.join(' ')).includes(clean(command.text));
+    }
+
+    if (command.action === 'read') {
+        const root = command.ref ? resolve(command.ref) : document.body;
+        const seen = new Set<Node>();
+        const markdown = (node: Node): string => {
+            if (seen.has(node)) return '';
+            seen.add(node);
+            if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').replace(/\s+/g, ' ');
+            if (node.nodeType !== Node.ELEMENT_NODE) return '';
+            const element = node as Element;
+            const tag = element.localName;
+            if (hidden(element) || ['script', 'style', 'noscript'].includes(tag)) return '';
+            let children: Node[] = Array.from((element.shadowRoot ?? element).childNodes);
+            if (tag === 'slot') {
+                const assigned = (element as HTMLSlotElement).assignedNodes({ flatten: true });
+                if (assigned.length) children = assigned;
+            }
+            if (tag === 'iframe') {
+                try {
+                    const body = (element as HTMLIFrameElement).contentDocument?.body;
+                    if (body) children.push(body);
+                } catch { /* Cross-origin frame stays opaque. */ }
+            }
+            const text = children.map(markdown).join('');
+            if (/^h[1-6]$/.test(tag)) return `\n\n${'#'.repeat(Number(tag[1]))} ${text.trim()}\n\n`;
+            if (tag === 'a') {
+                const href = (element as HTMLAnchorElement).href;
+                return text.trim() && /^https?:/.test(href) ? `[${text.trim()}](${href})` : text;
+            }
+            if (tag === 'br') return '\n';
+            if (tag === 'li') return `\n- ${text.trim()}`;
+            if (tag === 'pre') return `\n\n\`\`\`\n${element.textContent ?? ''}\n\`\`\`\n\n`;
+            if (['p', 'div', 'section', 'article', 'main', 'ul', 'ol', 'table', 'tr'].includes(tag)) return `\n\n${text}\n\n`;
+            if (tag === 'strong' || tag === 'b') return `**${text}**`;
+            if (tag === 'em' || tag === 'i') return `*${text}*`;
+            return text;
+        };
+        return root ? markdown(root).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : '';
     }
 
     if (command.action === 'snapshot') {

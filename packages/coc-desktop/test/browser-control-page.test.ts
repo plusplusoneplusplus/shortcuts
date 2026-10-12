@@ -18,6 +18,50 @@ const key = (name: string, code: string, vk: number, modifiers = 0, text?: strin
 ];
 
 describe('engine-neutral trusted CDP actions', () => {
+    it('reads page/subtree markdown and evaluates by value with visible exceptions', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValueOnce({ result: { value: '# Page\n\n[link](https://fixture.test/)' } });
+        expect(await page.read('e1')).toContain('# Page');
+        expect(send.mock.calls[0][1]?.expression).toContain('"action":"read"');
+        send.mockResolvedValueOnce({ result: { value: { answer: 42 } } });
+        expect(await page.evaluate('({answer:42})')).toEqual({ answer: 42 });
+        expect(send.mock.calls[1]).toEqual(['Runtime.evaluate', { expression: '({answer:42})', returnByValue: true, awaitPromise: true }]);
+        send.mockResolvedValueOnce({ exceptionDetails: { exception: { description: 'Error: fixture failure' } } });
+        await expect(page.evaluate('throw new Error()')).rejects.toThrow('fixture failure');
+        send.mockResolvedValueOnce({ result: { unserializableValue: 'NaN' } });
+        expect(await page.evaluate('NaN')).toBe('NaN');
+        send.mockResolvedValueOnce({ result: { type: 'undefined' } });
+        expect(await page.evaluate('undefined')).toBeNull();
+        send.mockResolvedValueOnce({});
+        await expect(page.evaluate('42')).rejects.toThrow('returned no result');
+    });
+
+    it.each([1, 2])('captures binary JPEG inline, bounded to 1280 pixels at ratio %s without saving files', async pixelRatio => {
+        const { send, page } = fixture();
+        send.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 1920, clientHeight: 1080, pageX: 0, pageY: 600 } })
+            .mockResolvedValueOnce({ result: { value: pixelRatio } })
+            .mockResolvedValueOnce({ data: '/9j/fixture==' });
+        expect(await page.screenshot()).toEqual({ data: '/9j/fixture==', mimeType: 'image/jpeg' });
+        expect(send.mock.calls[2]).toEqual(['Page.captureScreenshot', {
+            format: 'jpeg', quality: 75, captureBeyondViewport: true,
+            clip: { x: 0, y: 600, width: 1920, height: 1080, scale: 1280 / (1920 * pixelRatio) },
+        }]);
+    });
+
+    it('crops screenshot refs in document coordinates after scrolling and reports missing images', async () => {
+        const { send, page } = fixture();
+        const metrics = { cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 5, pageY: 200 } };
+        send.mockResolvedValueOnce(metrics)
+            .mockResolvedValueOnce({ result: { value: { x: 10, y: 20, width: 100, height: 40 } } })
+            .mockResolvedValueOnce(metrics)
+            .mockResolvedValueOnce({ result: { value: 1 } })
+            .mockResolvedValueOnce({ data: 'aGVsbG8=' });
+        await page.screenshot('e1');
+        expect(send.mock.calls[4][1]?.clip).toEqual({ x: 15, y: 220, width: 100, height: 40, scale: 1 });
+        send.mockResolvedValueOnce(metrics).mockResolvedValueOnce({ result: { value: 1 } }).mockResolvedValueOnce({});
+        await expect(page.screenshot()).rejects.toThrow('no image');
+    });
+
     it('resolves/scrolls a ref then emits trusted mouse move, press and release at its center', async () => {
         const { send, page } = fixture();
         await page.click('e12');

@@ -27,6 +27,42 @@ export class BrowserControlPage {
         return result;
     }
 
+    read(ref?: string): Promise<string> {
+        return this.dom<string>({ action: 'read', ref });
+    }
+
+    async evaluate(js: string): Promise<unknown> {
+        const reply = await this.send('Runtime.evaluate', {
+            expression: js, returnByValue: true, awaitPromise: true,
+        }) as { result?: { type?: string; value?: unknown; unserializableValue?: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
+        if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description || reply.exceptionDetails.text || 'Browser page evaluation failed');
+        if (reply.result?.unserializableValue) return reply.result.unserializableValue;
+        if (reply.result?.type === 'undefined') return null;
+        if (!reply.result || !('value' in reply.result)) throw new Error('Browser page returned no result');
+        return reply.result.value ?? null;
+    }
+
+    async screenshot(ref?: string): Promise<{ data: string; mimeType: 'image/jpeg' }> {
+        const metrics = await this.send('Page.getLayoutMetrics') as { cssVisualViewport?: { clientWidth: number; clientHeight: number; pageX: number; pageY: number }; visualViewport?: { clientWidth: number; clientHeight: number; pageX: number; pageY: number } };
+        const viewport = metrics.cssVisualViewport ?? metrics.visualViewport;
+        if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) throw new Error('Browser viewport unavailable');
+        const target = ref ? await this.dom<BrowserDomTarget>({ action: 'target', ref }) : undefined;
+        // Resolving a ref scrolls it into view, so obtain the resulting viewport origin.
+        const current = target ? await this.send('Page.getLayoutMetrics') as typeof metrics : metrics;
+        const origin = current.cssVisualViewport ?? current.visualViewport ?? viewport;
+        const clip = target
+            ? { x: target.x + origin.pageX, y: target.y + origin.pageY, width: target.width, height: target.height }
+            : { x: viewport.pageX, y: viewport.pageY, width: viewport.clientWidth, height: viewport.clientHeight };
+        const pixelRatio = await this.evaluate('window.devicePixelRatio');
+        if (typeof pixelRatio !== 'number' || !Number.isFinite(pixelRatio) || pixelRatio <= 0) throw new Error('Browser pixel ratio unavailable');
+        const result = await this.send('Page.captureScreenshot', {
+            format: 'jpeg', quality: 75, captureBeyondViewport: true,
+            clip: { ...clip, scale: Math.min(1, 1280 / (clip.width * pixelRatio)) },
+        }) as { data?: string };
+        if (!result.data) throw new Error('Browser screenshot returned no image');
+        return { data: result.data, mimeType: 'image/jpeg' };
+    }
+
     private async mouse(target: BrowserDomTarget): Promise<void> {
         const x = target.x + target.width / 2;
         const y = target.y + target.height / 2;

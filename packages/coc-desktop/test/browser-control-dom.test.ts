@@ -28,6 +28,22 @@ beforeEach(() => {
 });
 
 describe('shared injected DOM snapshot', () => {
+    it('reads visible page or ref content as markdown, including same-origin frames and open shadow roots', () => {
+        document.body.innerHTML = '<h1>Article</h1><p>Useful <strong>text</strong> <a href="https://fixture.test/">Link</a></p><p hidden>Hidden</p><script>secret</script><iframe></iframe><div id="host"></div>';
+        document.querySelector('iframe')!.contentDocument!.body.innerHTML = '<h2>Frame</h2><p>Nested</p>';
+        document.querySelector('#host')!.attachShadow({ mode: 'open' }).innerHTML = '<p>Shadow</p>';
+        layout();
+        const text = run<string>({ action: 'read' });
+        expect(text).toContain('# Article');
+        expect(text).toContain('**text**');
+        expect(text).toContain('[Link](https://fixture.test/)');
+        expect(text).toContain('## Frame');
+        expect(text).toContain('Shadow');
+        expect(text).not.toMatch(/Hidden|secret/);
+        const heading = snapshot().elements.find(element => element.name === 'Article')!;
+        expect(run<string>({ action: 'read', ref: heading.ref })).toBe('# Article');
+        expect(() => run({ action: 'read', ref: 'e999' })).toThrow('stale ref, re-snapshot');
+    });
     it('uses native and ARIA roles/names, labels and heading anchors in a form', () => {
         document.body.innerHTML = `<h1>Account</h1><p>Ordinary text</p>
             <label for="email">Email address</label><input id="email" placeholder="Fallback">
@@ -98,6 +114,26 @@ describe('shared injected DOM snapshot', () => {
         document.querySelector('#host')!.attachShadow({ mode: 'closed' }).innerHTML = '<button>Closed</button>';
         layout();
         expect(snapshot().elements.map(entry => entry.name)).toEqual(['Reachable']);
+    });
+
+    it('expires iframe refs and keeps snapshots usable after a same-origin frame becomes inaccessible', () => {
+        document.body.innerHTML = '<iframe></iframe><button>Reachable</button>';
+        const frame = document.querySelector('iframe')!;
+        const oldDocument = frame.contentDocument!;
+        oldDocument.body.innerHTML = '<button>Frame button</button>';
+        layout(); layout(oldDocument);
+        const ref = snapshot().elements.find(element => element.name === 'Frame button')!.ref;
+        Object.defineProperty(oldDocument, 'defaultView', {
+            configurable: true,
+            value: { get document() { throw new DOMException('Cross origin', 'SecurityError'); } },
+        });
+        Object.defineProperty(frame, 'contentDocument', {
+            configurable: true,
+            get() { throw new DOMException('Cross origin', 'SecurityError'); },
+        });
+        expect(() => run({ action: 'target', ref })).toThrow('stale ref, re-snapshot');
+        expect(snapshot().elements.map(element => element.name)).toEqual(['Reachable']);
+        expect(() => snapshot({ ref })).toThrow('stale ref, re-snapshot');
     });
 
     it('finds visible wait text through frames and shadow roots without matching scripts or hidden text', () => {
