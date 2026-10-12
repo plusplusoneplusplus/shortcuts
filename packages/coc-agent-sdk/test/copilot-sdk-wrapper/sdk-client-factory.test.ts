@@ -37,10 +37,6 @@ vi.mock('fs', async () => {
     return { ...actual, existsSync: vi.fn().mockReturnValue(true) };
 });
 
-vi.mock('../../src/cli-stored-token', () => ({
-    readCliStoredToken: vi.fn(() => undefined),
-}));
-
 const capturedOptions: any[] = [];
 const mockClientInstance = { start: vi.fn(), stop: vi.fn(), createSession: vi.fn() };
 
@@ -79,7 +75,6 @@ import {
     getLastCopilotElectronSpawn,
 } from '../../src/sdk-client-factory';
 import * as trustedFolder from '../../src/trusted-folder';
-import { readCliStoredToken } from '../../src/cli-stored-token';
 import * as fs from 'fs';
 import * as workspaceExecution from '../../src/platform/workspace-execution';
 
@@ -119,20 +114,12 @@ describe('createSdkClient', () => {
         expect(capturedOptions[0].workingDirectory).toBeUndefined();
     });
 
-    it('passes the CLI-stored token as gitHubToken when one is available', () => {
-        vi.mocked(readCliStoredToken).mockReturnValueOnce('gho_stored');
-        createSdkClient();
-        expect(capturedOptions[0].gitHubToken).toBe('gho_stored');
-    });
-
-    it('leaves gitHubToken unset without a stored token and keeps an explicit one', () => {
+    it('leaves runtime authentication intact and preserves an explicit token', () => {
         createSdkClient();
         expect(capturedOptions[0].gitHubToken).toBeUndefined();
 
-        vi.mocked(readCliStoredToken).mockReturnValue('gho_stored');
         createSdkClient({ gitHubToken: 'gho_explicit' });
         expect(capturedOptions[1].gitHubToken).toBe('gho_explicit');
-        vi.mocked(readCliStoredToken).mockReturnValue(undefined);
     });
 
     it('disables updates for spawned CLI without changing the host environment', () => {

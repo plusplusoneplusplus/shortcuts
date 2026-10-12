@@ -72,6 +72,17 @@ Copilot requests create fresh session objects. Cold requests own their client pr
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 Copilot child processes receive `COPILOT_AUTO_UPDATE=false` through `CopilotClientOptions.env`, keeping the installed CLI version in use without changing the host process or caller-owned connections. The SDK and CLI pins are recorded in [monorepo.md](monorepo.md).
 
+### SDK credential fallback
+
+`cli-stored-token.ts` preserves explicit environment credentials and in-process authentication.
+For SDK service clients with a CLI config file, a bounded session-free runtime probe
+preserves keyring authentication. If the runtime reports `gh-cli` or no auth, the selected
+CLI account's exact `authTokens` entry (then `copilotTokens`) supplies `gitHubToken`;
+an absent token leaves runtime gh fallback intact. Invalid config or tokens fail visibly,
+without trying other accounts or retrying rejected credentials. Probe clients stop on
+every outcome; credentials and client environments are excluded from factory logs.
+The separate direct-HTTP credential policy remains unchanged.
+
 ### Account quota contract
 
 `IAccountQuotaSnapshot.remainingPercentage` is a **0-1 fraction** for every provider; the dashboard, auto-provider router, and quota pause watcher all read it that way. The Copilot CLI's `account.getQuota` RPC reports it on a 0-100 scale, so `CopilotSDKService.getAccountQuota()` divides by 100 and clamps it through `normalizeCopilotAccountQuota`. Codex and Claude build fractions directly. `usageAllowedWithExhaustedQuota` means the provider lets usage continue past the limit; the AI Provider page's quota cell shows an `Overage allowed` caption for it, adding `(N over)` when `overage > 0`.

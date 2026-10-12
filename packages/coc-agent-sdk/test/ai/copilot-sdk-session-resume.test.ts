@@ -34,6 +34,7 @@ vi.mock('../../src/mcp-config-loader', () => ({
     ),
 }));
 
+vi.mock('../../src/cli-stored-token', () => ({ resolveCliStoredToken: vi.fn().mockResolvedValue(undefined) }));
 const createSdkClientMock = vi.fn();
 vi.mock('../../src/sdk-client-factory', () => ({
     createSdkClient: (...args: any[]) => createSdkClientMock(...args),
