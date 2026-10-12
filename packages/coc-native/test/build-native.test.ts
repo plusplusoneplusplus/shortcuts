@@ -7,16 +7,18 @@
  * arrangement a diff cannot catch.
  */
 
-import * as fs from 'fs';
+import fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import * as ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // @ts-expect-error — a .mjs build script with no type declarations.
 import {
     BINDINGS_FILE,
+    assertTransactionReady,
     buildArgs,
-    cleanArgs,
+    buildNative,
     napiCli,
     nativeBinaryName as scriptBinaryName,
     renderBindings,
@@ -211,19 +213,12 @@ describe('driving @napi-rs/cli', () => {
         expect(napiCli()).toBe(path.resolve(path.dirname(cliPackageJson), declared));
     });
 
-    describe('cleanArgs', () => {
-        it.each(['debug', 'release'])('recompiles wrapper and core DTO macros for %s', profile => {
-            const args = cleanArgs({ profile, target: undefined });
-            expect(args.filter((_: string, i: number) => args[i - 1] === '-p'))
-                .toEqual(['coc-native', 'coc-native-core']);
-            expect(args.includes('--release')).toBe(profile === 'release');
-            expect(args).not.toContain('--target');
-        });
-
-        it('cleans the requested cross-compilation target', () => {
-            const args = cleanArgs({ profile: 'release', target: 'aarch64-apple-darwin' });
-            expect(args[args.indexOf('--target') + 1]).toBe('aarch64-apple-darwin');
-        });
+    it('makes core DTO compilation react to napi-rs declaration cache invalidation', () => {
+        const hook = fs.readFileSync(path.join(PACKAGE_ROOT, 'rust', 'core', 'build.rs'), 'utf-8');
+        expect(hook).toContain('cargo:rerun-if-env-changed=NAPI_TYPE_DEF_TMP_FOLDER');
+        expect(hook).toContain('cargo:rerun-if-env-changed=NAPI_FORCE_BUILD_COC_NATIVE_CORE');
+        expect(hook).toContain('cargo:rerun-if-changed=build.rs');
+        expect(hook).not.toContain('napi_build::setup');
     });
 
     describe('buildArgs', () => {
@@ -243,6 +238,8 @@ describe('driving @napi-rs/cli', () => {
             const args = buildArgs(base);
             expect(args[0]).toBe('build');
             expect(args).toContain('--platform');
+            expect(args).toContain('--dts-cache');
+            expect(args).toContain('--no-js');
             expect(args[args.indexOf('--dts') + 1]).toBe('.napi.d.ts');
             expect(args).toContain('--release');
         });
@@ -258,5 +255,141 @@ describe('driving @napi-rs/cli', () => {
             // `--js false` was the v2 spelling; in v3 it names an output file.
             expect(args[args.indexOf('--js') + 1]).not.toBe('false');
         });
+    });
+});
+
+describe('native build execution', () => {
+    let root: string;
+    afterEach(() => {
+        vi.restoreAllMocks();
+        if (root) fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    function fixture() {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-build-test-'));
+        fs.mkdirSync(path.join(root, 'src'));
+        const generated = fs.readFileSync(path.join(PACKAGE_ROOT, BINDINGS_FILE), 'utf-8');
+        const run = vi.fn((_command: string, args: string[]) => {
+            fs.writeFileSync(path.join(root, scriptBinaryName()), 'synthetic addon');
+            fs.writeFileSync(path.join(root, args[args.indexOf('--dts') + 1]), generated);
+        });
+        const options = {
+            packageRoot: root, run, logger: { log: vi.fn() },
+            buildSymbolsLsp: vi.fn(), buildWebView2: vi.fn(),
+        };
+        return { generated, options };
+    }
+
+    it('builds repeatedly without cleaning Cargo artifacts or rewriting identical bindings', () => {
+        const { options } = fixture();
+        buildNative(options);
+        const bindings = path.join(root, BINDINGS_FILE);
+        const past = new Date('2000-01-01T00:00:00Z');
+        fs.utimesSync(bindings, past, past);
+        buildNative(options);
+        expect(fs.statSync(bindings).mtimeMs).toBe(past.getTime());
+        expect(options.run).toHaveBeenCalledTimes(2);
+        for (const [command, args] of options.run.mock.calls) {
+            expect(command).toBe(process.execPath);
+            expect(args[1]).toBe('build');
+            expect(args).toContain('--dts-cache');
+            expect(args).not.toContain('clean');
+        }
+        expect(options.buildSymbolsLsp).toHaveBeenCalledTimes(2);
+        expect(options.buildWebView2).toHaveBeenCalledTimes(2);
+        expect(fs.readdirSync(root).filter(name => name.startsWith('.napi-dts-'))).toEqual([]);
+    });
+
+    it.each(['owner.json', 'state.json'])('fails before compilation when %s is missing, preserving recovery data', missing => {
+        const { options } = fixture();
+        const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+        fs.mkdirSync(path.join(journal, 'backups'), { recursive: true });
+        const retained = path.join(journal, 'backups', 'artifact');
+        fs.writeFileSync(retained, 'keep this');
+        fs.writeFileSync(path.join(journal, missing === 'owner.json' ? 'state.json' : 'owner.json'), '{}');
+        expect(() => buildNative(options)).toThrow(`filesystem-transaction.swp${path.sep}${missing}`);
+        expect(options.run).not.toHaveBeenCalled();
+        expect(options.buildSymbolsLsp).not.toHaveBeenCalled();
+        expect(fs.readFileSync(retained, 'utf-8')).toBe('keep this');
+    });
+
+    it('leaves a complete journal for napi-rs to validate and recover', () => {
+        const { options } = fixture();
+        const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+        fs.mkdirSync(journal);
+        for (const entry of ['owner.json', 'state.json']) fs.writeFileSync(path.join(journal, entry), '{}');
+        buildNative(options);
+        expect(options.run).toHaveBeenCalledOnce();
+        expect(fs.existsSync(journal)).toBe(true);
+    });
+
+    it('propagates filesystem access errors instead of treating an unreadable journal as absent', () => {
+        const { options } = fixture();
+        const error = Object.assign(new Error('synthetic access error'), { code: 'EACCES' });
+        vi.spyOn(fs, 'lstatSync').mockImplementation(() => { throw error; });
+        expect(() => buildNative(options)).toThrow(error);
+        expect(options.run).not.toHaveBeenCalled();
+    });
+
+    it.each(['journal', 'owner.json', 'state.json'])('rejects a non-directory journal or non-file %s', entry => {
+        fixture();
+        const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+        if (entry === 'journal') fs.writeFileSync(journal, 'not a directory');
+        else {
+            fs.mkdirSync(journal);
+            fs.writeFileSync(path.join(journal, 'owner.json'), '{}');
+            if (entry === 'owner.json') fs.unlinkSync(path.join(journal, entry));
+            fs.mkdirSync(path.join(journal, entry));
+        }
+        expect(() => assertTransactionReady(root)).toThrow('Incomplete napi-rs filesystem transaction');
+    });
+
+    it.each(['ContentMatch', 'ContentSearchResult', 'GitCommitFiles', 'openRepoFiles'])(
+        'rejects missing %s declarations without overwriting committed bindings',
+        missing => {
+            const { generated, options } = fixture();
+            const bindings = path.join(root, BINDINGS_FILE);
+            fs.writeFileSync(bindings, generated);
+            options.run.mockImplementation((_command: string, args: string[]) => {
+                fs.writeFileSync(path.join(root, scriptBinaryName()), 'synthetic addon');
+                fs.writeFileSync(path.join(root, args[args.indexOf('--dts') + 1]),
+                    generated.replace(new RegExp(`^export (?:declare )?(?:class|function|interface|type) ${missing}\\b.*`, 'm'), ''));
+            });
+            expect(() => buildNative(options)).toThrow(`required type definitions (${missing})`);
+            expect(fs.readFileSync(bindings, 'utf-8')).toBe(generated);
+            expect(options.buildSymbolsLsp).not.toHaveBeenCalled();
+            expect(fs.readdirSync(root).filter(name => name.startsWith('.napi-dts-'))).toEqual([]);
+        },
+    );
+
+    it('cleans scratch declarations and propagates compilation failures', () => {
+        const { options } = fixture();
+        const failure = new Error('synthetic compiler failure');
+        options.run.mockImplementation((_command: string, args: string[]) => {
+            fs.writeFileSync(path.join(root, args[args.indexOf('--dts') + 1]), 'partial output');
+            throw failure;
+        });
+        expect(() => buildNative(options)).toThrow(failure);
+        expect(fs.existsSync(path.join(root, BINDINGS_FILE))).toBe(false);
+        expect(fs.readdirSync(root)).toEqual(['src']);
+    });
+
+    it('refuses a successful command that did not produce an addon', () => {
+        const { options } = fixture();
+        options.run.mockImplementation(() => { });
+        expect(() => buildNative(options)).toThrow('napi build did not produce');
+        expect(fs.existsSync(path.join(root, BINDINGS_FILE))).toBe(false);
+        expect(options.buildSymbolsLsp).not.toHaveBeenCalled();
+    });
+
+    it('updates bindings when regenerated core DTOs change', () => {
+        const { generated, options } = fixture();
+        buildNative(options);
+        const changed = generated.replace('export interface ContentMatch {', 'export interface ContentMatch {\n  syntheticField?: string');
+        options.run.mockImplementation((_command: string, args: string[]) => {
+            fs.writeFileSync(path.join(root, args[args.indexOf('--dts') + 1]), changed);
+        });
+        buildNative(options);
+        expect(fs.readFileSync(path.join(root, BINDINGS_FILE), 'utf-8')).toBe(renderBindings(changed));
     });
 });

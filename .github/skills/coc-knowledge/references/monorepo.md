@@ -95,6 +95,9 @@ Core `git::patch_store` provides scoped bounded snapshots and shared in-flight p
 the committed bindings, N-API addon and symbol-server executable. Windows x64
 also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
 do not initialize WebView2.
+Native builds retain Cargo artifacts and napi-rs's per-crate declaration cache.
+Bindings are written only when their contents change. Incomplete napi-rs journal
+metadata fails before compilation; recovery and publication locking belong to napi-rs.
 `ensure:native` recursively checks the native Rust tree, including `teams-sdk`,
 for stale binaries, and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.

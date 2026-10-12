@@ -218,7 +218,15 @@ A `.ts` and not a `.d.ts`: an input `.d.ts` under `src/` is not emitted to `dist
 
 Doc comments flow from the Rust, so write the explanation there. Anything the Rust cannot express — why the `indices` are UTF-16 offsets and what depends on that — belongs on the alias in `repo-files.ts`, and on `NativeContentMatch` in `repo-files.ts` for the same reason.
 
-The proc macro only emits type definitions while the crate actually compiles, so the build script cleans the thin `coc-native` wrapper crate first (the slow `coc-native-core` stays cached) and refuses to write an empty result over the committed file.
+`build:native` uses napi-rs's per-crate declaration cache and Cargo's incremental
+build without cleaning artifacts. Missing declaration cache entries trigger
+recompilation; `rust/core/build.rs` tracks napi-rs's cache-directory and
+force-build environment variables without adding Node linker configuration.
+The script requires wrapper and core DTO declarations before
+updating bindings and preserves the file's mtime when its contents match.
+Incomplete napi-rs transaction metadata fails before compilation; stop active
+native builds, inspect and rename the journal to a backup location before
+retrying. Preserve recovery contents; complete journals are recovered by napi-rs.
 
 ## Binary resolution
 
