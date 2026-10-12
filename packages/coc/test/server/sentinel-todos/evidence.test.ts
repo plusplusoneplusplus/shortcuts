@@ -85,6 +85,24 @@ describe('Sentinel exact dependency evidence', () => {
         expect(current(item.id)).toEqual(item);
     });
 
+    it('projects exact evidence generations separately from later source revisions', async () => {
+        const source = create();
+        const item = dependent([{ itemId: source.id, condition: { kind: 'pr_merge', outputSlot: 'implementation' } }]);
+        const bound = await bind(source.id);
+        const receipt = bound.item.evidence[0];
+        expect(receipt.recordedRevision).toBe(2);
+        todos.update(owner, source.id, 2, { notes: 'Unrelated source edit' }, 'user');
+        expect(await evaluate(item.id)).toMatchObject({
+            itemRevision: 2, ledgerRevision: todos.get(owner).revision,
+            edges: [{ sourceRevision: 3, evidenceRevision: 2, receiptId: receipt.receiptId }],
+        });
+        await bind(source.id);
+        const rebound = current(source.id).evidence[0];
+        expect(rebound.recordedRevision).toBe(4);
+        expect(rebound.receiptId).not.toBe(receipt.receiptId);
+        expect((await evaluate(item.id)).edges[0]).toMatchObject({ sourceRevision: 4, evidenceRevision: 4, receiptId: rebound.receiptId });
+    });
+
     it.each(['open', 'closed', 'unknown'])('does not accept %s as merged evidence', async status => {
         const source = create();
         const item = dependent([{ itemId: source.id, condition: { kind: 'pr_merge', outputSlot: 'implementation' } }]);

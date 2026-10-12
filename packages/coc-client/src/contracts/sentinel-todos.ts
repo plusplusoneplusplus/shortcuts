@@ -97,6 +97,8 @@ export type SentinelTodoPrProvenance =
 
 interface SentinelTodoEvidenceReceipt {
   receiptId: string;
+  /** Prerequisite item revision which committed this exact receipt. */
+  recordedRevision: number;
   recordedAt: string;
   recordedBy: 'user' | 'sentinel';
 }
@@ -135,6 +137,7 @@ export interface SentinelTodoDependencyEvaluation {
     blocker?: string;
     evidenceLink?: string;
     receiptId?: string;
+    evidenceRevision?: number;
     pr?: SentinelTodoPrIdentity;
     mergedAt?: string;
     mergeCommit?: string;

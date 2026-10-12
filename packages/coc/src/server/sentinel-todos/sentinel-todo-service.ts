@@ -106,7 +106,8 @@ export class SentinelTodoService {
         }
         // Explicit selection records the owner's assertion of output provenance, not proof of merge.
         const result = this.deps.todos.recordEvidence(owner, itemId, body.expectedRevision, `pr:${body.outputSlot}`, {
-            kind: 'pr_binding', outputSlot: body.outputSlot, pr, provenance: body.provenance, ...evidenceAttribution(actor),
+            kind: 'pr_binding', outputSlot: body.outputSlot, pr, provenance: body.provenance,
+            ...evidenceAttribution(actor, body.expectedRevision + 1),
         }, actor, () => {});
         this.emit({ owner, ...result });
         return result;
@@ -123,7 +124,7 @@ export class SentinelTodoService {
         const result = this.deps.todos.withCurrentEvidence(owner, snapshot, () =>
             this.deps.todos.recordEvidence(owner, itemId, body.expectedRevision, `artifact:${artifactKey(body.phase, body.reference)}`, {
                 kind: 'artifact_acceptance', phase: body.phase, reference: body.reference, version: body.version,
-                workspaceId: owner.workspaceId, ...evidenceAttribution(actor),
+                workspaceId: owner.workspaceId, ...evidenceAttribution(actor, body.expectedRevision + 1),
             }, actor, () => {
                 if (artifactVersion(root, body.reference) !== body.version) {
                     throw new SentinelTodoError('conflict', 'Artifact content does not match the selected version');
@@ -174,7 +175,8 @@ export class SentinelTodoService {
                     const binding = source.evidence.find(receipt => receipt.kind === 'pr_binding' && receipt.outputSlot === condition.outputSlot);
                     if (binding?.kind !== 'pr_binding') return { ...result, blocker: 'Future PR output needs an explicit binding' };
                     const observed = reads.get(binding.receiptId);
-                    const linked = { ...result, evidenceLink: binding.pr.url, receiptId: binding.receiptId, pr: binding.pr };
+                    const linked = { ...result, evidenceLink: binding.pr.url, receiptId: binding.receiptId,
+                        evidenceRevision: binding.recordedRevision, pr: binding.pr };
                     if (!observed || observed instanceof Error) {
                         return { ...linked, blocker: observed instanceof Error ? `PR evidence unavailable: ${observed.message.slice(0, 1_000)}` : 'PR evidence unavailable' };
                     }
@@ -187,7 +189,7 @@ export class SentinelTodoService {
                 if (receipt?.kind !== 'artifact_acceptance' || receipt.workspaceId !== owner.workspaceId) {
                     return { ...result, blocker: 'Selected phase and artifact version need explicit acceptance' };
                 }
-                const linked = { ...result, receiptId: receipt.receiptId, evidenceLink: receipt.reference };
+                const linked = { ...result, receiptId: receipt.receiptId, evidenceRevision: receipt.recordedRevision, evidenceLink: receipt.reference };
                 if (!root) return { ...linked, blocker: 'Owning workspace content is unavailable' };
                 try {
                     return artifactVersion(root, condition.reference) === condition.version

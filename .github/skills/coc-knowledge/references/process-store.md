@@ -161,12 +161,13 @@ Dependency authoring shares the owner-validated service through PUT
 default-off `features.sentinelTodoDependencies` and the ledger flag. Tracked
 dispatch blocks dependency-bearing items pending native authorized admission.
 Graph and evidence rows are machine-local and cleared with the ledger wipe.
-Evidence receipts carry actor, receipt ID, timestamp and exact PR output binding
+Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding
 or phase/reference/SHA-256 artifact acceptance. Rebinding/reacceptance advances
 item and ledger revisions without changing fulfillment. `evaluateDependencies`
 reads canonical provider status, then rechecks the captured ledger/item revisions
 and current artifact bytes under the native writer mutex. It persists a diagnostic
-snapshot with conjunctive blockers and links, never authority or dispatch state.
+snapshot with ledger/item/source/evidence revisions, conjunctive blockers and links,
+never authority or dispatch state.
 Callers re-evaluate before using readiness; stale external-I/O snapshots conflict.
 
 ### Chat binding stores

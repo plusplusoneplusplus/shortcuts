@@ -10,8 +10,8 @@ export function parseEvidenceInput<T>(schema: z.ZodType<T>, input: unknown): T {
     return result.data;
 }
 
-export function evidenceAttribution(actor: 'user' | 'sentinel') {
-    return { receiptId: randomUUID(), recordedAt: new Date().toISOString(), recordedBy: actor };
+export function evidenceAttribution(actor: 'user' | 'sentinel', recordedRevision: number) {
+    return { receiptId: randomUUID(), recordedRevision, recordedAt: new Date().toISOString(), recordedBy: actor };
 }
 
 /** Hash exact bytes, without allowing traversal, foreign-platform absolutes or symlink escapes. */

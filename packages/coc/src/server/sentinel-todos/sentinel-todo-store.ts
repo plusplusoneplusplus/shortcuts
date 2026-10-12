@@ -91,7 +91,8 @@ export const artifactAcceptanceInputSchema = z.object({
     version: z.string().regex(/^sha256:[a-f0-9]{64}$/),
 }).strict();
 const evidenceAttributionSchema = {
-    receiptId: evidenceText, recordedAt: z.iso.datetime(), recordedBy: z.enum(['user', 'sentinel']),
+    receiptId: evidenceText, recordedRevision: z.number().int().positive(),
+    recordedAt: z.iso.datetime(), recordedBy: z.enum(['user', 'sentinel']),
 };
 const evidenceSchema = z.discriminatedUnion('kind', [
     z.object({
@@ -358,6 +359,9 @@ export class SentinelTodoStore {
         assertCaller(actor);
         const evidence = parse(evidenceSchema, receipt);
         if (evidence.recordedBy !== actor) throw new SentinelTodoError('invalid', 'Evidence attribution must match the validated actor');
+        if (evidence.recordedRevision !== expectedRevision + 1) {
+            throw new SentinelTodoError('invalid', 'Evidence recording revision must match the committing item revision');
+        }
         return this.mutate(owner, () => {
             const ledger = this.read(owner);
             const index = ledger.items.findIndex(item => item.id === itemId);
