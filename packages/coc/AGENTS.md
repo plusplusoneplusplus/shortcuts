@@ -647,10 +647,17 @@ references before editing. Paths are package-relative.
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
   memory per WhatsApp group / Teams thread; remote repos are never selectable, and
   replies carry only server/repo names (failures logged server-side). Bare `list topics`
-  stays local. Every topic list (local, remote, Teams thread) renders through
+  uses `local-topics.ts`: five chats created within 24 hours across registered local
+  workspaces, ranked pinned, running, queued, then activity. Transcript-free saved
+  pages merge owner-verified first-turn queue tasks; follow-ups and internal jobs
+  never create extra topics. Numbering retains the last displayed owner/process
+  refs; queue IDs survive startup. Queued selections use durable connector receipts
+  and queue dependencies for follow-ups, including Teams threads. Remote lists read
+  saved processes only. Every topic list (local, remote, Teams thread) renders through
   `formatTopicList` (status emoji, ≤40-char escaped title, relative age; ids only with
-  `-v`; no Markdown list syntax so Teams keeps the numbering). `listRecentTopics` sorts
-  its bounded page by last activity and `resolveTopic` indexes that same order.
+  `-v`; no Markdown list syntax so Teams keeps the numbering). `localTopicsReply`
+  and `resolveLocalTopic` share owner-qualified selection refs; cancelled or missing
+  queued targets reject selection and delivery.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

@@ -19,7 +19,7 @@ import { PendingImages, PendingImagesError, type PendingImageScope } from './pen
 import { createCache } from '../cache';
 import { safeErrorDiagnostics } from './safe-error-diagnostics';
 
-import { LocalTopicMemory } from './local-topics';
+import { LocalTopicMemory, queuedChatTask, type LocalTopicQueue } from './local-topics';
 import { listTodosReply, TODOS_NO_TARGET_REPLY, type MessagingTodoReader } from './messaging-todos';
 
 const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*`, platform: 'whatsapp' as const };
@@ -42,6 +42,7 @@ export interface WhatsAppRouterDeps {
     groupJid: () => string | undefined;
     /** `mode` is undefined for plain text; follow-ups then keep the chat's mode. */
     enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string, botControl?: BotControlMetadata, images?: PreparedIncomingImages, admissionHeld?: boolean) => Promise<string>;
+    topicQueue?: LocalTopicQueue;
     getTask: (taskId: string) => QueuedTask | undefined;
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
@@ -212,6 +213,7 @@ export class WhatsAppCommandRouter {
                     remotes: this.deps.remotes,
                     remoteRefs: this.remoteRefs.slot(msg.chatJid),
                     localTopics: this.localTopics.slot(msg.chatJid),
+                    topicQueue: this.deps.topicQueue,
                     // A quote-reply to an answer compacts that answer's chat.
                     compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {
@@ -274,7 +276,7 @@ export class WhatsAppCommandRouter {
                 return;
             }
             if (!command.args && !hasImages) { await reply('Send a message to start a chat.'); return; }
-            const targetProcess = targetId ? await this.deps.store.getProcess(targetId, workspaceId) : undefined;
+            let targetProcess = targetId ? await this.deps.store.getProcess(targetId, workspaceId) : undefined;
             checkConnection();
             const enabled = this.deps.getBotManagedConversationsEnabled?.() === true;
             if (targetId) {
@@ -283,11 +285,18 @@ export class WhatsAppCommandRouter {
                     const task = this.deps.getTask(row.taskId);
                     return matchesBinding(task, row) && ['queued', 'running'].includes(task.status);
                 });
-                if (targetProcess ? targetProcess.metadata?.workspaceId !== workspaceId : !pending) {
+                const queued = !targetProcess ? this.deps.topicQueue?.getAll().find(task =>
+                    toQueueProcessId(task.id) === targetId && queuedChatTask(task, workspaceId)) : undefined;
+                if (!targetProcess && !pending && !queued) {
+                    // First-turn execution may have persisted the chat during the queue lookup.
+                    targetProcess = await this.deps.store.getProcess(targetId, workspaceId);
+                    checkConnection();
+                }
+                if (targetProcess ? targetProcess.metadata?.workspaceId !== workspaceId : !pending && !queued) {
                     await reply('Selected topic is unavailable. Run `list topics` or `create topic`.'); return;
                 }
-                if (pending && enabled) {
-                    const control = this.deps.getTask(pending.taskId)?.botControl;
+                if ((pending || queued) && enabled) {
+                    const control = (queued ?? this.deps.getTask(pending ? pending.taskId : ''))?.botControl;
                     if (control !== undefined && validateBotControlMetadata(control).source !== 'whatsapp') {
                         throw new Error('Conversation is already controlled by another integration');
                     }
@@ -315,6 +324,7 @@ export class WhatsAppCommandRouter {
                 return;
             }
             const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
+            if (handOff && handOff.workspaceId !== workspaceId) throw new Error('WhatsApp conversation target is unavailable');
             checkConnection();
             checkImageSelection();
             if (this.pendingImages.count(scope) + (msg.images?.length ?? 0) > MAX_MESSAGING_IMAGES) {

@@ -97,6 +97,61 @@ describe('phone threads start chats in sentinel mode', () => {
         });
     }
 
+    it('WhatsApp lists a queued external chat and durably admits a dependent turn to its owner', { timeout: 20_000 }, async () => {
+        await start(false);
+        const deps = captured.whatsapp;
+        const { WhatsAppCommandRouter } = await import('../../../src/server/messaging/whatsapp-command-router');
+        const send = vi.fn(async () => 'outbound');
+        const router = new WhatsAppCommandRouter({ ...deps, groupJid: () => 'group@g.us', send, react: async () => {} });
+        await deps.enqueue(GLOBAL, 'External chat', 'ask', 'queue_external', 'external');
+        const inbound = (messageId: string, text: string) => ({
+            chatJid: 'group@g.us', senderJid: 'group@g.us', fromMe: true, messageId, text,
+        });
+        await router.handle(inbound('list', 'list topics -v'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining(`${GLOBAL}/queue_external`), 'list');
+        await router.handle(inbound('select', 'select topic 1'));
+        await router.handle(inbound('continue', 'Continue externally queued chat'));
+        const tasks = deps.topicQueue.getAll();
+        expect(tasks).toHaveLength(2);
+        const follow = tasks.find((task: any) => task.id !== 'external');
+        expect(follow.repoId).toBe(GLOBAL);
+        expect(follow.processId).toBe('queue_external');
+        expect(follow.payload.processId).toBe('queue_external');
+        expect(follow.config.processPredecessorId).toBe('external');
+        expect(await deps.store.getProcess('queue_external', GLOBAL)).toBeUndefined();
+    });
+
+    it('Teams thread lists an external queued chat and durably admits a dependent turn without an initial receipt', { timeout: 20_000 }, async () => {
+        await start(false);
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const { TeamsMessagingManager } = await import('../../../src/server/messaging/teams-messaging-manager');
+        const manager = new TeamsMessagingManager(dataDir!);
+        vi.spyOn(manager, 'getStatus').mockReturnValue({ enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null });
+        const send = vi.spyOn(manager, 'sendMessage').mockResolvedValue('outbound');
+        let handle!: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) => Promise<void>;
+        vi.spyOn(manager, 'setMessageHandler').mockImplementation(handler => { handle = msg => handler(msg); });
+        const deps = captured.teams;
+        registerTeamsMessagingRoutes([], { ...deps, manager, getAnswerRelayEnabled: () => true, getBotManagedConversationsEnabled: () => false });
+        const inbound = (messageId: string, text: string) => ({ channelId: 'channel', messageId, text,
+            senderAadId: 'sender', replyToMessageId: 'root' });
+        try {
+            await deps.enqueueChat(GLOBAL, 'External chat', 'ask', 'external');
+            await handle(inbound('list', '/list topics -v'));
+            expect(send).toHaveBeenCalledWith(expect.stringContaining(`${GLOBAL}/queue_external`), 'root');
+            await handle(inbound('select', '/select topic 1'));
+            await handle(inbound('continue', 'Continue externally queued chat'));
+            const tasks = deps.relayQueue.getAll();
+            expect(tasks).toHaveLength(2);
+            const follow = tasks.find((task: any) => task.id !== 'external');
+            expect(follow.repoId).toBe(GLOBAL);
+            expect(follow.processId).toBe('queue_external');
+            expect(follow.payload.processId).toBe('queue_external');
+            expect(follow.config.processPredecessorId).toBe('external');
+            expect(await deps.store.getProcess('queue_external', GLOBAL)).toBeUndefined();
+        } finally { manager.dispose(); }
+    });
+
     it('WhatsApp routes prepared first-turn and queued follow-up images through real server wiring', { timeout: 20_000 }, async () => {
         await start(false);
         const { WhatsAppCommandRouter } = await import('../../../src/server/messaging/whatsapp-command-router');

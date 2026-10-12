@@ -455,8 +455,16 @@ The `n.m` numbering lives in a per-chat in-memory `RemoteRefMemory` (WhatsApp gr
 Teams thread or channel+user); remote repos never become the selected repo.
 Local, remote and Teams-thread topic lists share `formatTopicList` in `remote-browse.ts`
 (`▶` current marker, status emoji, truncated escaped title, `now`/`Nm`/`Nh`/`Nd` age from
-`lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). `listRecentTopics`
-re-sorts its bounded page by that activity time, so `select topic <n>` picks the listed item.
+`lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). Local
+`local-topics.ts` merges transcript-free saved pages with owner-verified first-turn
+chat queue tasks across registered workspaces: five chats created within 24 hours,
+ranked pinned, running, queued, then activity. Follow-ups and internal jobs do not
+create rows. Queued rows carry a label and stable owner-qualified process ID.
+Numeric selection retains the displayed refs and revalidates the owner and live
+queue/process transition. Both connectors admit subsequent turns through existing
+durable receipts and queue dependencies; Teams thread selections retain task IDs
+until the process exists. Cancelled or missing queue targets reject selection and
+delivery. Remote directory lists expose saved processes only.
 
 ### Messaging Git status
 

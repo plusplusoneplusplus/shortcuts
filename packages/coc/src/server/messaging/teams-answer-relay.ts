@@ -12,6 +12,7 @@ import { TeamsMessageNotSentError } from './teams-messaging-manager';
 import { escapeTeamsHtml, formatTeamsQuestion } from './teams-outbound-format';
 import type { QuestionTransport } from './ask-user-relay';
 import { formatJobNotice, type JobNoticeTransport } from './job-notices';
+import { queuedChatTask } from './local-topics';
 import { onTaskTerminal } from './chat-target';
 import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
 import { validateBotControlMetadata } from './bot-control-metadata';
@@ -310,7 +311,7 @@ export class TeamsAnswerRelay {
         const taskId = state?.taskId ?? (!state ? root?.selectedTaskId ?? root?.taskId : undefined);
         if (!taskId) throw new Error('Teams thread chat is unavailable');
         const task = this.deps.queue.getTask(taskId!);
-        if (!task || task.repoId !== workspaceId || task.processId !== processId
+        if (!task || task.repoId !== workspaceId || (task.processId ?? toQueueProcessId(task.id)) !== processId
             || !['queued', 'running'].includes(task.status)) {
             throw new Error('Teams thread chat is unavailable');
         }
@@ -331,11 +332,8 @@ export class TeamsAnswerRelay {
             const process = await this.deps.store.getProcess(processId, workspaceId);
             const queued = !process && allowQueued && isQueueProcessId(processId)
                 ? this.deps.queue.getTask(toTaskId(processId)) : undefined;
-            if (queued?.repoId === workspaceId && queued.processId === processId
-                && queued.type === 'chat' && queued.payload.kind === 'chat'
-                && queued.payload.workspaceId === workspaceId && !queued.payload.processId
-                && ['queued', 'running'].includes(queued.status)) {
-                taskId = queued.id;
+            if (queuedChatTask(queued, workspaceId) && toQueueProcessId(queued!.id) === processId) {
+                taskId = queued!.id;
             } else if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId
                 || ['failed', 'cancelled'].includes(process.status)) {
                 throw new Error('Teams thread chat is unavailable');
@@ -775,30 +773,46 @@ export class TeamsAnswerRelay {
         }
     }
 
+    private pendingTopicOwner(msg: InboundTeamsMessage, selectedTaskId: string, workspaceId?: string):
+        (Pick<AnswerBinding, 'workspaceId' | 'processId' | 'taskId' | 'teamId' | 'channelId' | 'releaseState'> & { originReceipt: boolean }) | undefined {
+        const target = this.deps.target();
+        const bound = [...this.bindings.values()].find(({ value }) =>
+            !value.requestId && (value.taskId === selectedTaskId || value.processId === selectedTaskId)
+            && value.teamId === target.teamId && value.channelId === msg.channelId)?.value;
+        if (bound) return workspaceId && bound.workspaceId !== workspaceId ? undefined : { ...bound, originReceipt: true };
+        const taskId = isQueueProcessId(selectedTaskId) ? toTaskId(selectedTaskId) : selectedTaskId;
+        const selected = target.teamId && msg.replyToMessageId
+            ? this.threadSelections.get(bindingName(target.teamId, msg.channelId, msg.replyToMessageId))?.value : undefined;
+        // A foreign queued task needs an explicit owner-qualified selection.
+        if (!workspaceId && selected?.processId !== toQueueProcessId(taskId)) return undefined;
+        const task = queuedChatTask(this.deps.queue.getTask(taskId), workspaceId ?? selected?.workspaceId);
+        if (!task || !target.teamId) return undefined;
+        return { workspaceId: task.repoId!, processId: toQueueProcessId(task.id), taskId: task.id,
+            teamId: target.teamId, channelId: msg.channelId, originReceipt: false };
+    }
+
     async admitPendingFollowUp(
         msg: InboundTeamsMessage,
         selectedTaskId: string,
         enqueue: (workspaceId: string, processId: string, requestId: string, taskId: string) => Promise<string>,
         message = msg.text.trim(),
-        admissionOnly = false,
+        admissionOnly = false, workspaceId?: string,
     ): Promise<{ duplicate: boolean } | null> {
         if (this.disposed || (!this.deps.isEnabled() && !admissionOnly)) return null;
         const target = this.deps.target();
         if (!target.connected || !target.teamId || target.channelId !== msg.channelId || !msg.messageId) {
             throw new Error('Teams topic is unavailable');
         }
-        const parent = [...this.bindings.values()].find(({ value }) =>
-            !value.requestId && (value.taskId === selectedTaskId || value.processId === selectedTaskId)
-            && value.teamId === this.deps.target().teamId && value.channelId === msg.channelId)?.value;
+        const parent = this.pendingTopicOwner(msg, selectedTaskId, workspaceId);
         if (!parent) return null;
         return this.withOwnerAdmission(parent.workspaceId, parent.processId, () =>
-            this.startPendingFollowUp(msg, selectedTaskId, enqueue, message, admissionOnly));
+            this.startPendingFollowUp(msg, selectedTaskId, enqueue, message, admissionOnly, workspaceId));
     }
 
     private async startPendingFollowUp(
         msg: InboundTeamsMessage, selectedTaskId: string,
         enqueue: (workspaceId: string, processId: string, requestId: string, taskId: string) => Promise<string>,
-        message: string, admissionOnly: boolean,
+        message: string, admissionOnly: boolean, workspaceId?: string,
     ): Promise<{ duplicate: boolean } | null> {
         if (this.disposed || (!this.deps.isEnabled() && !admissionOnly)) return null;
         const target = this.deps.target();
@@ -811,18 +825,16 @@ export class TeamsAnswerRelay {
                 throw new Error('Teams thread chat is unavailable');
             }
         }
-        const parent = [...this.bindings.values()].find(({ value }) =>
-            !value.requestId && (value.taskId === selectedTaskId || value.processId === selectedTaskId)
-            && value.teamId === target.teamId && value.channelId === msg.channelId)?.value;
+        const parent = this.pendingTopicOwner(msg, selectedTaskId, workspaceId);
         if (!parent) return null;
         if (parent.releaseState) throw new Error('Teams topic binding is unavailable');
         const task = this.deps.queue.getTask(parent.taskId);
         if (!task || task.id !== parent.taskId || !['queued', 'running'].includes(task.status)
-            || task.repoId !== parent.workspaceId || task.processId !== parent.processId
+            || task.repoId !== parent.workspaceId || (task.processId ?? toQueueProcessId(task.id)) !== parent.processId
             || parent.processId !== toQueueProcessId(parent.taskId)
             || task.type !== 'chat' || task.payload?.kind !== 'chat'
             || task.payload.workspaceId !== parent.workspaceId
-            || task.payload.processId || task.payload.relayRequestId
+            || task.payload.processId || (parent.originReceipt && task.payload.relayRequestId)
             || !(await this.deps.store.getWorkspaces()).some(ws => ws.id === parent.workspaceId)) {
             throw new Error('Teams topic is unavailable');
         }
