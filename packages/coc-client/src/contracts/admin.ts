@@ -268,6 +268,7 @@ export interface RuntimeDashboardConfig {
     dreamsEnabled: boolean;
     excalidrawEnabled: boolean;
     kustoEnabled: boolean;
+    browserControlEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;

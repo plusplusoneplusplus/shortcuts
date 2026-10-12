@@ -291,6 +291,16 @@ describe('runtime feature flags', () => {
         expect(ADMIN_SETTING_DEFINITIONS.some(def => def.key === 'features.nativeCopilotSessions')).toBe(false);
     });
 
+    it('registers browser control as live and default-off', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'browserControl.enabled')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('browserControlEnabled');
+        expect(DEFAULT_CONFIG.browserControl.enabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).browserControlEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ browserControl: { enabled: true } }).browserControlEnabled).toBe(true);
+    });
+
     it('registers kusto.enabled as a live, default-off feature flag (AC-08)', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'kusto.enabled');
         expect(def, 'kusto.enabled must be an admin setting').toBeDefined();
@@ -749,6 +759,7 @@ describe('feature toggle settings-tab placement', () => {
         'cron.enabled': 'features',
         'triggers.enabled': 'features',
         'canvas.enabled': 'features',
+        'browserControl.enabled': 'features',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.canvasHostApis': 'features',

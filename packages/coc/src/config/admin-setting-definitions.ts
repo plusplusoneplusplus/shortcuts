@@ -748,6 +748,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.enabled', default: false, runtime: 'live', runtimeFlag: 'browserControlEnabled',
+        ui: {
+            group: 'review', order: 65, label: 'Browser control',
+            hint: 'Allow AI tools to control the desktop browser. Use /browser to activate browser guidance.',
+            badge: 'experimental', testId: 'toggle-browser-control-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',
