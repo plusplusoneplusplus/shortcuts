@@ -635,6 +635,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-sentinel-todo-ledger-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
+            hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Requires the Sentinel to-do ledger. Disabled by default.',
+            testId: 'toggle-sentinel-todo-scrubber-enabled',
+        },
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         value: { kind: 'number', integer: true, min: 1 },

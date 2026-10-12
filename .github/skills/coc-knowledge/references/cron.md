@@ -184,3 +184,19 @@ When `cron.enabled = false`: cron REST routes are not registered, `scheduleWakeu
 ## Relationship to Schedules
 
 Crons are separate from the schedule subsystem. They share only `ScheduleTimerRegistry`, which is generic over its key type: crons, wakeups, and triggers key by their own globally unique `string` IDs, while `ScheduleManager` keys by a branded `(repoId, scheduleId)` runtime key. Crons have their own type (`CronEntry`), persistence (`crons` table), executor, and routes (`/crons` vs `/schedules`). Schedules are cron-expression recurring tasks that create new processes; crons are interval-based recurring follow-ups inside an existing conversation.
+
+### Sentinel To-do Scrubber schedules
+
+`sentinel-scrubber/scrubber-scheduler.ts` uses `ScheduleTimerRegistry` and cron-expression
+utilities for one timer per `(workspaceId, processId)`. Config is disabled by default,
+revision-checked in the ledger's native database and requires both ledger/scrubber flags.
+Startup arms future ticks after interrupted-run recovery, without catch-up. Config/run
+changes refresh timers; live flag changes and owner removal invalidate pending checks.
+Each tick proves the workspace and Sentinel owner, then delegates to `ScrubberRunService`
+for queued read-only execution and overlap/unchanged skip records.
+
+Scheduled admission rechecks live gates after snapshot reads. Three consecutive failed
+or timed-out runs pause config and disarm its timer; saving config resumes it. Owner
+validation failures disarm timers, and shutdown invalidates asynchronous checks and
+clears timers without changing persisted config. Distant cron dates re-arm at the shared
+timer registry's delay cap rather than firing early.

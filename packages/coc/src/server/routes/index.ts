@@ -6,6 +6,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
+import { ScrubberStore } from '../sentinel-scrubber/scrubber-store';
+import { ScrubberEngine } from '../sentinel-scrubber/scrubber-engine';
+import { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
+import { ScrubberScheduler } from '../sentinel-scrubber/scrubber-scheduler';
+import { registerScrubberRoutes } from '../sentinel-scrubber/scrubber-routes';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
@@ -314,13 +319,14 @@ export interface RegisterRoutesOptions {
     setLaunchRalph?: (fn: LaunchRalphFn) => void;
     /** Publish the flag-gated Sentinel to-do service getter to the executor runtime. */
     setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
+    setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
     notesSearchService: NotesSearchService;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; scrubberReady: Promise<number> } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -530,6 +536,58 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
     opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
+    const getScrubberEnabled = () => getSentinelTodoLedgerEnabled()
+        && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
+    const scrubber = new ScrubberStore(todoDb);
+    const scrubberEngine = new ScrubberEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
+    let scrubberScheduler: ScrubberScheduler | undefined;
+    const scrubberChanged = (owner: import('../sentinel-todos/sentinel-todo-store').SentinelTodoOwner,
+        change: { runId?: string; ledgerChanged?: boolean }) => {
+        scrubberScheduler?.refresh(owner);
+        getWsServer().broadcastProcessEvent({ type: 'sentinel-scrubber-changed', ...owner,
+            runId: change.runId, timestamp: Date.now() });
+        if (change.ledgerChanged) getWsServer().broadcastProcessEvent({ type: 'sentinel-todos-changed', ...owner,
+            ledgerRevision: todoStore.get(owner).revision, timestamp: Date.now() });
+    };
+    const scrubberRuns = new ScrubberRunService({
+        dataDir, todos: sentinelTodos, scrubber, engine: scrubberEngine,
+        enqueue: input => enqueueWithResolvedDefaults(input),
+        cancelTask: taskId => {
+            const executor = bridge.findExecutorForTask(taskId);
+            if (executor) { executor.cancelTask(taskId); return true; }
+            return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
+        },
+        listTriggers: opts.sentinelTodoTriggers ? owner => opts.sentinelTodoTriggers!.list(owner) : undefined,
+        canStartScheduled: owner => {
+            const config = scrubber.getConfig(owner);
+            return scrubberScheduler?.canStart(owner) === true
+                && getScrubberEnabled() && config.enabled && !config.paused;
+        },
+        onChange: scrubberChanged,
+    });
+    scrubberRuns.attach(bridge.registry);
+    // Recovery completes before the composition root starts restored queues or accepts requests.
+    scrubberScheduler = new ScrubberScheduler({ scrubber, runs: scrubberRuns, getEnabled: getScrubberEnabled,
+        assertOwner: async owner => {
+            if (!(await store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
+                throw new Error('Scrubber workspace not found');
+            }
+            await sentinelTodos.list(owner);
+        } });
+    const scrubberReady = scrubberRuns.interruptActive().then(count => {
+        scrubberScheduler?.refreshAll();
+        return count;
+    });
+    const unsubscribeScrubberConfig = opts.runtimeConfigService?.onChange(() => scrubberScheduler?.refreshAll());
+    const previousScrubberProcessChange = store.onProcessChange;
+    const scrubberProcessChange: NonNullable<ProcessStore['onProcessChange']> = event => {
+        previousScrubberProcessChange?.(event);
+        if (event.type === 'process-removed' || event.type === 'processes-cleared') scrubberScheduler?.refreshAll();
+    };
+    store.onProcessChange = scrubberProcessChange;
+    opts.setSentinelScrubber?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
+    registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
+        runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
     const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos, getSentinelTodoLedgerEnabled);
     // Bound after the WhatsApp connector is wired below.
     let autoCompactionOrigins: ReturnType<typeof createAutoCompactionOrigins> | undefined;
@@ -1237,6 +1295,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         jobNotices.dispose();
         delegatedJobResults.dispose();
         delegatedJobReviews.dispose();
+        unsubscribeScrubberConfig?.();
+        scrubberScheduler?.dispose();
+        if (store.onProcessChange === scrubberProcessChange) store.onProcessChange = previousScrubberProcessChange;
+        scrubberRuns.dispose();
         if (!(store instanceof SqliteProcessStore)) todoDb.close();
     });
 
@@ -1841,5 +1903,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService };
+    return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady };
 }

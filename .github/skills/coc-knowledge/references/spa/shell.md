@@ -547,6 +547,27 @@ concrete server, preserving matching group routes and reapplying an unchanged ha
 Back restores the list's scroll, expanded rows and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+### Sentinel To-do Scrubber
+
+`SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
+scrubber flags are enabled. Owner/endpoint remounts isolate async state and drafts.
+Its typed owner-routed client reads config/run summaries, starts all-open/selected
+assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
+invalidation and visibility-aware polling refresh runs; chat links share To-do
+excursion navigation. Completed details populate a findings context shared by rows,
+strip and toolbar with newest-finding precedence. Accept/Undo use recorded revisions;
+bulk acceptance freezes those revisions, skips stale items, continues past conflicts
+without retrying and stops on other errors. Partial results are explicit and actions
+refetch the ledger/findings. Owner remounts stop remaining batch requests.
+Auto-Done attribution requires the applied revision; evidence URLs allow HTTP(S).
+History lists all retained statuses and lazily reads selected details with abort
+and late-result guards. Its read-only log preserves finding states, audit actors,
+before/after and exclusions; chat links share owner-routed excursion navigation.
+The editor uses browser-safe
+`schedule/scrub-cron.ts` validation/presets; the server owns writes and single-flight.
+
+### Sentinel To-do triggers
+
 `SentinelTodoTriggers` adds a separate rule section below the cards when existing
 `triggers.enabled` is on. The editor uses eligible normal items, URL/local PR
 selection and server preview. Rule lifecycle and pending delivery are independent

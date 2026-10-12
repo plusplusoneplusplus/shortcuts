@@ -153,7 +153,8 @@ export type ServerMessage =
     | { type: 'work-item-updated'; workspaceId: string; item: any }
     | { type: 'work-item-removed'; workspaceId: string; itemId: string }
     | { type: 'work-item-pr-created'; workspaceId: string; workItemId: string; prUrl: string; prNumber: number; iteration: number }
-    | { type: 'sentinel-todos-changed'; workspaceId: string; processId: string; ledgerRevision: number; itemId: string; timestamp: number }
+    | { type: 'sentinel-scrubber-changed'; workspaceId: string; processId: string; runId?: string; timestamp: number }
+    | { type: 'sentinel-todos-changed'; workspaceId: string; processId: string; ledgerRevision: number; itemId?: string; timestamp: number }
     | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
     | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean }
     | { type: 'turn-rewound'; processId: string; turnIndex: number; turnsRemoved: number }
@@ -489,7 +490,8 @@ export class ProcessWebSocketServer {
             message.type === 'work-item-added' ||
             message.type === 'work-item-updated' ||
             message.type === 'work-item-removed' ||
-            message.type === 'sentinel-todos-changed'
+            message.type === 'sentinel-todos-changed' ||
+            message.type === 'sentinel-scrubber-changed'
         ) {
             return message.workspaceId;
         }

@@ -66,6 +66,8 @@ import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import { createSubmitScrubFindingsTool } from '../llm-tools/submit-scrub-findings-tool';
+import { getScrubChildContext } from '../sentinel-scrubber/scrubber-runs';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -728,6 +730,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
+     * `submit_scrub_findings` for a Sentinel To-do Scrubber child chat; its
+     * first turn starting marks the run running. Other chats get nothing.
+     */
+    protected buildScrubFindingsTool(task: QueuedTask): Tool<any> | undefined {
+        const context = getScrubChildContext(task.payload);
+        const service = context && this.runtime.getSentinelScrubber?.();
+        if (!context) return undefined;
+        if (!service) throw new Error('Sentinel to-do scrubber is disabled');
+        service.markRunning(context);
+        return createSubmitScrubFindingsTool({ service, context });
+    }
+
+    /**
      * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
      * connector started (located through the ask_user relay's connector
      * receipts) records its origin on chats it hands off, so they post
@@ -923,6 +938,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
         const isAsk = mode === 'ask';
+        const scrubContext = getScrubChildContext(task.payload);
 
         // Resolved for the two consumers that still need it: the Ralph grilling
         // directive's `.goal.md` destination and the ask directive's `.plan.md`
@@ -957,6 +973,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Sentinel runs on the ask path; only it gets the to-do ledger tool.
             sentinelTodos: isAsk ? this.buildSentinelTodoDeps(processId, payload.workspaceId, payload.mode) : undefined,
+            scrubFindings: isAsk ? this.buildScrubFindingsTool(task) : undefined,
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the
@@ -964,6 +981,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
+                ...(scrubContext ? { isInteractive: () => false } : {}),
                 ...(isAsk
                     ? { ralphGrillPlanningState, questionRelayRequestId: () => payload.relayRequestId ?? task.id }
                     : { isInteractive: () => true }),
@@ -1038,10 +1056,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             ...(isAsk
                 ? {
                     dangerousCommandGuard: this.buildDangerousCommandGuardWiring(processId, {
-                        // A dashboard chat's first turn is opened by a person
-                        // who is watching it — the same assumption the ask-user
-                        // wiring above makes by leaving `isInteractive` unset.
-                        isInteractive: () => true,
+                        // Scrubber children run unattended, including manual starts.
+                        isInteractive: () => !scrubContext,
                     }),
                 }
                 : {}),

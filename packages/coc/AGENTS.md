@@ -233,6 +233,29 @@ references before editing. Paths are package-relative.
   their revisions; badges never require per-job transcript reads or polling.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
+  Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
+  prove the Sentinel owner through `SentinelTodoService.list` before accessing
+  scrubber state, and use the engine for revision-checked Accept/Undo. The shared
+  `client.sentinelTodos.scrubber` resource uses the owning client transport for config,
+  runs and finding actions; reads support abort signals and conflicts retain the current
+  item in `CocApiError.body.current`. Route composition
+  shares the native ledger database, publishes the live flag-gated `getSentinelScrubber`
+  executor capability, and returns `scrubberReady`; server startup awaits recovery before
+  activating restored queues. Scrubber ask turns are unattended; enabled shell guards
+  auto-deny without offering user approval. Scrubber events carry workspace/process ownership and use
+  workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
+  Runs persist a caller-supplied child task id before queue admission, so early
+  execution/terminal events stay bound. Admission rechecks cancellation after snapshot
+  writes and cancels a child admitted after its run terminates.
+  Every non-skipped run queues one child, including an empty eligible snapshot.
+  Findings must cover the whole snapshot before the submission is accepted.
+  Bounded runs prioritize prior deferred items before oldest-first ordering;
+  oversized ledgers remain eligible for scheduled assessment with unchanged inputs.
+  `ScrubberScheduler` uses owner-keyed shared schedule timers and future cron ticks,
+  rechecking owner/config/flags before admission. Config and run events refresh timers;
+  failure pause and live flag changes disarm them. Shutdown disposes schedule timers,
+  config subscriptions, queue subscriptions and timeout timers through the route
+  composition's WhatsApp manager disposal hook. See the Cron knowledge reference.
   To-do composer context reuses pointer attachments and resolves the owning ledger
   on drop and explicit send (`spa/client/react/features/chat/sentinelTodoContext.ts`).
   Bind workspace, parent Sentinel and concrete server identity; remote selections

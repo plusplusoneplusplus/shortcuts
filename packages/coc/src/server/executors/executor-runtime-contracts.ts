@@ -41,6 +41,7 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import type { McpOauthManager } from '../mcp-oauth';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import type { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
@@ -140,6 +141,12 @@ export interface ExecutorRuntimeCapabilities {
      * get the `sentinel_todos` tool only when the flag is on.
      */
     readonly getSentinelTodos?: () => SentinelTodoService | undefined;
+    /**
+     * Sentinel To-do Scrubber runs, bound at the route layer. Returns
+     * `undefined` while `features.sentinelTodoScrubber` is off; a scrub child
+     * chat then gets no findings tool and its run fails without changes.
+     */
+    readonly getSentinelScrubber?: () => ScrubberRunService | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
     readonly getDecisionService?: () => DecisionService | undefined;
     /** MCP OAuth manager used to surface an interactive authorization prompt. */
@@ -212,6 +219,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getLaunchRalph'
     | 'getSendToConversationRuntime'
     | 'getSentinelTodos'
+    | 'getSentinelScrubber'
     | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'

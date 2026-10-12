@@ -718,6 +718,37 @@ result reasons remain separate from the item verdict. The tab never starts,
 retries, or cancels jobs. Tests live in `test/server/sentinel-todos/` and the
 read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
+### To-do Scrubber
+
+`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by both
+live ledger and scrubber flags. Its owner/endpoint-keyed strip uses
+`client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
+late reads and mutations cannot update a remounted owner. A visibility-aware
+poll refreshes missed events. All-open and selected runs start separate queued
+read-only chats, with Cancel and owner-routed chat links using excursion navigation.
+Selection contains open normal/manual items and filters closed items again at admission.
+Config drafts keep their captured revision through refresh; conflicts reload
+without retrying writes. The schedule editor shares browser-safe validation and
+presets from `server/schedule/scrub-cron.ts`; Resume saves the current revision.
+Completed run details feed an owner-local findings context shared by row badges,
+the strip and the To-do toolbar slot.
+The newest finding wins, including hidden dismissed/suppressed/undone findings;
+auto-Done attribution requires the item's exact applied revision. Accept uses the
+snapshot revision, Undo the applied revision, and conflicts require a fresh scrub.
+Bulk acceptance shares the action busy guard and freezes the admitted snapshot
+revisions. It skips known stale proposals, continues past 409s without retries,
+stops on other errors, reports partial results and reloads ledger/findings.
+Owner/endpoint remounts or flag disabling stop remaining batch requests.
+Successful actions reload the ledger for derived job states. Evidence links allow
+HTTP(S) only; other references render as text. `SentinelTodoScrubHistory` lists
+retained summaries outside the pinned strip and lazily reads owner-routed details.
+Run changes refresh selected details; switching, pruning or closing aborts reads
+and rejects late results. The read-only log retains all finding states and audit
+actors, timestamps, before/after revisions, outcomes, exclusions and evidence.
+Shared `ScrubRunChatLink` preserves the owning route and excursion behavior.
+Tests use isolated mock clients in
+`test/server/sentinel-scrubber/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
+
 ### PR-merge triggers
 
 `SentinelTodoTriggers` is a separate section below the cards, gated by existing

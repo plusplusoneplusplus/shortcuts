@@ -171,21 +171,23 @@ export class SentinelTodoTriggerService {
     async remove(owner: SentinelTodoOwner, triggerId: string, input: unknown): Promise<Trigger> {
         await this.assertOwner(owner);
         const body = parse(revisionInput, input);
-        const removed = this.deps.triggers.transaction(() => {
-            const current = this.requireRule(owner, triggerId, body.expectedRevision);
-            const next: Trigger = {
-                ...current, status: 'disarmed', revision: current.revision + 1,
-                binding: { ...current.binding!, removedAt: this.timestamp() },
-                nextTickAt: current.delivery?.state === 'pending' ? current.nextTickAt : null,
-            };
-            // Delivery and authoring receipts survive Clear so stale retries cannot revive work.
-            if (current.delivery || current.binding?.idempotencyKey) this.deps.triggers.update(next);
-            else this.deps.triggers.delete(triggerId);
-            return next;
-        });
-        if (removed.delivery?.state !== 'pending') this.deps.manager.disarm(triggerId);
-        this.emit('trigger-disarmed', removed);
+        const removed = this.deps.triggers.transaction(() =>
+            this.retire(this.requireRule(owner, triggerId, body.expectedRevision)));
+        this.released(removed);
         return removed;
+    }
+
+    /**
+     * Retires every live rule bound to `itemId` inside the caller's database
+     * transaction, so closing the item and disarming its rules commit
+     * together. Run the returned callback after that transaction commits.
+     */
+    retireItemRules(owner: SentinelTodoOwner, itemId: string): () => void {
+        const removed = this.deps.triggers.getByWorkspace(owner.workspaceId)
+            .filter(trigger => trigger.processId === owner.processId && trigger.binding?.itemId === itemId
+                && !trigger.binding.removedAt)
+            .map(trigger => this.retire(trigger));
+        return () => removed.forEach(trigger => this.released(trigger));
     }
 
     async runNow(owner: SentinelTodoOwner, triggerId: string, input: unknown): Promise<Trigger> {
@@ -209,6 +211,23 @@ export class SentinelTodoTriggerService {
     private async assertOwner(owner: SentinelTodoOwner): Promise<void> {
         if (!this.deps.enabled) throw new SentinelTodoTriggerError(403, 'Triggers are disabled (triggers.enabled is off)');
         await this.deps.owners.list(owner);
+    }
+
+    private retire(current: Trigger): Trigger {
+        const next: Trigger = {
+            ...current, status: 'disarmed', revision: current.revision + 1,
+            binding: { ...current.binding!, removedAt: this.timestamp() },
+            nextTickAt: current.delivery?.state === 'pending' ? current.nextTickAt : null,
+        };
+        // Delivery and authoring receipts survive Clear so stale retries cannot revive work.
+        if (current.delivery || current.binding?.idempotencyKey) this.deps.triggers.update(next);
+        else this.deps.triggers.delete(current.id);
+        return next;
+    }
+
+    private released(removed: Trigger): void {
+        if (removed.delivery?.state !== 'pending') this.deps.manager.disarm(removed.id);
+        this.emit('trigger-disarmed', removed);
     }
 
     private assertEligible(owner: SentinelTodoOwner, itemId: string): void {

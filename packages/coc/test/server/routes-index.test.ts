@@ -8,6 +8,11 @@
  */
 
 import { Readable } from 'stream';
+import { EventEmitter } from 'node:events';
+import { ScrubberStore } from '../../src/server/sentinel-scrubber/scrubber-store';
+import { ScrubberScheduler } from '../../src/server/sentinel-scrubber/scrubber-scheduler';
+import type { ScrubberRunService } from '../../src/server/sentinel-scrubber/scrubber-runs';
+import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -198,6 +203,90 @@ describe('registerAllRoutes', () => {
     afterEach(async () => {
         vi.restoreAllMocks();
         await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('wires scrubber recovery, REST, runtime, queue completion and owner invalidations', async () => {
+        const refreshAll = vi.spyOn(ScrubberScheduler.prototype, 'refreshAll');
+        const refresh = vi.spyOn(ScrubberScheduler.prototype, 'refresh');
+        const disposeScheduler = vi.spyOn(ScrubberScheduler.prototype, 'dispose');
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owner = { workspaceId: 'ws-fixture', processId: 'parent' };
+        await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+            metadata: { ...owner, mode: 'sentinel' } });
+        const todos = new SentinelTodoStore(store.getDatabase());
+        const item = todos.create(owner, { title: 'Merged work' }, { actor: 'sentinel' }).item;
+        const scrubber = new ScrubberStore(store.getDatabase());
+        scrubber.createRun(owner, { id: 'orphan', trigger: 'manual', status: 'running',
+            childProcessId: 'queue_old', createdAt: new Date().toISOString(),
+            snapshot: [{ itemId: item.id, revision: item.revision }], deferredItemIds: [], awaitingReviewItemIds: [] });
+        const bridge = makeBridge();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
+        bridge.registry = new EventEmitter();
+        bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: vi.fn() });
+        const wsServer = makeWsServer();
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir, getWsServer: () => wsServer });
+        const flags = opts.runtimeConfigService!.config.features as any;
+        flags.sentinelTodoLedger = true;
+        flags.sentinelTodoScrubber = true;
+        let getScrubber!: () => ScrubberRunService | undefined;
+        opts.setSentinelScrubber = get => { getScrubber = get; };
+        const routes: Route[] = [];
+        const composition = registerAllRoutes(routes, opts);
+        const scrubberListener = bridge.registry.listeners('taskCompleted')[0];
+        try {
+            await composition.scrubberReady;
+            expect(refreshAll).toHaveBeenCalledOnce();
+            expect(scrubber.getRun(owner, 'orphan')?.status).toBe('interrupted');
+            expect(bridge.findExecutorForTask).toHaveBeenCalledWith('old');
+            expect(todos.get(owner).items[0].status).toBe('todo');
+            const base = `/api/workspaces/${owner.workspaceId}/sentinel-todos/${owner.processId}/scrubber`;
+            const configRoute = findRoute(routes, 'PUT', `${base}/config`)!;
+            const configResponse = fakeRes();
+            await configRoute.route.handler(fakeJsonReq('PUT', { enabled: false, cron: '0 * * * *', expectedRevision: 0 }),
+                configResponse, configRoute.match);
+            expect(configResponse.statusCode).toBe(200);
+            expect(refresh).toHaveBeenCalledWith(owner);
+            const found = findRoute(routes, 'POST', `${base}/runs`)!;
+            const res = fakeRes();
+            await found.route.handler(fakeJsonReq('POST', {}), res, found.match);
+            expect(res.statusCode).toBe(202);
+            const { runId } = JSON.parse(res.body);
+            const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
+            expect(input).toMatchObject({ repoId: owner.workspaceId, priority: 'low',
+                payload: { mode: 'ask', context: { sentinelScrub: { ...owner, runId } } } });
+            const context = { ...owner, runId };
+            getScrubber()!.markRunning(context);
+            getScrubber()!.submit(context, [{ itemId: item.id, verdict: 'done', autoApply: true,
+                confidence: 'high', summary: 'Merged', rationale: 'Completion verified',
+                evidence: [{ kind: 'pr', ref: 'https://github.com/o/r/pull/1', state: 'merged',
+                    checkedAt: new Date().toISOString() }] }]);
+            bridge.registry.emit('taskCompleted', '/fixture', { ...input, id: input.id, processId: `queue_${input.id}` });
+            expect(todos.get(owner).items[0].status).toBe('done');
+            expect(scrubber.getRun(owner, runId)?.status).toBe('completed');
+            expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'sentinel-scrubber-changed', ...owner, runId }));
+            expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'sentinel-todos-changed', ...owner, ledgerRevision: todos.get(owner).revision }));
+            flags.sentinelTodoScrubber = false;
+            const configListener = vi.mocked(opts.runtimeConfigService!.onChange).mock.calls[0][0];
+            configListener({} as never);
+            expect(refreshAll).toHaveBeenCalledTimes(2);
+            expect(getScrubber()).toBeUndefined();
+            const disabled = fakeRes();
+            await found.route.handler(fakeJsonReq('POST', {}), disabled, found.match);
+            expect(disabled.statusCode).toBe(404);
+            flags.sentinelTodoScrubber = true;
+            flags.sentinelTodoLedger = false;
+            expect(getScrubber()).toBeUndefined();
+            await store.removeProcess(owner.processId);
+            expect(refreshAll).toHaveBeenCalledTimes(3);
+            composition.whatsappMessagingManager.dispose();
+            expect(disposeScheduler).toHaveBeenCalledOnce();
+            expect(bridge.registry.listeners('taskCompleted')).not.toContain(scrubberListener);
+        } finally {
+            composition.whatsappMessagingManager.dispose();
+            store.close();
+        }
     });
 
     it('initializes Sentinel SQLite before publishing tools and borrows the process database lifecycle', async () => {

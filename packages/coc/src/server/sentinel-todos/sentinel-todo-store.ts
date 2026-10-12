@@ -482,6 +482,35 @@ export class SentinelTodoStore {
         });
     }
 
+    /**
+     * Marks a normal item Done for the To-do scrubber as `system`. The caller
+     * owns the authority checks; this write never records a user verdict.
+     */
+    recordScrubberDone(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        expectedRevision: number,
+        outcome: string,
+    ): { item: SentinelTodoItem; ledgerRevision: number } {
+        const summary = parse(todoPatchSchema.shape.outcome.unwrap().unwrap(), outcome);
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
+            const current = ledger.items[index];
+            if (current.revision !== expectedRevision) {
+                throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
+            }
+            if (current.type === 'manual') throw new SentinelTodoError('invalid', 'Manual items accept proposals only');
+            const now = new Date().toISOString();
+            const next: Record<string, unknown> = {
+                ...current, status: 'done', outcome: { summary, recordedAt: now, recordedBy: 'system' },
+            };
+            delete next.statusReason;
+            return this.commit(owner, ledger, index, next, 'system', now);
+        });
+    }
+
     /** A spec-ready milestone never consumes the execution outcome on the job link. */
     recordGrillingResult(owner: SentinelTodoOwner, processId: string, eventId: string, links: string[]):
         { item: SentinelTodoItem; ledgerRevision: number } | undefined {

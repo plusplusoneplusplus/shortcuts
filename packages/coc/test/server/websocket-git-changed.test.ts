@@ -130,3 +130,20 @@ describe('ServerMessage git-changed type in broadcastProcessEvent', () => {
         expect(c2.send).not.toHaveBeenCalled();
     });
 });
+
+describe('Scrubber owner event routing', () => {
+    it('delivers scrubber and whole-ledger invalidations only to matching workspace subscriptions', () => {
+        const server = new ProcessWebSocketServer();
+        const local = createMockClient('local', 'ws-a');
+        const other = createMockClient('other', 'ws-b');
+        addClientToServer(server, local);
+        addClientToServer(server, other);
+        server.broadcastProcessEvent({ type: 'sentinel-scrubber-changed', workspaceId: 'ws-a',
+            processId: 'parent', runId: 'run', timestamp: 1 });
+        server.broadcastProcessEvent({ type: 'sentinel-todos-changed', workspaceId: 'ws-a',
+            processId: 'parent', ledgerRevision: 3, timestamp: 1 });
+        expect(local.send).toHaveBeenCalledTimes(2);
+        expect(other.send).not.toHaveBeenCalled();
+        expect(JSON.parse((local.send as any).mock.calls[0][0])).toMatchObject({ processId: 'parent', runId: 'run' });
+    });
+});

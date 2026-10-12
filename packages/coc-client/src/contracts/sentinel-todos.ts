@@ -148,6 +148,15 @@ export interface SentinelTodosChangedEvent {
   workspaceId: string;
   processId: string;
   ledgerRevision: number;
-  itemId: string;
+  itemId?: string;
+  timestamp?: number;
+}
+
+/** Owner-scoped scrubber state invalidation; consumers refetch from the owning server. */
+export interface SentinelScrubberChangedEvent {
+  type: 'sentinel-scrubber-changed';
+  workspaceId: string;
+  processId: string;
+  runId?: string;
   timestamp?: number;
 }

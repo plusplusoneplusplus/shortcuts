@@ -37,6 +37,7 @@ import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation
 import { saveImagesToTempFiles } from '../../../src/server/core/image-utils';
 import * as imageStore from '../../../src/server/executors/image-store';
 import { prepareIncomingImages } from '../../../src/server/messaging/incoming-images';
+import { createSubmitScrubFindingsTool } from '../../../src/server/llm-tools/submit-scrub-findings-tool';
 
 // ============================================================================
 // Mocks
@@ -145,6 +146,39 @@ function makeClassificationTask(
 // ============================================================================
 // Provider routing
 // ============================================================================
+
+describe('unattended scrubber chat approvals', () => {
+    it('keeps only the findings tool and auto-denies guarded commands without an approval channel', async () => {
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrub-approval-'));
+        const context = { workspaceId: 'ws', processId: 'parent', runId: 'run' };
+        class ScrubChatExecutor extends ChatExecutor {
+            protected override buildScrubFindingsTool() {
+                return createSubmitScrubFindingsTool({ context,
+                    service: { submit: () => ({ accepted: 0, ignoredItemIds: [] }) } });
+            }
+        }
+        try {
+            sdkMocks.resetAll();
+            sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+            sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'Checked' });
+            const store = createMockProcessStore();
+            const executor = new ScrubChatExecutor(store, makeOptions(store, {
+                queueConfig: createFixedQueueRuntimeConfig({ config: { dangerousCommandGuard: { enabled: true } } }),
+            }), dataDir);
+            const task = makeChatTask('ask', 'scrub-approval');
+            task.payload = { kind: 'chat', mode: 'ask', prompt: 'Scrub', context: { sentinelScrub: context } };
+            await executor.execute(task, 'Scrub');
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.mode).toBe('interactive');
+            expect(call.tools.map((tool: { name: string }) => tool.name)).toEqual(['submit_scrub_findings']);
+            expect(call.dangerousCommandGuard?.enabled).toBe(true);
+            expect(call.dangerousCommandGuard?.requestApproval).toBeUndefined();
+            expect(typeof call.dangerousCommandGuard?.reportDecision).toBe('function');
+        } finally {
+            fs.rmSync(dataDir, { recursive: true, force: true });
+        }
+    });
+});
 
 describe('admitted first-turn image lifetime', () => {
     let tempDir: string;

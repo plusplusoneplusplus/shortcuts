@@ -4,8 +4,8 @@
  * A compact list over the owning server's ledger (`client.sentinelTodos`),
  * refreshed by that server's `sentinel-todos-changed` events. Every write
  * carries the item revision it was based on; a conflict reloads the current
- * ledger and keeps whatever the user typed. Nothing here starts, retries, or
- * cancels a job — job links only navigate. Active normal items come first, then
+ * ledger and keeps whatever the user typed. Job links only navigate; the
+ * optional Scrubber strip controls its separate read-only assessment chats. Active normal items come first, then
  * the chat's Manual tracking section with its own add form and groups, then the
  * normal Done and Archived sections.
  */
@@ -32,6 +32,8 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
+import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
+import { SentinelTodoScrubber } from './SentinelTodoScrubber';
 import {
     endSentinelTodoExcursion,
     isPinnedSentinelTodo,
@@ -399,7 +401,8 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                         aria-label={`Unpin ${originTitle} To-do`}>Unpin</Button>
                 </div>
             )}
-            <div className="flex items-center gap-2">
+            <SentinelTodoScrubber owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
+            <div role="toolbar" aria-label="To-do actions" className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">To-do</span>
                 {ledger && sections.active.length > 0 && (
                     <span className={MUTED} data-testid="sentinel-todo-active-count">{sections.active.length} active</span>
@@ -411,10 +414,11 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                     </span>
                 )}
                 <span className="flex-1" />
+                <AcceptAllScrubProposals />
                 {!addForm.adding && normalCount > 0 && (
                     <Button size="sm" variant="secondary" onClick={addForm.open} data-testid="sentinel-todo-add">Add item</Button>
                 )}
-            </div>
+            </div>}>
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
                     Could not load the to-do list: {loadError}
@@ -493,6 +497,7 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
                     <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                 </>
             )}
+            </SentinelTodoScrubber>
         </div>
     );
 }
@@ -621,6 +626,7 @@ function TodoRow({ item, owner, expanded, onToggle, onSave, onFollowLink }: {
                 <span id={titleId} className={cn('min-w-0 flex-1 break-words font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 <span aria-hidden="true" className={cn('shrink-0 pt-px text-[10px]', MUTED)}>{expanded ? '▾' : '▸'}</span>
             </button>
+            <SentinelTodoScrubFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (
                     <span className="max-w-full truncate" title={item.targetRepo.workspaceId} data-testid={`sentinel-todo-repo-${item.id}`}>

@@ -22,6 +22,19 @@ list when their flags are off.
 `getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`, and
 `recall_memory` by default, independently of UI layout mode.
 
+### To-do Scrubber child chats
+
+`getSentinelScrubber` is a late-bound executor capability published by route composition
+and gated by both `sentinelTodoLedger` and `sentinelTodoScrubber`. Ask tasks carrying
+`context.sentinelScrub` mark their run running and receive only `submit_scrub_findings`
+from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat tools,
+ledger writers and `send_to_conversation` are excluded. Scrubber turns are unattended:
+ask-user wiring is noninteractive and enabled dangerous-command guards omit approval
+callbacks, preserving auto-deny with audit reporting. Findings remain pending until
+queue completion; cancellation, failure and timeout apply nothing. Submission must
+cover every snapshot item, including explicit unverified reasons when checks fail;
+incomplete batches leave the submission slot available.
+
 ### Per-repo overrides
 
 `PerRepoPreferences.disabledLlmTools` overrides defaults explicitly (empty array = enable all),
@@ -52,6 +65,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
 | `create-pull-request-tool.ts` | `create_pull_request` | Opens a GitHub/ADO PR for the chat's own repo via the shared `git/create-pull-request-service.ts` (commits mode in a temp worktree, or current branch) and writes the chat ↔ PR binding. Autopilot/Ralph write turns only — ask mode and Ralph final-check never receive it (the one intentional ask/autopilot tool-block difference). |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
+| `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
 
 ### sentinel_todos

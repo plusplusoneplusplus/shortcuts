@@ -301,4 +301,24 @@ describe('SentinelTodoTriggerService', () => {
             await expect(call).rejects.toMatchObject({ statusCode: 403 });
             expect(execute).not.toHaveBeenCalled();
         });
+
+    it('retires only the owner item rules inside the caller transaction and releases them after', async () => {
+        const rule = await create({ idempotencyKey: 'draft-1' });
+        const otherItem = todos.create(owner, { title: 'Other' }, { actor: 'user' }).item.id;
+        const kept = await create({ itemId: otherItem });
+        const foreign = { ...rule, id: 'foreign', workspaceId: 'ws-other', binding: { ...rule.binding!, idempotencyKey: undefined } };
+        triggers.insert(foreign);
+        disarm.mockClear();
+        let release = () => {};
+        triggers.transaction(() => { release = service.retireItemRules(owner, itemId); });
+        expect(disarm).not.toHaveBeenCalled();
+        expect(triggers.getById(rule.id)).toMatchObject({ status: 'disarmed', revision: 2, binding: { removedAt: timestamp } });
+        expect(triggers.getById(kept.id)!.status).toBe('active');
+        expect(triggers.getById('foreign')!.status).toBe('active');
+        release();
+        expect(disarm).toHaveBeenCalledExactlyOnceWith(rule.id);
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'trigger-disarmed' }));
+        expect(service.retireItemRules(owner, itemId)).toBeTypeOf('function');
+        expect(triggers.getById(rule.id)!.revision).toBe(2);
+    });
 });

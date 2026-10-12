@@ -77,6 +77,7 @@ export function createQueueInfrastructure(
     getLaunchRalph?: () => import('../ralph/ralph-launch-service').LaunchRalphFn | undefined,
     getSentinelTodos?: () => import('../sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined,
     getKustoRuntime?: import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getKustoRuntime'],
+    getSentinelScrubber?: ExecutorRuntimeCapabilities['getSentinelScrubber'],
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -108,6 +109,7 @@ export function createQueueInfrastructure(
         getLaunchRalph,
         getSendToConversationRuntime,
         getSentinelTodos,
+        getSentinelScrubber,
         getMcpOauthManager,
         getTurnPerformanceStore,
         getDecisionService,
