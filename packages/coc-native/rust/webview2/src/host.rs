@@ -20,13 +20,15 @@ use windows::{
     Win32::{
         Foundation::*,
         Graphics::Gdi::{
-            GetMonitorInfoW, MonitorFromWindow, ScreenToClient, MONITORINFO,
-            MONITOR_DEFAULTTONEAREST,
+            GetMonitorInfoW, GetSysColorBrush, MonitorFromWindow, ScreenToClient, COLOR_WINDOW,
+            MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
         System::{Com::*, Threading::*},
         UI::{
             HiDpi::*,
-            Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT},
+            Input::KeyboardAndMouse::{
+                GetFocus, GetKeyState, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT, VK_TAB,
+            },
             WindowsAndMessaging::*,
         },
     },
@@ -70,9 +72,98 @@ struct View {
     host: Weak<RefCell<Host>>,
     fullscreen_window: Cell<Option<(RECT, isize)>>,
     page_zoom_percent: Cell<f64>,
+    control_turn: RefCell<Option<String>>,
+    control_chrome: Cell<Option<(HWND, HWND)>>,
 }
 
 impl View {
+    fn control_activity(&self, turn: Option<String>) -> Result<()> {
+        if !self.popup || self.closed.get() || !protocol::allowed_control_turn(turn.as_deref()) {
+            return Err(windows::core::Error::from(E_INVALIDARG));
+        }
+        unsafe {
+            if turn.is_some() && self.control_chrome.get().is_none() {
+                let label = CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    w!("STATIC"),
+                    w!("AI controlling"),
+                    WS_CHILD,
+                    12,
+                    8,
+                    180,
+                    24,
+                    Some(self.window),
+                    None,
+                    None,
+                    None,
+                )?;
+                let button = match CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    w!("BUTTON"),
+                    w!("Stop"),
+                    WS_CHILD | WS_TABSTOP,
+                    200,
+                    4,
+                    72,
+                    30,
+                    Some(self.window),
+                    Some(HMENU(1usize as *mut _)),
+                    None,
+                    None,
+                ) {
+                    Ok(button) => button,
+                    Err(error) => {
+                        let _ = DestroyWindow(label);
+                        return Err(error);
+                    }
+                };
+                self.control_chrome.set(Some((label, button)));
+            }
+            if let Some((label, button)) = self.control_chrome.get() {
+                let show = if turn.is_some() { SW_SHOW } else { SW_HIDE };
+                let _ = ShowWindow(label, show);
+                let _ = ShowWindow(button, show);
+                if turn.is_none() && GetFocus() == button {
+                    self.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)?;
+                }
+            }
+            *self.control_turn.borrow_mut() = turn;
+            self.popup_layout()
+        }
+    }
+
+    unsafe fn popup_layout(&self) -> Result<()> {
+        let mut rect = RECT::default();
+        GetClientRect(self.window, &mut rect)?;
+        let dpi = GetDpiForWindow(self.window) as i32;
+        let top =
+            protocol::control_content_top(rect.bottom, dpi, self.control_turn.borrow().is_some());
+        if let Some((label, button)) = self.control_chrome.get() {
+            let button_width = 72 * dpi / 96;
+            let button_x = (rect.right - button_width - 12 * dpi / 96).max(0);
+            SetWindowPos(
+                label,
+                None,
+                12 * dpi / 96,
+                8 * dpi / 96,
+                (button_x - 24 * dpi / 96).max(0),
+                24 * dpi / 96,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )?;
+            SetWindowPos(
+                button,
+                None,
+                button_x,
+                4 * dpi / 96,
+                button_width,
+                30 * dpi / 96,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )?;
+        }
+        rect.top = top.min(rect.bottom);
+        self.controller.SetBounds(rect)
+    }
+
     fn popup_fullscreen(&self, fullscreen: bool) -> Result<()> {
         unsafe {
             if fullscreen && self.fullscreen_window.get().is_none() {
@@ -472,6 +563,7 @@ pub fn run() -> HostResult<()> {
         let class = WNDCLASSW {
             lpfnWndProc: Some(window_proc),
             lpszClassName: w!("CoCBrowserHost"),
+            hbrBackground: GetSysColorBrush(COLOR_WINDOW),
             ..Default::default()
         };
         if RegisterClassW(&class) == 0 {
@@ -538,6 +630,31 @@ pub fn run() -> HostResult<()> {
                 dispatch(&state, command);
             }
         } else {
+            if msg.message == WM_KEYDOWN && msg.wParam.0 == VK_TAB.0 as usize {
+                let view = state
+                    .borrow()
+                    .views
+                    .values()
+                    .find(|view| {
+                        view.control_turn.borrow().is_some()
+                            && view
+                                .control_chrome
+                                .get()
+                                .is_some_and(|(_, button)| button == msg.hwnd)
+                    })
+                    .cloned();
+                if let Some(view) = view {
+                    let reason = if unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0 {
+                        COREWEBVIEW2_MOVE_FOCUS_REASON_PREVIOUS
+                    } else {
+                        COREWEBVIEW2_MOVE_FOCUS_REASON_NEXT
+                    };
+                    if let Err(error) = unsafe { view.controller.MoveFocus(reason) } {
+                        view.fail("runtime-crashed", error.to_string());
+                    }
+                    continue;
+                }
+            }
             unsafe {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
@@ -676,6 +793,7 @@ fn dispatch(state: &State, command: Command) {
     }
     let result = unsafe {
         match command.op.as_str() {
+            "control-activity" => view.control_activity(command.turn_id),
             "page-zoom" => {
                 if let Some(percent) = command
                     .page_zoom_percent
@@ -976,6 +1094,8 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             page_zoom_percent: Cell::new(
                                 command.page_zoom_percent.unwrap_or(100.0),
                             ),
+                            control_turn: RefCell::new(None),
+                            control_chrome: Cell::new(None),
                         });
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
@@ -1380,7 +1500,18 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
         view.controller.add_MoveFocusRequested(
             &MoveFocusRequestedEventHandler::create(Box::new(move |_, args| {
                 if let Some(view) = weak.upgrade() {
-                    if view.closed.get() || view.popup {
+                    if view.closed.get() {
+                        return Ok(());
+                    }
+                    if view.popup {
+                        if view.control_turn.borrow().is_some() {
+                            if let Some((_, button)) = view.control_chrome.get() {
+                                if let Some(args) = args {
+                                    args.SetHandled(true)?;
+                                }
+                                let _ = SetFocus(Some(button));
+                            }
+                        }
                         return Ok(());
                     }
                     if let Some(args) = args {
@@ -1454,6 +1585,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     page_zoom_percent: Some(view.page_zoom_percent.get()),
                     method: None,
                     params: None,
+                    turn_id: None,
                 };
                 start_controller(&callback_state, command, Some((args, deferral, view.clone())));
                 Ok(())
@@ -1491,9 +1623,18 @@ extern "system" fn window_proc(
                 WM_SETFOCUS => {
                     view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
                 }
-                WM_SIZE if view.popup => {
-                    let mut rect = RECT::default();
-                    GetClientRect(window, &mut rect).and_then(|_| view.controller.SetBounds(rect))
+                WM_SIZE if view.popup => view.popup_layout(),
+                WM_COMMAND if view.popup => {
+                    if let Some((_, button)) = view.control_chrome.get() {
+                        if lparam.0 == button.0 as isize && wparam.0 == 1 {
+                            if let Some(turn_id) = view.control_turn.borrow().as_ref() {
+                                protocol::emit(
+                                    json!({ "event": "control-stop", "viewId": view.id, "turnId": turn_id }),
+                                );
+                            }
+                        }
+                    }
+                    Ok(())
                 }
                 WM_DPICHANGED if view.popup => {
                     let rect = &*(lparam.0 as *const RECT);

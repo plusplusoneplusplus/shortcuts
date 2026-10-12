@@ -117,6 +117,7 @@ export interface QueueSnapshot {
 export type ServerMessage =
     | { type: 'browser-command'; request: BrowserCommandRequest }
     | { type: 'browser-command-cancel'; id: string }
+    | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string }
     | { type: 'welcome'; clientId: string; timestamp: number }
     | { type: 'pong' }
     | { type: 'process-added'; process: ProcessSummary }
@@ -293,6 +294,9 @@ export class ProcessWebSocketServer {
      * Broadcast a process event to connected clients, applying workspace filtering.
      */
     broadcastProcessEvent(message: ServerMessage): void {
+        if (message.type === 'process-updated' && ['completed', 'cancelled', 'failed', 'cancelling'].includes(message.process.status)) {
+            this.browserControl.finishProcess(message.process.workspaceId ?? '', message.process.id);
+        }
         const data = JSON.stringify(message);
         const eventWorkspaceId = this.getMessageWorkspaceId(message);
 

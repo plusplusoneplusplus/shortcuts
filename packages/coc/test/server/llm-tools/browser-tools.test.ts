@@ -20,6 +20,17 @@ function harness(stateStore = new BrowserToolStateStore(), workspaceId = 'worksp
 }
 
 describe('compact browser tool', () => {
+    it('uses one controlling-turn token across command signals and a fresh token for follow-up factories', async () => {
+        const execute = vi.fn<BrowserControlRuntime['execute']>(async () => ({ text: 'fixture', textTotal: 7 }));
+        const deps = { workspaceId: 'w', processId: 'p', runtime: { getEnabled: () => true, execute }, stateStore: new BrowserToolStateStore() };
+        const first = createBrowserTool(deps);
+        await first.handler({ action: 'read' }, { ...invocation, signal: new AbortController().signal });
+        await first.handler({ action: 'read' }, { ...invocation, signal: new AbortController().signal });
+        const next = createBrowserTool(deps);
+        await next.handler({ action: 'read' });
+        expect(execute.mock.calls[0][5]).toBe(execute.mock.calls[1][5]);
+        expect(execute.mock.calls[0][5]).not.toBe(execute.mock.calls[2][5]);
+    });
     it('measures one tool description/schema under the fixed 1600-character budget', () => {
         const { tool } = harness();
         expect(tool.name).toBe('browser');
@@ -34,7 +45,7 @@ describe('compact browser tool', () => {
         const h = harness();
         const result = await h.call({ action: 'snapshot' });
         expect(result).toEqual({ resultType: 'success', textResultForLlm: 'e1 button "Save"' });
-        expect(h.execute).toHaveBeenCalledWith('workspace-a', 'process-a', { action: 'snapshot' }, undefined, undefined);
+        expect(h.execute).toHaveBeenCalledWith('workspace-a', 'process-a', { action: 'snapshot' }, undefined, undefined, expect.any(String));
     });
 
     it('executes without a browser-mode guard inside the enabled feature', async () => {

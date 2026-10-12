@@ -8,7 +8,7 @@ import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
@@ -27,7 +27,8 @@ let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
 const controlRequests = new Map<number, Map<string, AbortController>>();
 
-function cancelControl(ownerId: number): void {
+function cancelControl(ownerId: number, includeOwned = true): void {
+    manager?.finishControl(ownerId, undefined, includeOwned);
     for (const controller of controlRequests.get(ownerId)?.values() ?? []) controller.abort(new Error('CoC desktop window closed or workspace changed during browser command'));
     controlRequests.delete(ownerId);
 }
@@ -59,6 +60,11 @@ function wireOwner(window: BrowserWindow): void {
     window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
         if (isMainFrame && !isInPlace) { cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.reloadOwner(id).catch(failed); }
     });
+    window.webContents.on('render-process-gone', () => {
+        cancelControl(id);
+        manager?.bindControlScope(id, null, null);
+        void manager?.reloadOwner(id).catch(failed);
+    });
     window.once('closed', () => { cancelControl(id); manager?.bindControlScope(id, null, null); void manager?.closeOwner(id).catch(failed); owners.delete(id); });
 }
 
@@ -84,7 +90,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         savePageZoom: percent => writeBrowserPageZoom(dataDir, percent),
         send: (id, channel, payload) => {
             const window = owners.get(id);
-            if (!window || window.isDestroyed() || window.webContents.isDestroyed()) { return; }
+            if (!window || window.isDestroyed() || window.webContents.isDestroyed() || !isBrowserEmbedder(window.webContents)) { return; }
             if (channel === BROWSER_CONTROL_REVEAL_CHANNEL) {
                 if (!isBrowserEmbedder(window.webContents)) return;
                 window.show();
@@ -103,7 +109,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
     ipcMain.handle(BROWSER_CONTROL_SCOPE_CHANNEL, (event, workspaceId: unknown, sessionKey: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
-        cancelControl(event.sender.id);
+        cancelControl(event.sender.id, false);
         manager!.bindControlScope(event.sender.id, workspaceId, sessionKey);
         return { ownerId: event.sender.id };
     });
@@ -131,6 +137,14 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.on(BROWSER_CONTROL_CANCEL_CHANNEL, (event, id: unknown) => {
         if (event.senderFrame !== event.sender.mainFrame || !isBrowserEmbedder(event.sender) || !ownWindow(event.sender) || typeof id !== 'string') return;
         controlRequests.get(event.sender.id)?.get(id)?.abort(new Error('Browser command cancelled'));
+    });
+    ipcMain.on(BROWSER_CONTROL_FINISH_CHANNEL, (event, turnId: unknown, routingRef: unknown) => {
+        if (!historyWindow(event) || (turnId !== undefined && (typeof turnId !== 'string' || !turnId || turnId.length > 512))) return;
+        if (routingRef !== undefined && (typeof routingRef !== 'string' || !routingRef || routingRef.length > 512)) return;
+        manager!.finishControl(event.sender.id, turnId as string | undefined, true, routingRef as string | undefined);
+    });
+    ipcMain.on(BROWSER_CONTROL_VISIBLE_CHANNEL, (event, visible: unknown, routingRef: unknown) => {
+        if (historyWindow(event) && typeof visible === 'boolean' && typeof routingRef === 'string') manager!.setControlVisible(event.sender.id, visible, routingRef);
     });
     const historyHandler = (operation: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>) =>
         async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {

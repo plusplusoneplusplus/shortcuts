@@ -7,6 +7,19 @@ import {
 afterEach(() => { clearBrowserControlActivities('workspace-a'); clearBrowserControlActivities('workspace-b'); });
 
 describe('browser controlling turn ownership', () => {
+    it('does not let old-turn clears or late starts erase or restore a follow-up badge', () => {
+        const activity = { workspaceId: 'workspace-a', processId: 'p', tabId: 'tab-a' };
+        startBrowserControlActivity({ ...activity, turnId: 'old-token' });
+        finishBrowserControlActivity('workspace-a', 'p', undefined, 'old-token');
+        expect(startBrowserControlActivity({ ...activity, turnId: 'new-token' })).toBe(true);
+        finishBrowserControlActivity('workspace-a', 'p', undefined, 'old-token');
+        expect(getBrowserControlActivity('workspace-a', 'tab-a')?.turnId).toBe('new-token');
+        window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'process-updated', process: { id: 'p', workspaceId: 'workspace-a', status: 'completed' } },
+        }));
+        expect(getBrowserControlActivity('workspace-a', 'tab-a')?.turnId).toBe('new-token');
+        expect(startBrowserControlActivity({ ...activity, turnId: 'old-token' })).toBe(false);
+    });
     it.each([null, 'remote:owner:workspace-a'])('retains explicit routing owner %s between commands and tab updates', routingRef => {
         const activity = { workspaceId: 'workspace-a', processId: 'turn-a', tabId: 'tab-a', routingRef };
         startBrowserControlActivity(activity);

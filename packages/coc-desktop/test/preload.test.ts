@@ -141,6 +141,10 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-command', request);
         control.cancel('r');
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-cancel', 'r');
+        control.setVisible(true, 'remote:server:w');
+        expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-visible', true, 'remote:server:w');
+        control.finish(undefined, 'remote:server:w');
+        expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-finish', undefined, 'remote:server:w');
         const callback = vi.fn();
         const unsubscribe = control.onReveal(callback);
         expect(on).toHaveBeenLastCalledWith('coc-desktop:browser-control-reveal', expect.any(Function));

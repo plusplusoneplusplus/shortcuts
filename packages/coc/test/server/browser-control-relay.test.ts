@@ -10,6 +10,21 @@ const enabled = () => { const relay = new BrowserControlRelay(); relay.setEnable
 afterEach(() => vi.useRealTimers());
 
 describe('browser control relay', () => {
+    it('retains one turn identity across routing windows and sends terminal clears even after the gate switches off', async () => {
+        const relay = enabled(), a = client('a'), b = client('b');
+        for (const target of [a, b]) {
+            relay.advertise(target, 'w', true);
+            const result = relay.execute('w', 'p', { action: 'snapshot' }, 't1:view', undefined, 'turn');
+            expect(request(target).turnId).toBe('turn');
+            relay.reply(target, { id: request(target).id, ok: true, result: { elements: [] } });
+            await result;
+        }
+        relay.setEnabledGetter(() => false);
+        relay.finishProcess('w', 'p');
+        for (const target of [a, b]) expect(JSON.parse(target.send.mock.calls.at(-1)![0])).toEqual({
+            type: 'browser-turn-finished', workspaceId: 'w', processId: 'p', turnId: 'turn',
+        });
+    });
     it('accepts the raw subtree interactive baseline and paged read metadata, rejecting malformed extensions', async () => {
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);
@@ -88,9 +103,13 @@ describe('browser control relay', () => {
         relay.advertise(a, 'w', true);
         const result = relay.execute('w', 'p', { action: 'wait', ms: 5 }, undefined, controller.signal);
         const id = request(a).id;
+        const turnId = request(a).turnId;
         controller.abort(new Error('Stopped'));
         await expect(result).rejects.toThrow('Stopped');
         expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id });
+        expect(a.send.mock.calls.map(([data]) => JSON.parse(data))).toContainEqual({
+            type: 'browser-turn-finished', workspaceId: 'w', processId: 'p', turnId,
+        });
         await expect(relay.execute('w', 'p', { action: 'tabs' }, undefined, controller.signal)).rejects.toThrow('Stopped');
         const inflight = relay.execute('w', 'p', { action: 'tabs' });
         const nextId = request(a).id;

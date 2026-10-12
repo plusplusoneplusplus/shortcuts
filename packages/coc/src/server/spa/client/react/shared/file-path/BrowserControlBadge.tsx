@@ -3,6 +3,7 @@ import { getSpaCocClient, getCocClientFor } from '../../api/cocClient';
 import { useCocClient, useCloneBaseUrl } from '../../repos/cloneRouting';
 import { useBrowserToolEnabled } from '../../features/chat/hooks/useBrowserMode';
 import { finishBrowserControlActivity, getBrowserControlActivity, subscribeBrowserControlActivity } from './browser-control-activity';
+import { desktopBrowserBridge } from './browser-bridge';
 
 export function BrowserControlBadge({ workspaceId, tabId, routingRef }: {
     workspaceId: string;
@@ -35,7 +36,8 @@ export function BrowserControlBadge({ workspaceId, tabId, routingRef }: {
         setError(null);
         try {
             await client.processes.cancel(processId, { workspace: workspaceId });
-            finishBrowserControlActivity(workspaceId, processId, baseUrl);
+            if (activity.turnId) desktopBrowserBridge()?.control?.finish?.(activity.turnId);
+            finishBrowserControlActivity(workspaceId, processId, baseUrl, activity.turnId);
         } catch {
             setError('Could not stop browser control. Try again.');
         } finally {

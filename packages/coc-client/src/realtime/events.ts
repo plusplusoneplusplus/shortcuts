@@ -4,7 +4,8 @@ import type { BrowserCommandRequest, BrowserCommandReply } from '../browser-cont
 
 export type BrowserControlServerEvent =
   | { type: 'browser-command'; request: BrowserCommandRequest }
-  | { type: 'browser-command-cancel'; id: string };
+  | { type: 'browser-command-cancel'; id: string }
+  | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string };
 export type BrowserControlClientEvent =
   | { type: 'browser-capability'; workspaceId: string; focused: boolean }
   | { type: 'browser-capability-clear' }

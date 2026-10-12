@@ -54,6 +54,15 @@ function harness(redirectTo?: string) {
 }
 
 describe('main browser control scope and selection', () => {
+    it('lets concurrent conversations alternate a shared tab without marking the displaced conversation finished', async () => {
+        const h = harness();
+        const opened = await h.run({ action: 'open', url: 'https://fixture.test/' }, undefined, 'conversation-a');
+        await h.run({ action: 'select', tab: opened.tab! }, undefined, 'conversation-b');
+        await expect(h.run({ action: 'read' }, opened.tab, 'conversation-a')).resolves.toMatchObject({ text: '# Fixture\n\nContent' });
+        await expect(h.run({ action: 'read' }, opened.tab, 'conversation-b')).resolves.toMatchObject({ text: '# Fixture\n\nContent' });
+        await h.manager.dispose();
+    });
+
     it('does not navigate a newly opened redirected tab twice', async () => {
         const h = harness('https://fixture.test/destination');
         const opened = await h.run({ action: 'open', url: 'https://fixture.test/start' });

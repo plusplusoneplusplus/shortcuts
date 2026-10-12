@@ -68,6 +68,10 @@ export interface DesktopBrowserBridge {
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
         execute(request: BrowserCommandRequest): Promise<BrowserCommandResult>;
         cancel(id: string): void;
+        finish?(turnId?: string, routingRef?: string): void;
+        setVisible?(visible: boolean, routingRef: string): void;
+        onActivity?(callback: (event: BrowserControlActivityEvent) => void): () => void;
+        onStop?(callback: (event: BrowserControlActivityEvent) => void): () => void;
         onFocused?(callback: () => void): () => void;
         onReveal(callback: (event: BrowserControlReveal) => void): () => void;
     };
@@ -103,11 +107,24 @@ export interface DesktopBrowserBridge {
 }
 
 export interface BrowserControlReveal {
+    routingOwnerId?: number;
     workspaceId: string;
     processId: string;
     viewId: string;
     url?: string;
     routingRef?: string;
+    turnId?: string;
+}
+
+export interface BrowserControlActivityEvent {
+    routingOwnerId?: number;
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    routingRef: string;
+    viewId: string;
+    active: boolean;
+    finished?: boolean;
 }
 
 /** Event a chat web-link click sends to ask the right panel for a browser tab. */

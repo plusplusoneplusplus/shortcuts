@@ -6,33 +6,180 @@ import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/s
 import type { BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
 import { renderHook, cleanup } from '@testing-library/react';
 import { useBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
-import { getBrowserControlActivity } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
+import { getBrowserControlActivity, clearBrowserControlActivities } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
+import { applyRuntimeConfigPatch, _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
+const clients = vi.hoisted(() => ({
+    cancel: vi.fn(async () => {}), remoteCancel: vi.fn(async () => {}),
+    config: vi.fn(async (_workspace?: string) => ({ tools: [{ name: 'browser' }], disabledLlmTools: [] as string[] })),
+    remoteConfig: vi.fn(async (_workspace?: string) => ({ tools: [{ name: 'browser' }], disabledLlmTools: [] as string[] })),
+}));
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({ processes: { cancel: clients.cancel }, preferences: { getLlmToolsConfig: clients.config } }),
+    getCocClientFor: () => ({ processes: { cancel: clients.remoteCancel }, preferences: { getLlmToolsConfig: clients.remoteConfig } }),
+}));
 
 afterEach(() => {
     cleanup();
     delete (window as any).cocDesktop;
     registerCloneBaseUrls([]);
     clearUnifiedPanelState();
+    for (const workspace of ['w', 'other']) {
+        clearBrowserControlActivities(workspace);
+        clearBrowserControlActivities(workspace, 'http://127.0.0.1:4500');
+    }
+    _resetRuntimeConfig();
+    clients.config.mockReset().mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: [] });
+    clients.remoteConfig.mockReset().mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: [] });
     vi.restoreAllMocks();
 });
 
-function harness(baseUrl?: string) {
+function harness(baseUrl?: string, modern = false) {
     const send = vi.fn(() => true);
     let reveal!: (event: any) => void;
+    let activity!: (event: any) => void;
+    let stop!: (event: any) => void;
     const control = {
         bindScope: vi.fn(async (): Promise<{ ownerId: number } | void> => {}),
         execute: vi.fn(async (): Promise<BrowserCommandResult> => ({ tabs: [] })),
         cancel: vi.fn(),
         onReveal: vi.fn((handler: (event: any) => void) => { reveal = handler; return vi.fn(); }),
+        ...(modern ? {
+            finish: vi.fn(), setVisible: vi.fn(),
+            onActivity: vi.fn((handler: (event: any) => void) => { activity = handler; return vi.fn(); }),
+            onStop: vi.fn((handler: (event: any) => void) => { stop = handler; return vi.fn(); }),
+        } : {}),
     };
     (window as any).cocDesktop = { browser: { control } };
     const relay = createBrowserSocketRelay({ send }, baseUrl);
-    return { relay, control, send, reveal: (event: any) => reveal(event) };
+    return { relay, control, send, reveal: (event: any) => reveal(event), activity: (event: any) => activity(event), stop: (event: any) => stop(event) };
 }
 const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } };
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 describe('SPA browser socket relay', () => {
+    it('isolates simultaneous local/clone visibility and disconnect clears on one trusted bridge', async () => {
+        const baseUrl = 'http://127.0.0.1:4500', cloneRef = 'remote:server:w';
+        registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+        applyRuntimeConfigPatch({ browserControlEnabled: true });
+        const local = harness(undefined, true);
+        const visibility = new Map<string, boolean>();
+        local.control.setVisible!.mockImplementation((visible: boolean, ref: string) => { visibility.set(ref, visible); });
+        await local.relay.update('w'); local.relay.onOpen(); await tick();
+        expect(visibility.get('w')).toBe(true);
+        const remote = createBrowserSocketRelay({ send: vi.fn(() => true) }, baseUrl);
+        await remote.update('w'); remote.onOpen(); await tick();
+        expect(visibility.get('w')).toBe(true);
+        expect(local.control.setVisible).not.toHaveBeenCalledWith(false);
+        clients.remoteConfig.mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: ['browser'] });
+        await remote.update(cloneRef); await tick();
+        expect(visibility.get(cloneRef)).toBe(false);
+        expect(visibility.get('w')).toBe(true);
+        applyRuntimeConfigPatch({ browserControlEnabled: false });
+        clients.remoteConfig.mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: [] });
+        remote.onMessage({ type: 'config-changed' }); await tick();
+        expect(visibility.get('w')).toBe(false);
+        expect(visibility.get(cloneRef)).toBe(true);
+        local.control.finish!.mockClear();
+        local.relay.onClose();
+        expect(visibility.get(cloneRef)).toBe(true);
+        expect(local.control.finish).toHaveBeenCalledExactlyOnceWith(undefined, 'w');
+        local.relay.dispose(); remote.dispose();
+    });
+    it('refreshes inactive actual-owner activity scopes using their source preferences and drops stale config replies', async () => {
+        const baseUrl = 'http://127.0.0.1:4500';
+        registerCloneBaseUrls([
+            { workspaceId: 'w', serverId: 'server', baseUrl },
+            { workspaceId: 'other', serverId: 'server', baseUrl },
+        ]);
+        const h = harness(baseUrl, true);
+        await h.relay.update('remote:server:w'); h.relay.onOpen();
+        h.reveal({ workspaceId: 'other', processId: 'other-process', viewId: 'owned', routingRef: 'remote:server:other',
+            turnId: 'incoming', url: 'https://fixture.test/' });
+        await h.relay.update(null); await tick();
+        clients.remoteConfig.mockClear();
+        clients.remoteConfig.mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: ['browser'] });
+        h.relay.onMessage({ type: 'config-changed' }); await tick();
+        expect(clients.remoteConfig).toHaveBeenCalledExactlyOnceWith('other');
+        expect(h.control.setVisible).toHaveBeenLastCalledWith(false, 'remote:server:other');
+        let resolve!: (config: { tools: { name: string }[]; disabledLlmTools: string[] }) => void;
+        clients.remoteConfig.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        h.relay.onMessage({ type: 'config-changed' });
+        h.relay.onClose();
+        h.control.setVisible!.mockClear();
+        resolve({ tools: [{ name: 'browser' }], disabledLlmTools: [] }); await tick();
+        expect(h.control.setVisible).not.toHaveBeenCalled();
+        expect(clients.config).not.toHaveBeenCalled();
+        h.relay.dispose();
+    });
+    it('receives actual-owner activity and follow-ups even while its own source socket is transiently disconnected', async () => {
+        const h = harness(undefined, true);
+        await h.relay.update('w'); h.relay.onOpen();
+        const event = { workspaceId: 'w', processId: 'p', viewId: 'owned', routingRef: 'w', turnId: 'actual-owner', active: true };
+        h.reveal({ ...event, url: 'https://fixture.test/' });
+        h.activity(event);
+        const tab = readUnifiedPanelState('w').workspaceTabs[0];
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe('actual-owner');
+        h.activity({ ...event, turnId: 'follow-up' });
+        h.activity({ ...event, active: false });
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe('follow-up');
+        h.relay.onMessage({ type: 'browser-turn-finished', workspaceId: 'w', processId: 'p', turnId: 'actual-owner' });
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe('follow-up');
+        h.relay.onClose();
+        h.activity({ ...event, turnId: 'follow-up' });
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe('follow-up');
+        h.reveal({ ...event, turnId: 'foreign-next', url: 'https://fixture.test/' });
+        h.activity({ ...event, turnId: 'foreign-next' });
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe('foreign-next');
+        expect(h.control.finish).toHaveBeenCalled();
+        h.relay.dispose();
+        expect(getBrowserControlActivity('w', tab.id)).toBeNull();
+    });
+    it('finishes only its own routed activity on socket disconnect and rejects late trusted events for that turn', async () => {
+        const h = harness(undefined, true);
+        await h.relay.update('w'); h.relay.onOpen();
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'own-routing-turn' } });
+        const event = { workspaceId: 'w', processId: 'p', viewId: 'owned', routingRef: 'w', turnId: 'own-routing-turn', active: true };
+        h.reveal({ ...event, url: 'https://fixture.test/' });
+        h.activity(event);
+        const tab = readUnifiedPanelState('w').workspaceTabs[0];
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe(event.turnId);
+        h.relay.onClose();
+        h.reveal({ ...event, url: 'https://fixture.test/' });
+        h.activity(event);
+        expect(getBrowserControlActivity('w', tab.id)).toBeNull();
+        h.relay.dispose();
+    });
+    it('uses main routing ownership rather than stale local command bookkeeping during disconnect', async () => {
+        const h = harness(undefined, true);
+        h.control.bindScope.mockResolvedValueOnce({ ownerId: 2 });
+        await h.relay.update('w'); h.relay.onOpen();
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'continuing-turn' } });
+        const event = { workspaceId: 'w', processId: 'p', viewId: 'owned', routingRef: 'w',
+            turnId: 'continuing-turn', routingOwnerId: 1, active: true };
+        h.reveal({ ...event, url: 'https://fixture.test/' });
+        h.activity(event);
+        const tab = readUnifiedPanelState('w').workspaceTabs[0];
+        h.relay.onClose();
+        expect(getBrowserControlActivity('w', tab.id)?.turnId).toBe('continuing-turn');
+        h.relay.dispose();
+    });
+    it('routes trusted native Stop only to the source clone conversation and rejects stale/foreign tokens', async () => {
+        const baseUrl = 'http://127.0.0.1:4500';
+        registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+        clients.remoteCancel.mockClear(); clients.cancel.mockClear();
+        const h = harness(baseUrl, true);
+        await h.relay.update('remote:server:w'); h.relay.onOpen();
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'native-turn' } });
+        const event = { workspaceId: 'w', processId: 'p', viewId: 'native-popup', routingRef: 'remote:server:w', turnId: 'native-turn', active: true };
+        h.stop({ ...event, routingRef: 'w' });
+        h.stop({ ...event, turnId: 'old' });
+        expect(clients.remoteCancel).not.toHaveBeenCalled();
+        h.stop(event); await tick();
+        expect(clients.remoteCancel).toHaveBeenCalledExactlyOnceWith('p', { workspace: 'w' });
+        expect(clients.cancel).not.toHaveBeenCalled();
+        expect(h.control.finish).toHaveBeenCalledWith('native-turn');
+        h.relay.dispose();
+    });
     it('reports denied scope binding without private details and keeps capability unavailable', async () => {
         const h = harness();
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

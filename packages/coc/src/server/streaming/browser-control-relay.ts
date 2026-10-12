@@ -23,6 +23,19 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private sequence = 0;
     private readonly clients = new Map<string, Capability>();
     private readonly pending = new Map<string, Pending>();
+    private readonly turns = new WeakMap<AbortSignal, string>();
+    private readonly activeTurns = new Map<string, { turnId: string; clients: Set<BrowserRelayClient> }>();
+
+    finishProcess(workspaceId: string, processId: string): void {
+        const key = JSON.stringify([workspaceId, processId]);
+        const turn = this.activeTurns.get(key);
+        if (!turn) return;
+        this.activeTurns.delete(key);
+        for (const client of turn.clients) {
+            try { client.send(JSON.stringify({ type: 'browser-turn-finished', workspaceId, processId, turnId: turn.turnId })); }
+            catch { /* disconnected */ }
+        }
+    }
 
     setEnabledGetter(getEnabled: () => boolean): void { this.enabled = getEnabled; }
     getEnabled(): boolean { return this.enabled(); }
@@ -39,6 +52,10 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 
     disconnect(client: BrowserRelayClient): void {
         this.clients.delete(client.id);
+        for (const [key, turn] of this.activeTurns) {
+            turn.clients.delete(client);
+            if (!turn.clients.size) this.activeTurns.delete(key);
+        }
         for (const pending of [...this.pending.values()]) {
             if (pending.client === client) pending.finish(new Error('CoC desktop window disconnected during browser command'));
         }
@@ -57,7 +74,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         }
     }
 
-    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal): Promise<BrowserCommandResult> {
+    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string): Promise<BrowserCommandResult> {
         if (!this.getEnabled()) return Promise.reject(new Error('Browser control is disabled'));
         if (signal?.aborted) return Promise.reject(signal.reason);
         const selected = [...this.clients.values()].filter(client => client.workspaceId === workspaceId)
@@ -65,11 +82,26 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         if (!selected) return Promise.reject(new Error('No CoC desktop window is open for this workspace'));
         const client = selected.client;
         const id = randomUUID();
+        let turnId = controllingTurnId ?? (signal && this.turns.get(signal));
+        if (!turnId) {
+            turnId = randomUUID();
+            if (signal) this.turns.set(signal, turnId);
+        }
+        const turnKey = JSON.stringify([workspaceId, processId]);
+        const previous = this.activeTurns.get(turnKey);
+        if (previous && previous.turnId !== turnId) this.finishProcess(workspaceId, processId);
+        const turn = this.activeTurns.get(turnKey) ?? { turnId, clients: new Set<BrowserRelayClient>() };
+        turn.clients.add(client);
+        this.activeTurns.set(turnKey, turn);
         return new Promise((resolve, reject) => {
             const cancel = () => {
                 try { client.send(JSON.stringify({ type: 'browser-command-cancel', id })); } catch { /* disconnected */ }
             };
-            const abort = () => { cancel(); finish(signal?.reason ?? new Error('Browser command cancelled')); };
+            const abort = () => {
+                if (this.activeTurns.get(turnKey)?.turnId === turnId) this.finishProcess(workspaceId, processId);
+                cancel();
+                finish(signal?.reason ?? new Error('Browser command cancelled'));
+            };
             const timer = setTimeout(() => {
                 cancel();
                 finish(new Error('Browser command timed out after 30s'));
@@ -83,7 +115,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             };
             this.pending.set(id, { client, finish });
             signal?.addEventListener('abort', abort, { once: true });
-            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, workspaceId, processId, command, selectedTab } })); }
+            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab } })); }
             catch (error) { finish(error); }
         });
     }

@@ -13,7 +13,7 @@ import type { BrowserControlPage } from './browser-control-page';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab } from '@plusplusoneplusplus/coc-client';
-import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, type BrowserControlActivityEvent, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
     ownerId: number;
@@ -29,6 +29,7 @@ interface Entry {
     startupFailed?: boolean;
     control?: BrowserControlQueue;
     popout?: boolean;
+    activity?: BrowserControlActivityEvent & { routingOwnerId: number };
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -51,6 +52,8 @@ export interface BrowserManagerOptions {
 
 export class BrowserHostManager {
     private readonly controlScopes = new Map<number, { workspaceId: string; sessionKey: string }>();
+    private readonly finishedTurns = new Map<number, Set<string>>();
+    private readonly visibleControl = new Map<number, Map<string, boolean>>();
     private readonly owners = new Map<number, Map<string, Entry>>();
     private readonly clearing = new Set<BrowserEngine>();
     private disposed = false;
@@ -59,8 +62,85 @@ export class BrowserHostManager {
 
     constructor(private readonly options: BrowserManagerOptions) {}
 
+    finishControl(ownerId: number, turnId?: string, includeOwned = true, routingRef?: string): void {
+        if (!turnId) {
+            if (routingRef) this.visibleControl.get(ownerId)?.delete(routingRef);
+            else this.visibleControl.delete(ownerId);
+        }
+        if (turnId) {
+            const finished = this.finishedTurns.get(ownerId) ?? new Set<string>();
+            finished.add(turnId);
+            this.finishedTurns.set(ownerId, finished);
+        }
+        // Target ownership does not imply turn ownership during anonymous source teardown.
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (entry.activity && (entry.activity.routingOwnerId === ownerId || !!turnId && includeOwned && entry.ownerId === ownerId)
+                && (!routingRef || entry.activity.routingRef === routingRef) && (!turnId || entry.activity.turnId === turnId)) {
+                this.clearControlEntry(entry);
+            }
+        }
+    }
+
+    setControlVisible(ownerId: number, visible: boolean, routingRef: string): void {
+        if (!isValidBrowserSessionKey(routingRef)) return;
+        const scopes = this.visibleControl.get(ownerId) ?? new Map<string, boolean>();
+        scopes.set(routingRef, visible);
+        this.visibleControl.set(ownerId, scopes);
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (entry.activity?.routingOwnerId === ownerId && entry.activity.routingRef === routingRef) this.nativeActivity(entry);
+        }
+    }
+
+    private nativeActivity(entry: Entry): void {
+        let appliedTurnId: string | null = null;
+        void Promise.resolve().then(() => {
+            const activity = entry.activity;
+            appliedTurnId = activity && this.visibleControl.get(activity.routingOwnerId)?.get(activity.routingRef) === true ? activity.turnId : null;
+            return entry.view?.setControlActivity?.(appliedTurnId);
+        }).catch(error => {
+            console.error('[coc-desktop] Browser control chrome failed:', error);
+            if (appliedTurnId) this.stopControl(entry, appliedTurnId);
+        });
+    }
+
+    private clearControlEntry(entry: Entry, finished = true): void {
+        const activity = entry.activity;
+        if (!activity) return;
+        if (finished) {
+            const turns = this.finishedTurns.get(activity.routingOwnerId) ?? new Set<string>();
+            turns.add(activity.turnId);
+            this.finishedTurns.set(activity.routingOwnerId, turns);
+        }
+        entry.activity = undefined;
+        this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
+        this.nativeActivity(entry);
+    }
+
+    private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest): void {
+        const turnId = request.turnId ?? request.processId;
+        if (this.finishedTurns.get(routingOwnerId)?.has(turnId)) throw new Error('Browser conversation turn has finished');
+        for (const entries of this.owners.values()) for (const other of entries.values()) {
+            if (other !== entry && other.activity?.routingRef === entry.sessionKey && other.activity.processId === request.processId) this.clearControlEntry(other, false);
+        }
+        if (entry.activity && entry.activity.turnId !== turnId) this.clearControlEntry(entry, entry.activity.processId === request.processId);
+        entry.activity = { workspaceId: request.workspaceId, processId: request.processId, turnId,
+            routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId };
+        this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, entry.activity);
+        this.nativeActivity(entry);
+    }
+
+    private stopControl(entry: Entry, turnId: string): void {
+        const activity = entry.activity;
+        if (!activity || activity.turnId !== turnId || this.visibleControl.get(activity.routingOwnerId)?.get(activity.routingRef) !== true) return;
+        this.options.send(activity.routingOwnerId, BROWSER_CONTROL_STOP_CHANNEL, activity);
+    }
+
     bindControlScope(ownerId: number, workspaceId: unknown, sessionKey: unknown): void {
-        if (workspaceId === null && sessionKey === null) { this.controlScopes.delete(ownerId); return; }
+        if (workspaceId === null && sessionKey === null) {
+            this.finishControl(ownerId, undefined, false);
+            this.controlScopes.delete(ownerId);
+            return;
+        }
         if (typeof workspaceId !== 'string' || !isValidBrowserSessionKey(workspaceId) || !isValidBrowserSessionKey(sessionKey)) throw new TypeError('Invalid browser workspace scope');
         this.controlScopes.set(ownerId, { workspaceId, sessionKey });
     }
@@ -77,6 +157,7 @@ export class BrowserHostManager {
     async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
         signal?.throwIfAborted();
+        if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
         let entries = this.scopedEntries(ownerId, request.workspaceId);
         const command = request.command;
         if (command.action === 'tabs') {
@@ -102,7 +183,7 @@ export class BrowserHostManager {
             const opened = this.open(ownerId, viewId, command.url!, scope.sessionKey);
             // Publish through the existing unified panel before Electron waits for guest adoption.
             this.options.send(ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
-                workspaceId: request.workspaceId, processId: request.processId, viewId, url: command.url, routingRef: scope.sessionKey,
+                workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId, url: command.url, routingRef: scope.sessionKey, routingOwnerId: ownerId,
             });
             const result = await opened;
             if (!result.ok) throw new Error(result.message ?? result.reason);
@@ -112,15 +193,15 @@ export class BrowserHostManager {
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
-        if (command.action === 'select' || command.action === 'open') {
-            if (selected.popout) await (await selected.ready).focus();
-            else this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
-                workspaceId: request.workspaceId, processId: request.processId, viewId: selected.viewId,
-                url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey,
-            });
-        }
+        if (!selected.popout) this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
+            workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId: selected.viewId, routingOwnerId: ownerId,
+            url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey,
+        });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
             this.scopedEntries(ownerId, request.workspaceId);
+            if (selected.popout) await view.focus();
+            activeSignal.throwIfAborted();
+            this.activateControl(selected, ownerId, request);
             switch (command.action) {
                 case 'open':
                     if (!created && view.snapshot().url !== command.url) await view.navigate(command.url!);
@@ -314,6 +395,7 @@ export class BrowserHostManager {
             state: state => {
                 if (entry.closed) return;
                 if (state.errorCode === 'runtime-crashed') {
+                    this.clearControlEntry(entry, false);
                     entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
                 }
                 this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state));
@@ -359,12 +441,17 @@ export class BrowserHostManager {
             controlPopoutClosed: viewId => {
                 const popout = this.entry(entry.ownerId, viewId);
                 if (!popout?.popout) return;
+                this.clearControlEntry(popout, false);
                 popout.closed = true;
                 popout.control?.cancel(new Error('Browser popout closed'));
                 this.owners.get(entry.ownerId)?.delete(viewId);
             },
             controlFocused: () => {
                 if (!entry.closed && entry.sourceKind === 'url') this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+            },
+            controlStopRequested: (viewId, turnId) => {
+                const popout = this.entry(entry.ownerId, viewId);
+                if (popout?.popout && !popout.closed) this.stopControl(popout, turnId);
             },
         });
         if (entry.closed) {
@@ -503,6 +590,7 @@ export class BrowserHostManager {
 
     private async closeEntry(entry: Entry, notify = false): Promise<void> {
         if (!entry || entry.closed) { return; }
+        this.clearControlEntry(entry, false);
         entry.closed = true;
         entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
@@ -517,6 +605,8 @@ export class BrowserHostManager {
     }
 
     async closeOwner(ownerId: number): Promise<void> {
+        this.finishControl(ownerId);
+        this.visibleControl.delete(ownerId);
         this.controlScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
         this.owners.delete(ownerId);

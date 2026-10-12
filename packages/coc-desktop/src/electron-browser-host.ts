@@ -38,6 +38,7 @@ import { authorizeBrowserWebview, isBrowserEmbedder } from './browser-webview-gu
 import { ElectronBrowserCdp } from './electron-browser-cdp';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
+import { browserPopupChrome } from './browser-popup-chrome';
 
 interface BrowserEntry {
     win: BrowserWindow;
@@ -173,6 +174,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
         const viewId = `browser-popout-${randomUUID()}`;
         const contents = popup.webContents;
         const cdp = entry.sink.controlPopoutOpened ? new ElectronBrowserCdp(contents) : undefined;
+        const setControlActivity = browserPopupChrome(popup, turnId => entry.sink.controlStopRequested?.(viewId, turnId));
         contents.setZoomFactor(entry.pageZoom / 100);
         popup.on('focus', () => entry.sink.controlFocused?.());
         entry.sink.controlPopoutOpened?.(viewId, {
@@ -184,6 +186,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
                 loading: !contents.isDestroyed() && contents.isLoading(),
             }),
             cdp: (method, params) => cdp!.send(method, params),
+            setControlActivity,
             waitForControlReady: signal => waitForControlContents(() => contents, () => popup.isDestroyed(), signal),
             navigate: async url => { await contents.loadURL(url); },
             nav: action => {

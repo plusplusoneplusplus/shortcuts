@@ -59,6 +59,7 @@ export interface BrowserCommandResult {
 
 export interface BrowserCommandRequest {
     id: string;
+    turnId?: string;
     workspaceId: string;
     processId: string;
     command: BrowserCommand;
@@ -71,7 +72,7 @@ export type BrowserCommandReply =
 
 export interface BrowserControlRuntime {
     getEnabled(): boolean;
-    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal): Promise<BrowserCommandResult>;
+    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, turnId?: string): Promise<BrowserCommandResult>;
 }
 
 export const BROWSER_TOOL_PARAMETERS = {

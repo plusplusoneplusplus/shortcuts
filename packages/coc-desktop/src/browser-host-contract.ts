@@ -34,6 +34,7 @@ export interface BrowserEventSink {
     controlPopoutOpened?(viewId: string, view: BrowserHostedView): void;
     controlPopoutClosed?(viewId: string): void;
     controlFocused?(): void;
+    controlStopRequested?(viewId: string, turnId: string): void;
 }
 
 export interface BrowserHostedView {
@@ -48,6 +49,8 @@ export interface BrowserHostedView {
     /** URL views only. Shared browser-control logic sends engine-neutral CDP commands. */
     cdp?(method: string, params?: Record<string, unknown>): Promise<unknown>;
     waitForControlReady?(signal: AbortSignal): Promise<void>;
+    /** Trusted native popup chrome only; never injected into the page. */
+    setControlActivity?(turnId: string | null): void | Promise<void>;
     /** Web content only; file previews deliberately omit this capability. */
     setPageZoom?(percent: number): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;

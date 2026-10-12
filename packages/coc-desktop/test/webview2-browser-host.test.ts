@@ -66,6 +66,7 @@ describe('WebView2 owner-scoped native popups', () => {
             state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(),
             controlPopoutOpened: vi.fn((id, popup) => popups.set(id, popup)),
             controlPopoutClosed: vi.fn(id => popups.delete(id)), controlFocused: vi.fn(),
+            controlStopRequested: vi.fn(),
         };
         const host = new WebView2BrowserHost('profile');
         const root = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
@@ -75,6 +76,23 @@ describe('WebView2 owner-scoped native popups', () => {
         const [id, popup] = [...popups][0];
         return { host, root, sink, popups, id, popup, event };
     }
+
+    it('uses an explicit native-only activity command and forwards Stop with its public owner-bound popup id', async () => {
+        const h = await opened();
+        await h.popup.setControlActivity!('turn');
+        expect(mocks.request).toHaveBeenLastCalledWith('control-activity', { viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        expect(h.sink.controlStopRequested).toHaveBeenCalledExactlyOnceWith(h.id, 'turn');
+        await h.popup.setControlActivity!(null);
+        expect(mocks.request).toHaveBeenLastCalledWith('control-activity', { viewId: '7:tab:1:popup:1', turnId: null });
+        mocks.request.mockClear();
+        await h.root.setControlActivity!('turn');
+        expect(mocks.request).not.toHaveBeenCalled();
+        await h.popup.close();
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        expect(h.sink.controlStopRequested).toHaveBeenCalledOnce();
+        await h.host.dispose();
+    });
 
     it('registers correlated native popups and routes control, zoom, navigation and focus to their own handle', async () => {
         const h = await opened();

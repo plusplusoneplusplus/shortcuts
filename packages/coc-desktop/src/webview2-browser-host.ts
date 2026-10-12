@@ -106,6 +106,9 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 if (entry.state.errorCode === 'runtime-crashed') { throw new BrowserHostError('runtime-crashed', entry.state.error ?? 'Browser page crashed.'); }
                 return this.process.request('cdp', { viewId: id, method, params });
             },
+            setControlActivity: turnId => entry.root && this.views.get(id) === entry
+                ? this.process.request('control-activity', { viewId: id, turnId })
+                : undefined,
             importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
@@ -201,6 +204,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         }
         if (message.event === 'control-focused') {
             entry.sink.controlFocused?.();
+            return;
+        }
+        if (message.event === 'control-stop' && entry.root && typeof message.turnId === 'string') {
+            entry.root.sink.controlStopRequested?.(entry.request.viewId, message.turnId);
             return;
         }
         if (message.event === 'state') {

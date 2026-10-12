@@ -32,6 +32,7 @@ pub struct Command {
     pub page_zoom_percent: Option<f64>,
     pub method: Option<String>,
     pub params: Option<serde_json::Map<String, Value>>,
+    pub turn_id: Option<String>,
 }
 
 pub fn cdp_arguments(command: &Command) -> Option<(&str, String)> {
@@ -62,6 +63,50 @@ pub fn cdp_response(id: u64, json: &str) -> std::result::Result<Value, serde_jso
 
 pub fn allowed_page_zoom(percent: f64) -> bool {
     percent.is_finite() && (50.0..=200.0).contains(&percent) && (percent - 50.0) % 25.0 == 0.0
+}
+
+pub fn allowed_control_turn(turn: Option<&str>) -> bool {
+    turn.is_none_or(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
+}
+
+pub fn control_content_top(height: i32, dpi: i32, active: bool) -> i32 {
+    if active {
+        (40 * dpi.max(96) / 96).min(height.max(0))
+    } else {
+        0
+    }
+}
+
+#[cfg(test)]
+mod control_chrome_tests {
+    use super::*;
+
+    #[test]
+    fn trusted_activity_is_explicit_bounded_and_clearable_without_script_or_cdp() {
+        let active: Command = serde_json::from_str(
+            r#"{"id":1,"op":"control-activity","viewId":"7:tab:1:popup:1","turnId":"turn"}"#,
+        )
+        .unwrap();
+        assert_eq!(active.turn_id.as_deref(), Some("turn"));
+        assert!(allowed_control_turn(active.turn_id.as_deref()));
+        let clear: Command = serde_json::from_str(
+            r#"{"id":2,"op":"control-activity","viewId":"7:tab:1:popup:1","turnId":null}"#,
+        )
+        .unwrap();
+        assert!(allowed_control_turn(clear.turn_id.as_deref()));
+        for invalid in ["".to_string(), "x".repeat(513), "line\nbreak".to_string()] {
+            assert!(!allowed_control_turn(Some(&invalid)));
+        }
+    }
+
+    #[test]
+    fn popup_content_reserves_trusted_chrome_at_each_dpi_and_restores_the_full_viewport() {
+        assert_eq!(control_content_top(560, 96, true), 40);
+        assert_eq!(control_content_top(560, 192, true), 80);
+        assert_eq!(control_content_top(20, 192, true), 20);
+        assert_eq!(control_content_top(0, 192, true), 0);
+        assert_eq!(control_content_top(560, 192, false), 0);
+    }
 }
 
 #[derive(Debug, Deserialize)]

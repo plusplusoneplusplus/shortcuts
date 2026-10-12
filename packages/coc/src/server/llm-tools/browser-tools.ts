@@ -1,4 +1,5 @@
 import { defineTool, type Tool, type ToolResultObject } from '@plusplusoneplusplus/coc-agent-sdk';
+import { randomUUID } from 'node:crypto';
 import {
     BROWSER_TOOL_DESCRIPTION, BROWSER_TOOL_PARAMETERS, parseBrowserCommand,
     type BrowserCommand, type BrowserCommandResult, type BrowserControlElement, type BrowserControlRuntime,
@@ -88,6 +89,7 @@ function success(textResultForLlm: string): ToolResultObject {
 }
 
 export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
+    const turnId = randomUUID();
     return defineTool<BrowserCommand>('browser', {
         description: BROWSER_TOOL_DESCRIPTION,
         parameters: BROWSER_TOOL_PARAMETERS,
@@ -100,7 +102,7 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                 if (!deps.runtime.getEnabled()) throw new Error('Browser control is disabled');
                 return await deps.stateStore.run(deps.workspaceId, deps.processId, async state => {
                     signal?.throwIfAborted();
-                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, state.selectedTab, signal);
+                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, state.selectedTab, signal, turnId);
                     signal?.throwIfAborted();
                     if (result.tab) state.selectedTab = result.tab;
                     const tab = result.tab ?? state.selectedTab;

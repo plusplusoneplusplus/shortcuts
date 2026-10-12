@@ -4,10 +4,12 @@ export interface BrowserControlActivity {
     tabId?: string;
     sourceBaseUrl?: string;
     routingRef?: string | null;
+    turnId?: string;
 }
 
 const activities = new Map<string, BrowserControlActivity>();
 const finishedProcesses = new Map<string, { workspaceId: string; sourceBaseUrl?: string }>();
+const finishedTurns = new Set<string>();
 const listeners = new Set<() => void>();
 const key = (workspaceId: string, processId: string, sourceBaseUrl?: string) => JSON.stringify([sourceBaseUrl ?? '', workspaceId, processId]);
 const notify = () => listeners.forEach(listener => listener());
@@ -32,6 +34,8 @@ export function observeBrowserControlProcessUpdate(message: unknown, sourceBaseU
     if (process.status === 'running') {
         resumeBrowserControlActivity(process.workspaceId, process.id, sourceBaseUrl);
     } else if (process.status && ['completed', 'cancelled', 'failed', 'cancelling'].includes(process.status)) {
+        // Tokenized desktop activity settles through the owning relay/main channel.
+        if (activities.get(key(process.workspaceId, process.id, sourceBaseUrl))?.turnId) return;
         finishBrowserControlActivity(process.workspaceId, process.id, sourceBaseUrl);
     }
 }
@@ -50,7 +54,7 @@ export function startBrowserControlActivity(activity: BrowserControlActivity): b
     if (!activity.workspaceId || !activity.processId) return false;
     observeProcessUpdates();
     const id = key(activity.workspaceId, activity.processId, activity.sourceBaseUrl);
-    if (finishedProcesses.has(id)) return false;
+    if (activity.turnId ? finishedTurns.has(key(activity.workspaceId, activity.turnId, activity.sourceBaseUrl)) : finishedProcesses.has(id)) return false;
     const previous = activities.get(id);
     activities.delete(id);
     activities.set(id, {
@@ -63,18 +67,22 @@ export function startBrowserControlActivity(activity: BrowserControlActivity): b
 }
 
 /** Late command responses cannot restore a completed or cancelled turn. */
-export function updateBrowserControlTab(workspaceId: string, processId: string, tabId: string, sourceBaseUrl?: string): void {
+export function updateBrowserControlTab(workspaceId: string, processId: string, tabId: string, sourceBaseUrl?: string, turnId?: string): void {
     const id = key(workspaceId, processId, sourceBaseUrl);
     const activity = activities.get(id);
-    if (!activity || !tabId) return;
+    if (!activity || !tabId || turnId && activity.turnId !== turnId) return;
     activities.delete(id);
     activities.set(id, { ...activity, tabId });
     notify();
 }
 
-export function finishBrowserControlActivity(workspaceId: string, processId: string, sourceBaseUrl?: string): void {
+export function finishBrowserControlActivity(workspaceId: string, processId: string, sourceBaseUrl?: string, turnId?: string): void {
     if (!workspaceId || !processId) return;
     const id = key(workspaceId, processId, sourceBaseUrl);
+    const activity = activities.get(id);
+    const finishedTurnId = turnId ?? activity?.turnId;
+    if (finishedTurnId) finishedTurns.add(key(workspaceId, finishedTurnId, sourceBaseUrl));
+    if (turnId && activity?.turnId !== turnId) return;
     finishedProcesses.set(id, { workspaceId, sourceBaseUrl });
     if (activities.delete(id)) notify();
 }
@@ -82,6 +90,11 @@ export function finishBrowserControlActivity(workspaceId: string, processId: str
 /** Only an authoritative running-process notification begins another turn. */
 export function resumeBrowserControlActivity(workspaceId: string, processId: string, sourceBaseUrl?: string): void {
     finishedProcesses.delete(key(workspaceId, processId, sourceBaseUrl));
+}
+
+export function removeBrowserControlActivity(workspaceId: string, processId: string, sourceBaseUrl: string | undefined, turnId?: string): void {
+    const id = key(workspaceId, processId, sourceBaseUrl);
+    if (activities.get(id)?.turnId === turnId && activities.delete(id)) notify();
 }
 
 export function clearBrowserControlActivities(workspaceId: string, sourceBaseUrl?: string): void {

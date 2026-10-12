@@ -5,7 +5,8 @@ import { validateBrowserUrl } from './browser-view-policy';
 export function validateBrowserCommandRequest(input: unknown): BrowserCommandRequest {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Invalid browser request');
     const request = input as BrowserCommandRequest;
-    if (Object.keys(request).some(key => !['id', 'workspaceId', 'processId', 'command', 'selectedTab'].includes(key))) throw new TypeError('Invalid browser request field');
+    if (Object.keys(request).some(key => !['id', 'turnId', 'workspaceId', 'processId', 'command', 'selectedTab'].includes(key))) throw new TypeError('Invalid browser request field');
+    if (request.turnId !== undefined && (typeof request.turnId !== 'string' || !request.turnId || request.turnId.length > 512)) throw new TypeError('Invalid browser turn');
     for (const key of ['id', 'workspaceId', 'processId'] as const) {
         if (typeof request[key] !== 'string' || !request[key] || request[key].length > 512) throw new TypeError(`Invalid browser ${key}`);
     }
@@ -25,3 +26,18 @@ export const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-comm
 export const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 export const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
 export const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
+export const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
+export const BROWSER_CONTROL_FINISH_CHANNEL = 'coc-desktop:browser-control-finish';
+export const BROWSER_CONTROL_STOP_CHANNEL = 'coc-desktop:browser-control-stop';
+export const BROWSER_CONTROL_VISIBLE_CHANNEL = 'coc-desktop:browser-control-visible';
+
+export interface BrowserControlActivityEvent {
+    routingOwnerId?: number;
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    routingRef: string;
+    viewId: string;
+    active: boolean;
+    finished?: boolean;
+}

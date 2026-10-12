@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
-import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL } from '../src/browser-control-command';
+import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
@@ -66,6 +66,25 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    it('delivers cross-owner activity and accepts lifecycle clears only from exact registered SPA main frames', async () => {
+        const routing = owner(1), target = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, routing.event, 'w', 'w');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, target.event, 'owned', 'https://fixture.test/', 'w');
+        const request = { id: 'r', turnId: 'turn', workspaceId: 'w', processId: 'p', selectedTab: 't2:owned', command: { action: 'snapshot' } };
+        await invoke(BROWSER_CONTROL_COMMAND_CHANNEL, routing.event, request);
+        expect(target.contents.send).toHaveBeenCalledWith(BROWSER_CONTROL_ACTIVITY_CHANNEL, expect.objectContaining({ active: true, turnId: 'turn', viewId: 'owned' }));
+        target.contents.send.mockClear();
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, target.event, 'w', 'w');
+        expect(target.contents.send).not.toHaveBeenCalled();
+        for (const event of [foreign.event, { ...routing.event, senderFrame: {} }]) {
+            mocks.events.get(BROWSER_CONTROL_FINISH_CHANNEL)!(event, 'turn');
+            mocks.events.get(BROWSER_CONTROL_VISIBLE_CHANNEL)!(event, true, 'w');
+        }
+        expect(target.contents.send).not.toHaveBeenCalled();
+        mocks.events.get(BROWSER_CONTROL_FINISH_CHANNEL)!(target.event, 'turn');
+        expect(target.contents.send).toHaveBeenCalledWith(BROWSER_CONTROL_ACTIVITY_CHANNEL, expect.objectContaining({ active: false, turnId: 'turn' }));
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, routing.event, { ...request, id: 'late' })).rejects.toThrow('turn has finished');
+    });
     it('restricts browser-control IPC to exact-source registered SPA main frames', async () => {
         const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
         for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} }]) {
