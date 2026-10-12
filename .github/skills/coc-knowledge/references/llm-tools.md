@@ -460,10 +460,15 @@ endpoint. Reads are served by `GET /canvases/:id/files[/<path>]` behind layered 
 the desktop boundary. Description plus schema is capped at 1600 characters.
 `browser-tools.ts` limits snapshots to 6000 characters, deltas to 40 lines,
 read pages to 8000 and serialized eval to 4000. Expanded snapshots carry a
-full interactive baseline for correct deltas. Screenshots use inline
+full interactive baseline for correct deltas. Desktop read replies include
+`textTotal` and already apply the requested offset; eval replies contain page-bounded
+`valueJson`/`valueTruncated`, formatted without double serialization. Unpaged replies
+are invalid. Screenshots use inline
 `binaryResultsForLlm` only. `BrowserToolStateStore` serializes plain selection and
 snapshot data by workspace/process across turns; it holds no provider sessions.
-Relay errors and malformed results remain visible failures.
+Each tool factory owns a stable controlling-turn ID, independent of remembered
+conversation selection. Targeted relay/main activity carries it through follow-ups
+and terminal cleanup. Relay errors and malformed results remain visible failures.
 
 ### kusto_query
 

@@ -254,14 +254,24 @@ commands expose no arbitrary CDP. `withControlPage` checks the selected view's i
 its `BrowserControlQueue` retains one page across navigation and serializes whole
 input sequences. Turn abort, close, crash or 30 seconds including queue time reject
 callers. Cancellation keeps outstanding CDP serialized, releases dispatched presses
-and retains late snapshot counters.
+and retains late snapshot counters. Every driven view receives owner-qualified,
+factory-stable turn activity, including remembered selections across SPA windows.
+Native popouts use trusted, viewport-reserving chrome: Electron's separate sandboxed
+toolbar admits exact-source Stop IPC; WebView2 uses native controls. Stop routes to
+the source conversation. Visibility is keyed by routing owner and concrete clone
+reference; token-qualified completion cannot erase or restore another turn.
 
 `browser-control-page.ts` shares snapshots, trusted input, waits, markdown reads,
 eval and cropped inline JPEG capture across engines. Its monotonic counter seeds
 self-contained DOM/ARIA maps covering same-origin frames and open shadows.
 Navigation and inaccessible frame documents expire refs. Targets scroll and translate
-frame bounds before input; screenshots account for pixel ratio. Live fixtures exercise
-the parser/tool/WebSocket/SPA/preload/main/CDP chain. Desktop CI builds server/SPA
+frame bounds before input; screenshots account for pixel ratio. Large snapshots stage
+complete JSON in the page and transfer 64000-character chunks, retaining complete
+baselines and ref counters. Read pages and eval JSON are bounded before CDP.
+WebView2 caps native CDP replies at 900000 bytes; transport rejects/drains oversized
+individual replies and rejects oversized writes without killing unrelated views.
+Live fixtures exercise large results, cross-window turns and native-popup Stop
+through the parser/tool/WebSocket/SPA/preload/main/CDP chain. Desktop CI builds server/SPA
 artifacts and runs the workflow on Linux/macOS and Windows WebView2; feature admission
 uses default-off `browserControl.enabled` ([tools](llm-tools.md)).
 
