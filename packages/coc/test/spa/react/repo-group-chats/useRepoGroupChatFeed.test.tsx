@@ -382,4 +382,24 @@ describe('useRepoGroupChatFeed', () => {
         await act(async () => { vi.advanceTimersByTime(REPO_GROUP_CHAT_FEED_REFRESH_DEBOUNCE_MS); });
         expect(getRepoGroupChats).toHaveBeenCalledTimes(2);
     });
+    it('revokes a delayed manual refresh immediately when a newer live event arrives', async () => {
+        getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'current', ownerWorkspaceId: 'ws-a' }] }));
+        const { result } = renderHook(() => useRepoGroupChatFeed({ groupId: 'grp', serverKey: 'local', enabled: true }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        let finish!: (value: any) => void;
+        getRepoGroupChats.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        let refresh!: Promise<void>;
+        act(() => { refresh = result.current.refresh(); });
+        vi.useFakeTimers();
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'process-added', process: { id: 'newer', workspaceId: 'ws-a' } },
+        })));
+        await act(async () => { finish(page({ history: [{ id: 'stale', ownerWorkspaceId: 'ws-a' }] })); await refresh; });
+        expect(result.current.model!.history[0].canonicalId).toBe('current');
+        getRepoGroupChats.mockResolvedValue(page({ history: [{ id: 'newer', ownerWorkspaceId: 'ws-a' }] }));
+        await act(async () => { vi.advanceTimersByTime(REPO_GROUP_CHAT_FEED_REFRESH_DEBOUNCE_MS); });
+        expect(result.current.model!.history[0].canonicalId).toBe('newer');
+        vi.useRealTimers();
+    });
+
 });

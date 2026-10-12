@@ -974,6 +974,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.railManualRefresh', default: false, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 76, label: 'Refresh on collapsed sidebar', badge: 'experimental',
+            hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Disabled by default.',
+            testId: 'toggle-rail-manual-refresh-enabled',
+        },
+    }),
+    bool({
         key: 'features.railGitSummary', default: false, runtime: 'live', runtimeFlag: 'railGitSummaryEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 73, label: 'Git on collapsed sidebar', badge: 'experimental',

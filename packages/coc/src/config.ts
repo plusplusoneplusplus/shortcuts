@@ -341,6 +341,8 @@ export interface CLIConfig {
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
         chatFolders?: boolean;
+        /** Manual sidebar data refresh on the collapsed workspace rail. Disabled by default. */
+        railManualRefresh?: boolean;
         /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
         railGitSummary?: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
@@ -743,6 +745,8 @@ export interface ResolvedCLIConfig {
         schedulesInScheduledSlide: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
         chatFolders: boolean;
+        /** Manual sidebar data refresh on the collapsed workspace rail. Disabled by default. */
+        railManualRefresh: boolean;
         /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
         railGitSummary: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
@@ -1057,6 +1061,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         repoGroupAggregatedChats: false,
         schedulesInScheduledSlide: true,
         chatFolders: false,
+        railManualRefresh: false,
         railGitSummary: false,
         railStatusActions: false,
         schedulerDelayHint: false,

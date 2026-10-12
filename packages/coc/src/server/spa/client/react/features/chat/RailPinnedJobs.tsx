@@ -5,7 +5,7 @@
  * previews and click-to-expand come from `SplitWorkspacePanel`'s rail controls.
  */
 
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { useApp } from '../../contexts/AppContext';
 import { useOptionalChatPrefs } from '../../contexts/chatPrefsConsumer';
@@ -16,6 +16,7 @@ import { RailControlsContext, RailHoverPreview, RailPreviewRow } from '../repo-d
 import { RailJobMetadata } from './RailJobMetadata';
 import { getChatRowTitle } from './latestSentinelChat';
 import { loadedPinKeys, selectRailPinnedJobs, type PinnedSnapshot, type RailPinnedTab } from './rail-pinned-jobs';
+import { ToastContext } from '../../contexts/ToastContext';
 
 const REFETCH_DEBOUNCE_MS = 300;
 
@@ -30,16 +31,21 @@ export interface RailPinnedJobsProps {
     /** Route segment used by the list's own selection (`chats`/`tasks`/`activity`). */
     tab: RailPinnedTab;
     onOpen: (task: any) => void;
+    ownerAvailable?: boolean;
+    onRefreshReady?: (refresh: (() => Promise<void>) | null) => void;
 }
 
-export function RailPinnedJobs({ workspaceId, routeId, client, running, history, scopeLabel, tab, onOpen }: RailPinnedJobsProps) {
+export function RailPinnedJobs({ workspaceId, routeId, client, running, history, scopeLabel, tab, onOpen, onRefreshReady, ownerAvailable = true }: RailPinnedJobsProps) {
     const rail = useContext(RailControlsContext);
     const prefs = useOptionalChatPrefs();
+    const toast = useContext(ToastContext);
+    const toastRef = useRef(toast);
+    toastRef.current = toast;
     const { state: appState } = useApp();
     const excludedTypes = useMemo(() => new Set(appState.myWorkExcludedTypes ?? []), [appState.myWorkExcludedTypes]);
     // Untagged clients for a remote selection would read the page origin's pins.
-    const unresolvedRemote = !!parseRemoteCloneKey(routeId) && !client.options?.baseUrl;
-    const scope = `${routeId}:${workspaceReadSource(client)}:${workspaceId}`;
+    const unresolvedRemote = !ownerAvailable || !!parseRemoteCloneKey(routeId) && !client.options?.baseUrl;
+    const scope = `${routeId}:${workspaceReadSource(client)}:${workspaceId}:${unresolvedRemote}`;
     const pinnedIds = useMemo(() => (prefs?.loaded ? [...prefs.pinnedChatIds] : null), [prefs?.loaded, prefs?.pinnedChatIds]);
     const archivedIds = prefs?.archivedChatIds;
     const loadedKeys = loadedPinKeys(running, history);
@@ -48,21 +54,42 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
 
     const [snapshot, setSnapshot] = useState<(PinnedSnapshot & { scope: string }) | null>(null);
     const fetched = useRef<string | null>(null);
+    const revision = useRef(0);
+    const owner = useRef(scope);
+    if (owner.current !== scope) { owner.current = scope; revision.current++; }
+    const liveSignature = useRef(signature);
+    if (liveSignature.current !== signature) { liveSignature.current = signature; revision.current++; }
+    const refresh = useCallback(async () => {
+        const request = ++revision.current;
+        if (unresolvedRemote) { throw new Error('The owning server is unavailable.'); }
+        if (typeof client.workspaces?.pinned !== 'function') { throw new Error('Pinned jobs are unavailable.'); }
+        let response;
+        try {
+            response = await client.workspaces.pinned(workspaceId);
+        } catch (error) {
+            if (request !== revision.current || owner.current !== scope) { return; }
+            throw error;
+        }
+        if (request !== revision.current || owner.current !== scope) { return; }
+        if (!Array.isArray(response?.entries)) { throw new Error('Invalid pinned jobs response.'); }
+        fetched.current = scope;
+        setSnapshot({ scope, entries: response.entries });
+    }, [client, workspaceId, scope, unresolvedRemote]);
+    useEffect(() => {
+        onRefreshReady?.(refresh);
+        return () => { onRefreshReady?.(null); revision.current++; };
+    }, [onRefreshReady, refresh]);
     useEffect(() => {
         if (unresolvedRemote || typeof client.workspaces?.pinned !== 'function') return;
-        let cancelled = false;
         const delay = fetched.current === scope ? REFETCH_DEBOUNCE_MS : 0;
         const timer = setTimeout(() => {
-            client.workspaces.pinned(workspaceId).then(response => {
-                if (cancelled) return;
-                fetched.current = scope;
-                setSnapshot({ scope, entries: Array.isArray(response?.entries) ? response.entries : [] });
-            }).catch(error => {
-                console.error('Failed to load pinned jobs for the collapsed workspace rail:', error);
+            const currentScope = scope;
+            refresh().catch(error => {
+                if (owner.current === currentScope) toastRef.current?.addToast(`Could not refresh pinned jobs: ${error.message}`, 'error');
             });
         }, delay);
-        return () => { cancelled = true; clearTimeout(timer); };
-    }, [client, workspaceId, scope, signature, unresolvedRemote]);
+        return () => { revision.current++; clearTimeout(timer); };
+    }, [client, workspaceId, scope, signature, unresolvedRemote, refresh]);
 
     const rows = useMemo(() => selectRailPinnedJobs({
         snapshot: snapshot?.scope === scope ? snapshot : null,

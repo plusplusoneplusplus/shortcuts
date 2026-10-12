@@ -203,6 +203,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 
 const mockFetchApi = vi.fn();
 const mockRemoteQueue = vi.fn();
+const mockRemoteHistory = vi.fn(async (_baseUrl: string, _id: string) => ({ history: [] as any[] }));
+const mockRemotePinned = vi.fn(async (_baseUrl: string, _id: string) => ({ entries: [] as any[] }));
 const mockSetPinOrder = vi.fn();
 const mockPinned = vi.fn(async () => ({ entries: [] as any[] }));
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -213,7 +215,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getCocClientFor: (baseUrl: string) => ({
         options: { baseUrl },
         queue: { list: (query: any) => mockRemoteQueue(baseUrl, query) },
-        workspaces: { history: async () => ({ history: [] }) },
+        workspaces: { history: (id: string) => mockRemoteHistory(baseUrl, id), pinned: (id: string) => mockRemotePinned(baseUrl, id) },
         processes: { listGroupPins: async () => ({ pins: [] }) },
     }),
     getSpaCocClient: () => ({
@@ -325,6 +327,12 @@ function setupFetchMock(opts: {
     });
 }
 
+function configureRemoteRail(selectionId: string, workspaceId: string) {
+    registerCloneBaseUrls([{ workspaceId, cloneKey: selectionId, baseUrl: 'https://rail-owner.example' }]);
+    mockRemoteQueue.mockImplementation(async (_baseUrl: string, query: any) => mockFetchApi(`/queue?repoId=${query.repoId}`));
+    mockRemoteHistory.mockImplementation(async (_baseUrl: string, id: string) => mockFetchApi(`/workspaces/${id}/history`));
+}
+
 async function renderTab(workspaceId = 'ws-1', mode?: 'chats' | 'tasks', extraProps: Record<string, unknown> = {}) {
     let result: ReturnType<typeof renderWithProviders> | undefined;
     await act(async () => {
@@ -377,7 +385,9 @@ async function renderTabWithDeepLink(taskId: string, workspaceId = 'ws-1') {
 
 beforeEach(() => {
     resetCloneRegistryForTests();
+    delete (window as any).__DASHBOARD_CONFIG__;
     vi.clearAllMocks();
+    mockRemoteHistory.mockImplementation(async () => ({ history: [] }));
     try { localStorage.clear(); } catch { /* ignore */ }
     mockBreakpoint = { isMobile: false, isTablet: false };
     mockUnseenTaskIds = new Set();
@@ -2580,6 +2590,7 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         onActivateDetail?: () => void;
     } = {}) {
         const { workspaceId = 'ws-1', sourceSelectionId, dispatchRef, onActivateDetail } = opts;
+        if (sourceSelectionId) configureRemoteRail(sourceSelectionId, workspaceId);
         const rail = makeHost();
         await act(async () => {
             renderWithProviders(
@@ -2766,6 +2777,7 @@ describe('RepoChatTab: collapsed-rail Open job opener', () => {
     }
 
     async function renderWithOpener(workspaceId: string, sourceSelectionId?: string) {
+        if (sourceSelectionId) configureRemoteRail(sourceSelectionId, workspaceId);
         const state: { opener: RailJobOpener | null; selected: string | null } = { opener: null, selected: null };
         const routeRef: { current: ((routeId: string, id: string | null) => void) | null } = { current: null };
         const setOpener = (next: RailJobOpener | null | ((prev: RailJobOpener | null) => RailJobOpener | null)) => {
@@ -2927,5 +2939,182 @@ describe('RepoChatTab: collapsed-rail pinned jobs', () => {
         setupFetchMock({ history: [makeHistoryTask('queue_loaded', { pinnedAt: '2026-03-02T00:00:00Z' })] });
         const host = await renderWithRail(null);
         expect(host.querySelector('[data-testid="split-workspace-left-pinned"]')).toBeNull();
+    });
+});
+
+// Manual refresh uses the expanded list's scope plus the full rail pins read.
+describe('RepoChatTab: manual rail refresh', () => {
+    let host: HTMLElement;
+    beforeEach(() => {
+        (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: true };
+        host = document.createElement('div');
+        document.body.appendChild(host);
+    });
+    afterEach(() => { host.remove(); });
+    const props = (workspaceId = 'ws-1', extra: Record<string, unknown> = {}) => ({
+        workspaceId, layout: 'split-workspace', railShortcutContainer: host, ...extra,
+    });
+    const latestList = () => mockListPane.mock.calls.at(-1)![0];
+    const refresh = () => host.querySelector<HTMLButtonElement>('[aria-label="Refresh sidebar"]')!;
+
+    it('defaults off and tracks live setting changes', async () => {
+        delete (window as any).__DASHBOARD_CONFIG__;
+        await renderTab('ws-1', undefined, props());
+        expect(refresh()).toBeNull();
+        act(() => {
+            (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: true };
+        });
+        // Use the actual config event constant (the button subscribes to runtime updates).
+        const { DASHBOARD_CONFIG_UPDATED_EVENT } = await import('../../../../src/server/spa/client/react/utils/config');
+        act(() => window.dispatchEvent(new Event(DASHBOARD_CONFIG_UPDATED_EVENT)));
+        expect(refresh()).toHaveAttribute('title', 'Refresh sidebar');
+    });
+
+    it('sits directly before Sentinel, reloads rail data, and preserves chat/route/scroll', async () => {
+        const sentinel = makeHistoryTask('queue_sn', { mode: 'sentinel', pinnedAt: '2026-10-01T00:00:00Z' });
+        setupFetchMock({ history: [sentinel] });
+        const activate = vi.fn();
+        await renderTab('ws-1', undefined, props('ws-1', { onActivateDetail: activate }));
+        await waitFor(() => expect(mockPinned).toHaveBeenCalled());
+        expect(refresh().nextElementSibling).toHaveAttribute('data-testid', 'split-workspace-left-sentinel');
+        await act(async () => fireEvent.click(screen.getByTestId('task-queue_sn')));
+        const hash = location.hash;
+        const selected = latestList().selectedTaskId;
+        host.scrollTop = 37;
+        activate.mockClear();
+        mockPinned.mockClear();
+        setupFetchMock({ history: [sentinel, makeHistoryTask('queue_fresh')], running: [makeRunningTask('fresh-run')], queued: [makeQueuedTask('fresh-q')] });
+        await act(async () => fireEvent.click(refresh()));
+        expect(latestList().running.some((row: any) => row.id === 'fresh-run')).toBe(true);
+        expect(latestList().queued.some((row: any) => row.id === 'fresh-q')).toBe(true);
+        expect(latestList().history.some((row: any) => row.id === 'queue_fresh')).toBe(true);
+        expect(mockPinned).toHaveBeenCalledWith('ws-1');
+        expect(latestList().selectedTaskId).toBe(selected);
+        expect(location.hash).toBe(hash);
+        expect(host.scrollTop).toBe(37);
+        expect(activate).not.toHaveBeenCalled();
+        expect(mockFetchApi.mock.calls.some(call => call[1]?.method === 'POST')).toBe(false);
+    });
+
+    it('stays disabled until all reads settle and admits only one synchronous click', async () => {
+        await renderTab('ws-1', undefined, props());
+        await waitFor(() => expect(mockPinned).toHaveBeenCalled());
+        let finish!: (value: any) => void;
+        mockPinned.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        mockFetchApi.mockClear();
+        act(() => { fireEvent.click(refresh()); fireEvent.click(refresh()); });
+        await waitFor(() => expect(refresh()).toBeDisabled());
+        expect(refresh()).toHaveAttribute('aria-busy', 'true');
+        expect(refresh().querySelector('svg')).toHaveClass('motion-safe:animate-spin');
+        expect(mockFetchApi.mock.calls.filter(([url]) => url.includes('/queue?')).length).toBe(1);
+        await act(async () => finish({ entries: [] }));
+        expect(refresh()).not.toBeDisabled();
+    });
+
+    it('keeps the last successful rows and reports read failures', async () => {
+        setupFetchMock({ running: [makeRunningTask('keep-run')], history: [makeHistoryTask('keep-history')] });
+        const addToast = vi.fn();
+        await act(async () => renderWithProviders(React.createElement(RepoChatTab, props() as any), { toastValue: { addToast } }));
+        await waitFor(() => expect(mockPinned).toHaveBeenCalled());
+        mockFetchApi.mockRejectedValue(new Error('offline'));
+        mockPinned.mockRejectedValueOnce(new Error('pins unavailable'));
+        await act(async () => fireEvent.click(refresh()));
+        expect(latestList().running[0].id).toBe('keep-run');
+        expect(latestList().history[0].id).toBe('keep-history');
+        expect(addToast).toHaveBeenCalledWith(expect.stringContaining('offline'), 'error');
+        expect(addToast).toHaveBeenCalledWith(expect.stringContaining('pins unavailable'), 'error');
+        expect(refresh()).not.toBeDisabled();
+    });
+
+    it.each(['ws-remote', 'group-remote'])('routes %s queue, history and pins to its selected owning server', async workspaceId => {
+        const selectionId = buildRemoteCloneKey('owner-server', workspaceId);
+        registerCloneBaseUrls([{ workspaceId, cloneKey: selectionId, baseUrl: 'https://owner.example' }]);
+        mockRemoteQueue.mockResolvedValue({ running: [makeRunningTask('remote-run')], queued: [] });
+        mockRemoteHistory.mockResolvedValue({ history: [makeHistoryTask('remote-history')] });
+        mockRemotePinned.mockResolvedValue({ entries: [] });
+        await renderTab(workspaceId, undefined, props(workspaceId, { sourceSelectionId: selectionId }));
+        await waitFor(() => expect(mockRemotePinned).toHaveBeenCalled());
+        mockFetchApi.mockClear();
+        mockRemoteQueue.mockClear();
+        mockRemoteHistory.mockClear();
+        mockRemotePinned.mockClear();
+        await act(async () => fireEvent.click(refresh()));
+        expect(mockRemoteQueue).toHaveBeenCalledWith('https://owner.example', { repoId: workspaceId });
+        expect(mockRemoteHistory).toHaveBeenCalledWith('https://owner.example', workspaceId);
+        expect(mockRemotePinned).toHaveBeenCalledWith('https://owner.example', workspaceId);
+        expect(mockFetchApi).not.toHaveBeenCalled();
+        expect(latestList().running[0].id).toBe('remote-run');
+    });
+
+    it('tags remote queue and history cache snapshots with their API source', async () => {
+        const workspaceId = 'shared-id';
+        const selectionId = buildRemoteCloneKey('owner-server', workspaceId);
+        registerCloneBaseUrls([{ workspaceId, cloneKey: selectionId, baseUrl: 'https://owner.example' }]);
+        mockRemoteQueue.mockResolvedValue({ running: [], queued: [] });
+        mockRemoteHistory.mockResolvedValue({ history: [makeHistoryTask('remote-history')] });
+        let queueState: any;
+        function Probe() { queueState = useQueue().state; return null; }
+        await act(async () => renderWithProviders(React.createElement(React.Fragment, null,
+            React.createElement(RepoChatTab, props(workspaceId, { sourceSelectionId: selectionId }) as any),
+            React.createElement(Probe))));
+        await act(async () => fireEvent.click(refresh()));
+        const source = JSON.stringify(['https://owner.example', '']);
+        expect(queueState.repoQueueMap[workspaceId].taskDataSource).toBe(source);
+        expect(queueState.repoHistoryMap[workspaceId].source).toBe(source);
+        expect(queueState.repoHistoryMap[workspaceId].items[0].id).toBe('remote-history');
+    });
+
+    it('never reads local rows for an unresolved remote owner', async () => {
+        const addToast = vi.fn();
+        await act(async () => renderWithProviders(React.createElement(RepoChatTab, props('same-id', {
+            sourceSelectionId: buildRemoteCloneKey('missing-server', 'same-id'),
+        }) as any), { toastValue: { addToast } }));
+        mockFetchApi.mockClear();
+        mockPinned.mockClear();
+        await act(async () => fireEvent.click(refresh()));
+        expect(mockFetchApi).not.toHaveBeenCalled();
+        expect(mockPinned).not.toHaveBeenCalled();
+        expect(addToast).toHaveBeenCalledWith(expect.stringContaining('owning server is unavailable'), 'error');
+    });
+
+    it('refreshes a replacement group list alongside the group queue and rail pins', async () => {
+        const refreshList = vi.fn(async () => {});
+        await renderTab('group-local', undefined, props('group-local', { refreshList, renderList: () => React.createElement('div', null, 'Group feed') }));
+        await waitFor(() => expect(mockPinned).toHaveBeenCalledWith('group-local'));
+        await act(async () => fireEvent.click(refresh()));
+        expect(refreshList).toHaveBeenCalledTimes(1);
+        expect(mockFetchApi).toHaveBeenCalledWith('/queue?repoId=group-local');
+        expect(mockPinned).toHaveBeenCalledWith('group-local');
+    });
+
+    it('rejects an old owner response after selection changes', async () => {
+        const result = await renderTab('ws-1', undefined, props());
+        let finish!: (value: any) => void;
+        const normalRead = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation((url: string, init?: any) => url.includes('/queue?repoId=ws-1')
+            ? new Promise(resolve => { finish = resolve; }) : normalRead(url, init));
+        act(() => fireEvent.click(refresh()));
+        setupFetchMock({ running: [makeRunningTask('new-owner')] });
+        await act(async () => result.rerender(React.createElement(RepoChatTab, props('ws-2') as any)));
+        expect(latestList().running[0].id).toBe('new-owner');
+        await act(async () => finish({ running: [makeRunningTask('delayed-old')], queued: [] }));
+        expect(latestList().running[0].id).toBe('new-owner');
+        expect(latestList().workspaceId).toBe('ws-2');
+    });
+
+    it('does not overwrite a newer live queue snapshot with a delayed refresh', async () => {
+        setupFetchMock({ running: [makeRunningTask('same-run', { displayName: 'Initial' })] });
+        const dispatchRef: { current: ((queue: any) => void) | null } = { current: null };
+        await act(async () => renderWithProviders(React.createElement(React.Fragment, null,
+            React.createElement(RepoChatTab, props() as any), React.createElement(WsSimulator, { dispatchRef }))));
+        await waitFor(() => expect(mockPinned).toHaveBeenCalled());
+        let finish!: (value: any) => void;
+        const normalRead = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation((url: string, init?: any) => url.includes('/queue?')
+            ? new Promise(resolve => { finish = resolve; }) : normalRead(url, init));
+        act(() => fireEvent.click(refresh()));
+        act(() => dispatchRef.current!({ running: [makeRunningTask('same-run', { displayName: 'Live' })], queued: [] }));
+        await act(async () => finish({ running: [makeRunningTask('same-run', { displayName: 'Stale' })], queued: [] }));
+        expect(latestList().running[0].displayName).toBe('Live');
     });
 });

@@ -19,6 +19,8 @@ import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useMobileWorkspacePane } from '../repo-detail/mobileWorkspacePane';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
+import { RefreshSidebarButton } from './RefreshSidebarButton';
+import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { SentinelRailShortcut } from './SentinelRailShortcut';
 import { RailPinnedJobs } from './RailPinnedJobs';
 import { RailJobOpenerContext, type RailJobOpener } from '../repo-detail/RailJobStatuses';
@@ -90,6 +92,9 @@ export interface RepoChatTabProps {
     renderList?: (ctx: RepoChatTabListContext) => ReactNode;
     /** Split-layout owner-routed detail supplied by an aggregated workspace. */
     detailOverride?: ReactNode;
+    /** Reload the replacement list through its owning feed. */
+    refreshList?: () => Promise<void>;
+    sidebarOwnerAvailable?: boolean;
 }
 
 export interface RepoChatTabListContext {
@@ -171,7 +176,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, detailOverride }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, detailOverride, refreshList, sidebarOwnerAvailable = true }: RepoChatTabProps) {
     const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -182,8 +187,14 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
 
     // Seed from per-workspace caches so revisiting a repo renders the sidebar
     // instantly while the freshness fetch runs in the background.
-    const cachedHistory = queueState.repoHistoryMap?.[workspaceId];
-    const cachedQueue = queueState.repoQueueMap[workspaceId];
+    const source = workspaceReadSource(cloneClient);
+    const unresolvedRemote = !sidebarOwnerAvailable || !!parseRemoteCloneKey(routeId) && !cloneClient.options?.baseUrl;
+    const matchesSource = (recordSource?: string) => !unresolvedRemote && (recordSource
+        ? recordSource === source : !cloneClient.options?.baseUrl);
+    const historyCache = queueState.repoHistoryMap?.[workspaceId];
+    const queueCache = queueState.repoQueueMap[workspaceId];
+    const cachedHistory = matchesSource(historyCache?.source) ? historyCache : undefined;
+    const cachedQueue = matchesSource(queueCache?.taskDataSource) ? queueCache : undefined;
 
     const [running, setRunning] = useState<any[]>(cachedQueue?.running ?? []);
     const [queued, setQueued] = useState<any[]>(cachedQueue?.queued ?? []);
@@ -305,7 +316,23 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // so the selectedTaskId=null reset effect does not immediately clear it.
     const mobileNewChatRef = useRef(false);
 
-    const repoQueue = queueState.repoQueueMap[workspaceId];
+    const repoQueue = cachedQueue;
+    const fetchGenerationRef = useRef(0);
+    const historyGenerationRef = useRef(0);
+    const ownerKey = `${routeId}:${source}:${workspaceId}:${unresolvedRemote}`;
+    const ownerRef = useRef(ownerKey);
+    if (ownerRef.current !== ownerKey) {
+        ownerRef.current = ownerKey;
+        fetchGenerationRef.current++;
+        historyGenerationRef.current++;
+    }
+    const localProcesses = cloneClient.options?.baseUrl ? null : appState.processes;
+    const liveRef = useRef({ queue: repoQueue, processes: localProcesses });
+    liveRef.current = { queue: repoQueue, processes: localProcesses };
+    const pinnedRefreshRef = useRef<(() => Promise<void>) | null>(null);
+    const registerPinnedRefresh = useCallback((refresh: (() => Promise<void>) | null) => {
+        pinnedRefreshRef.current = refresh;
+    }, []);
 
     /** Match a task against selectedTaskId which may be a processId (queue_xxx). */
     function findBySelectedId(tasks: any[], selectedId: string): any | undefined {
@@ -337,46 +364,65 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     }, [workspaceId]);
 
     const fetchHistory = useCallback(async (offset = 0) => {
-        const data = await cloneClient.workspaces.history(workspaceId, { limit: 100, offset }).catch(() => null);
-        const items = withPendingChatStamps((data?.history as ProcessHistoryItem[]) || []);
-        const nextHasMore = data?.hasMore ?? false;
-        if (offset === 0) {
-            setHistory(items);
-            queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId: workspaceId, items, hasMore: nextHasMore });
-        } else {
-            setHistory(prev => {
-                const merged = [...prev, ...items];
-                queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId: workspaceId, items: merged, hasMore: nextHasMore });
-                return merged;
-            });
-        }
-        setHasMore(nextHasMore);
-    }, [workspaceId, queueDispatch, cloneClient, withPendingChatStamps]);
+        if (unresolvedRemote) return;
+        const request = ++historyGenerationRef.current;
+        const live = liveRef.current;
+        try {
+            const data = await cloneClient.workspaces.history(workspaceId, { limit: 100, offset });
+            if (request !== historyGenerationRef.current || ownerRef.current !== ownerKey
+                || live.queue !== liveRef.current.queue || live.processes !== liveRef.current.processes) return;
+            const items = withPendingChatStamps(data.history as ProcessHistoryItem[]);
+            const nextHasMore = data.hasMore ?? false;
+            if (offset === 0) {
+                setHistory(items);
+                queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId: workspaceId, source, items, hasMore: nextHasMore });
+            } else {
+                setHistory(prev => {
+                    const merged = [...prev, ...items];
+                    queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId: workspaceId, source, items: merged, hasMore: nextHasMore });
+                    return merged;
+                });
+            }
+            setHasMore(nextHasMore);
+        } catch { /* Keep the last successful history snapshot. Manual refresh reports errors below. */ }
+    }, [workspaceId, queueDispatch, cloneClient, withPendingChatStamps, ownerKey, source, unresolvedRemote]);
 
-    const fetchGenerationRef = useRef(0);
-    useEffect(() => () => { fetchGenerationRef.current++; }, []);
-    const fetchQueueAndHistory = useCallback(async (refresh = false) => {
+    useEffect(() => () => { fetchGenerationRef.current++; historyGenerationRef.current++; }, []);
+    const fetchQueueAndHistory = useCallback(async (refresh = false, reportErrors = false) => {
         // In container mode, skip fetch if agent hasn't been resolved yet —
         // the effect will re-fire once currentAgentId is set.
-        if (isContainerMode() && !appState.currentAgentId) return;
+        if (isContainerMode() && !appState.currentAgentId) {
+            if (reportErrors) { throw new Error('The sidebar owner is not resolved yet.'); }
+            return;
+        }
+        if (unresolvedRemote) {
+            setLoading(false);
+            if (reportErrors) throw new Error('The owning server is unavailable.');
+            return;
+        }
         const generation = ++fetchGenerationRef.current;
+        const historyGeneration = ++historyGenerationRef.current;
+        const live = liveRef.current;
+        const errors: unknown[] = [];
+        const failed = (error: unknown) => { errors.push(error); return null; };
         try {
             const client = cloneClient;
             const groupPinsRequest = typeof client.processes.listGroupPins === 'function'
-                ? client.processes.listGroupPins(workspaceId).catch(() => null)
+                ? client.processes.listGroupPins(workspaceId).catch(failed)
                 : Promise.resolve(null);
             const [queueData, historyData, forEachData, mapReduceData, groupPinsData] = await Promise.all([
-                readWorkspaceQueue(client, workspaceId, refresh).catch(() => null),
-                client.workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
-                isForEachEnabled() ? client.forEach.list(workspaceId).catch(() => null) : Promise.resolve(null),
-                isMapReduceEnabled() ? client.mapReduce.list(workspaceId).catch(() => null) : Promise.resolve(null),
+                readWorkspaceQueue(client, workspaceId, refresh).catch(failed),
+                client.workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(failed),
+                isForEachEnabled() ? client.forEach.list(workspaceId).catch(failed) : Promise.resolve(null),
+                isMapReduceEnabled() ? client.mapReduce.list(workspaceId).catch(failed) : Promise.resolve(null),
                 groupPinsRequest,
             ]);
-            if (generation !== fetchGenerationRef.current) return;
+            if (generation !== fetchGenerationRef.current || ownerRef.current !== ownerKey) return;
+            // Each live snapshot takes precedence over reads admitted before it.
             // Only update queue/pause state when the queue fetch actually succeeded —
             // a transient network error must not clear the running list out from under
             // the user (this was the "no tasks in queue" flash on rapid repo switches).
-            if (queueData) {
+            if (queueData && live.queue === liveRef.current.queue) {
                 const nextRunning = queueData.running || [];
                 const nextQueued = queueData.queued || [];
                 const nextStats = queueData.stats || undefined;
@@ -401,7 +447,8 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 });
             }
 
-            if (historyData) {
+            if (historyData && historyGeneration === historyGenerationRef.current
+                && live.queue === liveRef.current.queue && live.processes === liveRef.current.processes) {
                 const items = withPendingChatStamps((historyData.history as ProcessHistoryItem[]) || []);
                 const nextHasMore = historyData.hasMore ?? false;
                 setHistory(items);
@@ -409,30 +456,32 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 queueDispatch({
                     type: 'REPO_HISTORY_UPDATED',
                     repoId: workspaceId,
+                    source,
                     items,
                     hasMore: nextHasMore,
                 });
             }
 
-            if (isForEachEnabled()) {
+            if (isForEachEnabled() && forEachData) {
                 setForEachRuns(Array.isArray(forEachData) ? forEachData : []);
-            } else {
+            } else if (!isForEachEnabled()) {
                 setForEachRuns([]);
             }
-            if (isMapReduceEnabled()) {
+            if (isMapReduceEnabled() && mapReduceData) {
                 setMapReduceRuns(Array.isArray(mapReduceData) ? mapReduceData : []);
-            } else {
+            } else if (!isMapReduceEnabled()) {
                 setMapReduceRuns([]);
             }
             if (groupPinsData) {
                 setGroupPins(withPendingGroupStamps(Array.isArray(groupPinsData.pins) ? groupPinsData.pins : []));
             }
-        } catch {
-            // Both fetches already have inner `.catch(() => null)`; this outer catch is
-            // defensive. Deliberately do NOT clear local lists — keep the cached view.
+        } catch (error) {
+            errors.push(error);
+            // Keep the last successful snapshot if a reader fails.
         }
         setLoading(false);
-    }, [workspaceId, queueDispatch, appState.currentAgentId, cloneClient, withPendingChatStamps, withPendingGroupStamps]);
+        if (reportErrors && errors.length) throw new Error(errors.map(error => error instanceof Error ? error.message : String(error)).join('; '));
+    }, [workspaceId, queueDispatch, appState.currentAgentId, cloneClient, withPendingChatStamps, withPendingGroupStamps, unresolvedRemote, ownerKey, source]);
 
     const fetchQueue = fetchQueueAndHistory;
 
@@ -451,9 +500,13 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         // background so the user never sees a flash of "loading…" on revisit.
         setGroupPins([]);
         pendingPinOrderRef.current = null;
-        const hasCachedQueue = !!queueState.repoQueueMap[workspaceId];
-        const hasCachedHistory = !!queueState.repoHistoryMap?.[workspaceId];
-        if (!hasCachedQueue && !hasCachedHistory) {
+        const hasCachedQueue = !!cachedQueue;
+        const hasCachedHistory = !!cachedHistory;
+        setRunning(cachedQueue?.running ?? []);
+        setQueued(cachedQueue?.queued ?? []);
+        setHistory((cachedHistory?.items as ProcessHistoryItem[]) ?? []);
+        setHasMore(cachedHistory?.hasMore ?? false);
+        if (!hasCachedQueue && !hasCachedHistory && !unresolvedRemote) {
             setLoading(true);
         }
         fetchQueue();
@@ -544,7 +597,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // WS events into history items so the sidebar reflects renames and new turn
     // previews without a refetch.
     useEffect(() => {
-        if (!history.length || !appState.processes.length) return;
+        if (cloneClient.options?.baseUrl || unresolvedRemote || !history.length || !appState.processes.length) return;
         setHistory(prev => {
             let changed = false;
             const next = prev.map((item: any) => {
@@ -870,15 +923,26 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         await fetchQueue(true);
     }
 
+    const refreshFlightRef = useRef(false);
     const handleRefresh = useCallback(async () => {
-        if (isRefreshing) return;
+        if (refreshFlightRef.current) return;
+        refreshFlightRef.current = true;
+        const owner = ownerKey;
         setIsRefreshing(true);
         try {
-            await fetchQueue(true);
+            const results = await Promise.allSettled([
+                fetchQueue(true, true),
+                pinnedRefreshRef.current?.(),
+                refreshList?.(),
+            ]);
+            if (ownerRef.current !== owner) return;
+            const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (errors.length) toast?.addToast(`Could not refresh sidebar: ${errors.map(result => result.reason?.message ?? String(result.reason)).join('; ')}`, 'error');
         } finally {
+            refreshFlightRef.current = false;
             setIsRefreshing(false);
         }
-    }, [isRefreshing, fetchQueue]);
+    }, [fetchQueue, refreshList, ownerKey, toast]);
 
     const handleSetGroupPin = useCallback(async (type: ProcessGroupPinType, groupId: string, pinned: boolean) => {
         const previousPins = groupPins;
@@ -1354,6 +1418,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 {railShortcutContainer
                     ? createPortal(
                         <>
+                            <RefreshSidebarButton busy={isRefreshing} onRefresh={handleRefresh} />
                             <SentinelRailShortcut
                                 running={mergedRunning}
                                 history={mergedHistory}
@@ -1361,6 +1426,8 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                                 onOpen={handleOpenRailShortcut}
                             />
                             <RailPinnedJobs
+                                onRefreshReady={registerPinnedRefresh}
+                                ownerAvailable={sidebarOwnerAvailable}
                                 workspaceId={workspaceId}
                                 routeId={routeId}
                                 client={cloneClient}

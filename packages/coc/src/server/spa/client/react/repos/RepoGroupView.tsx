@@ -22,9 +22,10 @@
  * not here — the Workspace tab is the chat and nothing else.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
+import { RefreshSidebarButton } from '../features/chat/RefreshSidebarButton';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
 import { GroupRailGit } from '../features/repo-detail/RailGitSummary';
 import { useRailGitSummaryEnabled } from '../hooks/feature-flags/useRailGitSummaryEnabled';
@@ -214,6 +215,16 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         ownerAvailable: groupOwnerAvailable,
         filters: chatFilters,
     });
+    const unresolvedAggregateOwner = aggregatedChats && !!parseRemoteCloneKey(selectionId) && !groupBaseUrl;
+    const unavailableRefreshFlight = useRef(false);
+    const [unavailableRefreshing, setUnavailableRefreshing] = useState(false);
+    const refreshUnavailableGroup = useCallback(async () => {
+        if (unavailableRefreshFlight.current) return;
+        unavailableRefreshFlight.current = true;
+        setUnavailableRefreshing(true);
+        try { await chatFeed.refresh(); }
+        finally { unavailableRefreshFlight.current = false; setUnavailableRefreshing(false); }
+    }, [chatFeed.refresh]);
     const memberChat = useRepoGroupChatSelection(selectionId, aggregatedChats);
     const memberRow = chatFeed.model && memberChat.selectedKey
         ? allRepoGroupChatRows(chatFeed.model).find(row => row.key === memberChat.selectedKey)
@@ -332,7 +343,10 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                 onMobileChatBack={aggregatedChats ? memberChat.backToGroupChats : undefined}
                                 footer={headerInTopBar ? <StatusActions variant="sidebar" /> : undefined}
                                 onNewChat={handleSplitNewChat}
-                                railShortcuts={<div ref={setSplitRailShortcutNode} className="contents" />}
+                                railShortcuts={<>
+                                    <div ref={setSplitRailShortcutNode} className="contents" />
+                                    {unresolvedAggregateOwner && <RefreshSidebarButton busy={unavailableRefreshing} onRefresh={refreshUnavailableGroup} />}
+                                </>}
                                 runningCount={aggregatedChats && chatFeed.model ? chatFeed.model.counts.running : queueRunningCount}
                                 queuedCount={aggregatedChats && chatFeed.model ? chatFeed.model.counts.queued : queueQueuedCount}
                                 jobPreview={{
@@ -363,14 +377,15 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     </button>
                                 }
                                 chatList={
-                                    aggregatedChats && parseRemoteCloneKey(selectionId) && !groupBaseUrl
+                                    unresolvedAggregateOwner
                                     ? <RepoGroupChatList feed={chatFeed} serverLabel={chatServerLabel}
                                         selectedKey={memberChat.selectedKey} onSelect={memberChat.selectMember}
                                         filters={chatFilters} onFiltersChange={setChatFilters} />
-                                    : <WorkspaceOwnerContext.Provider value={aggregatedChats ? groupOwner : null}>
+                                    : <WorkspaceOwnerContext.Provider value={groupOwner}>
                                     <RepoChatTab
                                         workspaceId={workspaceId}
-                                        sourceSelectionId={groupRoutingRef ?? undefined}
+                                        sourceSelectionId={selectionId}
+                                        sidebarOwnerAvailable={groupOwnerAvailable}
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
                                         railShortcutContainer={splitRailShortcutNode}
@@ -378,6 +393,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}
+                                        refreshList={aggregatedChats ? chatFeed.refresh : undefined}
                                         detailOverride={memberChat.selection ? (
                                             <RepoGroupMemberChatDetail
                                                 selection={memberChat.selection}
