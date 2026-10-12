@@ -3,6 +3,18 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('preserves durable requires-review warnings independently of fulfillment and readiness', async () => {
+    const item = { id: 'dependent', status: 'done', notes: 'Explicit owner verdict', outcome: {
+      summary: 'Accepted result', recordedBy: 'user', recordedAt: '2026-01-01T00:00:00.000Z',
+    }, dependencyAction: { revision: 1, state: 'consumed', mode: 'ask', provider: 'copilot', model: 'gpt-5.4',
+      targetWorkspaceId: 'ws-target', prompt: 'Review output', scope: 'Read-only',
+      authorizedAt: '2026-01-01T00:00:00.000Z', authorizedBy: 'user', taskId: 'fixed-task',
+      requiresReview: true, error: 'Required evidence changed' },
+    dependencyReadiness: { state: 'waiting', error: 'Prerequisite reopened' } };
+    const adapter = createMockAdapter({ revision: 4, items: [item] });
+    expect((await new SentinelTodosClient(adapter).get('owner ws', 'parent')).items[0]).toEqual(item);
+    expect(adapter.calls).toEqual([{ path: '/workspaces/owner%20ws/sentinel-todos/parent', options: undefined }]);
+  });
   it('routes explicit confirmed authorization and revision-checked revocation without resolving defaults', async () => {
     const adapter = createMockAdapter({ item: { id: 'item/a' }, ledgerRevision: 3 });
     const client = new SentinelTodosClient(adapter);

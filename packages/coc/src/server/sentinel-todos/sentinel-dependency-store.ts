@@ -12,6 +12,8 @@ export interface DependencyActionRecord {
     started?: boolean;
     generationRevision?: number;
     targetVersion?: string;
+    graphRevision?: number;
+    lineage?: { itemId: string; revision?: number; evidence?: string }[];
 }
 
 export interface DependencyWake {
@@ -24,6 +26,10 @@ export interface DependencyWake {
     error?: string;
     /** Existing owner-bound merge rule transports this activation; never mutate that rule. */
     transportTriggerId?: string;
+    graphRevision?: number;
+    invalidatedAt?: string;
+    invalidatedReason?: string;
+    lineage?: DependencyActionRecord['lineage'];
 }
 
 /** Shared native writer; all operational receipts are machine-local and immutable in identity. */
@@ -88,6 +94,29 @@ export class SentinelDependencyStore {
         return row ? JSON.parse(row.record) : undefined;
     }
 
+    records(owner: SentinelTodoOwner, admissions = false): { itemId: string; record: DependencyActionRecord }[] {
+        const table = admissions ? 'sentinel_dependency_admissions' : 'sentinel_dependency_actions';
+        return this.db.prepare(`SELECT item_id, record FROM ${table}
+            WHERE workspace_id = ? AND parent_process_id = ?`)
+            .all<{ item_id: string; record: string }>(owner.workspaceId, owner.processId)
+            .map(row => ({ itemId: row.item_id, record: JSON.parse(row.record) }));
+    }
+
+    invalidateWake(owner: SentinelTodoOwner, wake: DependencyWake, reason: string): void {
+        if (wake.invalidatedAt) return;
+        this.db.prepare('UPDATE sentinel_dependency_wakes SET receipt = ? WHERE id = ? AND workspace_id = ? AND parent_process_id = ?')
+            .run(JSON.stringify({ ...wake, invalidatedAt: new Date().toISOString(), invalidatedReason: reason }),
+                wake.id, owner.workspaceId, owner.processId);
+    }
+
+    invalidateEvaluation(owner: SentinelTodoOwner, evaluation: SentinelTodoDependencyEvaluation, reason: string): void {
+        this.db.prepare(`UPDATE sentinel_todo_evaluations SET evaluation = ?
+            WHERE workspace_id = ? AND parent_process_id = ? AND item_id = ?`)
+            .run(JSON.stringify({ ...evaluation, state: 'waiting', blocker: reason,
+                edges: evaluation.edges.map(edge => ({ ...edge, satisfied: false, blocker: reason })) }),
+                owner.workspaceId, owner.processId, evaluation.itemId);
+    }
+
     saveAction(owner: SentinelTodoOwner, itemId: string, record: DependencyActionRecord): void {
         this.db.prepare(`INSERT INTO sentinel_dependency_actions VALUES (?, ?, ?, ?)
             ON CONFLICT (workspace_id, parent_process_id, item_id) DO UPDATE SET record = excluded.record`)
@@ -123,11 +152,14 @@ export class SentinelDependencyStore {
     }
 
     reserveWake(owner: SentinelTodoOwner, evidence: SentinelTodoDependencyEvaluation,
-        generation: string, prompt: (id: string) => string, transportTriggerId?: string): DependencyWake {
+        generation: string, prompt: (id: string) => string, transportTriggerId?: string, graphRevision?: number,
+        lineage?: DependencyActionRecord['lineage']): DependencyWake {
         const prior = this.wakes(owner, evidence.itemId).find(wake => wake.generation === generation);
         if (prior) return prior;
         const id = randomUUID();
         const wake: DependencyWake = { id, itemId: evidence.itemId, generation, evidence, prompt: prompt(id), delivery: 'pending',
+            ...(graphRevision !== undefined ? { graphRevision } : {}),
+            ...(lineage ? { lineage } : {}),
             ...(transportTriggerId ? { transportTriggerId } : {}) };
         this.db.prepare('INSERT INTO sentinel_dependency_wakes VALUES (?, ?, ?, ?, ?, ?)')
             .run(owner.workspaceId, owner.processId, evidence.itemId, generation, id, JSON.stringify(wake));
@@ -152,7 +184,8 @@ export class SentinelDependencyStore {
 
     polls() {
         const owners = this.db.prepare(`SELECT DISTINCT workspace_id, parent_process_id FROM sentinel_todo_dependencies
-            UNION SELECT workspace_id, parent_process_id FROM sentinel_dependency_wakes WHERE json_extract(receipt, '$.delivery') = 'pending'`)
+            UNION SELECT workspace_id, parent_process_id FROM sentinel_dependency_wakes
+                WHERE json_extract(receipt, '$.delivery') = 'pending' AND json_extract(receipt, '$.invalidatedAt') IS NULL`)
             .all<{ workspace_id: string; parent_process_id: string }>();
         return owners.map(row => {
             const id = `sentinel-dependency:${JSON.stringify([row.workspace_id, row.parent_process_id])}`;

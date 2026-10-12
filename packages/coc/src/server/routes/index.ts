@@ -577,6 +577,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
         validateProvider: validateSendToConversationProvider,
+        validateOwner: owner => {
+            if (store instanceof SqliteProcessStore
+                && !todoDb.prepare('SELECT id FROM workspaces WHERE id = ?').get(owner.workspaceId)) {
+                throw new Error('Native dependency owner workspace is unavailable');
+            }
+        },
         validateTarget: async workspaceId => {
             if (!(await store.getWorkspaces()).some(workspace => workspace.id === workspaceId)) {
                 throw new Error('Dependency action requires an exact registered local workspace; remote targets are unsupported');

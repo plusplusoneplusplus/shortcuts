@@ -136,7 +136,7 @@ counts to separate native/transport cost from Forge hydration.
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
 `sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs`,
 `sentinel_todo_references`, `sentinel_todo_dependencies`, `sentinel_todo_evidence`
-and `sentinel_todo_evaluations` tables in
+and `sentinel_todo_evaluations` and `sentinel_todo_dependency_generations` tables in
 the shared `processes.db`. Workspace and parent process keys isolate repos,
 groups and chats; unique scoped idempotency keys and job identities make replays
 safe. Transactions acquire the database writer before mutation reads and compare
@@ -185,10 +185,22 @@ graph/action generation before `deliverOnce` transports it. Local polling and
 transport recovery share the existing trigger scheduler. Matching owner/item/PR
 merge rules can carry transport without changing those rules.
 
-Queue admission and first execution recheck evidence and authority under the shared writer. Failures
-and unknown acceptance block unstarted authority until fresh explicit approval;
-recovery retries transport only. Started Ralph continuations retain saved scope
-and execution settings through the receipt guard even when authoring is disabled.
+Queue admission, preparation and SDK handoff recheck evidence and authority under
+the shared writer. Preparation leaves the action unstarted; SDK handoff persists
+the start. Graph replacements record exact generations, including identical
+selectors and empty edge sets. Ready receipts pin source and upstream item
+generations plus known ancestor input proofs. Mutation hooks and evidence
+evaluations invalidate pending readiness/admissions atomically; reads/recovery
+catch unavailable data and persisted generations. Immutable wake identity,
+prompt and evidence remain retained; invalidated pending wakes stop transport.
+
+Started admissions persist `requiresReview` and an evidence error independently
+of fulfillment and user verdicts. Warnings survive restart and fresh authorization;
+original Ralph admission generations remain stable through revocation. Historical
+native authority stays gated after removing all edges or disabling authoring.
+Failure/unknown acceptance requires fresh approval; recovery retries transport
+only. Started Ralph continuations retain saved scope/settings through the
+receipt guard, without cancellation or execution replay.
 
 ### Chat binding stores
 

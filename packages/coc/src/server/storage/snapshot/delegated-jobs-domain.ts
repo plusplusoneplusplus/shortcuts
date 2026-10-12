@@ -42,7 +42,7 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
 
 const OPTIONAL_SENTINEL_TODO_TABLES = [
     'sentinel_dependency_ralph_starts', 'sentinel_dependency_admissions', 'sentinel_dependency_polls', 'sentinel_dependency_wakes', 'sentinel_dependency_actions',
-    'sentinel_todo_evaluations', 'sentinel_todo_evidence', 'sentinel_todo_dependencies', 'sentinel_todo_references',
+    'sentinel_todo_dependency_generations', 'sentinel_todo_evaluations', 'sentinel_todo_evidence', 'sentinel_todo_dependencies', 'sentinel_todo_references',
     'scrubber_findings', 'scrubber_runs', 'scrubber_dismissals', 'scrubber_config',
 ] as const;
 

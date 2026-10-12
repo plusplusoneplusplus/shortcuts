@@ -223,7 +223,16 @@ references before editing. Paths are package-relative.
   mode, concrete provider/model, registered local target, prompt and scope.
   Tools cannot create authority; manual items remain tracking-only. Central enqueue
   consumes authority under the native writer and first execution rechecks current
-  evidence, graph/action revisions and provider/target availability. Stable identities
+  evidence, graph/action revisions and provider/target availability. Preparation
+  leaves the admission unstarted; the SDK handoff repeats the check and durably marks
+  the start. Each graph replacement records an exact generation, including identical
+  selectors and removal of all edges. Native mutation hooks and fresh evidence reads
+  invalidate pending readiness/admissions atomically; immutable wake evidence stays
+  retained and invalidated pending wakes stop transport. Captured upstream generations
+  and known ancestor input proofs protect descendants. Started actions receive durable
+  `requiresReview` warnings without cancellation or fulfillment/user-verdict writes;
+  replacement authorization does not erase historical warnings. Historical native
+  action gating remains authoritative after edge removal or feature disablement. Stable identities
   reconcile acceptance; errors and uncertain admissions require fresh authorization,
   never automatic work retry. Native Ralph step-start receipts prevent execution
   replay; started whole-session continuations preserve captured settings and scope.

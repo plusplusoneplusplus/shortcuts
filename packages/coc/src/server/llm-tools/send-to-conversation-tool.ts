@@ -460,6 +460,11 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             const targetProcessId =
                 typeof args.processId === 'string' && args.processId.trim() ? args.processId.trim() : undefined;
             if (targetProcessId) {
+                if (typeof args.todoItemId === 'string' && args.todoItemId.trim()) {
+                    try { await todoTracking?.prepare?.(args.todoItemId.trim(), args); }
+                    catch (error) { return { error: error instanceof Error ? error.message : String(error), code: 'untracked' }; }
+                    return { error: 'Tracked to-do admission cannot use post mode; use a fresh explicitly authorized tracked launch.', code: 'untracked' };
+                }
                 if (targetProcessId.startsWith('remote:')) {
                     return {
                         error:
@@ -491,6 +496,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             // --- create mode: start a brand-new conversation ------------------
             const todoItemId = typeof args.todoItemId === 'string' && args.todoItemId.trim()
                 ? args.todoItemId.trim() : undefined;
+            if (todoItemId && !todoTracking) {
+                return { error: 'Tracked to-do admission is unavailable; no ordinary launch fallback was attempted.', code: 'untracked' };
+            }
             if (todoTracking) {
                 const untracked = await todoTracking.check(todoItemId);
                 if (untracked) return { error: untracked, code: 'untracked' };

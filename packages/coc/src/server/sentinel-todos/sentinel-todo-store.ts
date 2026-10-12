@@ -318,6 +318,13 @@ export class SentinelTodoStore {
                 FOREIGN KEY (workspace_id, parent_process_id, item_id)
                     REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_dependency_generations (
+                workspace_id TEXT NOT NULL, parent_process_id TEXT NOT NULL, item_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+            );
         `))();
     }
 
@@ -475,7 +482,11 @@ export class SentinelTodoStore {
             edges.forEach((edge, order) => insert.run(
                 owner.workspaceId, owner.processId, itemId, edge.itemId, order, JSON.stringify(edge.condition),
             ));
-            return this.commit(owner, ledger, index, { ...current, dependsOn: edges }, actor, new Date().toISOString());
+            const result = this.commit(owner, ledger, index, { ...current, dependsOn: edges }, actor, new Date().toISOString());
+            this.db.prepare(`INSERT INTO sentinel_todo_dependency_generations VALUES (?, ?, ?, ?)
+                ON CONFLICT(workspace_id, parent_process_id, item_id) DO UPDATE SET revision = excluded.revision`)
+                .run(owner.workspaceId, owner.processId, itemId, result.item.revision);
+            return result;
         });
     }
 
@@ -873,13 +884,24 @@ export class SentinelTodoStore {
         if (changed !== 1) throw new SentinelTodoError('conflict', 'The ledger changed since it was loaded');
     }
 
+    /** Operational invalidation commits with the ledger mutation, without changing fulfillment. */
+    onDependencyMutation?: (owner: SentinelTodoOwner) => void;
+
+    dependencyRevision(owner: SentinelTodoOwner, itemId: string): number {
+        return this.db.prepare(`SELECT revision FROM sentinel_todo_dependency_generations
+            WHERE workspace_id = ? AND parent_process_id = ? AND item_id = ?`)
+            .get<{ revision: number }>(owner.workspaceId, owner.processId, itemId)?.revision ?? 0;
+    }
+
     private mutate<T>(owner: SentinelTodoOwner, mutation: () => T): T {
         assertOwner(owner);
         return this.db.transaction(() => {
             // Native transactions begin deferred. A zero-row write reserves the
             // SQLite writer before reads while the native mutex stays held.
             this.db.prepare('UPDATE sentinel_todo_ledgers SET revision = revision WHERE 0').run();
-            return mutation();
+            const result = mutation();
+            this.onDependencyMutation?.(owner);
+            return result;
         })();
     }
 }

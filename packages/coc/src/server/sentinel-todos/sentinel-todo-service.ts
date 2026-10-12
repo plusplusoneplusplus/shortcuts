@@ -70,7 +70,10 @@ export class SentinelTodoService {
         project(owner: SentinelTodoOwner, item: SentinelTodoItem): Pick<SentinelTodoItemView, 'dependencyAction' | 'dependencyReadiness'>;
         authorize(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user'): Promise<{ item: SentinelTodoItemView; ledgerRevision: number }>;
         revoke(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user'): Promise<{ item: SentinelTodoItemView; ledgerRevision: number }>;
-        guard(input: CreateTaskInput, phase: 'enqueue' | 'start'): Promise<void>;
+        guard(input: CreateTaskInput, phase: 'enqueue' | 'check' | 'start'): Promise<void>;
+        refresh(owner: SentinelTodoOwner): void;
+        evaluated(owner: SentinelTodoOwner, evaluation: SentinelTodoDependencyEvaluation): string[];
+        notify(owner: SentinelTodoOwner, itemIds: readonly string[]): void;
         context(owner: SentinelTodoOwner, itemId: string, requested?: unknown): Promise<SentinelTodoTrackedAdmission>;
     };
     constructor(private readonly deps: {
@@ -173,7 +176,8 @@ export class SentinelTodoService {
         }
         const root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId);
         await this.assertDependenciesOwner(owner);
-        return this.deps.todos.recordEvaluation(owner, snapshot, ledger => {
+        let invalidated: string[] = [];
+        const committed = this.deps.todos.recordEvaluation(owner, snapshot, ledger => {
             const edges: SentinelTodoDependencyEvaluation['edges'] = item.dependsOn.map(dependency => {
                 const source = ledger.items.find(source => source.id === dependency.itemId);
                 const result: SentinelTodoDependencyEvaluation['edges'][number] = {
@@ -217,9 +221,12 @@ export class SentinelTodoService {
                 state: !item.archived && edges.every(edge => edge.satisfied) ? 'ready' : 'waiting', edges,
                 ...(item.archived ? { blocker: 'Dependent item is archived' } : {}),
             };
+            invalidated = this.dependencyActions?.evaluated(owner, evaluation) ?? [];
             commit?.(evaluation, ledger);
             return evaluation;
         });
+        this.dependencyActions?.notify(owner, invalidated);
+        return committed;
     }
 
     private requireEvidenceItem(ledger: SentinelTodoLedger, itemId: string, revision?: number): SentinelTodoItem {
@@ -249,6 +256,7 @@ export class SentinelTodoService {
 
     async list(owner: SentinelTodoOwner): Promise<SentinelTodoLedgerView> {
         await this.assertOwner(owner);
+        this.dependencyActions?.refresh(owner);
         const ledger: SentinelTodoLedger = this.deps.todos.get(owner);
         let delegated: DelegatedJob[] = [];
         if (ledger.items.some(item => item.jobs.some(job => !job.serverId && job.kind !== 'remote'))) {
@@ -260,7 +268,7 @@ export class SentinelTodoService {
             revision: ledger.revision,
             items: ledger.items.map(item => ({
                 ...item,
-                ...(this.dependenciesEnabled() ? this.dependencyActions?.project(owner, item) : {}),
+                ...this.dependencyActions?.project(owner, item),
                 jobs: item.jobs.map(link => ({ ...link,
                     mode: this.jobMode(link, modes),
                     execution: this.execution(link, owner, delegated, item.userVerdictRevision),

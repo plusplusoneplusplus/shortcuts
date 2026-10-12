@@ -94,14 +94,21 @@ PR with named output slot and tracked-job or owner-selection provenance/reason;
 links. The owner stays bound to the invoking Sentinel and the service rechecks the
 live gate. Ordinary create/update cannot author edges or evidence. These commands
 preserve fulfillment and grant no authority; accepted designs remain pending coding
-completion. The tool reads `dependencyAction` and `dependencyReadiness` but cannot
-authorize actions. Dependency-bound `send_to_conversation` requires the exact
+completion.
+
+The tool reads `dependencyAction` and `dependencyReadiness` but cannot authorize
+actions. Dependency-bound `send_to_conversation` requires the exact
 saved prompt, mode, concrete provider/model and local workspace plus `todoItemId`;
 it carries owner/item/action revision into central enqueue and first execution.
 Missing or revoked authority needs approval. Consumed/blocked actions require
 fresh explicit user authorization, not tool retries or post-mode escalation.
 Manual items stay tracking-only; native cross-server admission rejects without
-local fallback. Operational receipts and transport recovery are described in
+local fallback.
+
+Removing all edges or disabling authoring never converts historical native
+authority into an ordinary launch. Started work exposes durable `requiresReview`
+warnings without changing fulfillment; warnings grant no rerun authority.
+Operational receipts and transport recovery are described in
 [process-store.md](process-store.md#sentinel-dependency-operations).
 
 When `triggers.enabled` infrastructure is present, the same tool offers

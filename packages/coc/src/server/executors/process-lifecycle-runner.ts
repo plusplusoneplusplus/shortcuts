@@ -503,7 +503,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (trackedContext?.sentinelTodoTracking) {
                     const admission = this.runtime.getSentinelDependencyAdmission?.() ?? todos?.dependencyActions;
                     if (!admission) throw new Error('Tracked dependency admission is unavailable');
-                    await admission.guard(task, 'start');
+                    await admission.guard(task, 'check');
                 } else if (todos?.dependenciesEnabled() && !trackedContext?.sentinelScrub && !task.continuationOfSessionId) {
                     const parent = await this.store.getProcess(trackedContext!.spawnedFromProcessId as string);
                     if (parent?.metadata?.mode === 'sentinel') throw new Error('Tracked Sentinel first execution requires dependency admission context');
@@ -931,6 +931,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
         try {
             if (opts.cancelledTasks.has(task.id) || task.status === 'cancelled') throw new Error('Task cancelled');
+            if (trackedContext?.sentinelTodoTracking) {
+                const admission = this.runtime.getSentinelDependencyAdmission?.() ?? this.runtime.getSentinelTodos?.()?.dependencyActions;
+                if (!admission) throw new Error('Tracked dependency admission is unavailable');
+                await admission.guard(task, 'start');
+            }
             const result = await opts.executeByTypeFn(task, prompt);
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);

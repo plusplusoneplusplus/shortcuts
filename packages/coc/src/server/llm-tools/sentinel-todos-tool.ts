@@ -162,8 +162,10 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
             if (!item) throw new SentinelTodoError('not_found', 'To-do item not found');
             const context = service.dependenciesEnabled?.() && service.dependencyActions
                 ? await service.dependencyActions.context(owner, itemId, args) : undefined;
+            const dependencyBound = !!item.dependsOn?.length || !!item.dependencyAction;
+            if (dependencyBound && !context) throw new SentinelTodoError('invalid', 'Historical dependency authority requires native admission; disabled capability cannot become an ordinary launch');
             return { context, ...(item.dependencyAction ? { requestId: item.dependencyAction.taskId } : {}),
-                dependencyBound: !!item.dependsOn?.length || !!item.dependencyAction };
+                dependencyBound };
         },
         async link(itemId, job) {
             try {

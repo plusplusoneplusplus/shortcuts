@@ -210,6 +210,9 @@ describe('snapshot domain behavior', () => {
         todos.linkJob(owner, item.id, {
             processId: 'child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
         });
+        const source = todos.create(owner, { title: 'Prerequisite', status: 'done' }, { actor: 'user' }).item;
+        todos.setDependencies(owner, item.id, todos.get(owner).items.find(candidate => candidate.id === item.id)!.revision,
+            [{ itemId: source.id, condition: { kind: 'done' } }], 'user');
         const receipts = new SentinelDependencyStore(db, todos);
         const action: DependencyActionRecord = {
             itemRevision: todos.get(owner).items[0].revision, dependencies: '[]',
@@ -225,7 +228,8 @@ describe('snapshot domain behavior', () => {
         'generation', () => 'Read the current readiness');
         receipts.persistPoll({ id: 'owner-poll', owner, nextTickAt: null });
         const operationalTables = ['sentinel_dependency_actions', 'sentinel_dependency_admissions',
-            'sentinel_dependency_ralph_starts', 'sentinel_dependency_wakes', 'sentinel_dependency_polls'];
+            'sentinel_dependency_ralph_starts', 'sentinel_dependency_wakes', 'sentinel_dependency_polls',
+            'sentinel_todo_dependency_generations'];
         for (const table of operationalTables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toHaveLength(1);
         const before = todos.get(owner);
         const domain = createSentinelTodosDomain();

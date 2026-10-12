@@ -162,6 +162,7 @@ export interface SentinelTodoDependencyAction extends SentinelTodoDependencyActi
   /** Fixed native child identity, not an invitation to retry. */
   taskId: string;
   error?: string;
+  /** Durable evidence-invalidation warning for started work; independent of fulfillment. */
   requiresReview?: boolean;
 }
 
