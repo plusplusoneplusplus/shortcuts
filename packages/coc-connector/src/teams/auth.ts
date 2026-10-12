@@ -17,7 +17,6 @@ export interface TeamsOAuthCredentialOptions {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDENTITY_SCOPES = ['openid', 'profile', 'offline_access'];
-const run = promisify(execFile);
 
 export function extractTenantId(serverUrl: string): string | undefined {
     try {
@@ -32,6 +31,7 @@ async function secureDirectory(directory: string): Promise<void> {
     await fs.mkdir(directory, { recursive: true, mode: 0o700 });
     if (!(await fs.lstat(directory)).isDirectory()) throw new AuthError('StorageDenied');
     if (process.platform === 'win32') {
+        const run = promisify(execFile);
         const { stdout } = await run('whoami.exe', ['/user', '/fo', 'csv', '/nh'],
             { windowsHide: true, timeout: 10_000 });
         const sid = stdout.match(/S-1-(?:\d+-)*\d+/)?.[0];
