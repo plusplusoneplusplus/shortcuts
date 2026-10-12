@@ -274,6 +274,8 @@ Live fixtures exercise large results, cross-window turns and native-popup Stop
 through the parser/tool/WebSocket/SPA/preload/main/CDP chain. Desktop CI builds server/SPA
 artifacts and runs the workflow on Linux/macOS and Windows WebView2; feature admission
 uses default-off `browserControl.enabled` ([tools](llm-tools.md)).
+Linux native-frame assertions require a window manager on the isolated display;
+framed control windows are mapped before measuring decoration extents.
 
 ### Container image
 
