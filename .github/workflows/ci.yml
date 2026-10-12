@@ -876,8 +876,8 @@ jobs:
           name: coc-native-${{ matrix.os }}
           path: packages/coc-native
 
-      - name: Build native TypeScript contract
-        run: npm run build -w packages/coc-native
+      - name: Build CoC server and SPA browser-control contracts
+        run: npm run build -w packages/coc
 
       - name: Build coc-desktop package
         run: npm run build
@@ -889,14 +889,14 @@ jobs:
 
       - name: Run live browser engine contracts
         if: matrix.os != 'ubuntu-latest'
-        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts --fileParallelism=false
+        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts --fileParallelism=false
         working-directory: packages/coc-desktop
         env:
           COC_DESKTOP_E2E: '1'
 
       - name: Run live Electron browser contracts on headless Linux
         if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts --fileParallelism=false
+        run: xvfb-run -a npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts test/e2e/browser-control-page.e2e.test.ts test/e2e/browser-control-relay.e2e.test.ts test/e2e/browser-control-workflow.e2e.test.ts --fileParallelism=false
         working-directory: packages/coc-desktop
         env:
           COC_DESKTOP_E2E: '1'

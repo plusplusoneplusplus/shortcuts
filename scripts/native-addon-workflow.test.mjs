@@ -84,6 +84,18 @@ test("the cross-platform coc suite uses its matching addon", () => {
     assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);
 });
 
+test("desktop browser control builds its server contracts and runs the live relay workflow on every platform", () => {
+    const job = jobBlock(ci, "coc-desktop-test");
+    const server = job.indexOf("npm run build -w packages/coc");
+    const desktop = job.indexOf("working-directory: packages/coc-desktop");
+    assert.ok(server >= 0 && server < desktop, "server/client contracts and SPA artifacts must exist before desktop fixtures");
+    for (const name of ["browser-control-page", "browser-control-relay", "browser-control-workflow"]) {
+        assert.equal(job.split(`test/e2e/${name}.e2e.test.ts`).length - 1, 2,
+            `${name} must run in both the headless Linux and native macOS/Windows selectors`);
+    }
+    assert.match(job, /os: \[ubuntu-latest, macos-latest, windows-latest\]/);
+});
+
 // coc-agent-sdk and forge compile against @plusplusoneplusplus/coc-native, and
 // its dist/ is generated, not committed — so a job that runs `tsc` over either
 // before building the addon package fails with TS2307 rather than a test
