@@ -17,6 +17,7 @@ import { parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import { getCodexFileChanges } from './toolNormalization';
 import { shortenPath, isImageDataUrl, type ToolCallRenderModel } from './toolCallRenderModel';
 import { TaskCompleteBody } from './TaskCompleteBody';
+import { ToolResultThumbnails } from './ToolResultThumbnails';
 
 /** Small inline copy button for the Command section header. */
 export function CopyCommandBtn({ command }: { command: string }) {
@@ -380,6 +381,7 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
                 </div>
             )}
             {isTaskComplete && taskCompleteSummary && <TaskCompleteBody summary={taskCompleteSummary} />}
+            {model.resultImages.length > 0 && <ToolResultThumbnails images={model.resultImages} onImageClick={onImageClick} />}
             {name !== 'view' && !isTaskComplete && resultText && (
                 <div>
                     <div className="text-[10px] uppercase text-[#848484] mb-0.5">Result</div>

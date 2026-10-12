@@ -15,6 +15,8 @@ import { computeLineDiff, type DiffLine } from '../../../../../diff/diff-utils';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../../ui/BottomSheet';
 import { useChatRenderContext } from '../ChatRenderContext';
+import { getToolResultPresentation } from './toolResultPresentation';
+import { ToolResultThumbnails } from './ToolResultThumbnails';
 
 const MAX_PREVIEW_LENGTH = 2000;
 
@@ -127,7 +129,9 @@ interface ToolResultPopoverProps {
     onImageClick?: (src: string, alt?: string) => void;
 }
 
-export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseEnter, onMouseLeave, onImageClick }: ToolResultPopoverProps) {
+export function ToolResultPopover({ result: rawResult, toolName, args, anchorRect, onMouseEnter, onMouseLeave, onImageClick }: ToolResultPopoverProps) {
+    const presentation = useMemo(() => getToolResultPresentation(rawResult), [rawResult]);
+    const result = isImageDataUrl(rawResult) ? rawResult : presentation.text;
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -240,6 +244,12 @@ export function ToolResultPopover({ result, toolName, args, anchorRect, onMouseE
     const isImage = isImageDataUrl(result);
 
     const renderBody = () => {
+        if (presentation.images.length && !isImage) {
+            return <div className="space-y-2">
+                <ToolResultThumbnails images={presentation.images} onImageClick={onImageClick} />
+                {visibleText && <pre className="text-[11px] whitespace-pre-wrap break-words font-mono"><code>{visibleText}</code></pre>}
+            </div>;
+        }
         if (isImage) {
             const imageAlt = filePath ? shortenPath(filePath) : 'Image preview';
             return (

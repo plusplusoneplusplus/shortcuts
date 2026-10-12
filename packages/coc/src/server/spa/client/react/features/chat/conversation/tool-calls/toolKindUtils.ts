@@ -70,6 +70,8 @@ export function getToolKindInfo(toolName: string): ToolKindInfo {
             return { label: 'Skill', cls: 'other' };
         case 'ask_user':
             return { label: 'Ask', cls: 'other' };
+        case 'browser':
+            return { label: 'Browser', cls: 'read' };
         default: {
             const trimmed = canonicalName.length > 8 ? canonicalName.slice(0, 8) : canonicalName;
             return { label: trimmed, cls: 'other' };

@@ -15,6 +15,7 @@ import type { ToolCallVariant } from './ToolCallVariant';
 import { getToolKindInfo, KIND_PILL_CLASSES, getToolMetric, getSemanticShellMetric } from './toolKindUtils';
 import type { ToolKindInfo } from './toolKindUtils';
 import { classifyShellCommand } from './shellCommandClassifier';
+import { getToolResultPresentation } from './toolResultPresentation';
 import {
     getCodexFileChanges,
     normalizeToolForDisplay,
@@ -112,6 +113,9 @@ export function getToolSummary(toolName: string, args: any, rawArgs?: any): stri
     if (!args || typeof args !== 'object') return '';
 
     switch (toolName) {
+        case 'browser':
+            return [args.action, args.ref, args.url ?? args.tab]
+                .filter(value => typeof value === 'string' && value.trim()).join(' · ');
         case 'read_batch': {
             const paths = [args.paths, args.files, args.file_paths, args.filePaths]
                 .find(value => Array.isArray(value)) as unknown[] | undefined;
@@ -320,6 +324,7 @@ export interface ToolCallRenderModel {
     /** True when there is any expandable detail (args, result, or error). */
     hasDetails: boolean;
     resultText: string;
+    resultImages: ReturnType<typeof getToolResultPresentation>['images'];
     isResultTruncated: boolean;
     /** Result text clamped to the inline display cap. */
     visibleResult: string;
@@ -415,14 +420,17 @@ export function buildToolCallRenderModel(
         && !!(argsObj && (argsObj.path || argsObj.filePath));
     const summaryFullPath = summaryIsPath && argsObj ? String(argsObj.path || argsObj.filePath) : '';
 
-    const resultText = typeof normalized.result === 'string' ? normalized.result : '';
+    const presentation = getToolResultPresentation(normalized.result);
+    const hasStructuredImages = presentation.images.length > 0 && !isImageDataUrl(normalized.result ?? '');
+    const resultText = isImageDataUrl(normalized.result ?? '') ? normalized.result ?? '' : presentation.text;
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated
         ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated — showing ${formatCount(TRUNCATED_RESULT_LENGTH)} of ${formatCount(resultText.length)} chars)`
         : resultText;
-    const popoverResultText = name === 'apply_patch' && applyPatchText ? applyPatchText : resultText;
+    const popoverResultText = name === 'apply_patch' && applyPatchText ? applyPatchText
+        : presentation.images.length ? normalized.result ?? '' : resultText;
 
-    const hasDetails = !!(argsText || resultText || error);
+    const hasDetails = !!(argsText || resultText || error || presentation.images.length);
 
     const bashDescription = isShellLike && argsObj?.description ? String(argsObj.description) : '';
     const bashCommand = isShellLike && argsObj?.command ? String(argsObj.command) : '';
@@ -438,7 +446,7 @@ export function buildToolCallRenderModel(
 
     const hasHoverResult = (
         name === 'task' || name === 'read_agent' || name === 'view' || isShellLike || isSql
-        || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit' || name === 'apply_patch'
+        || name === 'glob' || name === 'grep' || name === 'create' || name === 'edit' || name === 'apply_patch' || name === 'browser'
     ) && !!popoverResultText;
 
     const kindInfo = semantic
@@ -482,6 +490,7 @@ export function buildToolCallRenderModel(
         startTimeDetailLabel: formatStartTimeDetailed(normalized.startTime),
         hasDetails,
         resultText,
+        resultImages: hasStructuredImages ? presentation.images : [],
         isResultTruncated,
         visibleResult,
         popoverResultText,
