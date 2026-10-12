@@ -39,12 +39,14 @@ export class ChatExecutor extends ChatBaseExecutor {
         task: QueuedTask,
         prompt: string,
         workingDirectory: string | undefined,
+        signal?: AbortSignal,
     ): Promise<ChatModeAIOptions> {
         return this.buildStandardModeOptions(
             task,
             prompt,
             'ask',
             workingDirectory,
+            signal,
         );
     }
 }

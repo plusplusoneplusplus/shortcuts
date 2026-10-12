@@ -56,6 +56,7 @@ import { isSentinelProcess, parseAutoCompactSettings, resumeAutoCompact, saveAut
 import { cancelConversation } from '../processes/cancel-conversation';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
 import { parseChatHistoryQuery, readChatHistory } from '../processes/chat-history-read-model';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -158,6 +159,7 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
             queueTaskId: task.id,
             mode: normalizeChatMode(payload?.mode),
             workspaceId: payload?.workspaceId,
+            ...(payload?.context?.browserMode === true ? { browserMode: true } : {}),
             ...(task.botControl && task.type === 'chat' && payload?.kind === 'chat'
                 && task.repoId && payload.workspaceId === task.repoId && !payload.processId
                 ? { botControl: task.botControl }
@@ -552,6 +554,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 }
                 if ('autoCompact' in parsed.set || parsed.unset.includes('autoCompact')) {
                     return void handleAPIError(res, badRequest('Auto-compact is managed by its own endpoint'));
+                }
+                if ('browserMode' in parsed.set && typeof parsed.set.browserMode !== 'boolean') {
+                    return void handleAPIError(res, badRequest('browserMode must be a boolean'));
+                }
+                if (parsed.set.browserMode === true
+                    && (ctx.getLiveFeatureFlags?.().browserControlEnabled !== true
+                        || typeof existing.metadata?.workspaceId !== 'string'
+                        || (ctx.dataDir && readEffectiveDisabledLlmTools(ctx.dataDir, existing.metadata?.workspaceId as string).includes('browser')))) {
+                    return void handleAPIError(res, badRequest('Browser control is disabled'));
                 }
                 const nextMetadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
                 for (const [key, value] of Object.entries(parsed.set)) {
@@ -1278,13 +1289,20 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // The recorded style is updated on every in-scope turn, including
             // the turns that inject nothing, so switching to Default is a real
             // state and not a gap. Only an actual change needs a write.
-            const metadataUpdate = styleGateOpen && fields.chatStyle !== recordedStyle
+            let metadataUpdate = styleGateOpen && fields.chatStyle !== recordedStyle
                 ? {
                     type: proc.metadata?.type ?? 'chat',
                     ...(proc.metadata ?? {}),
                     chatStyle: fields.chatStyle,
                 }
                 : undefined;
+            if (ctx.getLiveFeatureFlags?.().browserControlEnabled === true
+                && /(?:^|\s)\/browser(?=\s|$)/i.test(body.content)
+                && typeof proc.metadata?.workspaceId === 'string'
+                && (!ctx.dataDir || !readEffectiveDisabledLlmTools(ctx.dataDir, proc.metadata.workspaceId).includes('browser'))) {
+                metadataUpdate = { ...proc.metadata,
+                    ...metadataUpdate, browserMode: true } as typeof metadataUpdate;
+            }
             const applyStyle = (text: string): string =>
                 injectStyle ? prependChatStyleBlock(text, fields.chatStyle) : text;
 

@@ -89,6 +89,7 @@ export function registerQueueFollowUpRoutes(routes: Route[], ctx: QueueRouteCont
                         kind: 'chat',
                         prompt: contextPrompt,
                         resumedFrom: pid,
+                        context: { browserMode: proc.metadata?.browserMode === true },
                         ...(payload?.workingDirectory ? { workingDirectory: payload.workingDirectory } : {}),
                         ...(payload?.workspaceId ? { workspaceId: payload.workspaceId } : {}),
                         ...(payload?.provider ? { provider: payload.provider } : {}),

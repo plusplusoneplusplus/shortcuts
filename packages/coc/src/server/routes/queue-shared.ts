@@ -91,6 +91,7 @@ export interface QueueRouteContext {
     bridge: MultiRepoQueueRouter;
     store: ProcessStore | undefined;
     dataDir?: string;
+    browserControlEnabled?: () => boolean;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
     getDefaultProvider?: () => ChatProvider;
@@ -253,6 +254,9 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
     }
     if (payload?.context?.files !== undefined) {
         slimPayload.context = { files: payload.context.files };
+    }
+    if (payload?.context?.browserMode !== undefined) {
+        slimPayload.context = { ...slimPayload.context as any, browserMode: payload.context.browserMode };
     }
     if (payload?.context?.taskGeneration !== undefined) {
         slimPayload.context = { ...slimPayload.context as any, taskGeneration: payload.context.taskGeneration };

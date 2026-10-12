@@ -30,6 +30,7 @@ export function registerQueueRoutes(
         isAutoProviderRoutingActive?: () => boolean;
         getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
         dataDir?: string;
+        browserControlEnabled?: () => boolean;
         validateProvider?: (provider: ChatProvider) => Promise<void>;
         botManagedConversationsEnabled?: () => boolean;
         getSentinelMirror?: QueueRouteContext['getSentinelMirror'];
@@ -54,6 +55,7 @@ export function registerQueueRoutes(
         bridge,
         store,
         dataDir: options.dataDir,
+        browserControlEnabled: options.browserControlEnabled,
         globalWorkspaceRootPath,
         state,
         getDefaultProvider: options.getDefaultProvider,

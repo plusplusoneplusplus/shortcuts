@@ -11,6 +11,8 @@
 /** Every key that belongs to the runtime capability contract. */
 export const RUNTIME_CAPABILITY_KEYS = [
     'getWsServer',
+    'getBrowserControlRuntime',
+    'getBrowserToolState',
     'getCronInfra',
     'getTriggerInfra',
     'getEnqueueChat',

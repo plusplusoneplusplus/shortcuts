@@ -517,6 +517,12 @@ Key persisted metadata:
 - `config` — model, mode, workspace, tools
 - `pendingMessages` — buffered follow-ups
 - `pendingAskUser` — pending interactive question
+- `browserMode` — sticky prompt-only browser activation. Enabled `/browser`
+  submissions carry initial state through queue context into process metadata;
+  follow-up admission persists activation, and owner-scoped metadata patches
+  clear it. Turn context reads current durable state under process admission.
+  Cold resume copies the saved value rather than parsing historical commands.
+  Tool registration and guidance also require the live feature and repo gates.
 - `stoppedChatResume` — stopped-chat resume state; `{ resumable: false, reason:
   'strict-resume-failed' }` marks a conversation that cannot continue after provider
   strict-resume failure

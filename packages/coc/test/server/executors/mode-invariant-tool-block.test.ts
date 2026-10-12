@@ -28,6 +28,7 @@ import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
+import { BrowserToolStateStore } from '../../../src/server/llm-tools/browser-tools';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
@@ -142,6 +143,144 @@ function sortedToolNames(callIndex: number): string[] {
 // ============================================================================
 
 describe('mode-invariant tool block', () => {
+    it.each(['copilot', 'claude', 'codex', 'opencode'] as const)(
+        'browser tool is live-gated in Ask and Autopilot on %s', async provider => {
+            let enabled = false;
+            const runtime = { getEnabled: () => enabled, execute: vi.fn().mockResolvedValue({}) };
+            const state = new BrowserToolStateStore();
+            const inFlightTurns = new Map();
+            const options = () => makeOptions({ provider,
+                getBrowserControlRuntime: () => runtime, getBrowserToolState: () => state, inFlightTurns });
+            for (const mode of ['ask', 'autopilot'] as const) {
+                const Executor = mode === 'ask' ? ChatExecutor : AutopilotExecutor;
+                await new Executor(createMockProcessStore(), options()).execute(makeChatTask(mode, `off-${mode}`, 'ws-1'), '/browser open a page');
+                expect(allToolNames(sdkMocks.mockSendMessage.mock.calls.length - 1)).not.toContain('browser');
+            }
+            enabled = true;
+            for (const mode of ['ask', 'autopilot'] as const) {
+                const Executor = mode === 'ask' ? ChatExecutor : AutopilotExecutor;
+                await new Executor(createMockProcessStore(), options()).execute(makeChatTask(mode, `on-${mode}`, 'ws-1'), '/browser open a page');
+                const call = sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any;
+                expect(call.tools.some((tool: any) => tool.name === 'browser')).toBe(true);
+                expect(call.prompt).toContain('Browser mode is active.');
+                expect(call.systemMessage?.content ?? '').not.toContain('Browser mode is active.');
+            }
+        },
+    );
+
+    it('browser activation stays persisted across follow-ups and executor recreation, and clears', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess(makeProcess('browser-sticky', 'ask'));
+        const browserState = new BrowserToolStateStore();
+        let enabled = true;
+        const options = () => makeOptions({
+            getBrowserControlRuntime: () => ({ getEnabled: () => enabled, execute: vi.fn().mockResolvedValue({}) }),
+            getBrowserToolState: () => browserState,
+        });
+        await new FollowUpExecutor(store, options()).executeFollowUp('browser-sticky', '/browser browse', undefined, 'ask');
+        expect((await store.getProcess('browser-sticky'))?.metadata?.browserMode).toBe(true);
+        await new FollowUpExecutor(store, options()).executeFollowUp('browser-sticky', 'continue', undefined, 'autopilot');
+        expect((sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any).prompt).toContain('Browser mode is active.');
+        const process = (await store.getProcess('browser-sticky'))!;
+        await store.updateProcess(process.id, { metadata: { ...process.metadata!, browserMode: false } });
+        await new FollowUpExecutor(store, options()).executeFollowUp('browser-sticky', 'continue', undefined, 'ask');
+        const cleared = sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any;
+        expect(cleared.prompt).not.toContain('Browser mode is active.');
+        expect(cleared.tools.some((tool: any) => tool.name === 'browser')).toBe(true);
+        await store.updateProcess(process.id, { metadata: { ...process.metadata!, browserMode: true } });
+        enabled = false;
+        await new FollowUpExecutor(store, options()).executeFollowUp('browser-sticky', 'continue', undefined, 'ask');
+        const disabled = sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any;
+        expect(disabled.prompt).not.toContain('Browser mode is active.');
+        expect(disabled.tools.some((tool: any) => tool.name === 'browser')).toBe(false);
+    });
+
+    it('browser execution is prompt-only and receives the current turn cancellation signal', async () => {
+        const runtime = { getEnabled: () => true, execute: vi.fn().mockResolvedValue({ tabs: [] }) };
+        const inFlightTurns = new Map();
+        sdkMocks.mockSendMessage.mockImplementationOnce(async (call: any) => {
+            const tool = call.tools.find((tool: any) => tool.name === 'browser');
+            const result = await tool.handler({ action: 'tabs' }, {});
+            expect(result.resultType).toBe('success');
+            const signal = runtime.execute.mock.calls[0][4] as AbortSignal;
+            expect(signal.aborted).toBe(false);
+            const reason = new Error('Turn cancelled');
+            inFlightTurns.get('queue_browser-no-activation').controller.abort(reason);
+            expect(call.signal.aborted).toBe(true);
+            expect(signal.aborted).toBe(true);
+            expect(signal.reason).toBe(reason);
+            return { success: true, response: 'ok', sessionId: 's1' };
+        });
+        await new ChatExecutor(createMockProcessStore(), makeOptions({
+            getBrowserControlRuntime: () => runtime,
+            getBrowserToolState: () => new BrowserToolStateStore(),
+            inFlightTurns,
+        })).execute(makeChatTask('ask', 'browser-no-activation', 'ws-1'), 'hello');
+        expect(runtime.execute).toHaveBeenCalledTimes(1);
+        expect((sdkMocks.mockSendMessage.mock.calls[0][0] as any).prompt).not.toContain('Browser mode is active.');
+    });
+
+    it('registers cancellation before building tools and releases it when bundle preparation fails', async () => {
+        const inFlightTurns = new Map();
+        class FailingChatExecutor extends ChatExecutor {
+            protected async buildModeOptions(_task: QueuedTask, _prompt: string, _directory: string | undefined, signal?: AbortSignal): Promise<any> {
+                expect(signal).toBeDefined();
+                expect(inFlightTurns.get('queue_browser-prepare-failure').controller.signal).toBe(signal);
+                throw new Error('Bundle preparation failed');
+            }
+        }
+        await expect(new FailingChatExecutor(createMockProcessStore(), makeOptions({ inFlightTurns }))
+            .execute(makeChatTask('ask', 'browser-prepare-failure', 'ws-1'), 'hello'))
+            .rejects.toThrow('Bundle preparation failed');
+        expect(inFlightTurns.size).toBe(0);
+    });
+
+    it('binds the turn signal even without invocation signals or a runtime turn registry', async () => {
+        const runtime = { getEnabled: () => true, execute: vi.fn().mockResolvedValue({ tabs: [] }) };
+        sdkMocks.mockSendMessage.mockImplementationOnce(async (call: any) => {
+            const browser = call.tools.find((tool: any) => tool.name === 'browser');
+            await browser.handler({ action: 'tabs' }, {});
+            const signal = runtime.execute.mock.calls[0][4] as AbortSignal;
+            expect(signal).toBeDefined();
+            expect(signal.aborted).toBe(false);
+            return { success: true, response: 'ok', sessionId: 's1' };
+        });
+        await new ChatExecutor(createMockProcessStore(), makeOptions({
+            getBrowserControlRuntime: () => runtime,
+            getBrowserToolState: () => new BrowserToolStateStore(),
+        })).execute(makeChatTask('ask', 'browser-no-runtime-registry', 'ws-1'), 'hello');
+        expect(runtime.execute).toHaveBeenCalledOnce();
+    });
+
+    it.each([false, true])('cold resume uses persisted browser mode %s, not historical slash tokens', async active => {
+        const store = createMockProcessStore();
+        const process = makeProcess('queue_browser-resume', 'ask');
+        process.metadata = { ...process.metadata!, browserMode: active };
+        await store.addProcess(process);
+        const task = makeChatTask('ask', 'browser-resume', 'ws-1');
+        (task.payload as any).resumedFrom = 'source';
+        await new ChatExecutor(store, makeOptions({
+            getBrowserControlRuntime: () => ({ getEnabled: () => true, execute: vi.fn() }),
+            getBrowserToolState: () => new BrowserToolStateStore(),
+        })).execute(task, 'Earlier user: /browser browse');
+        expect((sdkMocks.mockSendMessage.mock.calls[0][0] as any).prompt.includes('Browser mode is active.')).toBe(active);
+        expect((await store.getProcess(process.id))?.metadata?.browserMode).toBe(active);
+    });
+
+    it('adds browser context to specialized executor tool bundles through the shared base', async () => {
+        class SpecializedChatExecutor extends ChatExecutor {
+            protected async buildModeOptions(_task: QueuedTask, prompt: string): Promise<any> {
+                return { tools: [], effectivePrompt: prompt, agentMode: 'interactive' };
+            }
+        }
+        await new SpecializedChatExecutor(createMockProcessStore(), makeOptions({
+            getBrowserControlRuntime: () => ({ getEnabled: () => true, execute: vi.fn() }),
+            getBrowserToolState: () => new BrowserToolStateStore(),
+        })).execute(makeChatTask('ask', 'specialized-browser', 'ws-1'), '/browser browse');
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(call.tools.map((tool: any) => tool.name)).toEqual(['browser']);
+        expect(call.prompt).toContain('Browser mode is active.');
+    });
     beforeEach(() => {
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });

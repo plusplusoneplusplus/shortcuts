@@ -120,6 +120,7 @@ describe('queue-follow-up cold resume: provider propagation', () => {
                 status: 'completed',
                 startTime: new Date(),
                 conversationTurns: makeConvTurns(),
+                metadata: { type: 'chat', browserMode: true },
             }),
             updateProcess: vi.fn().mockResolvedValue(undefined),
         };
@@ -163,6 +164,7 @@ describe('queue-follow-up cold resume: provider propagation', () => {
         expect(mockEnqueue).toHaveBeenCalledOnce();
         const enqueuedInput = mockEnqueue.mock.calls[0][0];
         expect(enqueuedInput.payload.provider).toBe('claude');
+        expect(enqueuedInput.payload.context.browserMode).toBe(true);
     });
 
     it('cold resume without a provider does not set provider on new task', async () => {

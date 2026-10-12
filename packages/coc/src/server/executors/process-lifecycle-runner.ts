@@ -788,6 +788,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 reasoningEffort: task.config.reasoningEffort,
                 afterEffortTier,
                 mode: normalizedPayloadMode,
+                ...(isChatPayload(task.payload) && task.payload.context?.browserMode === true ? { browserMode: true } : {}),
                 workspaceId: payload?.workspaceId || task.repoId,
                 // Use per-task provider from payload when available; fall back to
                 // the server-level default (this.provider) set at startup.

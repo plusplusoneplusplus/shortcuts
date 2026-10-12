@@ -7,6 +7,8 @@ import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
+import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
+import { createBrowserTool, type BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
@@ -71,6 +73,9 @@ export interface ChatToolBundleOptions {
     /** Overrides the `kusto.enabled` config flag (used by tests). */
     kustoToolsEnabled?: boolean;
     kustoRuntime?: KustoToolsRuntime;
+    browserRuntime?: BrowserControlRuntime;
+    browserState?: BrowserToolStateStore;
+    browserSignal?: AbortSignal;
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
     includeSystemOneTool?: boolean;
@@ -126,6 +131,15 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         return { tools: [options.scrubFindings], toolGuidance: '', askUser };
     }
     const addons: ToolAddon[] = [];
+    if (options.browserRuntime?.getEnabled() && options.browserState && options.workspaceId && options.processId) {
+        const deps = { workspaceId: options.workspaceId, processId: options.processId,
+            runtime: options.browserRuntime, stateStore: options.browserState };
+        const tool = createBrowserTool({ ...deps, signal: options.browserSignal });
+        addons.push({
+            tools: [tool],
+            suffix: '',
+        });
+    }
 
     if (options.includeFollowUpSuggestions !== false && options.followUpSuggestions) {
         addons.push(buildFollowUpSuggestionsAddon(

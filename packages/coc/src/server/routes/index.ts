@@ -28,6 +28,7 @@ import type { QueueGlobalState } from './queue-shared';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { cancelConversation } from '../processes/cancel-conversation';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
+import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
@@ -314,6 +315,7 @@ export interface RegisterRoutesOptions {
      * uses against the shared store + queue bridge.
      */
     setSendMessage?: (fn: SendMessageFn) => void;
+    setBrowserControl?: (getRuntime: () => import('@plusplusoneplusplus/coc-client').BrowserControlRuntime | undefined, state: BrowserToolStateStore) => void;
     setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
     /**
      * Publish the bound in-process Ralph launch (the `POST /api/ralph-launch`
@@ -474,6 +476,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
         await prepareRalphGrilling(input, { dataDir, store, enabled: getRalphEnabled() });
         await prepareTaskForEnqueue(input, {
+            dataDir,
+            browserControlEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.browserControl?.enabled === true,
             getDefaultProvider: concreteDefaultProvider,
             resolveDefaultProvider,
             isAutoProviderRoutingActive,
@@ -780,6 +784,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
+            browserControlEnabled: opts.runtimeConfigService!.config.browserControl?.enabled ?? false,
             llmToolSystemOneEnabled: opts.runtimeConfigService!.config.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
@@ -791,6 +796,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
+            browserControlEnabled: opts.resolvedConfig?.browserControl?.enabled ?? false,
             llmToolSystemOneEnabled: opts.resolvedConfig?.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
@@ -799,6 +805,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
+    const isBrowserControlEnabled = () => getLiveFeatureFlags().browserControlEnabled;
+    opts.setBrowserControl?.(() => {
+        const browserControl = getWsServer()?.browserControl;
+        browserControl?.setEnabledGetter(isBrowserControlEnabled);
+        return browserControl;
+    }, new BrowserToolStateStore());
     // Async extension-canvas capabilities + host.complete. Live (admin toggle
     // takes effect without a restart) and off by default.
     const isCanvasHostApisEnabled = (): boolean => (
@@ -882,6 +894,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         validateProvider: validateSendToConversationProvider,
         state: queueGlobalState,
+        browserControlEnabled: () => getLiveFeatureFlags().browserControlEnabled,
         botManagedConversationsEnabled: () => getLiveFeatureFlags().botManagedConversationsEnabled === true,
         getSentinelMirror,
     });

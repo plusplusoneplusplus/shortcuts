@@ -43,7 +43,8 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         task: QueuedTask,
         prompt: string,
         workingDirectory: string | undefined,
+        signal?: AbortSignal,
     ): Promise<ChatModeAIOptions> {
-        return this.buildStandardModeOptions(task, prompt, 'autopilot', workingDirectory);
+        return this.buildStandardModeOptions(task, prompt, 'autopilot', workingDirectory, signal);
     }
 }

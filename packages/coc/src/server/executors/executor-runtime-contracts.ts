@@ -48,6 +48,8 @@ import type { TriggerManager } from '../triggers/trigger-manager';
 import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
+import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
+import type { BrowserToolStateStore } from '../llm-tools/browser-tools';
 
 // ============================================================================
 // Feature dependency bundles
@@ -108,6 +110,8 @@ export interface InFlightTurn {
 }
 
 export interface ExecutorRuntimeCapabilities {
+    readonly getBrowserControlRuntime?: () => BrowserControlRuntime | undefined;
+    readonly getBrowserToolState?: () => BrowserToolStateStore | undefined;
     /** Host-owned Kusto clients and live enablement, shared with the canvas Run route. */
     readonly getKustoRuntime?: () => KustoToolsRuntime | undefined;
     /** WebSocket server for process/git broadcasts. */
@@ -214,6 +218,8 @@ export type ChatExecutorRuntime = Pick<
     ExecutorRuntimeCapabilities,
     | 'getWsServer'
     | 'getKustoRuntime'
+    | 'getBrowserControlRuntime'
+    | 'getBrowserToolState'
     | 'getCronInfra'
     | 'getTriggerInfra'
     | 'getEnqueueChat'
