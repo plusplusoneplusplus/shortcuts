@@ -92,16 +92,17 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             if (mounted.current) setBusy(false);
         }
     };
-    const sorted = [...rules].sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
+    const sorted = rules.filter(rule => rule.workspaceId === owner.ownerWorkspaceId && rule.processId === owner.processId)
+        .sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
     const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add trigger</Button>;
     return <div className="sentinel-trigger-root">
         {(loadError || error) && <div role="alert" className="sentinel-trigger-error">{loadError || error}{' '}
             <Button size="sm" variant="secondary" disabled={busy} onClick={conflict ? refresh : () => { if (retry.current) void retry.current(); else refresh(); }}>{conflict ? 'Refresh rules' : 'Retry'}</Button>
         </div>}
-        {rules.length > 0 ? <section aria-labelledby={`${id}-heading`} className="sentinel-trigger-section" data-testid="sentinel-todo-triggers">
+        {sorted.length > 0 ? <section aria-labelledby={`${id}-heading`} className="sentinel-trigger-section" data-testid="sentinel-todo-triggers">
             <div className="sentinel-trigger-heading">
                 <h3><button id={`${id}-heading`} type="button" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(value => !value)}>
-                    <span aria-hidden="true">{open ? '▾' : '▸'}</span> Triggers ({rules.length})
+                    <span aria-hidden="true">{open ? '▾' : '▸'}</span> Triggers ({sorted.length})
                 </button></h3>{add}
             </div>
             {open && <ul id={`${id}-body`} className="sentinel-trigger-list">

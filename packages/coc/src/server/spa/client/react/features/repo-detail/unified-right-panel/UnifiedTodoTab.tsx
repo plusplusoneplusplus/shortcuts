@@ -225,7 +225,11 @@ function AddItemForm({ form, testIdPrefix, label, manual = false }: {
     );
 }
 
-export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: UnifiedTodoTabProps) {
+export function UnifiedTodoTab(props: UnifiedTodoTabProps) {
+    return <TodoTab key={sentinelTodoOwnerKey(props.owner)} {...props} />;
+}
+
+function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: UnifiedTodoTabProps) {
     const client = useCocClient(owner.ownerRoutingRef === null ? undefined : owner.ownerRoutingRef ?? owner.ownerWorkspaceId);
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -311,19 +315,34 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
     const scrollRef = useRef<HTMLDivElement>(null);
     const highlightTimer = useRef<ReturnType<typeof setTimeout>>();
     const highlightedRow = useRef<HTMLElement | null>(null);
-    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, []);
+    const currentView = useRef({ ownerKey, ledger });
+    currentView.current = { ownerKey, ledger };
+    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, [ownerKey, client]);
     const followTriggerItem = (itemId: string) => {
-        setShowDone(true);
-        setShowArchived(true);
+        if (currentView.current.ownerKey !== ownerKey) return;
+        const item = ledger?.items.find(candidate => candidate.id === itemId);
+        if (!item) return;
+        const isManual = sentinelTodoType(item) === 'manual';
+        const groups = isManual ? manual : sections;
+        if (isManual) setShowManual(true);
+        if (groups.done.some(candidate => candidate.id === itemId)) {
+            if (isManual) setShowManualDone(true); else setShowDone(true);
+        }
+        if (groups.archived.some(candidate => candidate.id === itemId)) {
+            if (isManual) setShowManualArchived(true); else setShowArchived(true);
+        }
         setExpanded(previous => new Set([...previous, itemId]));
         clearTimeout(highlightTimer.current);
         highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight');
         highlightTimer.current = setTimeout(() => {
+            if (currentView.current.ownerKey !== ownerKey
+                || !currentView.current.ledger?.items.some(candidate => candidate.id === itemId)) return;
             const row = [...(scrollRef.current?.querySelectorAll<HTMLElement>('[data-testid]') ?? [])]
                 .find(element => element.dataset.testid === `sentinel-todo-row-${itemId}`);
             if (!row) return;
             highlightedRow.current = row;
             row.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+            row.querySelector<HTMLButtonElement>('button[aria-expanded]')?.focus({ preventScroll: true });
             row.setAttribute('data-sentinel-trigger-highlight', 'true');
             highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-trigger-highlight'), 2500);
         }, 0);

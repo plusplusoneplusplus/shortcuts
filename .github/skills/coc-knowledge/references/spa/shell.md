@@ -581,7 +581,10 @@ The editor uses browser-safe
 `triggers.enabled` is on. The editor uses eligible normal items, URL/local PR
 selection and server preview. Rule lifecycle and pending delivery are independent
 of item/job/review states; writes use the owning client's typed trigger API and
-expected rule revision. Run now confirms a one-shot Sentinel wake, never a direct
+expected rule revision. Owner-verified task links reveal only the target row and
+its containing groups; unrelated expansion state and lazy history previews stay
+unchanged. Owner changes isolate row state and cancel delayed focus/highlights.
+Run now confirms a one-shot Sentinel wake, never a direct
 job launch; terminal Clear preserves durable delivery receipts.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

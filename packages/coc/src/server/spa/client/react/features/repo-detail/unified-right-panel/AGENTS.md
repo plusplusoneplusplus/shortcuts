@@ -763,7 +763,10 @@ Tests use isolated mock clients in
 `triggers.enabled`. Its owner-qualified `client.triggers` calls use the ledger's
 workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
 Waiting/Paused/terminal/error and delivery state separate from item/job/review
-states; rule rows link the canonical PR and highlight the owning item.
+states; owner-verified rule rows link the canonical PR. Item navigation expands
+and focuses only the target and its containing Normal/Manual Done/Archived
+sections, preserving other expansion state. Missing targets retain unavailable
+feedback; owner changes isolate row state and cancel pending highlights.
 `SentinelTodoTriggerEditor` selects eligible normal items and accepts a PR URL,
 local picker and optional instruction with server preview. Lifecycle writes carry
 the rule revision; Run now requires confirmation. Clearing terminal presentation

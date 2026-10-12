@@ -1,12 +1,13 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { PrTriggerPreview, SentinelTodoItem, Trigger } from '@plusplusoneplusplus/coc-client';
 
 const mocks = vi.hoisted(() => ({
     list: vi.fn(), preview: vi.fn(), create: vi.fn(), edit: vi.fn(), pause: vi.fn(), resume: vi.fn(),
     remove: vi.fn(), runNow: vi.fn(), connect: vi.fn(), workspaceList: vi.fn(), prList: vi.fn(),
-    get: vi.fn(), route: vi.fn(), refs: [] as unknown[],
+    get: vi.fn(), processGet: vi.fn(), groupGet: vi.fn(), route: vi.fn(), refs: [] as unknown[],
 }));
 const client = {
     triggers: {
@@ -15,6 +16,8 @@ const client = {
         removeSentinelTodo: mocks.remove, runSentinelTodoNow: mocks.runNow,
     },
     sentinelTodos: { get: mocks.get },
+    processes: { get: mocks.processGet },
+    taskGroups: { get: mocks.groupGet },
     events: { connect: mocks.connect },
     workspaces: { list: mocks.workspaceList },
     pullRequests: { listForOrigin: mocks.prList },
@@ -33,6 +36,7 @@ import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/re
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 import { resolveCanonicalOriginId } from '../../../src/server/spa/client/react/repos/originScope';
 import { triggerError } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoTriggerModel';
+import { clearSentinelTodoExcursion } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
 const owner = { ownerWorkspaceId: 'ws-owner', ownerRoutingRef: 'remote:server:ws-owner', processId: 'queue_sentinel' };
 const iso = '2026-10-10T00:00:00.000Z';
@@ -74,6 +78,7 @@ function deferred<T>() {
     return { promise, resolve };
 }
 beforeEach(() => {
+    clearSentinelTodoExcursion();
     vi.clearAllMocks();
     mocks.refs.length = 0;
     mocks.list.mockReset().mockResolvedValue([]);
@@ -467,5 +472,129 @@ describe('Sentinel To-do Triggers', () => {
         await waitFor(() => expect(card.dataset.sentinelTriggerHighlight).toBe('true'));
         expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
         expect(screen.getByText('Tests pass')).toBeTruthy();
+    });
+
+    it.each([
+        ['normal', 'todo', false, []],
+        ['normal', 'done', false, ['done']],
+        ['normal', 'done', true, ['archived']],
+        ['manual', 'todo', false, ['manual']],
+        ['manual', 'done', false, ['manual', 'manual-done']],
+        ['manual', 'done', true, ['manual', 'manual-archived']],
+    ] as const)('reveals only the containers for %s / %s / archived=%s, including repeated keyboard activation', async (type, status, archived, opened) => {
+        const items = [
+            item({ type, status, archived }),
+            ...(['normal', 'manual'] as const).flatMap(type => [
+                item({ id: `${type}-active`, title: `${type} active`, type }),
+                item({ id: `${type}-done`, title: `${type} done`, type, status: 'done' }),
+                item({ id: `${type}-archived`, title: `${type} archived`, type, status: 'done', archived: true,
+                    ...(type === 'normal' ? { jobs: [{ processId: 'history-job', workspaceId: owner.ownerWorkspaceId, kind: 'local',
+                        title: 'Archived history job', linkedAt: iso, openLink: '#repos/ws-owner/chats/history-job', execution: { state: 'completed' } }] } : {}) }),
+            ]),
+        ];
+        mocks.get.mockResolvedValue({ items, revision: 1 });
+        mocks.list.mockResolvedValue([rule()]);
+        render(<UnifiedTodoTab owner={owner} />);
+        const link = await screen.findByRole('link', { name: '→ Follow-up work' });
+        const activeRow = screen.getByTestId('sentinel-todo-row-normal-active');
+        fireEvent.click(within(activeRow).getByRole('button', { name: /normal active/ }));
+        fireEvent.click(screen.getByTestId('sentinel-todo-manual-toggle'));
+        const sectionToggle = (section: string) => section === 'manual'
+            ? screen.getByTestId('sentinel-todo-manual-toggle')
+            : within(screen.getByTestId(`sentinel-todo-${section}-section`)).getAllByRole('button')[0];
+        const assertState = () => {
+            const requiredSections: readonly string[] = opened;
+            for (const section of ['done', 'archived', 'manual', 'manual-done', 'manual-archived']) {
+                if (section.startsWith('manual-') && !requiredSections.includes('manual')) continue;
+                expect(sectionToggle(section).getAttribute('aria-expanded')).toBe(String(requiredSections.includes(section)));
+            }
+            expect(within(activeRow).getByRole('button', { name: /normal active/ }).getAttribute('aria-expanded')).toBe('true');
+            for (const other of items.filter(candidate => candidate.id !== 'item-1' && candidate.id !== 'normal-active')) {
+                const row = screen.queryByTestId(`sentinel-todo-row-${other.id}`);
+                if (row) expect(within(row).getByRole('button', { name: new RegExp(other.title) }).getAttribute('aria-expanded')).toBe('false');
+            }
+        };
+        const user = userEvent.setup();
+        for (let click = 0; click < 2; click++) {
+            link.focus();
+            await user.keyboard('{Enter}');
+            const target = await screen.findByTestId('sentinel-todo-row-item-1');
+            await waitFor(() => expect(target.dataset.sentinelTriggerHighlight).toBe('true'));
+            expect(document.activeElement).toBe(within(target).getByRole('button', { name: /Follow-up work/ }));
+            expect(within(target).getByRole('button', { name: /Follow-up work/ }).getAttribute('aria-expanded')).toBe('true');
+            assertState();
+        }
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+        expect(mocks.processGet).not.toHaveBeenCalled();
+        expect(mocks.groupGet).not.toHaveBeenCalled();
+        expect(mocks.preview).not.toHaveBeenCalled();
+        expect(mocks.runNow).not.toHaveBeenCalled();
+    });
+
+    it('preserves independently opened history and manual sections and collapsed rows', async () => {
+        mocks.get.mockResolvedValue({ items: [item(), item({ id: 'done', title: 'Done item', status: 'done' }),
+            item({ id: 'archived', archived: true }), item({ id: 'manual', type: 'manual', status: 'done' })], revision: 1 });
+        mocks.list.mockResolvedValue([rule()]);
+        render(<UnifiedTodoTab owner={owner} />);
+        const link = await screen.findByRole('link', { name: '→ Follow-up work' });
+        const done = within(screen.getByTestId('sentinel-todo-done-section')).getByRole('button');
+        const manualDone = within(screen.getByTestId('sentinel-todo-manual-done-section')).getByRole('button');
+        fireEvent.click(done);
+        fireEvent.click(manualDone);
+        fireEvent.click(link);
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBe('true'));
+        expect(done.getAttribute('aria-expanded')).toBe('true');
+        expect(manualDone.getAttribute('aria-expanded')).toBe('true');
+        expect(within(screen.getByTestId('sentinel-todo-row-done')).getByRole('button', { name: /Done item/ }).getAttribute('aria-expanded')).toBe('false');
+        expect(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('keeps missing target feedback and does not reveal another item or load history', async () => {
+        mocks.get.mockResolvedValue({ items: [item({ id: 'done', status: 'done' }), item({ id: 'archived', archived: true })], revision: 1 });
+        mocks.list.mockResolvedValue([rule()]);
+        render(<UnifiedTodoTab owner={owner} />);
+        fireEvent.click(await screen.findByRole('link', { name: '→ Item unavailable' }));
+        for (const section of ['done', 'archived']) {
+            expect(within(screen.getByTestId(`sentinel-todo-${section}-section`)).getByRole('button').getAttribute('aria-expanded')).toBe('false');
+        }
+        expect(screen.queryByTestId('sentinel-todo-row-item-1')).toBeNull();
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects foreign rules even when their target id matches this ledger', async () => {
+        mocks.list.mockResolvedValue([rule({ workspaceId: 'foreign' }), rule({ id: 'other', processId: 'foreign' })]);
+        mount();
+        await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole('link', { name: '→ Follow-up work' })).toBeNull();
+    });
+
+    it.each([
+        { ...owner, ownerRoutingRef: 'remote:other:ws-owner' },
+        { ...owner, ownerWorkspaceId: 'other-workspace' },
+        { ...owner, processId: 'queue_other' },
+    ])('cancels pending reveal on owner change to $ownerRoutingRef / $ownerWorkspaceId / $processId and ignores late ledger reads', async nextOwner => {
+        mocks.list.mockResolvedValue([rule()]);
+        const { rerender } = render(<UnifiedTodoTab owner={owner} />);
+        const link = await screen.findByRole('link', { name: '→ Follow-up work' });
+        const card = screen.getByTestId('sentinel-todo-row-item-1');
+        const scroll = vi.fn();
+        card.scrollIntoView = scroll;
+        const oldRead = deferred<{ items: SentinelTodoItem[]; revision: number }>();
+        mocks.get.mockReturnValueOnce(oldRead.promise);
+        const handler = mocks.connect.mock.calls[0][0].onMessage;
+        act(() => handler({ type: 'sentinel-todos-changed', workspaceId: owner.ownerWorkspaceId, processId: owner.processId, ledgerRevision: 2 }));
+        const nextRead = deferred<{ items: SentinelTodoItem[]; revision: number }>();
+        mocks.get.mockReturnValue(nextRead.promise);
+        mocks.list.mockResolvedValue([]);
+        fireEvent.click(link);
+        rerender(<UnifiedTodoTab owner={nextOwner} />);
+        await act(async () => oldRead.resolve({ items: [item({ title: 'Stale target' })], revision: 2 }));
+        await act(async () => nextRead.resolve({ items: [item({ title: 'New owner item' })], revision: 1 }));
+        await screen.findByText('New owner item');
+        expect(screen.queryByText('Stale target')).toBeNull();
+        expect(scroll).not.toHaveBeenCalled();
+        expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBeUndefined();
+        expect(within(screen.getByTestId('sentinel-todo-row-item-1')).getByRole('button', { name: /New owner item/ }).getAttribute('aria-expanded')).toBe('false');
+        expect(screen.getByTestId('sentinel-todo-row-item-1').contains(document.activeElement)).toBe(false);
     });
 });
