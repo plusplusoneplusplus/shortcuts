@@ -61,6 +61,10 @@ describe('phone threads start chats in sentinel mode', () => {
         });
         const paused = await fetch(`${server.url}/api/queue/pause`, { method: 'POST' });
         expect(paused.ok).toBe(true);
+        // Global pause covers only existing queues; connector enqueues create the
+        // Global queue directly, so pause it explicitly before tasks can execute.
+        const globalPaused = await fetch(`${server.url}/api/queue/pause?repoId=${GLOBAL}`, { method: 'POST' });
+        expect(globalPaused.ok).toBe(true);
     }
 
     async function queuedMode(taskId: string): Promise<string | undefined> {

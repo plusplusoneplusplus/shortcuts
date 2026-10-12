@@ -599,11 +599,14 @@ export class SentinelMirrorService {
     }
 
     private async finalAnswer(row: SentinelMirrorHeader, owner: ProcessOwnerProjection): Promise<void> {
+        // Executors persist the answer before completing the task; reading the transcript
+        // first could pair a pre-answer snapshot with a later terminal status.
+        const task = this.requestTask(row);
+        const taskStatus = task?.status;
+        if (task && !isTerminalStatus(taskStatus)) return;
         const evidence = await this.deps.store.getRelayRequestProjection(row.processId, row.requestId, row.workspaceId);
         if (evidence.pending || !evidence.found) return;
-        const task = this.requestTask(row);
-        if (task && !isTerminalStatus(task.status)) return;
-        const status = task?.status ?? (evidence.failure ? 'failed'
+        const status = taskStatus ?? (evidence.failure ? 'failed'
             : !evidence.closed && owner.status === 'completed' ? 'completed' : undefined);
         const answered = evidence.answer !== undefined;
         if (!(answered && evidence.closed) && !isTerminalStatus(status)) return;

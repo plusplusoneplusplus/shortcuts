@@ -8,8 +8,11 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import type { SentinelTodoItem, SentinelTodoLedgerResponse } from '@plusplusoneplusplus/coc-client';
+
+// The first cold render of the tab and scrubber can exceed the 1s default on slow CI runners.
+configure({ asyncUtilTimeout: 5000 });
 
 const get = vi.fn();
 const create = vi.fn();
