@@ -8,6 +8,7 @@ import { useChatSSE } from '../../../../src/server/spa/client/react/features/cha
 import type { UseChatSSEOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
 import { RALPH_GRILL_MAX_ROUNDS } from '../../../../src/server/ralph/grill-planning';
+import { clearBrowserControlActivities, getBrowserControlActivity, startBrowserControlActivity } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 
 // ── Minimal EventSource mock ──────────────────────────────────────────
 
@@ -84,6 +85,17 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
 }
 
 describe('useChatSSE', () => {
+    it.each(['completed', 'failed', 'cancelled'])('clears browser turn activity on terminal SSE %s without affecting other workspaces', async status => {
+        startBrowserControlActivity({ workspaceId: 'workspace-a', processId: 'pid-1', tabId: 'tab-a' });
+        startBrowserControlActivity({ workspaceId: 'workspace-b', processId: 'pid-1', tabId: 'tab-b' });
+        renderHook(() => useChatSSE(makeOptions({ workspaceId: 'workspace-a' })));
+        await act(async () => { MockEventSource.last._emit('status', { status }); });
+        expect(getBrowserControlActivity('workspace-a', 'tab-a')).toBeNull();
+        expect(getBrowserControlActivity('workspace-b', 'tab-b')?.processId).toBe('pid-1');
+        clearBrowserControlActivities('workspace-a');
+        clearBrowserControlActivities('workspace-b');
+    });
+
     it('forwards paged snapshots to the shared merger while retaining running provider attribution and token fields', () => {
         const onConversationSnapshot = vi.fn();
         const options = makeOptions({ onConversationSnapshot });

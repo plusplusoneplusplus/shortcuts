@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { cloneApiBase } from '../../../repos/cloneRegistry';
+import { cloneApiBase, lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 import { getCocClientFor } from '../../../api/cocClient';
@@ -8,6 +8,7 @@ import type { QueuedMessage } from '../../../utils/chatUtils';
 import { readBotControl } from '../../../utils/botControl';
 import type { ConversationSnapshotPayload, ProviderSessionPayload } from '@plusplusoneplusplus/coc-client';
 import type { ChatHistoryPage } from './useChatHistoryPaging';
+import { finishBrowserControlActivity } from '../../../shared/file-path/browser-control-activity';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
@@ -432,6 +433,8 @@ export function useChatSSE({
         };
 
         const finish = (finalStatus: 'completed' | 'failed' | 'cancelled' = 'completed') => {
+            const browserWorkspaceId = owner?.workspaceId ?? workspaceId;
+            if (browserWorkspaceId) finishBrowserControlActivity(browserWorkspaceId, processId, sourceBaseUrl ?? owner?.baseUrl ?? lookupCloneBaseUrl(workspaceId));
             const costTimeMs = Date.now() - sseStartTime;
             closeSSE();
             setBackgroundTasks(null);

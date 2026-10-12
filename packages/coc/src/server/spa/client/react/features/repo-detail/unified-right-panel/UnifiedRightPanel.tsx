@@ -1780,6 +1780,8 @@ export function UnifiedRightPanel({
                                     />
                                 ) : tab.kind === 'browser' ? (
                                     <UnifiedBrowserTab
+                                        workspaceId={tab.ownerWorkspaceId}
+                                        routingRef={tab.ownerRoutingRef ?? null}
                                         tabId={tab.id}
                                         viewId={tab.resourceId}
                                         sessionKey={browserSessionKey(tab)}
