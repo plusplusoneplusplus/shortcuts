@@ -7,6 +7,7 @@ import { loadCopilotSdk } from '../sdk-esm-loader';
 import { createSdkClient } from '../sdk-client-factory';
 import { withAbort } from './transport';
 import { stripJsoncComments } from '../trusted-folder';
+import { readCliAccountToken } from '../cli-stored-token';
 import { CopilotDirectError } from './errors';
 import type { CopilotCredentialConfig, CopilotCredentialSnapshot } from './types';
 
@@ -133,16 +134,16 @@ export async function readCopilotCredential(config: CopilotCredentialConfig, sig
                 const account = config.account === 'active-cli-account' ? parsed.lastLoggedInUser : config.account;
                 const host = normalizeCredentialHost(account?.host);
                 if (!account || !host || !accountValid({ host, login: account.login })) throw unavailable('Selected Copilot account is missing.');
-                let token = parsed.copilotTokens?.[`${account.host}:${account.login}`];
-                if ((token === undefined || token === null || token === '') && process.platform === 'win32') {
+                let token = readCliAccountToken(parsed, `${account.host}:${account.login}`) ?? '';
+                if (token === '' && process.platform === 'win32') {
                     signal.throwIfAborted();
                     try {
-                        token = await withAbort(readWindowsCredential(`copilot-cli/${account.host}:${account.login}`), signal);
+                        token = await withAbort(readWindowsCredential(`copilot-cli/${account.host}:${account.login}`), signal) ?? '';
                     } catch {
                         throw unavailable('Selected Copilot Windows credential could not be read.');
                     }
                 }
-                if ((token === undefined || token === null || token === '') && process.platform === 'darwin') {
+                if (token === '' && process.platform === 'darwin') {
                     signal.throwIfAborted();
                     token = await new Promise<string>((resolveToken, reject) => {
                         execFile('/usr/bin/security', [

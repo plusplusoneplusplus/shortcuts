@@ -24,6 +24,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Resolve and validate the exact account's file token for SDK and direct HTTP callers. */
+export function readCliAccountToken(config: Record<string, unknown>, key: string): string | undefined {
+    if (config.authTokens !== undefined && !isRecord(config.authTokens)) throw new CliCredentialConfigError();
+    if (config.copilotTokens !== undefined && !isRecord(config.copilotTokens)) throw new CliCredentialConfigError();
+    const readAuthToken = (entry: unknown): unknown => {
+        if (entry === undefined || entry === null) return undefined;
+        if (!isRecord(entry)) throw new CliCredentialConfigError();
+        return entry.token;
+    };
+    const authTokens = isRecord(config.authTokens) ? config.authTokens : {};
+    const candidates = [
+        readAuthToken(authTokens[`${key}:github`]),
+        readAuthToken(authTokens[key]),
+        isRecord(config.copilotTokens) ? config.copilotTokens[key] : undefined,
+    ];
+    const token = candidates.find(t => t !== undefined && t !== null && t !== '');
+    if (token === undefined) return undefined;
+    if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new CliCredentialConfigError();
+    return token;
+}
+
 /**
  * Token the Copilot CLI stored for its selected account.
  *
@@ -60,24 +81,7 @@ export function readCliStoredToken(
         if (account === undefined || account === null) return undefined;
         if (!isRecord(account) || typeof account.host !== 'string' || !account.host
             || typeof account.login !== 'string' || !account.login) throw new CliCredentialConfigError();
-        const key = `${account.host}:${account.login}`;
-        if (parsed.authTokens !== undefined && !isRecord(parsed.authTokens)) throw new CliCredentialConfigError();
-        if (parsed.copilotTokens !== undefined && !isRecord(parsed.copilotTokens)) throw new CliCredentialConfigError();
-        const readAuthToken = (entry: unknown): unknown => {
-            if (entry === undefined || entry === null) return undefined;
-            if (!isRecord(entry)) throw new CliCredentialConfigError();
-            return entry.token;
-        };
-        const authTokens = isRecord(parsed.authTokens) ? parsed.authTokens : {};
-        const candidates = [
-            readAuthToken(authTokens[`${key}:github`]),
-            readAuthToken(authTokens[key]),
-            isRecord(parsed.copilotTokens) ? parsed.copilotTokens[key] : undefined,
-        ];
-        const token = candidates.find(t => t !== undefined && t !== null && t !== '');
-        if (token === undefined) return undefined;
-        if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new Error('Invalid token');
-        return token;
+        return readCliAccountToken(parsed, `${account.host}:${account.login}`);
     } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
         throw new CliCredentialConfigError();

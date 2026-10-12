@@ -81,7 +81,7 @@ CLI account's exact `authTokens` entry (then `copilotTokens`) supplies `gitHubTo
 an absent token leaves runtime gh fallback intact. Invalid config or tokens fail visibly,
 without trying other accounts or retrying rejected credentials. Probe clients stop on
 every outcome; credentials and client environments are excluded from factory logs.
-The separate direct-HTTP credential policy remains unchanged.
+SDK and direct HTTP share exact-account file token selection and validation through `readCliAccountToken`.
 
 ### Account quota contract
 
@@ -101,7 +101,9 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json`, selects the configured account, and checks its exact `host:login` key in `copilotTokens`. An absent or empty token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json` and selects the configured account. Shared file lookup checks `authTokens[host:login:github].token`, `authTokens[host:login].token`, then `copilotTokens[host:login]`, skipping absent or empty tokens. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+
+An absent file token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output.
 
 Invalid file tokens, config errors and vault failures are terminal. Other accounts, ambient tokens and CLI processes are never fallback sources. Credential subprocess failures expose sanitized errors without password output.
 

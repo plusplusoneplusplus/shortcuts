@@ -76,6 +76,23 @@ describe('Copilot transform routing', () => {
         expect(await service.transform('prompt', { model: 'gpt-5.4-mini' })).toMatchObject({ errorCode: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
         expect(fetcher).not.toHaveBeenCalled(); expect(runtime.load).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
     });
+    it('generates a Luna title with default direct credentials stored only in authTokens', async () => {
+        await writeFile(join(credentialHome, 'config.json'), JSON.stringify({
+            lastLoggedInUser: { host: 'https://github.com', login: 'active' },
+            authTokens: { 'https://github.com:active:github': { token: 'gho_fixture' } },
+        }));
+        const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith('/models')
+            ? { data: [{ id: 'gpt-6-luna', supported_endpoints: ['/responses'] }] }
+            : { model: 'gpt-6-luna', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed',
+                content: [{ type: 'output_text', text: 'Software Release Preparation' }] }] })));
+        vi.stubGlobal('fetch', fetcher);
+        service = new CopilotSDKService({ transformTransport: 'direct' });
+        expect(await service.isTransformAvailable({ model: 'gpt-6-luna' })).toEqual({ available: true });
+        expect(await service.transform('Generate a short title for preparing a software release', { model: 'gpt-6-luna' }))
+            .toMatchObject({ success: true, text: 'Software Release Preparation', effectiveModel: 'gpt-6-luna' });
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        expect(runtime.load).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
+    });
     it('SDK selection delegates through the established runner and sendMessage path', async () => {
         service = new CopilotSDKService({ transformTransport: 'sdk' });
         const send = vi.spyOn(service, 'sendMessage').mockResolvedValue({ success: true, response: 'sdk answer', effectiveModel: 'sdk-model' });
