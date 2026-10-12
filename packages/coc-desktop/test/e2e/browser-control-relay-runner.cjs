@@ -121,7 +121,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     const popupRead = await execute({ action: 'read' }, popup.id);
     console.log('E2E::' + JSON.stringify({
         initialTabs: tabs.tabs.length, tabs: listed.tabs.length, selected: opened.tab === listed.tabs[0].id,
-        read: read.text, value: evaluated.value, imageType: screenshot.image.mimeType, size, cropSize,
+        read: read.text, value: JSON.parse(evaluated.valueJson), imageType: screenshot.image.mimeType, size, cropSize,
         popupSelected: popupSelection.tab === popup.id, popupRead: popupRead.text,
     }));
     win.destroy();

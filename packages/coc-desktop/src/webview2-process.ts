@@ -25,6 +25,7 @@ export class WebView2Process {
     private readonly admissions = new Set<Admission>();
     private readonly pending = new Map<number, Pending>();
     private buffer = '';
+    private discardingResult = false;
     private closing = false;
     private readyResolve?: () => void;
     private readyReject?: (error: Error) => void;
@@ -43,6 +44,7 @@ export class WebView2Process {
         if (this.starting) { return this.starting; }
         this.closing = false;
         this.buffer = '';
+        this.discardingResult = false;
         this.starting = new Promise<void>((resolve, reject) => {
             this.readyResolve = resolve;
             this.readyReject = reject;
@@ -73,15 +75,21 @@ export class WebView2Process {
     }
 
     private read(chunk: string): void {
-        this.buffer += chunk;
-        if (this.buffer.length > 1_048_576) {
-            this.fail(new BrowserHostError('runtime-crashed', 'WebView2 sent an oversized message.'));
-            return;
+        if (this.discardingResult) {
+            const end = chunk.indexOf('\n');
+            if (end < 0) return;
+            this.discardingResult = false;
+            chunk = chunk.slice(end + 1);
         }
+        this.buffer += chunk;
         let end: number;
         while ((end = this.buffer.indexOf('\n')) >= 0) {
             const line = this.buffer.slice(0, end);
             this.buffer = this.buffer.slice(end + 1);
+            if (Buffer.byteLength(line, 'utf8') > 1_048_576) {
+                if (!this.rejectOversizedResult(line)) return;
+                continue;
+            }
             let message: Record<string, unknown> | undefined;
             try { message = browserMessage(JSON.parse(line)); }
             catch { this.fail(new BrowserHostError('runtime-crashed', 'WebView2 sent an invalid message.')); return; }
@@ -115,6 +123,28 @@ export class WebView2Process {
             }
             else { this.fail(new BrowserHostError('runtime-crashed', 'WebView2 sent an unexpected message.')); return; }
         }
+        if (Buffer.byteLength(this.buffer, 'utf8') > 1_048_576) {
+            if (!this.rejectOversizedResult(this.buffer)) return;
+            this.buffer = '';
+            this.discardingResult = true;
+        }
+    }
+
+    private rejectOversizedResult(line: string): boolean {
+        // Native correlated replies serialize id first; never interpret nested/page-owned ids.
+        const match = /^\{"id":(\d+),"ok":(?:true|false),/.exec(line.slice(0, 128));
+        const id = match ? Number(match[1]) : 0;
+        const pending = this.pending.get(id);
+        if (!Number.isSafeInteger(id) || id <= 0 || id > this.sequence || (pending && !pending.viewId)) {
+            this.fail(new BrowserHostError('runtime-crashed', 'WebView2 sent an oversized message.'));
+            return false;
+        }
+        if (pending) {
+            clearTimeout(pending.timer);
+            this.pending.delete(id);
+            pending.reject(new BrowserHostError('invalid', 'WebView2 CDP result exceeds the transport limit; return a smaller result.'));
+        }
+        return true;
     }
 
     private error(message: Record<string, unknown>): BrowserHostError {
@@ -167,6 +197,10 @@ export class WebView2Process {
         if (!child || this.closing) { throw new BrowserHostError('runtime-crashed', 'WebView2 host is not running.'); }
         if (op === 'close' && typeof payload.viewId === 'string') { this.rejectView(payload.viewId); }
         const id = ++this.sequence;
+        const line = JSON.stringify({ ...payload, id, op }) + '\n';
+        if (Buffer.byteLength(line, 'utf8') > 1_048_576) {
+            throw new BrowserHostError('invalid', 'WebView2 command exceeds the transport limit; send a smaller command.');
+        }
         return new Promise<unknown>((resolve, reject) => {
             const timer = setTimeout(() => {
                 const error = new BrowserHostError('runtime-crashed', `WebView2 ${op} timed out after 30s. Retry explicitly.`);
@@ -175,7 +209,7 @@ export class WebView2Process {
                 reject(error);
             }, 30_000);
             this.pending.set(id, { resolve, reject, timer, ...(op === 'cdp' && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}) });
-            child.stdin.write(JSON.stringify({ ...payload, id, op }) + '\n', error => { if (error) { this.fail(new BrowserHostError('runtime-crashed', error.message)); } });
+            child.stdin.write(line, error => { if (error) { this.fail(new BrowserHostError('runtime-crashed', error.message)); } });
         });
     }
 

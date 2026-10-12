@@ -14,6 +14,19 @@ export interface BrowserDomSnapshot {
     nextRef: number;
 }
 
+export interface BrowserDomSnapshotChunk {
+    chunk: string;
+    token: number;
+    offset: number;
+    total: number;
+    nextRef: number;
+}
+
+export interface BrowserDomReadPage {
+    text: string;
+    textTotal: number;
+}
+
 export interface BrowserDomTarget {
     x: number;
     y: number;
@@ -24,33 +37,48 @@ export interface BrowserDomTarget {
 
 export type BrowserDomCommand =
     | { action: 'snapshot'; ref?: string; all?: boolean; nextRef: number }
+    | { action: 'snapshot-chunk'; token: number; offset: number }
     | { action: 'text'; text: string }
-    | { action: 'read'; ref?: string }
+    | { action: 'read'; ref?: string; paged?: true; offset?: number }
     | { action: 'target'; ref: string; editable?: boolean; option?: string };
 
 /** Keep this function self-contained: its compiled source runs in either engine. */
-function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomTarget | boolean | string {
+function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomSnapshotChunk | BrowserDomReadPage | BrowserDomTarget | boolean | string {
     interface Registry {
         document: Document;
         url: string;
         refs: Map<string, Element>;
         ids: WeakMap<Element, string>;
         nextRef: number;
+        snapshotSequence: number;
+        snapshot?: { token: number; json: string; nextRef: number };
     }
     const page = window as Window & { __cocBrowserControl?: Registry };
     let state = page.__cocBrowserControl;
     if (!state || state.document !== document) {
-        state = { document, url: location.href, refs: new Map(), ids: new WeakMap(), nextRef: 1 };
+        state = { document, url: location.href, refs: new Map(), ids: new WeakMap(), nextRef: 1, snapshotSequence: 0 };
         Object.defineProperty(page, '__cocBrowserControl', { value: state, configurable: true });
         const owned = state;
         // BFCache restores this document and its globals; old refs must still expire.
-        page.addEventListener('pagehide', () => { owned.refs.clear(); owned.ids = new WeakMap(); });
+        page.addEventListener('pagehide', () => { owned.refs.clear(); owned.ids = new WeakMap(); owned.snapshot = undefined; });
     }
     const registry = state;
     if (registry.url !== location.href) {
-        registry.refs.clear(); registry.ids = new WeakMap(); registry.url = location.href;
+        registry.refs.clear(); registry.ids = new WeakMap(); registry.url = location.href; registry.snapshot = undefined;
     }
     if (command.action === 'snapshot') registry.nextRef = Math.max(registry.nextRef, command.nextRef);
+    // JSON escaping can expand each character sixfold; stay below native's 900000-byte cap.
+    const snapshotChunkSize = 64000;
+    const snapshotChunk = (offset: number): BrowserDomSnapshotChunk => {
+        const cached = registry.snapshot!;
+        const result = { chunk: cached.json.slice(offset, offset + snapshotChunkSize), token: cached.token, offset, total: cached.json.length, nextRef: cached.nextRef };
+        if (offset + result.chunk.length >= result.total) registry.snapshot = undefined;
+        return result;
+    };
+    if (command.action === 'snapshot-chunk') {
+        if (!registry.snapshot || command.token !== registry.snapshot.token) throw new Error('snapshot expired, re-snapshot');
+        return snapshotChunk(command.offset);
+    }
     const clean = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
     const parent = (element: Element): Element | null => {
         if (element.parentElement) return element.parentElement;
@@ -191,7 +219,8 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
             if (tag === 'em' || tag === 'i') return `*${text}*`;
             return text;
         };
-        return root ? markdown(root).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : '';
+        const text = root ? markdown(root).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : '';
+        return command.paged ? { text: text.slice(command.offset ?? 0, (command.offset ?? 0) + 8000), textTotal: text.length } : text;
     }
 
     if (command.action === 'snapshot') {
@@ -230,7 +259,12 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         };
         const root = command.ref ? resolve(command.ref) : document.body;
         if (root) walk(root, 0);
-        return { title: document.title, url: location.href, elements, nextRef: registry.nextRef };
+        const result = { title: document.title, url: location.href, elements, nextRef: registry.nextRef };
+        const json = JSON.stringify(result);
+        registry.snapshot = undefined;
+        if (json.length <= snapshotChunkSize) return result;
+        registry.snapshot = { token: ++registry.snapshotSequence, json, nextRef: registry.nextRef };
+        return snapshotChunk(0);
     }
 
     const element = resolve(command.ref);

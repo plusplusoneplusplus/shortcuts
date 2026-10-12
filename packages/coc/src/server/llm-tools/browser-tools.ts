@@ -114,16 +114,18 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                         if (typeof result.text !== 'string') throw new Error('Browser returned no page text');
                         const offset = command.offset ?? 0;
                         const text = result.text;
-                        const total = result.textTotal ?? text.length;
+                        const total = result.textTotal;
+                        if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0 || text.length > BROWSER_READ_CAP) throw new Error('Browser returned an invalid page text result');
                         const hint = `\ntruncated - read${command.ref ? ` ref=${command.ref}` : ''} offset=${offset + BROWSER_READ_CAP - 80} to continue`;
                         const contentCap = BROWSER_READ_CAP - 80;
-                        const content = result.textTotal === undefined ? text.slice(offset, offset + contentCap) : text.slice(0, contentCap);
+                        const content = text.slice(0, contentCap);
                         return success(content + (offset + content.length < total ? hint : ''));
                     }
                     if (command.action === 'eval') {
-                        if (!Object.prototype.hasOwnProperty.call(result, 'value')) throw new Error('Browser returned no evaluation result');
-                        const json = JSON.stringify(result.value ?? null);
-                        return success(bounded(json, BROWSER_EVAL_CAP, '\ntruncated - return a smaller result'));
+                        if (typeof result.valueJson !== 'string') throw new Error('Browser returned no evaluation result');
+                        if (result.valueJson.length > BROWSER_EVAL_CAP || typeof result.valueTruncated !== 'boolean') throw new Error('Browser returned an invalid evaluation result');
+                        const hint = '\ntruncated - return a smaller result';
+                        return success(result.valueTruncated ? result.valueJson.slice(0, BROWSER_EVAL_CAP - hint.length) + hint : result.valueJson);
                     }
                     if (command.action === 'screenshot') {
                         if (!result.image?.data || result.image.mimeType !== 'image/jpeg') throw new Error('Browser returned no screenshot');

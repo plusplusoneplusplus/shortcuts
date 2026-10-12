@@ -92,7 +92,9 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 function isResult(value: unknown): value is BrowserCommandResult {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const result = value as Record<string, unknown>;
-    if (Object.keys(result).some(key => !['tab', 'title', 'url', 'tabs', 'elements', 'interactiveElements', 'text', 'textTotal', 'value', 'image'].includes(key))) return false;
+    if (Object.keys(result).some(key => !['tab', 'title', 'url', 'tabs', 'elements', 'interactiveElements', 'text', 'textTotal', 'value', 'valueJson', 'valueTruncated', 'image'].includes(key))) return false;
+    if ('valueJson' in result && typeof result.valueJson !== 'string') return false;
+    if ('valueTruncated' in result && typeof result.valueTruncated !== 'boolean') return false;
     for (const key of ['tab', 'title', 'url', 'text']) if (key in result && typeof result[key] !== 'string') return false;
     if ('tabs' in result && (!Array.isArray(result.tabs) || result.tabs.some(tab => !tab || typeof tab.id !== 'string'
         || typeof tab.title !== 'string' || typeof tab.url !== 'string' || !['electron', 'webview2'].includes(tab.engine)))) return false;

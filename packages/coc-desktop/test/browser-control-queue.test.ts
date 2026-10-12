@@ -122,7 +122,7 @@ describe('browser command queue', () => {
         expect(send.mock.calls[3]).toEqual(['Input.dispatchMouseEvent', expect.objectContaining({ type: 'mouseReleased' })]);
     });
 
-    it('keeps the monotonic ref counter from a snapshot completing after cancellation', async () => {
+    it.each([false, true])('keeps the monotonic ref counter after cancellation (paged: %s)', async paged => {
         const gate = deferred<unknown>();
         const send = vi.fn().mockImplementationOnce(() => gate.promise).mockResolvedValue({
             result: { value: { elements: [], nextRef: 10, url: 'https://fixture.test/', title: 'Fixture' } },
@@ -133,7 +133,9 @@ describe('browser command queue', () => {
         await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
         controller.abort(new Error('Turn stopped'));
         await expect(snapshot).rejects.toThrow('Turn stopped');
-        gate.resolve({ result: { value: { elements: [], nextRef: 10, url: 'https://fixture.test/', title: 'Fixture' } } });
+        gate.resolve({ result: { value: paged
+            ? { chunk: '{', token: 1, offset: 0, total: 100, nextRef: 10 }
+            : { elements: [], nextRef: 10, url: 'https://fixture.test/', title: 'Fixture' } } });
         await queue.run(page => page.snapshot());
         expect(send.mock.calls[1][1].expression).toContain('"nextRef":10');
     });

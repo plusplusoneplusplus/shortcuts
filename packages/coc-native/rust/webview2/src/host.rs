@@ -37,6 +37,10 @@ type Result<T> = windows::core::Result<T>;
 type State = Rc<RefCell<Host>>;
 thread_local! { static WINDOWS: RefCell<HashMap<usize, Weak<View>>> = RefCell::new(HashMap::new()); }
 
+fn wire_title(title: &str) -> String {
+    title.chars().take(4096).collect()
+}
+
 struct Host {
     environment: Option<ICoreWebView2Environment>,
     views: HashMap<String, Rc<View>>,
@@ -140,7 +144,7 @@ impl View {
             self.webview.CanGoForward(&mut forward)?;
         }
         let url = CoTaskMemPWSTR::from(url).to_string();
-        let title = CoTaskMemPWSTR::from(title).to_string();
+        let title = wire_title(&CoTaskMemPWSTR::from(title).to_string());
         let error = self.error.borrow();
         let mut state = json!({
             "viewId": self.id, "engine": "webview2",
@@ -311,6 +315,17 @@ impl Drop for View {
 mod layout_tests {
     use super::*;
     use windows::Win32::Graphics::Gdi::ClientToScreen;
+
+    #[test]
+    fn navigation_state_titles_are_bounded_without_splitting_unicode() {
+        assert_eq!(wire_title("Fixture"), "Fixture");
+        assert_eq!(wire_title(""), "");
+        let title = "\u{1f980}".repeat(5000);
+        let bounded = wire_title(&title);
+        assert_eq!(bounded.chars().count(), 4096);
+        assert_eq!(bounded.len(), 16384);
+        assert_eq!(bounded, "\u{1f980}".repeat(4096));
+    }
 
     struct TestWindow(HWND);
 

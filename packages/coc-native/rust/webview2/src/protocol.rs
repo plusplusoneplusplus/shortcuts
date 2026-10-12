@@ -49,6 +49,13 @@ pub fn cdp_arguments(command: &Command) -> Option<(&str, String)> {
 }
 
 pub fn cdp_response(id: u64, json: &str) -> std::result::Result<Value, serde_json::Error> {
+    // Leave framing overhead below the desktop's 1 MiB per-message boundary.
+    if json.len() > 900_000 {
+        return Ok(serde_json::json!({
+            "id": id, "ok": false, "reason": "invalid",
+            "message": "WebView2 CDP result exceeds the transport limit; return a smaller result."
+        }));
+    }
     let result: Value = serde_json::from_str(json)?;
     Ok(serde_json::json!({ "id": id, "ok": true, "result": result }))
 }
@@ -120,7 +127,7 @@ pub fn history_message(view_id: &str, url: &str, title: &str, visit: bool) -> Op
     allowed_url(url, false).then(|| {
         serde_json::json!({
             "event": if visit { "visited" } else { "title-updated" },
-            "viewId": view_id, "url": url, "title": title
+            "viewId": view_id, "url": url, "title": title.chars().take(4096).collect::<String>()
         })
     })
 }
@@ -174,6 +181,27 @@ mod tests {
             serde_json::json!({"id":42,"ok":true,"result":{"result":{"value":42}}})
         );
         assert!(cdp_response(42, "malformed").is_err());
+    }
+
+    #[test]
+    fn oversized_cdp_results_return_small_correlated_errors() {
+        let large = serde_json::json!({ "result": { "value": "x".repeat(1_100_000) } }).to_string();
+        let response = cdp_response(42, &large).unwrap();
+        assert_eq!(response["id"], 42);
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["reason"], "invalid");
+        assert!(response.to_string().len() < 256);
+        assert_eq!(cdp_response(43, r#"{"result":{"value":42}}"#).unwrap()["ok"], true);
+        let unicode = serde_json::json!({ "value": "\u{1f600}".repeat(250_000) }).to_string();
+        assert_eq!(cdp_response(44, &unicode).unwrap()["ok"], false);
+    }
+
+    #[test]
+    fn page_owned_history_titles_cannot_exceed_native_framing_limits() {
+        let title = "\u{1f600}".repeat(300_000);
+        let event = history_message("owned-view", "https://fixture.test/", &title, true).unwrap();
+        assert_eq!(event["title"].as_str().unwrap().chars().count(), 4096);
+        assert!(event.to_string().len() < 20_000);
     }
 
     #[test]

@@ -22,8 +22,11 @@ function harness(redirectTo?: string) {
                 cdp: vi.fn(async (method, params) => {
                     if (method === 'Runtime.evaluate') {
                         if (String(params?.expression).includes('"action":"snapshot"')) return { result: { value: { title: 'Fixture', url, elements: [], nextRef: 1 } } };
-                        if (String(params?.expression).includes('"action":"read"')) return { result: { value: '# Fixture\n\nContent' } };
-                        return { result: { value: 42 } };
+                        if (String(params?.expression).includes('"action":"read"')) {
+                            const text = '# Fixture\n\nContent';
+                            return { result: { value: { text, textTotal: text.length } } };
+                        }
+                        return { result: { value: { valueJson: '42', valueTruncated: false } } };
                     }
                     return {};
                 }),
@@ -80,7 +83,13 @@ describe('main browser control scope and selection', () => {
         const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
         const text = 'A'.repeat(8000) + 'B'.repeat(8000) + 'End';
         const cdp = vi.mocked(h.views[0].cdp!);
-        cdp.mockResolvedValue({ result: { value: text } });
+        cdp.mockImplementation(async (method, params) => {
+            expect(method).toBe('Runtime.evaluate');
+            const expression = String(params?.expression);
+            expect(expression).toContain('"action":"read"');
+            const offset = Number(expression.match(/"offset":(\d+)/)?.[1] ?? 0);
+            return { result: { value: { text: text.slice(offset, offset + 8000), textTotal: text.length } } };
+        });
         expect(await h.run({ action: 'read' }, opened.tab)).toMatchObject({ text: 'A'.repeat(8000), textTotal: 16003 });
         expect(await h.run({ action: 'read', offset: 8000 }, opened.tab)).toMatchObject({ text: 'B'.repeat(8000), textTotal: 16003 });
         expect(await h.run({ action: 'read', offset: 16000 }, opened.tab)).toMatchObject({ text: 'End', textTotal: 16003 });
@@ -144,7 +153,7 @@ describe('main browser control scope and selection', () => {
         const selected = await h.run({ action: 'select', tab: separate.tab! }, first.tab, 'q');
         expect(selected.tab).toBe(separate.tab);
         expect((await h.run({ action: 'read' }, first.tab)).text).toBe('# Fixture\n\nContent');
-        expect((await h.run({ action: 'eval', js: '42' }, first.tab)).value).toBe(42);
+        expect(await h.run({ action: 'eval', js: '42' }, first.tab)).toMatchObject({ valueJson: '42', valueTruncated: false });
         // No manager-owned conversation selection; absent server state fails closed.
         await expect(h.run({ action: 'snapshot' })).rejects.toThrow('No browser tab selected');
         await h.manager.dispose();
@@ -173,7 +182,7 @@ describe('main browser control scope and selection', () => {
         const evalResult = h.run({ action: 'eval', js: '42' }, first.tab);
         controller.abort(new Error('Stopped'));
         await expect(waiting).rejects.toThrow('Stopped');
-        await expect(evalResult).resolves.toMatchObject({ value: 42 });
+        await expect(evalResult).resolves.toMatchObject({ valueJson: '42', valueTruncated: false });
         await h.manager.dispose();
     });
 });

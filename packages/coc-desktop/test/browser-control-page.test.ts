@@ -20,26 +20,26 @@ const key = (name: string, code: string, vk: number, modifiers = 0, text?: strin
 describe('engine-neutral trusted CDP actions', () => {
     it('reads page/subtree markdown and evaluates by value with visible exceptions', async () => {
         const { send, page } = fixture();
-        send.mockResolvedValueOnce({ result: { value: '# Page\n\n[link](https://fixture.test/)' } });
+        send.mockResolvedValueOnce({ result: { value: { text: '# Page\n\n[link](https://fixture.test/)', textTotal: 41 } } });
         expect(await page.read('e1')).toContain('# Page');
         expect(send.mock.calls[0][1]?.expression).toContain('"action":"read"');
-        send.mockResolvedValueOnce({ result: { value: { answer: 42 } } });
+        send.mockResolvedValueOnce({ result: { value: { valueJson: '{"answer":42}', valueTruncated: false } } });
         expect(await page.evaluate('({answer:42})')).toEqual({ answer: 42 });
-        expect(send.mock.calls[1]).toEqual(['Runtime.evaluate', { expression: '({answer:42})', returnByValue: true, awaitPromise: true }]);
+        expect(send.mock.calls[1]).toEqual(['Runtime.evaluate', { expression: expect.stringContaining(JSON.stringify('({answer:42})')), returnByValue: true, awaitPromise: true }]);
         send.mockResolvedValueOnce({ exceptionDetails: { exception: { description: 'Error: fixture failure' } } });
         await expect(page.evaluate('throw new Error()')).rejects.toThrow('fixture failure');
-        send.mockResolvedValueOnce({ result: { unserializableValue: 'NaN' } });
+        send.mockResolvedValueOnce({ result: { value: { valueJson: '"NaN"', valueTruncated: false } } });
         expect(await page.evaluate('NaN')).toBe('NaN');
-        send.mockResolvedValueOnce({ result: { type: 'undefined' } });
+        send.mockResolvedValueOnce({ result: { value: { valueJson: 'null', valueTruncated: false } } });
         expect(await page.evaluate('undefined')).toBeNull();
         send.mockResolvedValueOnce({});
-        await expect(page.evaluate('42')).rejects.toThrow('returned no result');
+        await expect(page.evaluate('42')).rejects.toThrow('no valid evaluation result');
     });
 
     it.each([1, 2])('captures binary JPEG inline, bounded to 1280 pixels at ratio %s without saving files', async pixelRatio => {
         const { send, page } = fixture();
         send.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 1920, clientHeight: 1080, pageX: 0, pageY: 600 } })
-            .mockResolvedValueOnce({ result: { value: pixelRatio } })
+            .mockResolvedValueOnce({ result: { value: { valueJson: String(pixelRatio), valueTruncated: false } } })
             .mockResolvedValueOnce({ data: '/9j/fixture==' });
         expect(await page.screenshot()).toEqual({ data: '/9j/fixture==', mimeType: 'image/jpeg' });
         expect(send.mock.calls[2]).toEqual(['Page.captureScreenshot', {
@@ -54,11 +54,11 @@ describe('engine-neutral trusted CDP actions', () => {
         send.mockResolvedValueOnce(metrics)
             .mockResolvedValueOnce({ result: { value: { x: 10, y: 20, width: 100, height: 40 } } })
             .mockResolvedValueOnce(metrics)
-            .mockResolvedValueOnce({ result: { value: 1 } })
+            .mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } })
             .mockResolvedValueOnce({ data: 'aGVsbG8=' });
         await page.screenshot('e1');
         expect(send.mock.calls[4][1]?.clip).toEqual({ x: 15, y: 220, width: 100, height: 40, scale: 1 });
-        send.mockResolvedValueOnce(metrics).mockResolvedValueOnce({ result: { value: 1 } }).mockResolvedValueOnce({});
+        send.mockResolvedValueOnce(metrics).mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } }).mockResolvedValueOnce({});
         await expect(page.screenshot()).rejects.toThrow('no image');
     });
 
@@ -133,6 +133,45 @@ describe('engine-neutral trusted CDP actions', () => {
         expect(send.mock.calls[0][1]?.expression).toContain('"nextRef":1');
         expect(send.mock.calls[1][1]?.expression).toContain('"nextRef":12');
         expect(send.mock.calls[1][1]?.expression).toContain('"all":true');
+    });
+
+    it('reassembles bounded snapshot chunks without losing entries or the next ref counter', async () => {
+        const { send, page } = fixture();
+        const snapshot = { title: 'Large', url: 'https://fixture.test/', elements: [
+            { ref: 'e1', role: 'button', name: 'x'.repeat(140000), depth: 0 },
+        ], nextRef: 42 };
+        const json = JSON.stringify(snapshot);
+        send.mockImplementation(async (_method, params) => {
+            const offset = String(params?.expression).includes('"action":"snapshot-chunk"')
+                ? Number(String(params?.expression).match(/"offset":(\d+)/)![1]) : 0;
+            return { result: { value: { chunk: json.slice(offset, offset + 64000), token: 1, offset, total: json.length, nextRef: 42 } } };
+        });
+        expect(await page.snapshot()).toEqual(snapshot);
+        expect(send).toHaveBeenCalledTimes(3);
+        await page.snapshot();
+        expect(send.mock.calls[3][1]?.expression).toContain('"nextRef":42');
+    });
+
+    it.each([
+        { chunk: '', token: 1, offset: 0, total: 64001, nextRef: 7 },
+        { chunk: 'tail', token: 2, offset: 4, total: 64001, nextRef: 7 },
+    ])('rejects malformed or replaced snapshot chunks instead of returning partial baselines', async bad => {
+        const { send, page } = fixture();
+        send.mockResolvedValueOnce({ result: { value: { chunk: 'head', token: 1, offset: 0, total: 64001, nextRef: 7 } } })
+            .mockResolvedValueOnce({ result: { value: bad } });
+        await expect(page.snapshot()).rejects.toThrow('invalid snapshot chunk');
+    });
+
+    it('requests markdown pages at their real offsets before transport and exposes explicit eval truncation', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValueOnce({ result: { value: { text: 'Tail', textTotal: 1100004 } } });
+        expect(await page.readPage('e1', 1100000)).toEqual({ text: 'Tail', textTotal: 1100004 });
+        expect(send.mock.calls[0][1]?.expression).toContain('"paged":true,"offset":1100000');
+        send.mockResolvedValueOnce({ result: { value: { valueJson: '"x'.padEnd(4000, 'x'), valueTruncated: true } } });
+        expect(await page.evaluateForTool("'x'.repeat(1100000)")).toMatchObject({ valueTruncated: true });
+        expect(send.mock.calls[1][1]?.expression).toContain('json.slice(0, 4000)');
+        send.mockResolvedValueOnce({ result: { value: { valueJson: 'x'.repeat(4001), valueTruncated: true } } });
+        await expect(page.evaluateForTool('42')).rejects.toThrow('no valid evaluation result');
     });
 
     it('surfaces page exceptions and emits no input for a stale ref', async () => {

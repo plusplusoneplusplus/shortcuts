@@ -135,11 +135,9 @@ export class BrowserHostManager {
                     };
                 }
                 case 'read': {
-                    const text = await page.read(command.ref);
-                    const offset = command.offset ?? 0;
-                    return { tab: this.controlId(selected), text: text.slice(offset, offset + 8000), textTotal: text.length };
+                    return { tab: this.controlId(selected), ...await page.readPage(command.ref, command.offset ?? 0) };
                 }
-                case 'eval': return { tab: this.controlId(selected), value: await page.evaluate(command.js!) };
+                case 'eval': return { tab: this.controlId(selected), ...await page.evaluateForTool(command.js!) };
                 case 'screenshot': return { tab: this.controlId(selected), image: await page.screenshot(command.ref) };
                 case 'click': await page.click(command.ref!); break;
                 case 'type': await page.type(command.ref!, command.text!, command.submit); break;

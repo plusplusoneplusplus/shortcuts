@@ -124,7 +124,10 @@ describe('compact browser tool', () => {
     it('caps and pages read output without skipping characters, retaining a subtree ref', async () => {
         const h = harness();
         const text = '0123456789'.repeat(2000);
-        h.execute.mockResolvedValue({ text });
+        h.execute.mockImplementation(async (_workspace, _process, command) => {
+            const offset = command.offset ?? 0;
+            return { text: text.slice(offset, offset + BROWSER_READ_CAP), textTotal: text.length };
+        });
         const first = await h.call({ action: 'read', ref: 'e1' });
         expect(first.textResultForLlm.length).toBeLessThanOrEqual(BROWSER_READ_CAP);
         const offset = Number(first.textResultForLlm.match(/offset=(\d+)/)![1]);
@@ -143,12 +146,34 @@ describe('compact browser tool', () => {
 
     it('JSON-serializes eval results under 4000 characters with an explicit truncation hint', async () => {
         const h = harness();
-        h.execute.mockResolvedValue({ value: { value: 'x'.repeat(5000) } });
+        h.execute.mockResolvedValue({ valueJson: JSON.stringify({ value: 'x'.repeat(5000) }).slice(0, BROWSER_EVAL_CAP), valueTruncated: true });
         const result = await h.call({ action: 'eval', js: 'document.title' });
         expect(result.textResultForLlm.length).toBe(BROWSER_EVAL_CAP);
         expect(result.textResultForLlm).toContain('truncated');
-        h.execute.mockResolvedValue({ value: false });
+        h.execute.mockResolvedValue({ valueJson: 'false', valueTruncated: false });
         expect((await h.call({ action: 'eval', js: 'false' })).textResultForLlm).toBe('false');
+    });
+
+    it('formats page-bounded eval JSON once and preserves truncation hints within the cap', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue({ valueJson: '{"answer":42}', valueTruncated: false });
+        expect((await h.call({ action: 'eval', js: '({answer:42})' })).textResultForLlm).toBe('{"answer":42}');
+        h.execute.mockResolvedValue({ valueJson: '"' + 'x'.repeat(3999), valueTruncated: true });
+        const result = await h.call({ action: 'eval', js: "'x'.repeat(1100000)" });
+        expect(result.textResultForLlm).toHaveLength(BROWSER_EVAL_CAP);
+        expect(result.textResultForLlm).toMatch(/\ntruncated - return a smaller result$/);
+        h.execute.mockResolvedValue({ valueJson: 'x'.repeat(4001), valueTruncated: true });
+        expect((await h.call({ action: 'eval', js: '42' })).error).toBe('Browser returned an invalid evaluation result');
+        h.execute.mockResolvedValue({ value: 'x'.repeat(1100000) });
+        expect((await h.call({ action: 'eval', js: '42' })).error).toBe('Browser returned no evaluation result');
+    });
+
+    it('rejects unpaged or oversized read replies instead of applying a late transport cap', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue({ text: 'unpaged' });
+        expect((await h.call({ action: 'read' })).error).toBe('Browser returned an invalid page text result');
+        h.execute.mockResolvedValue({ text: 'x'.repeat(8001), textTotal: 1100000 });
+        expect((await h.call({ action: 'read' })).error).toBe('Browser returned an invalid page text result');
     });
 
     it('returns screenshots only inline through binaryResultsForLlm without file references', async () => {

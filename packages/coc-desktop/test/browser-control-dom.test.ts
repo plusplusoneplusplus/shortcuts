@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildBrowserDomExpression, type BrowserDomCommand, type BrowserDomSnapshot, type BrowserDomTarget } from '../src/browser-control-dom';
+import { BrowserControlPage } from '../src/browser-control-page';
 
 function geometry(element: Element, x = 10, y = 20, width = 80, height = 30) {
     const rect = { x, y, width, height, top: y, left: x, bottom: y + height, right: x + width, toJSON() {} };
@@ -28,6 +29,58 @@ beforeEach(() => {
 });
 
 describe('shared injected DOM snapshot', () => {
+    it('pages megabyte markdown and snapshots before CDP serialization while preserving complete names and refs', async () => {
+        document.body.innerHTML = '<h1>Large</h1><pre></pre><button>Last</button>';
+        const text = 'read-body-'.repeat(110000);
+        document.querySelector('pre')!.textContent = text;
+        const label = 'quote"slash\\'.repeat(110000);
+        document.querySelector('button')!.setAttribute('aria-label', label);
+        layout();
+        const sizes: number[] = [];
+        const page = new BrowserControlPage(async (_method, params) => {
+            const value = await window.eval(String(params?.expression));
+            const response = { result: { value } };
+            const size = new TextEncoder().encode(JSON.stringify(response)).length;
+            sizes.push(size);
+            if (size > 900000) throw new Error('Native transport limit exceeded');
+            return response;
+        });
+        const firstRead = await page.readPage();
+        expect(firstRead.text.length).toBe(8000);
+        expect(firstRead.textTotal).toBeGreaterThan(1100000);
+        const full = run<string>({ action: 'read' });
+        expect(await page.readPage(undefined, 8000)).toEqual({ text: full.slice(8000, 16000), textTotal: full.length });
+        expect(await page.readPage(undefined, full.length - 20)).toEqual({ text: full.slice(-20), textTotal: full.length });
+        const snapshot = await page.snapshot();
+        const button = snapshot.elements.find(element => element.role === 'button')!;
+        expect(button.name).toBe(label);
+        expect((await page.snapshot()).elements).toEqual(snapshot.elements);
+        expect(await page.evaluateForTool("'eval-body'.repeat(150000)")).toMatchObject({ valueTruncated: true });
+        expect(await page.evaluate('Promise.resolve({answer:42})')).toEqual({ answer: 42 });
+        expect(await page.evaluate('NaN')).toBe('NaN');
+        expect(await page.evaluate('7n')).toBe('7n');
+        expect(await page.evaluate('undefined')).toBeNull();
+        expect(Math.max(...sizes)).toBeLessThan(900000);
+        window.dispatchEvent(new Event('pagehide'));
+        await expect(page.click(button.ref)).rejects.toThrow('stale ref');
+        const restored = await page.snapshot();
+        expect(restored.elements.find(element => element.role === 'button')?.ref).not.toBe(button.ref);
+    });
+
+    it('expires staged snapshot chunks on URL changes and pagehide instead of mixing documents', () => {
+        document.body.innerHTML = '<button>Large</button>';
+        document.querySelector('button')!.setAttribute('aria-label', 'x'.repeat(100000));
+        layout();
+        const first = run<{ token: number }>({ action: 'snapshot', nextRef: 1 });
+        window.dispatchEvent(new Event('pagehide'));
+        expect(() => run({ action: 'snapshot-chunk', token: first.token, offset: 64000 })).toThrow('snapshot expired');
+        const second = run<{ token: number }>({ action: 'snapshot', nextRef: 1 });
+        window.history.replaceState(null, '', '#changed');
+        try {
+            expect(() => run({ action: 'snapshot-chunk', token: second.token, offset: 64000 })).toThrow('snapshot expired');
+        } finally { window.history.replaceState(null, '', '/'); }
+    });
+
     it('reads visible page or ref content as markdown, including same-origin frames and open shadow roots', () => {
         document.body.innerHTML = '<h1>Article</h1><p>Useful <strong>text</strong> <a href="https://fixture.test/">Link</a></p><p hidden>Hidden</p><script>secret</script><iframe></iframe><div id="host"></div>';
         document.querySelector('iframe')!.contentDocument!.body.innerHTML = '<h2>Frame</h2><p>Nested</p>';

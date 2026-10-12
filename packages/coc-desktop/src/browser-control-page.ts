@@ -1,4 +1,4 @@
-import { buildBrowserDomExpression, type BrowserDomCommand, type BrowserDomSnapshot, type BrowserDomTarget } from './browser-control-dom';
+import { buildBrowserDomExpression, type BrowserDomCommand, type BrowserDomSnapshot, type BrowserDomSnapshotChunk, type BrowserDomReadPage, type BrowserDomTarget } from './browser-control-dom';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export type BrowserCdpSender = (method: string, params?: Record<string, unknown>) => Promise<unknown>;
@@ -22,24 +22,60 @@ export class BrowserControlPage {
     }
 
     async snapshot(options: { ref?: string; all?: boolean } = {}): Promise<BrowserDomSnapshot> {
-        const result = await this.dom<BrowserDomSnapshot>({ ...options, action: 'snapshot', nextRef: this.nextRef });
+        const result = await this.dom<BrowserDomSnapshot | BrowserDomSnapshotChunk>({ ...options, action: 'snapshot', nextRef: this.nextRef });
         this.nextRef = result.nextRef;
-        return result;
+        if ('elements' in result) return result;
+        let json = result.chunk;
+        if (result.offset !== 0 || !json.length || json.length > 64000 || result.total < json.length) throw new Error('Browser returned an invalid snapshot chunk');
+        while (json.length < result.total) {
+            const chunk = await this.dom<BrowserDomSnapshotChunk>({ action: 'snapshot-chunk', token: result.token, offset: json.length });
+            if (chunk.token !== result.token || chunk.offset !== json.length || chunk.total !== result.total
+                || !chunk.chunk.length || chunk.chunk.length > 64000 || json.length + chunk.chunk.length > result.total) {
+                throw new Error('Browser returned an invalid snapshot chunk');
+            }
+            json += chunk.chunk;
+        }
+        const snapshot: BrowserDomSnapshot | null = JSON.parse(json);
+        if (!snapshot || typeof snapshot.title !== 'string' || typeof snapshot.url !== 'string'
+            || snapshot.nextRef !== result.nextRef || !Array.isArray(snapshot.elements)
+            || !snapshot.elements.every(element => element && typeof element.ref === 'string' && typeof element.role === 'string'
+                && typeof element.name === 'string' && typeof element.depth === 'number')) {
+            throw new Error('Browser returned an invalid paged snapshot');
+        }
+        return snapshot;
     }
 
-    read(ref?: string): Promise<string> {
-        return this.dom<string>({ action: 'read', ref });
+    async read(ref?: string): Promise<string> {
+        return (await this.readPage(ref)).text;
+    }
+
+    readPage(ref?: string, offset = 0): Promise<BrowserDomReadPage> {
+        return this.dom<BrowserDomReadPage>({ action: 'read', ref, paged: true, offset });
     }
 
     async evaluate(js: string): Promise<unknown> {
+        const result = await this.evaluateForTool(js);
+        if (result.valueTruncated) throw new Error('Browser evaluation exceeds 4000 characters; return a smaller result');
+        return JSON.parse(result.valueJson);
+    }
+
+    async evaluateForTool(js: string): Promise<{ valueJson: string; valueTruncated: boolean }> {
+        // Serialize and cap in the page before CDP can copy a large object into native transport.
+        const expression = `Promise.resolve((0, eval)(${JSON.stringify(js)})).then(value => {
+            if (typeof value === 'bigint') value = value.toString() + 'n';
+            else if (typeof value === 'number' && !Number.isFinite(value)) value = String(value);
+            const json = JSON.stringify(value) ?? 'null';
+            return { valueJson: json.slice(0, 4000), valueTruncated: json.length > 4000 };
+        })`;
         const reply = await this.send('Runtime.evaluate', {
-            expression: js, returnByValue: true, awaitPromise: true,
-        }) as { result?: { type?: string; value?: unknown; unserializableValue?: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
+            expression, returnByValue: true, awaitPromise: true,
+        }) as { result?: { value?: { valueJson: string; valueTruncated: boolean } }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
         if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description || reply.exceptionDetails.text || 'Browser page evaluation failed');
-        if (reply.result?.unserializableValue) return reply.result.unserializableValue;
-        if (reply.result?.type === 'undefined') return null;
-        if (!reply.result || !('value' in reply.result)) throw new Error('Browser page returned no result');
-        return reply.result.value ?? null;
+        const result = reply.result?.value;
+        if (!result || typeof result.valueJson !== 'string' || typeof result.valueTruncated !== 'boolean' || result.valueJson.length > 4000) {
+            throw new Error('Browser page returned no valid evaluation result');
+        }
+        return result;
     }
 
     async screenshot(ref?: string): Promise<{ data: string; mimeType: 'image/jpeg' }> {

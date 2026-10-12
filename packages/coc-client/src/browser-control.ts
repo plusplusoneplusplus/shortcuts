@@ -52,6 +52,8 @@ export interface BrowserCommandResult {
     text?: string;
     textTotal?: number;
     value?: unknown;
+    valueJson?: string;
+    valueTruncated?: boolean;
     image?: { data: string; mimeType: 'image/jpeg' };
 }
 

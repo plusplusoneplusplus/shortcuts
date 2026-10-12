@@ -180,6 +180,65 @@ describe('WebView2 CDP transport', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it.each([false, true])('rejects an oversized result only and drains its frame (fragmented: %s)', async fragmented => {
+        const { native, transport, failure } = await started();
+        const large = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const other = transport.request('cdp', { viewId: 'owner:b', method: 'Runtime.evaluate' });
+        const rejected = expect(large).rejects.toThrow('exceeds the transport limit');
+        await Promise.resolve();
+        const line = JSON.stringify({ id: 2, ok: true, result: { result: { value: 'x'.repeat(1100000) } } }) + '\n';
+        const good = '{"id":3,"ok":true,"result":{"result":{"value":42}}}\n';
+        if (fragmented) {
+            native.stdout.emit('data', line.slice(0, 1050000));
+            await rejected;
+            native.stdout.emit('data', line.slice(1050000, 1080000));
+            native.stdout.emit('data', line.slice(1080000) + good);
+        } else native.stdout.emit('data', line + good);
+        await rejected;
+        await expect(other).resolves.toEqual({ result: { value: 42 } });
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(failure).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('bounds individual frames rather than a coalesced batch of valid replies', async () => {
+        const { native, transport, failure } = await started();
+        const calls = [1, 2, 3].map(view => transport.request('cdp', { viewId: `owner:${view}`, method: 'Runtime.evaluate' }));
+        await Promise.resolve();
+        native.stdout.emit('data', calls.map((_, index) => JSON.stringify({ id: index + 2, ok: true, result: 'x'.repeat(500000) }) + '\n').join(''));
+        expect(await Promise.all(calls)).toEqual(['x'.repeat(500000), 'x'.repeat(500000), 'x'.repeat(500000)]);
+        expect(failure).not.toHaveBeenCalled();
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('measures overflow in UTF-8 bytes rather than UTF-16 characters', async () => {
+        const { native, transport, failure } = await started();
+        const request = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const rejected = expect(request).rejects.toThrow('exceeds the transport limit');
+        await Promise.resolve();
+        native.stdout.emit('data', JSON.stringify({ id: 2, ok: true, result: '\u4e00'.repeat(400000) }) + '\n');
+        await rejected;
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(failure).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects oversized commands before stdin without terminating other views', async () => {
+        const { native, transport, failure } = await started();
+        await expect(transport.request('cdp', { viewId: 'owner:a', method: 'Input.insertText', params: { text: 'x'.repeat(1100000) } }))
+            .rejects.toThrow('command exceeds the transport limit');
+        expect(native.stdin.write).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+        const next = transport.request('cdp', { viewId: 'owner:b', method: 'Runtime.evaluate', params: { expression: '42' } });
+        await Promise.resolve();
+        native.stdout.emit('data', '{"id":3,"ok":true,"result":{"result":{"value":42}}}\n');
+        await expect(next).resolves.toEqual({ result: { value: 42 } });
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(failure).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('rejects on tab close including a close racing command admission', async () => {
         const { native, transport } = await started();
         const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
