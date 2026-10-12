@@ -923,10 +923,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // MCP OAuth routes (feature-flagged via mcpOauth.enabled)
     if (opts.mcpOauthManager) {
         registerMcpOauthRoutes(routes, {
+            dataDir,
+            startTeamsOAuth: (serverUrl, context) => teamsMessagingManager.startOAuth(serverUrl, context),
+            cancelTeamsOAuth: requestId => teamsMessagingManager.cancelOAuth(requestId),
+            isTeamsOAuthPending: requestId => teamsMessagingManager.isOAuthPending(requestId),
             manager: opts.mcpOauthManager,
             store,
             executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
-            aiService: resolvedAiService,
+            aiService: opts.resolvedConfig?.mcpOauth?.enabled === false ? undefined : resolvedAiService,
             resolveWorkspaceRoot: async (workspaceId) => {
                 const workspaces = await store.getWorkspaces();
                 return workspaces.find(w => w.id === workspaceId)?.rootPath;

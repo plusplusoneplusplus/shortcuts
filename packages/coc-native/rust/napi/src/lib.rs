@@ -21,4 +21,3 @@ mod notes_index;
 mod repo_files;
 mod sqlite;
 mod task;
-mod windows_credentials;

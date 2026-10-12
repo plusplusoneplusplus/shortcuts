@@ -25,7 +25,7 @@ export type {
     Ic3ChatVerifier,
 } from './ic3/ic3-direct-message-config';
 export type { McpChannelRootPage } from './mcp/transport-mcp';
-export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenWithDeviceCode, acquireTokenViaBrowser, getOAuthConfig, exchangeCodeForToken, saveMcpOAuthTokens } from './auth';
-export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode, DeviceCodeInfo, TeamsTransport, TransportSendOptions } from './types';
+export { extractTenantId, TeamsOAuthCredential, type TeamsOAuthCredentialOptions } from './auth';
+export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode, TeamsTransport, TransportSendOptions } from './types';
 export type { GraphOutboundOptions } from './graph/graph-credential';
 export { decodeGraphHtmlEntities } from './graph/inbound-image';

@@ -1,542 +1,339 @@
-/**
- * Azure AD Device Code Flow for Teams MCP server authentication.
- *
- * Uses the Microsoft identity platform device code flow to interactively
- * authenticate the user and obtain a bearer token.
- *
- * Also supports reading cached OAuth tokens from ~/.copilot/mcp-oauth-config/
- * (obtained via Copilot CLI's OAuth flow) and refreshing them when expired.
- */
+import { AuthError, MicrosoftOAuthSignIn, MicrosoftTokenProvider,
+    type MicrosoftAccount, type MicrosoftOAuthOptions, type MicrosoftToken } from '@plusplusoneplusplus/coc-native';
+import { createHash, randomUUID } from 'node:crypto';
+import { promises as fs, readFileSync, lstatSync } from 'node:fs';
+import * as path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { McpClient } from './mcp/mcp-client';
 
-import type { TeamsAuthConfig, DeviceCodeInfo } from './types';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { TeamsAzureCliCredential } from './azure-cli-credential';
-
-/** Default client ID — Azure CLI public client (works for Graph API). */
-const DEFAULT_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46';
-
-/**
- * Build the default scope for the Agent365 Teams MCP server.
- * Pattern: https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/servers/mcp_TeamsServer/.default
- */
-function buildDefaultScope(mcpServerUrl: string): string {
-    // The scope is the MCP server URL itself with /.default appended
-    const base = mcpServerUrl.replace(/\/$/, '');
-    return `${base}/.default`;
-}
-
-interface DeviceCodeResponse {
-    device_code: string;
-    user_code: string;
-    verification_uri: string;
-    expires_in: number;
-    interval: number;
-    message: string;
-}
-
-interface TokenResponse {
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-    token_type: string;
-}
-
-/**
- * Extract tenant ID from the MCP server URL.
- * URL pattern: https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/...
- */
-export function extractTenantId(mcpServerUrl: string): string | undefined {
-    const match = mcpServerUrl.match(/\/tenants\/([^/]+)/);
-    return match?.[1];
-}
-
-/**
- * Initiate device code flow and acquire a token.
- * Returns the access token once the user completes the interactive login.
- */
-export async function acquireTokenWithDeviceCode(
-    config: TeamsAuthConfig & { mcpServerUrl?: string },
-    onDeviceCode: (info: DeviceCodeInfo) => void,
-): Promise<string> {
-    const clientId = config.clientId ?? DEFAULT_CLIENT_ID;
-    const scope = config.scope
-        ?? (config.mcpServerUrl ? buildDefaultScope(config.mcpServerUrl) : undefined);
-    if (!scope) {
-        throw new Error('No scope configured and no mcpServerUrl to derive one from');
-    }
-
-    const tenantId = config.tenantId
-        ?? (config.mcpServerUrl ? extractTenantId(config.mcpServerUrl) : undefined)
-        ?? 'organizations';
-    const tokenEndpoint = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0`;
-
-    // Step 1: Request device code
-    const dcResponse = await fetch(`${tokenEndpoint}/devicecode`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ client_id: clientId, scope }),
-    });
-
-    if (!dcResponse.ok) {
-        const errorText = await dcResponse.text();
-        throw new Error(`Device code request failed: ${dcResponse.status} ${errorText}`);
-    }
-
-    const dcData = await dcResponse.json() as DeviceCodeResponse;
-
-    // Notify the caller to show the device code to the user
-    onDeviceCode({
-        userCode: dcData.user_code,
-        verificationUri: dcData.verification_uri,
-        message: dcData.message,
-        expiresIn: dcData.expires_in,
-    });
-
-    // Step 2: Poll for token until user completes login
-    const pollInterval = (dcData.interval || 5) * 1000;
-    const expiresAt = Date.now() + dcData.expires_in * 1000;
-
-    while (Date.now() < expiresAt) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        const tokenResponse = await fetch(`${tokenEndpoint}/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                client_id: clientId,
-                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-                device_code: dcData.device_code,
-            }),
-        });
-
-        if (tokenResponse.ok) {
-            const tokenData = await tokenResponse.json() as TokenResponse;
-            return tokenData.access_token;
-        }
-
-        const errorBody = await tokenResponse.json() as { error?: string; error_description?: string };
-
-        if (errorBody.error === 'authorization_pending') {
-            continue; // User hasn't completed login yet
-        }
-        if (errorBody.error === 'slow_down') {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            continue;
-        }
-
-        // Any other error is fatal
-        throw new Error(errorBody.error_description ?? errorBody.error ?? 'Token acquisition failed');
-    }
-
-    throw new Error('Device code flow expired — user did not complete login in time');
-}
-
-/**
- * Acquire a token via PKCE authorization code flow (browser-based).
- * Opens the user's browser to the login page, starts a local HTTP server
- * to receive the redirect, exchanges the auth code for tokens, and saves
- * them to ~/.copilot/mcp-oauth-config/.
- */
-export async function acquireTokenViaBrowser(
-    mcpServerUrl: string,
-    opts?: { clientId?: string; scope?: string; homeDir?: string },
-): Promise<string> {
-    const http = await import('http');
-    const crypto = await import('crypto');
-    const { exec } = await import('child_process');
-
-    const clientId = opts?.clientId ?? 'aebc6443-996d-45c2-90f0-388ff96faa56';
-    const tenantId = extractTenantId(mcpServerUrl) ?? 'organizations';
-    const scope = opts?.scope ?? `${mcpServerUrl}/.default offline_access`;
-    const authorizeUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`;
-    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
-
-    // Generate PKCE code verifier + challenge
-    const codeVerifier = crypto.randomBytes(32).toString('base64url');
-    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-
-    // Start local server on a random port (use 'localhost' for Azure AD redirect URI compatibility)
-    return new Promise<string>((resolve, reject) => {
-        const server = http.createServer();
-        server.listen(0, '127.0.0.1', () => {
-            const port = (server.address() as { port: number }).port;
-            const redirectUri = `http://localhost:${port}/`;
-
-            // Build authorization URL
-            const params = new URLSearchParams({
-                client_id: clientId,
-                response_type: 'code',
-                redirect_uri: redirectUri,
-                scope,
-                code_challenge: codeChallenge,
-                code_challenge_method: 'S256',
-                response_mode: 'query',
-            });
-            const authUrl = `${authorizeUrl}?${params.toString()}`;
-
-            // Open browser
-            const openCmd = process.platform === 'win32' ? `start "" "${authUrl}"`
-                : process.platform === 'darwin' ? `open "${authUrl}"`
-                : `xdg-open "${authUrl}"`;
-            exec(openCmd);
-            console.log(`[teams-auth] Opening browser for login...`);
-
-            const timeout = setTimeout(() => {
-                server.close();
-                reject(new Error('OAuth login timed out (120s)'));
-            }, 120000);
-
-            server.on('request', async (req, res) => {
-                const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
-                const code = url.searchParams.get('code');
-                const error = url.searchParams.get('error');
-
-                if (error) {
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end('<html><body><h2>Login failed</h2><p>You can close this window.</p></body></html>');
-                    clearTimeout(timeout);
-                    server.close();
-                    reject(new Error(`OAuth error: ${error} - ${url.searchParams.get('error_description') ?? ''}`));
-                    return;
-                }
-
-                if (!code) {
-                    res.writeHead(400);
-                    res.end('Missing code');
-                    return;
-                }
-
-                // Exchange code for tokens
-                try {
-                    const tokenRes = await fetch(tokenUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: new URLSearchParams({
-                            client_id: clientId,
-                            grant_type: 'authorization_code',
-                            code,
-                            redirect_uri: redirectUri,
-                            code_verifier: codeVerifier,
-                            scope,
-                        }),
-                    });
-
-                    if (!tokenRes.ok) {
-                        const errText = await tokenRes.text();
-                        throw new Error(`Token exchange failed: ${tokenRes.status} ${errText}`);
-                    }
-
-                    const tokenData = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
-
-                    // Save to ~/.copilot/mcp-oauth-config/
-                    saveMcpOAuthTokens(mcpServerUrl, {
-                        clientId,
-                        redirectUri,
-                        authorizationServerUrl: `https://login.microsoftonline.com/${tenantId}/v2.0`,
-                        resourceUrl: mcpServerUrl,
-                        accessToken: tokenData.access_token,
-                        refreshToken: tokenData.refresh_token,
-                        expiresIn: tokenData.expires_in,
-                        scope: tokenData.scope ?? scope,
-                    }, opts?.homeDir);
-
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end('<html><body><h2>\u2713 Logged in successfully</h2><p>You can close this window and return to CoC.</p></body></html>');
-                    clearTimeout(timeout);
-                    server.close();
-                    resolve(tokenData.access_token);
-                } catch (err) {
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end('<html><body><h2>Login failed</h2><p>Check server logs.</p></body></html>');
-                    clearTimeout(timeout);
-                    server.close();
-                    reject(err);
-                }
-            });
-        });
-    });
-}
-
-/** Save OAuth tokens to the Copilot CLI cache format. */
-export function saveMcpOAuthTokens(
-    serverUrl: string,
-    data: {
-        clientId: string;
-        redirectUri: string;
-        authorizationServerUrl: string;
-        resourceUrl: string;
-        accessToken: string;
-        refreshToken?: string;
-        expiresIn: number;
-        scope: string;
-    },
-    homeDir?: string,
-): void {
-    const crypto = require('crypto') as typeof import('crypto');
-    const configDir = path.join(homeDir ?? os.homedir(), '.copilot', 'mcp-oauth-config');
-
-    if (!fs.existsSync(configDir)) {
-        fs.mkdirSync(configDir, { recursive: true });
-    }
-
-    // Find existing metadata file for this server, or create new hash
-    const files = fs.readdirSync(configDir).filter((f: string) => f.endsWith('.json') && !f.includes('.tokens.'));
-    let hash: string | undefined;
-
-    for (const file of files) {
-        try {
-            const meta = JSON.parse(fs.readFileSync(path.join(configDir, file), 'utf-8'));
-            if (meta.serverUrl === serverUrl) {
-                hash = file.replace('.json', '');
-                break;
-            }
-        } catch { /* skip */ }
-    }
-
-    if (!hash) {
-        hash = crypto.createHash('sha256').update(serverUrl + data.clientId).digest('hex');
-    }
-
-    const metadata = {
-        serverUrl,
-        authorizationServerUrl: data.authorizationServerUrl,
-        clientId: data.clientId,
-        redirectUri: data.redirectUri,
-        resourceUrl: data.resourceUrl,
-        issuedAt: Math.floor(Date.now() / 1000),
-        isStatic: false,
-    };
-    fs.writeFileSync(path.join(configDir, `${hash}.json`), JSON.stringify(metadata, null, 2));
-
-    const tokens = {
-        accessToken: data.accessToken,
-        expiresAt: Math.floor(Date.now() / 1000) + data.expiresIn,
-        scope: data.scope,
-        refreshToken: data.refreshToken,
-    };
-    fs.writeFileSync(path.join(configDir, `${hash}.tokens.json`), JSON.stringify(tokens));
-
-    console.log(`[teams-auth] Saved OAuth tokens to ${configDir}/${hash}.tokens.json`);
-}
-
-/**
- * Get OAuth configuration for client-side PKCE flow.
- * Returns the parameters needed to build an authorize URL in the browser.
- * For 'graph' mode, scope targets Microsoft Graph API.
- * For 'mcp' mode, scope targets the MCP server resource.
- */
-export function getOAuthConfig(
-    mcpServerUrl: string,
-    opts?: { clientId?: string; scope?: string; mode?: 'graph' | 'mcp' },
-): { clientId: string; tenantId: string; scope: string; authorizeUrl: string; tokenUrl: string } {
-    const clientId = opts?.clientId ?? 'aebc6443-996d-45c2-90f0-388ff96faa56';
-    const tenantId = extractTenantId(mcpServerUrl) ?? 'organizations';
-    const defaultScope = opts?.mode === 'graph'
-        ? 'https://graph.microsoft.com/.default offline_access'
-        : `${mcpServerUrl}/.default offline_access`;
-    const scope = opts?.scope ?? defaultScope;
-    return {
-        clientId,
-        tenantId,
-        scope,
-        authorizeUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`,
-        tokenUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
-    };
-}
-
-/**
- * Exchange an authorization code for tokens (server-side step of client-initiated PKCE flow).
- * The client generates PKCE, opens the browser, receives the auth code, then sends it here.
- */
-export async function exchangeCodeForToken(
-    mcpServerUrl: string,
-    params: { code: string; codeVerifier: string; redirectUri: string; clientId?: string; scope?: string; mode?: 'graph' | 'mcp' },
-    homeDir?: string,
-): Promise<string> {
-    const config = getOAuthConfig(mcpServerUrl, { clientId: params.clientId, scope: params.scope, mode: params.mode });
-    const clientId = params.clientId ?? config.clientId;
-    const scope = params.scope ?? config.scope;
-
-    const tokenRes = await fetch(config.tokenUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            client_id: clientId,
-            grant_type: 'authorization_code',
-            code: params.code,
-            redirect_uri: params.redirectUri,
-            code_verifier: params.codeVerifier,
-            scope,
-        }),
-    });
-
-    if (!tokenRes.ok) {
-        const errText = await tokenRes.text();
-        throw new Error(`Token exchange failed: ${tokenRes.status} ${errText}`);
-    }
-
-    const tokenData = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
-
-    // resourceUrl determines the scope used during token refresh
-    const resourceUrl = params.mode === 'graph' ? 'https://graph.microsoft.com' : mcpServerUrl;
-
-    // Save to ~/.copilot/mcp-oauth-config/
-    saveMcpOAuthTokens(mcpServerUrl, {
-        clientId,
-        redirectUri: params.redirectUri,
-        authorizationServerUrl: `https://login.microsoftonline.com/${config.tenantId}/v2.0`,
-        resourceUrl,
-        accessToken: tokenData.access_token,
-        refreshToken: tokenData.refresh_token,
-        expiresIn: tokenData.expires_in,
-        scope: tokenData.scope ?? scope,
-    }, homeDir);
-
-    return tokenData.access_token;
-}
-
-/**
- * Acquire an access token for an Azure resource using the Azure CLI.
- * Requires user to have previously run `az login`.
- * Returns the access token string.
- */
-export async function acquireTokenViaAzCli(resource?: string, signal?: AbortSignal): Promise<string> {
-    const credentials = new TeamsAzureCliCredential(resource ?? 'https://graph.microsoft.com');
-    try {
-        return await credentials.get(signal ?? AbortSignal.timeout(15_000));
-    } finally {
-        credentials.dispose();
-    }
-}
-
-// ── MCP OAuth Token Cache ────────────────────────────────────────────
-
-interface McpOAuthMetadata {
+export interface TeamsOAuthCredentialOptions {
+    dataDir: string;
     serverUrl: string;
-    authorizationServerUrl: string;
-    clientId: string;
-    redirectUri: string;
-    resourceUrl: string;
+    clientId?: string;
+    scope?: string;
+    mode?: 'mcp' | 'graph';
 }
 
-interface McpOAuthTokens {
-    accessToken: string;
-    expiresAt: number;
-    scope: string;
-    refreshToken?: string;
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const IDENTITY_SCOPES = ['openid', 'profile', 'offline_access'];
+const run = promisify(execFile);
 
-/**
- * Acquire an access token for an MCP server by reading the cached OAuth tokens
- * from `~/.copilot/mcp-oauth-config/`. These tokens are obtained through the
- * Copilot CLI's OAuth flow (triggered on first use of an MCP server).
- *
- * If the token is expired and a refresh token is available, refreshes it automatically.
- * Throws if no cached token exists (authenticate the MCP endpoint first).
- */
-export async function acquireMcpOAuthToken(mcpServerUrl: string, homeDir?: string): Promise<string> {
-    const configDir = path.join(homeDir ?? os.homedir(), '.copilot', 'mcp-oauth-config');
-
-    if (!fs.existsSync(configDir)) {
-        throw new Error('No MCP OAuth config found — authenticate the Teams MCP server first');
-    }
-
-    // Scan *.json (excluding *.tokens.json) to find metadata matching this server URL
-    const files = fs.readdirSync(configDir).filter(f => f.endsWith('.json') && !f.includes('.tokens.'));
-    let metadataFile: string | undefined;
-    let metadata: McpOAuthMetadata | undefined;
-
-    for (const file of files) {
-        try {
-            const raw = fs.readFileSync(path.join(configDir, file), 'utf-8');
-            const parsed = JSON.parse(raw) as McpOAuthMetadata;
-            if (parsed.serverUrl === mcpServerUrl) {
-                metadataFile = file;
-                metadata = parsed;
-                break;
-            }
-        } catch { /* skip unreadable files */ }
-    }
-
-    if (!metadataFile || !metadata) {
-        throw new Error(`No OAuth config found for MCP server "${mcpServerUrl}" — authenticate first`);
-    }
-
-    const tokensFileName = metadataFile.replace('.json', '.tokens.json');
-    const tokensFilePath = path.join(configDir, tokensFileName);
-
-    if (!fs.existsSync(tokensFilePath)) {
-        throw new Error('OAuth tokens file missing for MCP server — re-authenticate');
-    }
-
-    let tokens: McpOAuthTokens;
+export function extractTenantId(serverUrl: string): string | undefined {
     try {
-        tokens = JSON.parse(fs.readFileSync(tokensFilePath, 'utf-8'));
-    } catch {
-        throw new Error('Failed to parse OAuth tokens file');
-    }
-
-    // Check if token is still valid (with 5-minute buffer)
-    const now = Math.floor(Date.now() / 1000);
-    if (tokens.expiresAt && tokens.expiresAt > now + 300) {
-        return tokens.accessToken;
-    }
-
-    // Token expired — try to refresh
-    if (!tokens.refreshToken) {
-        throw new Error('MCP OAuth token expired and no refresh token available — re-authenticate');
-    }
-
-    const refreshed = await refreshMcpToken(metadata, tokens.refreshToken);
-
-    // Persist refreshed tokens
-    const updatedTokens: McpOAuthTokens = {
-        accessToken: refreshed.access_token,
-        expiresAt: Math.floor(Date.now() / 1000) + refreshed.expires_in,
-        scope: refreshed.scope ?? tokens.scope,
-        refreshToken: refreshed.refresh_token ?? tokens.refreshToken,
-    };
-
-    try {
-        fs.writeFileSync(tokensFilePath, JSON.stringify(updatedTokens));
-    } catch { /* best effort */ }
-
-    return updatedTokens.accessToken;
+        const segments = new URL(serverUrl).pathname.split('/');
+        const index = segments.indexOf('tenants');
+        const tenant = segments[index + 1];
+        return index >= 0 && UUID.test(tenant ?? '') ? tenant.toLowerCase() : undefined;
+    } catch { return undefined; }
 }
 
-async function refreshMcpToken(
-    metadata: McpOAuthMetadata,
-    refreshToken: string,
-): Promise<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }> {
-    // AAD token endpoint: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
-    // authorizationServerUrl is typically "https://login.microsoftonline.com/organizations/v2.0"
-    let tokenEndpoint: string;
-    if (metadata.authorizationServerUrl.includes('/oauth2/v2.0')) {
-        tokenEndpoint = metadata.authorizationServerUrl.replace(/\/?$/, '') + '/token';
+async function secureDirectory(directory: string): Promise<void> {
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    if (!(await fs.lstat(directory)).isDirectory()) throw new AuthError('StorageDenied');
+    if (process.platform === 'win32') {
+        const { stdout } = await run('whoami.exe', ['/user', '/fo', 'csv', '/nh'],
+            { windowsHide: true, timeout: 10_000 });
+        const sid = stdout.match(/S-1-(?:\d+-)*\d+/)?.[0];
+        if (!sid) throw new AuthError('StorageDenied');
+        // Replace the ACL, including explicit grants on an existing directory.
+        const script = `$p='${directory.replace(/'/g, "''")}';$sid='${sid}';` +
+            '$ErrorActionPreference="Stop";' +
+            '$acl=[System.Security.AccessControl.DirectorySecurity]::new();' +
+            '$owner=[System.Security.Principal.SecurityIdentifier]::new($sid);' +
+            '$acl.SetAccessRuleProtection($true,$false);' +
+            '$rule=[System.Security.AccessControl.FileSystemAccessRule]::new($owner,"FullControl","ContainerInherit,ObjectInherit","None","Allow");' +
+            '$acl.AddAccessRule($rule);[System.IO.Directory]::SetAccessControl($p,$acl)';
+        await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+            Buffer.from(script, 'utf16le').toString('base64')],
+            { windowsHide: true, timeout: 10_000 });
     } else {
-        // Convert ".../organizations/v2.0" → ".../organizations/oauth2/v2.0/token"
-        tokenEndpoint = metadata.authorizationServerUrl.replace(/\/v2\.0\/?$/, '/oauth2/v2.0/token');
+        const stat = await fs.stat(directory);
+        if (process.getuid && stat.uid !== process.getuid()) throw new AuthError('StorageDenied');
+        await fs.chmod(directory, 0o700);
+    }
+}
+
+/** Native OAuth owns credentials and renewal; only verified identity is persisted here. */
+export class TeamsOAuthCredential {
+    private readonly oauth: MicrosoftOAuthOptions;
+    private readonly directory: string;
+    private readonly metadataPath: string;
+    private readonly fingerprint: string;
+    private readonly mode: 'mcp' | 'graph';
+    private readonly serverUrl: string;
+    private identity?: MicrosoftAccount;
+    private signIn?: MicrosoftOAuthSignIn;
+    private initialization?: Promise<void>;
+    private completion?: Promise<void>;
+    private lifetime = new AbortController();
+    private generation = 0;
+    private disposed = false;
+    private status: 'unauthenticated' | 'authenticated' | 'error' = 'unauthenticated';
+    private metadataError?: AuthError;
+
+    constructor(options: TeamsOAuthCredentialOptions) {
+        const tenant = extractTenantId(options.serverUrl);
+        let url: URL;
+        try { url = new URL(options.serverUrl); } catch { throw new AuthError('InvalidConfiguration'); }
+        const clientId = options.clientId ?? 'aebc6443-996d-45c2-90f0-388ff96faa56';
+        if (!tenant || url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
+            || !UUID.test(clientId) || !options.dataDir || !path.isAbsolute(options.dataDir)
+            || (options.mode !== undefined && options.mode !== 'mcp' && options.mode !== 'graph')) {
+            throw new AuthError('InvalidConfiguration');
+        }
+        this.mode = options.mode ?? 'mcp';
+        this.serverUrl = options.serverUrl.replace(/\/$/, '');
+        const resource = this.mode === 'graph' ? 'https://graph.microsoft.com' : this.serverUrl;
+        const supplied = (options.scope ?? `${resource}/.default`).split(/\s+/).filter(Boolean);
+        if (!supplied.some(scope => !IDENTITY_SCOPES.includes(scope))
+            || supplied.some(scope => !IDENTITY_SCOPES.includes(scope) && !scope.startsWith(`${resource}/`))) {
+            throw new AuthError('InvalidConfiguration');
+        }
+        const scopes = [...new Set([...IDENTITY_SCOPES, ...supplied])].sort();
+        this.fingerprint = createHash('sha256').update(JSON.stringify({
+            host: path.resolve(options.dataDir), serverUrl: this.serverUrl, clientId, tenant, scopes, mode: this.mode,
+        })).digest('hex');
+        this.directory = path.join(options.dataDir, 'teams-auth', this.fingerprint);
+        this.metadataPath = path.join(this.directory, 'account.json');
+        this.oauth = {
+            namespace: `teams-${this.fingerprint}`, authority: `https://login.microsoftonline.com/${tenant}`,
+            clientId, scopes, target: resource, resource, coordinationDirectory: this.directory,
+        };
+        // Startup status reads only bounded nonsecret metadata, never native credentials.
+        try {
+            const stat = lstatSync(this.metadataPath);
+            if (!stat.isFile() || stat.size > 4096) throw new AuthError('StorageFailed');
+            this.identity = this.readAccount(readFileSync(this.metadataPath, 'utf8'));
+            this.status = 'authenticated';
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                this.metadataError = error instanceof AuthError ? error : new AuthError('StorageFailed');
+                this.status = 'error';
+            }
+        }
     }
 
-    const body = new URLSearchParams({
-        client_id: metadata.clientId,
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        scope: `${metadata.resourceUrl}/.default offline_access`,
-    });
-
-    const response = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Token refresh failed (${response.status}): ${errorText}`);
+    get account(): { tenantId: string; objectId: string } | undefined {
+        return this.identity ? { tenantId: this.identity.tenant, objectId: this.identity.id } : undefined;
     }
 
-    return response.json() as Promise<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }>;
+    getAccount(): { tenantId: string; objectId: string } | undefined { return this.account; }
+
+    getStatus(): 'unauthenticated' | 'authenticated' | 'error' { return this.status; }
+
+    private check(generation = this.generation): void {
+        if (this.disposed) throw new AuthError('Disposed');
+        if (generation !== this.generation) throw new AuthError('Cancelled');
+    }
+
+    private initialize(): Promise<void> {
+        this.check();
+        if (this.metadataError) return Promise.reject(this.metadataError);
+        return this.initialization ??= (async () => {
+            try {
+                await secureDirectory(path.dirname(this.directory));
+                await secureDirectory(this.directory);
+                let raw: string;
+                try { raw = await fs.readFile(this.metadataPath, 'utf8'); }
+                catch (error) {
+                    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+                    throw new AuthError('StorageFailed');
+                }
+                this.check();
+                this.identity = this.readAccount(raw);
+                this.status = 'authenticated';
+            } catch (error) {
+                this.status = 'error';
+                throw error instanceof AuthError ? error : new AuthError('StorageFailed');
+            }
+        })();
+    }
+
+    private readAccount(raw: string): MicrosoftAccount {
+        if (Buffer.byteLength(raw) > 4096) throw new AuthError('StorageFailed');
+        let metadata: { fingerprint: string; account: MicrosoftAccount };
+        try { metadata = JSON.parse(raw); } catch { throw new AuthError('StorageFailed'); }
+        if (!metadata || metadata.fingerprint !== this.fingerprint || !metadata.account
+            || metadata.account.tenant !== extractTenantId(this.serverUrl) || !UUID.test(metadata.account.id)) {
+            throw new AuthError('AccountMismatch');
+        }
+        return { tenant: metadata.account.tenant, id: metadata.account.id };
+    }
+
+    private makeProvider(account: MicrosoftAccount): MicrosoftTokenProvider {
+        return new MicrosoftTokenProvider({ source: 'oauth', oauth: this.oauth, account,
+            refresh: 'auto', timeoutMs: 30_000 });
+    }
+
+    async beginBrowser(): Promise<{ authorizationUrl: string }> {
+        this.check();
+        this.cancelSignIn();
+        const generation = this.generation;
+        await this.initialize();
+        this.check(generation);
+        await this.completion?.catch(() => {});
+        this.check(generation);
+        const signIn = this.signIn = new MicrosoftOAuthSignIn(this.oauth, this.identity, 120_000);
+        try {
+            const instructions = await signIn.beginBrowser();
+            this.check(generation);
+            if (!instructions.authorizationUrl) throw new AuthError('InvalidTokenResponse');
+            return { authorizationUrl: instructions.authorizationUrl };
+        } catch (error) {
+            signIn.cancel();
+            signIn.dispose();
+            if (this.signIn === signIn) this.signIn = undefined;
+            throw error instanceof AuthError ? error : new AuthError('IdentityVerificationFailed');
+        }
+    }
+
+    wait(): Promise<void> {
+        this.check();
+        if (this.completion) return this.completion;
+        const signIn = this.signIn;
+        if (!signIn) return Promise.reject(new AuthError('LoginRequired'));
+        const generation = this.generation;
+        const signal = this.lifetime.signal;
+        const task = (async () => {
+            let candidate: MicrosoftTokenProvider | undefined;
+            let published = false;
+            let renamed = false;
+            let staging: string | undefined;
+            try {
+                const result = await signIn.wait();
+                candidate = this.makeProvider(result.account);
+                this.check(generation);
+                this.validateToken(result.token, result.account);
+                if (this.mode === 'mcp') {
+                    const client = new McpClient({ serverUrl: this.serverUrl, bearerToken: result.token.accessToken });
+                    const budget = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
+                    await client.initialize(budget);
+                    const tools = await client.listTools(budget);
+                    if (!Array.isArray(tools?.tools)) throw new AuthError('AccessDenied');
+                }
+                this.check(generation);
+                this.validateToken(result.token, result.account);
+                staging = `${this.metadataPath}.${randomUUID()}`;
+                await fs.writeFile(staging, JSON.stringify({ fingerprint: this.fingerprint, account: result.account }),
+                    { mode: 0o600, flag: 'wx' });
+                this.check(generation);
+                await fs.rename(staging, this.metadataPath);
+                renamed = true;
+                this.check(generation);
+                this.identity = result.account;
+                this.status = 'authenticated';
+                published = true;
+            } catch (error) {
+                if (generation === this.generation && !this.disposed) this.status = 'error';
+                throw error instanceof AuthError ? error : new AuthError('IdentityVerificationFailed');
+            } finally {
+                let cleanupFailed = false;
+                try {
+                    if (!published && candidate) {
+                        await candidate.deleteCredentials();
+                    }
+                } catch { cleanupFailed = true; }
+                finally { candidate?.dispose(); }
+                try {
+                    if (renamed && !published) await fs.rm(this.metadataPath, { force: true });
+                    if (staging) await fs.rm(staging, { force: true });
+                } catch { cleanupFailed = true; }
+                finally {
+                    signIn.dispose();
+                    if (this.signIn === signIn) this.signIn = undefined;
+                }
+                if (cleanupFailed) throw new AuthError('StorageFailed');
+            }
+        })();
+        this.completion = task;
+        void task.finally(() => { if (this.completion === task) this.completion = undefined; }).catch(() => {});
+        return task;
+    }
+
+    private validateToken(token: MicrosoftToken, account: MicrosoftAccount): void {
+        if (token.source !== 'oauth' || token.target !== this.oauth.target || !token.accessToken
+            || !UUID.test(account.id)
+            || account.tenant !== extractTenantId(this.serverUrl)
+            || token.account.id !== account.id || token.account.tenant !== account.tenant) {
+            throw new AuthError('AccountMismatch');
+        }
+        if (!Number.isFinite(token.expiresAt)) throw new AuthError('InvalidTokenResponse');
+        if (token.expiresAt <= Date.now()) throw new AuthError('TokenExpired');
+    }
+
+    async getToken(signal?: AbortSignal, forceRefresh = false): Promise<string> {
+        return (await this.getTokenSnapshot(signal, forceRefresh)).accessToken;
+    }
+
+    async getTokenSnapshot(signal?: AbortSignal, forceRefresh = false): Promise<MicrosoftToken> {
+        signal?.throwIfAborted();
+        const generation = this.generation;
+        await this.initialize();
+        this.check(generation);
+        if (!this.identity) throw new AuthError('LoginRequired');
+        const combined = AbortSignal.any([this.lifetime.signal, ...(signal ? [signal] : [])]);
+        combined.throwIfAborted();
+        const account = this.identity;
+        const provider = this.makeProvider(account);
+        const abort = () => {
+            provider.cancelOutstanding();
+            provider.dispose();
+        };
+        combined.addEventListener('abort', abort, { once: true });
+        try {
+            const token = await provider.getToken({ forceRefresh });
+            this.check(generation);
+            combined.throwIfAborted();
+            this.validateToken(token, account);
+            this.status = 'authenticated';
+            return token;
+        } catch (error) {
+            if (generation === this.generation && !combined.aborted) this.status = 'error';
+            if (this.disposed) throw new AuthError('Disposed');
+            if (combined.aborted && !this.disposed) throw new AuthError('Cancelled');
+            throw error instanceof AuthError ? error : new AuthError('InvalidTokenResponse');
+        } finally {
+            combined.removeEventListener('abort', abort);
+            provider.dispose();
+        }
+    }
+
+    async refreshStatus(): Promise<'unauthenticated' | 'authenticated' | 'error'> {
+        try { await this.getToken(); } catch { /* The public status never exposes provider errors. */ }
+        return this.status;
+    }
+
+    cancelSignIn(): void {
+        this.generation++;
+        this.lifetime.abort();
+        this.lifetime = new AbortController();
+        this.signIn?.cancel();
+        this.signIn?.dispose();
+        this.signIn = undefined;
+    }
+
+    async deleteCredentials(): Promise<void> {
+        this.check();
+        this.cancelSignIn();
+        const generation = this.generation;
+        await this.initialize();
+        this.check(generation);
+        await this.completion?.catch(() => {});
+        this.check(generation);
+        const provider = this.identity && this.makeProvider(this.identity);
+        try {
+            await provider?.deleteCredentials();
+            await fs.rm(this.metadataPath, { force: true });
+            this.identity = undefined;
+            this.status = 'unauthenticated';
+        } catch { this.status = 'error'; throw new AuthError('StorageFailed'); }
+        finally { provider?.dispose(); }
+    }
+
+    dispose(): void {
+        this.cancelSignIn();
+        this.disposed = true;
+        this.status = 'unauthenticated';
+    }
 }

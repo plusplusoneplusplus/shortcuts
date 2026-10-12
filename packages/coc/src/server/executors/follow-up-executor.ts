@@ -699,6 +699,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // transcript than what the model actually received.
             const sendOptions = {
                 ...buildChatTurnSendOptions({
+                    dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'),
                     prompt: followUpMessage,
                     agentMode,
                     policy,

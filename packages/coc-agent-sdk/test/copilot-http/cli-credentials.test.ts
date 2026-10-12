@@ -57,6 +57,10 @@ describe('automatic Copilot CLI credentials', () => {
         expect((await read()).token).toBe(testCopilotToken('ghu', 'cli_selected'));
         expect(users).not.toHaveBeenCalled();
     });
+    it.each(['ghp_fixture', 'ghs_fixture'])('retains the RPC source token policy for %s', async token => {
+        current.mockResolvedValue({ authInfo: { type: 'token', host: 'https://github.com', token } });
+        expect((await read()).token).toBe(token);
+    });
     it('never selects another host or account when the active token is missing', async () => {
         users.mockResolvedValue([{ authInfo: user('active', 'https://enterprise.example'), token: testCopilotToken('gho', 'other') }]);
         await expect(read()).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });

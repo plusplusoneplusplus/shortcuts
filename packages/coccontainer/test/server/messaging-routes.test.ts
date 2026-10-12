@@ -34,7 +34,6 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-connector/teams')>();
     return {
         ...actual,
-        exchangeCodeForToken: vi.fn().mockResolvedValue('mock-token'),
         createTransport: vi.fn((mode, options) => {
             // Keep the real constructor validation; transport IO is never started.
             return actual.createTransport(mode, options);
@@ -52,9 +51,19 @@ describe('Teams config routes and OAuth bridge lifecycle (mock IO)', () => {
         const config = resolveConfig();
         const runtime = {
             config,
+            getTeamsCredential: vi.fn().mockReturnValue({
+                beginBrowser: vi.fn().mockResolvedValue({ authorizationUrl: 'https://login.example' }),
+                wait: vi.fn().mockResolvedValue(undefined),
+                getToken: vi.fn().mockResolvedValue('native-fixture-token'),
+                getAccount: vi.fn().mockReturnValue(undefined),
+                cancelSignIn: vi.fn(),
+                deleteCredentials: vi.fn().mockResolvedValue(undefined),
+            }),
+            invalidateTeamsCredential: vi.fn(),
             teamsBridge: undefined as TeamsBridge | undefined,
             startTeamsBridge: vi.fn(async (teams: ResolvedTeamsConfig) => {
-                const bridge = new TeamsBridge({ config: teams, dataDir: config.serve.dataDir } as TeamsBridgeOptions);
+                const bridge = new TeamsBridge({ config: teams, dataDir: config.serve.dataDir,
+                    getCredential: () => runtime.getTeamsCredential() } as TeamsBridgeOptions);
                 runtime.teamsBridge = bridge;
                 return bridge;
             }),
@@ -64,7 +73,6 @@ describe('Teams config routes and OAuth bridge lifecycle (mock IO)', () => {
         installMessagingRoutes(table, runtime as unknown as ContainerRuntime, messagingConfig);
         const auth = new TeamsAuthController({
             config, runtime: runtime as unknown as ContainerRuntime, messagingConfig,
-            oauthConfigDir: path.join('mock-data', 'oauth'),
         });
         return { config, runtime, table, auth };
     }
@@ -80,9 +88,8 @@ describe('Teams config routes and OAuth bridge lifecycle (mock IO)', () => {
     }
 
     async function login(auth: TeamsAuthController) {
-        expect(await auth.exchange({
-            code: 'mock-code', codeVerifier: 'mock-verifier', redirectUri: 'http://localhost/callback',
-        })).toMatchObject({ ok: true });
+        expect(await auth.start()).toMatchObject({ ok: true });
+        await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     it.each(['AMER', 'auto', ''])('invalid saved region %j cannot reach the transport constructor', region => {

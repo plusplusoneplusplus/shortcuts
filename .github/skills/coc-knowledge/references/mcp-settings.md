@@ -45,21 +45,61 @@ Moves a server between scopes. Body: `{ targetScope: "global"|"workspace" }`.
 
 ## OAuth Routes
 
-`POST /api/mcp-oauth/start` is registered only when the active AI SDK service exposes `createClient`. It starts an OAuth flow for configured HTTP/SSE MCP servers, resolving workspace config first and then global. Requests with `force: true` clear matching cache entries and pass `forceReauth` to the SDK login RPC. Pending-lifecycle endpoints (`/api/mcp-oauth/pending...`) are registered whenever the MCP OAuth manager is present.
+`POST /api/mcp-oauth/start` resolves configured HTTP/SSE MCP servers, with workspace
+definitions overriding global entries. `Microsoft Teams` starts native sign-in;
+other servers use the active AI SDK's `createClient` when generic MCP OAuth is
+enabled. Generic `force: true` clears matching cache entries and selects
+`forceReauth`; Teams reauthentication does not touch that cache. Pending-lifecycle
+routes are available for native Teams independently of the generic OAuth flag.
 
-The OAuth initiator waits for the SDK session's MCP server to finish loading before calling login and bounds that call to 30 seconds. An SDK login response without an authorization URL or OAuth-required event counts as authenticated only when the exact server URL has a valid token in the shared OAuth cache. Otherwise the start route reports an error rather than presenting an unauthenticated server as connected.
+The OAuth initiator waits for the SDK session's MCP server to finish loading before calling login and bounds that call to 30 seconds. Without an authorization URL, the exact server's live runtime `connected` state confirms completed broker sign-in; a valid shared-cache token also confirms authentication when no OAuth-required event exists. Empty login responses alone fail. Pending browser flows check runtime connection and cache state, with bounded status RPCs and cancellation-safe completion. OS-vault tokens do not require token JSON files.
 
 The MCP server panel combines configured status with live tool discovery: a live failure overrides a configured `ok`, OAuth/401/token failures render as `auth`, and other initialization failures render as `err`. Every enabled HTTP/SSE server exposes an Authenticate/Re-authenticate action; explicit re-authentication sends `force: true` to start a fresh SDK OAuth flow.
 
 ### Teams channel connection
 
-Normal CoC's Admin → Connections card registers the global `Microsoft Teams` HTTP MCP endpoint in `~/.copilot/mcp-config.json`. `POST /api/messaging/teams/auth/start` creates a localhost callback and uses `@modelcontextprotocol/sdk` to discover the resource's authorization server, create a PKCE sign-in link, exchange the callback code, and verify `initialize` and `tools/list` through the official Streamable HTTP client. It persists verified tokens in the shared Copilot cache for the polling bridge. The shared MCP OAuth manager exposes pending/completed/failed state; an abandoned sign-in expires after eight minutes.
+Normal CoC's Admin → Connections card registers the global `Microsoft Teams` HTTP
+MCP endpoint in `~/.copilot/mcp-config.json`. Native `TeamsOAuthCredential` owns
+browser sign-in, verified identity and token acquisition; the server returns its
+authorization URL and records pending/completed/failed state. Successful sign-in
+requires MCP `initialize` and `tools/list` verification. Rust stores refresh
+credentials in the OS vault. TypeScript stores only account/configuration metadata
+under the host data directory; it does not import Copilot cache credentials.
 
-The card checks `teamsOAuthAvailable` and the cache `authStatus`. The manager reads the configured endpoint and token, resolves or creates the named team and channel through MCP, then polls with `TeamsBot`. Configuration is server-wide; inbound `TeamsCommandRouter` lets each sender select a registered workspace. This is distinct from the container's self-chat messaging relay.
+The card checks `teamsOAuthAvailable` and native `authStatus`. The manager shares
+one host/resource credential owner with sign-in and chat callers. Every MCP HTTP
+request acquires a native token, including demand renewal and explicit HTTP401
+renewal. The configured endpoint requires a concrete tenant; sign-in requests
+`openid`, `profile`, `offline_access` and the Teams resource scope.
+
+Configuration is server-wide; inbound `TeamsCommandRouter` lets each sender select
+a registered workspace. The container's self-chat relay shares its native owner
+with its auth controller, uses server-side sign-in/status polling, and deletes
+only its SDK credentials on logout. Native cancellation/disposal prevents late
+sign-in, connection or request publication.
+
+### Teams MCP in Copilot sessions
+
+First and follow-up chat turns supply `onMcpAuthRequest` plus
+`managedMcpAuthServers` (exact configured name/URL pairs) to `RequestRunner`.
+Managed Teams requests acquire native access-token snapshots; runtime OAuth
+login never runs for those servers. Host-injected tokens stay ephemeral,
+independent of runtime OAuth storage. Unknown scopes require explicit consent
+rather than source fallback. The callback and tokens are excluded from invocation logs.
+
+The SDK hook is session-wide. Unmanaged requests are cancelled at the host
+boundary, then explicitly delegated to the same session's runtime OAuth login;
+initial sign-in and demand refresh retain runtime ownership. Readiness,
+cancellation and deadlines are invocation-scoped. Partial name/URL matches
+fail closed. `RequestRunner` omits `mcpOAuthTokenStorage`, retaining persistent
+generic OAuth in normal `copilot-cli` mode and isolated in-memory OAuth in SDK
+`empty` mode. Runtime regression fixtures verify restart reuse, refresh and
+host-token isolation through the native store; token JSON files alone do not
+prove vault state. Sessions without managed servers retain their provider-owned path.
 
 ## OAuth Auto-Refresh (Background)
 
-When `mcpOauth.autoRefresh.enabled` is true (disabled by default, restart required; see [admin-config.md](admin-config.md)), a background loop runs every 5 minutes against `~/.copilot/mcp-oauth-config/`: it dedups the duplicate entries the SDK accumulates per `serverUrl` and refreshes AAD tokens within 10 minutes of expiry. Cached scopes pass through `sanitizeRequestScope`, which drops `<resource>/.default` when other scopes for the same resource exist (AAD rejects that combination with HTTP 400); `offline_access` is then appended so refresh tokens keep rolling.
+When `mcpOauth.autoRefresh.enabled` is true (disabled by default, restart required; see [admin-config.md](admin-config.md)), a background loop runs every 5 minutes against `~/.copilot/mcp-oauth-config/`: it dedups the duplicate entries the SDK accumulates per `serverUrl` and refreshes AAD tokens within 10 minutes of expiry. The configured native Teams resource is excluded from both operations. Cached scopes pass through `sanitizeRequestScope`, which drops `<resource>/.default` when other scopes for the same resource exist (AAD rejects that combination with HTTP 400); `offline_access` is then appended so refresh tokens keep rolling.
 
 Only `invalid_grant`, `interaction_required`, and `consent_required` delete the cache entry; every other 4xx (including `invalid_request`, `invalid_scope`) is treated as transient, so request-shape bugs do not force a re-auth. Failure response bodies are logged redacted and capped at 400 chars to keep AADSTS errors diagnosable. Interval and window are hardcoded. Implementation: `packages/coc/src/server/mcp-oauth/mcp-oauth-refresher.ts`.
 

@@ -1,4 +1,4 @@
-import { McpClient, McpHttpError } from './mcp-client';
+import { McpClient, McpHttpError, McpCredentialError } from './mcp-client';
 import {
     TeamsOperationError, messageReceipt, requireSupport, validateAction,
     type TeamsOperations, type TeamsAction, type OperationSupport, type TeamsDestination,
@@ -26,7 +26,7 @@ export interface McpOperationsOptions {
     client: Pick<McpClient, 'callTool' | 'setBearerToken'>;
     /** Omit only for a fixed server binding whose supported tools are already known. */
     availableTools?: readonly string[];
-    onTokenRefresh?: () => Promise<string | null>;
+    onTokenRefresh?: (signal?: AbortSignal) => Promise<string | null>;
     onSelfChatResolved?: (chatId: string) => void;
 }
 
@@ -112,7 +112,7 @@ export class McpOperations implements TeamsOperations {
                 if (!(error instanceof McpHttpError) || error.status !== 401 || !this.options.onTokenRefresh) throw error;
                 // A transport-level 401 is a definite refusal, unlike a tool/network error.
                 attempted = false;
-                const token = await untilAborted(this.options.onTokenRefresh(), signal);
+                const token = await untilAborted(this.options.onTokenRefresh(signal), signal);
                 signal.throwIfAborted();
                 if (!token) throw error;
                 this.options.client.setBearerToken(token);
@@ -131,6 +131,9 @@ export class McpOperations implements TeamsOperations {
             return receipt;
         } catch (error) {
             if (error instanceof TeamsOperationError) throw error;
+            if (error instanceof McpCredentialError) {
+                throw new TeamsOperationError('Teams MCP credentials unavailable', 'mcp', 'authentication', 'not-attempted');
+            }
             if (error instanceof McpHttpError) {
                 const definite = [400, 401, 403, 429].includes(error.status);
                 throw new TeamsOperationError(`Teams MCP HTTP ${error.status}`, 'mcp',

@@ -11,6 +11,7 @@ export interface McpClientOptions {
     serverUrl: string;
     /** Bearer token for authentication. */
     bearerToken?: string;
+    acquireToken?: (signal: AbortSignal, forceRefresh?: boolean) => Promise<string>;
 }
 
 export class McpHttpError extends Error {
@@ -22,6 +23,10 @@ export class McpHttpError extends Error {
         super(`MCP HTTP error: ${status} ${statusText}`);
         this.name = 'McpHttpError';
     }
+}
+
+export class McpCredentialError extends Error {
+    constructor() { super('Teams MCP credentials unavailable'); this.name = 'McpCredentialError'; }
 }
 
 function parseRetryAfter(value: string | null): number | undefined {
@@ -42,15 +47,17 @@ export class McpClient {
     private sessionId: string | null = null;
     private protocolVersion: string | null = null;
     private bearerToken: string | null;
+    private readonly acquireToken?: McpClientOptions['acquireToken'];
 
     constructor(opts: McpClientOptions) {
         this.serverUrl = opts.serverUrl;
         this.bearerToken = opts.bearerToken ?? null;
+        this.acquireToken = opts.acquireToken;
     }
 
     /** Update the bearer token (e.g., after device code flow completes). */
     setBearerToken(token: string): void {
-        this.bearerToken = token;
+        if (!this.acquireToken) this.bearerToken = token;
     }
 
     /** Initialize the MCP session. */
@@ -77,13 +84,13 @@ export class McpClient {
     }
 
     /** List available tools on the MCP server. */
-    async listTools(): Promise<McpToolsListResult> {
+    async listTools(signal?: AbortSignal): Promise<McpToolsListResult> {
         const response = await this.sendRequest({
             jsonrpc: '2.0',
             id: 2,
             method: 'tools/list',
             params: {},
-        });
+        }, false, true, signal);
         if (response.error) {
             throw new Error(`MCP tools/list failed: ${response.error.message}`);
         }
@@ -108,12 +115,22 @@ export class McpClient {
 
     /** Send a JSON-RPC request to the MCP server. */
     private async sendRequest(body: Record<string, unknown>, notification = false, retryExpiredSession = true, signal?: AbortSignal): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+        const requestSignal = signal ?? (this.acquireToken ? AbortSignal.timeout(30_000) : undefined);
+        let token = this.bearerToken;
+        if (this.acquireToken) {
+            try {
+                requestSignal!.throwIfAborted();
+                token = await this.acquireToken(requestSignal!);
+                requestSignal!.throwIfAborted();
+                if (!token) throw new McpCredentialError();
+            } catch { throw new McpCredentialError(); }
+        }
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
         };
-        if (this.bearerToken) {
-            headers['Authorization'] = `Bearer ${this.bearerToken}`;
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
         }
         if (this.sessionId) {
             headers['Mcp-Session-Id'] = this.sessionId;
@@ -126,7 +143,7 @@ export class McpClient {
             method: 'POST',
             headers,
             body: JSON.stringify(body),
-            ...(signal ? { signal } : {}),
+            ...(requestSignal ? { signal: requestSignal } : {}),
         });
 
         if (!res.ok) {

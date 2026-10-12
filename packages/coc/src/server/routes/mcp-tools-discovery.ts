@@ -13,6 +13,7 @@
 import type { MCPServerConfig } from '@plusplusoneplusplus/forge';
 import { loadDefaultMcpConfig, loadWorkspaceMcpConfig } from '@plusplusoneplusplus/forge';
 import { listMcpTools, type McpTestRequest, type McpToolInfo } from './mcp-connection-tester';
+import { getTeamsOAuthCredential, TEAMS_NATIVE_MCP_NAME } from '../messaging/teams-native-auth';
 
 /** Per-server discovery result returned to the client. */
 export interface McpServerToolsResult {
@@ -30,6 +31,7 @@ const DEFAULT_DISCOVERY_TIMEOUT_MS = 10_000;
 const DEFAULT_DISCOVERY_CONCURRENCY = 4;
 
 export interface DiscoverOptions {
+    dataDir?: string;
     /** Per-server timeout in ms. */
     timeoutMs?: number;
     /** Max concurrent server probes. */
@@ -107,7 +109,16 @@ export async function discoverMcpToolsForServers(
         const batch = names.slice(i, i + concurrency);
         await Promise.all(batch.map(async (name) => {
             try {
-                const res = await listMcpTools(servers[name], timeoutMs);
+                let request = servers[name];
+                if (opts.dataDir && name === TEAMS_NATIVE_MCP_NAME
+                    && (request.type === 'http' || request.type === 'sse') && request.url) {
+                    const token = await getTeamsOAuthCredential(opts.dataDir, request.url)
+                        .getToken(AbortSignal.timeout(timeoutMs));
+                    const headers = Object.fromEntries(Object.entries(request.headers ?? {})
+                        .filter(([key]) => key.toLowerCase() !== 'authorization'));
+                    request = { ...request, headers: { ...headers, Authorization: `Bearer ${token}` } };
+                }
+                const res = await listMcpTools(request, timeoutMs);
                 if (res.success) {
                     results[name] = {
                         status: 'ok',

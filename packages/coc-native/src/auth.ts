@@ -28,7 +28,7 @@ export class AuthError extends Error {
     }
 }
 
-function decode(error: unknown): never {
+export function decodeAuthError(error: unknown): never {
     if (error instanceof NativeAddonLoadError || error instanceof AuthError) throw error;
     const message = error instanceof Error ? error.message : '';
     const code = /^\[auth-sdk:([A-Za-z]+)\]/.exec(message)?.[1];
@@ -110,7 +110,7 @@ export class MicrosoftTokenProvider {
             } else {
                 throw new AuthError('InvalidConfiguration');
             }
-        } catch (error) { decode(error); }
+        } catch (error) { decodeAuthError(error); }
     }
 
     async getToken(options: { forceRefresh?: boolean } = {}): Promise<MicrosoftToken> {
@@ -119,16 +119,16 @@ export class MicrosoftTokenProvider {
                 throw new AuthError('InvalidConfiguration');
             }
             return token(await this.native.getToken(options.forceRefresh));
-        } catch (error) { return decode(error); }
+        } catch (error) { return decodeAuthError(error); }
     }
 
     async invalidate(): Promise<void> {
-        try { await this.native.invalidate(); } catch (error) { decode(error); }
+        try { await this.native.invalidate(); } catch (error) { decodeAuthError(error); }
     }
 
     /** Deletes only this SDK's refresh credential. Not server-side revocation. */
     async deleteCredentials(): Promise<void> {
-        try { await this.native.deleteCredentials(); } catch (error) { decode(error); }
+        try { await this.native.deleteCredentials(); } catch (error) { decodeAuthError(error); }
     }
 
     cancelOutstanding(): void { this.native.cancelOutstanding(); }
@@ -142,22 +142,22 @@ export class MicrosoftOAuthSignIn {
         try {
             numberOption(timeoutMs, 100, 900_000);
             this.native = new (loadNativeAuth().NativeMicrosoftOAuthSignIn)(options, expectedAccount, timeoutMs);
-        } catch (error) { decode(error); }
+        } catch (error) { decodeAuthError(error); }
     }
 
     async beginBrowser(): Promise<MicrosoftSignInInstructions> {
-        try { return await this.native.beginBrowser(); } catch (error) { return decode(error); }
+        try { return await this.native.beginBrowser(); } catch (error) { return decodeAuthError(error); }
     }
 
     async beginDevice(): Promise<MicrosoftSignInInstructions> {
-        try { return await this.native.beginDevice(); } catch (error) { return decode(error); }
+        try { return await this.native.beginDevice(); } catch (error) { return decodeAuthError(error); }
     }
 
     async wait(): Promise<MicrosoftSignInResult> {
         try {
             const value = await this.native.wait();
             return { ...value, token: token(value.token) };
-        } catch (error) { return decode(error); }
+        } catch (error) { return decodeAuthError(error); }
     }
 
     cancel(): void { this.native.cancel(); }

@@ -1,9 +1,80 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McpClient, McpHttpError } from '../../src/teams/mcp/mcp-client';
+import { createTransport, TeamsBot } from '../../src/teams/bot';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('McpClient streamable HTTP', () => {
+    it('pins hybrid Graph credentials to a verified native account when the MCP token is opaque', async () => {
+        const account = { tenantId: '11111111-1111-4111-8111-111111111111',
+            objectId: '22222222-2222-4222-8222-222222222222' };
+        const graph = `header.${Buffer.from(JSON.stringify({
+            tid: account.tenantId, oid: account.objectId, aud: 'https://graph.microsoft.com',
+            exp: Date.now() / 1000 + 3600, scp: 'ChannelMessage.Send',
+        })).toString('base64url')}.signature`;
+        const fetch = vi.fn(async (_url, options) => {
+            const method = JSON.parse(options.body).method;
+            return method === 'notifications/initialized' ? new Response(null, { status: 202 })
+                : new Response(JSON.stringify({ result: method === 'initialize'
+                    ? { protocolVersion: '2025-03-26' } : method === 'tools/list'
+                        ? { tools: [{ name: 'SendMessageToChannel' }] }
+                        : { content: [{ type: 'text', text: '{"id":"receipt"}' }] } }));
+        });
+        vi.stubGlobal('fetch', fetch);
+        const acquireToken = vi.fn().mockResolvedValue('opaque-native-token');
+        const graphAcquire = vi.fn().mockResolvedValue(graph);
+        const transport = createTransport('mcp', {
+            mcpServerUrl: 'https://example.test/mcp', account, acquireToken,
+            graphOutboundOptions: { acquireToken: graphAcquire },
+        });
+        try {
+            await transport.initialize('opaque-native-token', { teamId: 'team' });
+            expect(graphAcquire).toHaveBeenCalledOnce();
+            await transport.operations.send({ kind: 'channel', teamId: 'team', channelId: 'channel' },
+                { content: 'fixture', contentType: 'text' });
+            expect(acquireToken).toHaveBeenCalledTimes(4);
+        } finally { transport.stop(); }
+    });
+
+    it('MCP startup without explicit authentication never falls back to Azure CLI', async () => {
+        const fetch = vi.fn();
+        vi.stubGlobal('fetch', fetch);
+        const bot = new TeamsBot({ mode: 'mcp', mcpServerUrl: 'https://example.test/mcp', onMessage: () => {} });
+        await bot.start();
+        expect(bot.getStatus()).toBe('error');
+        expect(bot.getLastError()).toContain('explicit OAuth');
+        expect(fetch).not.toHaveBeenCalled();
+        await bot.stop();
+    });
+    it('acquires a fresh demand token on initialize, notification, tools and each outbound request', async () => {
+        const fetch = vi.fn(async (_url, options) => {
+            const method = JSON.parse(options.body).method;
+            return method === 'notifications/initialized' ? new Response(null, { status: 202 })
+                : new Response(JSON.stringify({ result: method === 'initialize'
+                    ? { protocolVersion: '2025-03-26' } : method === 'tools/list'
+                        ? { tools: [] } : { content: [] } }));
+        });
+        vi.stubGlobal('fetch', fetch);
+        const acquireToken = vi.fn().mockResolvedValueOnce('first').mockResolvedValueOnce('second')
+            .mockResolvedValueOnce('third').mockResolvedValueOnce('fourth');
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp', acquireToken });
+        await client.initialize();
+        await client.listTools();
+        await client.callTool('SendMessageToSelf', {}, undefined, { retryExpiredSession: false });
+        expect(acquireToken).toHaveBeenCalledTimes(4);
+        expect(fetch.mock.calls.map(call => call[1].headers.Authorization)).toEqual([
+            'Bearer first', 'Bearer second', 'Bearer third', 'Bearer fourth',
+        ]);
+    });
+
+    it('fails closed before dispatch when native demand acquisition fails', async () => {
+        const fetch = vi.fn();
+        vi.stubGlobal('fetch', fetch);
+        const acquireToken = vi.fn().mockRejectedValue(new Error('Native credentials require sign-in'));
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp', acquireToken, bearerToken: 'stale' });
+        await expect(client.callTool('SendMessageToSelf')).rejects.toThrow('credentials unavailable');
+        expect(fetch).not.toHaveBeenCalled();
+    });
     it('acknowledges initialization and forwards the negotiated version and session id to tools/list', async () => {
         const fetch = vi.fn()
             .mockResolvedValueOnce(new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }), {

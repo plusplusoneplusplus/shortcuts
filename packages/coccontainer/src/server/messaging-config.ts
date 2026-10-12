@@ -20,6 +20,8 @@ export interface TeamsConfigPatch {
     channelName?: string;
     mode?: 'graph' | 'mcp';
     mcpServerUrl?: string;
+    clientId?: string;
+    scope?: string;
 }
 
 /** Minimal synchronous file-system surface used for config persistence. */
@@ -67,6 +69,9 @@ export class MessagingConfigService {
             if (patch.teamName !== undefined) teams.teamName = patch.teamName;
             if (patch.channelName !== undefined) teams.channelName = patch.channelName;
             if (patch.mode !== undefined) teams.mode = patch.mode;
+            if (patch.mcpServerUrl !== undefined) teams.mcpServerUrl = patch.mcpServerUrl;
+            if (patch.clientId !== undefined) teams.clientId = patch.clientId;
+            if (patch.scope !== undefined) teams.scope = patch.scope;
         });
     }
 

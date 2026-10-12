@@ -25,7 +25,7 @@ function oauth(): MicrosoftOAuthOptions {
     return {
         namespace: 'isolated-fixture', authority: `https://login.microsoftonline.com/${tenant}`,
         clientId: '33333333-3333-4333-8333-333333333333',
-        scopes: ['openid', 'offline_access', 'fixture.scope'],
+        scopes: ['openid', 'profile', 'offline_access', 'fixture.scope'],
         target: 'https://resource.example', coordinationDirectory: directory(),
     };
 }
@@ -89,6 +89,17 @@ function fakeCli(mode: 'valid' | 'malformed' | 'mismatch' | 'hang' | 'login' = '
 }
 
 describe('built authentication addon', () => {
+    it.each(['openid', 'profile', 'offline_access'])('requires the %s identity/lifecycle scope', scope => {
+        const options = oauth();
+        options.scopes = options.scopes.filter(value => value !== scope);
+        expect(() => new MicrosoftOAuthSignIn(options))
+            .toThrow(expect.objectContaining({ code: 'InvalidConfiguration' }));
+        expect(() => new MicrosoftTokenProvider({
+            source: 'oauth', refresh: 'auto', oauth: options,
+            account: { id: subscription, tenant },
+        })).toThrow(expect.objectContaining({ code: 'InvalidConfiguration' }));
+    });
+
     it('exports complete async capabilities and validates without starting work', () => {
         expect(loadNativeAuth().NativeMicrosoftTokenProvider).toBeTypeOf('function');
         process.env.PATH = directory();

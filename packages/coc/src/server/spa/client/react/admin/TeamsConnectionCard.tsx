@@ -299,7 +299,7 @@ export function TeamsConnectionCard() {
                         {authorizationUrl && <a className="ar-teams-auth-link" href={authorizationUrl} target="_blank" rel="noopener noreferrer">Continue Microsoft sign-in</a>}
                     </div>
                     {status && !status.teamsOAuthAvailable && <p className="ar-teams-warning">
-                        MCP OAuth is unavailable. Enable mcpOauth and restart CoC.
+                        Native Teams authentication is unavailable on this server. Rebuild the native package and restart CoC.
                     </p>}
                     {authorizationUrl && <p className="ar-teams-warning">Open the sign-in link on the same computer as CoC; the callback uses localhost.</p>}
                     <p className="ar-teams-hint" data-testid="teams-reader-hint">

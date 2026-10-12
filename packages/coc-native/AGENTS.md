@@ -105,16 +105,25 @@ Construction validates immutable configuration only. Kusto, ADO and Teams Azure 
 credentials use native authentication with automatic demand renewal. Kusto selects
 active-account mode or a complete explicit host identity and the Kusto SDK's audience.
 Teams connector providers are connection/resource scoped; the standalone Rust Teams
-CLI adapts auth-sdk to the Teams token-provider contract. Teams MCP OAuth and Copilot
-credentials have separate ownership.
+CLI adapts auth-sdk to the Teams token-provider contract. Teams MCP production
+callers use the connector's native OAuth owner; they do not import Copilot's
+OAuth cache. Copilot/GitHub credential acquisition has separate ownership.
 
-Source and refresh policy are required. `never` allows one successful
+GitHub CLI credential import belongs to
+`auth_sdk::github` and the request-scoped `src/github-auth.ts` boundary.
+
+Microsoft source and refresh policy are required. `never` allows one successful
 noninteractive acquisition; failure leaves the initial attempt retryable.
 Invalidation and credential deletion retain its acquired state. Forced renewal
 under `never` rejects. OAuth sign-in verifies ID-token signatures/issuer/audience,
 tenant/object identity and browser nonce, uses PKCE/state and owns cancellable
-loopback/device deadlines. Access tokens stay in memory; only exact SDK-owned
-refresh credentials enter the OS store. Resource providers serialize rotation
+loopback/device deadlines. OAuth scopes require `openid`, `profile` (for the
+verified object-ID claim) and `offline_access`.
+Browser redirects use `http://localhost:<port>/`,
+bind only `127.0.0.1` and accept only the exact root callback path.
+Access tokens stay in memory; only exact SDK-owned
+refresh credentials enter the OS store. Windows uses UTF-8 secret blobs within
+Credential Manager's 2,560-byte limit. Resource providers serialize rotation
 through OS advisory locks; lock-directory identity participates in credential keys.
 Azure CLI token requests select only `--subscription`; account and response tenant
 checks enforce the pinned tenant without the incompatible `--tenant` argument.
@@ -307,17 +316,32 @@ Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI
 
 N-API binaries are ABI-stable, so one binary per platform works under both Node 24 and Electron without an Electron-specific rebuild.
 
-## Windows credentials
+## GitHub authentication
 
-`readWindowsCredential(target)` reads one exact generic credential through
-`CredReadW` on a libuv worker. It returns a UTF-8 token or `null` for
-`ERROR_NOT_FOUND`; invalid targets, blobs, platform and OS failures reject with
-sanitized errors. The native allocation is released with `CredFree`. It never
-enumerates accounts, writes credentials or starts a CLI. Copilot's `cli-config`
-reader checks its file token first, then uses this capability on Windows for
-the selected account's exact `copilot-cli/<stored-host>:<login>` target.
-Rust tests create and remove isolated fixture credentials; boundary tests never
-read real accounts.
+`auth_sdk::github` imports selected CLI credentials without login, refresh,
+expiry, persistence or service-token exchange. `readGitHubCredential` creates
+one native `NativeGitHubCredentialRequest` per call, with read/cancel lifecycle,
+typed redacted errors and a complete capability guard. Each read resolves the
+active account anew or uses the explicit account; CLI metadata is selection,
+not verified identity. The host supplies an absolute config path.
+
+Rust owns bounded JSONC parsing, exact stored account keys, same-account Windows
+`CredReadW` and macOS `/usr/bin/security` reads, and `gh auth token` execution.
+File lookup follows SDK precedence: `authTokens[host:login:github].token`,
+`authTokens[host:login].token`, then `copilotTokens[host:login]`. Malformed
+containers or selected entries fail; only absent/null/empty file tokens allow OS lookup. Linux config reads are
+file-only. Nonempty tokens return for TypeScript's Copilot token policy, with
+no retry or cross-source fallback. Host spelling stays exact for storage keys;
+snapshots lowercase hostnames. Standalone keychain acquisition is not a source.
+
+The ten-second maximum deadline and 16 KiB subprocess stream limits apply per
+request. `auth-sdk/src/process.rs` shares process-tree cleanup with Azure CLI.
+Cancelling one request cannot dispose another caller. Blocking file/Windows
+reads cannot be preempted; checkpoints prevent late publication. Rust secret
+buffers zeroize where feasible; JS strings cannot. Scoped Windows credential
+fixtures, an opt-in macOS Keychain fixture and synthetic CLI addon tests cover
+these boundaries. Copilot RPC, environment/resolver acquisition and service
+authorization remain in TypeScript.
 
 ## Dangerous command guard
 

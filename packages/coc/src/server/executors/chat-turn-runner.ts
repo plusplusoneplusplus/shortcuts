@@ -25,9 +25,10 @@
  */
 
 import type { ProcessStore, SendMessageOptions, SystemMessageConfig } from '@plusplusoneplusplus/forge';
-import { approveAllPermissions, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { approveAllPermissions, getLogger, LogCategory, loadEffectiveMcpConfig } from '@plusplusoneplusplus/forge';
 import type { AgentMode, ReasoningEffort, Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { McpOauthManager } from '../mcp-oauth';
+import { buildTeamsMcpAuthHandler, isTeamsMcpServer } from '../messaging/teams-native-auth';
 
 // ============================================================================
 // MCP OAuth
@@ -131,6 +132,7 @@ export function buildMcpOAuthHandler(
  * `deliveryMode` (follow-up only) and `attachments` (first turn only).
  */
 export interface ChatTurnSendOptionsInput {
+    dataDir?: string;
     /** Final outgoing prompt, after every directive and context block. */
     prompt: string;
     /** Protocol-level write enforcement for the turn. */
@@ -206,6 +208,15 @@ export interface ChatTurnSendOptionsInput {
  * stays byte-comparable between the two paths.
  */
 export function buildChatTurnSendOptions(input: ChatTurnSendOptionsInput): SendMessageOptions {
+    const effectiveServers = input.dataDir
+        ? input.mcpServers ?? loadEffectiveMcpConfig({ workingDirectory: input.workingDirectory }).mcpServers
+        : {};
+    const onMcpAuthRequest = input.dataDir
+        ? buildTeamsMcpAuthHandler(input.dataDir, effectiveServers, input.signal) : undefined;
+    const managedMcpAuthServers: Record<string, string> = {};
+    for (const [name, config] of Object.entries(effectiveServers)) {
+        if (isTeamsMcpServer(name, config)) managedMcpAuthServers[name] = config.url;
+    }
     return {
         prompt: input.prompt,
         mode: input.agentMode,
@@ -235,6 +246,7 @@ export function buildChatTurnSendOptions(input: ChatTurnSendOptionsInput): SendM
         onTokenUsage: input.onTokenUsage,
         onBackgroundTasksChanged: input.onBackgroundTasksChanged,
         onMcpOAuthRequired: input.onMcpOAuthRequired,
+        ...(onMcpAuthRequest ? { onMcpAuthRequest, managedMcpAuthServers } : {}),
         ...(input.dangerousCommandGuard?.enabled ? { dangerousCommandGuard: input.dangerousCommandGuard } : {}),
     };
 }

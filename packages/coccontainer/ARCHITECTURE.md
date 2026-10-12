@@ -91,11 +91,14 @@ Manages browser WebSocket connections. Symmetric to TeamsBridge:
 
 ### TeamsBridge (`messaging/teams-bridge.ts`)
 
-Manages MS Teams integration via TeamsBot (MCP poll transport):
+Manages MS Teams integration via TeamsBot with explicit MCP or Graph OAuth transport:
 
 - Subscribes to `wsRelay.on('message')` for agent→Teams event forwarding
 - Routes chat messages to agents via `wsRelay.proxyToAgent()` (HTTP proxy)
 - Intercepts `/` commands before they reach WSRelay — executes locally via TeamsCommandExecutor
+- Uses `ContainerRuntime.getTeamsCredential()` for one host-owned native `TeamsOAuthCredential` shared with the auth controller. Every authenticated request reaches native demand renewal; the bridge retains no token cache. Verified native identity pins opaque MCP tokens.
+- `POST /api/container/messaging/teams/auth/start` returns the authorization URL and pending status while the server waits for verified sign-in. `GET .../auth/status` reports completion, actionable sign-in requirements, or sanitized credential errors; pending polls retain failures without reading tokens. `POST .../auth/cancel` cancels the waiter. The dashboard displays instructions and polls status; native OAuth owns the localhost callback, PKCE and token exchange.
+- Verified sign-in enables/reconnects the bridge. Logout stops it before deleting exact SDK credentials and surfaces failures. Runtime shutdown and authentication configuration changes dispose the shared credential. Graph mode keeps Graph OAuth scopes rather than selecting another credential source.
 
 ### TeamsCommandExecutor (`messaging/teams-command-executor.ts`)
 
