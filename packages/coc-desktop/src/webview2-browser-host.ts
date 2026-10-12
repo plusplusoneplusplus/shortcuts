@@ -6,10 +6,12 @@ import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type B
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
 import { browserMessage, WebView2Process } from './webview2-process';
 import type { HtmlPageBounds } from './html-page-policy';
+import { randomUUID } from 'node:crypto';
 
 const execFileAsync = promisify(execFile);
 
 interface NativeEntry {
+    root?: NativeEntry;
     nativeId: string;
     request: BrowserViewRequest;
     sink: BrowserEventSink;
@@ -31,7 +33,8 @@ export class WebView2BrowserHost implements BrowserEngineHost {
 
     constructor(profilePath: string) {
         this.process = new WebView2Process(() => this.binary(), profilePath, message => this.event(message), error => {
-            for (const entry of this.views.values()) {
+            for (const entry of [...this.views.values()]) {
+                if (entry.root) { this.remove(entry.nativeId, entry); continue; }
                 entry.state = { ...entry.state, loading: false, errorCode: error.reason, error: error.message };
                 entry.sink.state(entry.state);
             }
@@ -92,6 +95,11 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             this.remove(id, entry);
             throw error;
         }
+        return this.hosted(entry);
+    }
+
+    private hosted(entry: NativeEntry): BrowserHostedView {
+        const id = entry.nativeId;
         return {
             cdp: async (method, params = {}) => {
                 if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
@@ -108,7 +116,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed') {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
-                    await this.process.request('open', { viewId: id, url: entry.request.url, parent, pageZoomPercent: entry.pageZoom });
+                    await this.process.request('open', { viewId: id, url: entry.request.url, parent: entry.parent, pageZoomPercent: entry.pageZoom });
                     await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
                 } else { await this.process.request('nav', { viewId: id, action }); }
             },
@@ -117,6 +125,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 entry.pageZoom = percent;
             },
             setBounds: async bounds => {
+                if (entry.root) { return; }
                 entry.bounds = bounds;
                 await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
             },
@@ -132,9 +141,20 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         if (this.views.get(id) !== entry) { return; }
         this.views.delete(id);
         this.process.rejectView(id);
+        if (entry.root) {
+            entry.root.sink.controlPopoutClosed?.(entry.request.viewId);
+            return;
+        }
+        this.removePopups(entry);
         entry.window.removeListener('move', entry.reposition);
         entry.window.removeListener('resize', entry.reposition);
         if (entry.fullscreen && !entry.wasFullscreen && !entry.window.isDestroyed()) { entry.window.setFullScreen(false); }
+    }
+
+    private removePopups(root: NativeEntry): void {
+        for (const popup of [...this.views.values()]) {
+            if (popup.root === root) { this.remove(popup.nativeId, popup); }
+        }
     }
 
     async focusOwner(ownerId: number): Promise<void> {
@@ -147,13 +167,42 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private viewFailure(entry: NativeEntry, error: unknown): void {
         if (this.views.get(entry.nativeId) !== entry) { return; }
         entry.state = { ...entry.state, loading: false, errorCode: 'runtime-crashed', error: error instanceof Error ? error.message : String(error) };
-        entry.sink.state(entry.state);
+        if (entry.root) { this.remove(entry.nativeId, entry); }
+        else {
+            this.removePopups(entry);
+            entry.sink.state(entry.state);
+        }
     }
 
     private event(message: Record<string, unknown>): void {
         if (typeof message.viewId !== 'string') { return; }
+        if (message.event === 'popup-opened') {
+            const root = typeof message.rootId === 'string' ? this.views.get(message.rootId) : undefined;
+            if (!root || root.root || root.state.errorCode === 'runtime-crashed' || root.window.isDestroyed() || this.views.has(message.viewId)
+                || !message.viewId.startsWith(`${root.nativeId}:popup:`)
+                || !/^[1-9]\d*$/.test(message.viewId.slice(root.nativeId.length + 7))
+                || typeof message.url !== 'string' || (message.url !== 'about:blank' && !validateBrowserUrl(message.url).ok)) { return; }
+            const viewId = `browser-popout-${randomUUID()}`;
+            const popup: NativeEntry = {
+                ...root, root, nativeId: message.viewId,
+                request: { ...root.request, viewId, url: message.url },
+                state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
+                bounds: null, fullscreen: false,
+            };
+            this.views.set(message.viewId, popup);
+            root.sink.controlPopoutOpened?.(viewId, this.hosted(popup));
+            return;
+        }
         const entry = this.views.get(message.viewId);
         if (!entry) { return; }
+        if (message.event === 'popup-closed') {
+            if (entry.root) { this.remove(message.viewId, entry); }
+            return;
+        }
+        if (message.event === 'control-focused') {
+            entry.sink.controlFocused?.();
+            return;
+        }
         if (message.event === 'state') {
             const state = browserMessage(message.state);
             if (!state || typeof state.url !== 'string' || typeof state.title !== 'string'
@@ -168,7 +217,12 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 ...(state.errorCode === 'runtime-crashed' || state.errorCode === 'navigation-failed' || state.errorCode === 'startup-failed' ? { errorCode: state.errorCode } : {}),
             };
             if (!entry.state.error && validateBrowserUrl(entry.state.url).ok) { entry.request.url = entry.state.url; }
-            entry.sink.state(entry.state);
+            if (entry.root) {
+                if (entry.state.errorCode === 'runtime-crashed') { this.remove(entry.nativeId, entry); }
+            } else {
+                if (entry.state.errorCode === 'runtime-crashed') { this.removePopups(entry); }
+                entry.sink.state(entry.state);
+            }
         } else if (message.event === 'visited' || message.event === 'title-updated') {
             if (typeof message.url !== 'string' || typeof message.title !== 'string' || !validateBrowserUrl(message.url).ok) { return; }
             if (message.event === 'visited') { entry.sink.visited?.(message.url, message.title); }
@@ -214,6 +268,9 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     }
 
     async dispose(): Promise<void> {
-        await this.process.dispose();
+        try { await this.process.dispose(); }
+        finally {
+            for (const entry of [...this.views.values()]) { this.remove(entry.nativeId, entry); }
+        }
     }
 }

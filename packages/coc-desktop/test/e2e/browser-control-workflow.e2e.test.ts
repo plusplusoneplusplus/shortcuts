@@ -45,7 +45,8 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
                 screenshotParity: true, screenshot: { width: expect.any(Number), height: expect.any(Number) },
                 activation: ['browser'], sticky: true, panelRevealed: true,
                 ownerScoped: true, workspaceScoped: true, conversationScoped: true, fileExcluded: true,
-                exactSourceGuard: true, liveDisabled: true,
+                exactSourceGuard: true, liveDisabled: true, nativePopups: true,
+                popupReport: { bridge: 'undefined', require: 'undefined' },
                 report: { bridge: 'undefined', require: 'undefined' },
             });
             expect(result.actions.slice(0, 5)).toEqual(['open', 'snapshot', 'type', 'click', 'read']);
@@ -55,6 +56,8 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
             expect(result.screenshot.width).toBeLessThanOrEqual(1280);
             expect(result.report.events).toContainEqual({ type: 'input', trusted: true });
             expect(result.report.events).toContainEqual({ type: 'click', trusted: true });
+            expect(result.popupReport.events).toContainEqual({ type: 'input', trusted: true });
+            expect(result.popupReport.events).toContainEqual({ type: 'click', trusted: true });
         } finally {
             await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         }

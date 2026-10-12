@@ -1,4 +1,5 @@
 use crate::{
+    cleanup::complete_cleanup,
     history::HistoryNavigation,
     protocol::{self, allowed_url, allowed_view_id, Bounds, Command},
 };
@@ -61,6 +62,7 @@ struct View {
     error: RefCell<Option<(String, String)>>,
     bounds: Cell<Option<Bounds>>,
     popup: bool,
+    announced: Cell<bool>,
     host: Weak<RefCell<Host>>,
     fullscreen_window: Cell<Option<(RECT, isize)>>,
     page_zoom_percent: Cell<f64>,
@@ -141,7 +143,7 @@ impl View {
         let title = CoTaskMemPWSTR::from(title).to_string();
         let error = self.error.borrow();
         let mut state = json!({
-            "viewId": self.root_id, "engine": "webview2",
+            "viewId": self.id, "engine": "webview2",
             "url": if error.is_some() || url.is_empty() { self.requested.borrow().clone() } else { url },
             "title": if error.is_some() { String::new() } else { title },
             "canGoBack": back.as_bool(), "canGoForward": forward.as_bool(), "loading": self.loading.get()
@@ -154,7 +156,7 @@ impl View {
     }
 
     fn push(&self) {
-        if self.closed.get() || self.popup {
+        if self.closed.get() {
             return;
         }
         match self.snapshot() {
@@ -193,10 +195,19 @@ impl View {
         self.loading.set(false);
         self.history.borrow_mut().invalidate();
         *self.error.borrow_mut() = Some((code.to_string(), message.clone()));
-        protocol::emit(json!({ "event": "state", "viewId": self.root_id, "state": {
-            "viewId": self.root_id, "engine": "webview2", "url": self.requested.borrow().clone(), "title": "",
+        protocol::emit(json!({ "event": "state", "viewId": self.id, "state": {
+            "viewId": self.id, "engine": "webview2", "url": self.requested.borrow().clone(), "title": "",
             "canGoBack": false, "canGoForward": false, "loading": false, "error": message, "errorCode": code
         }}));
+        if self.popup && code == "runtime-crashed" {
+            if let Err(error) = self.close() {
+                eprintln!("WebView2 crashed popup cleanup failed: {error}");
+            }
+        } else if !self.popup {
+            if let Err(error) = self.close_popups() {
+                eprintln!("WebView2 crashed popup cleanup failed: {error}");
+            }
+        }
     }
 
     fn layout(&self, bounds: Option<Bounds>) -> Result<()> {
@@ -231,6 +242,20 @@ impl View {
         Ok(())
     }
 
+    fn close_popups(&self) -> Result<()> {
+        if let Some(host) = self.host.upgrade() {
+            let popups: Vec<_> = host
+                .borrow()
+                .views
+                .values()
+                .filter(|view| view.popup && view.root_id == self.id)
+                .cloned()
+                .collect();
+            return complete_cleanup(popups.iter().map(|popup| popup.close()));
+        }
+        Ok(())
+    }
+
     fn close(&self) -> Result<()> {
         if self.closed.replace(true) {
             return Ok(());
@@ -238,14 +263,22 @@ impl View {
         if let Some(host) = self.host.upgrade() {
             host.borrow_mut().views.remove(&self.id);
         }
+        let popups = if self.popup { Ok(()) } else { self.close_popups() };
+        if self.popup && self.announced.replace(false) {
+            protocol::emit(
+                json!({ "event": "popup-closed", "viewId": self.id, "rootId": self.root_id }),
+            );
+        }
         WINDOWS.with(|windows| windows.borrow_mut().remove(&(self.window.0 as usize)));
         unsafe {
-            self.controller.Close()?;
-            if IsWindow(Some(self.window)).as_bool() {
-                DestroyWindow(self.window)?;
-            }
+            let controller = self.controller.Close();
+            let window = if IsWindow(Some(self.window)).as_bool() {
+                DestroyWindow(self.window)
+            } else {
+                Ok(())
+            };
+            complete_cleanup([popups, controller, window])
         }
-        Ok(())
     }
 }
 
@@ -497,18 +530,15 @@ pub fn run() -> HostResult<()> {
         }
     }
     let views = std::mem::take(&mut state.borrow_mut().views);
-    for view in views.values() {
-        view.close()?;
-    }
+    let views_cleanup = complete_cleanup(views.values().map(|view| view.close()));
     drop(views);
     let profile_view = state.borrow_mut().profile_view.take();
-    if let Some(view) = profile_view {
-        view.close()?;
-    }
+    let profile_cleanup = profile_view.map_or(Ok(()), |view| view.close());
     state.borrow_mut().environment = None;
     unsafe {
         CoUninitialize();
     }
+    complete_cleanup([views_cleanup, profile_cleanup])?;
     Ok(())
 }
 
@@ -555,17 +585,19 @@ fn dispatch(state: &State, command: Command) {
                 host.pending.push(pending);
             }
         }
-        let removed: Vec<_> =
-            host.views.values().filter(|view| view.root_id == id).cloned().collect();
+        let removed: Vec<_> = host
+            .views
+            .values()
+            .filter(|view| view.id == id || view.root_id == id)
+            .cloned()
+            .collect();
         for view in &removed {
             host.views.remove(&view.id);
         }
         drop(host);
-        for view in removed {
-            if let Err(error) = view.close() {
-                protocol::failure(command.id, "runtime-crashed", error);
-                return;
-            }
+        if let Err(error) = complete_cleanup(removed.iter().map(|view| view.close())) {
+            protocol::failure(command.id, "runtime-crashed", error);
+            return;
         }
         protocol::success(command.id);
         return;
@@ -690,7 +722,13 @@ fn dispatch(state: &State, command: Command) {
             "bounds" => {
                 view.layout(command.bounds.filter(|bounds| bounds.width > 0 && bounds.height > 0))
             }
-            "focus" => view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC),
+            "focus" => {
+                if view.popup {
+                    let _ = ShowWindow(view.window, SW_RESTORE);
+                    let _ = SetForegroundWindow(view.window);
+                }
+                view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
+            }
             "focus-host" => SetFocus(Some(view.parent)).map(|_| ()),
             _ => Err(windows::core::Error::from(E_INVALIDARG)),
         }
@@ -808,7 +846,7 @@ fn start_environment(state: &State) {
     }
 }
 
-type PopupRequest = (ICoreWebView2NewWindowRequestedEventArgs, ICoreWebView2Deferral, String);
+type PopupRequest = (ICoreWebView2NewWindowRequestedEventArgs, ICoreWebView2Deferral, Rc<View>);
 
 fn startup_failure(
     state: &State,
@@ -817,9 +855,8 @@ fn startup_failure(
     reason: &str,
     message: impl std::fmt::Display,
 ) {
-    if let Some((_, deferral, root)) = popup {
-        let opener = state.borrow().views.get(root).cloned();
-        if let Some(opener) = opener {
+    if let Some((_, deferral, opener)) = popup {
+        if state.borrow().views.get(&opener.id).is_some_and(|view| Rc::ptr_eq(view, opener)) {
             opener.fail("startup-failed", format!("Could not open the sign-in popup: {message}"));
         }
         if let Err(error) = unsafe { deferral.Complete() } {
@@ -902,7 +939,7 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                         let webview = controller.CoreWebView2()?;
                         let root_id = popup
                             .as_ref()
-                            .map(|(_, _, root)| root.clone())
+                            .map(|(_, _, opener)| opener.root_id.clone())
                             .unwrap_or_else(|| id.clone());
                         let view = Rc::new(View {
                             id: id.clone(),
@@ -911,13 +948,14 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             window,
                             controller,
                             webview,
-                            loading: Cell::new(false),
+                            loading: Cell::new(is_popup),
                             history: RefCell::new(HistoryNavigation::default()),
                             closed: Cell::new(false),
                             requested: RefCell::new(command.url.clone().unwrap_or_default()),
                             error: RefCell::new(None),
                             bounds: Cell::new(None),
                             popup: is_popup,
+                            announced: Cell::new(false),
                             host: Rc::downgrade(&callback_state),
                             fullscreen_window: Cell::new(None),
                             page_zoom_percent: Cell::new(
@@ -927,17 +965,17 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
                         view.webview.Settings()?.SetAreDevToolsEnabled(false)?;
+                        let percent = view.page_zoom_percent.get();
+                        if !protocol::allowed_page_zoom(percent) {
+                            return Err(windows::core::Error::from(E_INVALIDARG));
+                        }
+                        view.controller.SetZoomFactor(percent / 100.0)?;
                         if !is_popup {
-                            let percent = view.page_zoom_percent.get();
-                            if !protocol::allowed_page_zoom(percent) {
-                                return Err(windows::core::Error::from(E_INVALIDARG));
-                            }
                             view.webview.Settings()?.SetIsZoomControlEnabled(false)?;
                             view.webview
                                 .Settings()?
                                 .cast::<ICoreWebView2Settings5>()?
                                 .SetIsPinchZoomEnabled(false)?;
-                            view.controller.SetZoomFactor(percent / 100.0)?;
                         }
                         if command.op == "import-profile-cookies" {
                             let imported = import_cookies(
@@ -971,7 +1009,18 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             clear_profile(view, response_id)?;
                             return Ok(());
                         }
-                        if is_popup && !callback_state.borrow().views.contains_key(&view.root_id) {
+                        if popup.as_ref().is_some_and(|(_, _, opener)| {
+                            opener
+                                .error
+                                .borrow()
+                                .as_ref()
+                                .is_some_and(|(code, _)| code == "runtime-crashed")
+                                || !callback_state
+                                    .borrow()
+                                    .views
+                                    .get(&opener.id)
+                                    .is_some_and(|current| Rc::ptr_eq(current, opener))
+                        }) {
                             view.close()?;
                             return Err(windows::core::Error::from(E_ABORT));
                         }
@@ -990,7 +1039,14 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                                 .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)?;
                             args.SetNewWindow(&view.webview)?;
                             args.SetHandled(true)?;
+                            view.announced.set(true);
+                            protocol::emit(json!({ "event": "popup-opened", "viewId": view.id,
+                                "rootId": view.root_id, "url": view.requested.borrow().clone() }));
+                            protocol::emit(
+                                json!({ "event": "control-focused", "viewId": view.id }),
+                            );
                             deferral.Complete()?;
+                            view.push();
                         } else {
                             view.webview.Navigate(&HSTRING::from(
                                 command.url.as_deref().unwrap_or_default(),
@@ -1202,9 +1258,8 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                         view.webview.DocumentTitle(&mut title)?;
                         let title = CoTaskMemPWSTR::from(title);
                         SetWindowTextW(view.window, *title.as_ref().as_pcwstr())?;
-                    } else {
-                        view.push();
                     }
+                    view.push();
                 }
                 Ok(())
             })),
@@ -1229,6 +1284,18 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
             }
             Ok(())
         })), &mut token)?;
+        let weak = Rc::downgrade(view);
+        view.controller.add_GotFocus(
+            &FocusChangedEventHandler::create(Box::new(move |_, _| {
+                if let Some(view) = weak.upgrade() {
+                    if !view.closed.get() {
+                        protocol::emit(json!({ "event": "control-focused", "viewId": view.id }));
+                    }
+                }
+                Ok(())
+            })),
+            &mut token,
+        )?;
         let weak = Rc::downgrade(view);
         view.webview.cast::<ICoreWebView2_4>()?.add_DownloadStarting(
             &DownloadStartingEventHandler::create(Box::new(move |_, args| {
@@ -1369,15 +1436,11 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     bounds: None,
                     action: None,
                     cookies: None,
-                    page_zoom_percent: None,
+                    page_zoom_percent: Some(view.page_zoom_percent.get()),
                     method: None,
                     params: None,
                 };
-                start_controller(
-                    &callback_state,
-                    command,
-                    Some((args, deferral, view.root_id.clone())),
-                );
+                start_controller(&callback_state, command, Some((args, deferral, view.clone())));
                 Ok(())
             })),
             &mut token,
@@ -1416,6 +1479,18 @@ extern "system" fn window_proc(
                 WM_SIZE if view.popup => {
                     let mut rect = RECT::default();
                     GetClientRect(window, &mut rect).and_then(|_| view.controller.SetBounds(rect))
+                }
+                WM_DPICHANGED if view.popup => {
+                    let rect = &*(lparam.0 as *const RECT);
+                    SetWindowPos(
+                        window,
+                        None,
+                        rect.left,
+                        rect.top,
+                        rect.right - rect.left,
+                        rect.bottom - rect.top,
+                        SWP_NOZORDER | SWP_NOACTIVATE,
+                    )
                 }
                 WM_DPICHANGED => view.layout(view.bounds.get()),
                 _ => return DefWindowProcW(window, message, wparam, lparam),

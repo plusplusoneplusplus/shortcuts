@@ -104,6 +104,9 @@ export class WebView2Process {
                     else { pending.reject(this.error(message)); }
                 }
             } else if (typeof message.event === 'string') {
+                if (message.event === 'popup-closed' && typeof message.viewId === 'string') {
+                    this.rejectView(message.viewId);
+                }
                 const state = browserMessage(message.state);
                 if (message.event === 'state' && state?.errorCode === 'runtime-crashed' && typeof message.viewId === 'string') {
                     this.rejectView(message.viewId, new BrowserHostError('runtime-crashed', typeof state.error === 'string' ? state.error : 'Browser page crashed.'));

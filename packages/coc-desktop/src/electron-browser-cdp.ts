@@ -6,11 +6,13 @@ export class ElectronBrowserCdp {
     private closed = false;
     private attached = false;
     private readonly pending = new Set<(error: Error) => void>();
+    private readonly debuggerApi: WebContents['debugger'];
 
     constructor(private readonly contents: WebContents) {
+        this.debuggerApi = contents.debugger;
         contents.on('destroyed', this.destroyed);
         contents.on('render-process-gone', this.crashed);
-        contents.debugger.on('detach', this.detached);
+        this.debuggerApi.on('detach', this.detached);
     }
 
     private readonly destroyed = () => this.dispose();
@@ -30,7 +32,7 @@ export class ElectronBrowserCdp {
         if (this.closed || this.contents.isDestroyed()) {
             throw new BrowserHostError('not-found', 'Browser tab is closed.');
         }
-        const debuggerApi = this.contents.debugger;
+        const debuggerApi = this.debuggerApi;
         if (!debuggerApi.isAttached()) {
             debuggerApi.attach('1.3');
             this.attached = true;
@@ -56,9 +58,9 @@ export class ElectronBrowserCdp {
         this.rejectPending(new BrowserHostError('not-found', 'Browser tab closed during CDP command.'));
         this.contents.removeListener('destroyed', this.destroyed);
         this.contents.removeListener('render-process-gone', this.crashed);
-        this.contents.debugger.removeListener('detach', this.detached);
-        if (this.attached && !this.contents.isDestroyed() && this.contents.debugger.isAttached()) {
-            this.contents.debugger.detach();
+        this.debuggerApi.removeListener('detach', this.detached);
+        if (this.attached && !this.contents.isDestroyed() && this.debuggerApi.isAttached()) {
+            this.debuggerApi.detach();
         }
         this.attached = false;
     }

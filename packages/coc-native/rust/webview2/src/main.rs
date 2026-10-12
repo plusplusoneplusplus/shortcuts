@@ -1,4 +1,6 @@
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86_64")), allow(dead_code))]
+mod cleanup;
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86_64")), allow(dead_code))]
 mod history;
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 mod host;

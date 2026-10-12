@@ -206,6 +206,23 @@ describe('WebView2 CDP transport', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it.each([false, true])('rejects native popup close during CDP (dispatched: %s) without disturbing its opener', async dispatched => {
+        const { native, transport, failure } = await started();
+        const popup = transport.request('cdp', { viewId: 'owner:tab:popup:1', method: 'Runtime.evaluate' });
+        const rejected = expect(popup).rejects.toMatchObject({ reason: 'not-found' });
+        if (dispatched) await Promise.resolve();
+        native.stdout.emit('data', '{"event":"popup-closed","viewId":"owner:tab:popup:1","rootId":"owner:tab"}\n');
+        await rejected;
+        const root = transport.request('cdp', { viewId: 'owner:tab', method: 'Runtime.evaluate' });
+        await Promise.resolve();
+        const request = JSON.parse(native.stdin.write.mock.calls.at(-1)![0]);
+        native.stdout.emit('data', JSON.stringify({ id: request.id, ok: true, result: { result: { value: 42 } } }) + '\n');
+        await expect(root).resolves.toEqual({ result: { value: 42 } });
+        expect(failure).not.toHaveBeenCalled();
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('rejects only the crashed page, then rejects all work on helper exit', async () => {
         const { native, transport } = await started();
         const a = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });

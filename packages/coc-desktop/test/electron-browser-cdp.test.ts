@@ -12,7 +12,11 @@ function fixture() {
         detach: vi.fn(() => { attached = false; debuggerApi.emit('detach', {}, 'target closed'); }),
         sendCommand: vi.fn<(method: string, params: Record<string, unknown>) => Promise<unknown>>().mockResolvedValue({ result: 42 }),
     });
-    const contents = Object.assign(new EventEmitter(), { debugger: debuggerApi, isDestroyed: () => destroyed });
+    const contents = Object.assign(new EventEmitter(), { isDestroyed: () => destroyed });
+    Object.defineProperty(contents, 'debugger', { get: () => {
+        if (destroyed) throw new Error('Object has been destroyed');
+        return debuggerApi;
+    } });
     const cdp = new ElectronBrowserCdp(contents as unknown as WebContents);
     return { cdp, contents, debuggerApi, destroy: () => { destroyed = true; contents.emit('destroyed'); } };
 }
@@ -101,6 +105,17 @@ describe('Electron URL guest CDP lifecycle', () => {
         cdp.dispose();
         expect(debuggerApi.attach).not.toHaveBeenCalled();
         expect(debuggerApi.detach).not.toHaveBeenCalled();
+    });
+
+    it('cleans listeners without reading native getters after destruction', async () => {
+        const { cdp, contents, debuggerApi, destroy } = fixture();
+        await cdp.send('Page.enable');
+        expect(() => destroy()).not.toThrow();
+        expect(contents.listenerCount('destroyed')).toBe(0);
+        expect(contents.listenerCount('render-process-gone')).toBe(0);
+        expect(debuggerApi.listenerCount('detach')).toBe(0);
+        expect(debuggerApi.detach).not.toHaveBeenCalled();
+        await expect(cdp.send('Page.enable')).rejects.toThrow('closed');
     });
 
     it('cleans up a synchronous dispatch failure', async () => {

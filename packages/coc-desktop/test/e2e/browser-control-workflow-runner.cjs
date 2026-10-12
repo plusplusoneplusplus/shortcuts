@@ -8,6 +8,11 @@ const { createServer } = require('node:http');
 const { readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
+process.on('uncaughtException', error => {
+    console.error(error);
+    app.exit(1);
+});
+
 const data = process.env.COC_BROWSER_WORKFLOW_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE;
 app.setPath('userData', data);
@@ -24,6 +29,7 @@ const renderer = buildSync({
 }).outputFiles[0].text;
 const page = `<!doctype html><title>Workflow fixture</title>
     <label>Message<input aria-label="Message"></label><button>Publish</button><p id="result">Waiting</p>
+    <button id="popup">Open popup</button><button id="sibling">Open sibling</button>
     <script>
         window.events = [];
         document.querySelector('input').addEventListener('input', e => events.push({type:e.type,trusted:e.isTrusted}));
@@ -31,6 +37,11 @@ const page = `<!doctype html><title>Workflow fixture</title>
             events.push({type:e.type,trusted:e.isTrusted});
             document.getElementById('result').textContent = 'Published: ' + document.querySelector('input').value;
         });
+        for (const id of ['popup', 'sibling']) {
+            document.getElementById(id).addEventListener('click', () => {
+                window.open('/page?native=' + id, id, 'width=480,height=560');
+            });
+        }
     </script>`;
 const server = createServer((req, res) => {
     res.setHeader('content-type', req.url === '/renderer.js' ? 'application/javascript' : req.url === '/style.css' ? 'text/css' : 'text/html');
@@ -187,6 +198,49 @@ app.whenReady().then(async () => {
     }).then(() => '', error => error.message)`);
     assert(wrongScope.includes('workspace scope changed'), 'Main IPC accepted a request outside its bound owner scope');
 
+    // Exercise the same native popup lifecycle through both engines, including Windows CI.
+    const rootId = ownerTabs.split('\n').find(line => line.includes('owner=a')).split(' ')[0];
+    await call({ action: 'select', tab: rootId });
+    const openerSnapshot = await call({ action: 'snapshot' });
+    const popupButton = openerSnapshot.match(/^(e\d+) button "Open popup"/m)?.[1];
+    const siblingButton = openerSnapshot.match(/^(e\d+) button "Open sibling"/m)?.[1];
+    assert(popupButton && siblingButton, 'Missing native-popup opener refs');
+    await call({ action: 'click', ref: popupButton });
+    await call({ action: 'click', ref: siblingButton });
+    const popupTabs = await until(async () => {
+        const tabs = await call({ action: 'tabs' });
+        return tabs.includes('native=popup') && tabs.includes('native=sibling') ? tabs : false;
+    }, 'owner-scoped native popup discovery');
+    const popupId = popupTabs.split('\n').find(line => line.includes('native=popup')).split(' ')[0];
+    const siblingId = popupTabs.split('\n').find(line => line.includes('native=sibling')).split(' ')[0];
+    assert(popupId.startsWith(`t${owner.win.webContents.id}:browser-popout-`)
+        && siblingId.startsWith(`t${owner.win.webContents.id}:browser-popout-`), 'Popup lost opener ownership');
+    assert(!(await foreignCall({ action: 'tabs' })).includes('native='), 'Native popup leaked to another workspace');
+    const foreignPopup = await foreignContext.tools.find(tool => tool.name === 'browser').handler({ action: 'select', tab: popupId });
+    assert(foreignPopup.resultType === 'failure' && foreignPopup.textResultForLlm.includes('not found'), 'Foreign workspace controlled native popup');
+    await call({ action: 'select', tab: popupId });
+    const popupSnapshot = await call({ action: 'snapshot' });
+    const popupInput = popupSnapshot.match(/^(e\d+) textbox "Message"/m)?.[1];
+    const popupPublish = popupSnapshot.match(/^(e\d+) button "Publish"/m)?.[1];
+    assert(popupInput && popupPublish, 'Popup did not expose its own page refs');
+    await call({ action: 'type', ref: popupInput, text: 'popup relay works' });
+    await call({ action: 'click', ref: popupPublish });
+    assert((await call({ action: 'read' })).includes('Published: popup relay works'), 'Native popup trusted input/read failed');
+    const popupReport = JSON.parse(await call({ action: 'eval',
+        js: '({events:window.events, bridge:typeof window.cocDesktop, require:typeof require})' }));
+    assert(popupReport.events.length >= 2 && popupReport.events.every(event => event.trusted)
+        && popupReport.bridge === 'undefined' && popupReport.require === 'undefined', 'Native popup input or attachment policy failed');
+    await call({ action: 'eval', js: 'setTimeout(() => window.close(), 250); true' });
+    await until(async () => !(await call({ action: 'tabs' })).includes(popupId), 'page-requested native popup close');
+    const stalePopup = await context.tools.find(tool => tool.name === 'browser').handler({ action: 'read' });
+    assert(stalePopup.resultType === 'failure' && stalePopup.textResultForLlm.includes('not found'), 'Closed popup retained a usable selection');
+    await call({ action: 'select', tab: siblingId });
+    assert((await call({ action: 'read' })).includes('Waiting'), 'Closing one popup destroyed its sibling');
+    await call({ action: 'select', tab: rootId });
+    assert((await call({ action: 'read' })).includes('Published: isolated relay works'), 'Popup state overwrote the root page');
+    await owner.js(`window.cocDesktop.browser.close(${JSON.stringify(tab.resourceId)})`);
+    await until(async () => !(await call({ action: 'tabs' })).includes(siblingId), 'opener close removes native popup descendants');
+
     const file = path.join(data, 'preview.html');
     writeFileSync(file, '<!doctype html><title>Excluded file preview</title><p>Local preview</p>');
     await owner.js(`window.workflow.setFile(${JSON.stringify(file)})`);
@@ -216,7 +270,7 @@ app.whenReady().then(async () => {
         engine, read, report, screenshot, highDpiViewport, screenshotParity: true,
         activation: parsed.metaCommands, sticky: true, panelRevealed: true,
         ownerScoped: true, workspaceScoped: true, conversationScoped: true, fileExcluded: true,
-        exactSourceGuard: true, liveDisabled: true,
+        exactSourceGuard: true, liveDisabled: true, nativePopups: true, popupReport,
         actions: await owner.js('window.workflow.messages'),
     }));
     for (const ctx of [context, followUp, independent, foreignContext, disabled]) ctx.dispose();

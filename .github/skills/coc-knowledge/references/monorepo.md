@@ -238,10 +238,14 @@ single HTTP binding. The hosts use separate tunnel identities.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
-its own attachment on close. Pending calls reject on destruction, crash, detach
+its own attachment on close and retains the debugger emitter for destruction-safe
+listener cleanup. Pending calls reject on destruction, crash, detach
 or a 30-second timeout and retire timers/listeners. WebView2 forwards owner-qualified
 requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rejecting
-on tab/helper close or crash. CDP timeouts retire individual requests. File previews
+on tab/helper close or crash. Correlated native popup events register hosted handles
+in the root tab's owner/workspace; popup state stays independent. Close/crash retires
+popup handles and requests, root close/crash retires descendants, and helper disposal
+removes owner listeners. CDP timeouts retire individual requests. File previews
 omit CDP; the primitive has no renderer IPC surface by itself.
 
 `BrowserHostManager.executeControl` resolves owner-qualified URL tabs and popouts
