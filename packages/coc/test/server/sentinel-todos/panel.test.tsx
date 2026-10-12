@@ -57,7 +57,7 @@ const fakeClient = {
 
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
 import { useUnifiedPanelTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
-import { clearUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openTab, EMPTY_UNIFIED_PANEL } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { sentinelTodoTabInput } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import {
@@ -1837,6 +1837,28 @@ describe('Sentinel chat registry and persistent tabs', () => {
     afterEach(() => {
         clearSentinelTodoChats();
         clearUnifiedPanelState();
+    });
+
+    it.each([undefined, true, false])('ignores retired ledger value %s without removing stored workspace tabs', value => {
+        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: value });
+        for (const workspaceId of ['ws-1', 'ws-2']) {
+            const owner = { ...OWNER, ownerWorkspaceId: workspaceId };
+            writeUnifiedPanelState(workspaceId, openTab(EMPTY_UNIFIED_PANEL, sentinelTodoTabInput(owner, 'chat-1')));
+        }
+        const saved = ['ws-1', 'ws-2'].map(readUnifiedPanelState);
+        const { result } = renderHook(() => ({
+            first: useUnifiedPanelTabs('ws-1', 'chat-1'),
+            second: useUnifiedPanelTabs('ws-2', 'chat-1'),
+        }));
+        expect(result.current.first.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.second.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false }));
+        expect(result.current.first.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.second.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(['ws-1', 'ws-2'].map(readUnifiedPanelState)).toEqual(saved);
+        act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true }));
+        expect(result.current.first.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.second.tabs.map(tab => tab.kind)).toEqual(['todo']);
     });
 
     it('publishes per panel scope and chat and withdraws on unmount', () => {

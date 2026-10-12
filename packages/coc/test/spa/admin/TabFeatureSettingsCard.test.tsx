@@ -117,6 +117,15 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.isTabDirty('appearance')).toBe(false);
     });
 
+    it('omits the ledger toggle and keeps Sentinel Mode and Scrubber independently default-off', () => {
+        render(<Harness tabs={['ai']} />);
+        expect(screen.queryByTestId('toggle-sentinel-todo-ledger-enabled')).toBeNull();
+        expect(controller.featureValues).not.toHaveProperty('features.sentinelTodoLedger');
+        expect(controller.featureValues['features.sentinelTodoScrubber']).toBe(false);
+        expect(screen.getByTestId('toggle-sentinel-todo-scrubber-enabled')).toBeTruthy();
+        expect(controller.featureValues['sentinel.enabled']).toBe(false);
+    });
+
     it('defaults to Direct HTTP and saves an explicit SDK choice without credential fields', async () => {
         render(<Harness tabs={['ai']} />);
         const select = screen.getByTestId('select-copilot-transform-transport') as HTMLSelectElement;

@@ -36,6 +36,7 @@ import { TeamsUserStateStore } from '../../src/server/messaging/teams-user-state
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
+import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -236,6 +237,79 @@ describe('registerAllRoutes', () => {
     afterEach(async () => {
         vi.restoreAllMocks();
         await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it.each([
+        { source: 'runtime', value: undefined },
+        { source: 'runtime', value: true },
+        { source: 'runtime', value: false },
+        { source: 'resolved', value: undefined },
+        { source: 'resolved', value: true },
+        { source: 'resolved', value: false },
+        { source: 'absent', value: undefined },
+    ] as const)('keeps ledgers available with retired $source config ($value), preserving workspace data', async ({ source, value }) => {
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owners = [
+            { workspaceId: 'ws-a', processId: 'parent-a' },
+            { workspaceId: 'ws-b', processId: 'parent-b' },
+        ];
+        const todos = new SentinelTodoStore(store.getDatabase());
+        for (const owner of owners) {
+            await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+                metadata: { workspaceId: owner.workspaceId, mode: 'sentinel' } });
+            todos.create(owner, { title: owner.workspaceId }, { actor: 'user' });
+        }
+        const savedLedgers = owners.map(owner => todos.get(owner));
+        const opts = makeOpts({ store, dataDir: tmpDir });
+        if (source === 'runtime') {
+            if (value !== undefined) Object.assign(opts.runtimeConfigService!.config.features, { sentinelTodoLedger: value });
+        } else {
+            opts.runtimeConfigService = undefined;
+            if (source === 'resolved') {
+                opts.resolvedConfig = mergeConfig(DEFAULT_CONFIG, {});
+                Object.assign(opts.resolvedConfig.features, { sentinelTodoLedger: value });
+            }
+        }
+        let getTodos!: () => SentinelTodoService | undefined;
+        let getScrubber!: () => ScrubberRunService | undefined;
+        opts.setSentinelTodos = get => { getTodos = get; };
+        opts.setSentinelScrubber = get => { getScrubber = get; };
+        const routes: Route[] = [];
+        const composition = registerAllRoutes(routes, opts);
+        try {
+            await composition.scrubberReady;
+            expect(getTodos()).toBeDefined();
+            expect(getScrubber()).toBeUndefined();
+            for (const owner of owners) {
+                const found = findRoute(routes, 'GET', `/api/workspaces/${owner.workspaceId}/sentinel-todos/${owner.processId}`)!;
+                const res = fakeRes();
+                await found.route.handler(fakeJsonReq('GET', {}), res, found.match);
+                expect(res.statusCode).toBe(200);
+                expect(JSON.parse(res.body).items).toMatchObject([{ title: owner.workspaceId }]);
+            }
+            if (source === 'runtime') {
+                Object.assign(opts.runtimeConfigService!.config.features, { sentinelTodoLedger: false });
+                expect(getTodos()).toBeDefined();
+                Object.assign(opts.runtimeConfigService!.config.features, { sentinelTodoLedger: true });
+                for (const [index, owner] of owners.entries()) {
+                    expect(await getTodos()!.list(owner)).toEqual(savedLedgers[index]);
+                }
+                expect(getScrubber()).toBeUndefined();
+            }
+            expect(owners.map(owner => todos.get(owner))).toEqual(savedLedgers);
+        } finally {
+            composition.whatsappMessagingManager.dispose();
+            composition.teamsMessagingManager.dispose();
+            composition.autoPullManager.dispose();
+            composition.workItemGitHubPullPoller.dispose();
+            composition.workItemAzureBoardsPullPoller.dispose();
+            composition.activeWorkspaceBackgroundRefresher.dispose();
+            composition.dreamIdleScheduler.dispose();
+            composition.repoTreeService.dispose();
+            composition.agentProvidersQuotaCache?.dispose();
+            composition.quotaPauseWatcher?.dispose();
+            store.close();
+        }
     });
 
     it('wires scrubber recovery, REST, runtime, queue completion and owner invalidations', async () => {

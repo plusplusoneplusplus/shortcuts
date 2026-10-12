@@ -47,6 +47,8 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.features.gitCrossCloneCherryPick).toBe(true);
             expect(svc.config.features.commitChatLens).toBe(true);
             expect(svc.config.features.chatStyleSelector).toBe(true);
+            expect(svc.config.features).not.toHaveProperty('sentinelTodoLedger');
+            expect(svc.config.features.sentinelTodoScrubber).toBe(false);
             expect(svc.config.features.autoAgentProviderRouting).toBe(false);
             expect(svc.config.defaultProvider).toBe('copilot');
             expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
@@ -71,6 +73,18 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.sentinel.enabled).toBe(true);
             expect(svc.config.pullRequests.autoClassifyTeam).toBe(true);
             expect(svc.revision).toBe(0);
+        });
+
+        it.each([undefined, true, false])('ignores retired ledger value %s from existing config without changing other defaults', value => {
+            fs.writeFileSync(configPath, yaml.dump({ features: { sentinelTodoLedger: value, composerWordHint: false } }), 'utf-8');
+            const svc = new RuntimeConfigService({ configPath });
+            expect(svc.config.features).not.toHaveProperty('sentinelTodoLedger');
+            expect(svc.sources).not.toHaveProperty('features.sentinelTodoLedger');
+            const flags = buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features;
+            expect(flags).not.toHaveProperty('sentinelTodoLedgerEnabled');
+            expect(flags.sentinelTodoScrubberEnabled).toBe(false);
+            expect(flags.sentinelEnabled).toBe(false);
+            expect(svc.config.features.composerWordHint).toBe(false);
         });
 
         it('should track sources correctly', () => {
@@ -194,6 +208,31 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('persists live scrubber opt-in and opt-out without changing another server or Sentinel Mode', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const otherOwner = new RuntimeConfigService({ fileConfig: {} });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.sentinelTodoScrubberEnabled;
+            expect(runtimeFlag()).toBe(false);
+            const changed = vi.fn();
+            svc.onChange(changed);
+
+            const enabled = await svc.updateConfig({ 'features.sentinelTodoScrubber': true });
+            expect(enabled.effects).toEqual([{
+                field: 'features.sentinelTodoScrubber', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(runtimeFlag()).toBe(true);
+            expect(enabled.sources['features.sentinelTodoScrubber']).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoScrubber).toBe(true);
+            expect(otherOwner.config.features.sentinelTodoScrubber).toBe(false);
+
+            await svc.updateConfig({ 'features.sentinelTodoScrubber': false });
+            expect(runtimeFlag()).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoScrubber).toBe(false);
+            expect(changed).toHaveBeenCalledTimes(2);
+            expect(svc.config.features.sentinelTodoScrubber).toBe(false);
+            expect(svc.config.sentinel.enabled).toBe(false);
+        });
+
         it('persists default-off chat history paging live and keeps owning-server config isolated', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const otherOwner = new RuntimeConfigService({ fileConfig: {} });

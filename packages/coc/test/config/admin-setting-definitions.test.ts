@@ -393,7 +393,12 @@ describe('Features card UI metadata', () => {
         const scrubber = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelTodoScrubber')!;
         expect(scrubber.default).toBe(false);
         expect(scrubber.runtime).toBe('live');
-        expect(scrubber.ui).toMatchObject({ group: 'aiModes', testId: 'toggle-sentinel-todo-scrubber-enabled' });
+        expect(scrubber.ui).toMatchObject({
+            group: 'aiModes', testId: 'toggle-sentinel-todo-scrubber-enabled',
+        });
+        expect(scrubber.ui?.dependsOn).toBeUndefined();
+        expect(buildRuntimeFeatureFlags({}).sentinelTodoScrubberEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelEnabled).toBe(false);
         expect(DEFAULT_CONFIG.features.sentinelTodoScrubber).toBe(false);
         expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoScrubberEnabled).toBe(false);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {

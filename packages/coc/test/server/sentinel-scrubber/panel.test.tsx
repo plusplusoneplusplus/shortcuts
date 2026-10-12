@@ -44,6 +44,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }); });
 
 describe('To-do Scrubber strip', () => {
+    it('stays off when omitted and ignores the retired ledger flag when explicitly enabled', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: undefined, sentinelTodoScrubberEnabled: undefined });
+        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        expect(screen.queryByTestId('sentinel-scrubber-strip')).toBeNull();
+        expect(mock.get).not.toHaveBeenCalled();
+        act(() => applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true }));
+        await screen.findByText('Manual only');
+        const connection = mock.connect.mock.results[0].value;
+        act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false }));
+        expect(screen.getByTestId('sentinel-scrubber-strip')).toBeInTheDocument();
+        expect(connection.close).not.toHaveBeenCalled();
+        act(() => applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }));
+        expect(screen.queryByTestId('sentinel-scrubber-strip')).toBeNull();
+        expect(connection.close).toHaveBeenCalledOnce();
+    });
+
     it('requires the live scrubber setting and stops subscriptions when disabled', async () => {
         const flag = 'sentinelTodoScrubberEnabled';
         applyRuntimeConfigPatch({ [flag]: false });

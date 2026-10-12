@@ -295,7 +295,8 @@ references before editing. Paths are package-relative.
   Manual items never authorize execution, delegation, job links, or automatic result
   reviews. Execution requests require clarification; never create a normal-item copy,
   convert, or hand off a manual item. Never let ledger edits
-  start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger. The
+  start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
+  Sentinel Mode and To-do Scrubber are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability.
   Sentinel `send_to_conversation` create mode requires an unarchived normal
