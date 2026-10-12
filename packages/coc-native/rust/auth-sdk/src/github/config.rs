@@ -6,7 +6,7 @@ use crate::{
 use serde_json::Value;
 use std::{
     fs::{File, Metadata},
-    io::Read,
+    io::{Read, Seek},
     path::Path,
 };
 use tokio_util::sync::CancellationToken;
@@ -93,7 +93,7 @@ fn read_with_hook(
     selection: &CopilotAccountSelection,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
-    after_stat: impl FnOnce(),
+    after_read: impl FnOnce(),
 ) -> Result<(GitHubAccount, Option<Secret>)> {
     checkpoint(cancel, deadline)?;
     let mut open = std::fs::OpenOptions::new();
@@ -110,24 +110,18 @@ fn read_with_hook(
         return Err(invalid());
     }
     let before = stamp(&file, &metadata)?;
-    after_stat();
-    let mut bytes = Zeroizing::new(Vec::new());
-    let mut chunk = Zeroizing::new([0u8; 8192]);
-    loop {
-        checkpoint(cancel, deadline)?;
-        let count = file.read(&mut *chunk).map_err(|_| invalid())?;
-        if count == 0 {
-            break;
-        }
-        if bytes.len() + count > LIMIT {
-            return Err(invalid());
-        }
-        bytes.extend_from_slice(&chunk[..count]);
+    let bytes = read_bytes(&mut file, cancel, deadline)?;
+    after_read();
+    // Same-size writes can share timestamps, particularly on Windows.
+    file.rewind().map_err(|_| invalid())?;
+    if bytes != read_bytes(&mut file, cancel, deadline)? {
+        return Err(invalid());
     }
     let after = file.metadata().map_err(|_| invalid())?;
     if before != stamp(&file, &after)? || bytes.len() as u64 != before.length {
         return Err(invalid());
     }
+    drop(file);
     // Match the CLI's current JSONC format: full-line // comments, not inline or block comments.
     let text = std::str::from_utf8(&bytes).map_err(|_| invalid())?;
     let mut json = Zeroizing::new(String::with_capacity(text.len()));
@@ -181,6 +175,26 @@ fn read_with_hook(
     Ok((account, token))
 }
 
+fn read_bytes(
+    file: &mut File,
+    cancel: &CancellationToken,
+    deadline: tokio::time::Instant,
+) -> Result<Zeroizing<Vec<u8>>> {
+    let mut bytes = Zeroizing::new(Vec::new());
+    let mut chunk = Zeroizing::new([0u8; 8192]);
+    loop {
+        checkpoint(cancel, deadline)?;
+        let count = file.read(&mut *chunk).map_err(|_| invalid())?;
+        if count == 0 {
+            return Ok(bytes);
+        }
+        if bytes.len() + count > LIMIT {
+            return Err(invalid());
+        }
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +219,50 @@ mod tests {
             );
             assert_eq!(result.err().unwrap().code, ErrorCode::InvalidTokenResponse);
         }
+    }
+
+    #[tokio::test]
+    async fn rejects_same_length_rewrite_with_restored_modified_time() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        let original = r#"{"lastLoggedInUser":{"host":"github.com","login":"fixture"},"copilotTokens":{"github.com:fixture":"gho_fixture"}}"#;
+        std::fs::write(&path, original).unwrap();
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let replacement = original.replace("gho_fixture", "gho_changed");
+        assert_eq!(original.len(), replacement.len());
+        let result = read_with_hook(
+            &path,
+            &CopilotAccountSelection::ActiveCliAccount,
+            &CancellationToken::new(),
+            tokio::time::Instant::now() + std::time::Duration::from_secs(10),
+            || {
+                std::fs::write(&path, replacement).unwrap();
+                File::options()
+                    .write(true)
+                    .open(&path)
+                    .unwrap()
+                    .set_times(std::fs::FileTimes::new().set_modified(modified))
+                    .unwrap();
+            },
+        );
+        assert_eq!(result.err().unwrap().code, ErrorCode::InvalidTokenResponse);
+    }
+
+    #[tokio::test]
+    async fn accepts_unchanged_config_during_verification() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        std::fs::write(&path, r#"{"lastLoggedInUser":{"host":"github.com","login":"fixture"}}"#)
+            .unwrap();
+        let (account, token) = read_with_hook(
+            &path,
+            &CopilotAccountSelection::ActiveCliAccount,
+            &CancellationToken::new(),
+            tokio::time::Instant::now() + std::time::Duration::from_secs(10),
+            || {},
+        )
+        .unwrap();
+        assert_eq!(account.login, "fixture");
+        assert!(token.is_none());
     }
 }

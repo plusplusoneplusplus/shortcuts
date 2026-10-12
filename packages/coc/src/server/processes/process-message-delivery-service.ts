@@ -394,7 +394,7 @@ export class ProcessMessageDeliveryService {
         workspaceId: string,
         processId: string,
         receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
     ): Promise<DeliveryResult> {
         return this.deliverReceipt(workspaceId, processId, receiptId, input, false);
     }
@@ -409,7 +409,7 @@ export class ProcessMessageDeliveryService {
 
     private async deliverReceipt(
         workspaceId: string, processId: string, receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
         prRepair: boolean,
     ): Promise<DeliveryResult> {
         if (prRepair && input.turnSource?.source !== 'trigger') {
@@ -458,7 +458,8 @@ export class ProcessMessageDeliveryService {
             return this.deliverAdmitted(proc, {
                 ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
                 mode: prRepair ? 'autopilot' : await resolveFollowUpMode(this.store, processId),
-            }, receiptId, undefined, prRepair ? { queuePriority: 'high', respectQueueBarriers: true } : {});
+            }, receiptId, undefined, prRepair ? { queuePriority: 'high', respectQueueBarriers: true }
+                : input.respectQueueBarriers ? { respectQueueBarriers: true } : {});
         });
     }
 

@@ -66,6 +66,135 @@ export interface SentinelTodoReference {
   attachedBy: SentinelTodoActor;
 }
 
+/** Evidence selectors, not evidence receipts or execution authority. */
+export type SentinelTodoDependencyCondition =
+  | { kind: 'done' }
+  | { kind: 'pr_merge'; outputSlot: string }
+  | { kind: 'accepted_artifact'; phase: string; reference: string; version: string };
+
+export interface SentinelTodoDependency {
+  /** Resolved only in the dependent item's owning server/workspace/parent ledger. */
+  itemId: string;
+  condition: SentinelTodoDependencyCondition;
+}
+
+export interface SetSentinelTodoDependenciesRequest {
+  expectedRevision: number;
+  dependsOn: SentinelTodoDependency[];
+}
+
+export interface SentinelTodoPrIdentity {
+  provider: 'github' | 'ado';
+  host: string;
+  repoPath: string;
+  number: number;
+  url: string;
+}
+
+export type SentinelTodoPrProvenance =
+  | { kind: 'tracked_job'; processId: string; workspaceId: string; reason: string }
+  | { kind: 'owner_selection'; reason: string };
+
+interface SentinelTodoEvidenceReceipt {
+  receiptId: string;
+  /** Prerequisite item revision which committed this exact receipt. */
+  recordedRevision: number;
+  recordedAt: string;
+  recordedBy: 'user' | 'sentinel';
+}
+
+export type SentinelTodoEvidence =
+  | (SentinelTodoEvidenceReceipt & { kind: 'pr_binding'; outputSlot: string; pr: SentinelTodoPrIdentity; provenance: SentinelTodoPrProvenance })
+  | (SentinelTodoEvidenceReceipt & { kind: 'artifact_acceptance'; phase: string; reference: string; version: string; workspaceId: string });
+
+export interface BindSentinelTodoPrRequest {
+  expectedRevision: number;
+  outputSlot: string;
+  prUrl: string;
+  provenance: SentinelTodoPrProvenance;
+}
+
+/** Version is `sha256:<64 lowercase hex digits>` of the exact current file bytes. */
+export interface AcceptSentinelTodoArtifactRequest {
+  expectedRevision: number;
+  phase: string;
+  reference: string;
+  version: string;
+}
+
+export interface SentinelTodoDependencyEvaluation {
+  itemId: string;
+  itemRevision: number;
+  ledgerRevision: number;
+  evaluatedAt: string;
+  state: 'ready' | 'waiting';
+  blocker?: string;
+  /** An evidence snapshot, not authorization or an admission receipt. Re-evaluate before use. */
+  edges: {
+    dependency: SentinelTodoDependency;
+    sourceRevision?: number;
+    satisfied: boolean;
+    blocker?: string;
+    evidenceLink?: string;
+    /** Same-server prerequisite content owner, separate from the parent ledger workspace. */
+    artifactWorkspaceId?: string;
+    receiptId?: string;
+    evidenceRevision?: number;
+    pr?: SentinelTodoPrIdentity;
+    mergedAt?: string;
+    mergeCommit?: string;
+  }[];
+}
+
+/** Concrete settings explicitly approved by the owner user; never resolved again at launch. */
+export interface SentinelTodoDependencyActionSettings {
+  mode: 'ask' | 'autopilot' | 'ralph';
+  provider: 'copilot' | 'codex' | 'claude' | 'opencode';
+  model: string;
+  targetWorkspaceId: string;
+  prompt: string;
+  scope: string;
+}
+
+export interface SentinelTodoDependencyAction extends SentinelTodoDependencyActionSettings {
+  revision: number;
+  state: 'authorized' | 'revoked' | 'consumed' | 'blocked';
+  authorizedAt: string;
+  authorizedBy: 'user';
+  /** Fixed native child identity, not an invitation to retry. */
+  taskId: string;
+  error?: string;
+  /** Durable evidence-invalidation warning for started work; independent of fulfillment. */
+  requiresReview?: boolean;
+}
+
+export interface SentinelTodoDependencyReadiness {
+  state: 'waiting' | 'ready' | 'needs_approval';
+  evaluation?: SentinelTodoDependencyEvaluation;
+  activationId?: string;
+  delivery?: 'pending' | 'delivered';
+  error?: string;
+  transportTriggerId?: string;
+}
+
+export interface AuthorizeSentinelTodoDependencyActionRequest {
+  expectedRevision: number;
+  /** Explicit conversation approval, distinct from evidence acceptance. */
+  confirmed: true;
+  action: SentinelTodoDependencyActionSettings;
+}
+
+export interface RevokeSentinelTodoDependencyActionRequest {
+  expectedRevision: number;
+}
+
+/** Owner-bound portable context; the server validates it against durable authority. */
+export interface SentinelTodoTrackedAdmission {
+  owner: { workspaceId: string; processId: string };
+  itemId: string;
+  actionRevision?: number;
+}
+
 export interface SentinelTodoItem {
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
@@ -88,6 +217,11 @@ export interface SentinelTodoItem {
   jobs: SentinelTodoJobLink[];
   /** Absent from servers that predate conversation references. */
   references?: SentinelTodoReference[];
+  /** All edges are required. Absent on records without native dependency support. */
+  dependsOn?: SentinelTodoDependency[];
+  evidence?: SentinelTodoEvidence[];
+  dependencyAction?: SentinelTodoDependencyAction;
+  dependencyReadiness?: SentinelTodoDependencyReadiness;
 }
 
 export interface SentinelTodoLedgerResponse {

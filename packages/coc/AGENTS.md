@@ -41,7 +41,9 @@ references before editing. Paths are package-relative.
 - Workspace/process REST, SSE, and WebSockets target their owner:
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
-  Reject late responses after scope changes.
+  Reject late responses after scope changes. Sidebar queue snapshots supersede
+  stale queue reads, not independent history reads; reconcile admitted history
+  against current active jobs and local process title/preview updates.
 - Collapsed workspace-rail job previews share `RailHoverPreview`. Pinned rows come
   from the owning workspace's full pinned-process read, overlaid with the chat
   list's live pin/archive state and tab/type visibility; do not derive them from
@@ -198,6 +200,54 @@ references before editing. Paths are package-relative.
   the process store's native `processes.db` handle; ledger, item and job rows are scoped
   by workspace and parent chat. Mutations acquire the database writer before reading
   and compare revisions; stale item writers receive `409` with the current item.
+  The internal `setDependencies` graph command replaces ordered, typed prerequisites
+  in the same writer transaction as item/ledger revisions. Edges resolve only in the
+  owning parent ledger, regardless of execution workspace; self/duplicate/foreign/
+  archived references and cycles are invalid. Dependency edits preserve fulfillment
+  and user-verdict bookkeeping. `features.sentinelTodoDependencies` defaults off and
+  requires the ledger. Owner-validated `setDependencies`, PUT `.../dependencies`,
+  the client resource and Sentinel `set_dependencies` share the graph command.
+  `bindPrOutput` and `acceptArtifact` store revision-checked, actor-attributed
+  receipts on the prerequisite, exposed as `evidence[]`. PR bindings require
+  explicit output selection/provenance (tracked delegations must contain the
+  selected canonical output link); only the canonical provider reader proves
+  merge. Artifact acceptance pins phase/reference/SHA-256 bytes in the prerequisite's
+  local target workspace (parent workspace when unset). Repo-relative references
+  stay repo-relative; exact absolute references can also name that workspace's managed
+  notes/tasks/outputs. Receipts pin the content workspace, and evidence links route
+  to it on the ledger's owning server. Remote content and foreign roots fail explicitly;
+  containment, realpaths and current content are checked.
+  `evaluateDependencies` captures revisions before provider I/O and revalidates
+  under the shared writer transaction, returning conjunctive readiness and
+  blockers. Native evidence/evaluation tables are machine-local and wiped;
+  diagnostic evaluations are not admission receipts. Re-evaluate before use.
+  `SentinelDependencyActions` reserves immutable evidence and one wake per graph/action
+  generation before `ProcessMessageDeliveryService.deliverOnce` transports it. Local
+  polling and transport recovery reuse the existing trigger scheduler; matching
+  owner/item/PR merge rules can own transport without rule mutation or duplicate wakes.
+  Explicit user-only, confirmed, revision-checked action authorization snapshots
+  mode, concrete provider/model, registered local target, prompt and scope.
+  Target validation materializes the registered concrete workspace's lazy queue
+  through the existing router before synchronous availability checks; it admits
+  no task and never falls back to the parent's queue.
+  Tools cannot create authority; manual items remain tracking-only. Central enqueue
+  consumes authority under the native writer and first execution rechecks current
+  evidence, graph/action revisions and provider/target availability. Preparation
+  leaves the admission unstarted; the SDK handoff repeats the check and durably marks
+  the start. Each graph replacement records an exact generation, including identical
+  selectors and removal of all edges. Native mutation hooks and fresh evidence reads
+  invalidate pending readiness/admissions atomically; immutable wake evidence stays
+  retained and invalidated pending wakes stop transport. Captured upstream generations
+  and known ancestor input proofs protect descendants. Started actions receive durable
+  `requiresReview` warnings without cancellation or fulfillment/user-verdict writes;
+  replacement authorization does not erase historical warnings. Historical native
+  action gating remains authoritative after edge removal or feature disablement. Stable identities
+  reconcile acceptance; errors and uncertain admissions require fresh authorization,
+  never automatic work retry. Native Ralph step-start receipts prevent execution
+  replay; started whole-session continuations preserve captured settings and scope.
+  The late-bound `getSentinelDependencyAdmission` receipt guard stays available when
+  authoring is disabled, so valid running work can finish. Dependency authoring and
+  artifact acceptance never grant execution authority or change fulfillment.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
   including evidence-based Done with a reason; Notes and Done when are optional.
@@ -405,6 +455,8 @@ references before editing. Paths are package-relative.
   admission on failure in `finally`.
 - Delivery decisions belong in `process-message-delivery-service.ts`. Buffer via atomic
   `appendPendingMessage`, not metadata read-modify-write; draining owns deferred turns.
+  Carry a stable request ID on drained turns and queued payloads. Lifecycle receipt
+  reconciliation passes `userTurnPersisted` to prevent a second automated user turn.
   Emit intents once; follow-up enqueue sites resolve mode via `resolveFollowUpMode(...)`
   (an omitted mode keeps the chat's mode; terminal Sentinel wins) — never default it to `'ask'`.
   Use `metadataPatch` for field updates.

@@ -24,6 +24,7 @@ configure({ asyncUtilTimeout: 5000 });
 const get = vi.fn();
 const create = vi.fn();
 const update = vi.fn();
+const dependencyEvaluate = vi.fn();
 const connect = vi.fn();
 const scrubGet = vi.fn();
 const scrubGetRun = vi.fn();
@@ -49,6 +50,7 @@ const fakeClient = {
         get: (...args: unknown[]) => get(...args),
         create: (...args: unknown[]) => create(...args),
         update: (...args: unknown[]) => update(...args),
+        evaluateDependencies: (...args: unknown[]) => dependencyEvaluate(...args),
     },
     events: { connect: (...args: unknown[]) => connect(...args) },
 };
@@ -100,7 +102,8 @@ function conflict(current: SentinelTodoItem) {
 }
 
 beforeEach(() => {
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false });
+    dependencyEvaluate.mockReset();
     scrubGet.mockReset();
     scrubGetRun.mockReset();
     scrubAccept.mockReset();
@@ -117,10 +120,30 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false });
 });
 
 describe('UnifiedTodoTab', () => {
+    it('mounts gated dependency chips and opens prerequisite details in the same owner ledger', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: true });
+        const source = item({ id: 'source', title: 'Source' });
+        const dependent = item({ id: 'dependent', title: 'Dependent',
+            dependsOn: [{ itemId: source.id, condition: { kind: 'done' } }] });
+        get.mockResolvedValue(ledger([source, dependent], 2));
+        dependencyEvaluate.mockResolvedValue({
+            itemId: dependent.id, itemRevision: 1, ledgerRevision: 2, state: 'waiting',
+            evaluatedAt: '2026-01-01T00:00:00Z',
+            edges: [{ dependency: dependent.dependsOn![0], satisfied: false, blocker: 'Explicit Done required' }],
+        });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-dependent');
+        await within(row).findByText('Waiting');
+        fireEvent.click(within(row).getByRole('button', { name: /Dependent/ }));
+        const chain = within(row).getByRole('list', { name: 'Dependency chain' });
+        fireEvent.click(within(chain).getByRole('button', { name: 'Source' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-row-source').querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('true'));
+        expect(dependencyEvaluate).toHaveBeenCalledWith(OWNER.ownerWorkspaceId, OWNER.processId, dependent.id, { signal: expect.any(AbortSignal) });
+    });
     it.each(['row', 'strip', 'toolbar'])('renders collapsed findings and archives accepted Obsolete through %s', async entryPoint => {
         applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
         get.mockResolvedValue(ledger([item()]));

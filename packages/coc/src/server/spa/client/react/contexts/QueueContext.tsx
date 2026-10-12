@@ -42,7 +42,7 @@ export interface QueueContextState {
      * instantly from the last known snapshot while the freshness fetch runs in
      * the background. Avoids a full loading spinner on every repo switch.
      */
-    repoHistoryMap: Record<string, { items: any[]; hasMore: boolean; updatedAt: number }>;
+    repoHistoryMap: Record<string, { items: any[]; hasMore: boolean; updatedAt: number; source?: string }>;
     /** Per-workspace count of chats currently streaming (follow-up SSE). */
     streamingChatWorkspaces: Record<string, number>;
     showDialog: boolean;
@@ -158,7 +158,7 @@ export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; stats: any } }
     | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any }; source?: string }
     | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
-    | { type: 'REPO_HISTORY_UPDATED'; repoId: string; items: any[]; hasMore: boolean }
+    | { type: 'REPO_HISTORY_UPDATED'; repoId: string; items: any[]; hasMore: boolean; source?: string }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
     | { type: 'DRAIN_PROGRESS'; queued: number; running: number }
@@ -233,6 +233,7 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                     ...state.repoHistoryMap,
                     [action.repoId]: {
                         items: action.items,
+                        source: action.source,
                         hasMore: action.hasMore,
                         updatedAt: Date.now(),
                     },

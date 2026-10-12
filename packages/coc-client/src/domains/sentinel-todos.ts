@@ -10,8 +10,14 @@ import type {
   SentinelScrubFindingWriteResponse,
   SentinelScrubFindingDismissResponse,
   AttachSentinelTodoReferenceRequest,
+  BindSentinelTodoPrRequest,
+  AcceptSentinelTodoArtifactRequest,
+  SentinelTodoDependencyEvaluation,
+  AuthorizeSentinelTodoDependencyActionRequest,
+  RevokeSentinelTodoDependencyActionRequest,
   CreateSentinelTodoRequest,
   SentinelTodoLedgerResponse,
+  SetSentinelTodoDependenciesRequest,
   SentinelTodoWriteResponse,
   UpdateSentinelTodoRequest,
 } from '../contracts';
@@ -59,6 +65,40 @@ export class SentinelTodosClient {
       ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/references`),
       { method: 'POST', body: request },
     );
+  }
+
+  setDependencies(
+    workspaceId: string, processId: string, itemId: string, request: SetSentinelTodoDependenciesRequest,
+  ): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request<SentinelTodoWriteResponse>(
+      ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependencies`),
+      { method: 'PUT', body: request },
+    );
+  }
+
+  bindPrOutput(workspaceId: string, processId: string, itemId: string, request: BindSentinelTodoPrRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/pr-output`),
+      { method: 'POST', body: request });
+  }
+
+  acceptArtifact(workspaceId: string, processId: string, itemId: string, request: AcceptSentinelTodoArtifactRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/artifact-acceptance`),
+      { method: 'POST', body: request });
+  }
+
+  evaluateDependencies(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoDependencyEvaluation> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/readiness`),
+      { ...options, method: 'POST', body: {} });
+  }
+
+  authorizeDependencyAction(workspaceId: string, processId: string, itemId: string, request: AuthorizeSentinelTodoDependencyActionRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependency-action`),
+      { method: 'PUT', body: request });
+  }
+
+  revokeDependencyAction(workspaceId: string, processId: string, itemId: string, request: RevokeSentinelTodoDependencyActionRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependency-action`),
+      { method: 'DELETE', body: request });
   }
 }
 

@@ -107,6 +107,20 @@ export class OneShotFireConflictError extends Error {}
 
 export type TriggerEventEmit = (event: TriggerChangeEvent) => void;
 
+export interface DependencyPollEntry {
+    id: string;
+    status: string;
+    nextTickAt: string | null;
+    dependencyPoll: true;
+    owner: { workspaceId: string; processId: string };
+}
+
+export interface DependencyPolling {
+    entries(): DependencyPollEntry[];
+    persist(entry: DependencyPollEntry): void;
+    tick(entry: DependencyPollEntry): Promise<void>;
+}
+
 export interface TriggerManagerDeps {
     store: TriggerStore;
     timerRegistry: ScheduleTimerRegistry;
@@ -131,18 +145,20 @@ export class TriggerManager {
     private readonly ticking = new Set<string>();
 
     /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
-    private readonly scheduler: PeriodicEntryScheduler<Trigger>;
+    private readonly scheduler: PeriodicEntryScheduler<Trigger | DependencyPollEntry>;
+    private dependencyPolling?: DependencyPolling;
 
     constructor(deps: TriggerManagerDeps) {
         this.deps = deps;
         this.now = deps.now ?? Date.now;
-        this.scheduler = new PeriodicEntryScheduler<Trigger>({
+        this.scheduler = new PeriodicEntryScheduler<Trigger | DependencyPollEntry>({
             timerRegistry: deps.timerRegistry,
-            getFallbackIntervalMs: trigger => trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
+            getFallbackIntervalMs: trigger => 'dependencyPoll' in trigger ? DEFAULT_CI_POLL_INTERVAL_MS : trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
                 ? getPrMergedPollDelay({ ...trigger.event, consecutiveErrors: trigger.delivery.consecutiveErrors ?? 0 })
                 : getPollInterval(trigger.event),
-            isActive: trigger => trigger.status === 'active' || trigger.delivery?.state === 'pending' || hasPendingRepair(trigger),
-            persist: trigger => this.deps.store.update(trigger),
+            isActive: trigger => 'dependencyPoll' in trigger ? !!this.dependencyPolling && trigger.status === 'active'
+                : trigger.status === 'active' || trigger.delivery?.state === 'pending' || hasPendingRepair(trigger),
+            persist: trigger => 'dependencyPoll' in trigger ? this.dependencyPolling?.persist(trigger) : this.deps.store.update(trigger),
             onTick: id => { void this.onTick(id); },
             logLabel: 'TriggerManager',
             now: this.now,
@@ -160,6 +176,21 @@ export class TriggerManager {
     armAll(): void {
         this.scheduler.armAll(this.deps.store.getAll().filter(trigger =>
             trigger.status === 'active' || trigger.delivery?.state === 'pending' || hasPendingRepair(trigger)));
+        this.refreshDependencyPolling();
+    }
+
+    /** Dependency evidence/transport shares this manager's one existing scheduler. */
+    setDependencyPolling(polling: DependencyPolling): () => void {
+        this.dependencyPolling = polling;
+        this.refreshDependencyPolling();
+        return () => {
+            for (const entry of polling.entries()) this.scheduler.disarm(entry.id);
+            if (this.dependencyPolling === polling) this.dependencyPolling = undefined;
+        };
+    }
+
+    refreshDependencyPolling(): void {
+        if (!this.stopped) for (const entry of this.dependencyPolling?.entries() ?? []) this.scheduler.arm(entry);
     }
 
     /** Reconcile durable wake receipts before ordinary queue processing starts. */
@@ -235,7 +266,17 @@ export class TriggerManager {
     private async onTick(triggerId: string, manualCi = false): Promise<void> {
         if (this.ticking.has(triggerId)) return;
         this.ticking.add(triggerId);
-        try { await this.evaluateTick(triggerId, manualCi); }
+        try {
+            if (triggerId.startsWith('sentinel-dependency:')) {
+                const entry = this.dependencyPolling?.entries().find(entry => entry.id === triggerId);
+                if (!entry || this.stopped) return;
+                try { await this.dependencyPolling!.tick(entry); }
+                catch (error) { getLogger().warn(LogCategory.AI, `[TriggerManager] Dependency evidence/transport unavailable: ${String(error)}`); }
+                if (!this.stopped && this.dependencyPolling?.entries().some(current => current.id === entry.id)) this.scheduler.reschedule(entry);
+                return;
+            }
+            await this.evaluateTick(triggerId, manualCi);
+        }
         finally { this.ticking.delete(triggerId); }
     }
 

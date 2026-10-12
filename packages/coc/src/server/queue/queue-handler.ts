@@ -33,6 +33,7 @@ export function registerQueueRoutes(
         validateProvider?: (provider: ChatProvider) => Promise<void>;
         botManagedConversationsEnabled?: () => boolean;
         getSentinelMirror?: QueueRouteContext['getSentinelMirror'];
+        enqueueDelegation?: QueueRouteContext['enqueueDelegation'];
         /**
          * Shared global queue state. When supplied (by the route layer), the HTTP
          * enqueue path and any in-process enqueue capability (e.g. the
@@ -62,6 +63,7 @@ export function registerQueueRoutes(
         validateProvider: options.validateProvider,
         botManagedConversationsEnabled: options.botManagedConversationsEnabled,
         getSentinelMirror: options.getSentinelMirror,
+        enqueueDelegation: options.enqueueDelegation,
     };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);

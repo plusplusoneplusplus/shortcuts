@@ -589,6 +589,17 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { schedulerDelayHint: true } }).schedulerDelayHintEnabled).toBe(true);
     });
 
+    it('exposes sidebar refresh as a default-off Appearance setting', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railManualRefresh')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.ui?.tab).toBe('appearance');
+        expect(def.ui?.testId).toBe('toggle-rail-manual-refresh-enabled');
+        expect(DEFAULT_CONFIG.features.railManualRefresh).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).railManualRefreshEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { railManualRefresh: true } }).railManualRefreshEnabled).toBe(true);
+    });
+
     it('exposes the collapsed-rail Git summary as a default-off experimental feature', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railGitSummary');
         expect(def, 'features.railGitSummary must be an admin setting').toBeDefined();
@@ -682,6 +693,7 @@ describe('feature toggle settings-tab placement', () => {
         'mapReduce.enabled': 'ai',
         'sentinel.enabled': 'ai',
         'features.sentinelTodoLedger': 'ai',
+        'features.sentinelTodoDependencies': 'ai',
         'features.sentinelTodoScrubber': 'ai',
         'dangerousCommandGuard.enabled': 'ai',
         'effortLevels.enabled': 'ai',
@@ -699,6 +711,7 @@ describe('feature toggle settings-tab placement', () => {
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
+        'features.railManualRefresh': 'appearance',
         'features.railGitSummary': 'appearance',
         'features.railStatusActions': 'appearance',
         'features.schedulerDelayHint': 'appearance',

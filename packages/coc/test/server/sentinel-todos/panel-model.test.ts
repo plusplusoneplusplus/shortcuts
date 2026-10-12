@@ -12,6 +12,7 @@ import {
     SENTINEL_TODO_PRIORITY_LABELS,
     sentinelTodoJobStateLabel,
     sentinelTodoDisplayStatus,
+    sentinelTodoDependencyChain,
     sentinelTodoFoldNotes,
     sentinelTodoLineCount,
     sentinelTodoPriority,
@@ -56,6 +57,22 @@ function job(execution: SentinelTodoJobLink['execution'], overrides: Partial<Sen
 }
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
+
+describe('sentinelTodoDependencyChain', () => {
+    it('includes every reachable prerequisite once in prerequisite-first order, not unrelated ledger items', () => {
+        const a = item({ id: 'a' });
+        const b = item({ id: 'b', dependsOn: [{ itemId: a.id, condition: { kind: 'done' } }] });
+        const c = item({ id: 'c', dependsOn: [{ itemId: a.id, condition: { kind: 'pr_merge', outputSlot: 'feature' } }] });
+        const d = item({ id: 'd', dependsOn: [b, c].map(source => ({ itemId: source.id, condition: { kind: 'done' } })) });
+        expect(sentinelTodoDependencyChain(d.id, [d, b, c, a, item({ id: 'unrelated' })])).toEqual(['a', 'b', 'c', 'd']);
+    });
+
+    it('preserves unavailable references and bounds malformed cycles', () => {
+        const a = item({ id: 'a', dependsOn: [{ itemId: 'b', condition: { kind: 'done' } }] });
+        const b = item({ id: 'b', dependsOn: ['a', 'missing'].map(itemId => ({ itemId, condition: { kind: 'done' } })) });
+        expect(sentinelTodoDependencyChain(a.id, [a, b])).toEqual(['missing', 'b', 'a']);
+    });
+});
 
 describe('sentinelTodoSections', () => {
     it('orders active items by attention, then in progress, then to do, and splits Done and Archived', () => {

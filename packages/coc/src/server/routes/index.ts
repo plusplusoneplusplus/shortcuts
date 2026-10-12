@@ -13,7 +13,7 @@ import { ScrubberScheduler } from '../sentinel-scrubber/scrubber-scheduler';
 import { registerScrubberRoutes } from '../sentinel-scrubber/scrubber-routes';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { SqliteProcessStore, modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -47,6 +47,10 @@ import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-hand
 import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
+import { SentinelDependencyActions } from '../sentinel-todos/sentinel-dependency-actions';
+import { createSentinelDependencyTargetValidator } from '../sentinel-todos/sentinel-dependency-target';
+import { createPrStatusFetcher } from '../triggers/pr-status-fetcher';
 import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-routes';
 import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
@@ -140,7 +144,7 @@ import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphGrillingApprovalRoutes } from './ralph-grilling-approval-routes';
 import { prepareRalphGrilling } from '../ralph/grilling-state';
-import { launchRalphSession, type LaunchRalphFn } from '../ralph/ralph-launch-service';
+import { launchRalphSession, type LaunchRalphFn, type RalphLaunchDeps } from '../ralph/ralph-launch-service';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerRalphInputRoutes } from './ralph-input-routes';
 import { registerRalphSubmitRoutes } from './ralph-submit-routes';
@@ -319,6 +323,7 @@ export interface RegisterRoutesOptions {
     setLaunchRalph?: (fn: LaunchRalphFn) => void;
     /** Publish the flag-gated Sentinel to-do service getter to the executor runtime. */
     setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
+    setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
     setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
@@ -527,12 +532,100 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         throw error;
     }
     const sentinelTodos = new SentinelTodoService({
-        todos: todoStore, store, jobs: delegatedJobs,
+        todos: todoStore, store, jobs: delegatedJobs, dataDir,
+        fetchPr: createPrStatusFetcher({ dataDir }),
+        resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
+        getDependenciesEnabled: () => getSentinelTodoLedgerEnabled()
+            && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
         getTask: taskId => bridge.getTask(taskId),
-        onChange: ({ owner, ledgerRevision, item }) => getWsServer().broadcastProcessEvent({
-            type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
-            ledgerRevision, itemId: item.id, timestamp: Date.now(),
-        }),
+        onChange: ({ owner, ledgerRevision, item }) => {
+            opts.triggerManager?.refreshDependencyPolling();
+            getWsServer().broadcastProcessEvent({
+                type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
+                ledgerRevision, itemId: item.id, timestamp: Date.now(),
+            });
+        },
+    });
+    const dependencyReceipts = new SentinelDependencyStore(todoDb, todoStore);
+    const dependencyActions = new SentinelDependencyActions({
+        receipts: dependencyReceipts, service: sentinelTodos, dataDir,
+        hasTask: taskId => !!bridge.getTask(taskId),
+        coexistingTransport: (owner, itemId, evaluation, triggerId) => {
+            const ledger = todoStore.get(owner);
+            const item = ledger.items.find(item => item.id === itemId);
+            const readyAfter = Math.max(Date.parse(item?.updatedAt ?? evaluation.evaluatedAt),
+                ...evaluation.edges.map(edge => Date.parse(edge.mergedAt
+                    ?? ledger.items.find(source => source.id === edge.dependency.itemId)?.updatedAt ?? evaluation.evaluatedAt)));
+            const triggers = opts.triggerStore?.getAll().filter(trigger => trigger.workspaceId === owner.workspaceId
+                && trigger.processId === owner.processId && trigger.binding?.itemId === itemId
+                && trigger.event.monitor === 'pr-merged') ?? [];
+            const rule = triggerId ? triggers.find(trigger => trigger.id === triggerId)
+                : triggers.find(trigger => {
+                    const event = trigger.event;
+                    const ownsTransport = (!trigger.outcome && ['active', 'paused'].includes(trigger.status))
+                        || trigger.delivery?.state === 'pending'
+                        || (trigger.delivery?.state === 'delivered' && Date.parse(trigger.delivery.firedAt) >= readyAfter);
+                    return ownsTransport && event.monitor === 'pr-merged' && evaluation.edges.some(edge => edge.pr
+                            && edge.pr.provider === event.pr.provider && edge.pr.host === event.pr.host
+                            && edge.pr.repoPath.toLowerCase() === event.pr.repoPath.toLowerCase() && edge.pr.number === event.pr.number);
+                });
+            if (!rule || (rule.outcome && !rule.delivery)) return undefined;
+            const event = rule.event;
+            if (event.monitor !== 'pr-merged' || !evaluation.edges.some(edge => edge.pr
+                && edge.pr.provider === event.pr.provider && edge.pr.host === event.pr.host
+                && edge.pr.repoPath.toLowerCase() === event.pr.repoPath.toLowerCase() && edge.pr.number === event.pr.number)) return undefined;
+            return { triggerId: rule.id, state: rule.delivery?.state === 'delivered' ? 'delivered' : 'waiting' };
+        },
+        delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
+        validateProvider: validateSendToConversationProvider,
+        validateOwner: owner => {
+            if (store instanceof SqliteProcessStore
+                && !todoDb.prepare('SELECT id FROM workspaces WHERE id = ?').get(owner.workspaceId)) {
+                throw new Error('Native dependency owner workspace is unavailable');
+            }
+        },
+        validateTarget: createSentinelDependencyTargetValidator(store, bridge),
+        validateCurrent: (provider, workspaceId, mode, owner) => {
+            const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
+            if (!sentinelTodos.dependenciesEnabled()) throw new Error('Sentinel dependency admission is disabled');
+            if (!opts.triggerManager) throw new Error('Existing trigger scheduler is unavailable for dependency wakes');
+            if (provider !== 'copilot' && config?.[provider]?.enabled !== true) throw new Error('Saved provider is disabled');
+            if (!sdkServiceRegistry.get(provider)) throw new Error('Saved provider is unavailable');
+            if (!bridge.getManagerByRepoId(workspaceId)) throw new Error('Saved target workspace is unavailable');
+            if (mode === 'ralph' && !getRalphEnabled()) throw new Error('Saved Ralph mode is disabled');
+            if (store instanceof SqliteProcessStore) {
+                const parent = todoDb.prepare('SELECT metadata FROM processes WHERE id = ?').get<{ metadata: string }>(owner.processId);
+                const metadata = parent?.metadata ? JSON.parse(parent.metadata) : undefined;
+                const queued = !parent && isQueueProcessId(owner.processId) ? bridge.getTask(toTaskId(owner.processId)) : undefined;
+                if (parent ? metadata?.mode !== 'sentinel' || metadata?.workspaceId !== owner.workspaceId
+                    : queued?.payload.mode !== 'sentinel' || (queued?.payload.workspaceId ?? queued?.repoId) !== owner.workspaceId
+                        || !['queued', 'running'].includes(queued?.status ?? '')) {
+                    throw new Error('Saved Sentinel owner is unavailable');
+                }
+                const workspace = todoDb.prepare('SELECT root_path, virtual FROM workspaces WHERE id = ?')
+                    .get<{ root_path: string; virtual: number }>(workspaceId);
+                if (!workspace || workspace.virtual || !todoDb.prepare('SELECT id FROM workspaces WHERE id = ?').get(owner.workspaceId)) {
+                    throw new Error('Dependency admission requires registered local owner and concrete target workspaces');
+                }
+                return workspace.root_path;
+            }
+        },
+        onChange: (owner, itemId) => {
+            opts.triggerManager?.refreshDependencyPolling();
+            getWsServer().broadcastProcessEvent({ type: 'sentinel-todos-changed', ...owner, itemId,
+                ledgerRevision: todoStore.get(owner).revision, timestamp: Date.now() });
+        },
+    });
+    sentinelTodos.dependencyActions = dependencyActions;
+    const dependencyRalphFailure: NonNullable<RalphLaunchDeps['onTrackedLaunchFailure']> = (input, error) => {
+        const token = input.sentinelTodoTracking;
+        if (token) dependencyActions.block(token.owner, token.itemId, token.actionRevision, error);
+    };
+    opts.setSentinelDependencyAdmission?.(() => dependencyActions);
+    const disposeDependencyPolling = opts.triggerManager?.setDependencyPolling({
+        entries: () => sentinelTodos.dependenciesEnabled() ? dependencyReceipts.polls() : [],
+        persist: entry => dependencyReceipts.persistPoll(entry),
+        tick: entry => dependencyActions.poll(entry.owner),
     });
     registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
     opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
@@ -574,11 +667,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             }
             await sentinelTodos.list(owner);
         } });
-    const scrubberReady = scrubberRuns.interruptActive().then(count => {
+    const scrubberReady = scrubberRuns.interruptActive().then(async count => {
         scrubberScheduler?.refreshAll();
+        if (sentinelTodos.dependenciesEnabled()) for (const entry of dependencyReceipts.polls()) {
+            try { await dependencyActions.poll(entry.owner); }
+            catch (error) { console.error('[sentinel-dependencies] Recovery unavailable:', error); }
+        }
         return count;
     });
-    const unsubscribeScrubberConfig = opts.runtimeConfigService?.onChange(() => scrubberScheduler?.refreshAll());
+    const unsubscribeScrubberConfig = opts.runtimeConfigService?.onChange(() => {
+        scrubberScheduler?.refreshAll();
+        opts.triggerManager?.refreshDependencyPolling();
+    });
     const previousScrubberProcessChange = store.onProcessChange;
     const scrubberProcessChange: NonNullable<ProcessStore['onProcessChange']> = event => {
         previousScrubberProcessChange?.(event);
@@ -623,6 +723,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const registerSentinelDelegation = createSentinelDelegationEnqueue({
         store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
         getTask: taskId => bridge.getTask(taskId),
+        guardTracked: async input => {
+            const context = input.payload.context as Record<string, unknown> | undefined;
+            if (context?.sentinelTodoTracking) return dependencyActions.guard(input, 'enqueue');
+            if (!sentinelTodos.dependenciesEnabled() || context?.sentinelScrub || typeof context?.spawnedFromProcessId !== 'string') return;
+            const parent = await store.getProcess(context.spawnedFromProcessId);
+            const queued = !parent && isQueueProcessId(context.spawnedFromProcessId) ? bridge.getTask(toTaskId(context.spawnedFromProcessId)) : undefined;
+            if (parent?.metadata?.mode === 'sentinel' || queued?.payload.mode === 'sentinel') throw new Error('Sentinel tracked launches require owner/item/action admission context');
+        },
+        onTrackedFailure: (input, error) => {
+            const token = (input.payload.context as Record<string, unknown> | undefined)?.sentinelTodoTracking as
+                import('@plusplusoneplusplus/coc-client').SentinelTodoTrackedAdmission | undefined;
+            if (token && !bridge.getTask(input.id!)) dependencyActions.block(token.owner, token.itemId, token.actionRevision, error);
+        },
     });
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
         // Recovery must finish before a new registration can look like an interrupted launch.
@@ -640,6 +753,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             enqueueViaBridge(task, bridge, queueGlobalState, globalWorkspaceRootPath, store));
     });
     opts.setLaunchRalph?.((input) => launchRalphSession(input, {
+        guardTrackedLaunch: input => dependencyActions.preflightRalph(input),
+        onTrackedLaunchFailure: dependencyRalphFailure,
         bridge: delegatedRalphBridge,
         getRalphEnabled,
         dataDir,
@@ -649,7 +764,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Publish the bound follow-up delivery capability so executors can offer the
     // post mode of `send_to_conversation` (posting into an existing conversation).
-    opts.setSendMessage?.(createSendMessageCapability(store, bridge));
+    const sendToolMessage = createSendMessageCapability(store, bridge);
+    opts.setSendMessage?.(async input => {
+        const process = await store.getProcess(input.processId);
+        const ralph = process?.metadata?.ralph as { sessionId?: string } | undefined;
+        dependencyActions.assertToolPostAllowed(input.processId, ralph?.sessionId);
+        return sendToolMessage(input);
+    });
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. cronEnabled stays startup-captured
@@ -753,6 +874,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath, {
+        enqueueDelegation: enqueueSentinelDelegation,
         getDefaultProvider: concreteDefaultProvider,
         resolveDefaultProvider,
         isAutoProviderRoutingActive,
@@ -1302,6 +1424,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         delegatedJobReviews.dispose();
         unsubscribeScrubberConfig?.();
         scrubberScheduler?.dispose();
+        disposeDependencyPolling?.();
         if (store.onProcessChange === scrubberProcessChange) store.onProcessChange = previousScrubberProcessChange;
         scrubberRuns.dispose();
         if (!(store instanceof SqliteProcessStore)) todoDb.close();
@@ -1323,7 +1446,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphMaxIterationsRoutes(routes, { dataDir });
     registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
-    registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled, getRalphEnabled });
+    registerRalphLaunchRoutes(routes, { bridge: delegatedRalphBridge, dataDir, store, getGitWorktreeExecutionEnabled, getRalphEnabled,
+        guardTrackedLaunch: input => dependencyActions.preflightRalph(input), onTrackedLaunchFailure: dependencyRalphFailure });
     registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphInputRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getWsServer });
     registerRalphSubmitRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });

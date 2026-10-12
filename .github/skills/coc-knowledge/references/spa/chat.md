@@ -195,6 +195,20 @@ use the existing one-second clock, with manual pause taking precedence over coun
 `RepoChatTab` persists the Activity chat-list collapsed state and left-panel width under
 `activity-list-collapsed-{workspaceId}` and `activity-left-panel-width-{workspaceId}`.
 
+### Sidebar refresh ownership
+
+`features.railManualRefresh` is a default-off Appearance setting.
+`RepoChatTab.handleRefresh` admits one manual refresh at a time and shares the
+expanded list's queue, history, workflow-run and group-pin scope. Collapsed
+surfaces also await `RailPinnedJobs`' full pinned read; aggregate groups supply
+`refreshList` from `useRepoGroupChatFeed`. Queue/history caches record API source,
+read generations reject changed owners and superseded reads. Newer live queue
+snapshots supersede queue responses without discarding independently fetched
+history; history reconciles current active IDs and local process title/preview
+updates. Unresolved remote owners never read locally. Failures retain confirmed
+rows and use toasts or the aggregate feed's error state. Refresh preserves
+navigation and scheduling.
+
 ### Chat folders
 
 Behind `features.chatFolders` (default off), a **Folders** section renders after

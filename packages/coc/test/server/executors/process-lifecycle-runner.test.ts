@@ -1594,11 +1594,29 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
                 images: ['data:image/png;base64,iVBORw0KGgoBAgM='] })]);
         expect(executeFollowUpFn.mock.calls[0][2]).toEqual(task.payload.attachments);
         expect(executeFollowUpFn.mock.calls[0][5]).toEqual(task.payload.images);
-        expect(executeFollowUpFn.mock.calls[0][11]).toMatchObject({ historyCutoffTurnIndex: 2 });
+        expect(executeFollowUpFn.mock.calls[0][11]).toMatchObject({ userTurnPersisted: true, historyCutoffTurnIndex: 2 });
 
         await runner.run(task, makeOpts({ executeFollowUpFn }));
         expect((await store.getProcess(processId))?.conversationTurns?.filter(turn => turn.relayRequestId === 'opaque-request'))
             .toHaveLength(1);
+        expect(executeFollowUpFn.mock.calls[1][11]).toMatchObject({ userTurnPersisted: true, historyCutoffTurnIndex: 2 });
+    });
+
+    it('does not execute a receipt-backed follow-up when its user turn cannot be persisted', async () => {
+        const processId = 'queue_missing-turn';
+        store.processes.set(processId, {
+            id: processId, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'initial',
+        });
+        vi.mocked(store.appendConversationTurn).mockResolvedValueOnce(undefined);
+        const executeFollowUpFn = vi.fn();
+        const task = makeTask({ processId, payload: {
+            kind: 'chat', processId, prompt: 'Repair CI', relayRequestId: 'ci-delivery',
+            context: { source: 'trigger', triggerId: 'ci-monitor', deliveryId: 'ci-delivery' },
+        } });
+        const result = await runner.run(task, makeOpts({ executeFollowUpFn }));
+        expect(result.success).toBe(false);
+        expect(result.error?.message).toBe('Follow-up user turn could not be persisted');
+        expect(executeFollowUpFn).not.toHaveBeenCalled();
     });
 
     it('marks the target process as running BEFORE invoking executeFollowUpFn', async () => {

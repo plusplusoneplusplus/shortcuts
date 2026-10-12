@@ -45,12 +45,16 @@ function sendPrepareTaskError(res: Parameters<Route['handler']>[1], error: unkno
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
+    const enqueue = (input: CreateTaskInput) => {
+        const dispatch = (input: CreateTaskInput) => enqueueViaBridge(input, bridge, state, globalWorkspaceRootPath, store);
+        return ctx.enqueueDelegation ? ctx.enqueueDelegation(input, dispatch) : dispatch(input);
+    };
     const enqueueDesktopTask = async (input: CreateTaskInput, content?: string, uploads?: MirrorUploadSource): Promise<string> => {
         const service = ctx.getSentinelMirror?.();
         const mirror = await service?.captureTask(input, content, uploads);
         let taskId: string;
         try {
-            taskId = await enqueueViaBridge(input, bridge, state, globalWorkspaceRootPath, store);
+            taskId = await enqueue(input);
         } catch (error) {
             if (!mirror) throw error;
             if (await service!.rejected(mirror)) throw new Error('Sentinel mirror submission was not accepted.');
@@ -336,7 +340,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 
             let taskId: string;
             try {
-                taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
+                taskId = await enqueue(validation.input!);
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to enqueue retry task';
                 return sendError(res, 400, message);
@@ -548,7 +552,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 
             try {
                 await prepareTaskForEnqueue(validation.input!, ctx);
-                const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
+                const taskId = await enqueue(validation.input!);
                 process.stderr.write(
                     `[Queue] summarize processIds=${body.processIds.length} taskId=${taskId}\n`
                 );
@@ -596,6 +600,15 @@ export async function prepareTaskForEnqueue(
         | 'getEffortTiersForProvider'
     >,
 ): Promise<void> {
+    const payload = input.payload;
+    const context = payload.context as { sentinelTodoTracking?: { actionRevision?: unknown } } | undefined;
+    if (typeof context?.sentinelTodoTracking?.actionRevision === 'number') {
+        const model = input.config?.model;
+        if (!isChatProvider(payload.provider) || typeof model !== 'string' || !model
+            || resolveModelForProvider(payload.provider, model).coerced) {
+            throw new Error('Tracked dependency actions require compatible explicit saved provider/model; no fallback is allowed');
+        }
+    }
     await resolveDefaultProviderForTask(input, ctx);
     resolveEffortTierConfig(input, ctx);
 }

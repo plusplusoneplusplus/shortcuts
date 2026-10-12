@@ -23,6 +23,9 @@ const LEDGER = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)$/;
 const ITEMS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items$/;
 const ITEM = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)$/;
 const REFERENCES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/references$/;
+const DEPENDENCIES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/dependencies$/;
+const EVIDENCE = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/(pr-output|artifact-acceptance|readiness)$/;
+const ACTION = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/dependency-action$/;
 
 export function registerSentinelTodoRoutes(opts: {
     routes: Route[];
@@ -44,6 +47,44 @@ export function registerSentinelTodoRoutes(opts: {
         const status = { not_found: 404, conflict: 409, invalid: 400, limit: 400 }[error.code];
         return sendJSON(res, status, { error: error.message, code: error.code, ...(error.current ? { current: error.current } : {}) });
     };
+
+    for (const method of ['PUT', 'DELETE'] as const) routes.push({
+        method, pattern: ACTION,
+        handler: async (req, res, match) => {
+            const target = owner(res, match);
+            if (!target) return;
+            if (!service.dependenciesEnabled() || !service.dependencyActions) return sendError(res, 404, 'Dependency action approval is unavailable');
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            try {
+                // Like conversation Start approval, only the trusted user HTTP command assigns the actor.
+                sendJSON(res, 200, await service.dependencyActions[method === 'PUT' ? 'authorize' : 'revoke'](
+                    target, decodeURIComponent(match![3]), body, 'user'));
+            } catch (error) { fail(res, error); }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: EVIDENCE,
+        handler: async (req, res, match) => {
+            const target = owner(res, match);
+            if (!target) return;
+            if (!service.dependenciesEnabled()) return sendError(res, 404, 'Sentinel dependencies are disabled');
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            try {
+                const itemId = decodeURIComponent(match![3]);
+                if (match![4] === 'readiness') {
+                    if (Object.keys(body ?? {}).length) return sendError(res, 400, 'Readiness accepts no authoring fields');
+                    return sendJSON(res, 200, await service.evaluateDependencies(target, itemId));
+                }
+                sendJSON(res, 200, match![4] === 'pr-output'
+                    ? await service.bindPrOutput(target, itemId, body, 'user')
+                    : await service.acceptArtifact(target, itemId, body, 'user'));
+            } catch (error) { fail(res, error); }
+        },
+    });
 
     routes.push({
         method: 'GET',
@@ -92,6 +133,26 @@ export function registerSentinelTodoRoutes(opts: {
             if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
             try {
                 sendJSON(res, 200, await service.update(target, decodeURIComponent(match![3]), expectedRevision, patch, 'user'));
+            } catch (error) {
+                fail(res, error);
+            }
+        },
+    });
+
+    routes.push({
+        method: 'PUT',
+        pattern: DEPENDENCIES,
+        handler: async (req, res, match) => {
+            const target = owner(res, match);
+            if (!target) return;
+            if (!service.dependenciesEnabled()) return sendError(res, 404, 'Sentinel dependencies are disabled');
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const { expectedRevision, dependsOn, ...rest } = body ?? {};
+            if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
+            if (Object.keys(rest).length) return sendError(res, 400, `Unknown fields: ${Object.keys(rest).join(', ')}`);
+            try {
+                sendJSON(res, 200, await service.setDependencies(target, decodeURIComponent(match![3]), expectedRevision, dependsOn, 'user'));
             } catch (error) {
                 fail(res, error);
             }

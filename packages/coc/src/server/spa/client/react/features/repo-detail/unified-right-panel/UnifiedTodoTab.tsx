@@ -32,6 +32,10 @@ import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
+import { SentinelTodoDependencies } from './SentinelTodoDependencies';
+import { openUnifiedPanelTab } from './unifiedPanelOpen';
+import { resourcePathName } from './unifiedPanelOpenMenuModel';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
 import { SentinelTodoScrubber } from './SentinelTodoScrubber';
 import {
@@ -225,7 +229,11 @@ function AddItemForm({ form, testIdPrefix, label, manual = false }: {
     );
 }
 
-export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: UnifiedTodoTabProps) {
+export function UnifiedTodoTab(props: UnifiedTodoTabProps) {
+    return <TodoTab key={sentinelTodoOwnerKey(props.owner)} {...props} />;
+}
+
+function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: UnifiedTodoTabProps) {
     const client = useCocClient(owner.ownerRoutingRef === null ? undefined : owner.ownerRoutingRef ?? owner.ownerWorkspaceId);
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -311,19 +319,34 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
     const scrollRef = useRef<HTMLDivElement>(null);
     const highlightTimer = useRef<ReturnType<typeof setTimeout>>();
     const highlightedRow = useRef<HTMLElement | null>(null);
-    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, []);
+    const currentView = useRef({ ownerKey, ledger });
+    currentView.current = { ownerKey, ledger };
+    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, [ownerKey, client]);
     const followTriggerItem = (itemId: string) => {
-        setShowDone(true);
-        setShowArchived(true);
+        if (currentView.current.ownerKey !== ownerKey) return;
+        const item = ledger?.items.find(candidate => candidate.id === itemId);
+        if (!item) return;
+        const isManual = sentinelTodoType(item) === 'manual';
+        const groups = isManual ? manual : sections;
+        if (isManual) setShowManual(true);
+        if (groups.done.some(candidate => candidate.id === itemId)) {
+            if (isManual) setShowManualDone(true); else setShowDone(true);
+        }
+        if (groups.archived.some(candidate => candidate.id === itemId)) {
+            if (isManual) setShowManualArchived(true); else setShowArchived(true);
+        }
         setExpanded(previous => new Set([...previous, itemId]));
         clearTimeout(highlightTimer.current);
         highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight');
         highlightTimer.current = setTimeout(() => {
+            if (currentView.current.ownerKey !== ownerKey
+                || !currentView.current.ledger?.items.some(candidate => candidate.id === itemId)) return;
             const row = [...(scrollRef.current?.querySelectorAll<HTMLElement>('[data-testid]') ?? [])]
                 .find(element => element.dataset.testid === `sentinel-todo-row-${itemId}`);
             if (!row) return;
             highlightedRow.current = row;
             row.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+            row.querySelector<HTMLButtonElement>('button[aria-expanded]')?.focus({ preventScroll: true });
             row.setAttribute('data-sentinel-trigger-highlight', 'true');
             highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-trigger-highlight'), 2500);
         }, 0);
@@ -382,6 +405,12 @@ export function UnifiedTodoTab({ owner, scopeWorkspaceId, chatId = null, onError
             {items.map(item => (
                 <TodoRow key={item.id} item={item} expanded={expanded.has(item.id)}
                     owner={owner} currentWorkspaceId={scopeWorkspaceId}
+                    items={ledger?.items ?? []} ledgerRevision={ledger?.revision ?? 0}
+                    onLedgerChange={load} onItemLink={followTriggerItem}
+                    onArtifactLink={(reference, artifactWorkspaceId) => openUnifiedPanelTab(scopeWorkspaceId ?? owner.ownerRoutingRef ?? owner.ownerWorkspaceId, {
+                        kind: 'file', ownerWorkspaceId: artifactWorkspaceId ?? owner.ownerWorkspaceId, ownerRoutingRef: owner.ownerRoutingRef,
+                        chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
+                    })}
                     onToggle={() => toggle(item.id)} onSave={saveItem} onFollowLink={followLink} />
             ))}
         </ul>
@@ -523,8 +552,10 @@ type SaveItem = (
     expectedRevision?: number,
 ) => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>;
 
-function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, onFollowLink }: {
+function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink }: {
     item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem; onFollowLink: FollowLink;
+    items: readonly SentinelTodoItem[]; ledgerRevision: number; onLedgerChange: () => Promise<void>; onItemLink: (itemId: string) => void;
+    onArtifactLink: (reference: string, workspaceId?: string) => void;
     owner: SentinelTodoOwner;
     currentWorkspaceId?: string;
 }) {
@@ -686,6 +717,8 @@ function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, 
                     ))}
                 </ul>
             )}
+            <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
+                expanded={expanded} onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} />
             {expanded && (
                 <div id={`sentinel-todo-${item.id}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">
                     {error && (

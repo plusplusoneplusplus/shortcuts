@@ -141,6 +141,8 @@ export interface ExecutorRuntimeCapabilities {
      * get the `sentinel_todos` tool only when the flag is on.
      */
     readonly getSentinelTodos?: () => SentinelTodoService | undefined;
+    /** Receipt-only admission stays available to finish running work when authoring is disabled. */
+    readonly getSentinelDependencyAdmission?: () => Pick<NonNullable<SentinelTodoService['dependencyActions']>, 'guard'> | undefined;
     /**
      * Sentinel To-do Scrubber runs, bound at the route layer. Returns
      * `undefined` while `features.sentinelTodoScrubber` is off; a scrub child
@@ -230,7 +232,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;

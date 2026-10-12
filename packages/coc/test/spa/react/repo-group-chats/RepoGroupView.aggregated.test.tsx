@@ -58,8 +58,9 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetailPane', 
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', async () => {
     const { createPortal } = await import('react-dom');
     return {
-    RepoChatTab: ({ workspaceId, renderList, detailOverride, detailContainer, detailActive }: any) => (
-        <div data-testid="stub-chat-tab" data-workspace={workspaceId}>
+    RepoChatTab: ({ workspaceId, renderList, detailOverride, detailContainer, detailActive, refreshList, sidebarOwnerAvailable, sourceSelectionId }: any) => (
+        <div data-testid="stub-chat-tab" data-workspace={workspaceId} data-owner-available={sidebarOwnerAvailable} data-route={sourceSelectionId}>
+            <button onClick={() => void refreshList?.()} aria-label="Refresh sidebar">Refresh</button>
             {renderList
                 ? renderList({ selectedTaskId: mockSelectedTaskId, selectTask: mockSelectTask })
                 : <div data-testid="native-chat-list" />}
@@ -268,6 +269,32 @@ describe('RepoGroupView — aggregated chats', () => {
         await waitFor(() => expect(screen.getByTestId('split-workspace-panel').dataset.mobileDetail).toBe('true'));
         expect(screen.getByTestId('stub-member-chat-pane').dataset.owner).toBe('ws-b');
         expect(screen.getByRole('button', { name: 'Back to group chats' })).toBeTruthy();
+    });
+
+    it('wires manual rail refresh to the remote group aggregate feed', async () => {
+        const selectionId = 'remote:srv-1:group-ai';
+        mockRemoteGroups = [{ id: GROUP_ID, name: 'AI', baseUrl: 'http://remote:4000',
+            remote: { serverId: 'srv-1', serverLabel: 'devbox', cloneKey: selectionId, offline: false, connection: 'online' } }];
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        await waitFor(() => expect(mockGetRepoGroupChats).toHaveBeenCalledTimes(1));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh sidebar' })));
+        expect(mockGetRepoGroupChats).toHaveBeenCalledTimes(2);
+        expect(mockGetRepoGroupChats.mock.calls[1][0]).toBe(GROUP_ID);
+        expect(mockGetRepoGroupChats.mock.calls[1][2]).toBe('http://remote:4000');
+    });
+
+    it('keeps unresolved remote refresh available without reading the local server', async () => {
+        const { splitWorkspaceLeftCollapsedStorageKey } = await import('../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse');
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID), '1');
+        (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: true };
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId="remote:missing:group-ai" />);
+        await waitFor(() => expect(screen.getByTestId('repo-group-chat-error')).toBeTruthy());
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh sidebar' })));
+        expect(mockGetRepoGroupChats).not.toHaveBeenCalled();
+        expect(screen.getByTestId('repo-group-chat-error')).toHaveTextContent('owning server is unavailable');
+        expect(screen.queryByTestId('stub-chat-tab')).toBeNull();
+        delete (window as any).__DASHBOARD_CONFIG__;
+        localStorage.clear();
     });
 
     it('does not mount a native group tab or read locally when a remote group route is unresolved', async () => {

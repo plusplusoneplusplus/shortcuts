@@ -1,12 +1,16 @@
 import * as fs from 'node:fs';
 import * as http from 'node:http';
+import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRouter } from '../../../src/server/shared/router';
 import type { Route } from '../../../src/server/types';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
+import { SentinelDependencyStore } from '../../../src/server/sentinel-todos/sentinel-dependency-store';
+import { SentinelDependencyActions } from '../../../src/server/sentinel-todos/sentinel-dependency-actions';
 import { registerSentinelTodoRoutes } from '../../../src/server/sentinel-todos/sentinel-todo-routes';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
+import { artifactVersion } from '../../../src/server/sentinel-todos/sentinel-todo-evidence';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 
 const processes: Record<string, { mode: string; workspaceId: string }> = {
@@ -16,21 +20,31 @@ const processes: Record<string, { mode: string; workspaceId: string }> = {
     queue_ask: { mode: 'ask', workspaceId: 'ws-a' },
 };
 
-async function startServer(opts: { enabled?: boolean; dataDir?: string } = {}) {
+async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: boolean; dataDir?: string } = {}) {
     const database = createTodoTestDatabase(opts.dataDir ?? createTodoTestDirectory());
     const { dataDir, db } = database;
     const todos = new SentinelTodoStore(db);
     const routes: Route[] = [];
     const onChange = vi.fn();
     const enabled = { value: opts.enabled ?? true };
+    const dependenciesEnabled = { value: opts.dependenciesEnabled ?? false };
+    const service = new SentinelTodoService({
+        todos,
+        store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
+        onChange, getDependenciesEnabled: () => dependenciesEnabled.value,
+        resolveWorkspaceRoot: async () => dataDir,
+        fetchPr: async pr => ({ status: 'merged', url: pr.url, title: 'Mock output' }),
+    });
+    service.dependencyActions = new SentinelDependencyActions({
+        service, receipts: new SentinelDependencyStore(db, todos),
+        delivery: { deliverOnce: vi.fn() }, validateProvider: async () => {},
+        validateTarget: async target => { if (target !== 'ws-child') throw new Error('Unknown target'); },
+        validateCurrent: () => {},
+    });
     registerSentinelTodoRoutes({
         routes,
         getEnabled: () => enabled.value,
-        service: new SentinelTodoService({
-            todos,
-            store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
-            onChange,
-        }),
+        service,
     });
     const server = http.createServer(createRouter({ routes, spaHtml: '' }));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -38,7 +52,7 @@ async function startServer(opts: { enabled?: boolean; dataDir?: string } = {}) {
     if (!address || typeof address === 'string') throw new Error('no address');
     let closed = false;
     return {
-        dataDir, db, onChange, enabled,
+        dataDir, db, onChange, enabled, dependenciesEnabled,
         baseUrl: `http://127.0.0.1:${address.port}`,
         close: async () => {
             if (closed) return;
@@ -69,6 +83,33 @@ describe('Sentinel to-do routes', () => {
     };
     const ledger = '/api/workspaces/ws-a/sentinel-todos/queue_s1';
 
+    it('requires confirmed owner-user action approval, exact settings and revision; revokes separately from artifact acceptance', async () => {
+        const s = await track(await startServer({ dependenciesEnabled: true,
+            dataDir: fs.mkdtempSync(path.join(process.cwd(), '.dependency-action-route-')) }));
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const source = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Source', status: 'done' })).item;
+        const dependent = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Dependent' })).item;
+        await client.sentinelTodos.setDependencies('ws-a', 'queue_s1', dependent.id, {
+            expectedRevision: 1, dependsOn: [{ itemId: source.id, condition: { kind: 'done' } }],
+        });
+        const request = { expectedRevision: 2, confirmed: true as const, action: {
+            mode: 'ask' as const, provider: 'copilot' as const, model: 'gpt-5.4',
+            targetWorkspaceId: 'ws-child', prompt: 'Review approved design', scope: 'Read-only design',
+        } };
+        const url = `${ledger}/items/${dependent.id}/dependency-action`;
+        expect((await req(s.baseUrl, 'PUT', url, { ...request, actor: 'sentinel' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', url, { ...request, confirmed: false })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', url.replace('queue_s1', 'queue_s3'), request)).status).toBe(404);
+        const approved = await client.sentinelTodos.authorizeDependencyAction('ws-a', 'queue_s1', dependent.id, request);
+        expect(approved.item.dependencyAction).toMatchObject({ ...request.action, state: 'authorized', revision: 1 });
+        expect(approved.item.status).toBe('todo');
+        expect((await req(s.baseUrl, 'PUT', url, request)).status).toBe(409);
+        const revoked = await client.sentinelTodos.revokeDependencyAction('ws-a', 'queue_s1', dependent.id, { expectedRevision: approved.item.revision });
+        expect(revoked.item.dependencyAction).toMatchObject({ state: 'revoked', revision: 2 });
+        s.dependenciesEnabled.value = false;
+        expect((await req(s.baseUrl, 'DELETE', url, { expectedRevision: revoked.item.revision })).status).toBe(404);
+    });
+
     it('hides every endpoint when the feature is off', async () => {
         const s = await track(await startServer({ enabled: false }));
         expect((await req(s.baseUrl, 'GET', ledger)).status).toBe(404);
@@ -76,6 +117,56 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/x`, { expectedRevision: 1 })).status).toBe(404);
         expect(s.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_ledgers').get()).toEqual({ count: 0 });
         expect(s.onChange).not.toHaveBeenCalled();
+    });
+
+    it('shares gated owner-validated exact evidence and readiness with the client', async () => {
+        const s = await track(await startServer({ dataDir: fs.mkdtempSync(path.join(process.cwd(), '.sentinel-evidence-route-test-')) }));
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const source = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Source' })).item;
+        const dependent = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Dependent' })).item;
+        const pr = { expectedRevision: 1, outputSlot: 'code', prUrl: 'https://github.com/example/project/pull/42',
+            provenance: { kind: 'owner_selection' as const, reason: 'Exact produced output selected' } };
+        for (const suffix of ['pr-output', 'artifact-acceptance', 'readiness']) {
+            expect((await req(s.baseUrl, 'POST', `${ledger}/items/${source.id}/${suffix}`, {})).status).toBe(404);
+        }
+        s.dependenciesEnabled.value = true;
+        await client.sentinelTodos.setDependencies('ws-a', 'queue_s1', dependent.id, {
+            expectedRevision: 1, dependsOn: [{ itemId: source.id, condition: { kind: 'pr_merge', outputSlot: 'code' } }],
+        });
+        expect((await client.sentinelTodos.evaluateDependencies('ws-a', 'queue_s1', dependent.id)).state).toBe('waiting');
+        expect((await req(s.baseUrl, 'POST', `${ledger}/items/${source.id}/pr-output`, { ...pr, actor: 'sentinel' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'POST', `${ledger.replace('queue_s1', 'queue_s3')}/items/${source.id}/pr-output`, pr)).status).toBe(404);
+        const bound = await client.sentinelTodos.bindPrOutput('ws-a', 'queue_s1', source.id, pr);
+        expect(bound.item.evidence?.[0]).toMatchObject({ recordedBy: 'user', provenance: pr.provenance });
+        expect((await client.sentinelTodos.evaluateDependencies('ws-a', 'queue_s1', dependent.id)).state).toBe('ready');
+        expect((await req(s.baseUrl, 'POST', `${ledger}/items/${source.id}/pr-output`, pr)).status).toBe(409);
+        fs.writeFileSync(path.join(s.dataDir, 'design.md'), 'Exact design');
+        const acceptance = { expectedRevision: 2, phase: 'design', reference: 'design.md', version: artifactVersion(s.dataDir, 'design.md') };
+        expect((await client.sentinelTodos.acceptArtifact('ws-a', 'queue_s1', source.id, acceptance)).item.status).toBe('todo');
+        expect((await req(s.baseUrl, 'POST', `${ledger}/items/${dependent.id}/readiness`, { merged: true })).status).toBe(400);
+        expect((await req(s.baseUrl, 'POST', `${ledger.replace('queue_s1', 'queue_ask')}/items/${dependent.id}/readiness`, {})).status).toBe(404);
+        expect(s.onChange).toHaveBeenCalledTimes(5);
+    });
+
+    it('gates graph authoring live and validates owner, typed edges, revisions and cycles', async () => {
+        const s = await track(await startServer());
+        const a = (await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'A', targetRepo: { workspaceId: 'ws-a' } })).body.item;
+        const b = (await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'B', targetRepo: { workspaceId: 'ws-b' } })).body.item;
+        const route = `${ledger}/items/${b.id}/dependencies`;
+        const request = { expectedRevision: 1, dependsOn: [{ itemId: a.id, condition: { kind: 'done' } }] };
+        expect((await req(s.baseUrl, 'PUT', route, request)).status).toBe(404);
+        s.dependenciesEnabled.value = true;
+        expect((await req(s.baseUrl, 'PUT', route, { ...request, serverId: 'remote' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', route, { expectedRevision: 1 })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', route.replace('queue_s1', 'queue_ask'), request)).status).toBe(404);
+        expect((await req(s.baseUrl, 'PUT', route, request)).body.item).toMatchObject({ revision: 2, status: 'todo', dependsOn: request.dependsOn });
+        expect((await req(s.baseUrl, 'PUT', route, request))).toMatchObject({ status: 409, body: { current: { revision: 2 } } });
+        expect((await req(s.baseUrl, 'PUT', `${ledger}/items/${a.id}/dependencies`, {
+            expectedRevision: 1, dependsOn: [{ itemId: b.id, condition: { kind: 'done' } }],
+        })).status).toBe(400);
+        expect(s.onChange).toHaveBeenCalledTimes(3);
+        s.dependenciesEnabled.value = false;
+        expect((await req(s.baseUrl, 'PUT', route, { expectedRevision: 2, dependsOn: [] })).status).toBe(404);
     });
 
     it('creates and edits an item that survives a server restart', async () => {

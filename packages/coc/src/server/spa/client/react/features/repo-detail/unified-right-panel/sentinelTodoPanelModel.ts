@@ -12,6 +12,7 @@ import type {
     SentinelTodoJobLink,
     SentinelTodoPriority,
     SentinelTodoStatus,
+    SentinelTodoItem,
 } from '@plusplusoneplusplus/coc-client';
 import {
     activeTabId,
@@ -34,6 +35,21 @@ export interface SentinelTodoOwner {
 /** One string per concrete ledger owner, so same-id workspaces on other hosts stay apart. */
 export function sentinelTodoOwnerKey(owner: SentinelTodoOwner): string {
     return `${owner.ownerRoutingRef ?? ''}\n${owner.ownerWorkspaceId}\n${owner.processId}`;
+}
+
+/** Parent-ledger-only, prerequisite-first chain; visited IDs also bound malformed cycles. */
+export function sentinelTodoDependencyChain(itemId: string, items: readonly SentinelTodoItem[]): string[] {
+    const byId = new Map(items.map(item => [item.id, item]));
+    const visited = new Set<string>();
+    const chain: string[] = [];
+    const visit = (id: string) => {
+        if (visited.has(id)) return;
+        visited.add(id);
+        for (const edge of byId.get(id)?.dependsOn ?? []) visit(edge.itemId);
+        chain.push(id);
+    };
+    visit(itemId);
+    return chain;
 }
 
 export * from './sentinelTodoStatusModel';

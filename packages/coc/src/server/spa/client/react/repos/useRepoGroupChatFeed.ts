@@ -246,6 +246,8 @@ export function useRepoGroupChatFeed(options: UseRepoGroupChatFeedOptions): Repo
                 abortRef.current?.abort();
                 scheduleRefresh();
             } else if (isRepoGroupChatFeedMessage(message, liveRef.current.sourceIds, liveRef.current.shownIds)) {
+                generationRef.current++;
+                abortRef.current?.abort();
                 scheduleRefresh();
             }
         };

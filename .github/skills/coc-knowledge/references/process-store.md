@@ -134,7 +134,9 @@ counts to separate native/transport cost from Forge hydration.
 ### Sentinel to-do store
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
-`sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs` and `sentinel_todo_references` tables in
+`sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs`,
+`sentinel_todo_references`, `sentinel_todo_dependencies`, `sentinel_todo_evidence`
+and `sentinel_todo_evaluations` and `sentinel_todo_dependency_generations` tables in
 the shared `processes.db`. Workspace and parent process keys isolate repos,
 groups and chats; unique scoped idempotency keys and job identities make replays
 safe. Transactions acquire the database writer before mutation reads and compare
@@ -147,6 +149,65 @@ checks the execution workspace and uses live first-turn queue mode only when the
 process is absent. Remote ordinary/unknown modes stay omitted; Ralph session
 identity stays Ralph. Mode-change invalidations target exact local linked owners
 without advancing ledger/item revisions.
+
+The internal `setDependencies` command replaces ordered evidence selectors under
+the item revision. A writer-reserved transaction validates same-ledger references,
+self/duplicate edges, archival and reachability before committing edges and
+revisions together. Execution targets do not affect graph ownership. Manual items
+can participate without job authority; dependency edits preserve fulfillment and
+user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
+Dependency authoring shares the owner-validated service through PUT
+`.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
+default-off `features.sentinelTodoDependencies` and the ledger flag. Native
+tracked admission uses explicit saved user authorization, independently of evidence.
+Graph and evidence rows are machine-local and cleared with the ledger wipe.
+Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding
+or phase/reference/SHA-256 artifact acceptance. Rebinding/reacceptance advances
+item and ledger revisions without changing fulfillment. Artifact receipts pin the
+prerequisite's local target workspace, defaulting to the parent. Relative references
+use its checkout; exact absolute references also permit its existing managed
+notes/tasks/outputs roots via `getRepoDataPath`. Foreign roots and remote content
+reject; preview links retain this content workspace on the owning server.
+`evaluateDependencies`
+reads canonical provider status, then rechecks the captured ledger/item revisions
+and current artifact bytes under the native writer mutex. It persists a diagnostic
+snapshot with ledger/item/source/evidence revisions, conjunctive blockers and links,
+never authority or dispatch state.
+Callers re-evaluate before using readiness; stale external-I/O snapshots conflict.
+
+### Sentinel dependency operations
+
+`sentinel-dependency-store.ts` owns machine-local `sentinel_dependency_actions`,
+`sentinel_dependency_wakes`, `sentinel_dependency_polls`,
+`sentinel_dependency_admissions` and `sentinel_dependency_ralph_starts`. The
+ledger wipe clears them transactionally; snapshot import/export excludes them.
+Actions bind an item/graph revision to concrete saved execution settings and a
+fixed task identity. Target validation uses the canonical router to materialize a
+registered concrete workspace's lazy queue without admitting a task or falling
+back to the parent. Admissions retain started whole-session proof independently
+of replacement authorization. Ralph step-start keys prevent replay across task IDs.
+
+`SentinelDependencyActions` commits immutable ready evidence and one wake per
+graph/action generation before `deliverOnce` transports it. Local polling and
+transport recovery share the existing trigger scheduler. Matching owner/item/PR
+merge rules can carry transport without changing those rules.
+
+Queue admission, preparation and SDK handoff recheck evidence and authority under
+the shared writer. Preparation leaves the action unstarted; SDK handoff persists
+the start. Graph replacements record exact generations, including identical
+selectors and empty edge sets. Ready receipts pin source and upstream item
+generations plus known ancestor input proofs. Mutation hooks and evidence
+evaluations invalidate pending readiness/admissions atomically; reads/recovery
+catch unavailable data and persisted generations. Immutable wake identity,
+prompt and evidence remain retained; invalidated pending wakes stop transport.
+
+Started admissions persist `requiresReview` and an evidence error independently
+of fulfillment and user verdicts. Warnings survive restart and fresh authorization;
+original Ralph admission generations remain stable through revocation. Historical
+native authority stays gated after removing all edges or disabling authoring.
+Failure/unknown acceptance requires fresh approval; recovery retries transport
+only. Started Ralph continuations retain saved scope/settings through the
+receipt guard, without cancellation or execution replay.
 
 ### Chat binding stores
 

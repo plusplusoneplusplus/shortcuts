@@ -1182,6 +1182,7 @@ timeout: 300
                 '  teamsMessageReaction: true',
                 '  sentinelDesktopMirror: true',
                 '  sentinelTodoLedger: true',
+                '  sentinelTodoDependencies: true',
                 '  sentinelTodoScrubber: true',
                 '  sessionContextAttachments: true',
                 '  commitChatLens: true',
@@ -1197,6 +1198,7 @@ timeout: 300
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
                 '  railGitSummary: true',
+                '  railManualRefresh: true',
                 '  chatHistoryPaging: true',
                 '  railStatusActions: true',
                 '  schedulerDelayHint: true',
@@ -1242,6 +1244,19 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+        });
+
+        describe.each(['sentinelTodoDependencies', 'railManualRefresh'] as const)('%s', feature => {
+            it.each([undefined, false, true])('resolves its value and source (%s)', value => {
+                const configPath = path.join(tmpDir, `${feature}.yaml`);
+                fs.writeFileSync(configPath, value === undefined
+                    ? 'features: {}\n'
+                    : `features:\n  ${feature}: ${value}\n`);
+
+                const result = getResolvedConfigWithSource(configPath);
+                expect(result.resolved.features[feature]).toBe(value ?? false);
+                expect(result.sources[`features.${feature}`]).toBe(value === undefined ? 'default' : 'file');
+            });
         });
 
         it.each([undefined, false, true])('resolves the desktop mirror flag and its source (%s)', value => {
@@ -1514,6 +1529,7 @@ timeout: 300
                     "pinnedScopes": true,
                     "quickAskSidenotes": true,
                     "railGitSummary": false,
+                    "railManualRefresh": false,
                     "railStatusActions": false,
                     "ralphMultiAgentGrill": false,
                     "repoGroupAggregatedChats": false,
@@ -1522,6 +1538,7 @@ timeout: 300
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sentinelDesktopMirror": false,
+                    "sentinelTodoDependencies": false,
                     "sentinelTodoLedger": true,
                     "sentinelTodoScrubber": false,
                     "sessionContextAttachments": true,
@@ -1737,6 +1754,7 @@ timeout: 300
                   "features.pinnedScopes": "default",
                   "features.quickAskSidenotes": "default",
                   "features.railGitSummary": "default",
+                  "features.railManualRefresh": "default",
                   "features.railStatusActions": "default",
                   "features.ralphMultiAgentGrill": "default",
                   "features.repoGroupAggregatedChats": "default",
@@ -1745,6 +1763,7 @@ timeout: 300
                   "features.schedulesInScheduledSlide": "default",
                   "features.scopeSwitcher": "default",
                   "features.sentinelDesktopMirror": "default",
+                  "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoLedger": "file",
                   "features.sentinelTodoScrubber": "default",
                   "features.sessionContextAttachments": "default",

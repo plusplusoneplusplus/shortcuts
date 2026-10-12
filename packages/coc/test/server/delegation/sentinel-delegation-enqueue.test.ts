@@ -48,6 +48,37 @@ describe('Sentinel delegation admission', () => {
         };
     }
 
+    it('guards direct dispatch before receipt registration or queue side effects', async () => {
+        const guard = vi.fn(async () => { throw new Error('Needs explicit dependency approval'); });
+        const guarded = createSentinelDelegationEnqueue({ store, jobs, hasTask: () => false, guardTracked: guard });
+        await expect(guarded(input(), enqueue)).rejects.toThrow('dependency approval');
+        expect(jobs.list(parentWorkspace)).toEqual([]);
+        expect(enqueue).not.toHaveBeenCalled();
+        // A forged tracked token cannot escape by deleting the spawned-parent field.
+        const direct = input();
+        direct.payload.context = { sentinelTodoTracking: { owner: { workspaceId: parentWorkspace, processId: parentId }, itemId: 'dependent' } };
+        await expect(guarded(direct, enqueue)).rejects.toThrow();
+        expect(guard).toHaveBeenCalledTimes(2);
+    });
+
+    it('passes tracked owner/item/action context through local and native Ralph tool admission', async () => {
+        const tracking = { owner: { workspaceId: parentWorkspace, processId: parentId }, itemId: 'dependent', actionRevision: 3 };
+        const taskId = '00000000-0000-4000-8000-000000000001';
+        const tool = createSendToConversationTool({
+            store, workspaceId: parentWorkspace, parentProcessId: parentId,
+            enqueueChat: task => admit(task, enqueue),
+            launchRalph: vi.fn(async request => {
+                expect(request).toMatchObject({ requestId: taskId, sentinelTodoTracking: tracking });
+                return { ok: true, processId: toQueueProcessId(taskId), sessionId: `ralph-approved-${taskId}` };
+            }),
+            todoTracking: { check: async () => undefined, prepare: async () => ({ context: tracking, requestId: taskId, dependencyBound: true }),
+                link: async () => ({ status: 'tracked', itemId: 'dependent', revision: 4 }) },
+        }).tool;
+        await tool.handler({ content: 'Approved scope', mode: 'ask', model: 'gpt-5.4', provider: 'copilot', todoItemId: 'dependent', workspaceId: childWorkspace });
+        expect(enqueue.mock.calls[0][0]).toMatchObject({ id: taskId, payload: { context: { sentinelTodoTracking: tracking } } });
+        await tool.handler({ content: 'Approved scope', mode: 'ralph', model: 'gpt-5.4', provider: 'copilot', todoItemId: 'dependent', workspaceId: childWorkspace });
+    });
+
     it.each(['ask', 'autopilot', 'ralph'] as const)('persists %s tool delegation before taskAdded, across workspaces', async mode => {
         queue.on('taskAdded', (task) => {
             const rows = new DelegatedJobStore(dataDir).list(parentWorkspace);

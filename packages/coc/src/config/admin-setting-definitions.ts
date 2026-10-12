@@ -636,6 +636,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
+            hint: 'Author explicit prerequisites in one Sentinel ledger. Requires the To-do ledger; readiness never grants execution authority. Disabled by default.',
+            testId: 'toggle-sentinel-todo-dependencies-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
@@ -971,6 +979,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'chat', group: 'dashboard', order: 69, label: 'Chat folders', badge: 'experimental',
             hint: 'Adds user-created folders to the chat list: name and color a folder, file chats and task rows into it by drag or context menu, and collapse it away. Filing is manual and reversible; nothing is auto-filed. Disabled by default.',
             testId: 'toggle-chat-folders-enabled',
+        },
+    }),
+    bool({
+        key: 'features.railManualRefresh', default: false, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 76, label: 'Refresh on collapsed sidebar', badge: 'experimental',
+            hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Disabled by default.',
+            testId: 'toggle-rail-manual-refresh-enabled',
         },
     }),
     bool({

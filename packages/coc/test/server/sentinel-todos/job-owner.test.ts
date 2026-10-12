@@ -101,7 +101,12 @@ describe('Sentinel linked-job owner labels', () => {
             targetRepo: { workspaceId: 'repo1', serverId: 'server-a', label: 'Wrong target' },
         })).toMatchObject({ label: 'Unknown server / Unknown repo', showBadge: true });
     });
-    it.each(['https://owner.example', '/private/checkouts/repo', 'C:\\checkouts\\repo', 'account@owner.example'])(
+    it.each([
+        'https://owner.example',
+        '/private/checkouts/repo',
+        'C:\\checkouts\\repo',
+        'account@owner.example',
+    ])(
         'rejects paths, URLs and credential-shaped labels: %s', label => {
             const result = resolve({
                 job: { ...job, serverId: 'server-a', kind: 'remote' },

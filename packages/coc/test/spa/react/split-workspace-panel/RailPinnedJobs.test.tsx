@@ -40,8 +40,9 @@ interface PanelProps {
     cocClient?: CocClient;
     onOpen?: (task: any) => void;
     tab?: 'activity' | 'chats' | 'tasks';
+    onRefreshReady?: (refresh: (() => Promise<void>) | null) => void;
 }
-function panel({ history = [], running = [], routeId = 'ws-alpha', workspaceId = 'ws-alpha', cocClient = localClient, onOpen = vi.fn(), tab = 'activity' }: PanelProps = {}) {
+function panel({ history = [], running = [], routeId = 'ws-alpha', workspaceId = 'ws-alpha', cocClient = localClient, onOpen = vi.fn(), tab = 'activity', onRefreshReady }: PanelProps = {}) {
     return (
         <SplitWorkspacePanel workspaceId="ws-alpha" chatList={(
             <ChatPreferencesProvider workspaceId={workspaceId}>
@@ -52,7 +53,7 @@ function panel({ history = [], running = [], routeId = 'ws-alpha', workspaceId =
             <ChatPreferencesProvider workspaceId={workspaceId}>
                 <ChatPrefsSync history={history} workspaceId={workspaceId} />
                 <RailPinnedJobs workspaceId={workspaceId} routeId={routeId} client={cocClient} running={running}
-                    history={history} scopeLabel="Local / Alpha" tab={tab} onOpen={onOpen} />
+                    history={history} scopeLabel="Local / Alpha" tab={tab} onOpen={onOpen} onRefreshReady={onRefreshReady} />
             </ChatPreferencesProvider>
         )} gitList={<div>Git</div>} detail={<div>Detail</div>} />
     );
@@ -110,6 +111,38 @@ describe('collapsed-rail pinned jobs', () => {
         view.rerender(panel({ history: [{ ...a, mode: 'autopilot' }] }));
         expect(screen.getAllByTestId('rail-job-mode').map(pill => pill.textContent?.trim())).toEqual(['Autopilot', 'Ralph']);
         expect(pinned).toHaveBeenCalledTimes(reads);
+    });
+
+    it('manual reload changes the full pin indicator even with unchanged loaded rows', async () => {
+        let refresh: (() => Promise<void>) | null = null;
+        const onRefreshReady = (next: (() => Promise<void>) | null) => { refresh = next; };
+        render(panel({ onRefreshReady }));
+        await flush();
+        expect(pin()).toHaveAccessibleName('3 pinned jobs');
+        serverEntries = [entry('queue_unloaded_new', '2026-10-10T00:00:00Z')];
+        await act(async () => { await refresh!(); });
+        expect(pin()).toHaveAccessibleName('1 pinned job');
+        hover();
+        tick(200);
+        expect(screen.getByRole('link', { name: 'Open job: Server queue_unloaded_new' })).toBeTruthy();
+    });
+
+    it('a newer manual pin read supersedes a delayed older snapshot', async () => {
+        let refresh: (() => Promise<void>) | null = null;
+        render(panel({ onRefreshReady: next => { refresh = next; } }));
+        await flush();
+        let finish!: (value: any) => void;
+        pinned.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        let old!: Promise<void>;
+        act(() => { old = refresh!(); });
+        serverEntries = [entry('queue_new', '2026-10-10T00:00:00Z')];
+        await act(async () => { await refresh!(); });
+        await act(async () => { finish({ entries: [entry('queue_stale', '2026-10-01T00:00:00Z'), entry('queue_stale2', '2026-10-01T00:00:00Z')] }); await old; });
+        expect(pin()).toHaveAccessibleName('1 pinned job');
+        hover();
+        tick(200);
+        expect(screen.getByRole('link', { name: 'Open job: Server queue_new' })).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Open job: Server queue_stale' })).toBeNull();
     });
 
     it('counts the full pinned set, including completed and unloaded pins, in pin order', async () => {

@@ -321,6 +321,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — the flag-gated Sentinel to-do service getter, bound
     // at the route layer where the ledger service is created.
     let getSentinelTodosCapability: (() => import('./sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined) | undefined;
+    let getSentinelDependencyAdmissionCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'];
 
     let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
 
@@ -493,6 +494,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => getSentinelTodosCapability?.(),
         () => kustoRuntime,
         () => getSentinelScrubberCapability?.(),
+        () => getSentinelDependencyAdmissionCapability?.(),
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -847,6 +849,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setLaunchRalph: (fn) => { launchRalphCapability = fn; },
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
+        setSentinelDependencyAdmission: (get) => { getSentinelDependencyAdmissionCapability = get; },
         setSentinelScrubber: (get) => { getSentinelScrubberCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,

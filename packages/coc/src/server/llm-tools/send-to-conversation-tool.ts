@@ -35,6 +35,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import type { SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
@@ -135,6 +136,7 @@ export type SendToConversationTracking =
  */
 export interface SendToConversationTodoTracking {
     check(todoItemId: string | undefined): Promise<string | undefined>;
+    prepare?(todoItemId: string, args?: SendToConversationArgs): Promise<{ context?: SentinelTodoTrackedAdmission; requestId?: string; dependencyBound: boolean }>;
     link(todoItemId: string, job: SendToConversationAdmittedJob): Promise<SendToConversationTracking>;
 }
 
@@ -458,6 +460,11 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             const targetProcessId =
                 typeof args.processId === 'string' && args.processId.trim() ? args.processId.trim() : undefined;
             if (targetProcessId) {
+                if (typeof args.todoItemId === 'string' && args.todoItemId.trim()) {
+                    try { await todoTracking?.prepare?.(args.todoItemId.trim(), args); }
+                    catch (error) { return { error: error instanceof Error ? error.message : String(error), code: 'untracked' }; }
+                    return { error: 'Tracked to-do admission cannot use post mode; use a fresh explicitly authorized tracked launch.', code: 'untracked' };
+                }
                 if (targetProcessId.startsWith('remote:')) {
                     return {
                         error:
@@ -489,11 +496,19 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             // --- create mode: start a brand-new conversation ------------------
             const todoItemId = typeof args.todoItemId === 'string' && args.todoItemId.trim()
                 ? args.todoItemId.trim() : undefined;
+            if (todoItemId && !todoTracking) {
+                return { error: 'Tracked to-do admission is unavailable; no ordinary launch fallback was attempted.', code: 'untracked' };
+            }
             if (todoTracking) {
                 const untracked = await todoTracking.check(todoItemId);
                 if (untracked) return { error: untracked, code: 'untracked' };
             }
+            let preparedTracking: Awaited<ReturnType<NonNullable<SendToConversationTodoTracking['prepare']>>>;
+            try { preparedTracking = todoTracking?.prepare && todoItemId ? await todoTracking.prepare(todoItemId, args) : { dependencyBound: false }; }
+            catch (error) { return { error: error instanceof Error ? error.message : String(error), code: 'untracked' }; }
             return createNewConversation({
+                trackedAdmission: preparedTracking?.context,
+                dependencyBound: preparedTracking?.dependencyBound,
                 store,
                 directory,
                 callerWorkspaceId,
@@ -501,7 +516,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 launchRalph,
                 parentProcessId,
                 args,
-                ...(args.entryPoint === 'grill' ? { requestId: grillingAdmissionId(parentProcessId ?? invocation.sessionId,
+                ...(preparedTracking?.requestId ? { requestId: preparedTracking.requestId } : args.entryPoint === 'grill' ? { requestId: grillingAdmissionId(parentProcessId ?? invocation.sessionId,
                     callerWorkspaceId, invocation.toolCallId) } : {}),
                 content,
                 mode: args.mode ?? await resolveDefaultCreateMode(store, parentProcessId),
@@ -609,6 +624,8 @@ async function resolveDefaultCreateMode(
 }
 
 async function createNewConversation(params: {
+    trackedAdmission?: SentinelTodoTrackedAdmission;
+    dependencyBound?: boolean;
     requestId?: string;
     store: ProcessStore;
     directory: WorkspaceDirectory;
@@ -680,6 +697,7 @@ async function createNewConversation(params: {
     }
 
     if (target.kind === 'remote') {
+        if (params.dependencyBound) return { error: 'Native dependency admission does not support cross-server execution. No local fallback was attempted.' };
         return withTracking(await createRemoteConversation({
             directory, target, content, mode, title, priority, model,
             explicitProvider, effortTier, store, parentProcessId, entryPoint: args.entryPoint, requestId: params.requestId,
@@ -748,6 +766,7 @@ async function createNewConversation(params: {
             launchRalph,
             entryPoint: args.entryPoint,
             requestId: params.requestId,
+            trackedAdmission: params.trackedAdmission,
             goalSpec: content,
             workspaceId: requestedWorkspaceId,
             title,
@@ -794,6 +813,10 @@ async function createNewConversation(params: {
     if (!validation.valid || !validation.input) {
         return { error: validation.error ?? 'Failed to build the new conversation task.' };
     }
+    if (params.requestId) validation.input.id = params.requestId;
+    if (params.trackedAdmission) validation.input.payload.context = {
+        ...(validation.input.payload.context as Record<string, unknown> | undefined), sentinelTodoTracking: params.trackedAdmission,
+    };
 
     const taskId = await enqueueChat(validation.input);
     const processId = toQueueProcessId(taskId);
@@ -1060,6 +1083,7 @@ async function createRemoteConversation(params: {
  * no worktree is requested and max iterations come from repo preferences.
  */
 async function launchRalphConversation(params: {
+    trackedAdmission?: SentinelTodoTrackedAdmission;
     requestId?: string;
     entryPoint?: 'grill' | 'execute';
     launchRalph?: LaunchRalphFn;
@@ -1086,6 +1110,7 @@ async function launchRalphConversation(params: {
             goalSpec: goalSpec.trim(),
             ...(params.entryPoint ? { entryPoint: params.entryPoint } : {}),
             ...(params.requestId ? { requestId: params.requestId } : {}),
+            ...(params.trackedAdmission ? { sentinelTodoTracking: params.trackedAdmission } : {}),
             workspaceId,
             aiSelection: {
                 ...(provider ? { provider } : {}),

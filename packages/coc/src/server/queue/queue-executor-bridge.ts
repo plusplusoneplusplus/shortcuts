@@ -1100,8 +1100,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // assistant response that just completed) before enqueuing the follow-up.
         const turnContent = nextMsg.displayContent ?? nextMsg.content;
         const turnSource = readAutomationTurnSource(nextMsg.context);
-        const existingUserTurn = receiptId ? proc.conversationTurns?.find(turn => turn.role === 'user'
-            && turn.relayRequestId === receiptId) : undefined;
+        const requestId = nextMsg.relayRequestId ?? `pending:${nextMsg.id}`;
+        const existingUserTurn = proc.conversationTurns?.find(turn => turn.role === 'user'
+            && turn.relayRequestId === requestId);
         const appendedUserTurn = existingUserTurn ? { turn: existingUserTurn } : await this.store.appendConversationTurn(
             processId,
             (turnIndex) => ({
@@ -1109,7 +1110,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 content: turnContent,
                 timestamp: new Date(nextMsg.createdAt),
                 turnIndex,
-                ...(nextMsg.relayRequestId !== undefined ? { relayRequestId: nextMsg.relayRequestId } : {}),
+                relayRequestId: requestId,
                 ...(turnSource ? { turnSource } : {}),
                 timeline: [],
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
@@ -1151,7 +1152,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     processId,
                     ...(proc.metadata?.workspaceId ? { workspaceId: proc.metadata.workspaceId } : {}),
                     prompt: nextMsg.content,
-                    ...(nextMsg.relayRequestId ? { relayRequestId: nextMsg.relayRequestId } : {}),
+                    relayRequestId: requestId,
                     ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                     ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                     ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),

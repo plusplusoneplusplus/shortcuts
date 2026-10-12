@@ -6,7 +6,7 @@
  *     and the `{ processId, openLink }` result shape.
  *   - post mode (processId): delivers `content` into the existing conversation
  *     via the injected `sendMessage` capability, returns `turnIndex`, and ignores
- *     create-only fields.
+ *     unrelated create-only fields; tracked item identities cannot use post mode.
  *   - ralph mode (create only): launches through the injected `launchRalph`
  *     capability with the resolved goal/workspace/AI selection.
  *   - description disambiguates the two modes.
@@ -109,6 +109,23 @@ function asSuccess(result: SendToConversationResult): SendToConversationSuccess 
 }
 
 describe('createSendToConversationTool — shape & description', () => {
+    it('rejects an explicit tracked item when admission is disabled instead of ordinary launch fallback', async () => {
+        const { tool, enqueueChat } = makeTool();
+        expect(await tool.handler({ content: 'Run saved work', todoItemId: 'historical-item' }, invocationStub)).toMatchObject({
+            code: 'untracked', error: expect.stringContaining('no ordinary launch fallback'),
+        });
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('rejects tracked item post-mode dispatch into an otherwise ordinary conversation', async () => {
+        const sendMessage = vi.fn();
+        const { tool } = makeTool({ sendMessage, extraProcesses: { existing: { id: 'existing', metadata: { mode: 'ask' } } } });
+        expect(await tool.handler({ content: 'Run saved work', todoItemId: 'historical-item', processId: 'existing' }, invocationStub)).toMatchObject({
+            code: 'untracked', error: expect.stringContaining('cannot use post mode'),
+        });
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
     it('requires content for send or processId for explicit cancel', () => {
         const { tool } = makeTool();
         expect(tool.name).toBe('send_to_conversation');

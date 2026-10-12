@@ -112,6 +112,8 @@ interface DashboardConfig {
     chatFoldersEnabled?: boolean;
     /** Whether a repo group's Workspace chat list aggregates member chats. Default false. */
     repoGroupAggregatedChatsEnabled?: boolean;
+    /** Whether the collapsed workspace rail offers manual sidebar refresh. Default false. */
+    railManualRefreshEnabled?: boolean;
     /** Whether the collapsed workspace rail shows the Git summary. Default false. */
     railGitSummaryEnabled?: boolean;
     /** Whether the collapsed workspace rail mirrors the Admin and quota controls. Default false. */
@@ -583,6 +585,11 @@ export function isGitWorktreeExecutionEnabled(): boolean {
  */
 export function isChatFoldersEnabled(): boolean {
     return getConfig().chatFoldersEnabled === true;
+}
+
+/** Returns true when the collapsed rail offers manual sidebar refresh. */
+export function isRailManualRefreshEnabled(): boolean {
+    return getConfig().railManualRefreshEnabled === true;
 }
 
 /** Returns true when the collapsed workspace rail shows Git status (`features.railGitSummary`). */

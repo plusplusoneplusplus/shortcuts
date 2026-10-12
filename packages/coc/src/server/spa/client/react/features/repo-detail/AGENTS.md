@@ -88,7 +88,13 @@ collapsed rail. Running and queued previews share `RailJobMetadata` with pinned
 previews: status, current execution mode and task type remain distinct. Modes
 come from owner-verified compact snapshots; unknown modes are omitted and Ralph
 session identity is preserved. Nonzero count controls expand the left column
-when selected. With `features.railGitSummary`
+when selected. `features.railManualRefresh` (default off, Appearance) gates
+`RefreshSidebarButton`; `RepoChatTab.handleRefresh` shares the expanded list's
+queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read and
+an optional `refreshList` for aggregate groups. Reads retain owner/source and
+reject superseded/live-stale snapshots; unavailable owners report errors without
+local fallback. Refresh keeps navigation, selection and collapse state and never
+mutates scheduling. With `features.railGitSummary`
 on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;
 `railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the

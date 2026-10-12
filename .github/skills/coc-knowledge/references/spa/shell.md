@@ -556,6 +556,18 @@ concrete server, preserving matching group routes and reapplying an unchanged ha
 Back restores the list's scroll, expanded rows and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+### Sentinel To-do dependencies
+
+Default-off `sentinelTodoDependenciesEnabled` adds `SentinelTodoDependencies` to
+each owner-ledger row. Typed graph and exact PR-binding drafts retain captured
+revisions through conflicts; rebasing is explicit. Abortable readiness reads
+refresh on any ledger revision. A prerequisite-first accessible chain navigates
+the same ledger; artifact evidence opens its prerequisite content workspace's
+read-only preview on the ledger's owning server.
+Readiness chips, saved action settings/authority and review warnings supplement
+fulfillment status. Manual items remain tracking-only; the tab adds no job
+launch/retry/cancel or authorization controls.
+
 ### Sentinel To-do Scrubber
 
 `SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
@@ -581,7 +593,10 @@ The editor uses browser-safe
 `triggers.enabled` is on. The editor uses eligible normal items, URL/local PR
 selection and server preview. Rule lifecycle and pending delivery are independent
 of item/job/review states; writes use the owning client's typed trigger API and
-expected rule revision. Run now confirms a one-shot Sentinel wake, never a direct
+expected rule revision. Owner-verified task links reveal only the target row and
+its containing groups; unrelated expansion state and lazy history previews stay
+unchanged. Owner changes isolate row state and cancel delayed focus/highlights.
+Run now confirms a one-shot Sentinel wake, never a direct
 job launch; terminal Clear preserves durable delivery receipts.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
