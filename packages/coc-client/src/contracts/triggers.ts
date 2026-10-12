@@ -18,6 +18,18 @@ export interface ConditionMonitorEvent {
   prId: string;
   pollIntervalMs: number;
   lastSeenChecks: Record<string, string>;
+  /** Missing scope authorizes CI only. */
+  repairScope?: 'ci' | 'ci-and-conflicts';
+  prKey?: string;
+  repairStatus?: string;
+  attemptSha?: string;
+  attemptCount?: number;
+  attemptNotified?: boolean;
+  conflictAttempts?: Record<string, number>;
+  conflictAttemptKey?: string;
+  conflictAwaitingHead?: string;
+  conflictBlocked?: string;
+  repairDelivery?: { id: string; prompt: string; state: 'pending' | 'admitted' | 'blocked'; attempts: number; retryAt?: number };
 }
 
 /** Provider-qualified pull request watched by URL with server credentials. */
@@ -111,6 +123,8 @@ export interface CreateTriggerRequest {
     originId: string;
     prId: string;
     pollIntervalMs?: number;
+    /** Explicit ci-and-conflicts also reauthorizes an existing CI-only monitor. */
+    repairScope?: 'ci' | 'ci-and-conflicts';
   };
   action?: {
     type?: 'send-message';

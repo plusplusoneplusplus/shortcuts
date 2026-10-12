@@ -20,6 +20,31 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe('To-do job previews', () => {
+    it.each((['ask', 'autopilot', 'ralph'] as const).flatMap(mode =>
+        (['queued', 'running', 'completed'] as const).map(state => ({ mode, state }))))(
+        'renders $mode for $state without extra metadata reads or focus targets', ({ mode, state }) => {
+        mount(job({ mode, execution: { state } }));
+        const badge = screen.getByTestId('sentinel-todo-job-mode');
+        expect(badge.textContent).toBe(mode === 'ask' ? 'Ask' : mode === 'ralph' ? 'Ralph' : 'Autopilot');
+        expect(badge.tagName).toBe('SPAN'); expect(badge.getAttribute('tabindex')).toBeNull();
+        expect(getProcess).not.toHaveBeenCalled(); expect(getGroup).not.toHaveBeenCalled();
+    });
+    it.each([undefined, 'future-mode'])('omits unknown local mode %s without defaulting to Autopilot', mode => {
+        mount(job({ mode: mode as SentinelTodoJobLink['mode'] }));
+        expect(screen.queryByTestId('sentinel-todo-job-mode')).toBeNull();
+        expect(getProcess).not.toHaveBeenCalled();
+    });
+    it('omits unknown modes and does not infer from job title or remote status', () => {
+        mount(job({ kind: 'remote', serverId: 'offline', title: 'Autopilot job', execution: { state: 'unavailable' } }));
+        expect(screen.queryByTestId('sentinel-todo-job-mode')).toBeNull();
+        expect(getProcess).not.toHaveBeenCalled(); expect(getGroup).not.toHaveBeenCalled();
+    });
+    it('renders exactly one Ralph pill when session identity and current mode differ', () => {
+        mount(job({ kind: 'remote', serverId: 'srv-2', sessionId: 'session-1', mode: 'ask' }));
+        expect(screen.getAllByTestId('sentinel-todo-job-mode')).toHaveLength(1);
+        expect(screen.getByTestId('sentinel-todo-job-mode').textContent).toBe('Ralph');
+    });
+
     it('reads lazily, bounds content, excludes transcripts, caches and preserves anchors/modifier clicks', async () => {
         getProcess.mockResolvedValue({ process: { id: 'job1', workspaceId: 'repo1', jobPreview: { excerpt: 'x'.repeat(2000), source: 'result' } } });
         mount(); expect(getProcess).not.toHaveBeenCalled(); focus();

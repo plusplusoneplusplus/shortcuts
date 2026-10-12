@@ -50,6 +50,14 @@ export class TriggersClient {
     return response.trigger;
   }
 
+  /** One manual CI repair, serialized with automatic PR repairs; does not arm polling. */
+  async repairCi(workspaceId: string, request: CreateTriggerRequest): Promise<Trigger> {
+    const response = await this.transport.request<TriggerMutationResponse>(triggersPath(workspaceId, '/repair'), {
+      method: 'POST', body: { ...request },
+    });
+    return response.trigger;
+  }
+
   patchStatus(workspaceId: string, triggerId: string, status: TriggerStatus): Promise<TriggerMutationResponse> {
     return this.transport.request<TriggerMutationResponse>(triggerPath(workspaceId, triggerId), {
       method: 'PATCH',

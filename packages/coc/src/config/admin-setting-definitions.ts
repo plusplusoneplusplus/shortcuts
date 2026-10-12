@@ -974,6 +974,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.railStatusActions', default: false, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 74, label: 'Admin and quota on collapsed sidebar', badge: 'experimental',
+            hint: 'Also shows the Admin gear and the provider quota ring at the bottom of the collapsed workspace sidebar, reusing the status bar\'s actions and quota data. Disabled by default.',
+            testId: 'toggle-rail-status-actions-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',

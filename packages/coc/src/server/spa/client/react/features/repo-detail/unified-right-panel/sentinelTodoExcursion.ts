@@ -17,6 +17,9 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { buildRepoGroupChatHash, parseRepoGroupChatDeepLink } from '../../../layout/dashboardRoutes';
+import { decodeSegment, encodeSegment, repoHashBase, tokenizeHash } from '../../../layout/routePath';
+import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 import { sentinelTodoOwnerKey, sentinelTodoTabInput, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import { openTab, unifiedTabId, type UnifiedPanelState } from './unifiedPanelTabsModel';
 
@@ -131,6 +134,31 @@ export function useSentinelTodoExcursion(): SentinelTodoExcursion | null {
     return useSyncExternalStore(subscribe, getSentinelTodoExcursion, getSentinelTodoExcursion);
 }
 
+/** The ledger owner is authoritative; the window URL can already name a child. */
+function originChatHref(origin: SentinelTodoExcursionOrigin): string {
+    const { owner, href } = origin;
+    const remote = parseRemoteCloneKey(owner.ownerRoutingRef);
+    const selectionId = remote
+        ? buildRemoteCloneKey(remote.serverId, owner.ownerWorkspaceId)
+        : owner.ownerWorkspaceId;
+    const fallback = `${repoHashBase(selectionId)}/chats/${encodeSegment(owner.processId)}`;
+    try {
+        const member = parseRepoGroupChatDeepLink(href);
+        if (member?.ownerSelectionId === selectionId) {
+            return member.processId === owner.processId ? href
+                : buildRepoGroupChatHash(member.groupSelectionId, owner.ownerWorkspaceId, owner.processId);
+        }
+        const { segments } = tokenizeHash(href);
+        if (segments[0] !== 'repos' || decodeSegment(segments[1] ?? '') !== selectionId
+            || !['chats', 'activity', 'tasks'].includes(segments[2])) return fallback;
+        // Keep valid route metadata, but never copy a different chat's sub-view.
+        if (segments.length === 4 && decodeSegment(segments[3]) === owner.processId) return href;
+        return `${repoHashBase(selectionId)}/${segments[2]}/${encodeSegment(owner.processId)}`;
+    } catch {
+        return fallback;
+    }
+}
+
 /**
  * Follow a To-do link. A link in the pinned list keeps the running excursion
  * and its path, updating only the link Back returns focus to.
@@ -140,7 +168,7 @@ export function startSentinelTodoExcursion(origin: SentinelTodoExcursionOrigin):
         if (current.origin.linkKey !== origin.linkKey) setExcursion({ ...current, origin: { ...current.origin, linkKey: origin.linkKey } });
         return;
     }
-    setExcursion({ origin, trail: [] });
+    setExcursion({ origin: { ...origin, href: originChatHref(origin) }, trail: [] });
 }
 
 export function visitSentinelTodoExcursionChat(stop: SentinelTodoExcursionStop): void {

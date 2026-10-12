@@ -360,6 +360,17 @@ reported `upstream`. Unknown, failed, detached and no-upstream states never rend
 clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`
 git-info refreshes; tiles open the expanded Git half (branch overview or member).
 
+### Collapsed-rail Admin and quota
+
+`features.railStatusActions` (default off) adds a bottom rail group, below a
+separator, only when the panel has a docked `footer`. `SplitWorkspacePanel`
+provides that node through `RailStatusSlotContext` to the footer while collapsed;
+the footer's `StatusActions` portals a rail Admin gear (same `handleAdmin`, no
+`#admin-toggle` id) and passes it as `railContainer` to its
+`AgentProviderQuotaIndicator`. The indicator renders a second trigger from the same
+hook and dropdown, opening the panel `right` of the rail. Expanding the sidebar
+removes the triggers and closes a rail-anchored dropdown.
+
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
 response to provider and model selection; provider availability and choice
@@ -523,13 +534,17 @@ tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading it
 ledger from the owning server through `client.sentinelTodos`; only the descriptor
 persists. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
-per-reference caching. Execution/review labels never write item verdicts;
+per-reference caching. Collapsed/latest and expanded/earlier titles share compact
+mode pills from the ledger projection, with Ralph session identity preserved and
+unknown modes omitted. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
 reference-only conversations keep navigation without job badges. Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
 bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is
-never persisted; Back restores the list's scroll, expanded rows and link focus. The full
+never persisted. The return route selects the ledger owner's workspace/process on its
+concrete server, preserving matching group routes and reapplying an unchanged hash.
+Back restores the list's scroll, expanded rows and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 `SentinelTodoTriggers` adds a separate rule section below the cards when existing

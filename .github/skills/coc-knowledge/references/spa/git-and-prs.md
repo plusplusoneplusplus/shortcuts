@@ -317,11 +317,14 @@ engine switches.
 
 ## Composer PR chips
 
-`features/chat/conversation/ChatComposerPrChips.tsx` docks read-only PR chips **inside
-the composer**, above the textarea, via the `prComposerChips` slot that
-`FollowUpInputArea` renders as the first child of the input card. Nothing renders when
-no PR is associated. A chat's chips cover both the PRs it created and the PRs that ship
-commits it authored.
+`features/chat/conversation/ChatComposerPrChips.tsx` owns composer PR presentation
+through `FollowUpInputArea`'s `prComposerChips` slot. Both `ChatDetail` layouts pass
+the actual conversation's normalized live/persisted mode, independent of pinned
+Sentinel origin context. Sentinel mode suppresses presentation and sets
+`usePrChatStatusItems.pollingEnabled=false`; detection, bindings and loaded state
+remain active. Other modes present associated PRs created by the chat or shipping
+its authored commits. Server automation and PR surfaces outside the composer retain
+their own lifecycles.
 
 ### Detection and binding
 
@@ -494,26 +497,21 @@ persisted** — it derives from PR state, not user preference. Orthogonal to dis
 folding hides, dismissing unbinds, and dismiss still works on chips inside an expanded
 fold.
 
-### CI auto-fix
+### PR auto-fix
 
-With `triggers.enabled` on, each chip carries CI auto-fix controls
-(`usePrAutoFixTrigger`, gated on `isTriggersEnabled()` read in `ChatComposerPrChips`,
-which threads the conversation `processId` + `workspaceId` down as an `autoFix` prop).
+With `triggers.enabled` on, `usePrAutoFixTrigger` connects composer controls to the
+PR-bound owner conversation. New opt-ins explicitly select `ci-and-conflicts`;
+missing/`ci` scope stays CI-only and has a deliberate in-place upgrade. The compact
+popover exposes persisted repair status/blockers and refreshes monitor state with
+scope-checked reads. Arm/disarm remains available with green/pending checks.
 
-`ComposerPrChecksPopover` opens when ≥1 check is failing **or** when CI auto-fix is
-available, so the monitor can be armed while checks are pending or green. Its Auto-fix
-CI toggle arms/disarms a `ci-failure` condition-monitor trigger bound to the PR's
-`originId`/`prId` and the conversation `processId`; it stays usable regardless of check
-state, so an armed monitor can be disarmed after CI goes green. A separate
-`fixNowDisabledReason` disables only the manual fix-now action, which sends one
-`autopilot` message built by `prAutoFixPrompt.ts#buildCiFixPrompt` (a browser copy of
-the server `ci-failure-prompt.ts` template) through `processes.sendMessage`.
-
-All arm/disarm/list/fix calls route through workspace-scoped
-`getCocClientForWorkspace(workspaceId).triggers` / `.processes` so remote-clone
-conversations act on their owning server — never a raw `fetchApi`. Unresolved
-PR/conversation context renders the controls disabled; with the flag off the toggle,
-button, and badge are hidden and no trigger network calls are made.
+Manual CI fixes call `triggers.repairCi`, using the same PR writer admission without
+granting conflict authority or arming polling. In-flight repair ownership disables
+manual fixes, not disarming; stopped monitors retain admitted writer receipts until
+completion. Scope changes discard stale responses. All calls use
+`getCocClientForWorkspace(workspaceId).triggers`, preserving remote ownership.
+Unresolved context disables controls; the feature gate hides them and prevents
+network calls. Monitor/prompt invariants live in [LLM tools](../llm-tools.md#create_pull_request).
 
 ### Polling and freshness
 

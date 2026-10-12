@@ -25,6 +25,7 @@ export interface CreateTriggerContext {
      * verification is skipped.
      */
     resolveWorkspaceId?: (processId: string) => Promise<string | undefined>;
+    validatePrOwner?: (workspaceId: string, processId: string, originId: string, prId: string) => Promise<void>;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -64,6 +65,9 @@ export function validateCreateTriggerBody(body: Record<string, unknown>): Create
     }
     if (!isNonEmptyString(event.prId)) {
         return { valid: false, error: 'event.prId must be a non-empty string' };
+    }
+    if (event.repairScope !== undefined && event.repairScope !== 'ci' && event.repairScope !== 'ci-and-conflicts') {
+        return { valid: false, error: 'event.repairScope must be ci or ci-and-conflicts' };
     }
     if (event.pollIntervalMs !== undefined) {
         if (typeof event.pollIntervalMs !== 'number' || event.pollIntervalMs < MIN_POLL_INTERVAL_MS) {
@@ -120,6 +124,7 @@ export function buildTriggerFromCreateRequest(
         prId: String(eventBody.prId),
         pollIntervalMs,
         lastSeenChecks: {},
+        repairScope: eventBody.repairScope === 'ci-and-conflicts' ? 'ci-and-conflicts' : 'ci',
     };
 
     const action: TriggerAction = {
@@ -164,6 +169,7 @@ export async function createTrigger(
     workspaceId: string,
     body: Record<string, unknown>,
     reuseCiMonitor = false,
+    watch = true,
 ): Promise<Trigger> {
     if (!ctx.enabled) {
         throw new CreateTriggerError(403, 'Triggers are disabled (triggers.enabled is off)');
@@ -185,6 +191,16 @@ export async function createTrigger(
     }
     const now = ctx.now ?? Date.now;
     const candidate = buildTriggerFromCreateRequest(workspaceId, body, now);
+    if (candidate.action.processId !== processId) {
+        throw new CreateTriggerError(400, 'PR repairs must target their originating owner conversation');
+    }
+    if (candidate.event.monitor === 'ci-failure' && ctx.validatePrOwner) {
+        try {
+            await ctx.validatePrOwner(workspaceId, processId, candidate.event.originId, candidate.event.prId);
+        } catch (error) {
+            throw new CreateTriggerError(409, error instanceof Error ? error.message : String(error));
+        }
+    }
     // No awaits between lookup and insertion: concurrent retries cannot insert duplicates.
     if (reuseCiMonitor) {
         const existing = ctx.store.getByWorkspace(workspaceId).find(t =>
@@ -194,9 +210,16 @@ export async function createTrigger(
             && candidate.event.monitor === 'ci-failure'
             && t.event.originId === candidate.event.originId && t.event.prId === candidate.event.prId);
         if (existing) {
-            if (existing.status === 'paused') {
+            const upgrade = existing.event.monitor === 'ci-failure' && candidate.event.monitor === 'ci-failure'
+                && candidate.event.repairScope === 'ci-and-conflicts' && existing.event.repairScope !== 'ci-and-conflicts';
+            if (upgrade && existing.inFlight) throw new CreateTriggerError(409, 'Wait for the current CI repair before authorizing conflicts');
+            if ((existing.status === 'paused' && watch) || upgrade) {
                 const paused = { ...existing };
-                existing.status = 'active';
+                if (watch) existing.status = 'active';
+                if (upgrade && existing.event.monitor === 'ci-failure') {
+                    existing.event = { ...existing.event, repairScope: 'ci-and-conflicts' };
+                }
+                existing.revision += 1;
                 existing.nextTickAt = candidate.nextTickAt;
                 ctx.store.update(existing);
                 try { ctx.manager.arm(existing); } catch (err) {
@@ -207,6 +230,10 @@ export async function createTrigger(
             }
             return existing;
         }
+    }
+    if (!watch) {
+        candidate.status = 'paused';
+        candidate.nextTickAt = null;
     }
     try { ctx.store.insert(candidate); } catch (err) {
         throw new CreateTriggerError(409, err instanceof Error ? err.message : String(err));

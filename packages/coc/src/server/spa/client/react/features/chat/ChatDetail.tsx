@@ -3214,6 +3214,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             onAttachSessionContext={attachedContext.addSessionContext}
                             prComposerChips={
                                 <ChatComposerPrChips
+                                    mode={effectiveConversationMode}
                                     turns={turns}
                                     workspaceId={effectiveWorkspaceId}
                                     remoteUrl={workspaceRemoteUrl}
@@ -3367,6 +3368,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onAttachSessionContext={attachedContext.addSessionContext}
                     prComposerChips={
                         <ChatComposerPrChips
+                            mode={effectiveConversationMode}
                             turns={turns}
                             workspaceId={effectiveWorkspaceId}
                             remoteUrl={workspaceRemoteUrl}

@@ -24,8 +24,10 @@ import {
     splitWorkspaceWidthStorageKey,
 } from './WorkspaceLeftWidth';
 import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from './WorkspaceDockToggle';
-import { RailJobStatuses, type RailJobPreview } from './RailJobStatuses';
+import { RailJobOpenerContext, RailJobStatuses, type RailJobOpener, type RailJobPreview } from './RailJobStatuses';
 import { RailControlsContext, type RailControls } from './RailHoverPreview';
+import { RailStatusSlotContext } from '../../layout/railStatusSlot';
+import { useRailStatusActionsEnabled } from '../../hooks/feature-flags/useRailStatusActionsEnabled';
 
 export { splitWorkspaceWidthStorageKey } from './WorkspaceLeftWidth';
 
@@ -363,6 +365,10 @@ export function SplitWorkspacePanel({
     const railShortcutsRef = useRef<HTMLDivElement | null>(null);
     const closePeek = hoverPeek.close;
     const hasRailShortcuts = railShortcuts != null;
+    // Bottom rail slot the docked footer portals its Admin/quota shortcuts into
+    // (`features.railStatusActions`); only meaningful when a footer is docked.
+    const railStatusActions = useRailStatusActionsEnabled() && footer != null;
+    const [railStatusNode, setRailStatusNode] = useState<HTMLDivElement | null>(null);
     useEffect(() => {
         const node = railShortcutsRef.current;
         if (!node) return;
@@ -523,9 +529,11 @@ export function SplitWorkspacePanel({
         },
     }), [hasFinePointer, toggleLeftCollapsed, hoverPeek.close, leftCollapsed, gitCollapsed, toggleGit]);
     const peeking = leftCollapsed && hoverPeek.isOpen;
+    const [jobOpener, setJobOpener] = useState<RailJobOpener | null>(null);
 
     return (
         <RailControlsContext.Provider value={railControls}>
+        <RailJobOpenerContext.Provider value={setJobOpener}>
         <div
             className="split-workspace-panel relative flex h-full w-full overflow-hidden"
             data-testid="split-workspace-panel"
@@ -588,6 +596,7 @@ export function SplitWorkspacePanel({
                         runningCount={runningCount}
                         queuedCount={queuedCount}
                         preview={jobPreview}
+                        opener={jobOpener}
                         {...railControls}
                     />
                     {railGit != null ? (
@@ -602,6 +611,12 @@ export function SplitWorkspacePanel({
                         >
                             Workspace
                         </span>
+                    )}
+                    {railStatusActions && (
+                        <div className="mt-auto flex flex-col items-center gap-1 pt-1" data-testid="split-workspace-left-status">
+                            <span aria-hidden="true" className="mb-1 h-px w-5 flex-shrink-0 bg-[#e5e5e5] dark:bg-[#3c3c3c]" />
+                            <div ref={setRailStatusNode} className="flex flex-col items-center gap-1" />
+                        </div>
                     )}
                 </div>
             )}
@@ -719,7 +734,9 @@ export function SplitWorkspacePanel({
                     the git half). Hosts the remote-first shell's status cluster. */}
                 {footer && (
                     <div className="flex-shrink-0" data-testid="split-workspace-footer">
-                        {footer}
+                        <RailStatusSlotContext.Provider value={leftCollapsed && railStatusActions ? railStatusNode : null}>
+                            {footer}
+                        </RailStatusSlotContext.Provider>
                     </div>
                 )}
             </div>
@@ -768,6 +785,7 @@ export function SplitWorkspacePanel({
                 {detail}
             </div>
         </div>
+        </RailJobOpenerContext.Provider>
         </RailControlsContext.Provider>
     );
 }

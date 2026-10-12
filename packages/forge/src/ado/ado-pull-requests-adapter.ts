@@ -158,7 +158,8 @@ export function mapAdoAutoMerge(pr: GitPullRequest): PullRequestAutoMerge {
 
 function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullRequest {
     const isDraft = pr.isDraft ?? false;
-    const status = isDraft ? 'draft' : mapAdoStatusToPrStatus(pr.status);
+    const lifecycle = mapAdoStatusToPrStatus(pr.status);
+    const status = isDraft && lifecycle === 'open' ? 'draft' : lifecycle;
     return {
         id: pr.pullRequestId ?? 0,
         number: pr.pullRequestId ?? 0,
@@ -179,6 +180,13 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
         labels: (pr.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
         headSha: pr.lastMergeSourceCommit?.commitId,
         baseSha: pr.lastMergeTargetCommit?.commitId,
+        mergeability: pr.mergeStatus === PullRequestAsyncStatus.Conflicts
+            ? { state: 'conflicting' }
+            : pr.mergeStatus === PullRequestAsyncStatus.Succeeded
+                ? { state: 'mergeable' }
+                : pr.mergeStatus === PullRequestAsyncStatus.RejectedByPolicy || pr.mergeStatus === PullRequestAsyncStatus.Failure
+                    ? { state: 'blocked', blockedReason: 'Provider policy or merge preview failure requires attention' }
+                    : { state: 'unknown' },
         autoMerge: mapAdoAutoMerge(pr),
         raw: pr,
     };
@@ -392,12 +400,22 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         return results.map(pr => mapAdoPullRequest(pr, repositoryId));
     }
 
-    async getPullRequest(repositoryId: string, pullRequestId: number | string): Promise<PullRequest> {
+    async getPullRequest(repositoryId: string, pullRequestId: number | string, options?: { freshRefs?: boolean }): Promise<PullRequest> {
         const logger = getLogger();
         logger.info(LogCategory.ADO, `getPullRequest: repo=${repositoryId} id=${pullRequestId} project=${this.project ?? '(default)'}`);
         const pr = await this.service.getPullRequestById(Number(pullRequestId), this.project);
         logger.info(LogCategory.ADO, `getPullRequest: resolved PR #${pr.pullRequestId ?? '?'} status=${pr.status ?? '?'}`);
-        return mapAdoPullRequest(pr, repositoryId);
+        const mapped = mapAdoPullRequest(pr, repositoryId);
+        if (options?.freshRefs && (mapped.status === 'open' || mapped.status === 'draft')) {
+            const effectiveRepo = this.repo ?? repositoryId;
+            if (!pr.sourceRefName || !pr.targetRefName) throw new Error('PR source/target branch is unavailable');
+            const headSha = await this.service.getRefTip(effectiveRepo, pr.sourceRefName, this.project);
+            const baseSha = await this.service.getRefTip(effectiveRepo, pr.targetRefName, this.project);
+            if (headSha !== mapped.headSha || baseSha !== mapped.baseSha) mapped.mergeability = { state: 'unknown' };
+            mapped.headSha = headSha;
+            mapped.baseSha = baseSha;
+        }
+        return mapped;
     }
 
     async createPullRequest(repositoryId: string, input: CreatePullRequestInput): Promise<PullRequest> {
@@ -514,7 +532,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         return commits.map(mapAdoCommit);
     }
 
-    async getChecks(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]> {
+    async getChecks(repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string): Promise<PullRequestCheck[]> {
         const logger = getLogger();
         const effectiveRepo = this.repo ?? repositoryId;
         logger.info(
@@ -523,6 +541,13 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         );
 
         const out: PullRequestCheck[] = [];
+        const iterations = expectedHeadSha
+            ? await this.service.getPullRequestIterations(effectiveRepo, Number(pullRequestId), this.project)
+            : undefined;
+        const iteration = iterations?.at(-1);
+        if (expectedHeadSha && iteration?.sourceRefCommit?.commitId !== expectedHeadSha) {
+            throw new Error('PR head changed while reading checks; waiting for the current iteration');
+        }
 
         // Per-PR statuses (e.g. build/CI postings against the PR itself).
         const prStatuses = await this.service.getPullRequestStatuses(
@@ -531,18 +556,21 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             this.project,
         );
         for (const status of prStatuses) {
+            // Unqualified PR statuses can remain green across pushes. Only the
+            // current iteration is evidence for an authoritative monitor read.
+            if (expectedHeadSha && (!iteration?.id || status.iterationId !== iteration.id)) continue;
             out.push(mapAdoCheck(status, 'check', 'pr-status'));
         }
 
         // Per-commit statuses on the head SHA (latest iteration). Best-effort.
         try {
-            const iterations = await this.service.getPullRequestIterations(
+            const commitIterations = iterations ?? await this.service.getPullRequestIterations(
                 effectiveRepo,
                 Number(pullRequestId),
                 this.project,
             );
-            const headSha = iterations.length
-                ? iterations[iterations.length - 1].sourceRefCommit?.commitId
+            const headSha = commitIterations.length
+                ? commitIterations[commitIterations.length - 1].sourceRefCommit?.commitId
                 : undefined;
             if (headSha) {
                 const commitStatuses = await this.service.getCommitStatuses(
@@ -555,6 +583,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
                 }
             }
         } catch (err) {
+            if (expectedHeadSha) throw err;
             logger.warn(
                 LogCategory.ADO,
                 `getChecks: commit-status fetch failed for PR #${pullRequestId}: ${err instanceof Error ? err.message : String(err)}`,

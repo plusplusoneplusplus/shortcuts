@@ -348,6 +348,15 @@ export class AdoPullRequestsService {
         }
     }
 
+    /** Read the exact branch tip rather than a cached PR merge-preview commit. */
+    async getRefTip(repositoryId: string, ref: string, project?: string): Promise<string> {
+        const api = await this.getGitApi();
+        const refs = await api.getRefs(repositoryId, project, ref.replace(/^refs\//, ''));
+        const tip = refs.find(candidate => candidate.name === ref)?.objectId;
+        if (!tip) throw new AdoPullRequestError('PR branch tip is unavailable');
+        return tip;
+    }
+
     async getPullRequestCommits(
         repositoryId: string,
         pullRequestId: number,

@@ -396,6 +396,25 @@ export class ProcessMessageDeliveryService {
         receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
     ): Promise<DeliveryResult> {
+        return this.deliverReceipt(workspaceId, processId, receiptId, input, false);
+    }
+
+    /** Caller validates the PR binding and holds its PR-qualified writer receipt. */
+    async deliverPrRepairOnce(
+        workspaceId: string, processId: string, receiptId: string,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
+    ): Promise<DeliveryResult> {
+        return this.deliverReceipt(workspaceId, processId, receiptId, input, true);
+    }
+
+    private async deliverReceipt(
+        workspaceId: string, processId: string, receiptId: string,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
+        prRepair: boolean,
+    ): Promise<DeliveryResult> {
+        if (prRepair && input.turnSource?.source !== 'trigger') {
+            throw new ReviewDeliveryRejectedError('PR repair requires a trigger-owned delivery identity');
+        }
         if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable review receipt is required');
         if (!this.bridge.enqueue || !this.bridge.getTask) {
             throw new ReviewDeliveryRejectedError('Durable review delivery requires queue admission and lookup');
@@ -406,7 +425,7 @@ export class ProcessMessageDeliveryService {
                 throw new ReviewDeliveryRejectedError('Review parent is unavailable in its originating workspace');
             }
             if (input.turnSource?.source === 'trigger' && (
-                proc.metadata?.mode !== 'sentinel' || input.turnSource.deliveryId !== receiptId
+                (!prRepair && proc.metadata?.mode !== 'sentinel') || input.turnSource.deliveryId !== receiptId
                 || !input.turnSource.triggerId
             )) {
                 throw new ReviewDeliveryRejectedError('Sentinel wake requires its owning chat and delivery identity');
@@ -438,7 +457,7 @@ export class ProcessMessageDeliveryService {
             }
             return this.deliverAdmitted(proc, {
                 ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
-                mode: await resolveFollowUpMode(this.store, processId),
+                mode: prRepair ? 'autopilot' : await resolveFollowUpMode(this.store, processId),
             }, receiptId);
         });
     }

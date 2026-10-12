@@ -35,12 +35,13 @@ export function buildBranchDeliveryContract(branch?: string): string[] {
     const target = branchRef ? `the PR's existing branch \`${branchRef}\`` : "the PR's existing branch";
     return [
         'How to deliver the fix (follow exactly):',
-        `- Work ONLY on ${target}; it is already checked out.`,
-        '- Commit the fix and push it to that same branch.',
+        `- Work ONLY on ${target} in an isolated PR worktree; verify the PR identity and head before editing and pushing.`,
+        '- Validate, commit only the fix and push normally to that same branch. Preserve concurrent work and check for other PR writers.',
         '- Do NOT create a new pull request.',
         '- Do NOT switch branches: no `git checkout`, no `git switch`.',
         '- Do NOT run `git reset --hard`.',
         '- Do NOT commit to `main`.',
+        '- Do NOT resolve merge conflicts unless this monitor explicitly authorizes conflicts; report them as a blocker.',
     ];
 }
 
@@ -118,4 +119,26 @@ export function buildCiFailurePrompt(
     lines.push('');
     lines.push(...buildBranchDeliveryContract(branch));
     return lines.join('\n');
+}
+
+export function buildConflictRepairPrompt(args: {
+    prNumber: string | number; prKey: string; headRef: string; headSha: string;
+    baseRef?: string; baseSha: string;
+}): string {
+    return [
+        `PR #${args.prNumber} has a confirmed merge conflict. This existing-PR repair is explicitly authorized.`,
+        `Provider-qualified PR: ${args.prKey}`,
+        `Expected source branch: ${JSON.stringify(args.headRef)}; head: ${args.headSha}.`,
+        `Expected target branch: ${JSON.stringify(args.baseRef ?? '')}; base: ${args.baseSha}.`,
+        'Re-read the PR in this owning workspace/server before editing and before pushing. Stop if identity, head, base or permissions changed.',
+        'Use an isolated PR worktree on the existing PR branch; never switch the active workspace branch or modify its unrelated work.',
+        'Check for other PR writers first. If the branch is already being repaired, wait; do not race it.',
+        'Inspect both sides and their commit history; preserve both sides\' intended behavior when merging the target into the source.',
+        'No blind ours/theirs resolution, destructive resets, force pushes, weakened coverage, or unrelated commits.',
+        'If intent is genuinely ambiguous, do not guess or push: report the exact ambiguity and request human resolution.',
+        'Validate the resolved behavior with the existing targeted tests/build, add regression coverage, then commit only the resolution and push normally to this same PR branch.',
+        'Do NOT create another PR or invoke create_pull_request or the submission workflow to resolve conflicts.',
+        'Do not bypass provider policies, approvals or permission blockers. Report them.',
+        'After pushing, report the new head SHA; this monitor must wait for fresh CI on that head, not stale green checks.',
+    ].join('\n');
 }

@@ -306,8 +306,12 @@ function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; aut
             enabled: true,
             armed: autoFix.armed,
             busy: autoFix.busy,
+            ciOnly: autoFix.ciOnly,
+            status: autoFix.status,
+            onUpgrade: () => { void autoFix.upgrade(); },
             disabledReason: autoFix.disabledReason,
-            fixNowDisabledReason: failed.length === 0 ? 'No failing checks to fix' : null,
+            fixNowDisabledReason: autoFix.repairInFlight ? 'A PR repair is already in flight'
+                : failed.length === 0 ? 'No failing checks to fix' : null,
             onToggle: next => {
                 void (next ? autoFix.arm() : autoFix.disarm());
             },

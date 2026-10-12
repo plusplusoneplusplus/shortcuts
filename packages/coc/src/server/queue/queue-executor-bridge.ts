@@ -691,10 +691,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     if (!infra) return;
                     return infra.executor.onTickComplete(cronId, success);
                 },
-                onTriggerActionComplete: (triggerId, success) => {
+                onTriggerActionComplete: (triggerId, success, deliveryId) => {
                     const infra = this.runtime.getTriggerInfra?.();
                     if (!infra) return;
-                    return infra.manager.onActionComplete(triggerId, success);
+                    return infra.manager.onActionComplete(triggerId, success, deliveryId);
                 },
             });
             const result = await executeImplementPlanWithPrGate({

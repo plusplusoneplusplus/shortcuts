@@ -955,6 +955,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         terminalInfra?.terminalWsServer,
         languageServerInfra.languageServerWsServer,
         () => runtimeConfigService.config.features.botManagedConversations === true,
+        process => {
+            const workspaceId = process.metadata?.workspaceId;
+            if (typeof workspaceId === 'string') getSentinelTodosCapability?.()?.notifyJobModeChanged(process.id, workspaceId);
+        },
     );
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);

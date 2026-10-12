@@ -33,12 +33,13 @@ export function buildBranchDeliveryContract(branch?: string): string[] {
     const target = branchRef ? `the PR's existing branch \`${branchRef}\`` : "the PR's existing branch";
     return [
         'How to deliver the fix (follow exactly):',
-        `- Work ONLY on ${target}; it is already checked out.`,
-        '- Commit the fix and push it to that same branch.',
+        `- Work ONLY on ${target} in an isolated PR worktree; verify the PR identity and head before editing and pushing.`,
+        '- Validate, commit only the fix and push normally to that same branch. Preserve concurrent work and check for other PR writers.',
         '- Do NOT create a new pull request.',
         '- Do NOT switch branches: no `git checkout`, no `git switch`.',
         '- Do NOT run `git reset --hard`.',
         '- Do NOT commit to `main`.',
+        '- Do NOT resolve merge conflicts unless this monitor explicitly authorizes conflicts; report them as a blocker.',
     ];
 }
 

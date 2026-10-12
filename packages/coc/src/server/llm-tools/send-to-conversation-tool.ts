@@ -308,7 +308,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 content: {
                     type: 'string',
-                    description: 'Message or new-chat prompt; Ralph goal spec. Required for send; omit for cancel.',
+                    description: 'Message or Ralph goal. Required for send; omit for cancel. ' +
+                        'Use concise Markdown: Task, Context, Deliverable, Constraints; omit unnecessary headings. ' +
+                        'Request reports as Outcome, Findings, Evidence, Gaps.',
                 },
                 processId: {
                     type: 'string',

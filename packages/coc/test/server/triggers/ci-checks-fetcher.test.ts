@@ -95,4 +95,14 @@ describe('createCiChecksFetcher', () => {
         await expect(fetcher({ workspaceId: 'ws_a', originId: 'origin_1', prId: '1' }))
             .rejects.toThrow('no-credentials');
     });
+
+    it('preserves provider-qualified merge preview, base and current-head check receipt', async () => {
+        const state = { prStatus: 'open', prNumber: 42, headRef: 'feature', headSha: 'head',
+            baseSha: 'base', baseRef: 'main', prKey: 'ado:host:org/project/repo:42',
+            mergeability: { state: 'conflicting' }, checksHeadSha: 'head', checks: [] };
+        fetchHeadless.mockResolvedValue(state);
+        expect(await createCiChecksFetcher({ dataDir: 'data' })({
+            workspaceId: 'remote-clone', originId: 'origin', prId: '42',
+        })).toEqual(state);
+    });
 });

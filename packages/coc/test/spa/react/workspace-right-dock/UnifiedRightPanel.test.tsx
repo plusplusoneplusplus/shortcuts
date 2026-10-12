@@ -72,6 +72,12 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     lookupCloneBaseUrl: () => null,
     subscribeCloneBaseUrl: () => () => {},
 }));
+const todoEventOwners = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats', async importOriginal => ({
+    ...(await importOriginal<object>()),
+    useSentinelTodoEvents: todoEventOwners,
+}));
+
 // `PreviewPane` opens a language document for every live repo file; this suite
 // is about panel behaviour, not language support.
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
@@ -101,6 +107,9 @@ import {
     openWorkspaceDock,
     workspaceDockOpenStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+
+import { publishSentinelTodoChat, clearSentinelTodoChats } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-1';
 
@@ -138,6 +147,23 @@ function openViaMenu(testId: string) {
 }
 
 describe('UnifiedRightPanel', () => {
+    it.each([null, 'remote:server-a:group-g'])('keeps a member Sentinel owner on the group server (%s)', routingRef => {
+        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true });
+        publishSentinelTodoChat('group-g', 'chat-s', { ownerWorkspaceId: WS, processId: 'chat-s', title: 'Sentinel' });
+        try {
+            renderPanel({ workspaceId: 'group-g', chatId: 'chat-s', routingRef });
+            expect(todoEventOwners).toHaveBeenLastCalledWith({
+                ownerWorkspaceId: WS, processId: 'chat-s',
+                ownerRoutingRef: routingRef === null ? null : 'remote:server-a:ws-1',
+            }, expect.any(Function));
+        } finally {
+            cleanup();
+            clearSentinelTodoChats();
+            applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
+            todoEventOwners.mockClear();
+        }
+    });
+
     it('claims directory clicks for its selected chat and opens Explorer without a file tab', () => {
         const dock = dockStub({ setTarget: vi.fn(() => true) });
         renderPanel({ chatId: 'chat-1', dock });

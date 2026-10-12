@@ -29,6 +29,7 @@
 
 import * as url from 'url';
 import type { Route } from '../types';
+import { parsePullRequestUrl } from '../triggers/pr-status-fetcher';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
@@ -550,6 +551,11 @@ export interface OriginPullRequestChecksSnapshot {
     headRef?: string;
     /** PR head (source branch tip) commit SHA, when the provider reports it. */
     headSha?: string;
+    baseSha?: string;
+    baseRef?: string;
+    prKey?: string;
+    mergeability?: ProviderPullRequest['mergeability'];
+    checksHeadSha?: string;
     checks: ProviderPullRequestCheck[];
 }
 
@@ -581,19 +587,31 @@ export async function fetchOriginPullRequestChecksHeadless(
 
     const { repoId } = scope.value;
     const prSvc = await resolvePullRequestsService(options.dataDir, svc, repoId);
-    const pr = await prSvc.getPullRequest(repoId, options.prId);
-    const checks = typeof prSvc.getChecks === 'function'
-        ? await prSvc.getChecks(repoId, options.prId)
+    const pr = await prSvc.getPullRequest(repoId, options.prId, { freshRefs: true });
+    const checks = pr.status !== 'merged' && pr.status !== 'closed' && pr.headSha && typeof prSvc.getChecks === 'function'
+        ? await prSvc.getChecks(repoId, options.prId, pr.headSha)
         : [];
-    const headRef = typeof pr.sourceBranch === 'string' && pr.sourceBranch.trim() ? pr.sourceBranch.trim() : undefined;
-    const headSha = typeof pr.headSha === 'string' && pr.headSha.trim() ? pr.headSha.trim() : undefined;
+    // Reject a head/base change during I/O rather than pairing old green checks
+    // with a new provider merge preview.
+    const current = pr.status === 'merged' || pr.status === 'closed'
+        ? pr : await prSvc.getPullRequest(repoId, options.prId, { freshRefs: true });
+    const stable = current.headSha === pr.headSha && current.baseSha === pr.baseSha;
+    const identity = parsePullRequestUrl(current.url);
+    const headRef = typeof current.sourceBranch === 'string' && current.sourceBranch.trim() ? current.sourceBranch.trim() : undefined;
+    const headSha = typeof current.headSha === 'string' && current.headSha.trim() ? current.headSha.trim() : undefined;
     return {
-        prStatus: pr.status,
-        prNumber: pr.number,
-        ...(pr.autoMerge !== undefined ? { autoMerge: pr.autoMerge } : {}),
+        prStatus: current.status,
+        prNumber: current.number,
+        ...(current.autoMerge !== undefined ? { autoMerge: current.autoMerge } : {}),
         ...(headRef !== undefined ? { headRef } : {}),
         ...(headSha !== undefined ? { headSha } : {}),
-        checks,
+        baseSha: current.baseSha,
+        baseRef: current.targetBranch,
+        ...(identity ? { prKey: JSON.stringify([identity.provider, identity.host,
+            identity.repoPath.toLowerCase(), identity.number]) } : {}),
+        mergeability: stable ? current.mergeability : { state: 'unknown' },
+        ...(stable && headSha ? { checksHeadSha: headSha } : {}),
+        checks: stable ? checks : [],
     };
 }
 

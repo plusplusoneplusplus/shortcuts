@@ -48,6 +48,8 @@ export interface SentinelTodoJobLink {
   openLink: string;
   title?: string;
   linkedAt: string;
+  /** Current owner-verified conversation mode, or whole-session Ralph identity. Unknown is omitted. */
+  mode?: 'ask' | 'autopilot' | 'ralph';
   execution: SentinelTodoJobExecution;
 }
 
@@ -133,7 +135,7 @@ export interface AttachSentinelTodoReferenceRequest {
 
 /** A write's committed item (without derived job execution) and ledger revision. */
 export interface SentinelTodoWriteResponse {
-  item: Omit<SentinelTodoItem, 'jobs'> & { jobs: Omit<SentinelTodoJobLink, 'execution'>[] };
+  item: Omit<SentinelTodoItem, 'jobs'> & { jobs: Omit<SentinelTodoJobLink, 'execution' | 'mode'>[] };
   ledgerRevision: number;
   created?: boolean;
   /** Reference attachments: false when the conversation was already attached. */

@@ -141,7 +141,12 @@ safe. Transactions acquire the database writer before mutation reads and compare
 ledger/item revisions. Item edits, terminal evidence and review acknowledgments
 commit together. Reads use a consistent snapshot. Structured fields use JSON
 inside SQLite; machine-local items are excluded from export/import and cleared
-transactionally by the to-do wipe domain.
+transactionally by the to-do wipe domain. `getJobModeProjections` batch-joins local
+job links to compact process mode/owner metadata without transcripts. The service
+checks the execution workspace and uses live first-turn queue mode only when the
+process is absent. Remote ordinary/unknown modes stay omitted; Ralph session
+identity stays Ralph. Mode-change invalidations target exact local linked owners
+without advancing ledger/item revisions.
 
 ### Chat binding stores
 

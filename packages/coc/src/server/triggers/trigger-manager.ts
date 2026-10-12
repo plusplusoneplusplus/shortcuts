@@ -17,6 +17,7 @@
  */
 
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { randomUUID } from 'crypto';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
 import type { TriggerStore } from './trigger-store';
@@ -29,7 +30,7 @@ import type {
     TriggerOutcome,
     TriggerStatus,
 } from './trigger-types';
-import { DEFAULT_CI_POLL_INTERVAL_MS, isTriggerExpired } from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS, MAX_CONFLICT_FIX_TOTAL, isTriggerExpired } from './trigger-types';
 import { getPrMergedPollDelay } from './pr-merged-evaluator';
 
 // ============================================================================
@@ -63,6 +64,7 @@ export interface EvaluationOutcome {
      * failing checks). Falls back to `trigger.action.prompt` when absent.
      */
     actionPrompt?: string;
+    repairKind?: 'ci' | 'conflict';
     /**
      * Set by an evaluator when a fire was withheld because the per-head-SHA
      * retry cap was reached (AC-05, {@link MAX_CI_FIX_ATTEMPTS}). The manager
@@ -79,7 +81,7 @@ export interface EvaluationOutcome {
 
 /** Evaluates a trigger's event each tick. One per event kind. */
 export interface EventEvaluator {
-    evaluate(trigger: Trigger): Promise<EvaluationOutcome>;
+    evaluate(trigger: Trigger, options?: { manualCi?: boolean }): Promise<EvaluationOutcome>;
 }
 
 /**
@@ -126,6 +128,7 @@ export class TriggerManager {
     private readonly deps: TriggerManagerDeps;
     private readonly now: () => number;
     private stopped = false;
+    private readonly ticking = new Set<string>();
 
     /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
     private readonly scheduler: PeriodicEntryScheduler<Trigger>;
@@ -138,7 +141,7 @@ export class TriggerManager {
             getFallbackIntervalMs: trigger => trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
                 ? getPrMergedPollDelay({ ...trigger.event, consecutiveErrors: trigger.delivery.consecutiveErrors ?? 0 })
                 : getPollInterval(trigger.event),
-            isActive: trigger => trigger.status === 'active' || trigger.delivery?.state === 'pending',
+            isActive: trigger => trigger.status === 'active' || trigger.delivery?.state === 'pending' || hasPendingRepair(trigger),
             persist: trigger => this.deps.store.update(trigger),
             onTick: id => { void this.onTick(id); },
             logLabel: 'TriggerManager',
@@ -156,7 +159,7 @@ export class TriggerManager {
      */
     armAll(): void {
         this.scheduler.armAll(this.deps.store.getAll().filter(trigger =>
-            trigger.status === 'active' || trigger.delivery?.state === 'pending'));
+            trigger.status === 'active' || trigger.delivery?.state === 'pending' || hasPendingRepair(trigger)));
     }
 
     /** Reconcile durable wake receipts before ordinary queue processing starts. */
@@ -198,11 +201,23 @@ export class TriggerManager {
      * to the per-head-SHA retry cap enforced by the CI-failure evaluator
      * ({@link MAX_CI_FIX_ATTEMPTS}). The trigger keeps polling either way.
      */
-    onActionComplete(triggerId: string, _success: boolean): void {
+    onActionComplete(triggerId: string, _success: boolean, deliveryId?: string): void {
         const trigger = this.deps.store.getById(triggerId);
         if (!trigger) return;
         if (!trigger.inFlight) return;
+        if (trigger.event.monitor === 'ci-failure' && trigger.event.repairDelivery
+            && trigger.event.repairDelivery.id !== deliveryId) return;
         trigger.inFlight = false;
+        trigger.revision += 1;
+        if (trigger.event.monitor === 'ci-failure') {
+            trigger.event.repairDelivery = undefined;
+            trigger.event.repairStatus = _success
+                ? 'Repair completed; waiting for the provider head and fresh CI'
+                : 'Repair failed or resolution is ambiguous; human action required';
+            if (!_success && trigger.event.conflictAwaitingHead) {
+                trigger.event.conflictBlocked = trigger.event.repairStatus;
+            }
+        }
         this.deps.store.update(trigger);
         this.emit({ type: 'trigger-updated', trigger });
     }
@@ -211,7 +226,20 @@ export class TriggerManager {
     // Internal: tick handler
     // ========================================================================
 
-    private async onTick(triggerId: string): Promise<void> {
+    /** Manual CI repair uses exactly the same PR-qualified writer admission. */
+    async repairNow(triggerId: string): Promise<void> {
+        if (this.ticking.has(triggerId)) throw new Error('PR evaluation or repair admission is already in flight');
+        await this.onTick(triggerId, true);
+    }
+
+    private async onTick(triggerId: string, manualCi = false): Promise<void> {
+        if (this.ticking.has(triggerId)) return;
+        this.ticking.add(triggerId);
+        try { await this.evaluateTick(triggerId, manualCi); }
+        finally { this.ticking.delete(triggerId); }
+    }
+
+    private async evaluateTick(triggerId: string, manualCi: boolean): Promise<void> {
         if (this.stopped) return;
         const logger = getLogger();
         const trigger = this.deps.store.getById(triggerId);
@@ -223,7 +251,7 @@ export class TriggerManager {
             await this.retryDelivery(triggerId);
             return;
         }
-        if (trigger.status !== 'active') return;
+        if (trigger.status !== 'active' && !(manualCi && trigger.status === 'paused') && !hasPendingRepair(trigger)) return;
 
         // TTL expiry → terminal auto-disarm.
         if (isTriggerExpired(trigger, this.now())) {
@@ -240,11 +268,17 @@ export class TriggerManager {
 
         let outcome: EvaluationOutcome;
         try {
-            outcome = await evaluator.evaluate(trigger);
+            outcome = await evaluator.evaluate(trigger, manualCi ? { manualCi: true } : undefined);
         } catch (err) {
             logger.warn(LogCategory.AI, `[TriggerManager] Evaluator error for ${triggerId}: ${err instanceof Error ? err.message : String(err)}`);
             const current = this.deps.store.getById(triggerId);
+            if (current?.event.monitor === 'ci-failure') {
+                current.event.repairStatus = 'Provider read failed; check authentication, permissions or provider availability';
+                this.deps.store.update(current);
+                this.emit({ type: 'trigger-updated', trigger: current });
+            }
             if (current?.status === 'active') this.reschedule(current);
+            if (manualCi) throw err;
             return;
         }
 
@@ -252,7 +286,7 @@ export class TriggerManager {
         // in-flight action completed and cleared the guard).
         if (this.stopped) return;
         const current = this.deps.store.getById(triggerId);
-        if (!current || current.status !== 'active') return;
+        if (!current || (current.status !== 'active' && !(manualCi && current.status === 'paused') && !hasPendingRepair(current))) return;
         if (current.revision !== trigger.revision) {
             // Edited while evaluating (e.g. a new PR): the outcome is stale.
             this.reschedule(current);
@@ -267,12 +301,70 @@ export class TriggerManager {
             return;
         }
 
+        if (current.inFlight && current.event.monitor === 'ci-failure' && current.event.repairDelivery?.state === 'pending') {
+            if (manualCi) throw new Error('A repair is already in flight for this PR');
+            await this.deliverRepair(current);
+            this.reschedule(this.deps.store.getById(triggerId) ?? current);
+            return;
+        }
+        if (current.inFlight && current.event.monitor === 'ci-failure' && current.event.repairDelivery?.state === 'blocked') {
+            this.reschedule(current);
+            return;
+        }
+
         if (outcome.fire && current.binding) {
             await this.fireOneShot(current, outcome);
             return;
         }
 
         if (outcome.fire && !current.inFlight) {
+            const prompt = outcome.actionPrompt ?? current.action.prompt;
+            if (outcome.event.monitor === 'ci-failure') {
+                outcome.event.repairDelivery = { id: randomUUID(), prompt, state: 'pending', attempts: 0 };
+            }
+            let claimBlocker = 'Waiting for the existing PR repair writer';
+            const claimed = this.deps.store.transaction(() => {
+                const latest = this.deps.store.getById(triggerId);
+                if (!latest || latest.inFlight || latest.status !== current.status
+                    || latest.revision !== current.revision || latest.lastTickAt !== trigger.lastTickAt) return false;
+                if (outcome.event.monitor === 'ci-failure') {
+                    const event = outcome.event;
+                    const peers = this.deps.store.getAll().filter(t => t.id !== triggerId
+                        && t.event.monitor === 'ci-failure'
+                        && ((event.prKey && t.event.prKey === event.prKey)
+                            || (t.event.originId === event.originId && t.event.prId === event.prId)));
+                    if (peers.some(t => t.inFlight)) return false;
+                    if (outcome.repairKind === 'conflict' && event.conflictAttemptKey) {
+                        const attemptKey = event.conflictAttemptKey;
+                        const previousAttempt = peers.some(t => t.event.monitor === 'ci-failure'
+                            && (t.event.conflictAttempts?.[attemptKey] ?? 0) > 0);
+                        const total = [latest, ...peers].reduce((sum, t) => sum + (t.event.monitor === 'ci-failure'
+                            ? Object.values(t.event.conflictAttempts ?? {}).reduce((count, n) => count + n, 0) : 0), 0);
+                        if (previousAttempt || total >= MAX_CONFLICT_FIX_TOTAL) {
+                            claimBlocker = previousAttempt
+                                ? 'This PR/head/base conflict already has a repair attempt; inspect its owner chat'
+                                : 'PR conflict repair budget exhausted across owner monitors; human action required';
+                            return false;
+                        }
+                    }
+                }
+                latest.inFlight = true;
+                latest.event = outcome.event;
+                latest.lastTickAt = current.lastTickAt;
+                this.deps.store.update(latest);
+                return true;
+            });
+            if (!claimed) {
+                const latest = this.deps.store.getById(triggerId);
+                if (latest?.event.monitor === 'ci-failure') {
+                    const changed = latest.event.repairStatus !== claimBlocker;
+                    latest.event.repairStatus = claimBlocker;
+                    this.reschedule(latest);
+                    if (changed) this.emit({ type: 'trigger-updated', trigger: latest });
+                }
+                if (manualCi) throw new Error(`A repair writer already owns this PR: ${claimBlocker}`);
+                return;
+            }
             // Fire: advance state, set the suppression guard, reschedule, then
             // enqueue the action.
             current.inFlight = true;
@@ -280,13 +372,16 @@ export class TriggerManager {
             this.reschedule(current);
             this.emit({ type: 'trigger-fired', trigger: current });
 
-            const prompt = outcome.actionPrompt ?? current.action.prompt;
+            if (current.event.monitor === 'ci-failure') {
+                await this.deliverRepair(current, manualCi);
+                return;
+            }
             try {
                 await this.deps.actionExecutor.execute(current, current.action, prompt);
             } catch (err) {
                 logger.error(LogCategory.AI, `[TriggerManager] Action execute failed for ${triggerId}: ${err instanceof Error ? err.message : String(err)}`);
-                // Roll back the guard so a later tick can retry.
                 this.onActionComplete(triggerId, false);
+                if (manualCi) throw err;
             }
             return;
         }
@@ -297,6 +392,7 @@ export class TriggerManager {
             // transition is re-detected once the in-flight fix completes.
             logger.debug(LogCategory.AI, `[TriggerManager] Suppressing fire for ${triggerId} (fix in flight)`);
             this.reschedule(current);
+            if (manualCi) throw new Error('A repair is already in flight for this PR');
             return;
         }
 
@@ -322,9 +418,53 @@ export class TriggerManager {
     // Internal: state transitions
     // ========================================================================
 
+    private async deliverRepair(trigger: Trigger, manual = false): Promise<void> {
+        if (trigger.event.monitor !== 'ci-failure') return;
+        const receipt = trigger.event.repairDelivery;
+        if (!receipt || receipt.state !== 'pending' || (receipt.retryAt ?? 0) > this.now()) return;
+        if (receipt.attempts >= 2) {
+            receipt.state = 'blocked';
+            trigger.event.repairStatus = 'Repair delivery exhausted or ambiguous; inspect the owner chat before retrying';
+            this.deps.store.update(trigger);
+            this.emit({ type: 'trigger-updated', trigger });
+            return;
+        }
+        receipt.attempts += 1;
+        this.deps.store.update(trigger);
+        try {
+            await this.deps.actionExecutor.execute(trigger, trigger.action, receipt.prompt);
+            const current = this.deps.store.getById(trigger.id);
+            if (current?.event.monitor === 'ci-failure' && current.event.repairDelivery?.id === receipt.id) {
+                current.event.repairDelivery.state = 'admitted';
+                if (current.status === 'paused') {
+                    this.disarm(current.id);
+                    current.nextTickAt = null;
+                }
+                this.deps.store.update(current);
+            }
+        } catch (error) {
+            const current = this.deps.store.getById(trigger.id);
+            if (current?.event.monitor === 'ci-failure' && current.event.repairDelivery?.id === receipt.id) {
+                const exhausted = receipt.attempts >= 2;
+                current.event.repairDelivery.state = exhausted ? 'blocked' : 'pending';
+                current.event.repairDelivery.retryAt = this.now() + 2 * current.event.pollIntervalMs;
+                current.event.repairStatus = exhausted
+                    ? 'Repair delivery exhausted or ambiguous; check owner chat and permissions before retrying'
+                    : 'Repair delivery failed; backing off with the same durable receipt';
+                this.deps.store.update(current);
+                this.emit({ type: 'trigger-updated', trigger: current });
+            }
+            getLogger().error(LogCategory.AI, `[TriggerManager] Repair delivery failed for ${trigger.id}: ${String(error)}`);
+            if (manual) throw error;
+        }
+    }
+
     /** Persist `nextTickAt` and (re)arm the timer at the event's poll cadence. */
     private reschedule(trigger: Trigger): void {
-        if (!this.stopped) this.scheduler.reschedule(trigger);
+        if (!this.stopped && (trigger.status === 'active' || trigger.delivery?.state === 'pending' || hasPendingRepair(trigger))) {
+            this.scheduler.reschedule(trigger);
+        }
+        else this.deps.store.update(trigger);
     }
 
     private async retryDelivery(triggerId: string): Promise<void> {
@@ -403,4 +543,9 @@ function getPollInterval(event: TriggerEvent): number {
     if (event.type === 'condition-monitor' && event.monitor === 'pr-merged') return getPrMergedPollDelay(event);
     if (event.type === 'condition-monitor') return event.pollIntervalMs;
     return DEFAULT_CI_POLL_INTERVAL_MS;
+}
+
+function hasPendingRepair(trigger: Trigger): boolean {
+    return trigger.status === 'paused' && trigger.inFlight && trigger.event.monitor === 'ci-failure'
+        && trigger.event.repairDelivery?.state === 'pending';
 }

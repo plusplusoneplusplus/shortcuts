@@ -52,6 +52,16 @@ export interface ConditionMonitorEvent {
     pollIntervalMs: number;
     /** checkId → last-seen conclusion (e.g. `success`, `failure`, `pending`). */
     lastSeenChecks: Record<string, string>;
+    /** Absence is CI-only; expanding authority requires explicit reauthorization. */
+    repairScope?: 'ci' | 'ci-and-conflicts';
+    /** Provider/host/repository/PR identity from the authoritative detail read. */
+    prKey?: string;
+    repairStatus?: string;
+    conflictAttempts?: Record<string, number>;
+    conflictAttemptKey?: string;
+    conflictAwaitingHead?: string;
+    conflictBlocked?: string;
+    repairDelivery?: { id: string; prompt: string; state: 'pending' | 'admitted' | 'blocked'; attempts: number; retryAt?: number };
     /**
      * Head commit SHA the retry counter is currently keyed to (AC-05). The empty
      * string is used as a stable sentinel when the provider snapshot omits a head
@@ -302,3 +312,6 @@ export const MAX_ACTIVE_TRIGGERS = 50;
  * commit changes the head SHA.
  */
 export const MAX_CI_FIX_ATTEMPTS = 2;
+export const MAX_CONFLICT_FIX_ATTEMPTS = 2;
+/** Bounds repair/push chains even when every repair changes the head. */
+export const MAX_CONFLICT_FIX_TOTAL = 4;

@@ -107,6 +107,24 @@ describe('createWebSocketInfrastructure', () => {
     });
 
     describe('store process change wiring', () => {
+        it('invalidates linked modes only on mode/owner changes, including follow-ups and removal/re-add', () => {
+            const changed = vi.fn();
+            createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,
+                undefined, undefined, () => false, changed);
+            const process = { id: 'queue_child', status: 'running', output: [],
+                metadata: { workspaceId: 'ws-child', mode: 'ask' } } as any;
+            store.onProcessChange({ type: 'process-added', process });
+            store.onProcessChange({ type: 'process-updated', process: { ...process, title: 'Updated title' } });
+            expect(changed).toHaveBeenCalledTimes(1);
+            const followUp = { ...process, metadata: { ...process.metadata, mode: 'autopilot' } };
+            store.onProcessChange({ type: 'process-updated', process: followUp });
+            expect(changed).toHaveBeenCalledTimes(2);
+            expect(changed).toHaveBeenLastCalledWith(followUp);
+            store.onProcessChange({ type: 'process-removed', process: followUp });
+            store.onProcessChange({ type: 'process-added', process: followUp });
+            expect(changed).toHaveBeenCalledTimes(3);
+        });
+
         it('broadcasts process-added event', () => {
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
             const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');

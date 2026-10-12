@@ -243,7 +243,7 @@ export interface LifecycleRunnerOptions {
      * Only invoked when the follow-up's payload context identifies a trigger
      * (`context.source === 'trigger'` and `typeof context.triggerId === 'string'`).
      */
-    onTriggerActionComplete?: (triggerId: string, success: boolean) => Promise<void> | void;
+    onTriggerActionComplete?: (triggerId: string, success: boolean, deliveryId?: string) => Promise<void> | void;
 }
 
 /**
@@ -261,7 +261,8 @@ async function notifyTriggerActionComplete(
     if (!ctx || ctx.source !== 'trigger') return;
     if (typeof ctx.triggerId !== 'string' || ctx.triggerId.length === 0) return;
     try {
-        await opts.onTriggerActionComplete(ctx.triggerId, success);
+        if (typeof ctx.deliveryId === 'string') await opts.onTriggerActionComplete(ctx.triggerId, success, ctx.deliveryId);
+        else await opts.onTriggerActionComplete(ctx.triggerId, success);
     } catch (err) {
         logger.warn(
             LogCategory.AI,

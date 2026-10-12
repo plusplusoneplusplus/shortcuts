@@ -62,6 +62,8 @@ export interface UsePrChatStatusItemsOptions {
     remoteUrl: string | null | undefined;
     /** Chat's task id — scopes the persisted bindings (`task_id`). */
     taskId: string | undefined;
+    /** Disable presentation-only polling while retaining detection and bindings. */
+    pollingEnabled?: boolean;
 }
 
 export interface UsePrChatStatusItemsResult {
@@ -297,7 +299,7 @@ interface FetchOptions {
 }
 
 export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UsePrChatStatusItemsResult {
-    const { turns, workspaceId, remoteUrl, taskId } = options;
+    const { turns, workspaceId, remoteUrl, taskId, pollingEnabled = true } = options;
     const [items, setItems] = useState<PrStatusCardItem[]>([]);
     const [refreshingKeys, setRefreshingKeys] = useState<ReadonlySet<string>>(() => new Set());
     const [lastUpdatedAt, setLastUpdatedAt] = useState<number | undefined>(undefined);
@@ -765,7 +767,7 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     // Smart auto-poll (AC-05): poll on a fixed cadence ONLY while at least one PR
     // is non-terminal and unsettled (checks pending/running or auto-merge
     // armed/queued); the interval is torn down once everything settles.
-    const isPolling = useMemo(() => shouldPollPrStatusItems(items), [items]);
+    const isPolling = useMemo(() => pollingEnabled && shouldPollPrStatusItems(items), [items, pollingEnabled]);
     const runRefreshRef = useRef(runRefresh);
     runRefreshRef.current = runRefresh;
     useEffect(() => {

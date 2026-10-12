@@ -49,6 +49,8 @@ references before editing. Paths are package-relative.
   Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
   owner's git-info/working tree (groups: per-member git-info, never a group branch),
   and never show unknown, no-upstream or detached state as clean or 0/0.
+  Rail Admin/quota shortcuts (`features.railStatusActions`) are portals from the
+  docked `StatusActions` footer; never give the rail its own quota hook or fetch.
 - Terminal native paste is captured inside the focused `TerminalPanel`, consumes
   only `text/plain`, cancels parallel/default insertion, and uses xterm `paste()`.
   Clipboard shortcuts leave browser/Electron paste enabled without async reads;
@@ -125,8 +127,14 @@ references before editing. Paths are package-relative.
   Narrow views exclude static config.
   `test/server/executors/executor-runtime-wiring.test.ts` guards every hop.
 - PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
-  `triggers/create-trigger-service.ts` creation path. Scope monitors to the calling
-  workspace/conversation and canonical PR origin; arming failures preserve PR success.
+  `triggers/create-trigger-service.ts` creation path. Explicit `ci-and-conflicts`
+  scope authorizes CI/conflict repairs; missing/`ci` scope authorizes CI only.
+  Validate the PR-bound owner/workspace, poll authoritative merge previews and
+  current-head checks, and serialize automatic/manual repairs with the durable
+  PR-qualified writer and `deliverPrRepairOnce`. Conflict retries include head/base
+  identity, bounded delivery backoff and a cross-head budget; ambiguous/exhausted
+  outcomes require human action. Repairs use isolated existing-PR worktrees, never
+  submission workflows or policy bypasses. Arming failures preserve PR success.
   Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
   rule revision and owner-scoped item, and persists the terminal decision, immutable
   wake prompt and delivery identity before queue work. Wakes use shared
@@ -217,8 +225,12 @@ references before editing. Paths are package-relative.
   only, the chat must exist in the named local workspace, duplicates are no-ops, and they never
   change status, create execution/review state, or message the referenced chat.
   Job execution/delivery/assessment are derived on read with exact parent/child workspace,
-  process and session identity; remote links are always `unavailable`. Committed delivery
-  transitions invalidate linked ledgers without advancing their revisions.
+  process and session identity; remote links are always `unavailable`. Job mode is a compact
+  read-time projection: batch-read local process metadata from the shared database, validate
+  the execution workspace, and use live first-turn queue mode only while the process is absent.
+  Unknown/remote ordinary modes stay omitted; Ralph kind/session identity stays Ralph.
+  Committed delivery and conversation-mode changes invalidate linked ledgers without advancing
+  their revisions; badges never require per-job transcript reads or polling.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
   To-do composer context reuses pointer attachments and resolves the owning ledger

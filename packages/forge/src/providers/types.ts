@@ -250,6 +250,11 @@ export interface PullRequest {
     headSha?: string;
     /** SHA of the PR base (target branch) commit. */
     baseSha?: string;
+    /** Authoritative merge preview, independent of auto-merge opt-in. */
+    mergeability?: {
+        state: 'mergeable' | 'conflicting' | 'unknown' | 'blocked';
+        blockedReason?: string;
+    };
     /**
      * Unified auto-merge (GitHub) / auto-complete (ADO) status, when resolvable.
      * Populated from the provider's PR-detail fetch; list responses may omit the

@@ -660,3 +660,106 @@ describe('SentinelTodoService', () => {
         await expect(service.create(owner, { title: 'x' }, { actor: 'user' })).resolves.toMatchObject({ created: true });
     });
 });
+
+
+describe('linked job mode projection', () => {
+    let processes: SqliteProcessStore;
+    let todos: SentinelTodoStore;
+    let service: SentinelTodoService;
+    let onChange: ReturnType<typeof vi.fn>;
+    let queueMode: unknown;
+    let queueWorkspace: string;
+    let queueStatus: string;
+    beforeEach(async () => {
+        processes = new SqliteProcessStore({ dbPath: path.join(dataDir, 'mode-processes.db') });
+        await processes.addProcess({ id: owner.processId, type: 'clarification', status: 'completed',
+            startTime: new Date(), metadata: { workspaceId: owner.workspaceId, mode: 'sentinel' } });
+        todos = new SentinelTodoStore(processes.getDatabase());
+        onChange = vi.fn(); queueMode = 'ask'; queueWorkspace = 'ws-child'; queueStatus = 'queued';
+        service = new SentinelTodoService({ todos, store: processes, onChange,
+            getTask: () => ({ type: 'chat', status: queueStatus, repoId: queueWorkspace,
+                payload: { kind: 'chat', workspaceId: queueWorkspace, mode: queueMode } }) as never });
+    });
+    afterEach(() => processes.close());
+    function link(overrides: Partial<SentinelTodoJobLinkInput> = {}) {
+        const { item } = todos.create(owner, { title: 'Feature' }, { actor: 'user' });
+        todos.linkJob(owner, item.id, { processId: 'queue_child', workspaceId: 'ws-child', kind: 'local',
+            openLink: '#repos/ws-child/chats/child', ...overrides });
+        return item.id;
+    }
+    async function addChild(mode: unknown, workspaceId = 'ws-child') {
+        await processes.addProcess({ id: 'queue_child', type: 'clarification', status: 'completed',
+            startTime: new Date(), metadata: { workspaceId, mode } });
+    }
+    async function read() { return (await service.list(owner)).items[0].jobs[0]; }
+
+    it.each(['ask', 'autopilot', 'ralph', 'plan'] as const)('projects queued and completed %s without child hydration', async mode => {
+        link(); queueMode = mode;
+        expect(await read()).toMatchObject({ mode: mode === 'plan' ? 'ask' : mode, execution: { state: 'queued' } });
+        await addChild(mode);
+        const hydrate = vi.spyOn(processes, 'getProcess');
+        expect((await read()).mode).toBe(mode === 'plan' ? 'ask' : mode);
+        expect(hydrate.mock.calls.map(call => call[0])).toEqual([owner.processId]);
+    });
+    it('batch-projects different linked job modes with one query and no per-job hydration', async () => {
+        const itemId = link(); await addChild('ask');
+        await processes.addProcess({ id: 'queue_second', type: 'clarification', status: 'completed',
+            startTime: new Date(), metadata: { workspaceId: 'ws-child', mode: 'autopilot' } });
+        todos.linkJob(owner, itemId, { ...job, processId: 'queue_second', workspaceId: 'ws-child' });
+        const projection = vi.spyOn(todos, 'getJobModeProjections');
+        const hydration = vi.spyOn(processes, 'getProcess');
+        expect((await service.list(owner)).items[0].jobs.map(job => job.mode)).toEqual(['ask', 'autopilot']);
+        expect(projection).toHaveBeenCalledOnce();
+        expect(hydration.mock.calls.map(call => call[0])).toEqual([owner.processId]);
+    });
+    it('uses persisted follow-up mode over original admission and preserves revisions after reload', async () => {
+        const itemId = link(); await addChild('ask');
+        expect((await read()).mode).toBe('ask');
+        const { item: second } = todos.create(owner, { title: 'Same conversation' }, { actor: 'user' });
+        todos.linkJob(owner, second.id, { ...job, workspaceId: 'ws-child' });
+        const before = todos.get(owner);
+        await processes.updateProcess('queue_child', { metadata: { workspaceId: 'ws-child', mode: 'autopilot' } });
+        service.notifyJobModeChanged('queue_child', 'ws-child');
+        expect(onChange).toHaveBeenCalledOnce();
+        expect(onChange).toHaveBeenCalledWith({ owner, item: before.items[0], ledgerRevision: before.revision });
+        expect((await read()).mode).toBe('autopilot');
+        todos = new SentinelTodoStore(processes.getDatabase());
+        service = new SentinelTodoService({ todos, store: processes });
+        expect((await read()).mode).toBe('autopilot');
+        expect(todos.get(owner)).toEqual(before);
+        expect(todos.get(owner).items[0].id).toBe(itemId);
+    });
+    it.each([undefined, 'future-mode', 'sentinel'])('keeps persisted unknown/unsupported %s honest despite a known admission mode', async mode => {
+        link(); queueMode = 'autopilot'; await addChild(mode);
+        expect((await read()).mode).toBeUndefined();
+    });
+    it('rejects wrong workspace processes and queues, and ignores expired admission metadata', async () => {
+        link(); queueWorkspace = 'wrong'; expect((await read()).mode).toBeUndefined();
+        queueWorkspace = 'ws-child'; queueStatus = 'completed'; expect((await read()).mode).toBeUndefined();
+        queueStatus = 'running'; queueMode = 'autopilot'; await addChild('ask', 'wrong');
+        expect((await read()).mode).toBeUndefined();
+        service.notifyJobModeChanged('queue_child', 'wrong'); expect(onChange).not.toHaveBeenCalled();
+    });
+    it('does not borrow local mode for a remote collision; Ralph session identity survives remote ownership', async () => {
+        link({ kind: 'remote', serverId: 'srv-2' }); await addChild('autopilot');
+        expect(await read()).toMatchObject({ execution: { state: 'unavailable' } });
+        expect((await read()).mode).toBeUndefined();
+        service.notifyJobModeChanged('queue_child', 'ws-child'); expect(onChange).not.toHaveBeenCalled();
+        const { item } = todos.create(owner, { title: 'Ralph' }, { actor: 'user' });
+        todos.linkJob(owner, item.id, { ...job, kind: 'remote', serverId: 'srv-2', sessionId: 'session-1' });
+        expect((await service.list(owner)).items[1].jobs[0].mode).toBe('ralph');
+    });
+    it('supports group parents and member execution workspaces without inventing a manual item mode', async () => {
+        const groupOwner = { workspaceId: 'group-a', processId: 'queue_group' };
+        await processes.addProcess({ id: groupOwner.processId, type: 'clarification', status: 'completed',
+            startTime: new Date(), metadata: { workspaceId: groupOwner.workspaceId, mode: 'sentinel' } });
+        const { item } = todos.create(groupOwner, { title: 'Group feature' }, { actor: 'user' });
+        todos.linkJob(groupOwner, item.id, { ...job, workspaceId: 'ws-child' });
+        todos.create(groupOwner, { title: 'Manual', type: 'manual' }, { actor: 'user' });
+        await addChild('autopilot');
+        const ledger = await service.list(groupOwner);
+        expect(ledger.items[0].jobs[0].mode).toBe('autopilot'); expect(ledger.items[1].jobs).toEqual([]);
+        service.notifyJobModeChanged('queue_child', 'ws-child');
+        expect(onChange.mock.calls[0][0].owner).toEqual(groupOwner);
+    });
+});

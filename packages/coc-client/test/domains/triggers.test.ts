@@ -28,6 +28,23 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
 }
 
 describe('TriggersClient', () => {
+  it('carries explicit scope upgrades and serializes manual repairs on the owning server route', async () => {
+    const trigger = makeTrigger();
+    const adapter = createMockAdapter({ trigger });
+    const client = new TriggersClient(adapter);
+    const request: CreateTriggerRequest = { processId: 'owner', event: {
+      type: 'condition-monitor', monitor: 'ci-failure', originId: 'ado-origin', prId: '42',
+      repairScope: 'ci-and-conflicts',
+    } };
+    await client.create('remote/clone', request);
+    await client.repairCi('remote/clone', { ...request, event: { ...request.event, repairScope: 'ci' } });
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/remote%2Fclone/triggers', options: { method: 'POST', body: request } },
+      { path: '/workspaces/remote%2Fclone/triggers/repair', options: {
+        method: 'POST', body: { event: { repairScope: 'ci' } },
+      } },
+    ]);
+  });
   it('calls create, list, get, status, and delete endpoints with correct paths', async () => {
     const trigger = makeTrigger();
     const adapter = createMockAdapter({ trigger, triggers: [trigger], deleted: true });

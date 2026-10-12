@@ -13,10 +13,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { createTriggerInfrastructure } from '../../../src/server/infrastructure/trigger-infrastructure';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
+import { PullRequestChatBindingStore } from '../../../src/server/processes/pull-request-chat-binding-store';
 import type { CiChecksFetcher, CiPrChecksSnapshot } from '../../../src/server/triggers/ci-failure-evaluator';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
 
@@ -51,12 +52,8 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
 }
 
 function makeQueueFacade() {
-    return {
-        enqueue: vi.fn(),
-        getTask: vi.fn(),
-        getQueued: vi.fn().mockReturnValue([]),
-        getRunning: vi.fn().mockReturnValue([]),
-    } as any;
+    const queue = new TaskQueueManager();
+    return Object.assign(queue, { enqueue: vi.fn(queue.enqueue.bind(queue)) });
 }
 
 function makeFetcher(snapshot: CiPrChecksSnapshot): CiChecksFetcher & { mock: ReturnType<typeof vi.fn> } {
@@ -69,8 +66,11 @@ function makeFetcher(snapshot: CiPrChecksSnapshot): CiChecksFetcher & { mock: Re
 describe('createTriggerInfrastructure', () => {
     let store: SqliteProcessStore;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         store = new SqliteProcessStore({ dbPath: ':memory:' });
+        await store.addProcess({ id: 'proc_a', type: 'chat', status: 'completed',
+            promptPreview: 'PR owner', startTime: new Date(BASE), metadata: { workspaceId: 'ws_a', mode: 'autopilot' } });
+        new PullRequestChatBindingStore(store.getDatabase()).bind('origin_1', '42', 'proc_a');
         vi.useFakeTimers();
         vi.setSystemTime(BASE);
     });
@@ -81,10 +81,12 @@ describe('createTriggerInfrastructure', () => {
     });
 
     async function build(fetcher: CiChecksFetcher) {
+        const queueFacade = makeQueueFacade();
         return createTriggerInfrastructure({
             dataDir: '/tmp/coc-trigger-infra-test',
-            queueFacade: makeQueueFacade(),
-            deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn() },
+            queueFacade,
+            deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn(),
+                enqueue: async input => queueFacade.enqueue(input), getTask: id => queueFacade.getTask(id) },
             store,
             emit: vi.fn(),
             resolveWorkspaceId: async () => 'ws_a',
@@ -129,7 +131,8 @@ describe('createTriggerInfrastructure', () => {
         const infra = await createTriggerInfrastructure({
             dataDir: '/tmp/coc-trigger-infra-test',
             queueFacade,
-            deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn() },
+            deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn(),
+                enqueue: async input => queueFacade.enqueue(input), getTask: id => queueFacade.getTask(id) },
             store,
             emit: vi.fn(),
             resolveWorkspaceId: async () => 'ws_a',
@@ -145,7 +148,8 @@ describe('createTriggerInfrastructure', () => {
         expect(fetcher.mock).toHaveBeenCalledWith({ workspaceId: 'ws_a', originId: 'origin_1', prId: '42' });
         expect(queueFacade.enqueue).toHaveBeenCalledTimes(1);
         const payload = queueFacade.enqueue.mock.calls[0][0].payload;
-        expect(payload.context).toEqual({ triggerId: 'trigger_fire', source: 'trigger' });
+        expect(payload.context).toMatchObject({ triggerId: 'trigger_fire', source: 'trigger',
+            deliveryId: expect.any(String) });
         expect(payload.mode).toBe('autopilot');
         expect(payload.prompt).toContain('#42');
 
@@ -178,5 +182,25 @@ describe('createTriggerInfrastructure', () => {
 
         infra.dispose();
         expect(infra.timerRegistry.has('trigger_d')).toBe(false);
+    });
+
+    it('reconciles a completed durable PR repair after restart without repeating delivery', async () => {
+        const first = await build(makeFetcher({ prStatus: 'open', prNumber: 42, checks: [] }));
+        const event = { ...makeTrigger().event, repairDelivery: {
+            id: 'repair-1', prompt: 'Resolve conflict', state: 'admitted' as const, attempts: 1,
+        } };
+        first.triggerStore.insert(makeTrigger({ id: 'repair-monitor', inFlight: true, event }));
+        await store.appendConversationTurn('proc_a', turnIndex => ({
+            role: 'user', turnIndex, content: 'Resolve conflict', timestamp: new Date(BASE), timeline: [],
+            turnSource: { source: 'trigger', triggerId: 'repair-monitor', deliveryId: 'repair-1' },
+        }));
+        await store.updateProcess('proc_a', { status: 'completed' });
+        first.dispose();
+        const restored = await build(makeFetcher({ prStatus: 'open', prNumber: 42, checks: [] }));
+        try {
+            expect(restored.triggerStore.getById('repair-monitor')).toMatchObject({ inFlight: false, event: {
+                repairStatus: expect.stringContaining('fresh CI'),
+            } });
+        } finally { restored.dispose(); }
     });
 });

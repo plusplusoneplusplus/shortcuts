@@ -111,12 +111,35 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
 
             let trigger: Trigger;
             try {
-                trigger = await createTrigger(ctx, workspaceId, body);
+                trigger = await createTrigger(ctx, workspaceId, body, true);
             } catch (err) {
                 return sendError(res, err instanceof CreateTriggerError ? err.statusCode : 500,
                     err instanceof Error ? err.message : String(err));
             }
             sendJSON(res, 201, { trigger: serializeTrigger(trigger) });
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/repair$/,
+        handler: async (req, res, match) => {
+            const workspaceId = decodeURIComponent(match![1]);
+            const body = await parseBodyOrReject(req, res);
+            if (!body) return;
+            // Manual CI repair does not grant conflict authority or opt into polling.
+            const event = body.event;
+            if (!event || typeof event !== 'object' || Array.isArray(event)) return sendError(res, 400, 'event is required');
+            try {
+                const trigger = await createTrigger(ctx, workspaceId, {
+                    ...body, event: { ...event, repairScope: 'ci' },
+                }, true, false);
+                await manager.repairNow(trigger.id);
+                sendJSON(res, 200, { trigger: serializeTrigger(store.getById(trigger.id) ?? trigger) });
+            } catch (error) {
+                sendError(res, error instanceof CreateTriggerError ? error.statusCode : 409,
+                    error instanceof Error ? error.message : String(error));
+            }
         },
     });
 
@@ -181,6 +204,7 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
             if (trigger.binding) {
                 return sendError(res, 409, 'Use the owner-scoped Sentinel To-do trigger API');
             }
+            trigger.revision += 1;
 
             if (target === 'paused') {
                 manager.disarm(triggerId);
@@ -205,13 +229,11 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
                     return sendError(res, 400, 'Trigger has expired and cannot be resumed');
                 }
                 trigger.status = 'active';
-                trigger.inFlight = false;
                 trigger.nextTickAt = new Date(now() + getPollInterval(trigger.event)).toISOString();
                 store.update(trigger);
                 manager.arm(trigger);
                 safeEmit(emit, { type: 'trigger-updated', trigger });
             }
-
             sendJSON(res, 200, { trigger: serializeTrigger(trigger) });
         },
     });
@@ -236,8 +258,11 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
 
             manager.disarm(triggerId);
             trigger.status = 'disarmed';
+            trigger.revision += 1;
             trigger.nextTickAt = null;
-            store.delete(triggerId);
+            // Keep the writer receipt until a queued/running repair completes.
+            if (trigger.inFlight) store.update(trigger);
+            else store.delete(triggerId);
             safeEmit(emit, { type: 'trigger-disarmed', trigger });
 
             sendJSON(res, 200, { deleted: true, trigger: serializeTrigger(trigger) });

@@ -126,15 +126,21 @@ means the PR exists but its chat binding was not written. Auto-merge warnings do
 not undo creation. Before retrying uncertain creation, inspect branches and PR
 state in the owning workspace to avoid duplicate submissions.
 
-`autoFix: true` arms a workspace-scoped `ci-failure` monitor after the PR binding
-succeeds, using its canonical origin and the calling conversation. It requires
-`triggers.enabled`; omitted/false leaves existing monitors unchanged. The shared
-`triggers/create-trigger-service.ts` validates ownership, persists, schedules and
-broadcasts creation for REST and tools. Tool retries reuse active monitors or resume
-paused monitors without resetting CI history or retry limits. Results include
-`autoFix: { requested, enabled, triggerId?, warning? }`; arming failures preserve PR
-success and report a warning. `getTriggerInfra().createTrigger` reaches the tool
-through the late-bound executor runtime.
+`autoFix: true` explicitly authorizes `ci-and-conflicts` repairs in the PR-bound
+owner conversation, upgrading a matching CI-only monitor in place. Missing/`ci`
+scope authorizes CI only; omitted/false tool arguments preserve existing authority.
+The shared `triggers/create-trigger-service.ts` validates ownership and reuses
+active/paused monitors without resetting repair history. Arming requires
+`triggers.enabled`; failures preserve PR success with a warning. Results include
+`autoFix: { requested, enabled, scope?, triggerId?, warning? }`.
+
+The same `ci-failure` monitor polls authoritative merge previews and current-head
+checks. Conflict identity includes provider/host/repository/PR and head/base SHAs;
+unknown previews wait, policies remain blockers, and terminal PRs stop. Database
+writer admission and durable owner-chat delivery serialize CI/conflict/manual
+repairs. Delivery retries reuse their receipt with backoff; ambiguous resolutions
+and exhausted per-tuple/cross-head budgets require human action. Conflict prompts
+require isolated existing-PR worktrees and forbid submission or policy bypasses.
 
 ### send_to_conversation
 

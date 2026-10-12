@@ -249,6 +249,7 @@ vi.mock('../../../../src/server/spa/client/react/layout/DockedStatusFooter', () 
 
 import { RepoChatTab } from '../../../../src/server/spa/client/react/features/chat/RepoChatTab';
 import { RailControlsContext } from '../../../../src/server/spa/client/react/features/repo-detail/RailHoverPreview';
+import { RailJobOpenerContext, type RailJobOpener } from '../../../../src/server/spa/client/react/features/repo-detail/RailJobStatuses';
 
 // ── Test helpers ───────────────────────────────────────────────────────
 
@@ -2677,6 +2678,80 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         });
         await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
         expect(document.querySelector('[data-testid="split-workspace-left-sentinel"]')).toBeNull();
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// COLLAPSED-RAIL RUNNING/QUEUED OPEN JOB
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab: collapsed-rail Open job opener', () => {
+    let hosts: HTMLElement[] = [];
+    function makeHost(): HTMLElement {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        hosts.push(host);
+        return host;
+    }
+    afterEach(() => {
+        for (const host of hosts) host.remove();
+        hosts = [];
+    });
+
+    function SelectionProbe({ workspaceId, onSelection }: { workspaceId: string; onSelection: (id: string | null) => void }) {
+        const { state } = useQueue();
+        onSelection(state.selectedTaskIdByRepo[workspaceId] ?? null);
+        return null;
+    }
+
+    async function renderWithOpener(workspaceId: string, sourceSelectionId?: string) {
+        const state: { opener: RailJobOpener | null; selected: string | null } = { opener: null, selected: null };
+        const setOpener = (next: RailJobOpener | null | ((prev: RailJobOpener | null) => RailJobOpener | null)) => {
+            state.opener = typeof next === 'function' ? next(state.opener) : next;
+        };
+        const onActivateDetail = vi.fn();
+        let result: ReturnType<typeof renderWithProviders> | undefined;
+        await act(async () => {
+            result = renderWithProviders(React.createElement(RailJobOpenerContext.Provider, { value: setOpener as any },
+                React.createElement(RepoChatTab, {
+                    workspaceId,
+                    sourceSelectionId,
+                    layout: 'split-workspace',
+                    detailContainer: makeHost(),
+                    detailActive: true,
+                    onActivateDetail,
+                    railShortcutContainer: makeHost(),
+                }),
+                React.createElement(SelectionProbe, { workspaceId, onSelection: id => { state.selected = id; } }),
+            ));
+        });
+        await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
+        return { state, onActivateDetail, result: result! };
+    }
+
+    it('selects a remote clone job in the chat tab, not just the clone-keyed URL', async () => {
+        const selectionId = buildRemoteCloneKey('box-b', 'ws-remote');
+        setupFetchMock({ running: [makeRunningTask('job-1', { displayName: 'Repair PR' })] });
+        const { state, onActivateDetail } = await renderWithOpener('ws-remote', selectionId);
+        expect(state.opener?.routeId).toBe(selectionId);
+
+        await act(async () => { state.opener!.open({ id: 'job-1', type: 'chat' }); });
+
+        expect(onActivateDetail).toHaveBeenCalled();
+        expect(state.selected).toBe('queue_job-1');
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/activity/queue_job-1`);
+    });
+
+    it('keeps a queued job\'s process id and withdraws the opener on unmount', async () => {
+        setupFetchMock({ queued: [makeQueuedTask('q-9', { processId: 'queue_q-9' })] });
+        const { state, result } = await renderWithOpener('ws-1');
+        expect(state.opener?.routeId).toBe('ws-1');
+
+        await act(async () => { state.opener!.open({ id: 'q-9', processId: 'queue_q-9', type: 'chat' }); });
+        expect(state.selected).toBe('queue_q-9');
+
+        result.unmount();
+        expect(state.opener).toBeNull();
     });
 });
 

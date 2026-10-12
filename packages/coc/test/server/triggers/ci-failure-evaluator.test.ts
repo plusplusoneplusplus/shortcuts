@@ -87,6 +87,124 @@ const failingAtSha = (headSha: string): CiPrChecksSnapshot => ({
 // ============================================================================
 
 describe('CiFailureEvaluator', () => {
+    describe('authorized conflict repairs', () => {
+        const prKey = '["github","github.com","example/repo",42]';
+        const conflict = (extra: Partial<CiPrChecksSnapshot> = {}): CiPrChecksSnapshot => ({
+            prStatus: 'open', prNumber: 42, prKey, headRef: 'feature', headSha: 'head',
+            baseSha: 'base', baseRef: 'main', checksHeadSha: 'head',
+            mergeability: { state: 'conflicting' },
+            checks: [{ id: 'ci', name: 'CI', status: 'success' }], ...extra,
+        });
+        const trigger = (extra: Partial<ConditionMonitorEvent> = {}, overrides: Partial<Trigger> = {}) =>
+            makeTrigger({}, overrides, { repairScope: 'ci-and-conflicts', ...extra });
+        const key = JSON.stringify([prKey, 'head', 'base']);
+
+        it.each(['success', 'pending', 'running', 'failure'] as const)(
+            'repairs a confirmed conflict even when CI is %s, with one conflict-first prompt', async status => {
+                const outcome = await new CiFailureEvaluator(queuedFetcher([conflict({
+                    checks: [{ id: 'ci', name: 'CI', status }],
+                })])).evaluate(trigger());
+                expect(outcome.fire).toBe(true);
+                expect(outcome.actionPrompt).toContain('confirmed merge conflict');
+                expect(outcome.event).toMatchObject({ conflictAttempts: { [key]: 1 }, conflictAwaitingHead: 'head' });
+            });
+
+        it.each([undefined, 'ci'] as const)('preserves %s CI-only authority with green conflicting PRs', async repairScope => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict()])).evaluate(trigger({ repairScope }));
+            expect(outcome.fire).toBe(false);
+            expect(outcome.event).not.toHaveProperty('conflictAttempts');
+        });
+
+        it.each(['unknown', 'blocked'] as const)('never repairs %s mergeability as a conflict', async state => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict({
+                mergeability: { state, blockedReason: 'Required approval' },
+            })])).evaluate(trigger());
+            expect(outcome.fire).toBe(false);
+            expect(outcome.event).toMatchObject({ repairStatus: state === 'blocked' ? 'Required approval' : 'Waiting for provider mergeability' });
+        });
+
+        it('detects a base-only change and deduplicates the exact PR/head/base tuple', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([conflict(), conflict(), conflict({ baseSha: 'base-2' })]));
+            const first = await evaluator.evaluate(trigger());
+            const duplicate = await evaluator.evaluate(trigger(first.event as ConditionMonitorEvent));
+            expect(duplicate.fire).toBe(false);
+            expect(duplicate.event).toMatchObject({ repairStatus: expect.stringContaining('ambiguous') });
+            const changed = await evaluator.evaluate(trigger(duplicate.event as ConditionMonitorEvent));
+            expect(changed.fire).toBe(true);
+            expect(changed.event).toMatchObject({ conflictAttempts: {
+                [key]: 1, [JSON.stringify([prKey, 'head', 'base-2'])]: 1,
+            } });
+        });
+
+        it('does not consume attempts or CI transitions while a repair is in flight', async () => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict()])).evaluate(trigger({}, { inFlight: true }));
+            expect(outcome.fire).toBe(false);
+            expect(outcome.event).toMatchObject({ lastSeenChecks: {}, repairStatus: expect.stringContaining('in flight') });
+            expect(outcome.event).not.toHaveProperty('conflictAttempts');
+        });
+
+        it('enforces the per-PR/head/base attempt cap', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([conflict()]));
+            const capped = await evaluator.evaluate(trigger({ conflictAttempts: { [key]: 2 } }));
+            expect(capped.fire).toBe(false);
+            expect(capped.event).toMatchObject({ repairStatus: expect.stringContaining('exhausted') });
+        });
+
+        it('bounds new-head repair/push chains and reports exhaustion without repeated messages', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([conflict()]));
+            const attempts = { a: 1, b: 1, c: 1, d: 1 };
+            const first = await evaluator.evaluate(trigger({ conflictAttempts: attempts }));
+            const second = await evaluator.evaluate(trigger(first.event as ConditionMonitorEvent));
+            expect(first.fire).toBe(false);
+            expect(first.changed).toBe(true);
+            expect(second.changed).toBe(false);
+            expect(second.fire).toBe(false);
+        });
+
+        it('waits for fresh CI after a pushed head instead of accepting stale green checks', async () => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict({
+                headSha: 'new-head', checksHeadSha: 'old-head', mergeability: { state: 'mergeable' },
+            })])).evaluate(trigger({ conflictAwaitingHead: 'old-head' }));
+            expect(outcome.fire).toBe(false);
+            expect(outcome.event).toMatchObject({ repairStatus: 'Waiting for fresh current-head CI' });
+        });
+
+        it('detects failures on a fresh head even if the provider reuses check IDs', async () => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict({
+                headSha: 'new', checksHeadSha: 'new', mergeability: { state: 'mergeable' },
+                checks: [{ id: 'ci', name: 'CI', status: 'failure' }],
+            })])).evaluate(trigger({ attemptSha: 'old', lastSeenChecks: { ci: 'failure' } }));
+            expect(outcome.fire).toBe(true);
+            expect(outcome.actionPrompt).toContain('CI for PR');
+        });
+
+        it('does not carry old-head failures through unknown merge computation onto a fresh head', async () => {
+            const evaluator = new CiFailureEvaluator(queuedFetcher([
+                conflict({ headSha: 'new', checksHeadSha: undefined, mergeability: { state: 'unknown' }, checks: [] }),
+                conflict({ headSha: 'new', checksHeadSha: 'new', mergeability: { state: 'mergeable' },
+                    checks: [{ id: 'ci', name: 'CI', status: 'failure' }] }),
+            ]));
+            const waiting = await evaluator.evaluate(trigger({ attemptSha: 'old', lastSeenChecks: { ci: 'failure' } }));
+            expect(waiting.fire).toBe(false);
+            const fresh = await evaluator.evaluate(trigger(waiting.event as ConditionMonitorEvent));
+            expect(fresh.fire).toBe(true);
+            expect(fresh.repairKind).toBe('ci');
+        });
+
+        it('escalates a failed/ambiguous resolution without trying another push', async () => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict()])).evaluate(trigger({
+                conflictAttemptKey: key, conflictBlocked: 'Ambiguous intended behavior; human action required',
+            }));
+            expect(outcome.fire).toBe(false);
+            expect(outcome.event).toMatchObject({ repairStatus: expect.stringContaining('Ambiguous') });
+        });
+
+        it.each(['merged', 'closed'] as const)('stops on %s even with conflicting stale preview', async prStatus => {
+            const outcome = await new CiFailureEvaluator(queuedFetcher([conflict({ prStatus })])).evaluate(trigger());
+            expect(outcome.fire).toBe(false);
+            expect(outcome.autoDisarm).toMatchObject({ status: 'disarmed' });
+        });
+    });
     it('fires exactly once on a green → failure transition', async () => {
         const fetcher = queuedFetcher([
             openWith([{ id: 'build', name: 'build', status: 'failure', detailsUrl: 'https://ci/build' }]),

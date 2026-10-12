@@ -126,6 +126,34 @@ function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
 // ── tests ─────────────────────────────────────────────────────
 
 describe('GitHubPullRequestsAdapter', () => {
+    it.each([
+        [{ mergeable: false, auto_merge: null }, 'conflicting'],
+        [{ mergeable: null, mergeable_state: 'unknown' }, 'unknown'],
+        [{ mergeable: true, mergeable_state: 'blocked' }, 'blocked'],
+        [{ mergeable: true, mergeable_state: 'clean' }, 'mergeable'],
+    ] as const)('reports authoritative mergeability independently of auto-merge: %s', async (extra, state) => {
+        const octokit = makeMockOctokit();
+        vi.mocked(octokit.pulls.get).mockResolvedValueOnce({ data: { ...mockGitHubPr, ...extra } } as any);
+        const adapter = new GitHubPullRequestsAdapter(octokit, 'owner', 'repo');
+        expect((await adapter.getPullRequest('owner/repo', 42)).mergeability?.state).toBe(state);
+    });
+
+    it('pins checks to the requested head and surfaces authoritative read permission failures', async () => {
+        const octokit = makeMockOctokit();
+        const adapter = new GitHubPullRequestsAdapter(octokit, 'owner', 'repo');
+        await adapter.getChecks('owner/repo', 42, 'new-head');
+        expect(octokit.pulls.get).not.toHaveBeenCalled();
+        expect(octokit.checks.listForRef).toHaveBeenCalledWith(expect.objectContaining({ ref: 'new-head' }));
+        expect(octokit.repos.getCombinedStatusForRef).toHaveBeenCalledWith(expect.objectContaining({ ref: 'new-head' }));
+        vi.mocked(octokit.checks.listForRef).mockRejectedValueOnce(new Error('Permission denied'));
+        await expect(adapter.getChecks('owner/repo', 42, 'new-head')).rejects.toThrow('Permission denied');
+    });
+
+    it('treats a closed draft as terminal rather than waiting forever', async () => {
+        const octokit = makeMockOctokit();
+        vi.mocked(octokit.pulls.get).mockResolvedValueOnce({ data: { ...mockGitHubPr, state: 'closed', draft: true } } as any);
+        expect((await new GitHubPullRequestsAdapter(octokit, 'owner', 'repo').getPullRequest('owner/repo', 42)).status).toBe('closed');
+    });
     let octokit: Octokit;
     let adapter: GitHubPullRequestsAdapter;
 

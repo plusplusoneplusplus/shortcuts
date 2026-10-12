@@ -38,8 +38,9 @@ export interface QueueActionExecutorDeps {
     /** Resolve processId → workspaceId for multi-repo routing. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     /** Shared serialized, durable admission for one-shot Sentinel wakes. */
-    messageDelivery?: Pick<ProcessMessageDeliveryService, 'deliverOnce'>;
+    messageDelivery?: Pick<ProcessMessageDeliveryService, 'deliverOnce'> & Partial<Pick<ProcessMessageDeliveryService, 'deliverPrRepairOnce'>>;
     recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
+    validatePrOwner?: (workspaceId: string, processId: string, originId: string, prId: string) => Promise<void>;
 }
 
 /** Process statuses that mean a turn is in flight (buffer instead of enqueue). */
@@ -62,6 +63,26 @@ export class QueueActionExecutor implements ActionExecutor {
         }
 
         const processId = action.processId;
+        if (!trigger.binding && trigger.event.monitor === 'ci-failure') {
+            if (await this.deps.resolveWorkspaceId(processId) !== trigger.workspaceId) {
+                throw new Error('PR repair owner workspace is missing or changed');
+            }
+            await this.deps.validatePrOwner?.(trigger.workspaceId, processId, trigger.event.originId, trigger.event.prId);
+            if (trigger.event.repairScope === 'ci-and-conflicts'
+                && (!this.deps.messageDelivery?.deliverPrRepairOnce || !trigger.event.repairDelivery)) {
+                throw new Error('Conflict repair requires durable owner-scoped admission');
+            }
+            if (this.deps.messageDelivery?.deliverPrRepairOnce && trigger.event.repairDelivery) {
+                const result = await this.deps.messageDelivery.deliverPrRepairOnce(
+                    trigger.workspaceId, processId, trigger.event.repairDelivery.id, {
+                        content: prompt, displayContent: prompt,
+                        turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: trigger.event.repairDelivery.id },
+                    });
+                emitDeliveryEvents(this.deps.processStore, processId, result.events);
+                if (result.path === 'buffered') await this.deps.recoverPendingMessages?.(trigger.workspaceId, processId);
+                return;
+            }
+        }
         if (trigger.binding) {
             if (!this.deps.messageDelivery || !trigger.delivery || processId !== trigger.processId) {
                 throw new Error('Sentinel wake requires durable message admission');

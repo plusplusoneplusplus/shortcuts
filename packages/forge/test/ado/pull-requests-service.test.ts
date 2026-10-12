@@ -21,6 +21,7 @@ function makeMockGitApi(overrides: Record<string, unknown> = {}) {
         getPullRequestCommits: vi.fn().mockResolvedValue([]),
         getPullRequestStatuses: vi.fn().mockResolvedValue([]),
         getStatuses: vi.fn().mockResolvedValue([]),
+        getRefs: vi.fn().mockResolvedValue([]),
         getItemText: vi.fn().mockResolvedValue(null),
         ...overrides,
     };
@@ -46,6 +47,18 @@ describe('AdoPullRequestsService', () => {
 
     afterEach(() => {
         setLogger(nullLogger);
+    });
+
+    it('reads an exact PR branch tip and rejects missing refs and permission failures', async () => {
+        gitApi.getRefs.mockResolvedValue([
+            { name: 'refs/heads/feature/child', objectId: 'not-the-branch' },
+            { name: 'refs/heads/feature', objectId: 'tip' },
+        ]);
+        expect(await service.getRefTip('repo', 'refs/heads/feature', 'project')).toBe('tip');
+        expect(gitApi.getRefs).toHaveBeenCalledWith('repo', 'project', 'heads/feature');
+        await expect(service.getRefTip('repo', 'refs/heads/missing', 'project')).rejects.toThrow('unavailable');
+        gitApi.getRefs.mockRejectedValueOnce(new Error('Permission denied'));
+        await expect(service.getRefTip('repo', 'refs/heads/feature', 'project')).rejects.toThrow('Permission denied');
     });
 
     // ── listPullRequests ─────────────────────────────────────

@@ -202,14 +202,41 @@ export interface AgentProviderQuotaIndicatorProps {
      *  and is left-aligned to avoid overflowing off-screen. */
     placement?: 'down' | 'up';
     routingTarget?: AgentProvidersQuotaRoutingTarget;
+    /**
+     * Collapsed-rail node for a second gauge trigger. Both triggers share this
+     * indicator's quota state and dropdown; the rail one opens it to the right.
+     */
+    railContainer?: HTMLElement | null;
 }
 
-export function agentProviderQuotaIndicator({ placement = 'down', routingTarget }: AgentProviderQuotaIndicatorProps = {}) {
+export function agentProviderQuotaIndicator({ placement = 'down', routingTarget, railContainer }: AgentProviderQuotaIndicatorProps = {}) {
     const [open, setOpen] = useState(false);
+    const [anchor, setAnchor] = useState<'main' | 'rail'>('main');
     const { quotaData, loading, refreshing, error, refresh: refreshQuota } = useAgentProvidersQuota(routingTarget);
     const buttonRef = useRef<HTMLButtonElement>(null);
+    const railButtonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: buttonRef, panelRef });
+    const fromRail = anchor === 'rail' && railContainer != null;
+    const panelPlacement = fromRail ? 'right' : placement;
+    const panelPos = useAnchoredPanelPosition({
+        open,
+        placement: panelPlacement,
+        triggerRef: fromRail ? railButtonRef : buttonRef,
+        panelRef,
+        anchorKey: anchor,
+    });
+    const toggle = (from: 'main' | 'rail') => {
+        setAnchor(from);
+        setOpen(prev => !prev || anchor !== from);
+    };
+
+    // Expanding the sidebar removes the rail trigger; drop a panel anchored to it.
+    useEffect(() => {
+        if (anchor === 'rail' && !railContainer) {
+            setOpen(false);
+            setAnchor('main');
+        }
+    }, [anchor, railContainer]);
 
     useEffect(() => {
         if (!open) {
@@ -229,9 +256,11 @@ export function agentProviderQuotaIndicator({ placement = 'down', routingTarget 
             return;
         }
         const handleClick = (event: MouseEvent) => {
+            const target = event.target as Node;
             if (
-                panelRef.current && !panelRef.current.contains(event.target as Node) &&
-                buttonRef.current && !buttonRef.current.contains(event.target as Node)
+                panelRef.current && !panelRef.current.contains(target) &&
+                !buttonRef.current?.contains(target) &&
+                !railButtonRef.current?.contains(target)
             ) {
                 setOpen(false);
             }
@@ -273,7 +302,7 @@ export function agentProviderQuotaIndicator({ placement = 'down', routingTarget 
                 ref={buttonRef}
                 className={cn(
                     'h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target relative',
-                    open
+                    open && !fromRail
                         ? 'bg-[#0078d4] text-white'
                         : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]',
                 )}
@@ -282,18 +311,44 @@ export function agentProviderQuotaIndicator({ placement = 'down', routingTarget 
                 data-testid="agent-provider-quota-indicator"
                 data-state={state}
                 data-used-percent={usedPercent}
-                onClick={() => setOpen(prev => !prev)}
+                onClick={() => toggle('main')}
             >
                 {renderQuotaPie({ usedPercent, remainingPercent, testId: 'agent-provider-quota-gauge' })}
             </button>
+
+            {railContainer && ReactDOM.createPortal(
+                <div className="hidden md:block" data-testid="rail-agent-provider-quota-container">
+                    <button
+                        ref={railButtonRef}
+                        type="button"
+                        className={cn(
+                            'w-7 h-7 flex items-center justify-center rounded',
+                            open && fromRail
+                                ? 'bg-[#0078d4] text-white'
+                                : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]',
+                        )}
+                        aria-label="Agent provider quota"
+                        aria-haspopup="dialog"
+                        aria-expanded={open && fromRail}
+                        title={title}
+                        data-testid="rail-agent-provider-quota-indicator"
+                        data-state={state}
+                        data-used-percent={usedPercent}
+                        onClick={() => toggle('rail')}
+                    >
+                        {renderQuotaPie({ usedPercent, remainingPercent, testId: 'rail-agent-provider-quota-gauge' })}
+                    </button>
+                </div>,
+                railContainer,
+            )}
 
             {open && ReactDOM.createPortal(
                 <div
                     ref={panelRef}
                     className="fixed w-[360px] max-h-[440px] flex flex-col rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg z-[10002]"
-                    style={{ top: panelPos.top, left: panelPos.left }}
+                    style={{ top: panelPos.top, left: panelPos.left, maxHeight: panelPos.maxHeight, maxWidth: panelPos.maxWidth }}
                     data-testid="agent-provider-quota-panel"
-                    data-placement={placement}
+                    data-placement={panelPlacement}
                     role="dialog"
                     aria-label="Agent provider quota details"
                 >

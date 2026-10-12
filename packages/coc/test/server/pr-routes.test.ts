@@ -11,7 +11,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache, dedupePrFetch } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache, dedupePrFetch, fetchOriginPullRequestChecksHeadless } from '../../src/server/repos/pr-routes';
 import { addPullRequestCoworkerToRoster } from '../../src/server/repos/pr-coworker-roster-store';
 import type { Route } from '../../src/server/types';
 import { resolveCanonicalOriginId, type IPullRequestsService } from '@plusplusoneplusplus/forge';
@@ -270,6 +270,39 @@ afterEach(async () => {
 });
 
 // ── GET /api/origins/:originId/pull-requests ─────────────────────────────────────────
+
+describe('authoritative PR repair snapshots', () => {
+    const options = () => ({ dataDir, workspaceId: REPO_ID, originId: ORIGIN_ID, prId: '42' });
+    const pr = () => ({ ...mockPr, headSha: 'head', baseSha: 'base', mergeability: { state: 'conflicting' as const } });
+
+    it('polls mergeability even with green checks and pins them to the provider head', async () => {
+        mockSvc.getPullRequest.mockResolvedValue(pr());
+        mockSvc.getChecks.mockResolvedValue([{ ...mockCheck, status: 'success' }]);
+        const snapshot = await fetchOriginPullRequestChecksHeadless(options());
+        expect(snapshot).toMatchObject({ headSha: 'head', baseSha: 'base', checksHeadSha: 'head',
+            mergeability: { state: 'conflicting' }, prKey: '["github","github.com","org/repo",42]' });
+        expect(mockSvc.getChecks).toHaveBeenCalledWith(REPO_ID, '42', 'head');
+        expect(mockSvc.getPullRequest).toHaveBeenCalledWith(REPO_ID, '42', { freshRefs: true });
+    });
+
+    it.each(['headSha', 'baseSha'] as const)('discards stale green checks when %s changes during provider reads', async field => {
+        mockSvc.getPullRequest.mockResolvedValueOnce(pr()).mockResolvedValueOnce({ ...pr(), [field]: 'new' });
+        const snapshot = await fetchOriginPullRequestChecksHeadless(options());
+        expect(snapshot).toMatchObject({ checks: [], mergeability: { state: 'unknown' }, [field]: 'new' });
+        expect(snapshot.checksHeadSha).toBeUndefined();
+    });
+
+    it.each(['merged', 'closed'] as const)('stops reading checks when the PR is %s', async status => {
+        mockSvc.getPullRequest.mockResolvedValue({ ...pr(), status });
+        expect(await fetchOriginPullRequestChecksHeadless(options())).toMatchObject({ prStatus: status, checks: [] });
+        expect(mockSvc.getChecks).not.toHaveBeenCalled();
+    });
+
+    it('propagates provider permission blockers without interpreting them as conflicts', async () => {
+        mockSvc.getPullRequest.mockRejectedValue(new Error('Permission denied'));
+        await expect(fetchOriginPullRequestChecksHeadless(options())).rejects.toThrow('Permission denied');
+    });
+});
 
 describe('production PR Rust scope wiring', () => {
     it.each([

@@ -24,8 +24,8 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
 import { SentinelTodoOriginBar } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoOriginBar';
 import { useUnifiedPanelTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
-import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { EMPTY_UNIFIED_PANEL, activeTabId, visibleTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { EMPTY_UNIFIED_PANEL, activeTabId, visibleTabs, openTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { clearSentinelTodoChats, publishSentinelTodoChat } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import {
     SENTINEL_TODO_EXCURSION_MAX_TRAIL,
@@ -44,9 +44,13 @@ import {
     type SentinelTodoExcursion,
     type SentinelTodoExcursionOrigin,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
+import { sentinelTodoTabInput } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
+import { resolveDashboardRoute, buildRepoGroupChatHash } from '../../../src/server/spa/client/react/layout/dashboardRoutes';
+import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
+import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
-const OWNER = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'queue_sentinel' };
+const OWNER = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'chat-s' };
 const ORIGIN: SentinelTodoExcursionOrigin = {
     owner: OWNER, scopeWorkspaceId: 'ws-1', chatId: 'chat-s', title: 'Release coordination',
     href: '#repos/ws-1/chats/chat-s', linkKey: 'i1|ref:chat-a',
@@ -138,6 +142,50 @@ describe('excursion store', () => {
         expect(excursion.trail.map(entry => entry.chatId)).toEqual(['a']);
     });
 
+    it.each([
+        { owner: OWNER, href: '#repos/ws-2/chats/child', expected: ORIGIN.href, selection: 'ws-1' },
+        { owner: OWNER, href: '#repos/ws-1/activity/child', expected: '#repos/ws-1/activity/chat-s', selection: 'ws-1' },
+        { owner: OWNER, href: '#repos/ws-1/tasks/child', expected: '#repos/ws-1/tasks/chat-s', selection: 'ws-1' },
+        { owner: OWNER, href: '#repos/ws-1', expected: ORIGIN.href, selection: 'ws-1' },
+        { owner: { ...OWNER, ownerRoutingRef: 'remote:origin:ws-1' }, href: '#repos/remote%3Achild%3Aws-1/chats/child',
+            expected: '#repos/remote%3Aorigin%3Aws-1/chats/chat-s', selection: 'remote:origin:ws-1' },
+        { owner: { ...OWNER, ownerWorkspaceId: 'group-g', ownerRoutingRef: 'remote:origin:group-g' },
+            href: '#repos/ws-2/chats/child', expected: '#repos/remote%3Aorigin%3Agroup-g/chats/chat-s', selection: 'remote:origin:group-g' },
+    ])('returns the actual owner through the router: $expected', ({ owner, href, expected, selection }) => {
+        startSentinelTodoExcursion({ ...ORIGIN, owner, href });
+        const returnedHref = returnFromSentinelTodoExcursion()!;
+        expect(returnedHref).toBe(expected);
+        const { effects } = resolveDashboardRoute(returnedHref, {
+            queueState: {} as QueueContextState, selectedRepoId: 'ws-2', repoRouteState: {}, repoTabState: {}, isSchedulesInSlide: () => false,
+        });
+        expect(effects).toContainEqual({ kind: 'app', action: { type: 'SET_SELECTED_REPO', id: selection } });
+        expect(effects).toContainEqual({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: owner.processId, repoId: selection } });
+    });
+
+    it.each([null, 'server-a'])('preserves group member navigation on its owning server (%s)', serverId => {
+        const group = serverId ? buildRemoteCloneKey(serverId, 'group-g') : 'group-g';
+        const owner = { ...OWNER, ownerRoutingRef: serverId ? buildRemoteCloneKey(serverId, OWNER.ownerWorkspaceId) : null };
+        const href = buildRepoGroupChatHash(group, OWNER.ownerWorkspaceId, OWNER.processId);
+        startSentinelTodoExcursion({ ...ORIGIN, scopeWorkspaceId: group, owner, href });
+        expect(returnFromSentinelTodoExcursion()).toBe(href);
+    });
+
+    it.each(['#repos/ws-1/chats/chat-s?view=agents', '#repos/ws-1/tasks/chat-s'])('preserves a valid origin sub-view (%s)', href => {
+        startSentinelTodoExcursion({ ...ORIGIN, href });
+        expect(returnFromSentinelTodoExcursion()).toBe(href);
+    });
+
+    it.each(['#repos/ws-1/chats/child?view=agents', '#repos/%broken/chats/child', '#repos/remote%3Aother%3Aws-1/chats/chat-s'])('rejects another chat or server route (%s)', href => {
+        startSentinelTodoExcursion({ ...ORIGIN, href });
+        expect(returnFromSentinelTodoExcursion()).toBe(ORIGIN.href);
+    });
+
+    it('keeps an unavailable remote origin qualified without a local or child fallback', () => {
+        const owner = { ...OWNER, ownerRoutingRef: buildRemoteCloneKey('missing-server', 'ws-1') };
+        startSentinelTodoExcursion({ ...ORIGIN, owner, href: '#repos/ws-1/chats/child' });
+        expect(returnFromSentinelTodoExcursion()).toBe('#repos/remote%3Amissing-server%3Aws-1/chats/chat-s');
+    });
+
     it('returns the origin route, ends the excursion, and asks the origin list to refocus the link', () => {
         rememberSentinelTodoView(OWNER, { scrollTop: 40, expandedIds: ['i1'] });
         startSentinelTodoExcursion(ORIGIN);
@@ -164,6 +212,23 @@ describe('pinned To-do in the visited chat panel', () => {
         expect(getSentinelTodoExcursion()).toBeNull();
         expect(result.current.tabs).toEqual([]);
         expect(activeTabId(readUnifiedPanelState('ws-1'), 'chat-a')).toBeNull();
+    });
+
+    it('removes the pinned copy on return and restores the origin To-do selection', () => {
+        const originState = openTab(EMPTY_UNIFIED_PANEL, sentinelTodoTabInput(OWNER, ORIGIN.chatId));
+        writeUnifiedPanelState('ws-1', originState);
+        const { result, rerender } = renderHook(({ chatId }) => useUnifiedPanelTabs('ws-1', chatId), {
+            initialProps: { chatId: ORIGIN.chatId },
+        });
+        act(() => { startSentinelTodoExcursion(ORIGIN); visitSentinelTodoExcursionChat(stop('chat-a')); });
+        rerender({ chatId: 'chat-a' });
+        act(() => result.current.activate(result.current.pinnedId!));
+        expect(result.current.active?.label).toBe('To-do · Release coordination');
+        act(() => { returnFromSentinelTodoExcursion(); });
+        rerender({ chatId: ORIGIN.chatId });
+        expect(result.current.pinnedId).toBeNull();
+        expect(result.current.activeId).toBe(activeTabId(originState, ORIGIN.chatId));
+        expect(result.current.active).toMatchObject({ kind: 'todo', resourceId: OWNER.processId, chatId: ORIGIN.chatId });
     });
 
     it('adds nothing while the ledger flag is off', () => {
@@ -195,6 +260,24 @@ describe('UnifiedTodoTab links and remembered view', () => {
         const { link } = await renderOrigin();
         fireEvent.click(link, init);
         expect(getSentinelTodoExcursion()).toBeNull();
+    });
+
+    it('returns to the ledger owner when the URL already selects the child', async () => {
+        const { link, unmount } = await renderOrigin();
+        window.location.hash = '#repos/ws-1/chats/chat-a';
+        fireEvent.click(link, { button: 0 });
+        unmount();
+        render(<SentinelTodoOriginBar scopeWorkspaceId="ws-1" chatId="chat-a" title="Child" />);
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        const queueState = { selectedTaskId: 'chat-a', selectedTaskIdByRepo: { 'ws-1': 'chat-a' } } as QueueContextState;
+        const { effects } = resolveDashboardRoute(window.location.hash, {
+            queueState, selectedRepoId: 'ws-1', repoRouteState: {}, repoTabState: {}, isSchedulesInSlide: () => false,
+        });
+        const returned = effects.reduce((state, effect) => effect.kind === 'queue' ? queueReducer(state, effect.action) : state, queueState);
+        expect(returned.selectedTaskIdByRepo['ws-1']).toBe(OWNER.processId);
+        expect(returned.selectedTaskId).toBe(OWNER.processId);
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(screen.queryByTestId('sentinel-todo-origin-bar')).toBeNull();
     });
 
     it('does not start one for external job links or a tab without its chat placement', async () => {
@@ -266,6 +349,27 @@ describe('SentinelTodoOriginBar', () => {
         expect(window.location.hash).toBe(ORIGIN.href);
         expect(getSentinelTodoExcursion()).toBeNull();
         expect(screen.queryByTestId('sentinel-todo-origin-bar')).toBeNull();
+    });
+
+    it('reselects the Sentinel when the URL still names it but the hosted selection is a child', () => {
+        act(() => startSentinelTodoExcursion(ORIGIN));
+        window.history.replaceState(null, '', ORIGIN.href);
+        let queueState = { selectedTaskId: 'chat-a', selectedTaskIdByRepo: { 'ws-1': 'chat-a' } } as QueueContextState;
+        const applyHash = () => {
+            const { effects } = resolveDashboardRoute(window.location.hash, {
+                queueState, selectedRepoId: 'ws-1', repoRouteState: {}, repoTabState: {}, isSchedulesInSlide: () => false,
+            });
+            for (const effect of effects) if (effect.kind === 'queue') queueState = queueReducer(queueState, effect.action);
+        };
+        window.addEventListener('hashchange', applyHash);
+        try {
+            render(<SentinelTodoOriginBar scopeWorkspaceId="ws-1" chatId="chat-a" title="Child" />);
+            fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+            expect(queueState.selectedTaskIdByRepo['ws-1']).toBe(OWNER.processId);
+            expect(getSentinelTodoExcursion()).toBeNull();
+        } finally {
+            window.removeEventListener('hashchange', applyHash);
+        }
     });
 
     it('folds earlier chats, returns to them from the breadcrumb, and closes', () => {

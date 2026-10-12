@@ -165,8 +165,13 @@ describe('createSendToConversationTool — shape & description', () => {
         const { tool } = makeTool();
         expect(tool.description!.length).toBeLessThan(900);
         const props = (tool.parameters as { properties: Record<string, { description: string }> }).properties;
-        for (const property of Object.values(props)) {
-            expect(property.description.length).toBeLessThan(200);
+        expect(props.content.description).toBe(
+            'Message or Ralph goal. Required for send; omit for cancel. ' +
+            'Use concise Markdown: Task, Context, Deliverable, Constraints; omit unnecessary headings. ' +
+            'Request reports as Outcome, Findings, Evidence, Gaps.',
+        );
+        for (const [name, property] of Object.entries(props)) {
+            if (name !== 'content') expect(property.description.length).toBeLessThan(200);
         }
         expect(props.effortTier.description).toContain('No post default');
         expect(props.effortTier.description).toContain('Explicit model wins');

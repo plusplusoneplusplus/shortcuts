@@ -76,6 +76,47 @@ describe('shared trigger creation', () => {
         expect(emit).toHaveBeenLastCalledWith({ type: 'trigger-updated', trigger: resumed });
     });
 
+    it('preserves missing CI-only authority until explicitly upgraded in place', async () => {
+        const original = await createTrigger(ctx, 'ws', body, true);
+        if (original.event.monitor !== 'ci-failure') throw new Error('Expected CI monitor');
+        delete original.event.repairScope;
+        original.event.attemptCount = 2;
+        ctx.store.update(original);
+        expect((await createTrigger(ctx, 'ws', body, true)).event).not.toHaveProperty('repairScope');
+        const upgraded = await createTrigger(ctx, 'ws', {
+            ...body, event: { ...body.event, repairScope: 'ci-and-conflicts' },
+        }, true);
+        expect(upgraded).toMatchObject({ id: original.id, event: { repairScope: 'ci-and-conflicts', attemptCount: 2 } });
+        expect(upgraded.revision).toBe(original.revision + 1);
+        expect(ctx.store.getAll()).toHaveLength(1);
+    });
+
+    it('rejects invalid scope and defers upgrades while a CI repair owns the PR', async () => {
+        await expect(createTrigger(ctx, 'ws', { ...body, event: { ...body.event, repairScope: 'all' } }))
+            .rejects.toMatchObject({ statusCode: 400 });
+        const original = await createTrigger(ctx, 'ws', body, true);
+        original.inFlight = true;
+        ctx.store.update(original);
+        await expect(createTrigger(ctx, 'ws', { ...body, event: { ...body.event, repairScope: 'ci-and-conflicts' } }, true))
+            .rejects.toMatchObject({ statusCode: 409 });
+        expect(ctx.store.getById(original.id)?.event).toMatchObject({ repairScope: 'ci' });
+    });
+
+    it('creates a paused writer receipt for a manual repair without opting into polling', async () => {
+        const receipt = await createTrigger(ctx, 'ws', body, true, false);
+        expect(receipt).toMatchObject({ status: 'paused', nextTickAt: null, event: { repairScope: 'ci' } });
+        // Scheduler arm is inert for paused records.
+        const same = await createTrigger(ctx, 'ws', body, true, false);
+        expect(same.id).toBe(receipt.id);
+        expect(same.status).toBe('paused');
+    });
+
+    it('rejects PR binding/owner failures before persisting', async () => {
+        ctx.validatePrOwner = async () => { throw new Error('PR belongs to another chat'); };
+        await expect(createTrigger(ctx, 'ws', body)).rejects.toMatchObject({ statusCode: 409 });
+        expect(ctx.store.getAll()).toEqual([]);
+    });
+
     it.each(['disarmed', 'expired', 'elapsed'] as const)('does not reuse a %s monitor', async status => {
         const trigger = await createTrigger(ctx, 'ws', body, true);
         if (status === 'elapsed') trigger.expiresAt = new Date(NOW - 1).toISOString();

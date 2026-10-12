@@ -20,9 +20,15 @@
  * The sidebar variant uses distinct `data-testid`s while preserving the stable
  * Admin and Theme IDs used by navigation and automation. Breakpoint and view
  * gates ensure only one status cluster is mounted at a time.
+ *
+ * When docked in a collapsed `SplitWorkspacePanel` (`features.railStatusActions`),
+ * the sidebar variant also portals an Admin gear and a second quota trigger into
+ * the rail. They share this cluster's admin handler and quota hook, so the rail
+ * adds no requests and always shows the same owner's quota.
  */
 
 import { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useTheme } from './ThemeProvider';
 import { useApp } from '../contexts/AppContext';
 import { DevToolsDialog } from '../features/dev-tools/DevToolsDialog';
@@ -30,6 +36,7 @@ import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { getBackendEndpointInfo } from '../utils/config';
 import type { WsStatus } from '../hooks/useWebSocket';
+import { useRailStatusSlot } from './railStatusSlot';
 
 const themeEmoji: Record<string, string> = {
     auto: '🌗',
@@ -70,6 +77,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
     // Sidebar-only Dev Tools panel. Local state, so closing unmounts the dialog
     // and resets every tool back to its default input/expansion.
     const [devToolsOpen, setDevToolsOpen] = useState(false);
+    const railSlot = useRailStatusSlot();
 
     const wsStatus: WsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
@@ -108,8 +116,24 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                     >
                         &#9881;
                     </button>
+                    {railSlot && ReactDOM.createPortal(
+                        <button
+                            type="button"
+                            className={
+                                `w-7 h-7 flex items-center justify-center rounded text-base leading-none ` +
+                                (inAdminShell ? 'bg-[#0078d4] text-white' : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]')
+                            }
+                            aria-label="Admin"
+                            title="Admin"
+                            data-testid="rail-admin-toggle"
+                            onClick={handleAdmin}
+                        >
+                            &#9881;
+                        </button>,
+                        railSlot,
+                    )}
                     <NotificationBell placement="up" />
-                    <AgentProviderQuotaIndicator placement="up" routingTarget={quotaRoutingTarget} />
+                    <AgentProviderQuotaIndicator placement="up" routingTarget={quotaRoutingTarget} railContainer={railSlot} />
                     <button
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                         aria-label="Dev tools"

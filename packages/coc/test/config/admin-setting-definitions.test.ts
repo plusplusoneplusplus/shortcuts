@@ -579,6 +579,20 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { railGitSummary: true } }).railGitSummaryEnabled).toBe(true);
     });
 
+    it('exposes the collapsed-rail Admin and quota shortcuts as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railStatusActions');
+        expect(def, 'features.railStatusActions must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('railStatusActionsEnabled');
+        expect(def!.ui!.badge).toBe('experimental');
+        expect(def!.ui!.hint).toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features.railStatusActions).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).railStatusActionsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { railStatusActions: true } }).railStatusActionsEnabled).toBe(true);
+    });
+
     // Explorer multi-tab editor: a default-off Features toggle with a live
     // runtime flag, so the SPA can gate the whole tab strip while the existing
     // single-preview Explorer stays the shipped behavior.
@@ -661,6 +675,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
         'features.railGitSummary': 'appearance',
+        'features.railStatusActions': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.htmlPageTab': 'appearance',

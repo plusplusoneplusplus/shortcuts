@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
-import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { initializeDatabase, type AIProcess } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
@@ -33,6 +33,7 @@ describe('SentinelTodoTriggerService', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         db = new NativeDatabase(':memory:');
+        initializeDatabase(db);
         todos = new SentinelTodoStore(db);
         triggers = new TriggerStore(db);
         getProcess.mockResolvedValue(process);
@@ -72,6 +73,21 @@ describe('SentinelTodoTriggerService', () => {
         });
         expect(arm).toHaveBeenCalledWith(rule);
         expect(fetchPr).toHaveBeenCalledWith(rule.event.monitor === 'pr-merged' ? rule.event.pr : undefined);
+        expect(await service.list(owner)).toEqual([rule]);
+        expect(todos.get(owner)).toEqual(before);
+    });
+
+    it('arms an item with a local linked job whose process has not been persisted', async () => {
+        todos.linkJob(owner, itemId, {
+            processId: 'queue_unpersisted', workspaceId: owner.workspaceId,
+            kind: 'local', openLink: '#repos/ws-owner/chats/unpersisted',
+        });
+        const before = todos.get(owner);
+        const owners = new SentinelTodoService({ todos, store: { getProcess } });
+        const ledger = await owners.list(owner);
+        expect(ledger.items[0].jobs[0].mode).toBeUndefined();
+        const rule = await create();
+        expect(rule.binding?.itemId).toBe(itemId);
         expect(await service.list(owner)).toEqual([rule]);
         expect(todos.get(owner)).toEqual(before);
     });
