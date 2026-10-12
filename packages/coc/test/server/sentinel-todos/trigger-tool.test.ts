@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { initializeDatabase, type AIProcess } from '@plusplusoneplusplus/forge';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
@@ -25,6 +25,7 @@ describe('Sentinel PR-merge rule tool actions', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         db = new NativeDatabase(':memory:');
+        initializeDatabase(db);
         todos = new SentinelTodoStore(db);
         store = new TriggerStore(db);
         const process: AIProcess = {

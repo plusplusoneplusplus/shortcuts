@@ -163,6 +163,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
     isRailGitSummaryEnabled: () => false,
+    isRailStatusActionsEnabled: () => false,
 
     isSchedulesInScheduledSlideEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
