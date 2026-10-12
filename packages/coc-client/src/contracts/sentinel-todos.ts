@@ -66,6 +66,18 @@ export interface SentinelTodoReference {
   attachedBy: SentinelTodoActor;
 }
 
+/** Evidence selectors, not evidence receipts or execution authority. */
+export type SentinelTodoDependencyCondition =
+  | { kind: 'done' }
+  | { kind: 'pr_merge'; outputSlot: string }
+  | { kind: 'accepted_artifact'; phase: string; reference: string; version: string };
+
+export interface SentinelTodoDependency {
+  /** Resolved only in the dependent item's owning server/workspace/parent ledger. */
+  itemId: string;
+  condition: SentinelTodoDependencyCondition;
+}
+
 export interface SentinelTodoItem {
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
@@ -88,6 +100,8 @@ export interface SentinelTodoItem {
   jobs: SentinelTodoJobLink[];
   /** Absent from servers that predate conversation references. */
   references?: SentinelTodoReference[];
+  /** All edges are required. Absent on records without native dependency support. */
+  dependsOn?: SentinelTodoDependency[];
 }
 
 export interface SentinelTodoLedgerResponse {

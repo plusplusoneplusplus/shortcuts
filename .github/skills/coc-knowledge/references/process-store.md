@@ -134,7 +134,8 @@ counts to separate native/transport cost from Forge hydration.
 ### Sentinel to-do store
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
-`sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs` and `sentinel_todo_references` tables in
+`sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs`,
+`sentinel_todo_references` and `sentinel_todo_dependencies` tables in
 the shared `processes.db`. Workspace and parent process keys isolate repos,
 groups and chats; unique scoped idempotency keys and job identities make replays
 safe. Transactions acquire the database writer before mutation reads and compare
@@ -147,6 +148,15 @@ checks the execution workspace and uses live first-turn queue mode only when the
 process is absent. Remote ordinary/unknown modes stay omitted; Ralph session
 identity stays Ralph. Mode-change invalidations target exact local linked owners
 without advancing ledger/item revisions.
+
+The internal `setDependencies` command replaces ordered evidence selectors under
+the item revision. A writer-reserved transaction validates same-ledger references,
+self/duplicate edges, archival and reachability before committing edges and
+revisions together. Execution targets do not affect graph ownership. Manual items
+can participate without job authority; dependency edits preserve fulfillment and
+user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
+Dependency authoring has no public entry point or evidence/admission evaluator.
+Graph rows are machine-local and cleared with the ledger wipe.
 
 ### Chat binding stores
 

@@ -25,7 +25,7 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
         executeWipe(ctx, _plan, result) {
             try {
                 withLedgerDb(ctx, SENTINEL_TODO_TABLES, db => db.transaction(() => {
-                    // References and scrubber state arrived later; a database no newer server opened lacks them.
+                    // Additive feature tables may be absent in an existing database.
                     for (const table of OPTIONAL_SENTINEL_TODO_TABLES) {
                         if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) {
                             db.prepare(`DELETE FROM ${table}`).run();
@@ -41,7 +41,8 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
 }
 
 const OPTIONAL_SENTINEL_TODO_TABLES = [
-    'sentinel_todo_references', 'scrubber_findings', 'scrubber_runs', 'scrubber_dismissals', 'scrubber_config',
+    'sentinel_todo_dependencies', 'sentinel_todo_references',
+    'scrubber_findings', 'scrubber_runs', 'scrubber_dismissals', 'scrubber_config',
 ] as const;
 
 const SENTINEL_TODO_TABLES = [

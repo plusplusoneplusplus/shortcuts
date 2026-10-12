@@ -5,6 +5,7 @@ import { z } from 'zod';
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
 export const MAX_TODO_REFERENCES = 20;
+export const MAX_TODO_DEPENDENCIES = 50;
 
 const id = z.string().min(1).max(200);
 export const todoTypeSchema = z.enum(['normal', 'manual']);
@@ -60,6 +61,18 @@ const referenceSchema = z.object({
     attachedAt: z.iso.datetime(),
     attachedBy: actorSchema,
 });
+export const todoDependencySchema = z.object({
+    itemId: id,
+    condition: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('done') }).strict(),
+        z.object({ kind: z.literal('pr_merge'), outputSlot: id }).strict(),
+        z.object({
+            kind: z.literal('accepted_artifact'), phase: id,
+            reference: z.string().min(1).max(2_000), version: id,
+        }).strict(),
+    ]),
+}).strict();
+const dependenciesSchema = z.array(todoDependencySchema).max(MAX_TODO_DEPENDENCIES);
 const itemSchema = z.object({
     id,
     type: todoTypeSchema,
@@ -80,6 +93,7 @@ const itemSchema = z.object({
     idempotencyKey: id.optional(),
     jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS),
     references: z.array(referenceSchema).max(MAX_TODO_REFERENCES),
+    dependsOn: dependenciesSchema.default([]),
     /** Last user edit; job outcomes recorded before it must not override it. */
     userEditedAt: z.iso.datetime().optional(),
     /** Explicit user verdicts protect against reviews of already-linked work. */
@@ -99,6 +113,7 @@ export type SentinelTodoJobResult = z.infer<typeof jobResultSchema>;
 export type SentinelTodoJobLinkInput = Omit<SentinelTodoJobLink, 'linkedAt' | 'linkedRevision' | 'result' | 'specReady'>;
 export type SentinelTodoReference = z.infer<typeof referenceSchema>;
 export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt' | 'attachedBy'>;
+export type SentinelTodoDependency = z.infer<typeof todoDependencySchema>;
 
 export const todoCreateSchema = z.object({
     type: todoTypeSchema.optional(),
@@ -230,6 +245,21 @@ export class SentinelTodoStore {
                 FOREIGN KEY (workspace_id, parent_process_id, item_id)
                     REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_dependencies (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                prerequisite_id TEXT NOT NULL,
+                edge_order INTEGER NOT NULL CHECK (edge_order >= 0),
+                condition TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id, prerequisite_id),
+                UNIQUE (workspace_id, parent_process_id, item_id, edge_order),
+                CHECK (item_id <> prerequisite_id),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE,
+                FOREIGN KEY (workspace_id, parent_process_id, prerequisite_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id)
+            );
         `))();
     }
 
@@ -282,6 +312,59 @@ export class SentinelTodoStore {
             this.insertItem(owner, item, ledger.items.length);
             this.advanceLedger(owner, ledger.revision);
             return { item, created: true, ledgerRevision: ledger.revision + 1 };
+        });
+    }
+
+    /** Internal graph command; callers must gate authoring and prove the Sentinel owner. */
+    setDependencies(
+        owner: SentinelTodoOwner,
+        itemId: string,
+        expectedRevision: number,
+        dependencies: SentinelTodoDependency[],
+        actor: SentinelTodoActor,
+    ): { item: SentinelTodoItem; ledgerRevision: number } {
+        assertCaller(actor);
+        const edges = parse(dependenciesSchema, dependencies);
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', 'To-do item not found');
+            const current = ledger.items[index];
+            if (current.revision !== expectedRevision) {
+                throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
+            }
+            const items = new Map(ledger.items.map(item => [item.id, item]));
+            const selected = new Set<string>();
+            for (const edge of edges) {
+                if (edge.itemId === itemId || selected.has(edge.itemId)) {
+                    throw new SentinelTodoError('invalid', 'Dependencies cannot contain self-edges or duplicate prerequisites');
+                }
+                const prerequisite = items.get(edge.itemId);
+                if (!prerequisite || prerequisite.archived) {
+                    throw new SentinelTodoError('invalid', 'Prerequisite unavailable in this parent ledger');
+                }
+                selected.add(edge.itemId);
+            }
+            // Only this item's outgoing edges change; any new cycle must return to it.
+            const pending = [...selected];
+            const visited = new Set<string>();
+            while (pending.length) {
+                const next = pending.pop()!;
+                if (next === itemId) throw new SentinelTodoError('invalid', 'Dependencies cannot contain cycles');
+                if (visited.has(next)) continue;
+                visited.add(next);
+                for (const edge of items.get(next)?.dependsOn ?? []) pending.push(edge.itemId);
+            }
+            this.db.prepare(`DELETE FROM sentinel_todo_dependencies
+                WHERE workspace_id = ? AND parent_process_id = ? AND item_id = ?`)
+                .run(owner.workspaceId, owner.processId, itemId);
+            const insert = this.db.prepare(`INSERT INTO sentinel_todo_dependencies
+                (workspace_id, parent_process_id, item_id, prerequisite_id, edge_order, condition)
+                VALUES (?, ?, ?, ?, ?, ?)`);
+            edges.forEach((edge, order) => insert.run(
+                owner.workspaceId, owner.processId, itemId, edge.itemId, order, JSON.stringify(edge.condition),
+            ));
+            return this.commit(owner, ledger, index, { ...current, dependsOn: edges }, actor, new Date().toISOString());
         });
     }
 
@@ -609,6 +692,14 @@ export class SentinelTodoStore {
                 attachedAt: row.attached_at, attachedBy: row.attached_by, ...optional('title', row.title),
             })]);
         }
+        const dependencies = new Map<string, SentinelTodoDependency[]>();
+        for (const row of this.db.prepare(`SELECT item_id, prerequisite_id, condition FROM sentinel_todo_dependencies
+            WHERE workspace_id = ? AND parent_process_id = ? ORDER BY edge_order`)
+            .all<{ item_id: string; prerequisite_id: string; condition: string }>(...scope)) {
+            dependencies.set(row.item_id, [...dependencies.get(row.item_id) ?? [], parse(todoDependencySchema, {
+                itemId: row.prerequisite_id, condition: JSON.parse(row.condition),
+            })]);
+        }
         const items = this.db.prepare(`SELECT * FROM sentinel_todo_items
             WHERE workspace_id = ? AND parent_process_id = ? ORDER BY item_order`).all<ItemRow>(...scope);
         return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
@@ -617,6 +708,7 @@ export class SentinelTodoStore {
             revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
             createdBy: row.created_by, updatedBy: row.updated_by, jobs: byItem.get(row.id) ?? [],
             references: references.get(row.id) ?? [],
+            dependsOn: dependencies.get(row.id) ?? [],
             ...jsonField('targetRepo', row.target_repo), ...jsonField('outcome', row.outcome),
             ...optional('statusReason', row.status_reason), ...optional('idempotencyKey', row.idempotency_key),
             ...optional('userEditedAt', row.user_edited_at), ...optional('userVerdictRevision', row.user_verdict_revision),
