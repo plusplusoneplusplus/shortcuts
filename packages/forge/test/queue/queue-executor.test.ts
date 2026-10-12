@@ -32,6 +32,34 @@ describe('QueueExecutor', () => {
         }
     });
 
+    it('starts high-priority FIFO repairs after the active task and a scheduler pause', async () => {
+        let release!: () => void;
+        const activeTurn = new Promise<void>(resolve => { release = resolve; });
+        const started: string[] = [];
+        taskExecutor = createSimpleTaskExecutor(async task => {
+            started.push(task.id);
+            if (task.id === 'active') await activeTurn;
+            return task.id;
+        });
+        executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false, maxConcurrency: 1 });
+        const input = (id: string): CreateTaskInput => ({ id, type: 'follow-prompt', priority: 'normal', payload: {}, config: {} });
+        queueManager.enqueue(input('active'));
+        queueManager.enqueue(input('ordinary'));
+        executor.start();
+        await vi.waitFor(() => expect(started).toEqual(['active']));
+        for (const id of ['repair-1', 'repair-2']) {
+            queueManager.enqueue({ ...input(id), priority: 'high', config: { respectQueueBarriers: true } });
+        }
+        expect(started).toEqual(['active']);
+        expect(queueManager.getRunning().map(task => task.id)).toEqual(['active']);
+        queueManager.pause();
+        release();
+        await vi.waitFor(() => expect(queueManager.getRunning()).toEqual([]));
+        expect(started).toEqual(['active']);
+        queueManager.resume();
+        await vi.waitFor(() => expect(started).toEqual(['active', 'repair-1', 'repair-2', 'ordinary']));
+    });
+
     // ========================================================================
     // Constructor and Lifecycle
     // ========================================================================

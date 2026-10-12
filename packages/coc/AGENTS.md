@@ -134,8 +134,12 @@ references before editing. Paths are package-relative.
   scope authorizes CI/conflict repairs; missing/`ci` scope authorizes CI only.
   Validate the PR-bound owner/workspace, poll authoritative merge previews and
   current-head checks, and serialize automatic/manual repairs with the durable
-  PR-qualified writer and `deliverPrRepairOnce`. Conflict retries include head/base
-  identity, bounded delivery backoff and a cross-head budget; ambiguous/exhausted
+  PR-qualified writer and `deliverPrRepairOnce`. Repair execution uses high-priority
+  FIFO with `respectQueueBarriers`; pending messages retain scheduling metadata
+  through drain/promotion/recovery. Running turns, conversation predecessors,
+  pauses/delays/freezes and PR gates remain authoritative. Other triggers/reviews
+  keep normal priority. Conflict retries include head/base identity, bounded
+  delivery backoff and a cross-head budget; ambiguous/exhausted
   outcomes require human action. Repairs use isolated existing-PR worktrees, never
   submission workflows or policy bypasses. Arming failures preserve PR success.
   Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the

@@ -128,6 +128,8 @@ describe('QueueActionExecutor', () => {
             expect(store.updateProcess).not.toHaveBeenCalled();
 
             const input = queue.enqueued[0];
+            expect(input.priority).toBe('high');
+            expect(input.config.respectQueueBarriers).toBe(true);
             expect(input.type).toBe('chat');
             expect(input.processId).toBe(PROC);
             expect(input.repoId).toBe('ws_a');
@@ -169,6 +171,8 @@ describe('QueueActionExecutor', () => {
             const patch = store.updateProcess.mock.calls[0][1];
             expect(patch.pendingMessages).toHaveLength(1);
             const msg = patch.pendingMessages[0];
+            expect(msg.queuePriority).toBe('high');
+            expect(msg.respectQueueBarriers).toBe(true);
             expect(msg.content).toBe('fix the CI');
             expect(msg.mode).toBe('autopilot');
             expect(msg.context).toEqual({ triggerId: 'trigger_1', source: 'trigger' });
@@ -203,7 +207,7 @@ describe('QueueActionExecutor', () => {
     });
 
     describe('guards', () => {
-        it('uses the durable PR repair receipt and validates the PR-bound owner before delivery', async () => {
+        it.each(['ci', 'ci-and-conflicts'] as const)('uses durable %s repair admission and validates the PR-bound owner', async repairScope => {
             const store = makeProcessStore();
             const queue = makeQueueManager();
             const validatePrOwner = vi.fn().mockResolvedValue(undefined);
@@ -214,6 +218,7 @@ describe('QueueActionExecutor', () => {
             });
             const trigger = makeTrigger();
             if (trigger.event.monitor !== 'ci-failure') throw new Error('Expected CI monitor');
+            trigger.event.repairScope = repairScope;
             trigger.event.repairDelivery = { id: 'repair-1', prompt: 'Resolve conflict', state: 'pending', attempts: 0 };
             await exec.execute(trigger, trigger.action, 'Resolve conflict');
             expect(validatePrOwner).toHaveBeenCalledWith('ws_a', PROC, 'origin_1', '42');
@@ -224,6 +229,20 @@ describe('QueueActionExecutor', () => {
             validatePrOwner.mockRejectedValueOnce(new Error('Owner changed'));
             await expect(exec.execute(trigger, trigger.action, 'Resolve conflict')).rejects.toThrow('Owner changed');
             expect(deliverPrRepairOnce).toHaveBeenCalledTimes(1);
+        });
+        it.each(['completed', 'running'])('keeps unrelated trigger delivery normal for a %s owner', async status => {
+            const store = makeProcessStore({ [PROC]: { id: PROC, status, pendingMessages: [] } });
+            const queue = makeQueueManager();
+            const trigger = makeTrigger({ event: {
+                type: 'condition-monitor', monitor: 'pr-merged', pollIntervalMs: 60_000, consecutiveErrors: 0,
+                pr: { provider: 'github', host: 'github.com', repoPath: 'owner/repo', number: 42, url: 'https://github.com/owner/repo/pull/42' },
+            } });
+            await makeExecutor(store, queue).execute(trigger, trigger.action, 'Ordinary trigger');
+            if (status === 'completed') {
+                expect(queue.enqueued[0]).toMatchObject({ priority: 'normal', config: {} });
+            } else {
+                expect(store.procs.get(PROC).pendingMessages[0]).not.toHaveProperty('queuePriority');
+            }
         });
         it('throws when no queue manager is available', async () => {
             const store = makeProcessStore({ [PROC]: { id: PROC, status: 'completed' } });

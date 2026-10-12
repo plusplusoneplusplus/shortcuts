@@ -859,6 +859,42 @@ describe('SqliteQueuePersistence', () => {
             expect(store.getQueueTasks(otherId)[0]).not.toHaveProperty('botControl');
         });
 
+        it.each(['queued', 'running'] as const)('retains %s repair priority and barriers within its workspace on recovery', status => {
+            const root = path.join(os.tmpdir(), 'repair-owner');
+            const otherRoot = path.join(os.tmpdir(), 'repair-other');
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            bridge.registerRepoId('owner', root);
+            bridge.registerRepoId('other', otherRoot);
+            bridge.getOrCreateBridge(root);
+            bridge.getOrCreateBridge(otherRoot);
+            const owner = registry.getQueueForRepo(root)!;
+            owner.enqueue({ id: 'normal', type: 'chat', priority: 'normal', repoId: 'owner',
+                payload: { kind: 'chat', mode: 'autopilot', workspaceId: 'owner' }, config: {} });
+            owner.enqueue({ id: 'repair', processId: 'queue_owner', type: 'chat', priority: 'high', repoId: 'owner',
+                payload: { kind: 'chat', mode: 'autopilot', processId: 'queue_owner', workspaceId: 'owner',
+                    context: { source: 'trigger', triggerId: 'monitor', deliveryId: 'repair' } },
+                config: { respectQueueBarriers: true } });
+            if (status === 'running') owner.markStarted('repair');
+            const marker = owner.insertPauseMarker(-1);
+            owner.pauseAutopilot();
+            registry.getQueueForRepo(otherRoot)!.enqueue({ id: 'other-normal', type: 'chat', priority: 'normal', repoId: 'other',
+                payload: { kind: 'chat', mode: 'autopilot', workspaceId: 'other' }, config: {} });
+            persistence.dispose();
+            registry = new RepoQueueRegistry({ isExclusive: task => task.payload.mode === 'autopilot' });
+            bridge = new MultiRepoQueueRouter(registry, createMockProcessStore(), { autoStart: false });
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            persistence.restore();
+            const restored = registry.getQueueForRepo(root)!;
+            expect(restored.getTask('repair')).toMatchObject({ priority: 'high', repoId: 'owner',
+                config: { respectQueueBarriers: true }, payload: { workspaceId: 'owner', context: { deliveryId: 'repair' } } });
+            expect(restored.peek()?.id).toBe(marker);
+            restored.removePauseMarker(marker);
+            expect(restored.peek()).toBeUndefined();
+            restored.resumeAutopilot();
+            expect(restored.peek()?.id).toBe('repair');
+            expect(registry.getQueueForRepo(otherRoot)!.getQueued().map(task => [task.id, task.priority])).toEqual([['other-normal', 'normal']]);
+        });
+
         it('restores an active repo gate and keeps non-chain work held', () => {
             const rootPath = '/repo/gated-roundtrip';
             const rId = repoId(rootPath);

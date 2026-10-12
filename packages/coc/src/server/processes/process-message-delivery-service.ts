@@ -458,7 +458,7 @@ export class ProcessMessageDeliveryService {
             return this.deliverAdmitted(proc, {
                 ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
                 mode: prRepair ? 'autopilot' : await resolveFollowUpMode(this.store, processId),
-            }, receiptId);
+            }, receiptId, undefined, prRepair ? { queuePriority: 'high', respectQueueBarriers: true } : {});
         });
     }
 
@@ -498,7 +498,7 @@ export class ProcessMessageDeliveryService {
             && task.payload.relayRequestId === receiptId;
     }
 
-    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string, mirror?: SentinelMirrorEntry): Promise<DeliveryResult> {
+    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string, mirror?: SentinelMirrorEntry, scheduling: Pick<PendingMessage, 'queuePriority' | 'respectQueueBarriers'> = {}): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
         const compactionPending = proc.metadata?.compaction?.state === 'queued'
@@ -535,6 +535,7 @@ export class ProcessMessageDeliveryService {
             const pendingMessage = {
                 id: reviewReceiptId ?? mirror?.requestId ?? this.newId(),
                 ...requestCorrelation,
+                ...scheduling,
                 ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
                 content: input.content,
                 displayContent: input.displayContent,
@@ -593,7 +594,7 @@ export class ProcessMessageDeliveryService {
                         ...(reviewReceiptId || mirror ? { id: reviewReceiptId ?? mirror!.requestId } : isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
                         processId: id,
                         type: 'chat',
-                        priority: 'normal',
+                        priority: scheduling.queuePriority ?? 'normal',
                         payload: {
                             kind: 'chat',
                             prompt: input.contentWithContext ?? input.content,
@@ -620,7 +621,8 @@ export class ProcessMessageDeliveryService {
                         },
                         // Mirror the per-turn reasoning-effort into config so executors
                         // that inspect `task.config.reasoningEffort` also see it.
-                        config: input.effort ? { reasoningEffort: input.effort } : {},
+                        config: { ...(input.effort ? { reasoningEffort: input.effort } : {}),
+                            ...(scheduling.respectQueueBarriers ? { respectQueueBarriers: true } : {}) },
                         displayName,
                     });
                     if (mirror) this.sentinelMirror!.accepted(mirror);

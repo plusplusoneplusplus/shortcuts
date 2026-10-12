@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SqliteProcessStore, TaskQueueManager, type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, TaskQueueManager, RepoQueueRegistry, type CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { ProcessMessageDeliveryService } from '../../src/server/processes/process-message-delivery-service';
 import type { QueueExecutorBridge } from '../../src/server/core/api-handler';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
+import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
 import { ProcessLifecycleRunner } from '../../src/server/executors/process-lifecycle-runner';
 
 const workspaceId = 'ws-parent';
@@ -63,6 +64,7 @@ describe('durable review admission', () => {
         const repair = () => service.deliverPrRepairOnce(workspaceId, processId, source.deliveryId, { ...review, turnSource: source });
         await Promise.all([repair(), repair(), repair()]);
         expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getTask('repair-1')).toMatchObject({ priority: 'high', config: { respectQueueBarriers: true } });
         expect(queue.getTask('repair-1')?.payload).toMatchObject({ workspaceId, mode: 'autopilot', context: source });
         expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
         restart();
@@ -72,6 +74,162 @@ describe('durable review admission', () => {
             ...source, deliveryId: 'repair-2',
         } })).rejects.toThrow('originating workspace');
         await expect(wake()).rejects.toThrow('Sentinel wake');
+    });
+
+    function repair(id = 'repair-1', owner = processId) {
+        return service.deliverPrRepairOnce(workspaceId, owner, id, {
+            ...review, turnSource: { source: 'trigger', triggerId: `monitor-${owner}`, deliveryId: id },
+        });
+    }
+
+    function normal(id: string, owner = `queue_${id}`) {
+        return queue.enqueue({ id, processId: owner, type: 'chat', priority: 'normal',
+            payload: { kind: 'chat', mode: 'autopilot', processId: owner, workspaceId }, config: {} });
+    }
+
+    it('puts repairs ahead of waiting work, FIFO, without interrupting the running task', async () => {
+        const running = normal('active');
+        queue.markStarted(running);
+        normal('waiting');
+        await store.addProcess({ id: 'queue_second', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Second PR', metadata: { workspaceId, mode: 'ask' } });
+        await repair();
+        await repair('repair-2', 'queue_second');
+        expect(queue.getQueued().map(task => task.id)).toEqual(['repair-1', 'repair-2', 'waiting']);
+        expect(queue.getRunning().map(task => task.id)).toEqual(['active']);
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        queue.markStarted('repair-1');
+        queue.markRetry('repair-1');
+        expect(queue.getQueued().map(task => task.id)).toEqual(['repair-1', 'repair-2', 'waiting']);
+    });
+
+    it('respects existing pause markers during admission and retry', async () => {
+        normal('before');
+        const marker = queue.insertPauseMarker(1);
+        normal('after');
+        await repair();
+        expect(queue.getQueueItems().map(item => item.id)).toEqual(['before', marker, 'repair-1', 'after']);
+        queue.markStarted('before');
+        queue.markCompleted('before', {});
+        expect(queue.peek()?.id).toBe(marker);
+        queue.removePauseMarker(marker);
+        queue.markStarted('repair-1');
+        const retryMarker = queue.insertPauseMarker(-1);
+        queue.markRetry('repair-1');
+        expect(queue.peek()?.id).toBe(retryMarker);
+        queue.removePauseMarker(retryMarker);
+        expect(queue.peek()?.id).toBe('repair-1');
+    });
+
+    it('keeps repairs subject to pauses, cooldowns, freezes and PR gates', async () => {
+        queue = new TaskQueueManager({ isExclusive: task => task.payload.mode === 'autopilot', getTaskRepoId: task => task.payload.workspaceId as string });
+        await repair();
+        queue.pause();
+        expect(queue.isPaused()).toBe(true);
+        queue.resume();
+        queue.pauseAutopilot();
+        expect(queue.peek()).toBeUndefined();
+        queue.resumeAutopilot();
+        queue.pauseRepo(workspaceId);
+        expect(queue.peek()).toBeUndefined();
+        queue.resumeRepo(workspaceId);
+        queue.freezeTask('repair-1');
+        expect(queue.peek()).toBeUndefined();
+        queue.unfreezeTask('repair-1');
+        normal('prior');
+        queue.markStarted('prior');
+        queue.markCompleted('prior', {});
+        for (const scope of ['all', 'autopilot'] as const) {
+            queue.setTaskDelayMinutes(scope, 1);
+            expect(queue.peek()).toBeUndefined();
+            queue.setTaskDelayMinutes(scope, null);
+        }
+        queue.restoreRepoGate(workspaceId, { chainId: 'other-chain', implementTaskId: 'implement' });
+        expect(queue.peek()).toBeUndefined();
+        queue.releaseRepoGate(workspaceId, 'other-chain');
+        expect(queue.peek()?.id).toBe('repair-1');
+    });
+
+    it('retains buffered repair priority through persistence, failed drain and recovery', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await Promise.all([repair(), repair(), repair()]);
+        expect(queue.getAll()).toEqual([]);
+        expect((await store.getProcess(processId))?.pendingMessages).toHaveLength(1);
+        restart();
+        expect((await store.getProcess(processId))?.pendingMessages?.[0]).toMatchObject({ queuePriority: 'high', respectQueueBarriers: true });
+        normal('waiting');
+        await store.updateProcess(processId, { status: 'completed' });
+        await recover('foreign');
+        expect(queue.getTask('repair-1')).toBeUndefined();
+        vi.spyOn(queue, 'enqueue').mockImplementationOnce(() => { throw new Error('queue write'); });
+        await expect(recover()).rejects.toThrow('queue write');
+        await recover();
+        expect(queue.peek()?.id).toBe('repair-1');
+        expect(queue.getTask('repair-1')).toMatchObject({ priority: 'high', config: { respectQueueBarriers: true } });
+        expect(await repair()).toMatchObject({ reused: true });
+        expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
+    });
+
+    it('drains earlier human messages before buffered repairs without elevating later human turns or reviews', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        const proc = (await store.getProcess(processId))!;
+        await service.deliver(proc, { content: 'Human first', displayContent: 'Human first', deliveryMode: 'enqueue', pasteExternalized: false });
+        await repair();
+        await drain();
+        const human = queue.getQueued()[0];
+        expect(human.priority).toBe('normal');
+        expect(queue.getTask('repair-1')).toBeUndefined();
+        queue.markStarted(human.id);
+        queue.markCompleted(human.id, {});
+        await drain();
+        expect(queue.peek()?.id).toBe('repair-1');
+        queue.markStarted('repair-1');
+        queue.markCompleted('repair-1', {});
+        await store.updateProcess(processId, { status: 'completed' });
+        await service.deliver((await store.getProcess(processId))!, {
+            content: 'Human after', displayContent: 'Human after', deliveryMode: 'enqueue', pasteExternalized: false,
+        });
+        expect(queue.getQueued()[0].priority).toBe('normal');
+        queue.markStarted(queue.getQueued()[0].id);
+        queue.markCompleted(queue.getRunning()[0].id, {});
+        await store.updateProcess(processId, { status: 'completed' });
+        await deliver();
+        expect(queue.getTask(receiptId)?.priority).toBe('normal');
+        expect((await store.getProcess(processId))?.conversationTurns?.map(turn => turn.content)).toEqual([
+            'Human first', review.displayContent, 'Human after', review.displayContent,
+        ]);
+    });
+
+    it('preserves priority and conversation dependencies when the router promotes pending turns', async () => {
+        const registry = new RepoQueueRegistry();
+        const router = new MultiRepoQueueRouter(registry, store, { autoStart: false, aiService: createMockSDKService().service });
+        const root = path.join(directory, 'parent');
+        router.registerRepoId(workspaceId, root);
+        try {
+            service = new ProcessMessageDeliveryService({ store, bridge: router });
+            await store.updateProcess(processId, { status: 'running' });
+            await service.deliver((await store.getProcess(processId))!, {
+                content: 'Earlier human', displayContent: 'Earlier human', deliveryMode: 'enqueue', pasteExternalized: false,
+            });
+            await repair();
+            await router.enqueue({ id: 'later-human', processId, type: 'chat', priority: 'normal',
+                payload: { kind: 'chat', processId, workingDirectory: root, workspaceId, prompt: 'Later human' }, config: {} });
+            const ownerQueue = registry.getQueueForRepo(root)!;
+            const tasks = ownerQueue.getQueued();
+            const repairTask = tasks.find(task => task.payload.relayRequestId === 'repair-1')!;
+            const earlier = tasks.find(task => task.payload.prompt === 'Earlier human')!;
+            expect(repairTask).toMatchObject({ priority: 'high', repoId: workspaceId,
+                config: { respectQueueBarriers: true, processPredecessorId: earlier.id } });
+            expect(ownerQueue.peek()?.id).toBe(earlier.id);
+            ownerQueue.markStarted(earlier.id);
+            expect(ownerQueue.peek()).toBeUndefined();
+            ownerQueue.markCompleted(earlier.id, {});
+            expect(ownerQueue.peek()?.id).toBe(repairTask.id);
+            ownerQueue.markStarted(repairTask.id);
+            ownerQueue.markCompleted(repairTask.id, {});
+            expect(ownerQueue.peek()?.id).toBe('later-human');
+            expect(ownerQueue.getTask('later-human')?.priority).toBe('normal');
+        } finally { router.dispose(); }
     });
 
     function drain() {

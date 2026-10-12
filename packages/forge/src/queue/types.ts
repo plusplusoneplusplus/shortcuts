@@ -103,6 +103,8 @@ export interface PrGateChainMetadata {
 }
 
 export interface TaskExecutionConfig {
+    /** Limit priority insertion to waiting work after existing pause markers. */
+    respectQueueBarriers?: boolean;
     /** Durable admission dependency for tasks targeting the same conversation. */
     processPredecessorId?: string;
     /** AI model to use */

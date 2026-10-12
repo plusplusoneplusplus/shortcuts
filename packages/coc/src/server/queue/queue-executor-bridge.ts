@@ -1145,7 +1145,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(receiptId ? { id: receiptId } : {}),
                 processId,
                 type: 'chat',
-                priority: 'normal',
+                priority: deferred.priority,
                 payload: {
                     kind: 'chat' as const,
                     processId,
@@ -1166,7 +1166,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
                     ...(Object.keys(drainedContext).length > 0 ? { context: drainedContext } : {}),
                 },
-                config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
+                config: deferred.config,
                 displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
             });
         } catch (error) {
