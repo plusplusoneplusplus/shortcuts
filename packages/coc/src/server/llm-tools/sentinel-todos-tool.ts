@@ -22,6 +22,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { Trigger } from '../triggers/trigger-types';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
@@ -36,7 +37,7 @@ export const MANUAL_TRACKING_GUIDANCE =
 
 export interface SentinelTodosToolDeps {
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
-        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled'>>;
+        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
@@ -47,6 +48,7 @@ interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string
 
 export interface SentinelTodosArgs {
     action: 'list' | 'create' | 'update' | 'attach_reference' | 'set_dependencies'
+        | 'bind_pr_output' | 'accept_artifact' | 'evaluate_dependencies'
         | 'list_triggers' | 'create_trigger' | 'edit_trigger' | 'pause_trigger' | 'resume_trigger'
         | 'remove_trigger' | 'run_trigger_now';
     type?: SentinelTodoType;
@@ -70,6 +72,11 @@ export interface SentinelTodosArgs {
     instruction?: string;
     confirmed?: true;
     dependsOn?: SentinelTodoDependency[];
+    outputSlot?: string;
+    provenance?: SentinelTodoPrProvenance;
+    phase?: string;
+    reference?: string;
+    version?: string;
 }
 
 export type SentinelTodosResult =
@@ -77,6 +84,7 @@ export type SentinelTodosResult =
     | { item: SentinelTodoItem; created?: boolean; attached?: boolean }
     | { trigger: Trigger; removed?: boolean }
     | { triggers: Trigger[] }
+    | { readiness: SentinelTodoDependencyEvaluation }
     | { error: string; code?: string; current?: SentinelTodoItem | Trigger };
 
 /** Statuses Sentinel may only set with a short reviewed reason. */
@@ -173,12 +181,12 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     const dependenciesEnabled = service.dependenciesEnabled?.() === true;
     const tool = defineTool<SentinelTodosArgs>(SENTINEL_TODOS_TOOL_NAME, {
         description: DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
-            + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. Each edge names an item in this ledger and a typed evidence condition; removing edges grants no authority. Keep fulfillment and authorization separate.' : ''),
+            + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. bind_pr_output explicitly selects one exact produced PR for outputSlot with tracked_job or owner_selection provenance and reason; never choose the newest implicitly. accept_artifact records acceptance of the exact phase/reference/sha256 content version without marking Done or authorizing work. evaluate_dependencies reads fresh conjunctive readiness only; it never launches or wakes. Keep fulfillment and authorization separate.' : ''),
         parameters: {
             type: 'object',
             properties: {
                 action: { type: 'string', enum: ['list', 'create', 'update', 'attach_reference',
-                    ...(dependenciesEnabled ? ['set_dependencies'] : []), ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
+                    ...(dependenciesEnabled ? ['set_dependencies', 'bind_pr_output', 'accept_artifact', 'evaluate_dependencies'] : []), ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
                 itemId: { type: 'string', description: 'update/attach_reference/create_trigger/edit_trigger: the owning item.' },
@@ -220,6 +228,17 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 },
                 idempotencyKey: { type: 'string', description: 'create/create_trigger: stable key that makes retries safe.' },
                 ...(dependenciesEnabled ? {
+                    outputSlot: { type: 'string', description: 'bind_pr_output: named future PR slot.' },
+                    prUrl: { type: 'string', description: 'bind_pr_output: explicitly selected produced PR URL; not proof of merge.' },
+                    provenance: {
+                        type: 'object', properties: {
+                            kind: { type: 'string', enum: ['tracked_job', 'owner_selection'] },
+                            processId: { type: 'string' }, workspaceId: { type: 'string' }, reason: { type: 'string' },
+                        }, required: ['kind', 'reason'],
+                    },
+                    phase: { type: 'string', description: 'accept_artifact: exact selected phase.' },
+                    reference: { type: 'string', description: 'accept_artifact: exact file reference within owning workspace.' },
+                    version: { type: 'string', description: 'accept_artifact: sha256:<64 lowercase hex digits> of current exact bytes.' },
                     dependsOn: {
                         type: 'array',
                         description: 'set_dependencies: all required prerequisites; [] removes all edges without authorizing work.',
@@ -279,6 +298,28 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     return { trigger: await deps.triggers.setPaused(owner, args.triggerId, revision, args.action === 'pause_trigger') };
                 }
                 switch (args?.action) {
+                    case 'bind_pr_output':
+                    case 'accept_artifact':
+                    case 'evaluate_dependencies': {
+                        if (!service.dependenciesEnabled?.()) return { error: 'Sentinel dependencies are disabled.', code: 'disabled' };
+                        if (!args.itemId) return { error: 'Evidence requires itemId.', code: 'invalid' };
+                        if (args.action === 'evaluate_dependencies' && service.evaluateDependencies) {
+                            return { readiness: await service.evaluateDependencies(owner, args.itemId) };
+                        }
+                        if (args.action === 'bind_pr_output' && service.bindPrOutput) {
+                            const { item } = await service.bindPrOutput(owner, args.itemId, {
+                                expectedRevision: args.expectedRevision, outputSlot: args.outputSlot, prUrl: args.prUrl, provenance: args.provenance,
+                            }, 'sentinel');
+                            return { item };
+                        }
+                        if (args.action === 'accept_artifact' && service.acceptArtifact) {
+                            const { item } = await service.acceptArtifact(owner, args.itemId, {
+                                expectedRevision: args.expectedRevision, phase: args.phase, reference: args.reference, version: args.version,
+                            }, 'sentinel');
+                            return { item };
+                        }
+                        return { error: 'Evidence service unavailable.', code: 'disabled' };
+                    }
                     case 'set_dependencies': {
                         if (!service.setDependencies || !service.dependenciesEnabled?.()) {
                             return { error: 'Sentinel dependencies are disabled.', code: 'disabled' };

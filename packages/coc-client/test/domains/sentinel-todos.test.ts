@@ -3,6 +3,24 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('routes exact evidence authoring and fresh readiness through encoded owner identity', async () => {
+    const adapter = createMockAdapter({ state: 'waiting', edges: [] });
+    const client = new SentinelTodosClient(adapter);
+    const binding = { expectedRevision: 2, outputSlot: 'code', prUrl: 'https://github.com/example/project/pull/42',
+      provenance: { kind: 'owner_selection' as const, reason: 'Selected exact output' } };
+    const acceptance = { expectedRevision: 3, phase: 'design', reference: 'notes/design.md', version: `sha256:${'a'.repeat(64)}` };
+    await client.bindPrOutput('owner ws', 'parent/a', 'item/a', binding);
+    await client.acceptArtifact('owner ws', 'parent/a', 'item/a', acceptance);
+    const signal = new AbortController().signal;
+    await client.evaluateDependencies('owner ws', 'parent/a', 'item/a', { signal });
+    const base = '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/item%2Fa';
+    expect(adapter.calls).toEqual([
+      { path: `${base}/pr-output`, options: { method: 'POST', body: binding } },
+      { path: `${base}/artifact-acceptance`, options: { method: 'POST', body: acceptance } },
+      { path: `${base}/readiness`, options: { method: 'POST', body: {}, signal } },
+    ]);
+  });
+
   it('routes complete dependency replacements to the owner with encoded identity and a revision', async () => {
     const adapter = createMockAdapter({ item: { id: 'item/a' }, ledgerRevision: 2 });
     const request = { expectedRevision: 1, dependsOn: [{ itemId: 'source', condition: { kind: 'done' as const } }] };

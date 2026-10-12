@@ -47,6 +47,7 @@ import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-hand
 import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import { createPrStatusFetcher } from '../triggers/pr-status-fetcher';
 import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-routes';
 import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
@@ -528,6 +529,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     }
     const sentinelTodos = new SentinelTodoService({
         todos: todoStore, store, jobs: delegatedJobs,
+        fetchPr: createPrStatusFetcher({ dataDir }),
+        resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
         getDependenciesEnabled: () => getSentinelTodoLedgerEnabled()
             && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
         getTask: taskId => bridge.getTask(taskId),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { z } from 'zod';
+import type { SentinelTodoDependencyEvaluation } from '@plusplusoneplusplus/coc-client';
 
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
@@ -73,6 +74,42 @@ export const todoDependencySchema = z.object({
     ]),
 }).strict();
 const dependenciesSchema = z.array(todoDependencySchema).max(MAX_TODO_DEPENDENCIES);
+const evidenceText = z.string().trim().min(1).max(200);
+export const prBindingInputSchema = z.object({
+    expectedRevision: z.number().int().positive(),
+    outputSlot: evidenceText,
+    prUrl: z.string().trim().min(1).max(2_000),
+    provenance: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('tracked_job'), processId: evidenceText, workspaceId: evidenceText, reason: z.string().trim().min(1).max(2_000) }).strict(),
+        z.object({ kind: z.literal('owner_selection'), reason: z.string().trim().min(1).max(2_000) }).strict(),
+    ]),
+}).strict();
+export const artifactAcceptanceInputSchema = z.object({
+    expectedRevision: z.number().int().positive(),
+    phase: evidenceText,
+    reference: z.string().min(1).max(2_000),
+    version: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+}).strict();
+const evidenceAttributionSchema = {
+    receiptId: evidenceText, recordedAt: z.iso.datetime(), recordedBy: z.enum(['user', 'sentinel']),
+};
+const evidenceSchema = z.discriminatedUnion('kind', [
+    z.object({
+        kind: z.literal('pr_binding'), ...evidenceAttributionSchema,
+        outputSlot: evidenceText,
+        pr: z.object({
+            provider: z.enum(['github', 'ado']), host: evidenceText, repoPath: z.string().min(1).max(2_000),
+            number: z.number().int().positive(), url: z.string().min(1).max(2_000),
+        }).strict(),
+        provenance: prBindingInputSchema.shape.provenance,
+    }).strict(),
+    z.object({
+        kind: z.literal('artifact_acceptance'), ...evidenceAttributionSchema,
+        phase: evidenceText, reference: artifactAcceptanceInputSchema.shape.reference,
+        version: artifactAcceptanceInputSchema.shape.version, workspaceId: evidenceText,
+    }).strict(),
+]);
+export type SentinelTodoEvidence = z.infer<typeof evidenceSchema>;
 const itemSchema = z.object({
     id,
     type: todoTypeSchema,
@@ -94,6 +131,7 @@ const itemSchema = z.object({
     jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS),
     references: z.array(referenceSchema).max(MAX_TODO_REFERENCES),
     dependsOn: dependenciesSchema.default([]),
+    evidence: z.array(evidenceSchema).default([]),
     /** Last user edit; job outcomes recorded before it must not override it. */
     userEditedAt: z.iso.datetime().optional(),
     /** Explicit user verdicts protect against reviews of already-linked work. */
@@ -260,12 +298,81 @@ export class SentinelTodoStore {
                 FOREIGN KEY (workspace_id, parent_process_id, prerequisite_id)
                     REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id)
             );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_evidence (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                evidence_key TEXT NOT NULL,
+                receipt TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id, evidence_key),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_evaluations (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                evaluation TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+            );
         `))();
     }
 
     get(owner: SentinelTodoOwner): SentinelTodoLedger {
         assertOwner(owner);
         return this.db.transaction(() => this.read(owner))();
+    }
+
+    /** Revalidate an external-I/O snapshot under the shared native writer mutex. */
+    withCurrentEvidence<T>(owner: SentinelTodoOwner, snapshot: SentinelTodoLedger,
+        read: (ledger: SentinelTodoLedger) => T): T {
+        return this.mutate(owner, () => {
+            const current = this.read(owner);
+            if (current.revision !== snapshot.revision
+                || snapshot.items.some(item => current.items.find(source => source.id === item.id)?.revision !== item.revision)) {
+                throw new SentinelTodoError('conflict', 'Dependency sources changed while reading evidence');
+            }
+
+            return read(current);
+        });
+    }
+
+    /** A diagnostic snapshot only; consumers must always evaluate fresh before admission. */
+    recordEvaluation(owner: SentinelTodoOwner, snapshot: SentinelTodoLedger,
+        evaluate: (ledger: SentinelTodoLedger) => SentinelTodoDependencyEvaluation): SentinelTodoDependencyEvaluation {
+        return this.withCurrentEvidence(owner, snapshot, ledger => {
+            const evaluation = evaluate(ledger);
+            this.db.prepare(`INSERT INTO sentinel_todo_evaluations
+                (workspace_id, parent_process_id, item_id, evaluation) VALUES (?, ?, ?, ?)
+                ON CONFLICT (workspace_id, parent_process_id, item_id) DO UPDATE SET evaluation = excluded.evaluation`)
+                .run(owner.workspaceId, owner.processId, evaluation.itemId, JSON.stringify(evaluation));
+            return evaluation;
+        });
+    }
+
+    recordEvidence(owner: SentinelTodoOwner, itemId: string, expectedRevision: number,
+        key: string, receipt: SentinelTodoEvidence, actor: SentinelTodoActor,
+        validate: () => void): { item: SentinelTodoItem; ledgerRevision: number } {
+        assertCaller(actor);
+        const evidence = parse(evidenceSchema, receipt);
+        if (evidence.recordedBy !== actor) throw new SentinelTodoError('invalid', 'Evidence attribution must match the validated actor');
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', 'To-do item not found');
+            const current = ledger.items[index];
+            if (current.revision !== expectedRevision) throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
+            if (current.archived) throw new SentinelTodoError('invalid', 'Archived items cannot accept evidence');
+            validate();
+            this.db.prepare(`INSERT INTO sentinel_todo_evidence
+                (workspace_id, parent_process_id, item_id, evidence_key, receipt) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (workspace_id, parent_process_id, item_id, evidence_key) DO UPDATE SET receipt = excluded.receipt`)
+                .run(owner.workspaceId, owner.processId, itemId, key, JSON.stringify(evidence));
+            const committed = this.commit(owner, ledger, index, current, actor, new Date().toISOString());
+            return { ...committed, item: this.read(owner).items[index] };
+        });
     }
 
     /** Retried creation with the same idempotency key returns the original item. */
@@ -700,6 +807,12 @@ export class SentinelTodoStore {
                 itemId: row.prerequisite_id, condition: JSON.parse(row.condition),
             })]);
         }
+        const evidence = new Map<string, SentinelTodoEvidence[]>();
+        for (const row of this.db.prepare(`SELECT item_id, receipt FROM sentinel_todo_evidence
+            WHERE workspace_id = ? AND parent_process_id = ? ORDER BY evidence_key`)
+            .all<{ item_id: string; receipt: string }>(...scope)) {
+            evidence.set(row.item_id, [...evidence.get(row.item_id) ?? [], parse(evidenceSchema, JSON.parse(row.receipt))]);
+        }
         const items = this.db.prepare(`SELECT * FROM sentinel_todo_items
             WHERE workspace_id = ? AND parent_process_id = ? ORDER BY item_order`).all<ItemRow>(...scope);
         return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
@@ -709,6 +822,7 @@ export class SentinelTodoStore {
             createdBy: row.created_by, updatedBy: row.updated_by, jobs: byItem.get(row.id) ?? [],
             references: references.get(row.id) ?? [],
             dependsOn: dependencies.get(row.id) ?? [],
+            evidence: evidence.get(row.id) ?? [],
             ...jsonField('targetRepo', row.target_repo), ...jsonField('outcome', row.outcome),
             ...optional('statusReason', row.status_reason), ...optional('idempotencyKey', row.idempotency_key),
             ...optional('userEditedAt', row.user_edited_at), ...optional('userVerdictRevision', row.user_verdict_revision),

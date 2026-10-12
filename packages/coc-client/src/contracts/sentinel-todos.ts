@@ -83,6 +83,64 @@ export interface SetSentinelTodoDependenciesRequest {
   dependsOn: SentinelTodoDependency[];
 }
 
+export interface SentinelTodoPrIdentity {
+  provider: 'github' | 'ado';
+  host: string;
+  repoPath: string;
+  number: number;
+  url: string;
+}
+
+export type SentinelTodoPrProvenance =
+  | { kind: 'tracked_job'; processId: string; workspaceId: string; reason: string }
+  | { kind: 'owner_selection'; reason: string };
+
+interface SentinelTodoEvidenceReceipt {
+  receiptId: string;
+  recordedAt: string;
+  recordedBy: 'user' | 'sentinel';
+}
+
+export type SentinelTodoEvidence =
+  | (SentinelTodoEvidenceReceipt & { kind: 'pr_binding'; outputSlot: string; pr: SentinelTodoPrIdentity; provenance: SentinelTodoPrProvenance })
+  | (SentinelTodoEvidenceReceipt & { kind: 'artifact_acceptance'; phase: string; reference: string; version: string; workspaceId: string });
+
+export interface BindSentinelTodoPrRequest {
+  expectedRevision: number;
+  outputSlot: string;
+  prUrl: string;
+  provenance: SentinelTodoPrProvenance;
+}
+
+/** Version is `sha256:<64 lowercase hex digits>` of the exact current file bytes. */
+export interface AcceptSentinelTodoArtifactRequest {
+  expectedRevision: number;
+  phase: string;
+  reference: string;
+  version: string;
+}
+
+export interface SentinelTodoDependencyEvaluation {
+  itemId: string;
+  itemRevision: number;
+  ledgerRevision: number;
+  evaluatedAt: string;
+  state: 'ready' | 'waiting';
+  blocker?: string;
+  /** An evidence snapshot, not authorization or an admission receipt. Re-evaluate before use. */
+  edges: {
+    dependency: SentinelTodoDependency;
+    sourceRevision?: number;
+    satisfied: boolean;
+    blocker?: string;
+    evidenceLink?: string;
+    receiptId?: string;
+    pr?: SentinelTodoPrIdentity;
+    mergedAt?: string;
+    mergeCommit?: string;
+  }[];
+}
+
 export interface SentinelTodoItem {
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
@@ -107,6 +165,7 @@ export interface SentinelTodoItem {
   references?: SentinelTodoReference[];
   /** All edges are required. Absent on records without native dependency support. */
   dependsOn?: SentinelTodoDependency[];
+  evidence?: SentinelTodoEvidence[];
 }
 
 export interface SentinelTodoLedgerResponse {

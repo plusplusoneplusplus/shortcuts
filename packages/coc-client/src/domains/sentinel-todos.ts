@@ -10,6 +10,9 @@ import type {
   SentinelScrubFindingWriteResponse,
   SentinelScrubFindingDismissResponse,
   AttachSentinelTodoReferenceRequest,
+  BindSentinelTodoPrRequest,
+  AcceptSentinelTodoArtifactRequest,
+  SentinelTodoDependencyEvaluation,
   CreateSentinelTodoRequest,
   SentinelTodoLedgerResponse,
   SetSentinelTodoDependenciesRequest,
@@ -69,6 +72,21 @@ export class SentinelTodosClient {
       ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependencies`),
       { method: 'PUT', body: request },
     );
+  }
+
+  bindPrOutput(workspaceId: string, processId: string, itemId: string, request: BindSentinelTodoPrRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/pr-output`),
+      { method: 'POST', body: request });
+  }
+
+  acceptArtifact(workspaceId: string, processId: string, itemId: string, request: AcceptSentinelTodoArtifactRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/artifact-acceptance`),
+      { method: 'POST', body: request });
+  }
+
+  evaluateDependencies(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoDependencyEvaluation> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/readiness`),
+      { ...options, method: 'POST', body: {} });
   }
 }
 

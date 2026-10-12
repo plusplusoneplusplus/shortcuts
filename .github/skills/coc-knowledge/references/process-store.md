@@ -135,7 +135,8 @@ counts to separate native/transport cost from Forge hydration.
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
 `sentinel_todo_ledgers`, `sentinel_todo_items`, `sentinel_todo_jobs`,
-`sentinel_todo_references` and `sentinel_todo_dependencies` tables in
+`sentinel_todo_references`, `sentinel_todo_dependencies`, `sentinel_todo_evidence`
+and `sentinel_todo_evaluations` tables in
 the shared `processes.db`. Workspace and parent process keys isolate repos,
 groups and chats; unique scoped idempotency keys and job identities make replays
 safe. Transactions acquire the database writer before mutation reads and compare
@@ -159,7 +160,14 @@ Dependency authoring shares the owner-validated service through PUT
 `.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
 default-off `features.sentinelTodoDependencies` and the ledger flag. Tracked
 dispatch blocks dependency-bearing items pending native authorized admission.
-Graph rows are machine-local and cleared with the ledger wipe.
+Graph and evidence rows are machine-local and cleared with the ledger wipe.
+Evidence receipts carry actor, receipt ID, timestamp and exact PR output binding
+or phase/reference/SHA-256 artifact acceptance. Rebinding/reacceptance advances
+item and ledger revisions without changing fulfillment. `evaluateDependencies`
+reads canonical provider status, then rechecks the captured ledger/item revisions
+and current artifact bytes under the native writer mutex. It persists a diagnostic
+snapshot with conjunctive blockers and links, never authority or dispatch state.
+Callers re-evaluate before using readiness; stale external-I/O snapshots conflict.
 
 ### Chat binding stores
 

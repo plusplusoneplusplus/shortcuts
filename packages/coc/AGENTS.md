@@ -205,6 +205,16 @@ references before editing. Paths are package-relative.
   and user-verdict bookkeeping. `features.sentinelTodoDependencies` defaults off and
   requires the ledger. Owner-validated `setDependencies`, PUT `.../dependencies`,
   the client resource and Sentinel `set_dependencies` share the graph command.
+  `bindPrOutput` and `acceptArtifact` store revision-checked, actor-attributed
+  receipts on the prerequisite, exposed as `evidence[]`. PR bindings require
+  explicit output selection/provenance (tracked delegations must contain the
+  selected canonical output link); only the canonical provider reader proves
+  merge. Artifact acceptance pins phase/reference/SHA-256 bytes in the owning
+  workspace root; containment, realpaths and current content are checked.
+  `evaluateDependencies` captures revisions before provider I/O and revalidates
+  under the shared writer transaction, returning conjunctive readiness and
+  blockers. Native evidence/evaluation tables are machine-local and wiped;
+  diagnostic evaluations are not admission receipts. Re-evaluate before use.
   Tracked dispatch rejects dependency-bearing items until authorized native admission
   is available; dependency authoring never launches work.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.

@@ -87,10 +87,15 @@ arguments are rejected by the tool; the store enforces user-only archive/restore
 
 With default-off `features.sentinelTodoDependencies` and the ledger enabled,
 `set_dependencies` replaces all prerequisites using `itemId`, `expectedRevision`
-and typed `dependsOn` edges. The owner stays bound to the invoking Sentinel.
-The service rechecks the live gate; ordinary create/update cannot author edges.
-Graph edits preserve fulfillment and grant no authority. Tracked create dispatch
-blocks dependency-bearing items pending native authorized admission.
+and typed `dependsOn` edges. `bind_pr_output` explicitly selects one exact produced
+PR with named output slot and tracked-job or owner-selection provenance/reason;
+`accept_artifact` records an actor receipt for exact phase/reference/SHA-256 content.
+`evaluate_dependencies` returns fresh conjunctive readiness, blockers and evidence
+links. The owner stays bound to the invoking Sentinel and the service rechecks the
+live gate. Ordinary create/update cannot author edges or evidence. These commands
+preserve fulfillment and grant no authority; accepted designs remain pending coding
+completion. Tracked create dispatch blocks dependency-bearing items pending native
+authorized admission.
 
 When `triggers.enabled` infrastructure is present, the same tool offers
 `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`, `resume_trigger`,
