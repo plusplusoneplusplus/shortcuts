@@ -244,19 +244,22 @@ requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rej
 on tab/helper close or crash. CDP timeouts retire individual requests. File previews
 omit CDP; the primitive has no renderer IPC surface by itself.
 
-`BrowserHostManager.withControlPage` checks owner/view/session identity and accepts
-URL tabs only. Each view's `BrowserControlQueue` retains one shared page across
-navigation and serializes whole input sequences. Commands reject on turn abort,
-close, crash or 30 seconds including queue time. Cancellation keeps outstanding
-CDP calls serialized, releases dispatched presses and retains late snapshot counters.
-The manager API is internal; it exposes no renderer IPC.
+`BrowserHostManager.executeControl` resolves owner-qualified URL tabs and popouts
+through an exact-source SPA main frame's workspace/session binding. Typed preload
+commands expose no arbitrary CDP. `withControlPage` checks the selected view's identity;
+its `BrowserControlQueue` retains one page across navigation and serializes whole
+input sequences. Turn abort, close, crash or 30 seconds including queue time reject
+callers. Cancellation keeps outstanding CDP serialized, releases dispatched presses
+and retains late snapshot counters.
 
-`browser-control-page.ts` owns snapshots and trusted mouse, keyboard, text, option
-selection, scrolling and cancellable waits. Its monotonic counter seeds the
-self-contained `browser-control-dom.ts` element maps. DOM/ARIA snapshots cover
-same-origin frames and open shadows; URL changes and pagehide/BFCache expire refs.
-Targets scroll and translate frame bounds before input. Fixtures exercise jsdom
-and real Electron under existing display/CI gates.
+`browser-control-page.ts` shares snapshots, trusted input, waits, markdown reads,
+eval and cropped inline JPEG capture across engines. Its monotonic counter seeds
+self-contained DOM/ARIA maps covering same-origin frames and open shadows.
+Navigation and inaccessible frame documents expire refs. Targets scroll and translate
+frame bounds before input; screenshots account for pixel ratio. Live fixtures exercise
+the parser/tool/WebSocket/SPA/preload/main/CDP chain. Desktop CI builds server/SPA
+artifacts and runs the workflow on Linux/macOS and Windows WebView2; feature admission
+uses default-off `browserControl.enabled` ([tools](llm-tools.md)).
 
 ### Container image
 
