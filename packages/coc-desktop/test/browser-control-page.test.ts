@@ -1,0 +1,164 @@
+import { describe, expect, it, vi } from 'vitest';
+import { BrowserControlPage } from '../src/browser-control-page';
+
+function fixture() {
+    const send = vi.fn(async (method: string, _params?: Record<string, unknown>): Promise<unknown> => method === 'Runtime.evaluate'
+        ? { result: { value: { x: 10, y: 20, width: 80, height: 30, optionSteps: 2 } } } : {});
+    return { send, page: new BrowserControlPage(send, 'linux') };
+}
+
+const mouse = [
+    ['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 50, y: 35 }],
+    ['Input.dispatchMouseEvent', { type: 'mousePressed', x: 50, y: 35, button: 'left', clickCount: 1 }],
+    ['Input.dispatchMouseEvent', { type: 'mouseReleased', x: 50, y: 35, button: 'left', clickCount: 1 }],
+];
+const key = (name: string, code: string, vk: number, modifiers = 0, text?: string, unmodifiedText = text) => [
+    ['Input.dispatchKeyEvent', { type: 'keyDown', key: name, code, windowsVirtualKeyCode: vk, modifiers, ...(text ? { text, unmodifiedText } : {}) }],
+    ['Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, windowsVirtualKeyCode: vk, modifiers }],
+];
+
+describe('engine-neutral trusted CDP actions', () => {
+    it('resolves/scrolls a ref then emits trusted mouse move, press and release at its center', async () => {
+        const { send, page } = fixture();
+        await page.click('e12');
+        expect(send.mock.calls[0]).toEqual(['Runtime.evaluate', { expression: expect.stringContaining('"ref":"e12"'), returnByValue: true }]);
+        expect(send.mock.calls.slice(1)).toEqual(mouse);
+        expect(send.mock.calls[0][1]?.expression).not.toContain('.click(');
+    });
+
+    it('replaces text using trusted select-all and insertText, and optionally submits Enter', async () => {
+        const { send, page } = fixture();
+        await page.type('e1', 'quoted "text"\nnext', true);
+        expect(send.mock.calls[0][1]?.expression).toContain('"editable":true');
+        expect(send.mock.calls.slice(1)).toEqual([
+            ...mouse, ...key('a', 'KeyA', 65, 2), ['Input.insertText', { text: 'quoted "text"\nnext' }], ...key('Enter', 'Enter', 13, 0, '\r'),
+        ]);
+    });
+
+    it('uses Meta select-all on macOS without submitting by default', async () => {
+        const { send } = fixture();
+        await new BrowserControlPage(send, 'darwin').type('e1', 'new');
+        expect(send.mock.calls.slice(4)).toEqual([...key('a', 'KeyA', 65, 4), ['Input.insertText', { text: 'new' }]]);
+    });
+
+    it('selects a native option through trusted keyboard events', async () => {
+        const { send, page } = fixture();
+        await page.selectOption('e5', 'third');
+        expect(send.mock.calls[0][1]?.expression).toContain('"option":"third"');
+        expect(send.mock.calls.slice(1)).toEqual([...key('Home', 'Home', 36), ...key('ArrowDown', 'ArrowDown', 40), ...key('ArrowDown', 'ArrowDown', 40)]);
+    });
+
+    it.each([
+        ['Enter', 'Enter', 'Enter', 13, 0, '\r'], ['Shift+Tab', 'Tab', 'Tab', 9, 8, '\t'],
+        ['Ctrl+Shift+a', 'A', 'KeyA', 65, 10, undefined], ['Alt+ArrowLeft', 'ArrowLeft', 'ArrowLeft', 37, 1, undefined],
+        ['Space', ' ', 'Space', 32, 0, ' '], ['Escape', 'Escape', 'Escape', 27, 0, undefined], ['7', '7', 'Digit7', 55, 0, '7'],
+        ['Shift+a', 'A', 'KeyA', 65, 8, 'A', 'a'], ['/', '/', 'Slash', 191, 0, '/'], ['+', '+', 'Equal', 187, 0, '+'],
+        ['Ctrl++', '+', 'Equal', 187, 2, undefined],
+        ['Shift+7', '&', 'Digit7', 55, 8, '&', '7'], ['Shift+/', '?', 'Slash', 191, 8, '?', '/'], ['F5', 'F5', 'F5', 116, 0, undefined],
+    ])('dispatches %s with correct CDP codes/modifiers', async (shortcut, name, code, vk, modifiers, text, unmodifiedText) => {
+        const { send, page } = fixture();
+        await page.press(shortcut);
+        expect(send.mock.calls).toEqual(key(name, code, vk, modifiers, text, unmodifiedText));
+    });
+
+    it.each(['Hyper+a', 'BogusKey', '', 'Ctrl+'])('rejects unsupported key %s before sending input', async shortcut => {
+        const { send, page } = fixture();
+        await expect(page.press(shortcut)).rejects.toThrow(/key/i);
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['up', 0, -600], ['down', 0, 600], ['left', -600, 0], ['right', 600, 0],
+    ] as const)('scrolls %s with trusted wheel input', async (direction, deltaX, deltaY) => {
+        const { send, page } = fixture();
+        await page.scroll(direction, 'e8');
+        expect(send.mock.calls.slice(1)).toEqual([['Input.dispatchMouseEvent', { type: 'mouseWheel', x: 50, y: 35, deltaX, deltaY }]]);
+    });
+
+    it('scrolls the page without requiring a ref', async () => {
+        const { send, page } = fixture();
+        await page.scroll('down');
+        expect(send.mock.calls).toEqual([['Input.dispatchMouseEvent', { type: 'mouseWheel', x: 1, y: 1, deltaX: 0, deltaY: 600 }]]);
+    });
+
+    it('retains the next ref counter on the host across navigations', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValue({ result: { value: { title: 'Test', url: 'http://fixture/', elements: [], nextRef: 12 } } });
+        await page.snapshot();
+        await page.snapshot({ all: true, ref: 'e5' });
+        expect(send.mock.calls[0][1]?.expression).toContain('"nextRef":1');
+        expect(send.mock.calls[1][1]?.expression).toContain('"nextRef":12');
+        expect(send.mock.calls[1][1]?.expression).toContain('"all":true');
+    });
+
+    it('surfaces page exceptions and emits no input for a stale ref', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValue({ exceptionDetails: { text: 'Uncaught', exception: { description: 'Error: stale ref, re-snapshot\n at browserDom' } } });
+        await expect(page.click('e9')).rejects.toThrow('stale ref, re-snapshot');
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves transport errors and rejects malformed evaluation results', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValue({ result: { type: 'undefined' } });
+        await expect(page.snapshot()).rejects.toThrow('returned no result');
+        const error = new Error('Browser tab closed');
+        send.mockRejectedValue(error);
+        await expect(page.click('e1')).rejects.toBe(error);
+    });
+
+    it('stops a multi-command action at the first CDP error', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValueOnce({ result: { value: { x: 0, y: 0, width: 10, height: 10 } } }).mockRejectedValueOnce(new Error('crashed'));
+        await expect(page.type('e1', 'must not insert')).rejects.toThrow('crashed');
+        expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('polls for text until found without taking a snapshot or screenshot', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValueOnce({ result: { value: false } }).mockResolvedValueOnce({ result: { value: true } });
+        await page.wait('Ready');
+        expect(send).toHaveBeenCalledTimes(2);
+        for (const call of send.mock.calls) {
+            expect(call[0]).toBe('Runtime.evaluate');
+            expect(call[1]?.expression).toContain('"action":"text","text":"Ready"');
+        }
+    });
+
+    it('reports text timeout at the 30-second deadline', async () => {
+        const { send, page } = fixture();
+        send.mockResolvedValue({ result: { value: false } });
+        const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(30_000);
+        try { await expect(page.wait('Missing')).rejects.toThrow('Text not found after 30s'); }
+        finally { now.mockRestore(); }
+    });
+
+    it.each([-1, 30_001, Infinity, NaN])('rejects invalid wait duration %s', async ms => {
+        const { page } = fixture();
+        await expect(page.wait(ms)).rejects.toThrow('between 0 and 30000');
+    });
+
+    it('waits for a duration without CDP and cancels a pending timer promptly', async () => {
+        const { send, page } = fixture();
+        await page.wait(0);
+        const controller = new AbortController();
+        const pending = page.wait(30_000, controller.signal);
+        controller.abort();
+        await expect(pending).rejects.toThrow(/abort/i);
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it('honors cancellation before polling and while sleeping between polls', async () => {
+        const { send, page } = fixture();
+        const before = new AbortController();
+        const reason = new Error('Turn cancelled');
+        before.abort(reason);
+        await expect(page.wait('Ready', before.signal)).rejects.toBe(reason);
+        expect(send).not.toHaveBeenCalled();
+        const during = new AbortController();
+        send.mockImplementation(async () => { during.abort(reason); return { result: { value: false } }; });
+        await expect(page.wait('Ready', during.signal)).rejects.toThrow(/abort/i);
+        expect(send).toHaveBeenCalledTimes(1);
+        await expect(page.wait('  ')).rejects.toThrow('must not be empty');
+    });
+});

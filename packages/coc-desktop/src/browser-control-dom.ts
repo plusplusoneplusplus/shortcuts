@@ -1,0 +1,230 @@
+/** Serialized into the URL guest by browser-control-page. No host dependencies. */
+export interface BrowserDomElement {
+    ref: string;
+    role: string;
+    name: string;
+    depth: number;
+    checked?: boolean;
+}
+
+export interface BrowserDomSnapshot {
+    title: string;
+    url: string;
+    elements: BrowserDomElement[];
+    nextRef: number;
+}
+
+export interface BrowserDomTarget {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    optionSteps?: number;
+}
+
+export type BrowserDomCommand =
+    | { action: 'snapshot'; ref?: string; all?: boolean; nextRef: number }
+    | { action: 'text'; text: string }
+    | { action: 'target'; ref: string; editable?: boolean; option?: string };
+
+/** Keep this function self-contained: its compiled source runs in either engine. */
+function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomTarget | boolean {
+    interface Registry {
+        document: Document;
+        url: string;
+        refs: Map<string, Element>;
+        ids: WeakMap<Element, string>;
+        nextRef: number;
+    }
+    const page = window as Window & { __cocBrowserControl?: Registry };
+    let state = page.__cocBrowserControl;
+    if (!state || state.document !== document) {
+        state = { document, url: location.href, refs: new Map(), ids: new WeakMap(), nextRef: 1 };
+        Object.defineProperty(page, '__cocBrowserControl', { value: state, configurable: true });
+        const owned = state;
+        // BFCache restores this document and its globals; old refs must still expire.
+        page.addEventListener('pagehide', () => { owned.refs.clear(); owned.ids = new WeakMap(); });
+    }
+    const registry = state;
+    if (registry.url !== location.href) {
+        registry.refs.clear(); registry.ids = new WeakMap(); registry.url = location.href;
+    }
+    if (command.action === 'snapshot') registry.nextRef = Math.max(registry.nextRef, command.nextRef);
+    const clean = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+    const parent = (element: Element): Element | null => {
+        if (element.parentElement) return element.parentElement;
+        const root = element.getRootNode() as ShadowRoot;
+        if (root.host) return root.host;
+        return element.ownerDocument.defaultView?.frameElement ?? null;
+    };
+    const current = (element: Element): boolean => element.isConnected
+        && element.ownerDocument.defaultView?.document === element.ownerDocument;
+    const hidden = (element: Element): boolean => {
+        for (let node: Element | null = element; node; node = parent(node)) {
+            const style = node.ownerDocument.defaultView!.getComputedStyle(node);
+            if (node.hasAttribute('hidden') || node.hasAttribute('inert') || node.getAttribute('aria-hidden') === 'true'
+                || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
+                || style.contentVisibility === 'hidden') return true;
+        }
+        return false;
+    };
+    const disabled = (element: Element) => {
+        if (element.matches(':disabled')) return true;
+        for (let node: Element | null = element; node; node = parent(node)) {
+            if (node.getAttribute('aria-disabled') === 'true') return true;
+        }
+        return false;
+    };
+    const resolve = (ref: string): Element => {
+        const element = registry.refs.get(ref);
+        if (!element || !current(element)) throw new Error('stale ref, re-snapshot');
+        return element;
+    };
+    const role = (element: Element): string => {
+        const explicit = clean(element.getAttribute('role')).split(' ')[0];
+        if (explicit) return explicit;
+        const tag = element.localName;
+        if (/^h[1-6]$/.test(tag)) return 'heading';
+        if (tag === 'a' && element.hasAttribute('href')) return 'link';
+        if (tag === 'button' || tag === 'summary') return 'button';
+        if (tag === 'textarea' || element.hasAttribute('contenteditable') && element.getAttribute('contenteditable') !== 'false') return 'textbox';
+        if (tag === 'select') return (element as HTMLSelectElement).multiple ? 'listbox' : 'combobox';
+        if (tag === 'input') {
+            const type = (element as HTMLInputElement).type;
+            if (['button', 'submit', 'reset', 'image'].includes(type)) return 'button';
+            return ({ checkbox: 'checkbox', radio: 'radio', range: 'slider', number: 'spinbutton', search: 'searchbox' } as Record<string, string>)[type] ?? 'textbox';
+        }
+        return ({ img: 'img', nav: 'navigation', main: 'main', ul: 'list', ol: 'list', li: 'listitem', table: 'table', tr: 'row', th: 'columnheader', td: 'cell', iframe: 'iframe' } as Record<string, string>)[tag] ?? 'generic';
+    };
+    const name = (element: Element): string => {
+        const root = element.getRootNode() as Document | ShadowRoot;
+        const labelledBy = element.getAttribute('aria-labelledby');
+        if (labelledBy) {
+            const text = clean(labelledBy.split(/\s+/).map(id => root.getElementById(id)?.textContent ?? '').join(' '));
+            if (text) return text;
+        }
+        const aria = clean(element.getAttribute('aria-label'));
+        if (aria) return aria;
+        const labels = (element as HTMLInputElement).labels;
+        if (labels?.length) return clean(Array.from(labels, label => {
+            const copy = label.cloneNode(true) as Element;
+            for (const control of Array.from(copy.querySelectorAll('input,select,textarea,button'))) control.remove();
+            return copy.textContent;
+        }).join(' '));
+        if (element.localName === 'input') {
+            const input = element as HTMLInputElement;
+            return clean(['button', 'submit', 'reset'].includes(input.type) ? input.value : input.alt || input.placeholder || input.title);
+        }
+        if (element.localName === 'img') return clean(element.getAttribute('alt'));
+        if (element.localName === 'select' || element.localName === 'textarea') return clean(element.getAttribute('title') || element.getAttribute('placeholder'));
+        return clean(element.getAttribute('title') || element.textContent);
+    };
+
+    if (command.action === 'text') {
+        const parts: string[] = [];
+        const seen = new Set<Node>();
+        const text = (node: Node) => {
+            if (seen.has(node)) return;
+            seen.add(node);
+            if (node.nodeType === Node.TEXT_NODE) { parts.push(node.textContent ?? ''); return; }
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node as Element;
+                if (hidden(element) || ['script', 'style', 'noscript'].includes(element.localName)) return;
+                if (element.localName === 'iframe') {
+                    try {
+                        const body = (element as HTMLIFrameElement).contentDocument?.body;
+                        if (body) text(body);
+                    } catch { /* Cross-origin frame. */ }
+                }
+                if (element.localName === 'slot') {
+                    const assigned = (element as HTMLSlotElement).assignedNodes({ flatten: true });
+                    if (assigned.length) { for (const child of assigned) text(child); return; }
+                }
+                for (const child of Array.from((element.shadowRoot ?? element).childNodes)) text(child);
+            }
+        };
+        if (document.body) text(document.body);
+        return clean(parts.join(' ')).includes(clean(command.text));
+    }
+
+    if (command.action === 'snapshot') {
+        for (const [ref, element] of registry.refs) if (!current(element)) registry.refs.delete(ref);
+        const elements: BrowserDomElement[] = [];
+        const seen = new Set<Element>();
+        const interactive = new Set(['link', 'button', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'listbox', 'slider', 'spinbutton', 'switch', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'treeitem', 'option', 'heading']);
+        const walk = (element: Element, depth: number) => {
+            if (seen.has(element) || hidden(element)) return;
+            seen.add(element);
+            const elementRole = role(element);
+            let childDepth = depth;
+            if (!disabled(element) && element.getClientRects().length && (command.all || interactive.has(elementRole))) {
+                let ref = registry.ids.get(element);
+                if (!ref) { ref = `e${registry.nextRef++}`; registry.ids.set(element, ref); }
+                registry.refs.set(ref, element);
+                const entry: BrowserDomElement = { ref, role: elementRole, name: name(element), depth };
+                if (elementRole === 'checkbox' || elementRole === 'radio' || elementRole === 'switch') {
+                    entry.checked = element.getAttribute('aria-checked') === 'true' || (element as HTMLInputElement).checked === true;
+                }
+                elements.push(entry);
+                childDepth++;
+            }
+            if (element.localName === 'iframe') {
+                // Access may throw for cross-origin frames. They stay opaque.
+                try {
+                    const body = (element as HTMLIFrameElement).contentDocument?.body;
+                    if (body) walk(body, childDepth);
+                } catch { /* Cross-origin frame. */ }
+            }
+            if (element.localName === 'slot') {
+                const assigned = (element as HTMLSlotElement).assignedElements({ flatten: true });
+                if (assigned.length) { for (const child of assigned) walk(child, childDepth); return; }
+            }
+            for (const child of Array.from((element.shadowRoot ?? element).children)) walk(child, childDepth);
+        };
+        const root = command.ref ? resolve(command.ref) : document.body;
+        if (root) walk(root, 0);
+        return { title: document.title, url: location.href, elements, nextRef: registry.nextRef };
+    }
+
+    const element = resolve(command.ref);
+    if (hidden(element) || disabled(element)) throw new Error('Element is hidden or disabled');
+    if (command.editable) {
+        const input = element as HTMLInputElement;
+        const textInput = element.localName === 'input' && ['text', 'search', 'email', 'url', 'tel', 'password', 'number'].includes(input.type);
+        if ((!textInput && element.localName !== 'textarea' && !(element as HTMLElement).isContentEditable)
+            || input.readOnly) throw new Error('Element is not editable');
+    }
+    let optionSteps: number | undefined;
+    if (command.option !== undefined) {
+        if (element.localName !== 'select') throw new Error('Element is not a select');
+        const options = Array.from((element as HTMLSelectElement).options).filter(option => !option.disabled && !option.parentElement?.matches('optgroup[disabled]'));
+        const index = options.findIndex(option => option.value === command.option);
+        if (index < 0) throw new Error('Option value is missing or disabled');
+        optionSteps = index;
+    }
+    element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    const frames: Element[] = [];
+    for (let frame = element.ownerDocument.defaultView?.frameElement; frame; frame = frame.ownerDocument.defaultView?.frameElement) {
+        frame.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+        frames.push(frame);
+    }
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height) throw new Error('Element has no visible bounds');
+    let { x, y, width, height } = rect;
+    for (const frame of frames) {
+        const bounds = frame.getBoundingClientRect();
+        const host = frame as HTMLElement;
+        const scaleX = bounds.width / (host.offsetWidth || bounds.width);
+        const scaleY = bounds.height / (host.offsetHeight || bounds.height);
+        x = bounds.x + (host.clientLeft + x) * scaleX;
+        y = bounds.y + (host.clientTop + y) * scaleY;
+        width *= scaleX;
+        height *= scaleY;
+    }
+    if (command.option !== undefined) (element as HTMLElement).focus();
+    return { x, y, width, height, ...(optionSteps === undefined ? {} : { optionSteps }) };
+}
+
+export function buildBrowserDomExpression(command: BrowserDomCommand): string {
+    return `(${browserDom.toString()})(${JSON.stringify(command)})`;
+}

@@ -236,17 +236,22 @@ with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.
 `packages/coc-desktop/electron-builder.container.cjs` selects the container variant.
 
-URL browser hosts expose optional `BrowserHostedView.cdp(method, params)` for
-shared browser-control logic. Electron's `ElectronBrowserCdp` uses the adopted
-guest's debugger, attaches on the first command and detaches its own attachment
-on close. Commands reject on guest destruction, renderer crash, debugger detach
-or a 30-second timeout; pending timers and lifecycle listeners retire on settlement
-and disposal. WebView2 uses the same capability through owner-qualified helper
-requests and Rust `CallDevToolsProtocolMethod` completion callbacks. Its transport
-returns correlated JSON results, rejects on tab close/page or helper crash/shutdown,
-and retires timed-out CDP requests after 30 seconds without stopping other tabs.
-File previews omit this capability. This primitive has no renderer
-IPC surface by itself.
+URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
+`ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
+its own attachment on close. Pending calls reject on destruction, crash, detach
+or a 30-second timeout and retire timers/listeners. WebView2 forwards owner-qualified
+requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rejecting
+on tab/helper close or crash. CDP timeouts retire individual requests. File previews
+omit CDP; the primitive has no renderer IPC surface by itself.
+
+`browser-control-page.ts` owns engine-neutral snapshots and trusted mouse, keyboard,
+text insertion, option selection, scrolling and bounded waits. Retain one
+`BrowserControlPage` per owner-qualified URL view across navigation. Its monotonic
+ref counter seeds `browser-control-dom.ts`, a self-contained injected function
+with page-side element maps. Snapshots cover DOM/ARIA, same-origin frames and open
+shadow roots; URL changes and pagehide/BFCache expire refs. Target resolution scrolls
+and translates frame bounds before CDP input. Fixture tests run with jsdom and real
+Electron under the existing display/CI gates.
 
 ### Container image
 
