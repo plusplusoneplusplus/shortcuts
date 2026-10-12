@@ -8,6 +8,8 @@ import {
 import { parseBrowserCookies } from './browser-cookie-import';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
+import { BrowserControlQueue } from './browser-control-queue';
+import type { BrowserControlPage } from './browser-control-page';
 
 interface Entry {
     ownerId: number;
@@ -21,6 +23,7 @@ interface Entry {
     ready: Promise<BrowserHostedView>;
     view?: BrowserHostedView;
     startupFailed?: boolean;
+    control?: BrowserControlQueue;
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -152,6 +155,13 @@ export class BrowserHostManager {
         if (!entries) { entries = new Map(); this.owners.set(init.ownerId, entries); }
         const entry = { ...init, closed: false } as Entry;
         entry.ready = Promise.resolve().then(() => create(entry));
+        if (entry.sourceKind === 'url') {
+            entry.control = new BrowserControlQueue((method, params) => {
+                if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
+                if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+                return entry.view.cdp(method, params);
+            });
+        }
         entries.set(init.viewId, entry);
         return entry;
     }
@@ -196,7 +206,13 @@ export class BrowserHostManager {
     private async start(entry: Entry, create: (sink: BrowserEventSink) => Promise<BrowserHostedView>): Promise<BrowserHostedView> {
         if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab closed during startup.'); }
         const view = await create({
-            state: state => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state)); } },
+            state: state => {
+                if (entry.closed) return;
+                if (state.errorCode === 'runtime-crashed') {
+                    entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
+                }
+                this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state));
+            },
             visited: (url, title) => {
                 if (!entry.closed && entry.sourceKind === 'url') {
                     void this.options.history.recordVisit(entry.engine, url, title)
@@ -315,6 +331,25 @@ export class BrowserHostManager {
         }
     }
 
+    /** Internal main-process control path; unlike UI commands, results and errors reach the caller. */
+    async withControlPage<T>(
+        ownerId: number, viewId: unknown, sessionKey: unknown,
+        operation: (page: BrowserControlPage, signal: AbortSignal) => Promise<T>, signal?: AbortSignal,
+    ): Promise<T> {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab not found');
+        if (!isValidBrowserSessionKey(sessionKey) || entry.sessionKey !== sessionKey) {
+            throw new BrowserHostError('bad-session', 'Browser tab belongs to another workspace');
+        }
+        if (!entry.control) throw new BrowserHostError('unsupported', 'Browser control supports URL tabs only');
+        return entry.control.run(async (page, commandSignal) => {
+            const view = await entry.ready;
+            commandSignal.throwIfAborted();
+            if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+            return operation(page, commandSignal);
+        }, signal);
+    }
+
     /** Hand a view's current page to the system: an http(s) page for `url` views, the previewed `file:` page for `file` views. */
     openExternal(ownerId: number, viewId: unknown, open: (url: string) => Promise<void>): Promise<void> {
         const sourceKind = this.entry(ownerId, viewId)?.sourceKind;
@@ -340,6 +375,7 @@ export class BrowserHostManager {
     private async closeEntry(entry: Entry, notify = false): Promise<void> {
         if (!entry || entry.closed) { return; }
         entry.closed = true;
+        entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
         if (current?.get(entry.viewId) === entry) { current.delete(entry.viewId); }
         if (notify) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSED_CHANNEL, { viewId: entry.viewId, engine: entry.engine }); }

@@ -5,7 +5,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { ElectronBrowserCdp } = require('../../dist/electron-browser-cdp.js');
-const { BrowserControlPage } = require('../../dist/browser-control-page.js');
+const { BrowserControlQueue } = require('../../dist/browser-control-queue.js');
 let win;
 let cdp;
 
@@ -39,32 +39,47 @@ const server = http.createServer((request, response) => {
     const url = `http://127.0.0.1:${server.address().port}/`;
     await win.loadURL(url);
     cdp = new ElectronBrowserCdp(win.webContents);
-    const page = new BrowserControlPage(cdp.send.bind(cdp));
-    const before = await page.snapshot();
+    let stop;
+    const queue = new BrowserControlQueue(async (method, params) => {
+        const result = await cdp.send(method, params);
+        if (stop && method === 'Input.dispatchMouseEvent' && params?.type === 'mousePressed') {
+            stop.abort(new Error('Fixture Stop'));
+            stop = undefined;
+        }
+        return result;
+    });
+    const before = await queue.run(page => page.snapshot());
     const ref = name => {
         const entry = before.elements.find(element => element.name === name);
         if (!entry) throw new Error('Missing fixture element: ' + name + '\n' + JSON.stringify(before));
         return entry.ref;
     };
-    await page.type(ref('Name'), 'Ada');
-    await page.click(ref('Save'));
-    await page.selectOption(ref('Plan'), 'c');
-    await page.selectOption(ref('Choices'), 'b');
-    await page.type(ref('Frame text'), 'Nested');
-    await page.click(ref('Frame action'));
-    await page.click(ref('Shadow action'));
-    await page.wait('Ada');
-    await page.wait('Shadow action');
+    stop = new AbortController();
+    let cancelled;
+    try { await queue.run(page => page.type(ref('Name'), 'not inserted'), stop.signal); }
+    catch (error) { cancelled = error.message; }
+    const stoppedField = await cdp.send('Runtime.evaluate', {
+        expression: `document.querySelector('#name').value`, returnByValue: true,
+    });
+    await queue.run(page => page.type(ref('Name'), 'Ada'));
+    await queue.run(page => page.click(ref('Save')));
+    await queue.run(page => page.selectOption(ref('Plan'), 'c'));
+    await queue.run(page => page.selectOption(ref('Choices'), 'b'));
+    await queue.run(page => page.type(ref('Frame text'), 'Nested'));
+    await queue.run(page => page.click(ref('Frame action')));
+    await queue.run(page => page.click(ref('Shadow action')));
+    await queue.run((page, signal) => page.wait('Ada', signal));
+    await queue.run((page, signal) => page.wait('Shadow action', signal));
     const report = await cdp.send('Runtime.evaluate', {
         expression: `({value:document.querySelector('#out').textContent,plan:document.querySelector('#plan').value,choices:Array.from(document.querySelector('#choices').selectedOptions,o=>o.value),frameText:document.querySelector('iframe').contentDocument.querySelector('input').value,frameClicked:window.frameClicked,shadowClicked:window.shadowClicked,events:window.events})`,
         returnByValue: true,
     });
-    const repeated = await page.snapshot();
+    const repeated = await queue.run(page => page.snapshot());
     await win.loadURL(url + '?navigated');
-    const after = await page.snapshot();
+    const after = await queue.run(page => page.snapshot());
     let stale;
-    try { await page.click(ref('Save')); } catch (error) { stale = error.message; }
-    console.log('E2E::' + JSON.stringify({ report: report.result.value, stable: repeated.elements.map(e => e.ref).join() === before.elements.map(e => e.ref).join(), reused: after.elements.some(e => before.elements.some(old => old.ref === e.ref)), stale }));
+    try { await queue.run(page => page.click(ref('Save'))); } catch (error) { stale = error.message; }
+    console.log('E2E::' + JSON.stringify({ report: report.result.value, cancelled, stoppedField: stoppedField.result.value, stable: repeated.elements.map(e => e.ref).join() === before.elements.map(e => e.ref).join(), reused: after.elements.some(e => before.elements.some(old => old.ref === e.ref)), stale }));
     cdp.dispose();
     win.destroy();
     await new Promise(resolve => server.close(resolve));

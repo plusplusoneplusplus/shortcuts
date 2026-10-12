@@ -244,14 +244,19 @@ requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rej
 on tab/helper close or crash. CDP timeouts retire individual requests. File previews
 omit CDP; the primitive has no renderer IPC surface by itself.
 
-`browser-control-page.ts` owns engine-neutral snapshots and trusted mouse, keyboard,
-text insertion, option selection, scrolling and bounded waits. Retain one
-`BrowserControlPage` per owner-qualified URL view across navigation. Its monotonic
-ref counter seeds `browser-control-dom.ts`, a self-contained injected function
-with page-side element maps. Snapshots cover DOM/ARIA, same-origin frames and open
-shadow roots; URL changes and pagehide/BFCache expire refs. Target resolution scrolls
-and translates frame bounds before CDP input. Fixture tests run with jsdom and real
-Electron under the existing display/CI gates.
+`BrowserHostManager.withControlPage` checks owner/view/session identity and accepts
+URL tabs only. Each view's `BrowserControlQueue` retains one shared page across
+navigation and serializes whole input sequences. Commands reject on turn abort,
+close, crash or 30 seconds including queue time. Cancellation keeps outstanding
+CDP calls serialized, releases dispatched presses and retains late snapshot counters.
+The manager API is internal; it exposes no renderer IPC.
+
+`browser-control-page.ts` owns snapshots and trusted mouse, keyboard, text, option
+selection, scrolling and cancellable waits. Its monotonic counter seeds the
+self-contained `browser-control-dom.ts` element maps. DOM/ARIA snapshots cover
+same-origin frames and open shadows; URL changes and pagehide/BFCache expire refs.
+Targets scroll and translate frame bounds before input. Fixtures exercise jsdom
+and real Electron under existing display/CI gates.
 
 ### Container image
 

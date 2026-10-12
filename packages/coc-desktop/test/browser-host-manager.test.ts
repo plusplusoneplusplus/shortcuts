@@ -469,6 +469,144 @@ describe('engine availability and startup errors', () => {
     });
 });
 
+describe('owner-scoped browser control', () => {
+    it.each<BrowserEngine>(['electron', 'webview2'])('returns shared page results from %s and retains refs across navigation', async engine => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const cdp = vi.fn(async (_method: string, _params?: Record<string, unknown>) => ({
+            result: { value: { url: 'https://fixture.test/', title: 'Fixture', elements: [], nextRef: 12 } },
+        }));
+        h.created[0].view.cdp = cdp;
+        const result = await h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot());
+        expect(result.title).toBe('Fixture');
+        await h.manager.navigate(1, 'view', 'https://next.test/');
+        await h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot());
+        expect(cdp.mock.calls[1][1]?.expression).toContain('"nextRef":12');
+        expect(h.created[0].view.navigate).toHaveBeenCalledWith('https://next.test/');
+        await h.manager.dispose();
+    });
+
+    it('requires the exact owner, view and workspace without falling back to another tab', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        await h.manager.open(2, 'view', 'https://other.test/', 'workspace-b');
+        const operation = vi.fn();
+        await expect(h.manager.withControlPage(3, 'view', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'not-found' });
+        await expect(h.manager.withControlPage(1, 'missing', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'not-found' });
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-b', operation)).rejects.toMatchObject({ reason: 'bad-session' });
+        await expect(h.manager.withControlPage(2, 'view', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'bad-session' });
+        await expect(h.manager.withControlPage(1, 'view', '', operation)).rejects.toMatchObject({ reason: 'bad-session' });
+        expect(operation).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('rejects views lacking CDP even when the requested command is a wait', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const operation = vi.fn();
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'unsupported' });
+        expect(operation).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('preserves the engine error rather than converting it into a void UI command', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const error = new Error('Debugger detached');
+        h.created[0].view.cdp = vi.fn().mockRejectedValue(error);
+        h.send.mockClear();
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot())).rejects.toBe(error);
+        expect(h.send).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it.each(['close', 'closeOwner', 'reloadOwner', 'dispose', 'crash', 'guest-close'] as const)(
+        '%s rejects active and queued commands while preserving another owner',
+        async event => {
+            const h = harness();
+            await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+            await h.manager.open(2, 'view', 'https://other.test/', 'workspace-b');
+            const gate = deferred<unknown>();
+            h.created[0].view.cdp = vi.fn(() => gate.promise);
+            h.created[1].view.cdp = vi.fn(async () => ({}));
+            const first = h.manager.withControlPage(1, 'view', 'workspace-a', page => page.scroll('down'));
+            const queued = vi.fn();
+            const second = h.manager.withControlPage(1, 'view', 'workspace-a', queued);
+            await vi.waitFor(() => expect(h.created[0].view.cdp).toHaveBeenCalledOnce());
+            const firstError = expect(first).rejects.toThrow(event === 'crash' ? 'crashed' : 'closed');
+            const secondError = expect(second).rejects.toThrow(event === 'crash' ? 'crashed' : 'closed');
+            if (event === 'close') await h.manager.close(1, 'view');
+            else if (event === 'closeOwner') await h.manager.closeOwner(1);
+            else if (event === 'reloadOwner') await h.manager.reloadOwner(1);
+            else if (event === 'dispose') await h.manager.dispose();
+            else if (event === 'crash') h.created[0].sink.state({ ...h.created[0].view.snapshot(), errorCode: 'runtime-crashed', error: 'Browser tab crashed' });
+            else h.created[0].sink.closed!();
+            await Promise.all([firstError, secondError]);
+            gate.resolve({});
+            if (event !== 'dispose') {
+                await h.manager.withControlPage(2, 'view', 'workspace-b', page => page.scroll('down'));
+                expect(h.created[1].view.cdp).toHaveBeenCalledOnce();
+            }
+            expect(queued).not.toHaveBeenCalled();
+            await h.manager.dispose();
+        },
+    );
+
+    it('rejects a command during pending startup immediately when the tab closes', async () => {
+        const h = harness();
+        const gate = deferred<BrowserHostedView>();
+        vi.mocked(h.hosts.electron.create).mockImplementationOnce(() => gate.promise);
+        const opened = h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const operation = vi.fn();
+        const command = h.manager.withControlPage(1, 'view', 'workspace-a', operation);
+        const rejected = expect(command).rejects.toThrow('closed');
+        await vi.waitFor(() => expect(h.hosts.electron.create).toHaveBeenCalledOnce());
+        const closed = h.manager.close(1, 'view');
+        await rejected;
+        const view: BrowserHostedView = {
+            snapshot: vi.fn(), navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(), cdp: vi.fn(),
+        };
+        gate.resolve(view);
+        await closed;
+        expect(await opened).toMatchObject({ ok: false, reason: 'not-found' });
+        expect(view.close).toHaveBeenCalledOnce();
+        expect(operation).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('propagates startup failure and supports an explicit open retry', async () => {
+        const h = harness();
+        const error = new BrowserHostError('startup-failed', 'Engine failed');
+        vi.mocked(h.hosts.electron.create).mockRejectedValueOnce(error);
+        const opened = h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot())).rejects.toBe(error);
+        expect(await opened).toMatchObject({ ok: false, reason: 'startup-failed' });
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        h.created[0].view.cdp = vi.fn(async () => ({}));
+        await h.manager.withControlPage(1, 'view', 'workspace-a', page => page.scroll('down'));
+        await h.manager.dispose();
+    });
+
+    it('passes turn cancellation into waits and preserves the cancellation reason', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        h.created[0].view.cdp = vi.fn();
+        const controller = new AbortController();
+        const started = deferred<void>();
+        const command = h.manager.withControlPage(1, 'view', 'workspace-a', (page, signal) => {
+            started.resolve();
+            return page.wait(30_000, signal);
+        }, controller.signal);
+        await started.promise;
+        const error = new Error('Turn cancelled');
+        controller.abort(error);
+        await expect(command).rejects.toBe(error);
+        await h.manager.withControlPage(1, 'view', 'workspace-a', async () => {});
+        expect(h.created[0].view.cdp).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+});
+
 describe('file previews', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-file-preview-'));
     const page = path.join(dir, 'index.html');
@@ -476,6 +614,17 @@ describe('file previews', () => {
     fs.writeFileSync(page, '<!doctype html>');
     fs.writeFileSync(other, '<!doctype html>');
     afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('excludes file previews from agent control even if a host accidentally exposes CDP', async () => {
+        const h = harness();
+        await h.manager.openFile(1, 'preview', page, 'workspace-a');
+        h.files[0].view.cdp = vi.fn();
+        const operation = vi.fn();
+        await expect(h.manager.withControlPage(1, 'preview', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'unsupported' });
+        expect(operation).not.toHaveBeenCalled();
+        expect(h.files[0].view.cdp).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
 
     it.each<BrowserEngine>(['electron', 'webview2'])('always use the file host when the default engine is %s', async engine => {
         const h = harness(engine);
