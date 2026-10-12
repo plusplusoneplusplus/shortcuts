@@ -78,6 +78,11 @@ export interface SentinelTodoDependency {
   condition: SentinelTodoDependencyCondition;
 }
 
+export interface SetSentinelTodoDependenciesRequest {
+  expectedRevision: number;
+  dependsOn: SentinelTodoDependency[];
+}
+
 export interface SentinelTodoItem {
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */

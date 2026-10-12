@@ -528,6 +528,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     }
     const sentinelTodos = new SentinelTodoService({
         todos: todoStore, store, jobs: delegatedJobs,
+        getDependenciesEnabled: () => getSentinelTodoLedgerEnabled()
+            && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
         getTask: taskId => bridge.getTask(taskId),
         onChange: ({ owner, ledgerRevision, item }) => getWsServer().broadcastProcessEvent({
             type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,

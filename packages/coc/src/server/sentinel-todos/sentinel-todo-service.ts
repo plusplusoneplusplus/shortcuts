@@ -6,6 +6,7 @@ import {
     SentinelTodoError,
     type SentinelTodoActor,
     type SentinelTodoCreate,
+    type SentinelTodoDependency,
     type SentinelTodoItem,
     type SentinelTodoJobLink,
     type SentinelTodoJobLinkInput,
@@ -59,7 +60,25 @@ export class SentinelTodoService {
         /** Delegation receipts, read only to show linked jobs' execution status. */
         jobs?: Pick<DelegatedJobStore, 'list'>;
         onChange?: (change: SentinelTodoChange) => void;
+        getDependenciesEnabled?: () => boolean;
     }) {}
+
+    dependenciesEnabled(): boolean {
+        return this.deps.getDependenciesEnabled?.() === true;
+    }
+
+    async setDependencies(
+        owner: SentinelTodoOwner, itemId: string, expectedRevision: number,
+        dependencies: SentinelTodoDependency[], actor: SentinelTodoActor,
+    ): Promise<{ item: SentinelTodoItem; ledgerRevision: number }> {
+        await this.assertOwner(owner);
+        if (!this.dependenciesEnabled()) {
+            throw new SentinelTodoError('not_found', 'Sentinel dependencies are disabled');
+        }
+        const result = this.deps.todos.setDependencies(owner, itemId, expectedRevision, dependencies, actor);
+        this.emit({ owner, ...result });
+        return result;
+    }
 
     async list(owner: SentinelTodoOwner): Promise<SentinelTodoLedgerView> {
         await this.assertOwner(owner);

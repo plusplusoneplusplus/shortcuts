@@ -23,6 +23,7 @@ const LEDGER = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)$/;
 const ITEMS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items$/;
 const ITEM = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)$/;
 const REFERENCES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/references$/;
+const DEPENDENCIES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/dependencies$/;
 
 export function registerSentinelTodoRoutes(opts: {
     routes: Route[];
@@ -92,6 +93,26 @@ export function registerSentinelTodoRoutes(opts: {
             if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
             try {
                 sendJSON(res, 200, await service.update(target, decodeURIComponent(match![3]), expectedRevision, patch, 'user'));
+            } catch (error) {
+                fail(res, error);
+            }
+        },
+    });
+
+    routes.push({
+        method: 'PUT',
+        pattern: DEPENDENCIES,
+        handler: async (req, res, match) => {
+            const target = owner(res, match);
+            if (!target) return;
+            if (!service.dependenciesEnabled()) return sendError(res, 404, 'Sentinel dependencies are disabled');
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const { expectedRevision, dependsOn, ...rest } = body ?? {};
+            if (!Number.isInteger(expectedRevision)) return sendError(res, 400, 'Missing expectedRevision');
+            if (Object.keys(rest).length) return sendError(res, 400, `Unknown fields: ${Object.keys(rest).join(', ')}`);
+            try {
+                sendJSON(res, 200, await service.setDependencies(target, decodeURIComponent(match![3]), expectedRevision, dependsOn, 'user'));
             } catch (error) {
                 fail(res, error);
             }

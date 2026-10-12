@@ -636,6 +636,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
+            hint: 'Author explicit prerequisites in one Sentinel ledger. Requires the To-do ledger; readiness never grants execution authority. Disabled by default.',
+            testId: 'toggle-sentinel-todo-dependencies-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',

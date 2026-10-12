@@ -16,13 +16,14 @@ const processes: Record<string, { mode: string; workspaceId: string }> = {
     queue_ask: { mode: 'ask', workspaceId: 'ws-a' },
 };
 
-async function startServer(opts: { enabled?: boolean; dataDir?: string } = {}) {
+async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: boolean; dataDir?: string } = {}) {
     const database = createTodoTestDatabase(opts.dataDir ?? createTodoTestDirectory());
     const { dataDir, db } = database;
     const todos = new SentinelTodoStore(db);
     const routes: Route[] = [];
     const onChange = vi.fn();
     const enabled = { value: opts.enabled ?? true };
+    const dependenciesEnabled = { value: opts.dependenciesEnabled ?? false };
     registerSentinelTodoRoutes({
         routes,
         getEnabled: () => enabled.value,
@@ -30,6 +31,7 @@ async function startServer(opts: { enabled?: boolean; dataDir?: string } = {}) {
             todos,
             store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
             onChange,
+            getDependenciesEnabled: () => dependenciesEnabled.value,
         }),
     });
     const server = http.createServer(createRouter({ routes, spaHtml: '' }));
@@ -38,7 +40,7 @@ async function startServer(opts: { enabled?: boolean; dataDir?: string } = {}) {
     if (!address || typeof address === 'string') throw new Error('no address');
     let closed = false;
     return {
-        dataDir, db, onChange, enabled,
+        dataDir, db, onChange, enabled, dependenciesEnabled,
         baseUrl: `http://127.0.0.1:${address.port}`,
         close: async () => {
             if (closed) return;
@@ -76,6 +78,27 @@ describe('Sentinel to-do routes', () => {
         expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/x`, { expectedRevision: 1 })).status).toBe(404);
         expect(s.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_ledgers').get()).toEqual({ count: 0 });
         expect(s.onChange).not.toHaveBeenCalled();
+    });
+
+    it('gates graph authoring live and validates owner, typed edges, revisions and cycles', async () => {
+        const s = await track(await startServer());
+        const a = (await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'A', targetRepo: { workspaceId: 'ws-a' } })).body.item;
+        const b = (await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'B', targetRepo: { workspaceId: 'ws-b' } })).body.item;
+        const route = `${ledger}/items/${b.id}/dependencies`;
+        const request = { expectedRevision: 1, dependsOn: [{ itemId: a.id, condition: { kind: 'done' } }] };
+        expect((await req(s.baseUrl, 'PUT', route, request)).status).toBe(404);
+        s.dependenciesEnabled.value = true;
+        expect((await req(s.baseUrl, 'PUT', route, { ...request, serverId: 'remote' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', route, { expectedRevision: 1 })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', route.replace('queue_s1', 'queue_ask'), request)).status).toBe(404);
+        expect((await req(s.baseUrl, 'PUT', route, request)).body.item).toMatchObject({ revision: 2, status: 'todo', dependsOn: request.dependsOn });
+        expect((await req(s.baseUrl, 'PUT', route, request))).toMatchObject({ status: 409, body: { current: { revision: 2 } } });
+        expect((await req(s.baseUrl, 'PUT', `${ledger}/items/${a.id}/dependencies`, {
+            expectedRevision: 1, dependsOn: [{ itemId: b.id, condition: { kind: 'done' } }],
+        })).status).toBe(400);
+        expect(s.onChange).toHaveBeenCalledTimes(3);
+        s.dependenciesEnabled.value = false;
+        expect((await req(s.baseUrl, 'PUT', route, { expectedRevision: 2, dependsOn: [] })).status).toBe(404);
     });
 
     it('creates and edits an item that survives a server restart', async () => {

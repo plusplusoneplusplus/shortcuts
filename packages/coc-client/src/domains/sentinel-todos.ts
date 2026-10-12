@@ -12,6 +12,7 @@ import type {
   AttachSentinelTodoReferenceRequest,
   CreateSentinelTodoRequest,
   SentinelTodoLedgerResponse,
+  SetSentinelTodoDependenciesRequest,
   SentinelTodoWriteResponse,
   UpdateSentinelTodoRequest,
 } from '../contracts';
@@ -58,6 +59,15 @@ export class SentinelTodosClient {
     return this.transport.request<SentinelTodoWriteResponse>(
       ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/references`),
       { method: 'POST', body: request },
+    );
+  }
+
+  setDependencies(
+    workspaceId: string, processId: string, itemId: string, request: SetSentinelTodoDependenciesRequest,
+  ): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request<SentinelTodoWriteResponse>(
+      ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependencies`),
+      { method: 'PUT', body: request },
     );
   }
 }

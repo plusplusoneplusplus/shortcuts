@@ -4,6 +4,7 @@ import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/se
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import {
     SENTINEL_TODOS_TOOL_NAME, createSentinelTodosTool, type SentinelTodosArgs,
+    createSentinelTodoTracking,
 } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { buildSentinelTodosAddon, SENTINEL_TODO_LEDGER_GUIDANCE } from '../../../src/server/executors/prompt-builder';
 import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
@@ -58,6 +59,27 @@ describe('sentinel_todos tool', () => {
         expect(props).not.toContain('processId');
         expect(props).not.toContain('workspaceId');
         expect((tool as any).parameters.properties.action.enum).toEqual(['list', 'create', 'update', 'attach_reference']);
+    });
+
+    it('exposes revision-checked dependency edits only behind the live gate, bound to the invoking owner', async () => {
+        const enabled = { value: true };
+        service = new SentinelTodoService({
+            todos, onChange, getDependenciesEnabled: () => enabled.value,
+            store: { getProcess: async id => processes.get(id) },
+        });
+        const a = await createItem();
+        const b = await createItem({ title: 'Dependent', targetRepo: { workspaceId: 'ws-b' } });
+        const { tool } = createSentinelTodosTool({ service, owner });
+        expect((tool.parameters as { properties: { action: { enum: string[] } } }).properties.action.enum).toContain('set_dependencies');
+        expect(await call({ action: 'set_dependencies', itemId: b.id, expectedRevision: 1,
+            dependsOn: [{ itemId: a.id, condition: { kind: 'done' } }] })).toMatchObject({ item: { revision: 2, status: 'todo' } });
+        expect(await call({ action: 'set_dependencies', itemId: b.id, expectedRevision: 1, dependsOn: [] })).toMatchObject({ code: 'conflict' });
+        expect(await call({ action: 'set_dependencies', itemId: b.id, expectedRevision: 2, dependsOn: [] }, other)).toMatchObject({ code: 'not_found' });
+        expect(await createSentinelTodoTracking({ service, owner }).check(b.id)).toContain('Nothing was launched');
+        enabled.value = false;
+        expect(await call({ action: 'set_dependencies', itemId: b.id, expectedRevision: 2, dependsOn: [] })).toMatchObject({ code: 'disabled' });
+        expect((createSentinelTodosTool({ service, owner }).tool.parameters as { properties: { action: { enum: string[] } } }).properties.action.enum)
+            .not.toContain('set_dependencies');
     });
 
     it('creates an item as sentinel with a completion condition and lists it', async () => {

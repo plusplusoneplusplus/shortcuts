@@ -11,6 +11,7 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     SentinelTodoError,
     type SentinelTodoItem,
+    type SentinelTodoDependency,
     type SentinelTodoOwner,
     type SentinelTodoPatch,
     type SentinelTodoPriority,
@@ -34,7 +35,8 @@ export const MANUAL_TRACKING_GUIDANCE =
     'Archive/restore remain user-only.';
 
 export interface SentinelTodosToolDeps {
-    service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>;
+    service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
+        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
@@ -44,7 +46,7 @@ export interface SentinelTodosToolDeps {
 interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string }
 
 export interface SentinelTodosArgs {
-    action: 'list' | 'create' | 'update' | 'attach_reference'
+    action: 'list' | 'create' | 'update' | 'attach_reference' | 'set_dependencies'
         | 'list_triggers' | 'create_trigger' | 'edit_trigger' | 'pause_trigger' | 'resume_trigger'
         | 'remove_trigger' | 'run_trigger_now';
     type?: SentinelTodoType;
@@ -67,6 +69,7 @@ export interface SentinelTodosArgs {
     prUrl?: string;
     instruction?: string;
     confirmed?: true;
+    dependsOn?: SentinelTodoDependency[];
 }
 
 export type SentinelTodosResult =
@@ -140,6 +143,7 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
                 if (!item) return `To-do item ${itemId} not found in this chat's ledger. Nothing was launched.`;
                 if (item.type === 'manual') return `${MANUAL_TRACKING_GUIDANCE} Nothing was launched.`;
                 if (item.archived) return `To-do item ${itemId} is archived; ask the user to restore it first. Nothing was launched.`;
+                if (item.dependsOn?.length) return 'This item has native prerequisites; dependency-authorized admission is required. Nothing was launched.';
                 return undefined;
             } catch (err) {
                 return `Could not read the to-do ledger (${err instanceof Error ? err.message : String(err)}). Nothing was launched.`;
@@ -166,12 +170,15 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
 
 export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     const { service, owner } = deps;
+    const dependenciesEnabled = service.dependenciesEnabled?.() === true;
     const tool = defineTool<SentinelTodosArgs>(SENTINEL_TODOS_TOOL_NAME, {
-        description: DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : ''),
+        description: DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
+            + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. Each edge names an item in this ledger and a typed evidence condition; removing edges grants no authority. Keep fulfillment and authorization separate.' : ''),
         parameters: {
             type: 'object',
             properties: {
-                action: { type: 'string', enum: ['list', 'create', 'update', 'attach_reference', ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
+                action: { type: 'string', enum: ['list', 'create', 'update', 'attach_reference',
+                    ...(dependenciesEnabled ? ['set_dependencies'] : []), ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
                 itemId: { type: 'string', description: 'update/attach_reference/create_trigger/edit_trigger: the owning item.' },
@@ -212,6 +219,25 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     },
                 },
                 idempotencyKey: { type: 'string', description: 'create/create_trigger: stable key that makes retries safe.' },
+                ...(dependenciesEnabled ? {
+                    dependsOn: {
+                        type: 'array',
+                        description: 'set_dependencies: all required prerequisites; [] removes all edges without authorizing work.',
+                        items: {
+                            type: 'object', additionalProperties: false, required: ['itemId', 'condition'],
+                            properties: {
+                                itemId: { type: 'string' },
+                                condition: { anyOf: [
+                                    { type: 'object', additionalProperties: false, required: ['kind'], properties: { kind: { const: 'done' } } },
+                                    { type: 'object', additionalProperties: false, required: ['kind', 'outputSlot'], properties: { kind: { const: 'pr_merge' }, outputSlot: { type: 'string' } } },
+                                    { type: 'object', additionalProperties: false, required: ['kind', 'phase', 'reference', 'version'], properties: {
+                                        kind: { const: 'accepted_artifact' }, phase: { type: 'string' }, reference: { type: 'string' }, version: { type: 'string' },
+                                    } },
+                                ] },
+                            },
+                        },
+                    },
+                } : {}),
                 ...(deps.triggers ? {
                     triggerId: { type: 'string', description: 'Trigger lifecycle actions: rule identity from list_triggers.' },
                     prUrl: { type: 'string', description: 'create_trigger/edit_trigger: supported GitHub/ADO PR URL.' },
@@ -253,6 +279,16 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     return { trigger: await deps.triggers.setPaused(owner, args.triggerId, revision, args.action === 'pause_trigger') };
                 }
                 switch (args?.action) {
+                    case 'set_dependencies': {
+                        if (!service.setDependencies || !service.dependenciesEnabled?.()) {
+                            return { error: 'Sentinel dependencies are disabled.', code: 'disabled' };
+                        }
+                        if (!args.itemId || !Number.isInteger(args.expectedRevision) || args.expectedRevision === undefined || !args.dependsOn) {
+                            return { error: 'set_dependencies requires itemId, expectedRevision and dependsOn.', code: 'invalid' };
+                        }
+                        const { item } = await service.setDependencies(owner, args.itemId, args.expectedRevision, args.dependsOn, 'sentinel');
+                        return { item };
+                    }
                     case 'list': {
                         const ledger = await service.list(owner);
                         const items = args.includeArchived ? ledger.items : ledger.items.filter(item => !item.archived);

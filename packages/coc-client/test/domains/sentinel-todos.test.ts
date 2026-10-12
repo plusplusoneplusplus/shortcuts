@@ -3,6 +3,15 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('routes complete dependency replacements to the owner with encoded identity and a revision', async () => {
+    const adapter = createMockAdapter({ item: { id: 'item/a' }, ledgerRevision: 2 });
+    const request = { expectedRevision: 1, dependsOn: [{ itemId: 'source', condition: { kind: 'done' as const } }] };
+    await new SentinelTodosClient(adapter).setDependencies('owner ws', 'parent/a', 'item/a', request);
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/item%2Fa/dependencies',
+      options: { method: 'PUT', body: request },
+    });
+  });
   it('reads the encoded ledger route of one chat', async () => {
     const adapter = createMockAdapter({ revision: 0, items: [] });
     const ledger = await new SentinelTodosClient(adapter).get('ws one', 'queue_a/b');

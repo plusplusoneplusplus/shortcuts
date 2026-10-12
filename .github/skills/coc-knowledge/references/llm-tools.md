@@ -85,6 +85,13 @@ default `regular`; ledger metadata only, independent of status). `done`/`needs_a
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
 arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
+With default-off `features.sentinelTodoDependencies` and the ledger enabled,
+`set_dependencies` replaces all prerequisites using `itemId`, `expectedRevision`
+and typed `dependsOn` edges. The owner stays bound to the invoking Sentinel.
+The service rechecks the live gate; ordinary create/update cannot author edges.
+Graph edits preserve fulfillment and grant no authority. Tracked create dispatch
+blocks dependency-bearing items pending native authorized admission.
+
 When `triggers.enabled` infrastructure is present, the same tool offers
 `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`, `resume_trigger`,
 `remove_trigger` and confirmed `run_trigger_now`. The owner stays bound to the

@@ -202,8 +202,11 @@ references before editing. Paths are package-relative.
   in the same writer transaction as item/ledger revisions. Edges resolve only in the
   owning parent ledger, regardless of execution workspace; self/duplicate/foreign/
   archived references and cycles are invalid. Dependency edits preserve fulfillment
-  and user-verdict bookkeeping. Graph authoring has no service/API/tool entry point;
-  evidence evaluation and execution admission must be wired behind a default-off gate.
+  and user-verdict bookkeeping. `features.sentinelTodoDependencies` defaults off and
+  requires the ledger. Owner-validated `setDependencies`, PUT `.../dependencies`,
+  the client resource and Sentinel `set_dependencies` share the graph command.
+  Tracked dispatch rejects dependency-bearing items until authorized native admission
+  is available; dependency authoring never launches work.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
   including evidence-based Done with a reason; Notes and Done when are optional.

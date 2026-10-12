@@ -155,7 +155,10 @@ self/duplicate edges, archival and reachability before committing edges and
 revisions together. Execution targets do not affect graph ownership. Manual items
 can participate without job authority; dependency edits preserve fulfillment and
 user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
-Dependency authoring has no public entry point or evidence/admission evaluator.
+Dependency authoring shares the owner-validated service through PUT
+`.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
+default-off `features.sentinelTodoDependencies` and the ledger flag. Tracked
+dispatch blocks dependency-bearing items pending native authorized admission.
 Graph rows are machine-local and cleared with the ledger wipe.
 
 ### Chat binding stores
