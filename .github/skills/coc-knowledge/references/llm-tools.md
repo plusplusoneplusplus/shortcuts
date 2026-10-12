@@ -1,7 +1,7 @@
 # LLM Tools
 
-AI tool factories injected into chat executor sessions. Each factory creates a stateful
-tool + accessor **per invocation** so state never leaks across requests. All tools use
+AI tool factories injected into chat executor sessions. Each factory creates fresh
+tools per invocation; conversation-level tool data is explicitly owner-qualified. All tools use
 `defineTool()` and the `Tool` type imported directly from `@plusplusoneplusplus/coc-agent-sdk`
 (the provider-neutral contract owner), not via the forge re-export.
 
@@ -14,10 +14,10 @@ The folder has no barrel `index.ts`; import each tool module directly.
 
 ### Gating
 
-`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled })`
+`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled, browserControlEnabled })`
 filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_query`
 (`KUSTO_LLM_TOOL_NAMES`), and `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`) out of the settings
-list when their flags are off.
+list when their flags are off. `browser` is filtered when `browserControlEnabled` is off.
 
 `getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`, and
 `recall_memory` by default, independently of UI layout mode.
@@ -60,6 +60,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
+| `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and inline screenshots. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to a token budget via 5 progressive levels. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
@@ -453,6 +454,17 @@ endpoint. Reads are served by `GET /canvases/:id/files[/<path>]` behind layered 
 `canvas-file-sandbox.ts` (shape → resolve → `isWithinDirectory` → `realpath` re-verify) with
 1 MB text / 10 MB binary caps.
 
+### Browser control
+
+`coc-client/browser-control` shares the closed action schema and validation with
+the desktop boundary. Description plus schema is capped at 1600 characters.
+`browser-tools.ts` limits snapshots to 6000 characters, deltas to 40 lines,
+read pages to 8000 and serialized eval to 4000. Expanded snapshots carry a
+full interactive baseline for correct deltas. Screenshots use inline
+`binaryResultsForLlm` only. `BrowserToolStateStore` serializes plain selection and
+snapshot data by workspace/process across turns; it holds no provider sessions.
+Relay errors and malformed results remain visible failures.
+
 ### kusto_query
 
 Runs a KQL query server-side against Azure Data Explorer using the official
@@ -531,7 +543,7 @@ opt in based on `options.tools`; no executor changes are needed. See
 
 ## Key Patterns
 
-- **Per-invocation:** every AI call gets fresh tool instances — no shared state.
+- **Per-invocation:** every AI call gets fresh tools; browser selection/snapshot data is shared only within its workspace/process.
 - **Pre-binding:** tools like `add_diff_comment` pre-bind workspace/commit context at creation.
 - **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA. A
   needs-context response is not a skip — the result tells the AI to explain the missing context

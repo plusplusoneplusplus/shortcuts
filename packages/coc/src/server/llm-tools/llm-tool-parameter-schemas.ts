@@ -26,12 +26,14 @@
 
 import type { LlmToolMeta } from './llm-tool-registry';
 import { summarizeToolParameters } from './llm-tool-parameters';
+import { BROWSER_TOOL_PARAMETERS } from '@plusplusoneplusplus/coc-client';
 
 /**
  * Mirror of each tool's input-schema structure, keyed by the tool name as
  * registered in {@link LLM_TOOL_REGISTRY}.
  */
 export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>> = {
+    browser: BROWSER_TOOL_PARAMETERS,
     suggest_follow_ups: {
         type: 'object',
         properties: {
