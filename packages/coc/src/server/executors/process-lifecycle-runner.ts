@@ -30,6 +30,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import {
+    SqliteProcessStore,
     getLogger,
     isEffortTierKey,
     LogCategory,
@@ -92,6 +93,7 @@ import { validateBotControlMetadata } from '../messaging/bot-control-metadata';
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import { connectorMessagingOrigin, isMessagingJobOrigin } from '../messaging/job-notices';
+import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
 
 // ============================================================================
 // Constants
@@ -485,6 +487,31 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         }
 
         // Follow-up: reuse the existing process
+        let trackedContext = task.payload.context as Record<string, unknown> | undefined;
+        const ralphSession = (trackedContext?.ralph as { sessionId?: string } | undefined)?.sessionId;
+        const nativeTracking = this.store instanceof SqliteProcessStore
+            ? SentinelDependencyStore.jobTracking(this.store.getDatabase(), task.id)
+                ?? SentinelDependencyStore.ralphTracking(this.store.getDatabase(), ralphSession) : undefined;
+        if (nativeTracking && !trackedContext?.sentinelTodoTracking) {
+            trackedContext = { ...trackedContext, sentinelTodoTracking: nativeTracking,
+                spawnedFromProcessId: trackedContext?.spawnedFromProcessId ?? nativeTracking.owner.processId };
+            task.payload.context = trackedContext;
+        }
+        if (!isChatFollowUp(task.payload) && (trackedContext?.sentinelTodoTracking || typeof trackedContext?.spawnedFromProcessId === 'string')) {
+            try {
+                const todos = this.runtime.getSentinelTodos?.();
+                if (trackedContext?.sentinelTodoTracking) {
+                    const admission = this.runtime.getSentinelDependencyAdmission?.() ?? todos?.dependencyActions;
+                    if (!admission) throw new Error('Tracked dependency admission is unavailable');
+                    await admission.guard(task, 'start');
+                } else if (todos?.dependenciesEnabled() && !trackedContext?.sentinelScrub && !task.continuationOfSessionId) {
+                    const parent = await this.store.getProcess(trackedContext!.spawnedFromProcessId as string);
+                    if (parent?.metadata?.mode === 'sentinel') throw new Error('Tracked Sentinel first execution requires dependency admission context');
+                }
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error : new Error(String(error)), durationMs: Date.now() - startTime };
+            }
+        }
         if (isChatFollowUp(task.payload)) {
             const followUpPayload = task.payload as unknown as ChatPayload;
             task.processId = followUpPayload.processId;
@@ -700,6 +727,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         applyEffortTierForProvider(task, taskProvider, opts);
         const providerModel = resolveModelForProvider(taskProvider, task.config.model);
         if (providerModel.coerced) {
+            if (typeof (trackedContext?.sentinelTodoTracking as { actionRevision?: number } | undefined)?.actionRevision === 'number') {
+                throw new Error('Saved dependency action model is unavailable; no execution-time fallback is allowed');
+            }
             if (isChatPayload(task.payload) && isAutoProviderRoutingRequested(task.payload)) {
                 throw new Error(`Model '${providerModel.requestedModel}' is not compatible with Auto-selected provider '${taskProvider}'.`);
             }

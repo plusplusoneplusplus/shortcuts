@@ -158,8 +158,8 @@ can participate without job authority; dependency edits preserve fulfillment and
 user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
 Dependency authoring shares the owner-validated service through PUT
 `.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
-default-off `features.sentinelTodoDependencies` and the ledger flag. Tracked
-dispatch blocks dependency-bearing items pending native authorized admission.
+default-off `features.sentinelTodoDependencies` and the ledger flag. Native
+tracked admission uses explicit saved user authorization, independently of evidence.
 Graph and evidence rows are machine-local and cleared with the ledger wipe.
 Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding
 or phase/reference/SHA-256 artifact acceptance. Rebinding/reacceptance advances
@@ -169,6 +169,26 @@ and current artifact bytes under the native writer mutex. It persists a diagnost
 snapshot with ledger/item/source/evidence revisions, conjunctive blockers and links,
 never authority or dispatch state.
 Callers re-evaluate before using readiness; stale external-I/O snapshots conflict.
+
+### Sentinel dependency operations
+
+`sentinel-dependency-store.ts` owns machine-local `sentinel_dependency_actions`,
+`sentinel_dependency_wakes`, `sentinel_dependency_polls`,
+`sentinel_dependency_admissions` and `sentinel_dependency_ralph_starts`. The
+ledger wipe clears them transactionally; snapshot import/export excludes them.
+Actions bind an item/graph revision to concrete saved execution settings and a
+fixed task identity. Admissions retain started whole-session proof independently
+of replacement authorization. Ralph step-start keys prevent replay across task IDs.
+
+`SentinelDependencyActions` commits immutable ready evidence and one wake per
+graph/action generation before `deliverOnce` transports it. Local polling and
+transport recovery share the existing trigger scheduler. Matching owner/item/PR
+merge rules can carry transport without changing those rules.
+
+Queue admission and first execution recheck evidence and authority under the shared writer. Failures
+and unknown acceptance block unstarted authority until fresh explicit approval;
+recovery retries transport only. Started Ralph continuations retain saved scope
+and execution settings through the receipt guard even when authoring is disabled.
 
 ### Chat binding stores
 

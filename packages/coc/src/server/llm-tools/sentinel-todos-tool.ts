@@ -37,7 +37,7 @@ export const MANUAL_TRACKING_GUIDANCE =
 
 export interface SentinelTodosToolDeps {
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
-        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies'>>;
+        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
@@ -151,11 +151,19 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
                 if (!item) return `To-do item ${itemId} not found in this chat's ledger. Nothing was launched.`;
                 if (item.type === 'manual') return `${MANUAL_TRACKING_GUIDANCE} Nothing was launched.`;
                 if (item.archived) return `To-do item ${itemId} is archived; ask the user to restore it first. Nothing was launched.`;
-                if (item.dependsOn?.length) return 'This item has native prerequisites; dependency-authorized admission is required. Nothing was launched.';
+                if (item.dependsOn?.length && !service.dependencyActions) return 'This item has native prerequisites; dependency-authorized admission is required. Nothing was launched.';
                 return undefined;
             } catch (err) {
                 return `Could not read the to-do ledger (${err instanceof Error ? err.message : String(err)}). Nothing was launched.`;
             }
+        },
+        async prepare(itemId, args) {
+            const item = (await service.list(owner)).items.find(item => item.id === itemId);
+            if (!item) throw new SentinelTodoError('not_found', 'To-do item not found');
+            const context = service.dependenciesEnabled?.() && service.dependencyActions
+                ? await service.dependencyActions.context(owner, itemId, args) : undefined;
+            return { context, ...(item.dependencyAction ? { requestId: item.dependencyAction.taskId } : {}),
+                dependencyBound: !!item.dependsOn?.length || !!item.dependencyAction };
         },
         async link(itemId, job) {
             try {

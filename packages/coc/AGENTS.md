@@ -215,8 +215,21 @@ references before editing. Paths are package-relative.
   under the shared writer transaction, returning conjunctive readiness and
   blockers. Native evidence/evaluation tables are machine-local and wiped;
   diagnostic evaluations are not admission receipts. Re-evaluate before use.
-  Tracked dispatch rejects dependency-bearing items until authorized native admission
-  is available; dependency authoring never launches work.
+  `SentinelDependencyActions` reserves immutable evidence and one wake per graph/action
+  generation before `ProcessMessageDeliveryService.deliverOnce` transports it. Local
+  polling and transport recovery reuse the existing trigger scheduler; matching
+  owner/item/PR merge rules can own transport without rule mutation or duplicate wakes.
+  Explicit user-only, confirmed, revision-checked action authorization snapshots
+  mode, concrete provider/model, registered local target, prompt and scope.
+  Tools cannot create authority; manual items remain tracking-only. Central enqueue
+  consumes authority under the native writer and first execution rechecks current
+  evidence, graph/action revisions and provider/target availability. Stable identities
+  reconcile acceptance; errors and uncertain admissions require fresh authorization,
+  never automatic work retry. Native Ralph step-start receipts prevent execution
+  replay; started whole-session continuations preserve captured settings and scope.
+  The late-bound `getSentinelDependencyAdmission` receipt guard stays available when
+  authoring is disabled, so valid running work can finish. Dependency authoring and
+  artifact acceptance never grant execution authority or change fulfillment.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
   including evidence-based Done with a reason; Notes and Done when are optional.

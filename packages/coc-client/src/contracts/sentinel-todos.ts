@@ -144,6 +144,54 @@ export interface SentinelTodoDependencyEvaluation {
   }[];
 }
 
+/** Concrete settings explicitly approved by the owner user; never resolved again at launch. */
+export interface SentinelTodoDependencyActionSettings {
+  mode: 'ask' | 'autopilot' | 'ralph';
+  provider: 'copilot' | 'codex' | 'claude' | 'opencode';
+  model: string;
+  targetWorkspaceId: string;
+  prompt: string;
+  scope: string;
+}
+
+export interface SentinelTodoDependencyAction extends SentinelTodoDependencyActionSettings {
+  revision: number;
+  state: 'authorized' | 'revoked' | 'consumed' | 'blocked';
+  authorizedAt: string;
+  authorizedBy: 'user';
+  /** Fixed native child identity, not an invitation to retry. */
+  taskId: string;
+  error?: string;
+  requiresReview?: boolean;
+}
+
+export interface SentinelTodoDependencyReadiness {
+  state: 'waiting' | 'ready' | 'needs_approval';
+  evaluation?: SentinelTodoDependencyEvaluation;
+  activationId?: string;
+  delivery?: 'pending' | 'delivered';
+  error?: string;
+  transportTriggerId?: string;
+}
+
+export interface AuthorizeSentinelTodoDependencyActionRequest {
+  expectedRevision: number;
+  /** Explicit conversation approval, distinct from evidence acceptance. */
+  confirmed: true;
+  action: SentinelTodoDependencyActionSettings;
+}
+
+export interface RevokeSentinelTodoDependencyActionRequest {
+  expectedRevision: number;
+}
+
+/** Owner-bound portable context; the server validates it against durable authority. */
+export interface SentinelTodoTrackedAdmission {
+  owner: { workspaceId: string; processId: string };
+  itemId: string;
+  actionRevision?: number;
+}
+
 export interface SentinelTodoItem {
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
@@ -169,6 +217,8 @@ export interface SentinelTodoItem {
   /** All edges are required. Absent on records without native dependency support. */
   dependsOn?: SentinelTodoDependency[];
   evidence?: SentinelTodoEvidence[];
+  dependencyAction?: SentinelTodoDependencyAction;
+  dependencyReadiness?: SentinelTodoDependencyReadiness;
 }
 
 export interface SentinelTodoLedgerResponse {

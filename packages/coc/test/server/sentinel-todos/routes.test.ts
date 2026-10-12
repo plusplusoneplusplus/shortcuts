@@ -6,6 +6,8 @@ import { createRouter } from '../../../src/server/shared/router';
 import type { Route } from '../../../src/server/types';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
+import { SentinelDependencyStore } from '../../../src/server/sentinel-todos/sentinel-dependency-store';
+import { SentinelDependencyActions } from '../../../src/server/sentinel-todos/sentinel-dependency-actions';
 import { registerSentinelTodoRoutes } from '../../../src/server/sentinel-todos/sentinel-todo-routes';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
 import { artifactVersion } from '../../../src/server/sentinel-todos/sentinel-todo-evidence';
@@ -26,17 +28,23 @@ async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: bool
     const onChange = vi.fn();
     const enabled = { value: opts.enabled ?? true };
     const dependenciesEnabled = { value: opts.dependenciesEnabled ?? false };
+    const service = new SentinelTodoService({
+        todos,
+        store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
+        onChange, getDependenciesEnabled: () => dependenciesEnabled.value,
+        resolveWorkspaceRoot: async () => dataDir,
+        fetchPr: async pr => ({ status: 'merged', url: pr.url, title: 'Mock output' }),
+    });
+    service.dependencyActions = new SentinelDependencyActions({
+        service, receipts: new SentinelDependencyStore(db, todos),
+        delivery: { deliverOnce: vi.fn() }, validateProvider: async () => {},
+        validateTarget: async target => { if (target !== 'ws-child') throw new Error('Unknown target'); },
+        validateCurrent: () => {},
+    });
     registerSentinelTodoRoutes({
         routes,
         getEnabled: () => enabled.value,
-        service: new SentinelTodoService({
-            todos,
-            store: { getProcess: async (id: string) => processes[id] ? { id, metadata: processes[id] } as never : undefined },
-            onChange,
-            getDependenciesEnabled: () => dependenciesEnabled.value,
-            resolveWorkspaceRoot: async () => dataDir,
-            fetchPr: async pr => ({ status: 'merged', url: pr.url, title: 'Mock output' }),
-        }),
+        service,
     });
     const server = http.createServer(createRouter({ routes, spaHtml: '' }));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -74,6 +82,33 @@ describe('Sentinel to-do routes', () => {
         return s;
     };
     const ledger = '/api/workspaces/ws-a/sentinel-todos/queue_s1';
+
+    it('requires confirmed owner-user action approval, exact settings and revision; revokes separately from artifact acceptance', async () => {
+        const s = await track(await startServer({ dependenciesEnabled: true,
+            dataDir: fs.mkdtempSync(path.join(process.cwd(), '.dependency-action-route-')) }));
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const source = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Source', status: 'done' })).item;
+        const dependent = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Dependent' })).item;
+        await client.sentinelTodos.setDependencies('ws-a', 'queue_s1', dependent.id, {
+            expectedRevision: 1, dependsOn: [{ itemId: source.id, condition: { kind: 'done' } }],
+        });
+        const request = { expectedRevision: 2, confirmed: true as const, action: {
+            mode: 'ask' as const, provider: 'copilot' as const, model: 'gpt-5.4',
+            targetWorkspaceId: 'ws-child', prompt: 'Review approved design', scope: 'Read-only design',
+        } };
+        const url = `${ledger}/items/${dependent.id}/dependency-action`;
+        expect((await req(s.baseUrl, 'PUT', url, { ...request, actor: 'sentinel' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', url, { ...request, confirmed: false })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PUT', url.replace('queue_s1', 'queue_s3'), request)).status).toBe(404);
+        const approved = await client.sentinelTodos.authorizeDependencyAction('ws-a', 'queue_s1', dependent.id, request);
+        expect(approved.item.dependencyAction).toMatchObject({ ...request.action, state: 'authorized', revision: 1 });
+        expect(approved.item.status).toBe('todo');
+        expect((await req(s.baseUrl, 'PUT', url, request)).status).toBe(409);
+        const revoked = await client.sentinelTodos.revokeDependencyAction('ws-a', 'queue_s1', dependent.id, { expectedRevision: approved.item.revision });
+        expect(revoked.item.dependencyAction).toMatchObject({ state: 'revoked', revision: 2 });
+        s.dependenciesEnabled.value = false;
+        expect((await req(s.baseUrl, 'DELETE', url, { expectedRevision: revoked.item.revision })).status).toBe(404);
+    });
 
     it('hides every endpoint when the feature is off', async () => {
         const s = await track(await startServer({ enabled: false }));

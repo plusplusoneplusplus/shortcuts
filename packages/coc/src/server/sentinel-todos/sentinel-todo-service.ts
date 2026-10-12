@@ -2,7 +2,8 @@ import { isQueueProcessId, toTaskId, type ProcessStore, type TaskQueueManager } 
 import { grillingResultJob, type DelegatedJob, type DelegatedJobStore } from '../delegation/delegated-job-store';
 import { buildChatOpenLink } from '../servers/workspace-directory';
 import { normalizeChatMode } from '../tasks/task-types';
-import type { SentinelTodoDependencyEvaluation } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoDependencyAction, SentinelTodoDependencyReadiness, SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
+import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from '../triggers/pr-status-fetcher';
 import {
     parseEvidenceInput,
@@ -50,7 +51,11 @@ export type SentinelTodoJobExecution =
     };
 export type SentinelTodoJobMode = 'ask' | 'autopilot' | 'ralph';
 export type SentinelTodoJobLinkView = SentinelTodoJobLink & { execution: SentinelTodoJobExecution; mode?: SentinelTodoJobMode };
-export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & { jobs: SentinelTodoJobLinkView[] };
+export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & {
+    jobs: SentinelTodoJobLinkView[];
+    dependencyAction?: SentinelTodoDependencyAction;
+    dependencyReadiness?: SentinelTodoDependencyReadiness;
+};
 export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItemView[] };
 
 /**
@@ -60,6 +65,14 @@ export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItem
  * after the write committed. Nothing here starts, retries, or cancels a job.
  */
 export class SentinelTodoService {
+    /** Bound once by route composition; tools receive reads/admission, never approval actor selection. */
+    dependencyActions?: {
+        project(owner: SentinelTodoOwner, item: SentinelTodoItem): Pick<SentinelTodoItemView, 'dependencyAction' | 'dependencyReadiness'>;
+        authorize(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user'): Promise<{ item: SentinelTodoItemView; ledgerRevision: number }>;
+        revoke(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user'): Promise<{ item: SentinelTodoItemView; ledgerRevision: number }>;
+        guard(input: CreateTaskInput, phase: 'enqueue' | 'start'): Promise<void>;
+        context(owner: SentinelTodoOwner, itemId: string, requested?: unknown): Promise<SentinelTodoTrackedAdmission>;
+    };
     constructor(private readonly deps: {
         todos: SentinelTodoStore;
         store: Pick<ProcessStore, 'getProcess'>;
@@ -135,7 +148,8 @@ export class SentinelTodoService {
     }
 
     /** Fresh conjunctive evidence only. Never changes fulfillment, grants authority or dispatches work. */
-    async evaluateDependencies(owner: SentinelTodoOwner, itemId: string): Promise<SentinelTodoDependencyEvaluation> {
+    async evaluateDependencies(owner: SentinelTodoOwner, itemId: string,
+        commit?: (evaluation: SentinelTodoDependencyEvaluation, ledger: SentinelTodoLedger) => void): Promise<SentinelTodoDependencyEvaluation> {
         await this.assertDependenciesOwner(owner);
         const snapshot = this.deps.todos.get(owner);
         const item = this.requireEvidenceItem(snapshot, itemId);
@@ -203,6 +217,7 @@ export class SentinelTodoService {
                 state: !item.archived && edges.every(edge => edge.satisfied) ? 'ready' : 'waiting', edges,
                 ...(item.archived ? { blocker: 'Dependent item is archived' } : {}),
             };
+            commit?.(evaluation, ledger);
             return evaluation;
         });
     }
@@ -245,6 +260,7 @@ export class SentinelTodoService {
             revision: ledger.revision,
             items: ledger.items.map(item => ({
                 ...item,
+                ...(this.dependenciesEnabled() ? this.dependencyActions?.project(owner, item) : {}),
                 jobs: item.jobs.map(link => ({ ...link,
                     mode: this.jobMode(link, modes),
                     execution: this.execution(link, owner, delegated, item.userVerdictRevision),
@@ -431,7 +447,7 @@ export class SentinelTodoService {
         }
     }
 
-    private async assertOwner(owner: SentinelTodoOwner): Promise<void> {
+    async assertOwner(owner: SentinelTodoOwner): Promise<void> {
         const process = await this.deps.store.getProcess(owner.processId);
         const task = !process && isQueueProcessId(owner.processId)
             ? this.deps.getTask?.(toTaskId(owner.processId)) : undefined;

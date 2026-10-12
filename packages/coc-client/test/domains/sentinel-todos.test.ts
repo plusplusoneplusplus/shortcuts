@@ -3,6 +3,20 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('routes explicit confirmed authorization and revision-checked revocation without resolving defaults', async () => {
+    const adapter = createMockAdapter({ item: { id: 'item/a' }, ledgerRevision: 3 });
+    const client = new SentinelTodosClient(adapter);
+    const request = { expectedRevision: 2, confirmed: true as const, action: {
+      mode: 'ask' as const, provider: 'copilot' as const, model: 'gpt-5.4',
+      targetWorkspaceId: 'ws-target', prompt: 'Review approved design', scope: 'Read-only design',
+    } };
+    await client.authorizeDependencyAction('owner ws', 'parent/a', 'item/a', request);
+    await client.revokeDependencyAction('owner ws', 'parent/a', 'item/a', { expectedRevision: 3 });
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/item%2Fa/dependency-action', options: { method: 'PUT', body: request } },
+      { path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/item%2Fa/dependency-action', options: { method: 'DELETE', body: { expectedRevision: 3 } } },
+    ]);
+  });
   it('routes exact evidence authoring and fresh readiness through encoded owner identity', async () => {
     const adapter = createMockAdapter({ state: 'waiting', edges: [] });
     const client = new SentinelTodosClient(adapter);

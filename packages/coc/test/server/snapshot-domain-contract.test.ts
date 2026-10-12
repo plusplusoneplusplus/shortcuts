@@ -27,6 +27,7 @@ import { createGitOpsDomain } from '../../src/server/storage/snapshot/git-ops-do
 import { createSentinelMirrorOutboxDomain, createSentinelTodosDomain } from '../../src/server/storage/snapshot/delegated-jobs-domain';
 import { SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox } from '../../src/server/messaging/sentinel-mirror-outbox';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
+import { SentinelDependencyStore, type DependencyActionRecord } from '../../src/server/sentinel-todos/sentinel-dependency-store';
 
 // ============================================================================
 // Helpers
@@ -209,6 +210,23 @@ describe('snapshot domain behavior', () => {
         todos.linkJob(owner, item.id, {
             processId: 'child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
         });
+        const receipts = new SentinelDependencyStore(db, todos);
+        const action: DependencyActionRecord = {
+            itemRevision: todos.get(owner).items[0].revision, dependencies: '[]',
+            action: { revision: 1, state: 'consumed', mode: 'ralph', provider: 'copilot', model: 'gpt-5.4',
+                targetWorkspaceId: 'ws-child', prompt: 'Verify output', scope: 'Read-only review',
+                authorizedAt: '2026-01-01T00:00:00.000Z', authorizedBy: 'user', taskId: 'native-task' },
+        };
+        receipts.saveAction(owner, item.id, action);
+        receipts.saveAdmission(owner, item.id, action);
+        receipts.startRalphStep(action.action.taskId, 'iteration:1', action.action.taskId);
+        receipts.reserveWake(owner, { itemId: item.id, itemRevision: action.itemRevision,
+            ledgerRevision: todos.get(owner).revision, evaluatedAt: action.action.authorizedAt, state: 'ready', edges: [] },
+        'generation', () => 'Read the current readiness');
+        receipts.persistPoll({ id: 'owner-poll', owner, nextTickAt: null });
+        const operationalTables = ['sentinel_dependency_actions', 'sentinel_dependency_admissions',
+            'sentinel_dependency_ralph_starts', 'sentinel_dependency_wakes', 'sentinel_dependency_polls'];
+        for (const table of operationalTables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toHaveLength(1);
         const before = todos.get(owner);
         const domain = createSentinelTodosDomain();
         const ctx = { dataDir, store, includeWikis: false };
@@ -218,12 +236,14 @@ describe('snapshot domain behavior', () => {
         await domain.restoreMerge(emptyPayload(), ctx, imported);
         expect(imported.errors).toEqual([]);
         expect(todos.get(owner)).toEqual(before);
+        for (const table of operationalTables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toHaveLength(1);
         const plan = await domain.planWipe(ctx);
         expect(todos.get(owner)).toEqual(before);
         const result = { errors: [] as string[] };
         await domain.executeWipe(ctx, plan.plan, result);
         expect(result.errors).toEqual([]);
         expect(todos.get(owner)).toEqual({ revision: 0, items: [] });
+        for (const table of operationalTables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toHaveLength(0);
         expect(await store.getProcess('p1')).toBeDefined();
         expect(db.prepare('SELECT id FROM queue_tasks').all()).toHaveLength(1);
         expect(db.pragma<number>('user_version', { simple: true })).toBe(version);

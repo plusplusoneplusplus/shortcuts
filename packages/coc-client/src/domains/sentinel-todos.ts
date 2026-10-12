@@ -13,6 +13,8 @@ import type {
   BindSentinelTodoPrRequest,
   AcceptSentinelTodoArtifactRequest,
   SentinelTodoDependencyEvaluation,
+  AuthorizeSentinelTodoDependencyActionRequest,
+  RevokeSentinelTodoDependencyActionRequest,
   CreateSentinelTodoRequest,
   SentinelTodoLedgerResponse,
   SetSentinelTodoDependenciesRequest,
@@ -87,6 +89,16 @@ export class SentinelTodosClient {
   evaluateDependencies(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoDependencyEvaluation> {
     return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/readiness`),
       { ...options, method: 'POST', body: {} });
+  }
+
+  authorizeDependencyAction(workspaceId: string, processId: string, itemId: string, request: AuthorizeSentinelTodoDependencyActionRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependency-action`),
+      { method: 'PUT', body: request });
+  }
+
+  revokeDependencyAction(workspaceId: string, processId: string, itemId: string, request: RevokeSentinelTodoDependencyActionRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/dependency-action`),
+      { method: 'DELETE', body: request });
   }
 }
 

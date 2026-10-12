@@ -25,9 +25,11 @@ import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { buildRalphGrillingSubmission } from './grilling-submission';
 import { prepareRalphGrilling } from './grilling-state';
-import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
+import type { WorktreeMetadata, SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
 
 export interface RalphLaunchDeps {
+    guardTrackedLaunch?: (input: RalphLaunchInput) => Promise<void>;
+    onTrackedLaunchFailure?: (input: RalphLaunchInput, error: unknown) => void;
     getRalphEnabled?: () => boolean;
     bridge: MultiRepoQueueRouter;
     /** Repo-scoped data root (`~/.coc` or override). Used for the per-session journal. */
@@ -39,6 +41,7 @@ export interface RalphLaunchDeps {
 }
 
 export interface RalphLaunchInput {
+    sentinelTodoTracking?: SentinelTodoTrackedAdmission;
     /** Stable source-approved admission identity; execution retries never mint a new child. */
     requestId?: string;
     entryPoint?: 'grill' | 'execute';
@@ -83,17 +86,36 @@ function mintSessionId(): string {
 }
 
 export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLaunchDeps): Promise<RalphLaunchResult> {
-    if (input.requestId === undefined) return launchRalphSessionOnce(input, deps);
+    try {
+        const result = await launchRalphSessionAdmitted(input, deps);
+        if (!result.ok) deps.onTrackedLaunchFailure?.(input, result.error);
+        return result;
+    } catch (error) {
+        deps.onTrackedLaunchFailure?.(input, error);
+        throw error;
+    }
+}
+
+async function launchRalphSessionAdmitted(input: RalphLaunchInput, deps: RalphLaunchDeps): Promise<RalphLaunchResult> {
+    if (input.requestId === undefined) {
+        await deps.guardTrackedLaunch?.(input);
+        return launchRalphSessionOnce(input, deps);
+    }
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId)
         || !deps.dataDir || !input.workspaceId || !deps.store) return { ok: false, error: 'Invalid or unavailable Ralph admission identity' };
     const sessionId = `ralph-approved-${input.requestId}`;
     const file = getRepoDataPath(deps.dataDir, input.workspaceId, `ralph-sessions/${sessionId}/admission.json`);
+    const trackedFingerprint = input.sentinelTodoTracking ? JSON.stringify({
+        tracking: input.sentinelTodoTracking, workspaceId: input.workspaceId, aiSelection: input.aiSelection,
+        folderPath: input.folderPath, workingDirectory: input.workingDirectory, worktree: input.worktree,
+        parent: input.spawnedFromProcessId,
+    }) : undefined;
     return processOperationAdmission.runExclusive(toQueueProcessId(input.requestId), async () => {
-        let prior: { goalSpec: unknown; entryPoint?: string; status: string; result?: RalphLaunchResult } | undefined;
+        let prior: { goalSpec: unknown; entryPoint?: string; trackedFingerprint?: string; status: string; result?: RalphLaunchResult } | undefined;
         try { prior = JSON.parse(fs.readFileSync(file, 'utf8')); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-        if (prior && (prior.goalSpec !== input.goalSpec || prior.entryPoint !== input.entryPoint)) {
-            return { ok: false, error: 'Ralph admission identity already belongs to another goal or entry point' };
+        if (prior && (prior.goalSpec !== input.goalSpec || prior.entryPoint !== input.entryPoint || prior.trackedFingerprint !== trackedFingerprint)) {
+            return { ok: false, error: 'Ralph admission identity already belongs to another goal, entry point or tracked settings' };
         }
         if (prior?.result?.ok) return prior.result;
         // A rejected delegation has already settled its tracking receipt. A
@@ -110,11 +132,12 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
             }
             return { ok: false, error: 'Ralph admission is uncertain; inspect the target session before retrying. No new launch was attempted.' };
         }
+        await deps.guardTrackedLaunch?.(input);
         if (deps.getRalphEnabled?.() !== true) return { ok: false, error: 'Native Ralph admission is disabled (ralph.enabled)' };
         if (!(await deps.store!.getWorkspaces()).some(workspace => workspace.id === input.workspaceId)) {
             return { ok: false, error: 'Native Ralph admission requires a registered owning workspace' };
         }
-        atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, status: 'admitting' });
+        atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, trackedFingerprint, status: 'admitting' });
         try {
             let result = await launchRalphSessionOnce(input, deps);
             // Queue observers can fail after acceptance. Preserve the admitted
@@ -123,10 +146,10 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
                 result = { ok: true, processId: toQueueProcessId(input.requestId!), sessionId,
                     phase: input.entryPoint === 'grill' ? 'grilling' : 'executing', workspaceId: input.workspaceId };
             }
-            atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, status: result.ok ? 'admitted' : 'rejected', result });
+            atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, trackedFingerprint, status: result.ok ? 'admitted' : 'rejected', result });
             return result;
         } catch (error) {
-            if (!deps.bridge.getTask(input.requestId!)) atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, status: 'rejected' });
+            if (!deps.bridge.getTask(input.requestId!)) atomicWriteJsonUnique(file, { goalSpec: input.goalSpec, entryPoint: input.entryPoint, trackedFingerprint, status: 'rejected' });
             throw error;
         }
     });
@@ -166,6 +189,7 @@ async function launchRalphSessionOnce(input: RalphLaunchInput, deps: RalphLaunch
                     ...submission.context,
                     ...(autoProviderRouting ? { autoProviderRouting: { requested: true } } : {}),
                     ...(input.spawnedFromProcessId ? { spawnedFromProcessId: input.spawnedFromProcessId } : {}),
+                    ...(input.sentinelTodoTracking ? { sentinelTodoTracking: input.sentinelTodoTracking } : {}),
                     ...(input.messagingOrigin ? { messagingOrigin: input.messagingOrigin } : {}),
                 },
             },
@@ -270,6 +294,7 @@ async function launchRalphSessionOnce(input: RalphLaunchInput, deps: RalphLaunch
         autoProviderRouting,
         ...(input.title ? { displayName: input.title } : {}),
         extraContext: {
+            ...(input.sentinelTodoTracking ? { sentinelTodoTracking: input.sentinelTodoTracking } : {}),
             ...(input.spawnedFromProcessId ? { spawnedFromProcessId: input.spawnedFromProcessId } : {}),
             ...(input.messagingOrigin ? { messagingOrigin: input.messagingOrigin } : {}),
         },

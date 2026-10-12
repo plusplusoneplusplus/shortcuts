@@ -36,6 +36,7 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 goalSpec: body.goalSpec,
                 entryPoint: body.entryPoint,
                 requestId: body.requestId,
+                sentinelTodoTracking: body.sentinelTodoTracking,
                 spawnedFromProcessId: body.requestId ? optionalString(body.spawnedFromProcessId) : undefined,
                 workspaceId: optionalString(body.workspaceId),
                 folderPath: optionalString(body.folderPath),

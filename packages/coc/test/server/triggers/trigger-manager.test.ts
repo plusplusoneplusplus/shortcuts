@@ -130,6 +130,46 @@ function makeManager(
 
 describe('TriggerManager', () => {
     let h: Harness;
+    it('runs native evidence/transport entries on its existing scheduler without creating or consuming merge rules', async () => {
+        h = makeManager(fakeEvaluator({ fire: false, event: makeTrigger().event }));
+        h.store.insert(makeTrigger());
+        const entry = { id: 'sentinel-dependency:local-owner', dependencyPoll: true as const,
+            status: 'active', nextTickAt: new Date(BASE - 1).toISOString(), owner: { workspaceId: 'ws_a', processId: 'proc_a' } };
+        const tick = vi.fn(async () => {});
+        const persist = vi.fn();
+        const dispose = h.manager.setDependencyPolling({ entries: () => [entry], persist, tick });
+        h.manager.armAll();
+        expect(h.timer._delay(entry.id)).toBe(0);
+        expect(h.timer._timers.has('trigger_1')).toBe(true);
+        h.timer._fire(entry.id);
+        await flush();
+        expect(tick).toHaveBeenCalledTimes(1);
+        expect(persist).toHaveBeenCalledWith(expect.objectContaining({ nextTickAt: expect.any(String) }));
+        expect(h.action.calls).toEqual([]);
+        expect(h.store.getById('trigger_1')?.status).toBe('active');
+        dispose();
+        expect(h.timer._timers.has(entry.id)).toBe(false);
+        h.manager.shutdownAll();
+    });
+
+    it('suppresses concurrent native polling, keeps recovery transport-only, and respects live disablement', async () => {
+        h = makeManager(fakeEvaluator({ fire: false, event: makeTrigger().event }));
+        const entry = { id: 'sentinel-dependency:local-owner', dependencyPoll: true as const,
+            status: 'active', nextTickAt: null, owner: { workspaceId: 'ws_a', processId: 'proc_a' } };
+        let enabled = true;
+        let release!: () => void;
+        const tick = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+        h.manager.setDependencyPolling({ entries: () => enabled ? [entry] : [], persist: vi.fn(), tick });
+        h.timer._fire(entry.id);
+        h.manager.refreshDependencyPolling();
+        h.timer._fire(entry.id);
+        expect(tick).toHaveBeenCalledTimes(1);
+        enabled = false;
+        release();
+        await flush();
+        expect(h.timer._timers.has(entry.id)).toBe(false);
+        h.manager.shutdownAll();
+    });
     it('does not release a new PR repair writer on a stale or unqualified completion callback', async () => {
         h = makeManager({ evaluate: vi.fn(async t => ({ fire: true, event: t.event })) });
         h.store.insert(makeTrigger());

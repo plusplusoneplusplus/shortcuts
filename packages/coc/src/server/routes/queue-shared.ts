@@ -87,6 +87,7 @@ export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.no
 }
 
 export interface QueueRouteContext {
+    enqueueDelegation?: (input: CreateTaskInput, enqueue: (input: CreateTaskInput) => Promise<string>) => Promise<string>;
     bridge: MultiRepoQueueRouter;
     store: ProcessStore | undefined;
     dataDir?: string;
@@ -367,6 +368,10 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         : 'normal';
 
     const payload = taskSpec.payload || {};
+    const trackedAction = typeof payload.context?.sentinelTodoTracking?.actionRevision === 'number';
+    if (trackedAction && !['ask', 'autopilot', 'ralph'].includes(payload.mode)) {
+        return { valid: false, error: 'Tracked dependency actions require the explicit saved mode; no mode default/coercion is allowed' };
+    }
 
     if (taskSpec.type === 'chat' || taskSpec.type === 'custom') {
         if (!payload.kind) payload.kind = 'chat';
@@ -490,6 +495,9 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? payload.provider
         : 'copilot';
     const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
+    if (trackedAction && (!VALID_CHAT_PROVIDERS.has(payload.provider) || typeof rawModel !== 'string' || !rawModel.trim())) {
+        return { valid: false, error: 'Tracked dependency actions require an explicit concrete provider and saved model; defaults are not allowed' };
+    }
     // Auto selects a concrete provider at execution; preserve explicit models
     // until compatibility can be checked against that provider.
     const deferAutoModel = payload.kind === 'chat'
@@ -501,6 +509,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? { model: rawModel.trim() || undefined, coerced: false, requestedModel: rawModel.trim() }
         : resolveModelForProvider(taskProvider, rawModel);
     if (resolvedModel.coerced) {
+        if (trackedAction) return { valid: false, error: 'Tracked dependency action model is incompatible; no fallback is allowed' };
         getLogger().warn(
             LogCategory.AI,
             `[Queue] Dropping model '${resolvedModel.requestedModel}' because provider '${taskProvider}' does not support it; using provider default.`,

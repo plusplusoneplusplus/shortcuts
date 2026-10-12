@@ -12,9 +12,12 @@ export function createSentinelDelegationEnqueue(deps: {
     getTask?: TaskQueueManager['getTask'];
     /** Admission can succeed even when a later taskAdded observer throws. */
     hasTask: (taskId: string) => boolean;
+    guardTracked?: (input: CreateTaskInput) => Promise<void>;
+    onTrackedFailure?: (input: CreateTaskInput, error: unknown) => void;
 }) {
     return async (input: CreateTaskInput, enqueue: (input: CreateTaskInput) => Promise<string>): Promise<string> => {
         const context = input.payload.context as Record<string, unknown> | undefined;
+        await deps.guardTracked?.(input);
         const parentId = context?.spawnedFromProcessId;
         if (input.type !== 'chat' || typeof parentId !== 'string') return enqueue(input);
         const parent = await deps.store.getProcess(parentId);
@@ -29,28 +32,31 @@ export function createSentinelDelegationEnqueue(deps: {
             || typeof childWorkspaceId !== 'string' || !childWorkspaceId) {
             throw new Error('Sentinel delegation requires parent and child workspace identities');
         }
-        const ralph = context?.ralph as { sessionId?: string } | undefined;
+        const ralph = context?.ralph as { sessionId?: string; currentIteration?: number } | undefined;
+        if (input.continuationOfSessionId && ralph?.sessionId === input.continuationOfSessionId) return enqueue(input);
         // Only launch admission is wrapped; continuation/final-check tasks are not registered.
         const taskId = input.id ?? randomUUID();
         input.id = taskId;
         const processId = toQueueProcessId(taskId);
-        const job = deps.jobs.register({
-            id: processId,
-            parent: { workspaceId: parentWorkspaceId, processId: parentId },
-            child: {
-                workspaceId: childWorkspaceId, processId,
-                ...(ralph?.sessionId ? { sessionId: ralph.sessionId } : {}),
-            },
-            ...(isMessagingJobOrigin(context?.messagingOrigin) ? { messagingOrigin: context.messagingOrigin } : {}),
-            title: (input.displayName?.trim() || 'Delegated job').slice(0, 80),
-        });
-        if (isMessagingJobOrigin(context?.messagingOrigin) && context.messagingOrigin.desktopMirror) {
-            input.payload.context = { ...context, messagingOrigin: connectorMessagingOrigin(context.messagingOrigin) };
-        }
+        let job: ReturnType<DelegatedJobStore['register']> | undefined;
         try {
+            job = deps.jobs.register({
+                id: processId,
+                parent: { workspaceId: parentWorkspaceId, processId: parentId },
+                child: {
+                    workspaceId: childWorkspaceId, processId,
+                    ...(ralph?.sessionId ? { sessionId: ralph.sessionId } : {}),
+                },
+                ...(isMessagingJobOrigin(context?.messagingOrigin) ? { messagingOrigin: context.messagingOrigin } : {}),
+                title: (input.displayName?.trim() || 'Delegated job').slice(0, 80),
+            });
+            if (isMessagingJobOrigin(context?.messagingOrigin) && context.messagingOrigin.desktopMirror) {
+                input.payload.context = { ...context, messagingOrigin: connectorMessagingOrigin(context.messagingOrigin) };
+            }
             return await enqueue(input);
         } catch (error) {
-            if (!deps.hasTask(taskId)) {
+            deps.onTrackedFailure?.(input, error);
+            if (job && !deps.hasTask(taskId)) {
                 // Rejected launches must not become pending result reviews after recovery.
                 deps.jobs.recordResult(parentWorkspaceId, job.id, {
                     terminalEventId: `admission-rejected:${taskId}`,
