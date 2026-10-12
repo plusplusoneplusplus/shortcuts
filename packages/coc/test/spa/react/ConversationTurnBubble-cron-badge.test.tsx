@@ -70,6 +70,18 @@ describe('ConversationTurnBubble turnSource badge', () => {
         expect(container.querySelector('[data-testid="turn-source-badge"]')).toBeNull();
     });
 
+    it('renders a trigger badge rather than a wakeup badge for CI deliveries', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn({
+                turnSource: { source: 'trigger', triggerId: 'ci-monitor', deliveryId: 'ci-delivery' },
+            })} />,
+        );
+        const badge = container.querySelector('[data-testid="turn-source-badge"]');
+        expect(badge?.textContent).toContain('trigger');
+        expect(badge?.textContent).not.toContain('wakeup');
+        expect(badge?.getAttribute('title')).toBe('Trigger (ci-monitor)');
+    });
+
     it('does not render turnSource badge on assistant turns', () => {
         const { container } = render(
             <ConversationTurnBubble

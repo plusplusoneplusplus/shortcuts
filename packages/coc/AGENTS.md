@@ -405,6 +405,8 @@ references before editing. Paths are package-relative.
   admission on failure in `finally`.
 - Delivery decisions belong in `process-message-delivery-service.ts`. Buffer via atomic
   `appendPendingMessage`, not metadata read-modify-write; draining owns deferred turns.
+  Carry a stable request ID on drained turns and queued payloads. Lifecycle receipt
+  reconciliation passes `userTurnPersisted` to prevent a second automated user turn.
   Emit intents once; follow-up enqueue sites resolve mode via `resolveFollowUpMode(...)`
   (an omitted mode keeps the chat's mode; terminal Sentinel wins) — never default it to `'ask'`.
   Use `metadataPatch` for field updates.

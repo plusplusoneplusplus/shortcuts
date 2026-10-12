@@ -108,7 +108,7 @@ export interface FollowUpTurnOptions {
     historyCutoffTurnIndex?: number;
     /** Connector request id (WhatsApp/Teams) this follow-up was admitted under. */
     relayRequestId?: string;
-    /** Queue admission already persisted the deferred user turn, including automated turns. */
+    /** Admission, drain or receipt replay already persisted this user turn. */
     userTurnPersisted?: boolean;
     /** Prepared connector directory retained by the queue cleanup lifecycle. */
     imageTempDir?: string;
@@ -473,12 +473,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 }
             }
 
-            // User turn is already persisted by the POST /message route handler
-            // (atomically with the status: 'running' update) so the executor
-            // only needs to handle the AI call and assistant turn.
-            //
-            // Exception: cron/wakeup-triggered follow-ups have no POST /message
-            // route — the user turn must be created here.
+            // Admission, pending-message drain and receipt replay persist user
+            // turns upstream. Automation without a persisted turn creates it here.
             if (turnSource && !options?.userTurnPersisted) {
                 const userTurn = await this.store.appendConversationTurn(
                     processId,

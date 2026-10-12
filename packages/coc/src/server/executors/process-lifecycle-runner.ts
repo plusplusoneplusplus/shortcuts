@@ -511,6 +511,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 return { success: false, error: err instanceof Error ? err : new Error(errorMsg), durationMs: Date.now() - startTime };
             }
             try {
+                let userTurnPersisted = !!task.payload.deferredMessage;
                 if (followUpPayload.relayRequestId) {
                     await processOperationAdmission.runExclusive(followUpPayload.processId!, async () => {
                         const current = await this.store.getProcess(followUpPayload.processId!);
@@ -533,8 +534,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     timeline: [],
                                 }),
                             );
-                            followUpPayload.historyCutoffTurnIndex = appended?.turn.turnIndex;
+                            if (!appended) throw new Error('Follow-up user turn could not be persisted');
+                            followUpPayload.historyCutoffTurnIndex = appended.turn.turnIndex;
                         }
+                        userTurnPersisted = true;
                     });
                 }
                 // Per-turn reasoning effort flows in via the follow-up payload
@@ -573,7 +576,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // later metadata change from retargeting a message
                         // that is already queued.
                         {
-                            ...(task.payload.deferredMessage ? { userTurnPersisted: true } : {}),
+                            ...(userTurnPersisted ? { userTurnPersisted: true } : {}),
                             ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'

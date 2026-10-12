@@ -1920,12 +1920,15 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             )}
                             title={turn.turnSource.source === 'cron'
                                 ? `Cron tick${turn.turnSource.cronId ? ` (${turn.turnSource.cronId})` : ''}`
-                                : `Scheduled wakeup${turn.turnSource.wakeupId ? ` (${turn.turnSource.wakeupId})` : ''}`
+                                : turn.turnSource.source === 'wakeup'
+                                    ? `Scheduled wakeup${turn.turnSource.wakeupId ? ` (${turn.turnSource.wakeupId})` : ''}`
+                                    : `Trigger${turn.turnSource.triggerId ? ` (${turn.turnSource.triggerId})` : ''}`
                             }
                             data-testid="turn-source-badge"
                         >
-                            <span aria-hidden="true">{turn.turnSource.source === 'cron' ? <CronIcon className="w-3 h-3 inline-block" /> : '⏰'}</span>
-                            <span>{turn.turnSource.source === 'cron' ? 'cron' : 'wakeup'}</span>
+                            {turn.turnSource.source === 'cron' && <span aria-hidden="true"><CronIcon className="w-3 h-3 inline-block" /></span>}
+                            {turn.turnSource.source === 'wakeup' && <span aria-hidden="true">⏰</span>}
+                            <span>{turn.turnSource.source}</span>
                         </span>
                     )}
                     {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (

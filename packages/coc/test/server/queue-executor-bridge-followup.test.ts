@@ -23,7 +23,7 @@ vi.mock('fs', async (importOriginal) => {
     };
 });
 
-import type { QueuedTask } from '@plusplusoneplusplus/forge';
+import { TaskQueueManager, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
@@ -127,6 +127,123 @@ describe('execute() short-circuit for chat-followup tasks', () => {
         sdkMocks.resetAll();
         mockCleanupTempDir.mockReset();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    it.each([false, true])('persists a receipt-backed trigger once (already admitted: %s), including replay', async admitted => {
+        const processId = 'proc-trigger';
+        const turnSource = { source: 'trigger' as const, triggerId: 'ci-monitor', deliveryId: 'ci-delivery' };
+        const proc = createCompletedProcessWithSession(processId, 'sess-trigger');
+        await store.addProcess(proc);
+        if (admitted) {
+            await store.appendConversationTurn(processId, turnIndex => ({
+                role: 'user', content: 'Repair CI', timestamp: new Date(), turnIndex, timeline: [],
+                relayRequestId: turnSource.deliveryId, turnSource,
+            }));
+        }
+        const task = followUpTask({ processId, content: 'Repair CI', payload: {
+            kind: 'chat', processId, prompt: 'Repair CI', mode: 'autopilot',
+            relayRequestId: turnSource.deliveryId, context: turnSource,
+        } });
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+            expect((await executor.execute(task)).success).toBe(true);
+            const userTurns = (await store.getProcess(processId))?.conversationTurns?.filter(turn =>
+                turn.role === 'user' && turn.turnSource?.deliveryId === turnSource.deliveryId);
+            expect(userTurns).toEqual([expect.objectContaining({
+                content: 'Repair CI', turnIndex: 2, relayRequestId: turnSource.deliveryId, turnSource,
+            })]);
+        }
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([false, true])('does not duplicate a buffered trigger after drain and replay (receipt: %s)', async hasReceipt => {
+        const processId = 'proc-buffered-trigger';
+        const workspaceId = 'ws-trigger';
+        const turnSource = { source: 'trigger' as const, triggerId: 'ci-monitor', deliveryId: 'ci-buffered' };
+        const proc = createCompletedProcessWithSession(processId, 'sess-trigger');
+        await store.addProcess({
+            ...proc, metadata: { workspaceId }, pendingMessages: [{
+                id: 'ci-buffered', content: 'Repair CI', displayContent: 'CI repair request',
+                createdAt: new Date().toISOString(), mode: 'autopilot', context: turnSource,
+                ...(hasReceipt ? { relayRequestId: turnSource.deliveryId } : {}),
+            }],
+        });
+        const queue = new TaskQueueManager();
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        executor.setQueueManager(queue);
+        await executor.recoverPendingMessages(workspaceId, processId);
+        const task = queue.getQueued()[0];
+        expect(task).toBeDefined();
+        expect((await store.getProcess(processId))?.pendingMessages).toEqual([]);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const replayExecutor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+            expect((await replayExecutor.execute(task)).success).toBe(true);
+            expect((await store.getProcess(processId))?.conversationTurns?.filter(turn =>
+                turn.role === 'user' && turn.turnSource?.triggerId === turnSource.triggerId))
+                .toEqual([expect.objectContaining({ content: 'CI repair request', turnIndex: 2, turnSource })]);
+        }
+    });
+
+    it('creates a user turn for a direct wakeup without prior persistence', async () => {
+        const processId = 'proc-direct-wakeup';
+        await store.addProcess(createCompletedProcessWithSession(processId, 'sess-wakeup'));
+        const turnSource = { source: 'wakeup' as const, wakeupId: 'direct-wakeup' };
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.executeFollowUp(processId, 'Check CI', undefined, 'autopilot',
+            undefined, undefined, undefined, undefined, turnSource);
+        expect((await store.getProcess(processId))?.conversationTurns?.filter(turn =>
+            turn.role === 'user' && turn.turnSource?.wakeupId === turnSource.wakeupId))
+            .toEqual([expect.objectContaining({ turnIndex: 2, turnSource })]);
+    });
+
+    it('reuses a deferred trigger turn across execution and replay', async () => {
+        const processId = 'proc-deferred-trigger';
+        const turnSource = { source: 'trigger' as const, triggerId: 'ci-monitor', deliveryId: 'ci-deferred' };
+        const message = {
+            id: turnSource.deliveryId, relayRequestId: turnSource.deliveryId,
+            content: 'Repair CI', displayContent: 'CI repair request', context: turnSource,
+            createdAt: new Date().toISOString(),
+        };
+        await store.addProcess({
+            ...createCompletedProcessWithSession(processId, 'sess-trigger'), pendingMessages: [message],
+        });
+        const task = followUpTask({ processId, content: message.content, payload: {
+            kind: 'chat', processId, prompt: message.content, mode: 'autopilot',
+            deferredMessage: message, relayRequestId: message.relayRequestId, context: turnSource,
+        } });
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+            expect((await executor.execute(task)).success).toBe(true);
+            const proc = await store.getProcess(processId);
+            expect(proc?.pendingMessages).toEqual([]);
+            expect(proc?.conversationTurns?.filter(turn =>
+                turn.role === 'user' && turn.turnSource?.deliveryId === turnSource.deliveryId))
+                .toEqual([expect.objectContaining({ content: message.displayContent, turnIndex: 2, turnSource })]);
+        }
+    });
+
+    it('reuses the buffered trigger turn after a failed enqueue', async () => {
+        const processId = 'proc-enqueue-retry';
+        const workspaceId = 'ws-trigger';
+        const turnSource = { source: 'trigger' as const, triggerId: 'ci-monitor' };
+        await store.addProcess({
+            ...createCompletedProcessWithSession(processId, 'sess-trigger'),
+            metadata: { workspaceId }, pendingMessages: [{
+                id: 'pending-trigger', content: 'Repair CI', context: turnSource,
+                createdAt: new Date().toISOString(), mode: 'autopilot',
+            }],
+        });
+        const queue = new TaskQueueManager();
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        executor.setQueueManager(queue);
+        vi.spyOn(queue, 'enqueue').mockImplementationOnce(() => { throw new Error('Queue unavailable'); });
+        await expect(executor.recoverPendingMessages(workspaceId, processId)).rejects.toThrow('Queue unavailable');
+        await executor.recoverPendingMessages(workspaceId, processId);
+        expect((await executor.execute(queue.getQueued()[0])).success).toBe(true);
+        expect((await store.getProcess(processId))?.conversationTurns?.filter(turn =>
+            turn.role === 'user' && turn.turnSource?.triggerId === turnSource.triggerId))
+            .toEqual([expect.objectContaining({ content: 'Repair CI', relayRequestId: 'pending:pending-trigger' })]);
     });
 
     // 1 -----------------------------------------------------------------------
