@@ -30,6 +30,7 @@ import { createFileSelectionContextPayload } from '../../../../src/server/spa/cl
 import { resetNewChatSeedContext, drainNewChatSeedContext } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
 import type { PrStatusCardItem } from '../../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { getBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
 import { clearSentinelTodoExcursion, startSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
@@ -795,6 +796,36 @@ describe('ChatDetail Sentinel minimap', () => {
         view.rerender(<Hosted process={process} />);
         await screen.findByTestId('minimap-panel');
         expect(screen.getByTestId('sentinel-todo-origin-bar')).toBeTruthy();
+    });
+
+    it.each([
+        { workspaceId: 'group-local', sourceSelectionId: 'group-local', routingRef: 'ws-child' },
+        { workspaceId: 'group-remote', sourceSelectionId: 'remote:server:group-remote', routingRef: 'remote:server:ws-child', baseUrl: 'https://owner.example.test' },
+        { workspaceId: undefined, sourceSelectionId: undefined, routingRef: 'ws-child' },
+    ])('publishes the concrete browser owner for groups and popouts: $routingRef', async scope => {
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { mode: 'ask', workspaceId: 'ws-child', sessionId: 'session' } }));
+        const owner = scope.workspaceId ? {
+            workspaceId: scope.workspaceId, selectionId: scope.sourceSelectionId!, baseUrl: scope.baseUrl,
+        } : null;
+        const chat = <ChatDetail taskId="task-1" workspaceId={scope.workspaceId} isPopOut={!scope.workspaceId}
+            sourceSelectionId={scope.sourceSelectionId} sourceBaseUrl={scope.baseUrl} />;
+        const view = render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            {scope.workspaceId
+                ? <UnifiedPanelHostProvider host={{ workspaceId: 'group-panel', chatId: 'task-1' }}>{chat}</UnifiedPanelHostProvider>
+                : chat}
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await waitFor(() => expect(getBrowserControlScope()).toEqual({
+            routingRef: scope.routingRef, ...(scope.workspaceId ? { panelScope: 'group-panel' } : {}),
+        }));
+        view.unmount();
+        expect(getBrowserControlScope()).toBeUndefined();
+    });
+
+    it('does not let an unrelated embedded chat publish browser ownership', async () => {
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { mode: 'ask', workspaceId: 'ws-child', sessionId: 'session' } }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="group-local" /></Wrap>);
+        await screen.findByTestId('activity-chat-send-btn');
+        expect(getBrowserControlScope()).toBeUndefined();
     });
 
     it.each([false, true])('resolves actual owner mode despite colliding local processes, paging=%s', async paging => {

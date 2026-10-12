@@ -137,8 +137,8 @@ preference. These are absent from labels, tooltips, and ARIA copy.
 
 `slash-command-parser.ts` owns built-in recognition, while `useSlashCommands`
 turns skill-backed built-ins into selected skills and removes their command token
-from the submitted prompt. `SlashCommandFeatureState` carries the `cronEnabled`
-and `canvasEnabled` gates through parsing and menu construction. Initial and
+from the submitted prompt. `SlashCommandFeatureState` carries the `cronEnabled`,
+`canvasEnabled` and `browserEnabled` gates through parsing and menu construction. Initial and
 follow-up chat filter both the built-in item and a server-returned skill with the
 same gated name; queue and shared-dialog skill selection keep their ordinary
 skill behavior.
@@ -153,6 +153,14 @@ so keyboard selection and visible row order stay aligned.
 the prompt. Its inline hint is shown only while the request is empty. With
 `canvas.enabled` off, the command is absent and manually typed `/canvas` remains
 ordinary prompt text.
+
+`/browser` activates sticky `metadata.browserMode` on the conversation. The menu
+and removable Browser pill require the desktop bridge and the owning workspace's
+enabled browser tool. `useBrowserToolEnabled` resolves clone-routed tool settings,
+invalidates on config changes, and rejects stale owner responses. The pill clears
+the flag through the existing owner-scoped `processes.patchMetadata` API. Activation
+adds short guidance to each user turn; it does not authorize or block tool execution.
+With `browserControl.enabled` off, typed `/browser` remains ordinary text.
 
 Callers that build a menu (initial and follow-up chat) pass the feature state in.
 Everyone else mounts `useSlashCommands` bare, and the hook reads the flags from

@@ -87,6 +87,17 @@ export const configCacheKey = {
 
 const cache = new Map<string, ConfigCacheEntry>();
 const inflight = new Map<string, Promise<unknown>>();
+const invalidationListeners = new Map<string, Set<() => void>>();
+
+export function subscribeConfigInvalidation(key: string, listener: () => void): () => void {
+    const listeners = invalidationListeners.get(key) ?? new Set();
+    listeners.add(listener);
+    invalidationListeners.set(key, listeners);
+    return () => {
+        listeners.delete(listener);
+        if (!listeners.size) invalidationListeners.delete(key);
+    };
+}
 
 /**
  * Returns the cached value for `key` if present and not past `ttlMs`, otherwise
@@ -151,6 +162,7 @@ export function peekConfig<T>(key: string, ttlMs: number = DEFAULT_CONFIG_TTL_MS
 export function invalidateConfig(key: string): void {
     cache.delete(key);
     inflight.delete(key);
+    invalidationListeners.get(key)?.forEach(listener => listener());
 }
 
 /** Test/reset helper: empties the entire cache (values and in-flight promises). */

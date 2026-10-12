@@ -25,6 +25,7 @@ export interface SkillItem {
 }
 
 export const META_SKILL_ITEMS: SkillItem[] = [
+    { name: 'browser', description: 'Activate browser mode', kind: 'builtin' },
     { name: 'model', description: 'Switch AI model', kind: 'builtin' },
     { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' },
     { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]', kind: 'builtin' },
@@ -34,7 +35,8 @@ export const META_SKILL_ITEMS: SkillItem[] = [
 
 function isItemEnabled(item: SkillItem, features: SlashCommandFeatureState): boolean {
     return (item.name !== 'cron' || features.cronEnabled)
-        && (item.name !== 'canvas' || features.canvasEnabled);
+        && (item.name !== 'canvas' || features.canvasEnabled)
+        && (item.name !== 'browser' || features.browserEnabled === true);
 }
 
 /**

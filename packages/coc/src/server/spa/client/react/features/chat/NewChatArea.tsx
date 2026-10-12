@@ -28,6 +28,8 @@ import { patchRepoPreferences } from '../../api/repoPreferences';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
+import { useBrowserToolEnabled } from './hooks/useBrowserMode';
+import { BrowserModePill } from './BrowserModePill';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { RepoMentionMenu } from './RepoMentionMenu';
 import { useRepoMentions } from './hooks/useRepoMentions';
@@ -430,7 +432,8 @@ export function InitialChatComposer({
     const pickableModels = selectPickableModels(availableModels);
     const cronEnabled = isCronEnabled();
     const canvasEnabled = isCanvasEnabled();
-    const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled }), [cronEnabled, canvasEnabled]);
+    const browserEnabled = useBrowserToolEnabled(workspaceId);
+    const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled, browserEnabled }), [cronEnabled, canvasEnabled, browserEnabled]);
     const augmentedSkills = useMemo(
         () => mergeSkillsWithMeta(skills, getMetaSkillItems(slashCommandFeatures), slashCommandFeatures),
         [skills, slashCommandFeatures],
@@ -915,8 +918,10 @@ export function InitialChatComposer({
         try {
             const workspaceRoot = getSelectedWorkspaceRoot();
             const attachmentPayload = toPayload();
-            const { skills: extractedSkills, prompt: cleanedPrompt } = slashCommands.parseAndExtract(trimmed);
-            const promptAfterSkillExtraction = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
+            const parsed = slashCommands.parseAndExtract(trimmed);
+            const { skills: extractedSkills, prompt: cleanedPrompt } = parsed;
+            const promptAfterSkillExtraction = parsed.metaCommands?.includes('browser')
+                ? `/browser ${cleanedPrompt}` : extractedSkills.length > 0 ? cleanedPrompt : trimmed;
 
             let mode: string = selectedMode;
             let contextOverride: Record<string, unknown> | undefined;
@@ -1784,6 +1789,12 @@ export function InitialChatComposer({
                         className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
+                        <BrowserModePill active={browserEnabled && /(?:^|\s)\/browser(?=\s|$)/i.test(input)}
+                            onRemove={() => {
+                                const text = input.replace(/(^|\s)\/browser(?=\s|$)/gi, '$1').trim();
+                                setInput(text);
+                                richTextRef.current?.setValue(text);
+                            }} />
                         {effectiveSettingsLayout === 'compact' ? (
                             renderCompactSettingsChip()
                         ) : (
