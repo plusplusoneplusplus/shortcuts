@@ -9,6 +9,7 @@ import { createSentinelTodosTool } from '../../../src/server/llm-tools/sentinel-
 import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
 import type { StorageSnapshotContext } from '../../../src/server/storage/snapshot/types';
 import { createTodoTestDatabase, failTodoWrites } from './test-db';
+import { getRepoDataPath } from '../../../src/server/paths';
 
 const owner = { workspaceId: 'ws-parent', processId: 'queue_parent' };
 const url = 'https://github.com/example/project/pull/42';
@@ -202,6 +203,71 @@ describe('Sentinel exact dependency evidence', () => {
         expect((await evaluate(item.id)).state).toBe('ready');
         fs.unlinkSync(path.join(root, 'notes', 'design.md'));
         expect((await evaluate(item.id)).edges[0].blocker).toContain('unavailable');
+    });
+
+    it('pins artifacts to the prerequisite execution workspace, not the parent ledger content root', async () => {
+        const parentRoot = path.join(root, 'parent');
+        const executionRoot = path.join(root, 'execution');
+        for (const directory of [parentRoot, executionRoot]) fs.mkdirSync(directory);
+        fs.writeFileSync(path.join(parentRoot, 'design.md'), 'Parent design');
+        fs.writeFileSync(path.join(executionRoot, 'design.md'), 'Execution design');
+        const resolveWorkspaceRoot = vi.fn(async (id: string) => workspaceExists
+            ? id === 'ws-execution' ? executionRoot : id === owner.workspaceId ? parentRoot : undefined : undefined);
+        service = new SentinelTodoService({
+            todos, dataDir: root, getDependenciesEnabled: () => enabled, resolveWorkspaceRoot,
+            store: { getProcess: async id => ({ id, metadata: { mode: 'sentinel', workspaceId: owner.workspaceId } }) as never },
+        });
+        const source = todos.create(owner, { title: 'Design', targetRepo: { workspaceId: 'ws-execution' } }, { actor: 'user' }).item;
+        const condition = { kind: 'accepted_artifact' as const, phase: 'design', reference: 'design.md', version: artifactVersion(executionRoot, 'design.md') };
+        const item = dependent([{ itemId: source.id, condition }]);
+        const accepted = await service.acceptArtifact(owner, source.id, {
+            expectedRevision: 1, phase: condition.phase, reference: condition.reference, version: condition.version,
+        }, 'user');
+        expect(accepted.item.evidence[0]).toMatchObject({ workspaceId: 'ws-execution', kind: 'artifact_acceptance' });
+        expect(await evaluate(item.id)).toMatchObject({ state: 'ready', edges: [{ artifactWorkspaceId: 'ws-execution' }] });
+        expect(resolveWorkspaceRoot).toHaveBeenCalledWith('ws-execution');
+        expect(current(source.id).status).toBe('todo');
+        workspaceExists = false;
+        expect((await evaluate(item.id)).state).toBe('waiting');
+        workspaceExists = true;
+        todos.update(owner, source.id, current(source.id).revision, { targetRepo: { workspaceId: 'ws-other' } }, 'user');
+        expect((await evaluate(item.id)).state).toBe('waiting');
+        todos.update(owner, source.id, current(source.id).revision, { targetRepo: { workspaceId: 'ws-execution', serverId: 'server-other' } }, 'user');
+        await expect(service.acceptArtifact(owner, source.id, {
+            expectedRevision: current(source.id).revision, phase: condition.phase, reference: condition.reference, version: condition.version,
+        }, 'user')).rejects.toThrow('Remote artifact content');
+        expect((await evaluate(item.id)).edges[0].blocker).toContain('Remote artifact content');
+    });
+
+    it('accepts exact managed plan paths only under the selected workspace and rejects foreign roots and traversal', async () => {
+        const repoRoot = path.join(root, 'checkout');
+        fs.mkdirSync(repoRoot);
+        service = new SentinelTodoService({
+            todos, dataDir: root, getDependenciesEnabled: () => enabled, resolveWorkspaceRoot: async () => repoRoot,
+            store: { getProcess: async id => ({ id, metadata: { mode: 'sentinel', workspaceId: owner.workspaceId } }) as never },
+        });
+        const source = create('Design');
+        const notesRoot = getRepoDataPath(root, owner.workspaceId, 'notes');
+        const plansRoot = path.join(notesRoot, 'Plans');
+        fs.mkdirSync(plansRoot, { recursive: true });
+        const reference = path.join(plansRoot, 'design.md');
+        fs.writeFileSync(reference, 'Approved design');
+        const version = artifactVersion(notesRoot, reference);
+        const condition = { kind: 'accepted_artifact' as const, phase: 'design', reference, version };
+        const item = dependent([{ itemId: source.id, condition }]);
+        await service.acceptArtifact(owner, source.id, { expectedRevision: 1, phase: condition.phase, reference, version }, 'user');
+        expect(await evaluate(item.id)).toMatchObject({ state: 'ready', edges: [{ evidenceLink: reference, artifactWorkspaceId: owner.workspaceId }] });
+        const foreignRoot = getRepoDataPath(root, 'ws-foreign', 'notes');
+        fs.mkdirSync(foreignRoot, { recursive: true });
+        const foreign = path.join(foreignRoot, 'design.md');
+        fs.writeFileSync(foreign, 'Approved design');
+        await expect(service.acceptArtifact(owner, source.id, { expectedRevision: 2, phase: 'design', reference: foreign, version }, 'user'))
+            .rejects.toMatchObject({ code: 'invalid' });
+        const escaped = path.relative(repoRoot, reference);
+        await expect(service.acceptArtifact(owner, source.id, { expectedRevision: 2, phase: 'design', reference: escaped, version }, 'user'))
+            .rejects.toMatchObject({ code: 'invalid' });
+        fs.writeFileSync(reference, 'Replaced design');
+        expect((await evaluate(item.id)).state).toBe('waiting');
     });
 
     it('pins phase and reference, supports native and backslash paths and rejects traversal/foreign absolutes', async () => {

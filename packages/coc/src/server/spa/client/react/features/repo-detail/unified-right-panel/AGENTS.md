@@ -704,7 +704,8 @@ revision/owner changes and refresh for prerequisite-only ledger edits. Graph and
 binding saves keep their captured revision; conflicts retain drafts and require an
 explicit rebase before retrying. The prerequisite-first, cycle-bounded chain uses
 the same owner-ledger item navigation as triggers. Artifact evidence opens the
-owner's read-only workspace preview, never a raw file reference as a browser URL.
+prerequisite content workspace's read-only preview on the owning server, never a raw
+file reference as a browser URL.
 Saved mode/provider/model/target/scope and authority appear separately from
 readiness and fulfillment; Requires review warnings do not cancel running work.
 Manual items remain Tracking only. No launch, retry, cancel or approval controls

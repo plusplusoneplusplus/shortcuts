@@ -209,8 +209,12 @@ references before editing. Paths are package-relative.
   receipts on the prerequisite, exposed as `evidence[]`. PR bindings require
   explicit output selection/provenance (tracked delegations must contain the
   selected canonical output link); only the canonical provider reader proves
-  merge. Artifact acceptance pins phase/reference/SHA-256 bytes in the owning
-  workspace root; containment, realpaths and current content are checked.
+  merge. Artifact acceptance pins phase/reference/SHA-256 bytes in the prerequisite's
+  local target workspace (parent workspace when unset). Repo-relative references
+  stay repo-relative; exact absolute references can also name that workspace's managed
+  notes/tasks/outputs. Receipts pin the content workspace, and evidence links route
+  to it on the ledger's owning server. Remote content and foreign roots fail explicitly;
+  containment, realpaths and current content are checked.
   `evaluateDependencies` captures revisions before provider I/O and revalidates
   under the shared writer transaction, returning conjunctive readiness and
   blockers. Native evidence/evaluation tables are machine-local and wiped;

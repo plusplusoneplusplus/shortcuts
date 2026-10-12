@@ -7,7 +7,7 @@ import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from '../triggers/pr-status-fetcher';
 import {
     parseEvidenceInput,
-    evidenceAttribution, artifactKey, artifactVersion,
+    evidenceAttribution, artifactKey, scopedArtifactVersion,
 } from './sentinel-todo-evidence';
 import {
     SentinelTodoError,
@@ -24,6 +24,7 @@ import {
     type SentinelTodoPatch,
     type SentinelTodoStore,
 } from './sentinel-todo-store';
+import { getRepoDataPath } from '../paths';
 
 export interface SentinelTodoChange {
     owner: SentinelTodoOwner;
@@ -87,6 +88,7 @@ export class SentinelTodoService {
         getDependenciesEnabled?: () => boolean;
         fetchPr?: PrStatusFetcher;
         resolveWorkspaceRoot?: (workspaceId: string) => Promise<string | undefined>;
+        dataDir?: string;
     }) {}
 
     dependenciesEnabled(): boolean {
@@ -133,16 +135,18 @@ export class SentinelTodoService {
         await this.assertDependenciesOwner(owner);
         const body = parseEvidenceInput(artifactAcceptanceInputSchema, input);
         const snapshot = this.deps.todos.get(owner);
-        this.requireEvidenceItem(snapshot, itemId, body.expectedRevision);
-        const root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId);
+        const item = this.requireEvidenceItem(snapshot, itemId, body.expectedRevision);
+        if (item.targetRepo?.serverId) throw new SentinelTodoError('invalid', 'Remote artifact content is unavailable on this server');
+        const workspaceId = item.targetRepo?.workspaceId ?? owner.workspaceId;
+        const root = await this.deps.resolveWorkspaceRoot?.(workspaceId);
         if (!root) throw new SentinelTodoError('not_found', 'Owning workspace content is unavailable');
         await this.assertDependenciesOwner(owner);
         const result = this.deps.todos.withCurrentEvidence(owner, snapshot, () =>
             this.deps.todos.recordEvidence(owner, itemId, body.expectedRevision, `artifact:${artifactKey(body.phase, body.reference)}`, {
                 kind: 'artifact_acceptance', phase: body.phase, reference: body.reference, version: body.version,
-                workspaceId: owner.workspaceId, ...evidenceAttribution(actor, body.expectedRevision + 1),
+                workspaceId, ...evidenceAttribution(actor, body.expectedRevision + 1),
             }, actor, () => {
-                if (artifactVersion(root, body.reference) !== body.version) {
+                if (scopedArtifactVersion(this.artifactRoots(workspaceId, root), body.reference) !== body.version) {
                     throw new SentinelTodoError('conflict', 'Artifact content does not match the selected version');
                 }
             }));
@@ -174,7 +178,14 @@ export class SentinelTodoService {
                 reads.set(binding.receiptId, value);
             } catch (error) { reads.set(binding.receiptId, error instanceof Error ? error : new Error(String(error))); }
         }
-        const root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId);
+        const roots = new Map<string, string | undefined>();
+        for (const edge of item.dependsOn) {
+            if (edge.condition.kind !== 'accepted_artifact') continue;
+            const source = snapshot.items.find(source => source.id === edge.itemId);
+            if (!source || source.archived || source.targetRepo?.serverId) continue;
+            const workspaceId = source.targetRepo?.workspaceId ?? owner.workspaceId;
+            if (!roots.has(workspaceId)) roots.set(workspaceId, await this.deps.resolveWorkspaceRoot?.(workspaceId));
+        }
         await this.assertDependenciesOwner(owner);
         let invalidated: string[] = [];
         const committed = this.deps.todos.recordEvaluation(owner, snapshot, ledger => {
@@ -204,13 +215,17 @@ export class SentinelTodoService {
                 }
                 const receipt = source.evidence.find(receipt => receipt.kind === 'artifact_acceptance'
                     && receipt.phase === condition.phase && receipt.reference === condition.reference && receipt.version === condition.version);
-                if (receipt?.kind !== 'artifact_acceptance' || receipt.workspaceId !== owner.workspaceId) {
+                const workspaceId = source.targetRepo?.workspaceId ?? owner.workspaceId;
+                if (source.targetRepo?.serverId) return { ...result, blocker: 'Remote artifact content is unavailable on this server' };
+                if (receipt?.kind !== 'artifact_acceptance' || receipt.workspaceId !== workspaceId) {
                     return { ...result, blocker: 'Selected phase and artifact version need explicit acceptance' };
                 }
-                const linked = { ...result, receiptId: receipt.receiptId, evidenceRevision: receipt.recordedRevision, evidenceLink: receipt.reference };
+                const linked = { ...result, receiptId: receipt.receiptId, evidenceRevision: receipt.recordedRevision,
+                    evidenceLink: receipt.reference, artifactWorkspaceId: workspaceId };
+                const root = roots.get(workspaceId);
                 if (!root) return { ...linked, blocker: 'Owning workspace content is unavailable' };
                 try {
-                    return artifactVersion(root, condition.reference) === condition.version
+                    return scopedArtifactVersion(this.artifactRoots(workspaceId, root), condition.reference) === condition.version
                         ? { ...linked, satisfied: true } : { ...linked, blocker: 'Artifact content changed; fresh acceptance required' };
                 } catch (error) {
                     return { ...linked, blocker: `Artifact evidence unavailable: ${error instanceof Error ? error.message : String(error)}` };
@@ -227,6 +242,12 @@ export class SentinelTodoService {
         });
         this.dependencyActions?.notify(owner, invalidated);
         return committed;
+    }
+
+    private artifactRoots(workspaceId: string, root: string): string[] {
+        const dataDir = this.deps.dataDir;
+        return [root, ...(dataDir ? ['notes', 'tasks', 'outputs']
+            .map(directory => getRepoDataPath(dataDir, workspaceId, directory)) : [])];
     }
 
     private requireEvidenceItem(ledger: SentinelTodoLedger, itemId: string, revision?: number): SentinelTodoItem {

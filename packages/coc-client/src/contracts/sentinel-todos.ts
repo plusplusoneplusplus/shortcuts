@@ -136,6 +136,8 @@ export interface SentinelTodoDependencyEvaluation {
     satisfied: boolean;
     blocker?: string;
     evidenceLink?: string;
+    /** Same-server prerequisite content owner, separate from the parent ledger workspace. */
+    artifactWorkspaceId?: string;
     receiptId?: string;
     evidenceRevision?: number;
     pr?: SentinelTodoPrIdentity;

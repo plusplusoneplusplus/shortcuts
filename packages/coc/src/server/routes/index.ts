@@ -532,7 +532,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         throw error;
     }
     const sentinelTodos = new SentinelTodoService({
-        todos: todoStore, store, jobs: delegatedJobs,
+        todos: todoStore, store, jobs: delegatedJobs, dataDir,
         fetchPr: createPrStatusFetcher({ dataDir }),
         resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
         getDependenciesEnabled: () => getSentinelTodoLedgerEnabled()

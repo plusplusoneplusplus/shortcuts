@@ -163,7 +163,12 @@ tracked admission uses explicit saved user authorization, independently of evide
 Graph and evidence rows are machine-local and cleared with the ledger wipe.
 Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding
 or phase/reference/SHA-256 artifact acceptance. Rebinding/reacceptance advances
-item and ledger revisions without changing fulfillment. `evaluateDependencies`
+item and ledger revisions without changing fulfillment. Artifact receipts pin the
+prerequisite's local target workspace, defaulting to the parent. Relative references
+use its checkout; exact absolute references also permit its existing managed
+notes/tasks/outputs roots via `getRepoDataPath`. Foreign roots and remote content
+reject; preview links retain this content workspace on the owning server.
+`evaluateDependencies`
 reads canonical provider status, then rechecks the captured ledger/item revisions
 and current artifact bytes under the native writer mutex. It persists a diagnostic
 snapshot with ledger/item/source/evidence revisions, conjunctive blockers and links,

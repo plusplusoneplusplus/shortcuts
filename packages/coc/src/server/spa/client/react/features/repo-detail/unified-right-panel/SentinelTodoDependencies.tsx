@@ -18,7 +18,7 @@ interface Props {
     expanded: boolean;
     onLedgerChange: () => void | Promise<void>;
     onItemLink: (itemId: string) => void;
-    onArtifactLink: (reference: string) => void;
+    onArtifactLink: (reference: string, workspaceId?: string) => void;
 }
 
 function conditionLabel(edge: SentinelTodoDependency): string {
@@ -182,7 +182,8 @@ function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLed
                             {evidenceLink && (edge.condition.kind === 'pr_merge'
                                 ? <a href={evidenceLink} target="_blank" rel="noreferrer" className="text-[#0078d4] underline">Evidence</a>
                                 : edge.condition.kind === 'accepted_artifact'
-                                    ? <button type="button" className="text-[#0078d4] underline" onClick={() => onArtifactLink(evidenceLink)}>Artifact evidence</button>
+                                    ? <button type="button" className="text-[#0078d4] underline" onClick={() =>
+                                        checked?.artifactWorkspaceId ? onArtifactLink(evidenceLink, checked.artifactWorkspaceId) : onArtifactLink(evidenceLink)}>Artifact evidence</button>
                                     : null)}
                             {edge.condition.kind === 'pr_merge' && receipt?.kind === 'pr_binding' && <div className={MUTED}>
                                 Bound by {receipt.recordedBy}: {receipt.provenance.reason}

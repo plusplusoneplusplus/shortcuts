@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { z } from 'zod';
 import { resolveWorkingTreePath, MAX_WORKING_TREE_CONTENT_BYTES } from '../git/working-tree-file-content';
 import { SentinelTodoError } from './sentinel-todo-store';
@@ -51,6 +52,16 @@ export function artifactVersion(root: string, reference: string): string {
         }
         return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
     } finally { fs.closeSync(handle); }
+}
+
+/** Relative references stay repo-relative; managed artifacts require an exact absolute reference. */
+export function scopedArtifactVersion(roots: readonly string[], reference: string): string {
+    const normalized = reference.replace(/\\/g, '/');
+    const root = path.isAbsolute(normalized)
+        ? roots.find(candidate => !!resolveWorkingTreePath(candidate, normalized))
+        : roots[0];
+    if (!root) throw new SentinelTodoError('invalid', 'Artifact path is outside the selected workspace artifact roots');
+    return artifactVersion(root, reference);
 }
 
 export function artifactKey(phase: string, reference: string): string {

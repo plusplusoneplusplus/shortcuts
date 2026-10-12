@@ -407,8 +407,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange }: Unif
                     owner={owner} currentWorkspaceId={scopeWorkspaceId}
                     items={ledger?.items ?? []} ledgerRevision={ledger?.revision ?? 0}
                     onLedgerChange={load} onItemLink={followTriggerItem}
-                    onArtifactLink={reference => openUnifiedPanelTab(scopeWorkspaceId ?? owner.ownerRoutingRef ?? owner.ownerWorkspaceId, {
-                        kind: 'file', ownerWorkspaceId: owner.ownerWorkspaceId, ownerRoutingRef: owner.ownerRoutingRef,
+                    onArtifactLink={(reference, artifactWorkspaceId) => openUnifiedPanelTab(scopeWorkspaceId ?? owner.ownerRoutingRef ?? owner.ownerWorkspaceId, {
+                        kind: 'file', ownerWorkspaceId: artifactWorkspaceId ?? owner.ownerWorkspaceId, ownerRoutingRef: owner.ownerRoutingRef,
                         chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
                     })}
                     onToggle={() => toggle(item.id)} onSave={saveItem} onFollowLink={followLink} />
@@ -555,7 +555,7 @@ type SaveItem = (
 function TodoRow({ item, owner, currentWorkspaceId, expanded, onToggle, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink }: {
     item: SentinelTodoItem; expanded: boolean; onToggle: () => void; onSave: SaveItem; onFollowLink: FollowLink;
     items: readonly SentinelTodoItem[]; ledgerRevision: number; onLedgerChange: () => Promise<void>; onItemLink: (itemId: string) => void;
-    onArtifactLink: (reference: string) => void;
+    onArtifactLink: (reference: string, workspaceId?: string) => void;
     owner: SentinelTodoOwner;
     currentWorkspaceId?: string;
 }) {

@@ -182,6 +182,20 @@ describe('owner-scoped dependency details', () => {
         expect(screen.queryByRole('link', { name: 'Evidence' })).toBeNull();
     });
 
+    it('routes artifact evidence to its prerequisite content workspace on the owning server', async () => {
+        const current = item('Dependent', { dependsOn: [{ itemId: source.id, condition: {
+            kind: 'accepted_artifact', phase: 'design', reference: 'notes/design.md', version: `sha256:${'a'.repeat(64)}`,
+        } }] });
+        const result = evaluation(current, 'ready');
+        result.edges[0].evidenceLink = 'notes/design.md';
+        result.edges[0].artifactWorkspaceId = 'ws-execution';
+        evaluate.mockResolvedValue(result);
+        render(<SentinelTodoDependencies {...props(current)} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Artifact evidence' }));
+        expect(onArtifactLink).toHaveBeenCalledWith('notes/design.md', 'ws-execution');
+        expect(references).toContain(owner.ownerRoutingRef);
+    });
+
     it('shows previously bound PR identity, provenance and the authoritative evidence link', async () => {
         const current = item('Dependent', { dependsOn: [{ itemId: source.id, condition: { kind: 'pr_merge', outputSlot: 'feature' } }] });
         const pr = { provider: 'github' as const, host: 'github.com', repoPath: 'example/repository', number: 1, url: 'https://github.com/example/repository/pull/1' };
