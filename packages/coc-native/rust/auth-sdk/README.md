@@ -24,8 +24,10 @@ it is not network-verified identity. The snapshot contains only an account and
 `Secret` token, without expiry, refresh, login, storage writes or token exchange.
 
 Config reads accept full-line JSONC comments, cap bytes at 1 MiB and reject
-non-object JSON, invalid selection and changes detected between handle metadata
-reads. Bare or HTTPS hosts retain their exact spelling for `host:login` lookup;
+non-object JSON, invalid selection and changes between two bounded reads of
+the same handle or its metadata snapshots. Byte comparison detects same-size
+rewrites even when timestamps coincide, without blocking external writers.
+Bare or HTTPS hosts retain their exact spelling for `host:login` lookup;
 only returned hostnames are lowercased. Host credentials, ports, paths other than
 the HTTPS root slash, queries and fragments are rejected.
 

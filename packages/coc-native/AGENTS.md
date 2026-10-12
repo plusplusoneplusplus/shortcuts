@@ -327,6 +327,8 @@ not verified identity. The host supplies an absolute config path.
 
 Rust owns bounded JSONC parsing, exact stored account keys, same-account Windows
 `CredReadW` and macOS `/usr/bin/security` reads, and `gh auth token` execution.
+Config snapshots require matching bytes across two bounded reads of one handle
+and matching metadata; same-size rewrites cannot rely on timestamp precision.
 File lookup follows SDK precedence: `authTokens[host:login:github].token`,
 `authTokens[host:login].token`, then `copilotTokens[host:login]`. Malformed
 containers or selected entries fail; only absent/null/empty file tokens allow OS lookup. Linux config reads are
