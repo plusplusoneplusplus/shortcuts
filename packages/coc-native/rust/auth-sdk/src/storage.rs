@@ -39,8 +39,13 @@ impl CredentialStore for OsCredentialStore {
     fn read(&self, key: &str) -> Result<Option<Secret>> {
         #[cfg(target_os = "windows")]
         {
-            match entry(key)?.get_password() {
-                Ok(value) => Ok(Some(Secret::new(value))),
+            match entry(key)?.get_secret() {
+                Ok(bytes) => {
+                    let bytes = zeroize::Zeroizing::new(bytes);
+                    let value = String::from_utf8(bytes.to_vec())
+                        .map_err(|_| AuthError::new(ErrorCode::StorageFailed))?;
+                    Ok(Some(Secret::new(value)))
+                }
                 Err(keyring::Error::NoEntry) => Ok(None),
                 Err(error) => Err(map_error(error)),
             }
@@ -63,7 +68,7 @@ impl CredentialStore for OsCredentialStore {
     fn write(&self, key: &str, value: &Secret) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
-            entry(key)?.set_password(value.expose()).map_err(map_error)
+            entry(key)?.set_secret(value.expose().as_bytes()).map_err(map_error)
         }
         #[cfg(target_os = "linux")]
         {

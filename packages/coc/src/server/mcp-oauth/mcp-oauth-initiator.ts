@@ -57,7 +57,7 @@ export interface InitiateMcpOAuthResult {
     requestId: string;
     /** Authorization URL the user must open. Undefined if SDK is already authenticated. */
     authorizationUrl?: string;
-    /** True when a valid token is present in the shared MCP OAuth cache. */
+    /** True when the runtime confirms a connection or the shared cache contains a valid token. */
     alreadyAuthenticated: boolean;
 }
 
@@ -72,6 +72,7 @@ interface RpcShape {
 
 interface SessionShape {
     sessionId: string;
+    rpc?: RpcShape;
     on?: (event: string, handler: (event: unknown) => void) => void;
     disconnect?: () => Promise<void>;
 }
@@ -202,17 +203,20 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
 
         const authorizationUrl = loginResult?.authorizationUrl;
 
-        // The SDK can return no URL even when the server requires authentication.
-        // Only the shared cache can confirm that the connector can use this session.
-        if (!authorizationUrl && !earlyAuthEvent) {
-            const auth = readMcpServerAuthInfo(remoteUrl, transport);
-            if (auth.status !== 'authenticated') {
-                throw new Error(`MCP OAuth login returned no authorization URL for "${serverName}" and no valid token is cached. Check the SDK OAuth configuration and server authorization metadata.`);
-            }
+        // Broker sign-in can complete without a URL or token JSON file.
+        // An empty login result alone is not proof of authentication.
+        if (!authorizationUrl && await isRuntimeConnected(session, serverName)) {
             log.info(
                 LogCategory.MCP,
-                `[McpOAuthInitiator] Server "${serverName}" has a valid cached token — no flow required`,
+                `[McpOAuthInitiator] Runtime connected server="${serverName}" after OAuth login`,
             );
+            await safeDisconnect(session);
+            return { requestId: '', alreadyAuthenticated: true };
+        }
+        if (!authorizationUrl && !earlyAuthEvent) {
+            if (readMcpServerAuthInfo(remoteUrl, transport).status !== 'authenticated') {
+                throw new Error(`MCP OAuth login returned no authorization URL for "${serverName}", the runtime is not connected, and no valid token is cached. Check the SDK OAuth configuration and server authorization metadata.`);
+            }
             await safeDisconnect(session);
             return { requestId: '', alreadyAuthenticated: true };
         }
@@ -243,6 +247,23 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
     }
 }
 
+async function isRuntimeConnected(session: SessionShape, serverName: string): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const result = await Promise.race([
+            session.rpc?.mcp?.list?.(),
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`MCP OAuth status check timed out for "${serverName}"`)), MCP_LOAD_TIMEOUT_MS);
+            }),
+        ]);
+        return result?.servers.some(server => server.name === serverName && server.status === 'connected') ?? false;
+    } finally {
+        if (timer) {
+            clearTimeout(timer);
+        }
+    }
+}
+
 function scheduleSessionRelease(
     session: SessionShape,
     requestId: string,
@@ -251,27 +272,11 @@ function scheduleSessionRelease(
 ): void {
     const log = getLogger();
     const startedAt = Date.now();
+    let polling = false;
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
         const entry = manager.getPending(requestId);
         const elapsed = Date.now() - startedAt;
-
-        // Auto-resolve: if the SDK has written a valid token to its cache the
-        // flow completed successfully. Mark it done immediately so the dashboard
-        // poll can pick up 'completed' without waiting for a manual resolve call.
-        if (entry && entry.status === 'pending') {
-            const auth = readMcpServerAuthInfo(remoteUrl);
-            if (auth.status === 'authenticated') {
-                log.info(
-                    LogCategory.MCP,
-                    `[McpOAuthInitiator] Token cache authenticated — auto-resolving requestId=${requestId} server=${entry.serverName}`,
-                );
-                manager.resolve(requestId, 'completed');
-                clearInterval(interval);
-                void safeDisconnect(session);
-                return;
-            }
-        }
 
         const resolved = entry?.status === 'completed' || entry?.status === 'failed';
         const missing = !entry; // swept out by TTL
@@ -286,6 +291,34 @@ function scheduleSessionRelease(
                 }`,
             );
             void safeDisconnect(session);
+            return;
+        }
+        if (polling || !entry || entry.status !== 'pending') {
+            return;
+        }
+        polling = true;
+        try {
+            const connected = await isRuntimeConnected(session, entry.serverName);
+            if (manager.getPending(requestId)?.status !== 'pending'
+                || Date.now() - startedAt >= SESSION_HOLD_TIMEOUT_MS) {
+                return;
+            }
+            if (connected || readMcpServerAuthInfo(remoteUrl).status === 'authenticated') {
+                log.info(
+                    LogCategory.MCP,
+                    `[McpOAuthInitiator] OAuth authenticated — auto-resolving requestId=${requestId} server=${entry.serverName}`,
+                );
+                manager.resolve(requestId, 'completed');
+                clearInterval(interval);
+                void safeDisconnect(session);
+            }
+        } catch (error) {
+            log.warn(
+                LogCategory.MCP,
+                `[McpOAuthInitiator] OAuth status check failed for requestId=${requestId}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        } finally {
+            polling = false;
         }
     }, SESSION_HOLD_POLL_INTERVAL_MS);
 

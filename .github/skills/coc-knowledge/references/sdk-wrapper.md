@@ -18,7 +18,7 @@ Forge imports directly from this package.
 | `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract; `TransformOptions`/`TransformResult` |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
 | `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); `./testing` subpath export |
-| `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring, permission handler, streaming routing |
+| `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring and [host-token routing](mcp-settings.md#teams-mcp-in-copilot-sessions), permissions, streaming |
 | `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` |
 | `session-manager.ts` | Active session tracking and cancellation |
 | `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) |
@@ -72,6 +72,8 @@ Copilot requests create fresh session objects. Cold requests own their client pr
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 Copilot child processes receive `COPILOT_AUTO_UPDATE=false` through `CopilotClientOptions.env`, keeping the installed CLI version in use without changing the host process or caller-owned connections. The SDK and CLI pins are recorded in [monorepo.md](monorepo.md).
 
+CoC-created child processes default `COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE` to `allow_unbound_scopes` for Entra MCP compatibility. This relaxes broker resource binding for every MCP server in that child, not authentication or consent. Explicit client environment values take precedence over host values and the default, including Electron/native launches. Caller-owned connection environments and in-process runtimes retain their own policy; the host environment is not mutated.
+
 ### SDK credential fallback
 
 `cli-stored-token.ts` preserves explicit environment credentials and in-process authentication.
@@ -81,7 +83,7 @@ CLI account's exact `authTokens` entry (then `copilotTokens`) supplies `gitHubTo
 an absent token leaves runtime gh fallback intact. Invalid config or tokens fail visibly,
 without trying other accounts or retrying rejected credentials. Probe clients stop on
 every outcome; credentials and client environments are excluded from factory logs.
-SDK and direct HTTP share exact-account file token selection and validation through `readCliAccountToken`.
+SDK file fallback uses `readCliAccountToken`; native direct HTTP lookup preserves the same exact-account token precedence, with Copilot token-family validation in TypeScript.
 
 ### Account quota contract
 
@@ -101,13 +103,24 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads bounded JSONC from `COPILOT_HOME/config.json` or `~/.copilot/config.json` and selects the configured account. Shared file lookup checks `authTokens[host:login:github].token`, `authTokens[host:login].token`, then `copilotTokens[host:login]`, skipping absent or empty tokens. Bare and HTTPS hosts stay exact for lookup; snapshots normalize hostnames.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. TypeScript resolves
+`COPILOT_HOME/config.json` or `~/.copilot/config.json`; native
+`auth_sdk::github` owns bounded JSONC parsing, exact account/token lookup (`authTokens[host:login:github].token`,
+`authTokens[host:login].token`, then `copilotTokens[host:login]`),
+same-account Windows Credential Manager/macOS Keychain reads and explicit
+`gh auth token` execution. Each request reads anew through
+`readGitHubCredential` with isolated cancellation. Rust's GitHub contracts and
+platform bounds belong in [native instructions](../../../../packages/coc-native/AGENTS.md#github-authentication).
 
-An absent file token reads native Windows Credential Manager target `copilot-cli/<stored-host>:<login>` or macOS Keychain service `copilot-cli`, account `<stored-host>:<login>`. macOS uses asynchronous `/usr/bin/security` with cancellation, a timeout and bounded output.
-
-Invalid file tokens, config errors and vault failures are terminal. Other accounts, ambient tokens and CLI processes are never fallback sources. Credential subprocess failures expose sanitized errors without password output.
-
-Typed embedding credentials support explicit environment, pinned config account, gh, resolver and `copilot-cli` sources. Explicit `copilot-cli` acquisition starts a short-lived pinned CLI client, reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup; its client creates no agent session and stops on completion or cancellation. Explicit keychain acquisition returns an unverified-platform error.
+Only absent/null/empty file tokens permit OS lookup; nonempty invalid tokens,
+config errors and vault failures are terminal. Linux config reads are file-only.
+TypeScript retains Copilot allowed token-family checks, endpoint authorization,
+environment and custom resolvers. Typed embedding credentials also support
+explicit `copilot-cli`, whose short-lived SDK client reads `account.getCurrentAuth`
+and the exact matching `account.getAllUsers` token without an agent session.
+CLI metadata selects an account, not verified identity. Credentials have no
+SDK-owned persistence, expiry or refresh, and other accounts/ambient tokens
+never serve as native fallback sources.
 
 ### Direct HTTP
 

@@ -36,8 +36,9 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     channelReadBackend?: 'mcp' | 'graph';
     graphReadOptions?: GraphOutboundOptions;
     receiveImages?: boolean;
-    onTokenRefresh?: () => Promise<string | null>;
-    acquireToken?: (signal: AbortSignal) => Promise<string>;
+    onTokenRefresh?: (signal?: AbortSignal) => Promise<string | null>;
+    acquireToken?: (signal: AbortSignal, forceRefresh?: boolean) => Promise<string>;
+    account?: { tenantId: string; objectId: string };
 }): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
@@ -46,7 +47,7 @@ export function createTransport(mode: TeamsTransportMode, opts: {
             { connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh,
                 graphOutboundOptions: opts.graphOutboundOptions,
                 channelReadBackend: opts.channelReadBackend, graphReadOptions: opts.graphReadOptions,
-                receiveImages: opts.receiveImages });
+                receiveImages: opts.receiveImages, acquireToken: opts.acquireToken, account: opts.account });
     }
     if (opts.operationRoutes?.selfSend === 'ic3' || opts.operationRoutes?.chatSend === 'ic3') {
         throw new Error('IC3 direct messages require MCP mode');
@@ -110,9 +111,14 @@ export class TeamsBot implements MessagingConnector {
             : this.pollMcpMessages.bind(this);
         this.transport = createTransport(this.mode, {
             ...opts,
-            onTokenRefresh: this.mode === 'mcp' || opts.auth?.bearerToken
+            onTokenRefresh: opts.auth?.acquireToken
+                ? signal => opts.auth!.acquireToken!(AbortSignal.any([this.authLifetime.signal,
+                    ...(signal ? [signal] : [])]), true)
+                : this.mode === 'mcp' || opts.auth?.bearerToken
                 ? opts.auth?.onTokenRefresh : () => this.acquireAzureCliToken(true),
-            acquireToken: opts.auth?.bearerToken ? undefined : signal => this.acquireAzureCliToken(false, signal),
+            acquireToken: opts.auth?.acquireToken ?? (opts.auth?.bearerToken || this.mode === 'mcp'
+                ? undefined : signal => this.acquireAzureCliToken(false, signal)),
+            account: opts.auth?.account,
         });
         this.transport.debug = opts.debug ?? false;
     }
@@ -129,14 +135,20 @@ export class TeamsBot implements MessagingConnector {
         this._lastError = null;
         console.log(`[teams-bot] Starting in ${this.mode} mode, teamId=${this.opts.teamId ?? 'none'}`);
 
-        let token = this.opts.auth?.bearerToken;
+        let token = this.opts.auth?.acquireToken ? undefined : this.opts.auth?.bearerToken;
 
         // If no token provided, acquire via az CLI
         if (!token) {
             try {
                 this.setStatus('authenticating');
-                this.azureCliCredential = new TeamsAzureCliCredential('https://graph.microsoft.com');
-                token = await this.acquireAzureCliToken();
+                if (this.opts.auth?.acquireToken) {
+                    token = await this.opts.auth.acquireToken(this.authLifetime.signal);
+                } else if (this.mode === 'graph') {
+                    this.azureCliCredential = new TeamsAzureCliCredential('https://graph.microsoft.com');
+                    token = await this.acquireAzureCliToken();
+                } else {
+                    throw new Error('Teams MCP requires explicit OAuth authentication');
+                }
             } catch (err: any) {
                 if (lifecycle !== this.lifecycle) return;
                 this.azureCliCredential?.dispose();
@@ -151,14 +163,14 @@ export class TeamsBot implements MessagingConnector {
         try {
             if (lifecycle !== this.lifecycle) return;
             try {
-                const identity = trouterAccount(token);
+                const identity = this.opts.auth?.account ?? trouterAccount(token);
                 this.mirrorAccountKey = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
                 this.mirrorSenderAadId = identity.objectId;
             } catch {
                 this.mirrorAccountKey = undefined;
                 this.mirrorSenderAadId = undefined;
             }
-            const account = this.opts.enableTrouter ? trouterAccount(token) : undefined;
+            const account = this.opts.enableTrouter ? this.opts.auth?.account ?? trouterAccount(token) : undefined;
             if (this.opts.enableTrouter && !this.opts.teamId && !this._channelId) {
                 throw new Error('Trouter direct messages require an explicit reader chat target');
             }
@@ -721,7 +733,9 @@ export class TeamsBot implements MessagingConnector {
 
     /** Attempt to refresh the bearer token via the configured callback. */
     private async refreshToken(): Promise<boolean> {
-        const refreshFn = this.mode === 'mcp' || this.opts.auth?.bearerToken ? this.opts.auth?.onTokenRefresh
+        const refreshFn = this.opts.auth?.acquireToken
+            ? () => this.opts.auth!.acquireToken!(this.authLifetime.signal, true)
+            : this.mode === 'mcp' || this.opts.auth?.bearerToken ? this.opts.auth?.onTokenRefresh
             : () => this.acquireAzureCliToken(true);
         if (!refreshFn || this._refreshingToken) return false;
 
@@ -732,14 +746,14 @@ export class TeamsBot implements MessagingConnector {
             if (lifecycle !== this.lifecycle) return false;
             if (newToken) {
                 if (this.notificationAccount) {
-                    const account = trouterAccount(newToken);
+                    const account = this.opts.auth?.account ?? trouterAccount(newToken);
                     if (account.tenantId !== this.notificationAccount.tenantId
                         || account.objectId !== this.notificationAccount.objectId) {
                         throw new Error('Teams account changed; reconnect required');
                     }
                 }
                 try {
-                    const identity = trouterAccount(newToken);
+                    const identity = this.opts.auth?.account ?? trouterAccount(newToken);
                     this.mirrorAccountKey = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
                     this.mirrorSenderAadId = identity.objectId;
                 } catch {

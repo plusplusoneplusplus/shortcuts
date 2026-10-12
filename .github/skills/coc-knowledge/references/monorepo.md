@@ -189,8 +189,16 @@ connection/resource and delegates every credential read to the SDK; Graph/IC3
 retain resource authorization and MCP-account matching. Native credential acquisition
 and each hybrid Graph writer/reader startup acquisition share a thirty-second budget; outbound writes keep
 their ten-second total deadline. Standalone Graph startup,
-polling and writes share a provider. Teams MCP OAuth and Copilot credentials
-retain separate ownership.
+polling and writes share a provider. Teams MCP OAuth uses the connector's
+host/resource-scoped `TeamsOAuthCredential`: Rust owns browser sign-in, verified
+identity, OS refresh credentials and demand renewal. TypeScript stores only the
+verified account descriptor and configuration binding under the host data directory.
+CoC and container production callers do not import or refresh Copilot's OAuth cache.
+
+`auth_sdk::github` owns read-only Copilot config/OS and GitHub CLI acquisition;
+`src/github-auth.ts` exposes isolated one-shot cancellation without caching or
+refresh. Copilot RPC, environment/custom resolvers and service authorization
+stay in TypeScript. See the native instructions for exact-key and platform contracts.
 Shared types, storage and lifecycle remain
 vendor-neutral. Protocol/security contracts belong in the
 [crate documentation](../../../../packages/coc-native/rust/auth-sdk/README.md).

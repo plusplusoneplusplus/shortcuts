@@ -19,6 +19,7 @@ import type {
 import { ToolCall } from './tool-call';
 import { getAIServiceLogger, createSessionLogger } from './logger';
 import { loadEffectiveMcpConfig } from './mcp-config-loader';
+import { McpAuthRouter } from './mcp-auth-router';
 import {
     SendMessageOptions,
     TokenUsage,
@@ -179,6 +180,12 @@ export class RequestRunner {
         let client: CopilotClient | null = null;
         let result: SDKInvocationResult | null = null;
         let removeAbortListener: (() => void) | undefined;
+        const authRouter = options.onMcpAuthRequest && options.managedMcpAuthServers
+            ? new McpAuthRouter(
+                options.managedMcpAuthServers, options.onMcpAuthRequest, options.onMcpOAuthRequired,
+                options.signal, startTime + (options.timeoutMs ?? this.defaultTimeoutMs),
+            )
+            : undefined;
 
         // When the caller provides a pre-created client we reuse it and must
         // NOT stop it in the finally block — the caller owns its lifecycle.
@@ -186,6 +193,9 @@ export class RequestRunner {
 
         try {
             throwIfAborted();
+            if (options.managedMcpAuthServers && !options.onMcpAuthRequest) {
+                throw new Error('managedMcpAuthServers requires onMcpAuthRequest');
+            }
             client = options.client ?? await this.createClient(options.workingDirectory);
             throwIfAborted();
             const preparedAttachments = this.prepareAttachments(options.attachments, options.workingDirectory);
@@ -255,6 +265,9 @@ export class RequestRunner {
             if (instructionDirectories.length) sessionOptions.instructionDirectories = instructionDirectories;
             if (options.infiniteSessions !== undefined) sessionOptions.infiniteSessions = options.infiniteSessions;
             if (options.onUserInputRequest) sessionOptions.onUserInputRequest = options.onUserInputRequest;
+            if (options.onMcpAuthRequest) {
+                sessionOptions.onMcpAuthRequest = authRouter?.onAuthRequest ?? options.onMcpAuthRequest;
+            }
 
             // Load and merge MCP server configurations
             const shouldLoadDefaultMcp = options.loadDefaultMcpConfig !== false;
@@ -284,7 +297,7 @@ export class RequestRunner {
             }
 
             const sessionOptionsForLog = Object.fromEntries(
-                Object.entries(sessionOptions).map(([key, value]) => [
+                Object.entries(sessionOptions).filter(([key]) => key !== 'onMcpAuthRequest').map(([key, value]) => [
                     key,
                     key === 'mcpServers' && value && typeof value === 'object'
                         ? { serverCount: Object.keys(value).length }
@@ -326,8 +339,9 @@ export class RequestRunner {
             const sessionLog = createSessionLogger(session.sessionId);
             await this.configureDirectoryPolicy(session, options);
             options.onSessionCreated?.(session.sessionId);
+            authRouter?.ready(session);
 
-            if (options.onMcpOAuthRequired && typeof session.on === 'function') {
+            if (options.onMcpOAuthRequired && !authRouter && typeof session.on === 'function') {
                 try {
                     session.on('mcp.oauth_required', (event: { id?: string; data: { requestId: string; serverName: string; serverUrl: string } }) => {
                         const evtData = event.data;
@@ -386,7 +400,7 @@ export class RequestRunner {
                 } catch (subErr) {
                     sessionLog.warn({ err: subErr instanceof Error ? subErr.message : String(subErr) }, 'Failed to subscribe to mcp.oauth_required');
                 }
-            } else if (options.onMcpOAuthRequired) {
+            } else if (options.onMcpOAuthRequired && !authRouter) {
                 sessionLog.debug('[MCP OAuth] onMcpOAuthRequired provided but session.on is not available; OAuth events will not be captured');
             }
 
@@ -401,11 +415,16 @@ export class RequestRunner {
                 const loginFn = rpc?.mcp?.oauth?.login;
                 if (typeof loginFn === 'function') {
                     const remoteServers = Object.entries(sessionOptions.mcpServers as Record<string, { type?: string; url?: string }>)
-                        .filter(([, cfg]) => cfg.type === 'http' || cfg.type === 'sse');
+                        .filter(([name, cfg]) => (cfg.type === 'http' || cfg.type === 'sse')
+                            && !authRouter?.owns(name, cfg.url ?? ''));
                     if (remoteServers.length > 0) {
                         sessionLog.debug({ remoteServerCount: remoteServers.length }, '[MCP OAuth] Proactively probing OAuth for remote MCP servers');
                         // Fire-and-forget: don't block the message send
                         for (const [serverName, cfg] of remoteServers) {
+                            if (authRouter) {
+                                authRouter.login(serverName, cfg.url ?? serverName);
+                                continue;
+                            }
                             Promise.resolve()
                                 .then(() => loginFn.call(rpc!.mcp!.oauth, { serverName }))
                                 .then(loginResult => {
@@ -530,6 +549,7 @@ export class RequestRunner {
             return result;
 
         } finally {
+            authRouter?.close();
             removeAbortListener?.();
             if (session) {
                 this.sessionManager.untrack(session.sessionId);

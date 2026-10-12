@@ -38,9 +38,12 @@ global Teams MCP endpoint and team/channel inbound bridge, followed by
 mode renders `IMSettingsSection` for its separate WhatsApp and Teams relay;
 both WhatsApp surfaces share QR and connection-status presentation. The Teams card shows
 connection and OAuth status, saves the endpoint and channel separately, and returns
-a user-clickable Microsoft sign-in link for the server-local PKCE flow. It polls the
-shared MCP OAuth pending state and enables or reconnects the bridge after credentials
-are cached. The channel input stays editable and reflects the owning server's configured
+a user-clickable Microsoft sign-in link for native server-owned OAuth. It polls the
+shared pending state and enables or reconnects the bridge after native verification
+and secure persistence. The container form also displays native instructions,
+polls its auth status and offers cancellation; it handles no browser PKCE or
+authorization-code exchange. See [MCP authentication](../mcp-settings.md#teams-channel-connection).
+The channel input stays editable and reflects the owning server's configured
 name, including its per-machine default for new settings. The card advises a unique
 channel per machine to prevent multiple bridges from processing the same messages.
 Both Teams forms expose explicit optional IC3 region configuration, saved with connection

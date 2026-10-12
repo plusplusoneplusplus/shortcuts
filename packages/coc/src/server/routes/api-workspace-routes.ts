@@ -47,6 +47,7 @@ import { testMcpConnection } from './mcp-connection-tester';
 import { discoverWorkspaceMcpTools } from './mcp-tools-discovery';
 import { readMcpServerAuthInfo, type McpServerAuthStatus } from '../mcp-oauth';
 import { getServerLogger } from '../logging/server-logger';
+import { isTeamsMcpServer, teamsNativeAuthStatus } from '../messaging/teams-native-auth';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -140,7 +141,7 @@ function deriveServerStatus(
     return 'ok';
 }
 
-function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
+function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false, dataDir?: string) {
     const globalConfig = loadDefaultMcpConfig(forceReload);
     const workspaceConfig = loadWorkspaceMcpConfig(ws.rootPath, forceReload);
     const workspaceNames = new Set(Object.keys(workspaceConfig.mcpServers));
@@ -165,9 +166,11 @@ function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
         const type = config.type ?? 'stdio';
         const entry = toMcpServerEntry(name, config, workspaceNames.has(name) ? 'workspace' : 'global', true);
         const url = 'url' in config ? config.url : undefined;
-        const auth = readMcpServerAuthInfo(url, type);
+        const auth = dataDir && url && isTeamsMcpServer(name, config)
+            ? { status: teamsNativeAuthStatus(dataDir, url) }
+            : readMcpServerAuthInfo(url, type);
         entry.authStatus = auth.status;
-        if (auth.expiresAt !== undefined) entry.authExpiresAt = auth.expiresAt;
+        if ('expiresAt' in auth && auth.expiresAt !== undefined) entry.authExpiresAt = auth.expiresAt;
         entry.status = deriveServerStatus(type, isEnabled, auth.status);
         const desc = descriptions[name];
         if (desc) entry.description = desc;
@@ -534,7 +537,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const enabledMcpTools = ctx.dataDir
                 ? readRepoPreferences(ctx.dataDir, ws.id).enabledMcpTools ?? null
                 : null;
-            sendJSON(res, 200, { ...buildMcpConfigResponse(ws, forceReload), enabledMcpTools });
+            sendJSON(res, 200, { ...buildMcpConfigResponse(ws, forceReload, ctx.dataDir), enabledMcpTools });
         },
     });
 
@@ -547,7 +550,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             const parsed = url.parse(req.url || '/', true);
             const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
-            const servers = await discoverWorkspaceMcpTools(ws.rootPath, ws.enabledMcpServers, { forceReload });
+            const servers = await discoverWorkspaceMcpTools(ws.rootPath, ws.enabledMcpServers, { forceReload, dataDir: ctx.dataDir });
             sendJSON(res, 200, { servers });
         },
     });

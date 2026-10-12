@@ -2,7 +2,7 @@
  * Manages the MS Teams bot lifecycle (connect, disconnect, poll).
  * Persists Teams configuration (team name, channel name, resolved IDs, botName).
  * On "connect", reads the configured global Teams MCP server,
- * acquires a cached SDK OAuth token, resolves team/channel
+ * acquires a native OAuth token, resolves team/channel
  * IDs via MCP tools, and reads channel roots/replies via Graph.
  */
 
@@ -13,7 +13,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion, TrouterStatus,
     TeamsDestination, TeamsMessageBody, OperationContext, SendReceipt } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsBot, TeamsOperationError, isIc3DirectMessageRegion, validateAction } from '@plusplusoneplusplus/coc-connector/teams';
-import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
+import { disposeTeamsOAuthCredentials, getTeamsOAuthCredential, teamsNativeAuthStatus } from './teams-native-auth';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
@@ -91,6 +91,7 @@ export class TeamsMessagingManager {
     private readonly _homeDir: string;
     private readonly customHome: boolean;
     private generation = 0;
+    private authLifetime = new AbortController();
     private invalidOutboundBackend = false;
     private oauthFlow: TeamsOAuthFlow | null = null;
     private history: TeamsAttemptStore | null = null;
@@ -144,6 +145,7 @@ export class TeamsMessagingManager {
 
     dispose(): void {
         void this.disconnectForShutdown().catch(() => console.error('[teams-messaging] Disconnect failed during disposal'));
+        disposeTeamsOAuthCredentials(this.dataDir);
         this.answerRelayUnsubscribe?.();
         this.answerRelay?.dispose();
     }
@@ -151,6 +153,14 @@ export class TeamsMessagingManager {
     setOAuthFlow(flow: TeamsOAuthFlow): void {
         this.oauthFlow = flow;
     }
+
+    startOAuth(serverUrl: string, context?: { workspaceId?: string; processId?: string }) {
+        if (!this.oauthFlow) throw new Error('Teams authentication is unavailable');
+        return this.oauthFlow.start(serverUrl, context);
+    }
+
+    cancelOAuth(requestId: string): void { this.oauthFlow?.cancel(requestId); }
+    isOAuthPending(requestId: string): boolean { return this.oauthFlow?.isPending(requestId) ?? false; }
 
     constructor(private readonly dataDir: string, opts?: { homeDir?: string; getObservabilityEnabled?: () => boolean }) {
         this.configPath = path.join(dataDir, 'teams-messaging.json');
@@ -204,7 +214,7 @@ export class TeamsMessagingManager {
             botName: this.config.botName,
             serverUrl,
             authStatus: serverUrl
-                ? readMcpServerAuthInfo(serverUrl, 'http', this._homeDir).status
+                ? teamsNativeAuthStatus(this.dataDir, serverUrl)
                 : null,
         };
     }
@@ -246,6 +256,7 @@ export class TeamsMessagingManager {
         if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
             throw new RangeError('Teams MCP URL must be HTTPS without credentials or a fragment');
         }
+        getTeamsOAuthCredential(this.dataDir, parsed.href);
         const configFile = path.join(this._homeDir, '.copilot', 'mcp-config.json');
         if (fs.existsSync(configFile)) {
             const existingConfig: unknown = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
@@ -280,7 +291,7 @@ export class TeamsMessagingManager {
     /**
      * Connect (or reconnect) the bot.
      * 1. Reads the global MCP server configured in the MCP settings panel.
-     * 2. Acquires a bearer token from the shared SDK OAuth cache.
+     * 2. Acquires a bearer token from the native OAuth provider.
      * 3. Resolves team + channel IDs via MCP tools.
      * 4. Starts the MCP discovery/operation owner with Graph channel reads.
      */
@@ -325,12 +336,13 @@ export class TeamsMessagingManager {
             if (!serverUrl) throw new Error('Configure a global HTTP Microsoft Teams MCP server before connecting');
             if (!this.onInboundMessage) throw new Error('Teams command router is unavailable');
 
-            // Step 2: Acquire token from the shared MCP OAuth cache
+            // Step 2: Acquire a token from the host's source-pinned native provider.
             this._status = 'authenticating';
             if (attemptId) history?.phase(attemptId, 'authenticating');
             failureCategory = 'authentication';
-            const { acquireMcpOAuthToken, McpClient } = await import('@plusplusoneplusplus/coc-connector/teams');
-            const token = await acquireMcpOAuthToken(serverUrl, this._homeDir);
+            const { McpClient } = await import('@plusplusoneplusplus/coc-connector/teams');
+            const credential = getTeamsOAuthCredential(this.dataDir, serverUrl);
+            const token = await credential.getToken(this.authLifetime.signal);
             if (generation !== this.generation || !this.config.enabled) throw new Error('Teams connection cancelled');
 
             // Step 3: Resolve team and channel via MCP tools
@@ -339,6 +351,7 @@ export class TeamsMessagingManager {
             const mcpClient = new McpClient({
                 serverUrl,
                 bearerToken: token,
+                acquireToken: (signal, forceRefresh) => credential.getToken(signal, forceRefresh),
             });
             await mcpClient.initialize();
             if (generation !== this.generation || !this.config.enabled) throw new Error('Teams connection cancelled');
@@ -370,8 +383,8 @@ export class TeamsMessagingManager {
                 mcpServerUrl: serverUrl,
                 teamId: resolved.teamId,
                 auth: {
-                    bearerToken: token,
-                    onTokenRefresh: () => acquireMcpOAuthToken(serverUrl, this._homeDir),
+                    acquireToken: (signal, forceRefresh) => credential.getToken(signal, forceRefresh),
+                    account: credential.getAccount(),
                 },
                 botName: this.config.botName,
                 ic3DirectMessageOptions: { region: this.config.ic3Region ?? undefined },
@@ -520,6 +533,8 @@ export class TeamsMessagingManager {
             ? Promise.resolve().then(() => this.mirrorDisconnectHandler?.()) : undefined;
         this.imageLifecycle?.stop();
         this.oauthFlow?.cancel();
+        this.authLifetime.abort();
+        this.authLifetime = new AbortController();
         this.generation++;
         const generation = this.generation;
         const attemptId = this.attemptId;

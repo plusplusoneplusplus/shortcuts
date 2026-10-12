@@ -696,6 +696,26 @@ export interface SendMessageOptions {
     deliveryMode?: DeliveryMode;
 
     /**
+     * Copilot-only host token acquisition for session-wide MCP OAuth requests.
+     * Host-supplied tokens stay ephemeral; the host owns acquisition and refresh.
+     * Runtime-owned OAuth retains the client's default storage policy (persistent
+     * in copilot-cli mode, isolated in-memory in empty mode).
+     * With managedMcpAuthServers, only exact configured identities reach this
+     * handler; other servers use same-session runtime OAuth login. Without the
+     * map, this is session-wide: null/undefined cancels, not runtime fallback.
+     */
+    onMcpAuthRequest?: import('@github/copilot-sdk').SessionConfig['onMcpAuthRequest'];
+
+    /**
+     * Host-owned MCP identities (configured name -> exact URL); requires
+     * onMcpAuthRequest. Matching names or URLs are excluded from runtime login.
+     * A partial identity match fails closed; only exact pairs reach the host.
+     * Unmanaged requests cancel the pending host request before same-session
+     * runtime OAuth login, surfacing browser URLs through onMcpOAuthRequired.
+     */
+    managedMcpAuthServers?: Record<string, string>;
+
+    /**
      * Callback invoked when the underlying SDK session emits an
      * `mcp.oauth_required` event for an MCP server requiring OAuth.
      *
@@ -706,6 +726,8 @@ export interface SendMessageOptions {
      * event. Otherwise `authorizationUrl` is left undefined and consumers
      * should surface the `serverName`/`serverUrl` so the user can complete
      * authentication out-of-band.
+     * With managedMcpAuthServers, only unmanaged servers use this notification
+     * and runtime login; managed authentication belongs to onMcpAuthRequest.
      *
      * The handler is observational only: it must not throw, and it must
      * not block message dispatch.

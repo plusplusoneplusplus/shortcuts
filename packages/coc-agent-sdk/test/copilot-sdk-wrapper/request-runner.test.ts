@@ -12,6 +12,9 @@ import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS } from '../../src/tim
 import { loadEffectiveMcpConfig } from '../../src/mcp-config-loader';
 import * as os from 'os';
 import * as path from 'path';
+import pino from 'pino';
+import { initSDKLogger, resetSDKLogger } from '../../src/logger';
+import type { SessionConfig } from '@github/copilot-sdk';
 
 
 
@@ -78,6 +81,134 @@ describe('RequestRunner.send() — availability', () => {
 // ============================================================================
 // send() — happy path (non-streaming)
 // ============================================================================
+
+describe('RequestRunner.send() — host MCP authentication', () => {
+    afterEach(() => resetSDKLogger());
+
+    it.each([undefined, 'existing-session'])('forwards the handler without overriding client OAuth storage for session %s', async (sessionId) => {
+        const { runner, mockClient } = makeRunner();
+        const onMcpAuthRequest: SessionConfig['onMcpAuthRequest'] = vi.fn().mockResolvedValue({ accessToken: 'fixture-access-token' });
+        const result = await runner.send({
+            prompt: 'test', sessionId, onMcpAuthRequest, loadDefaultMcpConfig: false,
+        });
+        expect(result.success).toBe(true);
+        const config = sessionId
+            ? mockClient.resumeSession.mock.calls[0][1]
+            : mockClient.createSession.mock.calls[0][0];
+        expect(config.onMcpAuthRequest).toBe(onMcpAuthRequest);
+        expect(config).not.toHaveProperty('mcpOAuthTokenStorage');
+        expect(onMcpAuthRequest).not.toHaveBeenCalled();
+    });
+
+    it('keeps host authentication on resume fallback', async () => {
+        const { runner, mockClient } = makeRunner();
+        mockClient.resumeSession.mockRejectedValueOnce(new Error('Session not found'));
+        const onMcpAuthRequest: SessionConfig['onMcpAuthRequest'] = vi.fn().mockReturnValue({ kind: 'cancelled' });
+        const result = await runner.send({
+            prompt: 'test', sessionId: 'missing-session', onMcpAuthRequest, loadDefaultMcpConfig: false,
+        });
+        expect(result.success).toBe(true);
+        expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
+            onMcpAuthRequest,
+        }));
+        expect(mockClient.resumeSession.mock.calls[0][1]).not.toHaveProperty('mcpOAuthTokenStorage');
+        expect(mockClient.createSession.mock.calls[0][0]).not.toHaveProperty('mcpOAuthTokenStorage');
+    });
+
+    it.each([undefined, 'existing-session'])('routes managed identities during create/resume %s without waiting for readiness', async sessionId => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const onMcpAuthRequest = vi.fn().mockResolvedValue({ accessToken: 'fixture-access-token' });
+        const create = async (config: SessionConfig) => {
+            expect(await config.onMcpAuthRequest!({
+                requestId: 'managed-request', serverName: 'managed', serverUrl: 'https://example.test/managed', reason: 'initial',
+            }, { sessionId: mockSession.sessionId })).toEqual({ accessToken: 'fixture-access-token' });
+            expect(await config.onMcpAuthRequest!({
+                requestId: 'wrong-request', serverName: 'managed', serverUrl: 'https://example.test/wrong', reason: 'initial',
+            }, { sessionId: mockSession.sessionId })).toEqual({ kind: 'cancelled' });
+            return mockSession;
+        };
+        mockClient.createSession.mockImplementation(create);
+        mockClient.resumeSession.mockImplementation((_id, config) => create(config));
+        expect((await runner.send({
+            prompt: 'test', sessionId, onMcpAuthRequest,
+            managedMcpAuthServers: { managed: 'https://example.test/managed' }, loadDefaultMcpConfig: false,
+        })).success).toBe(true);
+        expect(onMcpAuthRequest).toHaveBeenCalledOnce();
+        const config = sessionId ? mockClient.resumeSession.mock.calls[0][1] : mockClient.createSession.mock.calls[0][0];
+        expect(config).not.toHaveProperty('mcpOAuthTokenStorage');
+        expect(config).not.toHaveProperty('managedMcpAuthServers');
+    });
+
+    it('requires a host callback for managed identities', async () => {
+        const { runner, mockClient } = makeRunner();
+        const result = await runner.send({
+            prompt: 'test', managedMcpAuthServers: { managed: 'https://example.test/managed' }, loadDefaultMcpConfig: false,
+        });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('requires onMcpAuthRequest');
+        expect(mockClient.createSession).not.toHaveBeenCalled();
+    });
+
+    it('never probes managed names or URLs and delegates generic pending requests before login', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const login = vi.fn().mockResolvedValue({ authorizationUrl: 'https://example.test/authorize' });
+        const cancel = vi.fn().mockResolvedValue({ success: true });
+        Object.assign(mockSession, { rpc: { mcp: { oauth: { login, handlePendingRequest: cancel } } } });
+        const onMcpAuthRequest = vi.fn();
+        const onMcpOAuthRequired = vi.fn();
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true, fileExists: false, configPath: '',
+            mcpServers: {
+                managed: { type: 'http', url: 'https://example.test/wrong', tools: ['*'] },
+                alias: { type: 'http', url: 'https://example.test/managed', tools: ['*'] },
+                generic: { type: 'http', url: 'https://example.test/generic', tools: ['*'] },
+            },
+        });
+        mockClient.createSession.mockImplementation(async (config: SessionConfig) => {
+            expect(config.onMcpAuthRequest!({
+                requestId: 'generic-request', serverName: 'generic', serverUrl: 'https://example.test/generic', reason: 'initial',
+            }, { sessionId: mockSession.sessionId })).toEqual({ kind: 'cancelled' });
+            return mockSession;
+        });
+        await runner.send({
+            prompt: 'test', onMcpAuthRequest, onMcpOAuthRequired,
+            managedMcpAuthServers: { managed: 'https://example.test/managed' },
+        });
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(login).toHaveBeenCalledExactlyOnceWith({ serverName: 'generic' });
+        expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(login.mock.invocationCallOrder[0]);
+        expect(onMcpAuthRequest).not.toHaveBeenCalled();
+        expect(onMcpOAuthRequired).toHaveBeenCalledWith(expect.objectContaining({ serverName: 'generic' }));
+    });
+
+    it.each([undefined, 'existing-session'])('leaves default session %s configuration unchanged', async (sessionId) => {
+        const { runner, mockClient } = makeRunner();
+        await runner.send({ prompt: 'test', sessionId, loadDefaultMcpConfig: false });
+        const config = sessionId
+            ? mockClient.resumeSession.mock.calls[0][1]
+            : mockClient.createSession.mock.calls[0][0];
+        expect(Object.keys(config)).toEqual(['onPermissionRequest']);
+        expect(config).not.toHaveProperty('onMcpAuthRequest');
+        expect(config).not.toHaveProperty('mcpOAuthTokenStorage');
+    });
+
+    it('does not serialize the callback or host tokens into debug logs', async () => {
+        const logs: string[] = [];
+        initSDKLogger(pino({ level: 'debug' }, { write: (chunk: string) => { logs.push(chunk); } }));
+        const onMcpAuthRequest: SessionConfig['onMcpAuthRequest'] = vi.fn().mockReturnValue({ accessToken: 'fixture-access-token' });
+        const serializeCallback = vi.fn().mockReturnValue({ accessToken: 'fixture-access-token' });
+        Object.assign(onMcpAuthRequest, { toJSON: serializeCallback });
+        const { runner } = makeRunner();
+        await runner.send({
+            prompt: 'test', onMcpAuthRequest, managedMcpAuthServers: { managed: 'https://example.test/managed' },
+            loadDefaultMcpConfig: false,
+        });
+        expect(serializeCallback).not.toHaveBeenCalled();
+        expect(logs.join('')).not.toContain('onMcpAuthRequest');
+        expect(logs.join('')).not.toContain('fixture-access-token');
+        expect(logs.join('')).toContain('Creating session');
+    });
+});
 
 describe('RequestRunner.send() — non-streaming path', () => {
     it('reapplies newly protected roots before the next resumed turn on the same client', async () => {

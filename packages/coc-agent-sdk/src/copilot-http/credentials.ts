@@ -1,17 +1,12 @@
-import { open } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { readWindowsCredential } from '@plusplusoneplusplus/coc-native';
+import { AuthError, readGitHubCredential } from '@plusplusoneplusplus/coc-native';
 import { loadCopilotSdk } from '../sdk-esm-loader';
 import { createSdkClient } from '../sdk-client-factory';
 import { withAbort } from './transport';
-import { stripJsoncComments } from '../trusted-folder';
-import { readCliAccountToken } from '../cli-stored-token';
 import { CopilotDirectError } from './errors';
 import type { CopilotCredentialConfig, CopilotCredentialSnapshot } from './types';
 
-const MAX_CONFIG_BYTES = 1024 * 1024;
 const unavailable = (message: string) => new CopilotDirectError('DIRECT_CREDENTIAL_UNAVAILABLE', message);
 export function getDirectCopilotConfigPath(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
     // CLI 1.0.78 passes COPILOT_HOME, not XDG_CONFIG_HOME, to resolveCopilotHome.
@@ -25,7 +20,9 @@ function normalizeCredentialHost(value: unknown): string | undefined {
     if (typeof value !== 'string' || !value) return undefined;
     try {
         const host = new URL(value.includes('://') ? value : `https://${value}`);
-        if (host.protocol !== 'https:' || host.port || host.username || host.password
+        const authority = /^https:\/\//i.test(value) ? value.slice(8).replace(/\/$/, '') : value;
+        if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(authority)
+            || host.protocol !== 'https:' || host.port || host.username || host.password
             || host.pathname !== '/' || host.search || host.hash) return undefined;
         return host.hostname;
     } catch { return undefined; }
@@ -46,7 +43,7 @@ export function validateCredentialConfig(config: CopilotCredentialConfig): void 
                 || !accountValid({ ...config.account, host: normalizeCredentialHost(config.account.host) ?? '' }))) invalid();
             if (config.configPath !== undefined && (typeof config.configPath !== 'string' || !config.configPath)) invalid();
             break;
-        case 'keychain': case 'gh-cli': if (!accountValid(config)) invalid(); break;
+        case 'gh-cli': if (!accountValid(config)) invalid(); break;
         default: invalid();
     }
 }
@@ -97,68 +94,26 @@ export async function readCopilotCredential(config: CopilotCredentialConfig, sig
                 try { snapshot = await config.resolve(signal); }
                 catch { throw unavailable('Selected resolver credential could not be read.'); }
                 break;
-            case 'keychain': throw unavailable('Direct keychain acquisition is unverified on this platform. Select SDK mode or an explicit supported credential source.');
             case 'gh-cli': {
-                const token = await new Promise<string>((resolveToken, reject) => {
-                    // gh otherwise prioritizes ambient tokens over the explicitly selected account.
-                    const env = { ...process.env };
-                    delete env.GH_TOKEN; delete env.GITHUB_TOKEN;
-                    delete env.GH_ENTERPRISE_TOKEN; delete env.GITHUB_ENTERPRISE_TOKEN;
-                    execFile('gh', ['auth', 'token', '--hostname', config.host, '--user', config.login],
-                        { signal, timeout: 10_000, maxBuffer: 16_384, env, windowsHide: true },
-                        (error, stdout) => error ? reject(unavailable('Selected gh-cli credential is unavailable.')) : resolveToken(stdout.trim()));
-                });
-                snapshot = { token, host: config.host, login: config.login };
+                snapshot = await readGitHubCredential({
+                    source: 'gh-cli', account: { host: config.host, login: config.login },
+                }, signal);
                 break;
             }
             case 'cli-config': {
-                const file = await open(config.configPath ?? getDirectCopilotConfigPath(), 'r');
-                let parsed: any;
-                try {
-                    const before = await file.stat();
-                    if (!before.isFile() || before.size > MAX_CONFIG_BYTES) throw unavailable('Copilot credential config exceeds the read limit or is not a file.');
-                    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1);
-                    let bytes = 0;
-                    while (bytes < buffer.length) {
-                        const read = await file.read(buffer, bytes, buffer.length - bytes, bytes);
-                        if (!read.bytesRead) break;
-                        bytes += read.bytesRead;
-                        signal.throwIfAborted();
-                    }
-                    const after = await file.stat();
-                    if (bytes > MAX_CONFIG_BYTES || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs)
-                        throw unavailable('Copilot credential config changed during reading or exceeds the read limit.');
-                    parsed = JSON.parse(stripJsoncComments(buffer.subarray(0, bytes).toString('utf8')));
-                } finally { await file.close(); }
-                if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw unavailable('Invalid Copilot credential config.');
-                const account = config.account === 'active-cli-account' ? parsed.lastLoggedInUser : config.account;
-                const host = normalizeCredentialHost(account?.host);
-                if (!account || !host || !accountValid({ host, login: account.login })) throw unavailable('Selected Copilot account is missing.');
-                let token = readCliAccountToken(parsed, `${account.host}:${account.login}`) ?? '';
-                if (token === '' && process.platform === 'win32') {
-                    signal.throwIfAborted();
-                    try {
-                        token = await withAbort(readWindowsCredential(`copilot-cli/${account.host}:${account.login}`), signal) ?? '';
-                    } catch {
-                        throw unavailable('Selected Copilot Windows credential could not be read.');
-                    }
-                }
-                if (token === '' && process.platform === 'darwin') {
-                    signal.throwIfAborted();
-                    token = await new Promise<string>((resolveToken, reject) => {
-                        execFile('/usr/bin/security', [
-                            'find-generic-password', '-s', 'copilot-cli', '-a', `${account.host}:${account.login}`, '-w',
-                        ], { signal, timeout: 10_000, maxBuffer: 16_384 },
-                        (error, stdout) => error
-                            ? reject(unavailable('Selected Copilot macOS Keychain credential could not be read.'))
-                            : resolveToken(stdout.trim()));
-                    });
-                }
-                snapshot = { host, login: account.login, token };
+                snapshot = await readGitHubCredential({
+                    source: 'cli-config', account: config.account,
+                    configPath: resolve(config.configPath ?? getDirectCopilotConfigPath()),
+                }, signal);
                 break;
             }
         }
     } catch (error) {
+        if (signal.aborted && (config.source === 'cli-config' || config.source === 'gh-cli')) throw signal.reason;
+        if (error instanceof AuthError && error.code === 'Cancelled')
+            throw new CopilotDirectError('DIRECT_CANCELLED', 'Copilot credential acquisition was cancelled.');
+        if (error instanceof AuthError && error.code === 'TimedOut')
+            throw new CopilotDirectError('DIRECT_TIMEOUT', 'Copilot credential acquisition deadline expired.');
         if (error instanceof CopilotDirectError) throw error;
         throw unavailable('Selected Copilot credential could not be read.');
     }

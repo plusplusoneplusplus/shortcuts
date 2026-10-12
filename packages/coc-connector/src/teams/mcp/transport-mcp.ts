@@ -88,15 +88,18 @@ export class McpTransport implements TeamsTransport {
         private readonly operationOptions: {
             connectionId?: string;
             routes?: Partial<TeamsOperationRoutes>;
-            onTokenRefresh?: () => Promise<string | null>;
+            onTokenRefresh?: (signal?: AbortSignal) => Promise<string | null>;
             graphOutboundOptions?: GraphOutboundOptions;
             channelReadBackend?: 'mcp' | 'graph';
             graphReadOptions?: GraphOutboundOptions;
             receiveImages?: boolean;
+            acquireToken?: (signal: AbortSignal, forceRefresh?: boolean) => Promise<string>;
+            account?: { tenantId: string; objectId: string };
         } = {},
     ) {
         this._connectionId = operationOptions.connectionId ?? randomUUID();
-        this.operationOptions = { ...operationOptions, routes: { ...operationOptions.routes } };
+        this.operationOptions = { ...operationOptions, routes: { ...operationOptions.routes },
+            account: operationOptions.account && { ...operationOptions.account } };
         this.ic3Options = { ...ic3DirectMessageOptions };
         // Validate immutable IC3 configuration without acquiring credentials.
         new Ic3Operations({ ...this.ic3Options, connectionId: this.connectionId });
@@ -114,8 +117,8 @@ export class McpTransport implements TeamsTransport {
         const mcp = new McpOperations({
             connectionId: this.connectionId, client,
             availableTools: this.toolsDiscovered ? this._availableTools : undefined,
-            onTokenRefresh: this.operationOptions.onTokenRefresh && (async () => {
-                const refreshed = await this.operationOptions.onTokenRefresh!();
+            onTokenRefresh: this.operationOptions.onTokenRefresh && (async writeSignal => {
+                const refreshed = await this.operationOptions.onTokenRefresh!(writeSignal);
                 if (refreshed) this.bindAccount(refreshed);
                 return refreshed;
             }),
@@ -187,7 +190,7 @@ export class McpTransport implements TeamsTransport {
     }
 
     private bindAccount(token: string): void {
-        const account = tokenAccount(token);
+        const account = this.operationOptions.account ?? tokenAccount(token);
         if (this.account && (this.account.tenantId !== account?.tenantId || this.account.objectId !== account?.objectId)) {
             throw new TeamsOperationError('Teams account changed; create a new connection', 'mcp', 'authentication', 'not-attempted');
         }
@@ -253,16 +256,23 @@ export class McpTransport implements TeamsTransport {
         console.log(`[mcp-transport] Initializing with teamId=${this.teamId}, serverUrl=${this.serverUrl}`);
         const client = new McpClient({
             serverUrl: this.serverUrl,
-            bearerToken: token,
+            bearerToken: this.operationOptions.acquireToken ? undefined : token,
+            acquireToken: this.operationOptions.acquireToken && (async requestSignal => {
+                const combined = AbortSignal.any([signal, requestSignal]);
+                const fresh = await this.operationOptions.acquireToken!(combined);
+                combined.throwIfAborted();
+                this.bindAccount(fresh);
+                return fresh;
+            }),
         });
         this.client = client;
-        await client.initialize();
+        await client.initialize(signal);
         signal.throwIfAborted();
 
         this._availableTools = [];
         this.toolsDiscovered = false;
         try {
-            const toolsResult = await client.listTools();
+            const toolsResult = await client.listTools(signal);
             signal.throwIfAborted();
             this._availableTools = (toolsResult.tools ?? []).map(t => t.name);
             this.toolsDiscovered = Array.isArray(toolsResult.tools);

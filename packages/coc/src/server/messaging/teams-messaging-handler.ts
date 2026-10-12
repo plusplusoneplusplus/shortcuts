@@ -22,6 +22,7 @@ import { ImageDownloadError, parseMessagingCommand, type MessagingChatMode } fro
 import type { MessagingCompactor, MessagingQuotaSource } from './messaging-commands';
 import type { MessagingRemoteDirectory } from './remote-browse';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
+import { getTeamsOAuthCredential } from './teams-native-auth';
 import type { TeamsAttempt } from './teams-attempt-store';
 import { TeamsAnswerRelay, TeamsBindingReleaseError, teamsQuestionChatKey, type TeamsAnswerRelayDeps } from './teams-answer-relay';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
@@ -100,7 +101,9 @@ export function registerTeamsMessagingRoutes(
 ): TeamsMessagingManager {
     const manager = opts.manager ?? new TeamsMessagingManager(opts.dataDir, { getObservabilityEnabled: opts.getObservabilityEnabled });
     const getAnswerRelayEnabled = opts.getAnswerRelayEnabled ?? (() => DEFAULT_CONFIG.features.teamsAiAnswerRelay);
-    const oauthFlow = opts.oauthManager ? new TeamsOAuthFlow(opts.oauthManager) : null;
+    const oauthFlow = opts.oauthManager
+        ? new TeamsOAuthFlow(opts.oauthManager, serverUrl => getTeamsOAuthCredential(opts.dataDir, serverUrl))
+        : null;
     if (oauthFlow) manager.setOAuthFlow(oauthFlow);
 
     // Wire the command router if store + queue deps are provided

@@ -19,6 +19,14 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { nestRuntime } from './runtime-options-helper';
 
+const teamsUrl = 'https://resource.example/tenants/11111111-1111-4111-8111-111111111111/mcp';
+vi.mock('../../../src/server/executors/mcp-tool-enforcement', () => ({
+    resolveChatMcpServersForWorkspace: vi.fn().mockResolvedValue({
+        'Microsoft Teams': { type: 'http', url: 'https://resource.example/tenants/11111111-1111-4111-8111-111111111111/mcp', tools: ['*'] },
+        generic: { type: 'http', url: 'https://generic.example/mcp', tools: ['*'] },
+    }),
+}));
+
 // ============================================================================
 // Mocks
 // ============================================================================
@@ -140,6 +148,10 @@ describe('MCP OAuth wiring', () => {
         const store = createMockProcessStore();
 
         await new ChatExecutor(store, makeOptions(manager)).execute(makeChatTask('task-oauth'), 'open the server');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            onMcpAuthRequest: expect.any(Function),
+            managedMcpAuthServers: { 'Microsoft Teams': teamsUrl },
+        }));
 
         expect(addPending).toHaveBeenCalledWith(expect.objectContaining({
             requestId: 'req-1',
@@ -165,6 +177,10 @@ describe('MCP OAuth wiring', () => {
 
         await new FollowUpExecutor(store, makeOptions(manager))
             .executeFollowUp('proc-oauth', 'now use the server', undefined, 'ask');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            onMcpAuthRequest: expect.any(Function),
+            managedMcpAuthServers: { 'Microsoft Teams': teamsUrl },
+        }));
 
         expect(addPending).toHaveBeenCalledWith(expect.objectContaining({
             requestId: 'req-1',

@@ -26,8 +26,15 @@ import {
 } from '@plusplusoneplusplus/forge';
 import { initiateMcpOAuth, type McpOauthSdkService } from './mcp-oauth-initiator';
 import { clearMcpServerAuth, readMcpServerAuthInfo } from './mcp-oauth-token-cache';
+import { AuthError } from '@plusplusoneplusplus/coc-native';
+import { getTeamsOAuthCredential, isTeamsMcpServer } from '../messaging/teams-native-auth';
 
 export interface McpOauthRouteContext {
+    dataDir?: string;
+    startTeamsOAuth?: (serverUrl: string, context?: { workspaceId?: string }) =>
+        Promise<{ requestId: string; authorizationUrl: string }>;
+    cancelTeamsOAuth?: (requestId: string) => void;
+    isTeamsOAuthPending?: (requestId: string) => boolean;
     manager: McpOauthManager;
     /** Process store — needed for emitting SSE events on completion. */
     store?: ProcessStore;
@@ -136,6 +143,22 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
             }
             const rawError = (body as Record<string, unknown>).error;
             const error = typeof rawError === 'string' ? rawError : undefined;
+            const pending = manager.getPending(id);
+            if (pending?.serverName === 'Microsoft Teams' && ctx.dataDir) {
+                if (status === 'failed') ctx.cancelTeamsOAuth?.(id);
+                else {
+                    if (ctx.isTeamsOAuthPending?.(id)) {
+                        sendError(res, 409, 'Teams native sign-in has not completed');
+                        return;
+                    }
+                    try {
+                        await getTeamsOAuthCredential(ctx.dataDir, pending.serverUrl).getToken();
+                    } catch {
+                        sendError(res, 409, 'Teams native sign-in has not completed');
+                        return;
+                    }
+                }
+            }
             const entry = manager.resolve(id, status, error);
             if (!entry) {
                 sendError(res, 404, 'Pending OAuth request not found');
@@ -150,6 +173,7 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
         pattern: PENDING_ITEM,
         handler: (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
             const id = decodeURIComponent(match![1]);
+            ctx.cancelTeamsOAuth?.(id);
             const removed = manager.remove(id);
             if (!removed) {
                 sendError(res, 404, 'Pending OAuth request not found');
@@ -170,7 +194,7 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
     //   4. Otherwise spawn a transient SDK session and call mcp.oauth.login.
     //   5. Return the authorization URL so the dashboard can open it.
     const oauthAiService = ctx.aiService && supportsMcpOauthStart(ctx.aiService) ? ctx.aiService : undefined;
-    if (oauthAiService) {
+    if (oauthAiService || ctx.startTeamsOAuth) {
         routes.push({
             method: 'POST',
             pattern: START_FLOW,
@@ -191,7 +215,12 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                     try {
                         workspaceRoot = await ctx.resolveWorkspaceRoot(workspaceId);
                     } catch {
-                        workspaceRoot = undefined;
+                        sendError(res, 503, 'Workspace MCP configuration is unavailable');
+                        return;
+                    }
+                    if (!workspaceRoot) {
+                        sendError(res, 404, 'Workspace not found');
+                        return;
                     }
                 }
 
@@ -210,6 +239,34 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                 const serverUrl = 'url' in serverConfig ? serverConfig.url : undefined;
                 if (!serverUrl) {
                     sendError(res, 400, `MCP server "${serverName}" has no URL configured`);
+                    return;
+                }
+
+                if (isTeamsMcpServer(serverName, serverConfig)) {
+                    if (!ctx.dataDir || !ctx.startTeamsOAuth) {
+                        sendError(res, 503, 'Teams native authentication is unavailable');
+                        return;
+                    }
+                    try {
+                        if (!force) {
+                            try {
+                                await getTeamsOAuthCredential(ctx.dataDir, serverUrl).getToken();
+                                sendJson(res, { requestId: '', alreadyAuthenticated: true, authStatus: 'authenticated' });
+                                return;
+                            } catch (error) {
+                                if (!(error instanceof AuthError) || error.code !== 'InteractionRequired') throw error;
+                            }
+                        }
+                        const result = await ctx.startTeamsOAuth(serverUrl, { workspaceId });
+                        sendJson(res, { ...result, alreadyAuthenticated: false });
+                    } catch (error) {
+                        sendError(res, 500, error instanceof AuthError ? error.code : 'Teams authentication failed');
+                    }
+                    return;
+                }
+
+                if (!oauthAiService) {
+                    sendError(res, 503, 'MCP OAuth provider is unavailable');
                     return;
                 }
 
@@ -253,6 +310,19 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
         pattern: PENDING_COMPLETE_AND_RETRY,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
             const id = decodeURIComponent(match![1]);
+            const pending = manager.getPending(id);
+            if (pending?.serverName === 'Microsoft Teams' && ctx.dataDir) {
+                if (ctx.isTeamsOAuthPending?.(id)) {
+                    sendError(res, 409, 'Teams native sign-in has not completed');
+                    return;
+                }
+                try {
+                    await getTeamsOAuthCredential(ctx.dataDir, pending.serverUrl).getToken();
+                } catch {
+                    sendError(res, 409, 'Teams native sign-in has not completed');
+                    return;
+                }
+            }
             const entry = manager.resolve(id, 'completed');
             if (!entry) {
                 sendError(res, 404, 'Pending OAuth request not found');

@@ -11,7 +11,7 @@
  * branch. The unit under test never talks to the real Copilot SDK.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 import { initiateMcpOAuth } from '../../../src/server/mcp-oauth/mcp-oauth-initiator';
 
@@ -80,8 +80,78 @@ describe('initiateMcpOAuth', () => {
 
     beforeEach(() => {
         manager = new McpOauthManager();
+        mockReadMcpServerAuthInfo.mockReset();
         // Default: no cached token (auth required).
         mockReadMcpServerAuthInfo.mockReturnValue({ status: 'required' });
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('accepts completed broker sign-in without a URL or token file (regression)', async () => {
+        const { service, session } = makeFakeAiService({ loginResult: {} });
+        const list = vi.mocked(session.rpc.mcp!.list!);
+        list.mockResolvedValueOnce({ servers: [{ name: 'remote', status: 'needs-auth' }] });
+        list.mockResolvedValue({ servers: [{ name: 'remote', status: 'connected' }] });
+        const result = await initiateMcpOAuth({
+            serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+            aiService: service, manager,
+        });
+        expect(result).toEqual({ requestId: '', alreadyAuthenticated: true });
+        expect(list).toHaveBeenCalledTimes(2);
+        expect(mockReadMcpServerAuthInfo).not.toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalledOnce();
+        expect(manager.listPending()).toHaveLength(0);
+    });
+
+    it('does not mistake a different connected server for successful sign-in', async () => {
+        const { service, session } = makeFakeAiService({ loginResult: {} });
+        vi.mocked(session.rpc.mcp!.list!)
+            .mockResolvedValueOnce({ servers: [{ name: 'remote', status: 'needs-auth' }] })
+            .mockResolvedValue({ servers: [{ name: 'other', status: 'connected' }] });
+        await expect(initiateMcpOAuth({
+            serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+            aiService: service, manager,
+        })).rejects.toThrow('runtime is not connected');
+        expect(session.disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('surfaces runtime status failures after login instead of declaring success', async () => {
+        const { service, session } = makeFakeAiService({ loginResult: {} });
+        vi.mocked(session.rpc.mcp!.list!)
+            .mockResolvedValueOnce({ servers: [{ name: 'remote', status: 'needs-auth' }] })
+            .mockRejectedValue(new Error('status unavailable'));
+        await expect(initiateMcpOAuth({
+            serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+            aiService: service, manager,
+        })).rejects.toThrow('status unavailable');
+        expect(session.disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('bounds a runtime status check that never returns after login', async () => {
+        vi.useFakeTimers();
+        const { service, session } = makeFakeAiService({ loginResult: {} });
+        vi.mocked(session.rpc.mcp!.list!)
+            .mockResolvedValueOnce({ servers: [{ name: 'remote', status: 'needs-auth' }] })
+            .mockImplementation(() => new Promise(() => {}));
+        const start = initiateMcpOAuth({
+            serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+            aiService: service, manager,
+        });
+        const outcome = expect(start).rejects.toThrow('OAuth status check timed out');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await outcome;
+        expect(session.disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('does not leave an early OAuth event pending after broker connection succeeds', async () => {
+        const { service, session } = makeFakeAiService({ loginResult: {}, serverStatus: 'connected' });
+        session.on.mockImplementation((_event: string, handler: (event: unknown) => void) => {
+            handler({ data: { serverName: 'remote', requestId: 'early-fixture' } });
+        });
+        expect(await initiateMcpOAuth({
+            serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+            aiService: service, manager,
+        })).toEqual({ requestId: '', alreadyAuthenticated: true });
+        expect(manager.listPending()).toHaveLength(0);
     });
 
     it('rejects stdio transports', async () => {
@@ -297,6 +367,57 @@ describe('initiateMcpOAuth', () => {
     });
 
     describe('scheduleSessionRelease auto-resolution', () => {
+        it('retries status errors without declaring success or overlapping polls', async () => {
+            vi.useFakeTimers();
+            const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://auth.example.test' } });
+            const result = await initiateMcpOAuth({
+                serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+                aiService: service, manager,
+            });
+            const list = vi.mocked(session.rpc.mcp!.list!);
+            list.mockRejectedValueOnce(new Error('temporary status failure'));
+            await vi.advanceTimersByTimeAsync(1500);
+            expect(manager.getPending(result.requestId)?.status).toBe('pending');
+            let finish!: (value: { servers: Array<{ name: string; status: string }> }) => void;
+            list.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+            await vi.advanceTimersByTimeAsync(4500);
+            expect(list).toHaveBeenCalledTimes(3);
+            finish({ servers: [{ name: 'remote', status: 'connected' }] });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(manager.getPending(result.requestId)?.status).toBe('completed');
+            expect(session.disconnect).toHaveBeenCalledOnce();
+        });
+        it('completes browser OAuth when the runtime connects without a token file', async () => {
+            vi.useFakeTimers();
+            const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://auth.example.test' } });
+            const result = await initiateMcpOAuth({
+                serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+                aiService: service, manager,
+            });
+            vi.mocked(session.rpc.mcp!.list!).mockResolvedValue({ servers: [{ name: 'remote', status: 'connected' }] });
+            await vi.advanceTimersByTimeAsync(1500);
+            expect(manager.getPending(result.requestId)?.status).toBe('completed');
+            expect(mockReadMcpServerAuthInfo).not.toHaveBeenCalled();
+            expect(session.disconnect).toHaveBeenCalledOnce();
+        });
+
+        it('does not overwrite a cancelled flow when a delayed status check finishes', async () => {
+            vi.useFakeTimers();
+            const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://auth.example.test' } });
+            const result = await initiateMcpOAuth({
+                serverName: 'remote', serverConfig: { type: 'http', url: 'https://example.test/mcp' },
+                aiService: service, manager,
+            });
+            let finish!: (value: { servers: Array<{ name: string; status: string }> }) => void;
+            vi.mocked(session.rpc.mcp!.list!).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+            await vi.advanceTimersByTimeAsync(1500);
+            manager.resolve(result.requestId, 'failed', 'cancelled');
+            await vi.advanceTimersByTimeAsync(1500);
+            finish({ servers: [{ name: 'remote', status: 'connected' }] });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(manager.getPending(result.requestId)?.status).toBe('failed');
+            expect(session.disconnect).toHaveBeenCalledOnce();
+        });
         it('auto-resolves the pending entry to completed when the token cache becomes authenticated', async () => {
             vi.useFakeTimers();
             // Token cache starts as 'required' (set in beforeEach).

@@ -18,6 +18,7 @@ import { AgentManager } from '../inbound';
 import { AgentProxyClient } from './agent-proxy-client';
 import { WorkspaceAggregationService } from './workspace-aggregation';
 import type { TeamsConfigPatch } from './messaging-config';
+import { TeamsOAuthCredential } from '@plusplusoneplusplus/coc-connector/teams';
 
 /** Structural type of the WhatsApp messaging bridge used by routes. */
 export interface WhatsAppBridgeLike {
@@ -51,6 +52,32 @@ export class ContainerRuntime {
 
     whatsappBridge: WhatsAppBridgeLike | undefined;
     teamsBridge: TeamsBridgeLike | undefined;
+    private teamsCredential?: TeamsOAuthCredential;
+    private teamsCredentialConfig?: string;
+    private teamsGeneration = 0;
+    private disposed = false;
+
+    invalidateTeamsCredential(): void {
+        this.teamsCredential?.dispose();
+        this.teamsCredential = undefined;
+        this.teamsCredentialConfig = undefined;
+    }
+
+    getTeamsCredential(teams: ResolvedTeamsConfig = this.config.messaging.teams): TeamsOAuthCredential {
+        if (this.disposed) throw new Error('Container runtime disposed');
+        const key = JSON.stringify([teams.mcpServerUrl, teams.clientId, teams.scope, teams.mode]);
+        if (this.teamsCredentialConfig !== key) {
+            this.invalidateTeamsCredential();
+        }
+        if (!this.teamsCredential) {
+            this.teamsCredential = new TeamsOAuthCredential({
+                dataDir: this.config.serve.dataDir, serverUrl: teams.mcpServerUrl,
+                clientId: teams.clientId, scope: teams.scope, mode: teams.mode,
+            });
+            this.teamsCredentialConfig = key;
+        }
+        return this.teamsCredential;
+    }
 
     constructor(readonly config: ResolvedContainerConfig) {
         this.agentStore = createAgentStore(config.serve.dataDir);
@@ -118,7 +145,9 @@ export class ContainerRuntime {
 
     /** Construct, start, and store a Teams bridge from a resolved Teams config. */
     async startTeamsBridge(teamsConfig: ResolvedTeamsConfig): Promise<TeamsBridgeLike> {
+        const generation = ++this.teamsGeneration;
         const { TeamsBridge } = await import('../messaging/teams-bridge');
+        if (this.disposed || generation !== this.teamsGeneration) throw new Error('Teams connection cancelled');
         const bridge = new TeamsBridge({
             config: teamsConfig,
             dataDir: this.config.serve.dataDir,
@@ -127,16 +156,27 @@ export class ContainerRuntime {
             agentStore: this.agentStore,
             tunnelBridge: this.tunnelBridge,
             agentManager: this.agentManager,
+            getCredential: () => this.getTeamsCredential(teamsConfig),
         });
-        await bridge.start();
         this.teamsBridge = bridge;
+        try {
+            await bridge.start();
+            if (this.disposed || generation !== this.teamsGeneration) throw new Error('Teams connection cancelled');
+        } catch (error) {
+            await bridge.stop();
+            if (this.teamsBridge === bridge) this.teamsBridge = undefined;
+            throw error;
+        }
         return bridge;
     }
 
     /** Stop every owned service. Best-effort and idempotent; safe to call once on shutdown. */
     cleanup(): void {
+        this.disposed = true;
+        ++this.teamsGeneration;
         this.whatsappBridge?.stop();
         this.teamsBridge?.stop();
+        this.teamsCredential?.dispose();
         this.healthMonitor.stop();
         this.tunnelBridge.stopAll();
         this.sshBridge.dispose();

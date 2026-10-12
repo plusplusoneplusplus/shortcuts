@@ -328,6 +328,7 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
 
     const sdk = getCachedCopilotSdk();
     if (!sdk) throw new Error('Copilot SDK not loaded. Call loadCopilotSdk() first.');
+    const childEnvironment = { ...process.env, ...clientOptions.env };
 
     // In desktop mode the server runs under Electron Helper
     // (ELECTRON_RUN_AS_NODE=1). Resolve unpacked runtime assets explicitly so
@@ -346,7 +347,7 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
                 resolution.path,
                 resolveSystemNodePath(),
                 process.execPath,
-                process.env,
+                childEnvironment,
             );
             clientOptions.connection = connection;
             clientOptions.env = env;
@@ -359,7 +360,7 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
             const { connection, env, spawn } = buildCopilotNativeConnection(
                 (opts) => sdk.RuntimeConnection.forStdio(opts),
                 resolution.path,
-                process.env,
+                childEnvironment,
             );
             clientOptions.connection = connection;
             clientOptions.env = env;
@@ -386,6 +387,10 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
             ...process.env,
             ...clientOptions.env,
             COPILOT_AUTO_UPDATE: 'false',
+            COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE:
+                clientOptions.env?.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE
+                ?? process.env.COPILOT_ENTRA_ONEAUTH_SCOPE_BINDING_MODE
+                ?? 'allow_unbound_scopes',
         };
     }
 

@@ -179,7 +179,7 @@ impl MicrosoftOAuthSignIn {
             let address = listener
                 .local_addr()
                 .map_err(|_| AuthError::new(ErrorCode::InvalidConfiguration))?;
-            let redirect = format!("http://127.0.0.1:{}/callback", address.port());
+            let redirect = format!("http://localhost:{}/", address.port());
             let verifier = random_secret()?;
             let state = random_secret()?;
             let nonce = random_secret()?;
@@ -485,11 +485,11 @@ async fn callback(listener: TcpListener, expected_state: &str) -> Result<Secret>
             return fail(ErrorCode::InvalidTokenResponse);
         }
         let path = pieces.next().ok_or_else(|| AuthError::new(ErrorCode::InvalidTokenResponse))?;
-        let url = Url::parse(&format!("http://127.0.0.1{path}"))
-            .map_err(|_| AuthError::new(ErrorCode::InvalidTokenResponse))?;
-        if url.path() != "/callback" {
+        if path.split('?').next() != Some("/") {
             continue;
         }
+        let url = Url::parse(&format!("http://127.0.0.1{path}"))
+            .map_err(|_| AuthError::new(ErrorCode::InvalidTokenResponse))?;
         let pairs: Vec<_> = url.query_pairs().collect();
         let states: Vec<_> = pairs.iter().filter(|(k, _)| k == "state").collect();
         if states.len() != 1 || states[0].1 != expected_state {

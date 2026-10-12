@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { nullLogger } from '@plusplusoneplusplus/forge';
+import { nullLogger, setHomeDirectoryOverride } from '@plusplusoneplusplus/forge';
 import {
     runMcpOauthMaintenancePass,
     startMcpOauthMaintenanceTimer,
@@ -97,7 +97,26 @@ describe('runMcpOauthMaintenancePass', () => {
     });
 
     afterEach(() => {
+        setHomeDirectoryOverride(null);
         try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    it('never deduplicates or refreshes the native Teams resource in the old cache', async () => {
+        const serverUrl = 'https://resource.example/teams';
+        setHomeDirectoryOverride(tmpHome);
+        fs.mkdirSync(path.join(tmpHome, '.copilot'), { recursive: true });
+        fs.writeFileSync(path.join(tmpHome, '.copilot', 'mcp-config.json'), JSON.stringify({
+            mcpServers: { 'Microsoft Teams': { type: 'http', url: serverUrl } },
+        }));
+        const first = seed(tmpHome, { serverUrl, hash: 'native-one', expiresAt: 1, refreshToken: 'fixture-one' });
+        const second = seed(tmpHome, { serverUrl, hash: 'native-two', expiresAt: 1, refreshToken: 'fixture-two' });
+        const fetchMock = vi.fn<typeof fetch>();
+        const result = await runMcpOauthMaintenancePass({ homeDir: tmpHome, fetch: fetchMock, logger: nullLogger });
+        expect(result.dedup.duplicatesRemoved).toBe(0);
+        expect(result.refresh.attempted).toBe(0);
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(fs.existsSync(first.tokensPath)).toBe(true);
+        expect(fs.existsSync(second.tokensPath)).toBe(true);
     });
 
     it('returns empty result when cache directory is missing', async () => {
