@@ -188,7 +188,10 @@ describe('buildRepoGroupChatFeed', () => {
         await addChat('not-match', GROUP, 20);
         for (const id of ['older-a', 'newer-b', 'archived-a']) {
             await store.appendConversationTurn(id, turnIndex => ({ turnIndex, role: 'user', content: 'A rare cobalt capacitor body term', timestamp: new Date('2026-01-01T02:00:00Z') }));
-            await store.appendConversationTurn(id, turnIndex => ({ turnIndex, role: 'assistant', content: 'The cobalt capacitor was fixed', timestamp: new Date(id === 'older-a' ? '2026-01-01T02:01:00Z' : '2026-01-01T02:02:00Z') }));
+            const lastTurnAt = id === 'older-a' ? '2026-01-01T02:01:00Z' : '2026-01-01T02:02:00Z';
+            await store.appendConversationTurn(id, turnIndex => ({ turnIndex, role: 'assistant', content: 'The cobalt capacitor was fixed', timestamp: new Date(lastTurnAt) }));
+            // Appends stamp wall-clock activity; equal milliseconds would tie-break by owner instead.
+            store.getDatabase().prepare('UPDATE processes SET last_event_at = ? WHERE id = ?').run(lastTurnAt, id);
         }
         const feed = await buildRepoGroupChatFeed(deps, GROUP, members, query({ q: 'cobalt capacitor', limit: '1' }));
         expect(feed.history.map(row => row.id)).toEqual(['newer-b']);

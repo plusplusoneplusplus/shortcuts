@@ -306,6 +306,9 @@ describe('CoC service PowerShell scripts', () => {
     it('stops the devtunnel process tree after every serve iteration', () => {
       expect(serveLoop).toContain('function Stop-ProcessTree');
       expect(serveLoop).toContain('Where-Object { $_.ParentProcessId -eq $ProcessId }');
+      // The Windows walk queries Win32_Process once and recurses over that snapshot.
+      expect(serveLoop.match(/Get-CimInstance Win32_Process/g)).toHaveLength(1);
+      expect(serveLoop).toContain('Stop-ProcessTree -ProcessId $_.ProcessId -ProcessTable $ProcessTable');
       // On pwsh-for-Linux, Win32_Process is unavailable, so the tree is killed via .NET Kill($true).
       expect(serveLoop).toContain('(Get-Process -Id $ProcessId -ErrorAction Stop).Kill($true)');
       expect(serveLoop).toContain('Stop-DevTunnel -TunnelSession $tunnelSession');

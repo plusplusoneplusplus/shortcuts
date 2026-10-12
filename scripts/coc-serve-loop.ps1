@@ -254,7 +254,12 @@ function Resolve-ConfiguredDevTunnelPort {
 }
 
 function Stop-ProcessTree {
-    param([Parameter(Mandatory)][int]$ProcessId)
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        # One Win32_Process snapshot serves the whole walk; each CIM query can take
+        # seconds on a loaded host.
+        [object[]]$ProcessTable
+    )
 
     # Win32_Process (CIM/WMI) is Windows-only, so on PowerShell 7 for Linux/macOS it
     # enumerates nothing and child `devtunnel` processes would leak. There, use .NET's
@@ -270,9 +275,12 @@ function Stop-ProcessTree {
         return
     }
 
-    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    if (-not $PSBoundParameters.ContainsKey('ProcessTable')) {
+        $ProcessTable = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    }
+    $ProcessTable |
         Where-Object { $_.ParentProcessId -eq $ProcessId } |
-        ForEach-Object { Stop-ProcessTree -ProcessId $_.ProcessId }
+        ForEach-Object { Stop-ProcessTree -ProcessId $_.ProcessId -ProcessTable $ProcessTable }
 
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }

@@ -1922,6 +1922,30 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         expect(f.sends[2].text).toContain('independent final answer');
     });
 
+    it('never pairs a pre-answer transcript read with a task that completes during the read', async () => {
+        const f = await fixture(connector);
+        const admitted = await f.deliver('request completing during an evidence read');
+        await f.mirror.flush();
+        let completion: Promise<void> | undefined;
+        const complete = () => completion ??= (async () => {
+            await f.store.appendConversationTurn(f.processId, turnIndex => ({
+                role: 'assistant', content: 'answer persisted before completion', timestamp: new Date(), turnIndex, timeline: [],
+            }));
+            f.tasks.get(admitted.taskId!)!.status = 'completed';
+        })();
+        const read = f.store.getRelayRequestProjection.bind(f.store);
+        vi.spyOn(f.store, 'getRelayRequestProjection').mockImplementation(async (...args) => {
+            const evidence = await read(...args);
+            if (args[1] === admitted.taskId) await complete();
+            return evidence;
+        });
+        await f.mirror.flush();
+        await complete();
+        await f.mirror.flush();
+        expect(f.sends).toHaveLength(2);
+        expect(f.sends[1].text).toContain('answer persisted before completion');
+    });
+
     it('does not borrow cancelled status from a foreign workspace/process/payload correlation', async () => {
         const f = await fixture(connector);
         f.setConnected(false);
