@@ -2758,8 +2758,16 @@ describe('RepoChatTab: collapsed-rail Open job opener', () => {
         return null;
     }
 
+    /** Dispatches the Router's URL selection for a route id. */
+    function RouteSimulator({ routeRef }: { routeRef: { current: ((routeId: string, id: string | null) => void) | null } }) {
+        const { dispatch } = useQueue();
+        routeRef.current = (routeId, id) => dispatch({ type: 'SELECT_QUEUE_TASK', id, repoId: routeId });
+        return null;
+    }
+
     async function renderWithOpener(workspaceId: string, sourceSelectionId?: string) {
         const state: { opener: RailJobOpener | null; selected: string | null } = { opener: null, selected: null };
+        const routeRef: { current: ((routeId: string, id: string | null) => void) | null } = { current: null };
         const setOpener = (next: RailJobOpener | null | ((prev: RailJobOpener | null) => RailJobOpener | null)) => {
             state.opener = typeof next === 'function' ? next(state.opener) : next;
         };
@@ -2777,10 +2785,12 @@ describe('RepoChatTab: collapsed-rail Open job opener', () => {
                     railShortcutContainer: makeHost(),
                 }),
                 React.createElement(SelectionProbe, { workspaceId, onSelection: id => { state.selected = id; } }),
+                React.createElement(RouteSimulator, { routeRef }),
             ));
         });
         await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
-        return { state, onActivateDetail, result: result! };
+        const route = async (routeId: string, id: string | null) => { await act(async () => { routeRef.current!(routeId, id); }); };
+        return { state, onActivateDetail, route, result: result! };
     }
 
     it('selects a remote clone job in the chat tab, not just the clone-keyed URL', async () => {
@@ -2806,6 +2816,42 @@ describe('RepoChatTab: collapsed-rail Open job opener', () => {
 
         result.unmount();
         expect(state.opener).toBeNull();
+    });
+
+    it('adopts the Router\'s clone-keyed URL selection without reading another server\'s route', async () => {
+        const selectionId = buildRemoteCloneKey('box-b', 'ws-remote');
+        setupFetchMock({ running: [makeRunningTask('job-1'), makeRunningTask('job-2')] });
+        const { state, route } = await renderWithOpener('ws-remote', selectionId);
+
+        await route(selectionId, 'queue_job-1');
+        expect(state.selected).toBe('queue_job-1');
+        await route(buildRemoteCloneKey('box-c', 'ws-remote'), 'queue_job-2');
+        expect(state.selected).toBe('queue_job-1');
+        await route(selectionId, 'queue_job-2');
+        expect(state.selected).toBe('queue_job-2');
+        await route(selectionId, null);
+        expect(state.selected).toBeNull();
+    });
+
+    it('reopens a remote group job after a member chat cleared the group route', async () => {
+        const selectionId = buildRemoteCloneKey('box-b', 'group-x');
+        setupFetchMock({ running: [makeRunningTask('g1')] });
+        const { state, route } = await renderWithOpener('group-x', selectionId);
+        const jobHash = `#repos/${encodeURIComponent(selectionId)}/activity/queue_g1`;
+
+        await act(async () => { state.opener!.open({ id: 'g1', type: 'chat' }); });
+        await route(selectionId, 'queue_g1');
+        expect(state.selected).toBe('queue_g1');
+
+        // A member chat link reserves the group's queue selection.
+        const memberHash = `#repos/${encodeURIComponent(selectionId)}/chats/member/ws-m/queue_m1`;
+        window.history.replaceState(null, '', memberHash);
+        await route(selectionId, null);
+        expect(state.selected).toBeNull();
+
+        await act(async () => { state.opener!.open({ id: 'g1', type: 'chat' }); });
+        expect(state.selected).toBe('queue_g1');
+        expect(location.hash).toBe(jobHash);
     });
 });
 
