@@ -45,18 +45,23 @@ export interface RuntimeToolDescriptor {
     inputSchema: Record<string, unknown>;
 }
 
-/** A single text content block in a normalized tool result. */
-export interface RuntimeToolResultContent {
+interface RuntimeToolTextContent {
     type: 'text';
     text: string;
 }
+
+export type RuntimeToolResultContent = RuntimeToolTextContent | {
+    type: 'image';
+    data: string;
+    mimeType: string;
+};
 
 /**
  * Normalized tool-call result, shaped like an MCP `CallToolResult` so it can be
  * returned directly from an MCP bridge without further transformation.
  */
 export interface RuntimeToolResult {
-    content: RuntimeToolResultContent[];
+    content: [RuntimeToolTextContent, ...RuntimeToolResultContent[]];
     /** True when the tool failed (handler threw or returned a failure result). */
     isError: boolean;
 }
@@ -226,7 +231,7 @@ export function resolveInputSchema(tool: Pick<Tool<any>, 'parameters'>): Record<
  *
  * - `string` → single text block.
  * - `ToolResultObject` (`{ textResultForLlm, resultType, error }`) → text from
- *   `textResultForLlm`, `isError` derived from `resultType`/`error`.
+ *   `textResultForLlm`, inline binary images, `isError` derived from `resultType`/`error`.
  * - `null` / `undefined` → empty success result.
  * - Anything else (objects, arrays — e.g. `ask_user`'s `AskUserResponse[]`) →
  *   JSON-stringified text block.
@@ -243,7 +248,20 @@ export function normalizeToolResult(value: unknown): RuntimeToolResult {
     if (isToolResultObject(value)) {
         const isError = isErrorResultType(value.resultType) || typeof value.error === 'string';
         const text = value.textResultForLlm ?? value.error ?? '';
-        return { content: [{ type: 'text', text }], isError };
+        const content: RuntimeToolResult['content'] = [{ type: 'text', text }];
+        if (value.binaryResultsForLlm !== undefined) {
+            if (!Array.isArray(value.binaryResultsForLlm)) return errorResult('Invalid binary tool results');
+            for (const binary of value.binaryResultsForLlm) {
+                if (!binary || binary.type !== 'image') return errorResult('Unsupported binary tool result type');
+                if (typeof binary.data !== 'string' || !binary.data
+                    || !/^[A-Za-z0-9+/]+={0,2}$/.test(binary.data)
+                    || typeof binary.mimeType !== 'string' || !binary.mimeType.startsWith('image/')) {
+                    return errorResult('Invalid binary tool image');
+                }
+                content.push({ type: 'image', data: binary.data, mimeType: binary.mimeType });
+            }
+        }
+        return { content, isError };
     }
 
     return { content: [{ type: 'text', text: safeStringify(value) }], isError: false };

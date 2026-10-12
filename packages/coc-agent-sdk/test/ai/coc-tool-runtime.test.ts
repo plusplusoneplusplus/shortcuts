@@ -187,6 +187,35 @@ describe('CocToolRuntime', () => {
     });
 
     describe('normalizeToolResult', () => {
+        it('retains inline screenshot images for MCP providers without serializing base64 into text', () => {
+            const result: ToolResultObject = {
+                resultType: 'success', textResultForLlm: 'ok',
+                binaryResultsForLlm: [{ type: 'image', data: 'anBlZw==', mimeType: 'image/jpeg', description: 'Screenshot' }],
+            };
+            expect(normalizeToolResult(result)).toEqual({
+                content: [{ type: 'text', text: 'ok' }, { type: 'image', data: 'anBlZw==', mimeType: 'image/jpeg' }],
+                isError: false,
+            });
+        });
+
+        it('retains error classification when an inline image accompanies an error', () => {
+            expect(normalizeToolResult({
+                resultType: 'failure', textResultForLlm: 'failed',
+                binaryResultsForLlm: [{ type: 'image', data: 'anBlZw==', mimeType: 'image/jpeg' }],
+            }).isError).toBe(true);
+        });
+
+        it.each([
+            { type: 'resource', data: 'anBlZw==', mimeType: 'image/jpeg' },
+            { type: 'image', data: '', mimeType: 'image/jpeg' },
+            { type: 'image', data: 'invalid base64', mimeType: 'image/jpeg' },
+            { type: 'image', data: 'anBlZw==', mimeType: 'text/html' },
+        ])('surfaces invalid/unsupported binary results instead of dropping them: %j', binary => {
+            const result = normalizeToolResult({ resultType: 'success', textResultForLlm: 'ok', binaryResultsForLlm: [binary] });
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toMatch(/binary tool/);
+        });
+
         it('wraps strings', () => {
             expect(normalizeToolResult('hi')).toEqual({ content: [{ type: 'text', text: 'hi' }], isError: false });
         });

@@ -157,6 +157,27 @@ describe('CocToolBridgeServer', () => {
         const call = await transport('/call', { name: 'echo', arguments: { v: 'hi' } });
         expect(call).toEqual({ content: [{ type: 'text', text: 'echo:hi' }], isError: false });
     });
+
+    it('returns a browser screenshot as MCP image content through real HTTP and JSON-RPC', async () => {
+        server = new CocToolBridgeServer();
+        const runtime = new CocToolRuntime([tool('browser', async () => ({
+            resultType: 'success', textResultForLlm: 'ok',
+            binaryResultsForLlm: [{ type: 'image', data: 'anBlZw==', mimeType: 'image/jpeg' }],
+        }))]);
+        const reg = await server.register(runtime);
+        const { handleMessage } = createBridgeHandlers({ transport: createHttpTransport(reg.endpoint, reg.token) });
+        const response = await handleMessage({
+            jsonrpc: '2.0', id: 'screenshot', method: 'tools/call',
+            params: { name: 'browser', arguments: { action: 'screenshot' } },
+        });
+        expect(response).toEqual({
+            jsonrpc: '2.0', id: 'screenshot',
+            result: {
+                content: [{ type: 'text', text: 'ok' }, { type: 'image', data: 'anBlZw==', mimeType: 'image/jpeg' }],
+                isError: false,
+            },
+        });
+    });
 });
 
 describe('bridge JSON-RPC handlers', () => {
