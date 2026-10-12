@@ -9,3 +9,4 @@ export * from './realtime';
 export * from './for-each-plan';
 export * from './map-reduce-plan';
 export * from './quota';
+export * from './browser-control';
