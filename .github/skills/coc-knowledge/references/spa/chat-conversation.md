@@ -197,6 +197,16 @@ server read model.
 saying `USD pricing unavailable` when there is none; Copilot premium request units are
 not rendered. `QueuedFollowUps` renders pending messages as cancellable cards.
 
+### Tool inventory reader
+
+`ConversationToolsDialog` accepts an exact owner client, workspace and process ID.
+It lazily reads `processes.getToolInventory`, cancels closed or superseded reads, and
+polls only pending snapshots while open. Its `refreshKey` invalidates the displayed
+snapshot at a turn boundary. Search matches names, descriptions and server labels;
+source/server groups retain actual descriptors and explicit completeness gaps.
+The shared `Dialog` offers opt-in focus containment and a surviving return-focus
+target for readers opened from transient popovers.
+
 ### Bot-managed conversation presentation
 
 `utils/botControl.ts` consumes only the owning server's default-off, gated public

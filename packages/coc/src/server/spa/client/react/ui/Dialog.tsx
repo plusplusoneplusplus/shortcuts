@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -38,11 +38,47 @@ export interface DialogProps {
      * Rounded corners + `overflow-hidden` still clip the content.
      */
     borderless?: boolean;
+    /** Opt in to keyboard focus containment and restoration for modal readers. */
+    trapFocus?: boolean;
+    returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
-export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden, dense, borderless }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden, dense, borderless, trapFocus, returnFocusRef }: DialogProps) {
     const { isMobile } = useBreakpoint();
     const portalContainer = usePortalContainer(open);
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open || hidden || !trapFocus) return;
+        const panel = panelRef.current;
+        if (!panel) return;
+        const previous = returnFocusRef?.current ?? document.activeElement;
+        const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"]',
+        )).filter(element => !element.closest('[hidden], [inert], details:not([open]) > :not(summary)'));
+        (panel.querySelector<HTMLElement>('[data-dialog-initial-focus]') ?? focusable()[0] ?? panel).focus();
+        const contain = (event: FocusEvent) => {
+            if (!panel.contains(event.target as Node)) (focusable()[0] ?? panel).focus();
+        };
+        const keydown = (event: KeyboardEvent) => {
+            if (event.key !== 'Tab') return;
+            const elements = focusable();
+            const first = elements[0] ?? panel;
+            const last = elements[elements.length - 1] ?? panel;
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+                event.preventDefault(); last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) {
+                event.preventDefault(); first.focus();
+            }
+        };
+        document.addEventListener('focusin', contain);
+        panel.addEventListener('keydown', keydown);
+        return () => {
+            document.removeEventListener('focusin', contain);
+            panel.removeEventListener('keydown', keydown);
+            if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+        };
+    }, [open, hidden, trapFocus, returnFocusRef]);
 
     useEffect(() => {
         if (!open || hidden) return;
@@ -90,6 +126,11 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
             aria-hidden={hidden || undefined}
         >
             <div
+                ref={panelRef}
+                role={trapFocus ? 'dialog' : undefined}
+                aria-modal={trapFocus ? true : undefined}
+                aria-label={trapFocus ? title : undefined}
+                tabIndex={trapFocus ? -1 : undefined}
                 className={isMobile ? panelClass : panelClass}
                 onClick={e => e.stopPropagation()}
             >

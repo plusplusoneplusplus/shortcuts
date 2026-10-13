@@ -122,6 +122,10 @@ references before editing. Paths are package-relative.
   the composed store's `getForProcess` without transcript hydration or runtime probes.
   Missing/foreign processes return 404; owned chats without snapshots are unavailable.
   Use cancellable `processes.getToolInventory` on the owner-resolved client.
+  `ConversationToolsDialog` requires that exact client and owner IDs; opening it
+  performs lazy storage retrieval only. Scope/turn changes clear stale results;
+  pending captures poll while open. Preserve explicit completeness gaps and use
+  `Dialog`'s opt-in focus trap with a surviving metadata trigger for focus return.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
