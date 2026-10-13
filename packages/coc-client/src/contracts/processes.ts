@@ -3,6 +3,45 @@ import type { ChatStyle, JsonObject } from './common';
 /** Concrete AI providers a conversation turn can run on. */
 export type ChatProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
 
+export type ConversationToolSource = 'builtin' | 'coc' | 'mcp';
+
+/** Advertised callable descriptors, not permission grants or invocation records. */
+export interface ConversationToolDescriptor {
+  name: string;
+  source: ConversationToolSource;
+  serverName?: string;
+  description?: string;
+  inputSchema?: JsonObject | boolean;
+}
+
+export interface ConversationToolCategory {
+  source: ConversationToolSource;
+  status: 'complete' | 'partial' | 'unavailable';
+  reason?: string;
+}
+
+export interface ConversationToolInventorySnapshot {
+  version: 1;
+  provider: string;
+  capturedAt: string;
+  tools: ConversationToolDescriptor[];
+  categories: ConversationToolCategory[];
+  truncated: boolean;
+}
+
+export interface ConversationToolInventoryTurn {
+  turnId: string;
+  turnIndex: number;
+  provider: string;
+  startedAt: string;
+}
+
+/** Latest started turn only; pending never carries the preceding turn's tools. */
+export type ConversationToolInventoryResponse =
+  | { state: 'unavailable' }
+  | { state: 'pending'; turn: ConversationToolInventoryTurn }
+  | { state: 'captured'; turn: ConversationToolInventoryTurn; snapshot: ConversationToolInventorySnapshot };
+
 export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 /** Server-validated presentation of external control, without private controller identity. */

@@ -293,6 +293,7 @@ export interface RegisterRoutesOptions {
     syncEngines?: Map<string, SyncEngine>;
     /** Late-bound accessor for the turn-performance metric store (TTFT/TPS stats route). */
     getTurnPerformanceStore?: () => TurnPerformanceStore | undefined;
+    toolInventoryStore?: import('./api-shared').ApiRouteContext['toolInventoryStore'];
     /** Native Copilot CLI session store path override (for tests). */
     nativeCopilotSessionDbPath?: string;
     /** Native Copilot CLI `session-state` base directory override (for tests). */
@@ -817,7 +818,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         opts.runtimeConfigService?.config ?? opts.resolvedConfig
     )?.features?.canvasHostApis === true;
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker, getSentinelMirror);
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker, getSentinelMirror, opts.toolInventoryStore);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     repoTreeService.trackWorkspaces(store);
     registerRepoRoutes(routes, dataDir, repoTreeService);

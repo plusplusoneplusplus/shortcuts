@@ -3,6 +3,44 @@ import { AUTO_COMPACT_THRESHOLD_DEFAULT, CocClient, ProcessesClient } from '../.
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
+  it('lazily retrieves startup inventory with exact owner, encoded process ID and cancellation', async () => {
+    const adapter = createMockAdapter({ state: 'unavailable' });
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    const controller = new AbortController();
+    await expect(client.getToolInventory('proc/1 %done', { workspace: 'owner/ws' }, { signal: controller.signal }))
+      .resolves.toEqual({ state: 'unavailable' });
+    expect(adapter.calls).toEqual([{ path: '/processes/proc%2F1%20%25done/tool-inventory', options: {
+      query: { workspace: 'owner/ws' }, signal: controller.signal,
+    } }]);
+  });
+
+  it('keeps inventory requests on the configured remote owner without local fallback or retries', async () => {
+    const urls: string[] = [];
+    const controller = new AbortController();
+    const client = new CocClient({ baseUrl: 'https://owner.example', fetch: async (input, init) => {
+      urls.push(String(input));
+      expect(init?.signal).toBe(controller.signal);
+      throw new DOMException('Aborted', 'AbortError');
+    } });
+    controller.abort();
+    await expect(client.processes.getToolInventory('p', { workspace: 'owner' }, { signal: controller.signal }))
+      .rejects.toMatchObject({ code: 'ABORTED' });
+    expect(urls).toEqual(['https://owner.example/api/processes/p/tool-inventory?workspace=owner']);
+  });
+
+  it('propagates inventory errors instead of returning unavailable', async () => {
+    const urls: string[] = [];
+    const client = new CocClient({ baseUrl: 'https://owner.example', fetch: async input => {
+      urls.push(String(input));
+      return new Response(JSON.stringify({ error: 'Read failed', code: 'INTERNAL_ERROR' }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
+      });
+    } });
+    await expect(client.processes.getToolInventory('p', { workspace: 'owner' }))
+      .rejects.toMatchObject({ status: 500, code: 'INTERNAL_ERROR' });
+    expect(urls).toHaveLength(1);
+  });
+
   it('preserves preview and paging options together on the owning cancellable detail request', async () => {
     const adapter = createMockAdapter({});
     const client = new ProcessesClient(adapter, new CocClient().options);

@@ -241,6 +241,7 @@ export function registerApiRoutes(
     getLiveFeatureFlags?: ApiRouteContext['getLiveFeatureFlags'],
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
     getSentinelMirror?: ApiRouteContext['getSentinelMirror'],
+    toolInventoryStore?: ApiRouteContext['toolInventoryStore'],
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).
     const MUTATION_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
@@ -293,6 +294,7 @@ export function registerApiRoutes(
             getWsServer,
             activeWorkspaceTracker: activeWorkspaceTracker ?? new ActiveWorkspaceTracker(),
             getSentinelMirror,
+            toolInventoryStore,
             gitOpsStore,
             db: resolvedDb,
             cronEnabled,

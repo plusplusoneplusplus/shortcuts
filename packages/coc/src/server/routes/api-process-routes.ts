@@ -30,7 +30,7 @@ import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
-import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { isChatStyle, type ChatStyle, type ConversationToolInventoryResponse } from '@plusplusoneplusplus/coc-client';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
@@ -372,6 +372,31 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             const { results, total } = await store.searchConversations(q, searchFilter);
             return { results, total, query: q, limit: searchFilter.limit, offset: searchFilter.offset };
+        },
+    }));
+
+    // GET /api/processes/:id/tool-inventory — Lazy, owner-scoped startup snapshot
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/processes\/([^/]+)\/tool-inventory$/,
+        handler: ({ query, match }): ConversationToolInventoryResponse => {
+            const workspaceId = asString(query.workspace);
+            if (!workspaceId?.trim() || Array.isArray(query.workspace)) {
+                throw badRequest('workspace is required for tool inventory');
+            }
+            if (!ctx.toolInventoryStore) throw internalError('Tool inventory storage unavailable');
+            const id = decodeURIComponent(match[1]);
+            const inventory = ctx.toolInventoryStore.getForProcess(workspaceId, id)
+                ?? (isQueueProcessId(id)
+                    ? ctx.toolInventoryStore.getForProcess(workspaceId, toTaskId(id))
+                    : undefined);
+            if (!inventory) throw notFound('Process');
+            if (inventory.state === 'unavailable') return inventory;
+            const { turnId, turnIndex, provider, startedAt } = inventory.turn;
+            const turn = { turnId, turnIndex, provider, startedAt };
+            return inventory.state === 'pending'
+                ? { state: 'pending', turn }
+                : { state: 'captured', turn, snapshot: inventory.snapshot };
         },
     }));
 

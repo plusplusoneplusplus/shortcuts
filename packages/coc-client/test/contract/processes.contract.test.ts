@@ -69,4 +69,20 @@ describe('processes contract', () => {
       offset: 0,
     });
   });
+
+  it('composes inventory retrieval on the owning server without backfilling historical tools', async () => {
+    harness = await startContractHarness();
+    const workspace = await harness.client.workspaces.register({
+      name: 'Inventory Workspace', rootPath: harness.dataDir,
+    });
+    await harness.client.processes.create({
+      id: 'historical-inventory', type: 'chat', status: 'completed',
+      promptPreview: 'Historical conversation', startTime: new Date().toISOString(),
+      metadata: { workspaceId: workspace.id },
+    });
+    await expect(harness.client.processes.getToolInventory('historical-inventory', { workspace: workspace.id }))
+      .resolves.toEqual({ state: 'unavailable' });
+    await expect(harness.client.processes.getToolInventory('historical-inventory', { workspace: 'other' }))
+      .rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+  });
 });

@@ -43,6 +43,9 @@ describe('ConversationToolInventoryStore', () => {
     afterEach(() => db.close());
 
     it('does not backfill older conversations or confuse them with pending capture', () => {
+        expect(store.getForProcess('ws-1', 'proc-1')).toEqual({ state: 'unavailable' });
+        expect(store.getForProcess('ws-2', 'proc-1')).toBeUndefined();
+        expect(store.getForProcess('ws-1', 'missing')).toBeUndefined();
         expect(store.get('ws-1', 'proc-1')).toEqual({ state: 'unavailable' });
         const turn = store.beginTurn('ws-1', 'proc-1', 'copilot', 0);
         expect(store.get('ws-1', 'proc-1')).toEqual({ state: 'pending', turn });

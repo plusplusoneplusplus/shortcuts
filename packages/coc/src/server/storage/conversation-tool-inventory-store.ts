@@ -27,7 +27,7 @@ export type ConversationToolInventory =
     | { state: 'captured'; turn: ConversationToolInventoryTurn; snapshot: RuntimeToolInventory };
 
 interface InventoryRow {
-    turn_id: string;
+    turn_id: string | null;
     turn_index: number;
     provider: string;
     started_at: string;
@@ -76,7 +76,7 @@ export class ConversationToolInventoryStore {
                 CASE WHEN length(CAST(i.snapshot AS BLOB)) <= ${MAX_SNAPSHOT_BYTES}
                     THEN i.snapshot ELSE NULL END AS snapshot,
                 length(CAST(i.snapshot AS BLOB)) AS snapshot_bytes
-            FROM conversation_tool_inventory i JOIN processes p ON p.id = i.process_id
+            FROM processes p LEFT JOIN conversation_tool_inventory i ON p.id = i.process_id
             WHERE p.id = ? AND p.workspace_id = ?
         `);
     }
@@ -112,8 +112,14 @@ export class ConversationToolInventoryStore {
     }
 
     get(workspaceId: string, processId: string): ConversationToolInventory {
+        return this.getForProcess(workspaceId, processId) ?? { state: 'unavailable' };
+    }
+
+    /** Distinguish an absent/foreign process from an owned conversation without a capture. */
+    getForProcess(workspaceId: string, processId: string): ConversationToolInventory | undefined {
         const row = this.read.get(processId, workspaceId) as InventoryRow | undefined;
-        if (!row) return { state: 'unavailable' };
+        if (!row) return undefined;
+        if (row.turn_id === null) return { state: 'unavailable' };
         if (row.snapshot_bytes !== null && row.snapshot_bytes > MAX_SNAPSHOT_BYTES) {
             throw new Error('Stored conversation tool inventory exceeds safety limits');
         }

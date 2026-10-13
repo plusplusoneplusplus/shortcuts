@@ -118,6 +118,10 @@ references before editing. Paths are package-relative.
   cancelled, settled and stale callbacks cannot overwrite newer turns. Reads/writes
   verify the persisted process owner. Safe descriptor projection and byte limits
   apply on writes and lazy reads; persistence failures fail the turn.
+  `GET /api/processes/:id/tool-inventory` requires the owning `workspace` and uses
+  the composed store's `getForProcess` without transcript hydration or runtime probes.
+  Missing/foreign processes return 404; owned chats without snapshots are unavailable.
+  Use cancellable `processes.getToolInventory` on the owner-resolved client.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
