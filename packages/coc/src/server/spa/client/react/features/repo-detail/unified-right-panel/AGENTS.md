@@ -788,7 +788,7 @@ read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 ### To-do Scrubber
 
 `SentinelTodoScrubber` mounts above the list after a ledger loads, gated by the
-live scrubber flag. Its owner/endpoint-keyed strip uses
+live, default-off scrubber flag. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
 late reads and mutations cannot update a remounted owner. A visibility-aware
 poll refreshes missed events. All-open and selected runs start separate queued

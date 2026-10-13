@@ -95,6 +95,9 @@ Core `git::patch_store` provides scoped bounded snapshots and shared in-flight p
 the committed bindings, N-API addon and symbol-server executable. Windows x64
 also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
 do not initialize WebView2.
+Native builds retain Cargo artifacts and napi-rs's per-crate declaration cache.
+Bindings are written only when their contents change. Incomplete napi-rs journal
+metadata fails before compilation; recovery and publication locking belong to napi-rs.
 `ensure:native` recursively checks the native Rust tree, including `teams-sdk`,
 for stale binaries, and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
@@ -180,6 +183,14 @@ and migration boundaries belong in the native instructions below.
 It is independent of Node; its Microsoft module provides immutable source-pinned
 OAuth/Azure CLI providers and explicit PKCE/device sign-in. The addon exposes
 `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`.
+`exchange_refresh_token` shares the Microsoft transport/parser and
+accepts caller-owned refresh secrets without account metadata or storage access;
+native OAuth acquisition retains discovery, identity checks and locked persistence.
+`exchangeMicrosoftRefreshToken(options, refreshToken, signal?)` exposes it through
+an isolated one-shot native handle, with generated DTOs, bounded cancellation and
+safe SDK-code/status/terminal-rejection diagnostics. It returns endpoint expiry
+seconds and optional reported scope/rotation, without ID tokens.
+The generic non-Teams Node refresher owns its timer, scope policy and Copilot cache.
 Kusto, ADO and Teams Azure CLI authentication use native providers. Forge's ADO
 resolver shares a source-pinned provider per host data directory across PR and
 Azure Boards callers, with native caching/renewal and host shutdown disposal.

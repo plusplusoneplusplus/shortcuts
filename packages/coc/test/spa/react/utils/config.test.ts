@@ -17,6 +17,7 @@ import {
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
     isServersEnabled,
+    isSentinelEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
 
 afterEach(() => {
@@ -76,6 +77,27 @@ describe('chat history paging runtime flag', () => {
         expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(false);
         applyRuntimeConfigPatch({ chatHistoryPagingEnabled: true });
         expect(isFeatureEnabled('chatHistoryPagingEnabled')).toBe(true);
+    });
+});
+
+describe('Sentinel opt-in runtime flags', () => {
+    it.each([undefined, true, false])('keeps Sentinel Mode and Scrubber off with retired ledger value %s', value => {
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { sentinelTodoLedgerEnabled: value } },
+        });
+        expect(isFeatureEnabled('sentinelTodoScrubberEnabled')).toBe(false);
+        expect(isSentinelEnabled()).toBe(false);
+    });
+
+    it('keeps Sentinel Mode off while Scrubber is toggled live', () => {
+        expect(isFeatureEnabled('sentinelTodoScrubberEnabled')).toBe(false);
+        expect(isSentinelEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
+        expect(isFeatureEnabled('sentinelTodoScrubberEnabled')).toBe(true);
+        expect(isSentinelEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false });
+        expect(isFeatureEnabled('sentinelTodoScrubberEnabled')).toBe(false);
     });
 });
 

@@ -67,6 +67,13 @@ export declare class NativeGitHubCredentialRequest {
   cancel(): void
 }
 
+/** Exchange only: no account discovery, credential store or token cache. */
+export declare class NativeMicrosoftOAuthRefreshRequest {
+  constructor(options: MicrosoftOAuthRefreshOptions, timeoutMs?: number | undefined | null)
+  exchange(refreshToken: string): Promise<MicrosoftOAuthRefreshResponse>
+  cancel(): void
+}
+
 export declare class NativeMicrosoftOAuthSignIn {
   constructor(options: MicrosoftOAuthOptions, expectedAccount?: MicrosoftAccount | undefined | null, timeoutMs?: number | undefined | null)
   beginBrowser(): Promise<MicrosoftSignInInstructions>
@@ -788,6 +795,22 @@ export interface MicrosoftOAuthOptions {
   target: string
   resource?: string
   coordinationDirectory: string
+}
+
+export interface MicrosoftOAuthRefreshOptions {
+  authority: string
+  clientId: string
+  scopes: Array<string>
+  resource?: string
+}
+
+export interface MicrosoftOAuthRefreshResponse {
+  accessToken: string
+  tokenType: string
+  /** Lifetime in seconds, as reported by the token endpoint. */
+  expiresIn: number
+  scope?: string
+  refreshToken?: string
 }
 
 export interface MicrosoftProviderPolicy {

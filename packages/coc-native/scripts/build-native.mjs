@@ -81,85 +81,108 @@ ${body}
 `;
 }
 
-function main() {
+export function buildNative(options = {}) {
+    const root = options.packageRoot ?? packageRoot;
+    const run = options.run ?? execFileSync;
+    const logger = options.logger ?? console;
     const profile = process.env.COC_NATIVE_PROFILE === 'debug' ? 'debug' : 'release';
     const target = process.env.CARGO_BUILD_TARGET;
     // The CLI resolves --dts against its own cwd and rejects absolute paths,
     // so this scratch file has to live inside the package.
     const dts = `.napi-dts-${process.pid}.d.ts`;
 
-    // The type definitions are emitted by the proc macro *while compiling*, so
-    // a cached crate produces none. Clean both the wrapper and core DTOs.
-    // Name the profile so a release build does not clean debug artifacts.
-    // napi builds with an explicit target even for the host, so clean that
-    // target rather than Cargo's separate untargeted output directory.
-    const buildTarget = target ?? execFileSync('rustc', ['-vV'], { encoding: 'utf-8' })
-        .match(/^host: (.+)$/m)?.[1];
-    if (!buildTarget) throw new Error('Could not determine the Rust host target');
-    const clean = cleanArgs({ profile, target: buildTarget });
-    execFileSync('cargo', clean, { cwd: packageRoot, stdio: 'inherit' });
-
+    assertTransactionReady(root);
     const args = buildArgs({ profile, target, dts });
 
-    const destination = path.join(packageRoot, nativeBinaryName());
+    const destination = path.join(root, nativeBinaryName());
     try {
-        execFileSync(process.execPath, [napiCli(), ...args], { cwd: packageRoot, stdio: 'inherit' });
+        // napi-rs caches declarations per crate and rebuilds missing cache entries.
+        run(process.execPath, [napiCli(), ...args], { cwd: root, stdio: 'inherit' });
 
         // napi names the binary from `napi.binaryName` in package.json; the loader
         // computes the same name independently. Fail loudly if they diverge.
         if (!fs.existsSync(destination)) {
             throw new Error(
-                `napi build did not produce ${path.relative(packageRoot, destination)}. ` +
-                    `Found: ${fs.readdirSync(packageRoot).filter(f => f.endsWith('.node')).join(', ') || 'no .node files'}. ` +
+                `napi build did not produce ${path.relative(root, destination)}. ` +
+                    `Found: ${fs.readdirSync(root).filter(f => f.endsWith('.node')).join(', ') || 'no .node files'}. ` +
                     'The `napi.name` field in package.json and nativeBinaryName() must agree.',
             );
         }
 
-        const generated = fs.readFileSync(path.join(packageRoot, dts), 'utf-8');
+        const generated = fs.readFileSync(path.join(root, dts), 'utf-8');
 
-        // A cached crate never reruns the proc macro and so emits no type defs.
-        // Writing that emptiness over the committed file would quietly delete
-        // the package's whole type surface, so refuse it.
-        const missingExports = ['openRepoFiles', 'buildNotesIndex', 'NativeDatabaseHandle'].filter(
-            exportName => !generated.includes(exportName),
+        // Core DTOs must survive a cached build as well as wrapper declarations.
+        const missingExports = [
+            'openRepoFiles', 'buildNotesIndex', 'NativeDatabaseHandle',
+            'ContentMatch', 'ContentSearchResult', 'GitCommitFiles',
+        ].filter(
+            exportName => !new RegExp(`^export (?:declare )?(?:class|function|interface|type) ${exportName}\\b`, 'm')
+                .test(generated),
         );
         if (missingExports.length > 0) {
             throw new Error(
                 `napi build omitted required type definitions (${missingExports.join(', ')}) — ` +
-                    'the crate may not have been recompiled, so the `#[napi]` macros never ran. ' +
-                    `Try \`cargo clean --manifest-path ${cargoCwd}/Cargo.toml\`.`,
+                    'the declaration cache may be incomplete. ' +
+                    'Check the napi-rs declaration cache and rebuild the crates defining the missing exports.',
             );
         }
 
-        fs.writeFileSync(path.join(packageRoot, BINDINGS_FILE), renderBindings(generated));
+        const bindings = path.join(root, BINDINGS_FILE);
+        const rendered = renderBindings(generated);
+        if (!fs.existsSync(bindings) || fs.readFileSync(bindings, 'utf-8') !== rendered) {
+            fs.writeFileSync(bindings, rendered);
+        }
     } finally {
         // Byproducts, cleared even when the build or a check above threw —
         // otherwise a failed run leaves untracked files for someone to commit
         // by accident. `index.js` is the CLI's per-platform npm resolution
         // shim, which this package does not use; the loader reads from disk.
         for (const byproduct of ['index.js', dts]) {
-            fs.rmSync(path.join(packageRoot, byproduct), { force: true });
+            fs.rmSync(path.join(root, byproduct), { force: true });
         }
     }
 
-    console.log(`native addon: built ${path.relative(packageRoot, destination)}`);
-    console.log(`native addon: generated ${BINDINGS_FILE}`);
+    logger.log(`native addon: built ${path.relative(root, destination)}`);
+    logger.log(`native addon: generated ${BINDINGS_FILE}`);
 
     // The stdio language server is the second artifact this package ships. It
     // is built here rather than behind its own command so that every caller of
     // `build:native` — CI, the serve loop's staleness check, a fresh clone —
     // ends up with both, and neither can quietly lag the other.
-    buildSymbolsLsp({ profile, target });
-    buildWebView2({ profile, target });
+    (options.buildSymbolsLsp ?? buildSymbolsLsp)({ profile, target });
+    (options.buildWebView2 ?? buildWebView2)({ profile, target });
 }
 
-/** Recompile every crate whose N-API macros contribute type definitions. */
-export function cleanArgs({ profile, target }) {
-    const args = ['clean', '--manifest-path', path.join(cargoCwd, 'Cargo.toml'),
-        '-p', 'coc-native', '-p', 'coc-native-core'];
-    if (profile === 'release') args.push('--release');
-    if (target) args.push('--target', target);
-    return args;
+/** Leave recovery to napi-rs, but detect incomplete journals before compilation. */
+export function assertTransactionReady(root) {
+    const journalName = '.napi-rs-filesystem-transaction.swp';
+    const journal = path.join(root, journalName);
+    let stats;
+    try {
+        stats = fs.lstatSync(journal);
+    } catch (error) {
+        if (error.code === 'ENOENT') return;
+        throw error;
+    }
+    const fail = (entry) => {
+        throw new Error(
+            `Incomplete napi-rs filesystem transaction: ${path.join(journalName, entry)}. ` +
+            'No compilation was started. Stop any active native builds, then inspect and rename ' +
+            `${journalName} to a backup location before retrying. ` +
+            'Preserve its contents; do not delete recovery backups.',
+        );
+    };
+    if (!stats.isDirectory() || stats.isSymbolicLink()) fail('');
+    for (const entry of ['owner.json', 'state.json']) {
+        let metadata;
+        try {
+            metadata = fs.lstatSync(path.join(journal, entry));
+        } catch (error) {
+            if (error.code === 'ENOENT') fail(entry);
+            throw error;
+        }
+        if (!metadata.isFile()) fail(entry);
+    }
 }
 
 /**
@@ -180,13 +203,13 @@ export function buildArgs({ profile, target, dts }) {
         '--output-dir',
         '.',
         '--platform',
+        '--no-js',
+        '--dts-cache',
         '--dts',
         dts,
     ];
     if (profile === 'release') args.push('--release');
-    // `--target` makes the CLI also emit a JS binding shim that resolves
-    // per-platform npm packages. The loader does that itself, from disk.
-    if (target) args.push('--target', target, '--no-js');
+    if (target) args.push('--target', target);
     return args;
 }
 
@@ -206,5 +229,5 @@ export function napiCli() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    main();
+    buildNative();
 }

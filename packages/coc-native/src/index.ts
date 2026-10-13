@@ -27,11 +27,17 @@ export type { NativeAddon, NativeAddonStatus } from './types';
 export { loadWebView2Binary, webview2BinaryCandidates, WEBVIEW2_BINARY_NAME } from './webview2';
 export { loadNativeGitHubAuth, readGitHubCredential } from './github-auth';
 export type { GitHubAccount, GitHubCredentialOptions, GitHubCredentialSnapshot } from './github-auth';
-export { AuthError, loadNativeAuth, MicrosoftOAuthSignIn, MicrosoftTokenProvider } from './auth';
+export {
+    AuthError, loadNativeAuth, MicrosoftOAuthSignIn, MicrosoftTokenProvider,
+    exchangeMicrosoftRefreshToken, loadNativeMicrosoftOAuthRefresh, MicrosoftOAuthRefreshError,
+} from './auth';
 export type {
     AuthErrorCode,
     MicrosoftAccount,
     MicrosoftOAuthOptions,
+    MicrosoftOAuthRefreshOptions,
+    MicrosoftOAuthRefreshResponse,
+    MicrosoftOAuthRefreshRejection,
     MicrosoftSignInInstructions,
     MicrosoftSignInResult,
     MicrosoftToken,

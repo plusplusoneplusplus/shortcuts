@@ -295,7 +295,8 @@ references before editing. Paths are package-relative.
   Manual items never authorize execution, delegation, job links, or automatic result
   reviews. Execution requests require clarification; never create a normal-item copy,
   convert, or hand off a manual item. Never let ledger edits
-  start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger. The
+  start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
+  Sentinel Mode and To-do Scrubber are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability.
   Sentinel `send_to_conversation` create mode requires an unarchived normal
@@ -794,6 +795,10 @@ references before editing. Paths are package-relative.
   including broker sign-in with no browser URL or token JSON file. Pending flows
   poll bounded runtime status and shared-cache state; late results cannot overwrite
   a cancelled flow. Empty login responses alone never count as authenticated.
+  Opt-in background maintenance keeps scheduling, scope policy and Copilot-cache
+  persistence in Node; `coc-native.exchangeMicrosoftRefreshToken` owns the bounded
+  Rust exchange. Native Teams resources are excluded. Only typed terminal
+  rejections below HTTP 500 invalidate entries; diagnostics exclude provider bodies.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

@@ -135,6 +135,38 @@ and Tokio reaps the direct child. Raw CLI output never enters diagnostics.
 
 ## Token lifecycle
 
+Rust `exchange_refresh_token(http, options, refresh, cancel, deadline)` exchanges a
+caller-owned `Secret` without credential-store access or account metadata.
+`OAuthRefreshOptions` validates a supported Microsoft HTTPS login origin, tenant
+UUID or `common`/`organizations`/`consumers`, client UUID, scopes and optional
+resource. It posts directly to the authority's v2 token endpoint using the shared
+transport, zeroized form and response parser. Callers prepare scopes (including
+`offline_access` and any `.default` normalization) and own scheduling, cache
+updates, credential coordination and persistence.
+
+`OAuthRefreshResponse` reports secret-wrapped access, optional rotated refresh
+and unverified ID tokens, token type, relative expiry and optional reported scope.
+Missing rotation and scope stay absent; callers retain prior values as needed.
+`OAuthRefreshError` carries the existing sanitized `AuthError`, optional HTTP
+status and only the allow-listed `InvalidGrant`, `InteractionRequired` or
+`ConsentRequired` rejection. Unknown provider strings and descriptions are
+discarded. Cache callers can keep 5xx failures transient using the status.
+Native acquisition maps errors to the existing codes, retains trusted discovery,
+verifies returned identity and persists rotation under its credential lock.
+The native package exports
+`exchangeMicrosoftRefreshToken(options, refreshToken, signal?)`. Options contain
+`authority`, `clientId`, `scopes`, optional `resource` and optional `timeoutMs`
+(default 30,000; range 100..900,000 ms). It returns an immutable
+`{ accessToken, tokenType, expiresIn, scope?, refreshToken? }`, with relative expiry
+in seconds and only reported scope/rotation. Unverified ID tokens stay in Rust.
+Each call owns a one-shot native cancellation handle; abort/timeout drops HTTP work
+and prevents late publication, including after dispatch or Node delivery delays.
+`MicrosoftOAuthRefreshError` extends `AuthError` with optional `status` and
+`rejection` (`invalid_grant`, `interaction_required`, `consent_required`).
+Only the exact rejection supports cache invalidation, not the broader SDK code;
+status still informs transient-failure policy. No raw error is retained as cause.
+The Node background refresher retains its separate HTTP, timer and cache behavior.
+
 `expiryMarginSeconds` defaults to 60. A token is usable only when
 `expiresAt > now + margin`; equality requires renewal. Provider `timeoutMs`
 defaults to 30,000; sign-in defaults to 300,000. Configured timeouts range from
@@ -151,13 +183,13 @@ defaults to 30,000; sign-in defaults to 300,000. Configured timeouts range from
 | `deleteCredentials()` | Delete exact OAuth credential and invalidate | Delete and invalidate, retain acquired state |
 | `dispose()` | Cancel work; reject further calls | Cancel work; reject further calls |
 
-An initial OAuth refresh grant from this SDK's stored verified credential counts
-as noninteractive acquisition. `never` means no renewal of this provider's
+An initial provider OAuth refresh grant from this SDK's stored verified credential
+counts as noninteractive acquisition. `never` means no renewal of this provider's
 successfully acquired token, not prohibition of that initial grant.
 Invalidation is not a reset or sign-out. A new provider is a new lifecycle.
 Deletion does not revoke a server-side grant and does not purge another live
 provider's instance access token. Azure CLI credential deletion is unsupported.
-There is no background token-refresh timer.
+The SDK provider renews on demand; caller-owned background scheduling stays outside it.
 
 Concurrent matching operations share results, including failures and forced
 renewal. Keys isolate source, namespace, authority, client, account/tenant,
@@ -230,9 +262,10 @@ rotating refresh exchange can require explicit sign-in if the remote server
 invalidates the previous credential before the response is received.
 
 HTTPS discovery and token requests are bounded, have capped bodies, and reject
-redirects. Authorities are restricted to supported Microsoft login origins and
-tenant-specific paths. Discovery cannot substitute token/authorization origins or
-untrusted JWKS URLs. SDK errors contain codes only, never provider descriptions,
+redirects. Provider and sign-in authorities require supported Microsoft login
+origins and tenant-specific paths. Discovery cannot substitute token/authorization
+origins or untrusted JWKS URLs. SDK diagnostics contain only defined codes,
+allow-listed refresh rejections and HTTP status, never provider descriptions,
 raw output, secrets or account identifiers. Rust secret buffers and owned form
 values are zeroized on drop where feasible. HTTP-library buffers and JavaScript
 strings cannot guarantee erasure; callers must not log or persist returned tokens.
@@ -266,3 +299,8 @@ real user authentication.
 config fixtures. Rust Windows tests create and remove unique generic credentials;
 the ignored `github::tests::isolated_macos_cli_keychain_fixture` checks exact
 same-account CLI Keychain import on macOS with scoped cleanup.
+`cargo test --locked -p coc-native auth::refresh::tests` uses trusted Rust
+HTTP injection for boundary conversion, safe errors, one-shot handles and
+cancelled/timed-out work cleanup. `test/oauth-refresh.test.ts` covers built-addon
+validation and trusted loader fixtures for the exported TypeScript wrapper.
+Refresh tests make no auth network requests or credential-store accesses.

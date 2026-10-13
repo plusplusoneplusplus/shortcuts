@@ -163,3 +163,68 @@ export class MicrosoftOAuthSignIn {
     cancel(): void { this.native.cancel(); }
     dispose(): void { this.native.dispose(); }
 }
+
+export type MicrosoftOAuthRefreshOptions = Bindings.MicrosoftOAuthRefreshOptions & { timeoutMs?: number };
+export type MicrosoftOAuthRefreshResponse = Readonly<Bindings.MicrosoftOAuthRefreshResponse>;
+export type MicrosoftOAuthRefreshRejection = 'invalid_grant' | 'interaction_required' | 'consent_required';
+
+/** Only rejection, not the broader SDK code, identifies cache-invalidating failures. */
+export class MicrosoftOAuthRefreshError extends AuthError {
+    constructor(code: AuthErrorCode, readonly status?: number, readonly rejection?: MicrosoftOAuthRefreshRejection) {
+        super(code);
+    }
+}
+
+export function loadNativeMicrosoftOAuthRefresh(): Pick<typeof Bindings, 'NativeMicrosoftOAuthRefreshRequest'> {
+    const addon = loadNativeAddon() as Partial<Pick<typeof Bindings, 'NativeMicrosoftOAuthRefreshRequest'>>;
+    const request = addon.NativeMicrosoftOAuthRefreshRequest;
+    if (typeof request !== 'function'
+        || !['exchange', 'cancel'].every(method => typeof Reflect.get(request.prototype, method) === 'function')) {
+        throw new NativeAddonLoadError(
+            '@plusplusoneplusplus/coc-native: missing Microsoft OAuth refresh capability. ' +
+            'Rebuild with `npm run build:native -w packages/coc-native`.',
+        );
+    }
+    return { NativeMicrosoftOAuthRefreshRequest: request };
+}
+
+function decodeRefreshError(error: unknown): never {
+    if (error instanceof NativeAddonLoadError || error instanceof AuthError) throw error;
+    const message = error instanceof Error ? error.message : '';
+    const match = /^\[auth-refresh:([A-Za-z]+):(\d{3})?:(invalid_grant|interaction_required|consent_required)?\]/.exec(message);
+    if (match && errorCodes.has(match[1])) {
+        throw new MicrosoftOAuthRefreshError(
+            match[1] as AuthErrorCode,
+            match[2] ? Number(match[2]) : undefined,
+            match[3] as MicrosoftOAuthRefreshRejection | undefined,
+        );
+    }
+    return decodeAuthError(error);
+}
+
+/** One bounded exchange, without identity verification or storage. JS token strings cannot be zeroized. */
+export async function exchangeMicrosoftRefreshToken(
+    options: MicrosoftOAuthRefreshOptions,
+    refreshToken: string,
+    signal?: AbortSignal,
+): Promise<MicrosoftOAuthRefreshResponse> {
+    if (signal?.aborted) throw new AuthError('Cancelled');
+    let request: Bindings.NativeMicrosoftOAuthRefreshRequest | undefined;
+    let abort: (() => void) | undefined;
+    try {
+        if (!options || typeof refreshToken !== 'string') throw new AuthError('InvalidConfiguration');
+        numberOption(options.timeoutMs, 100, 900_000);
+        request = new (loadNativeMicrosoftOAuthRefresh().NativeMicrosoftOAuthRefreshRequest)(options, options.timeoutMs);
+        abort = () => { request?.cancel(); };
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) abort();
+        const response = await request.exchange(refreshToken);
+        if (signal?.aborted) throw new AuthError('Cancelled');
+        return Object.freeze(response);
+    } catch (error) {
+        return decodeRefreshError(error);
+    } finally {
+        if (abort) signal?.removeEventListener('abort', abort);
+        request?.cancel();
+    }
+}

@@ -23,7 +23,7 @@ pub(crate) async fn metadata(http: &dyn HttpTransport, options: &OAuthOptions) -
         .map_err(|_| AuthError::new(ErrorCode::IdentityVerificationFailed))?;
     let expected_issuer = format!("{authority}/v2.0");
     let authorize = format!("{authority}/oauth2/v2.0/authorize");
-    let token = format!("{authority}/oauth2/v2.0/token");
+    let token = super::OAuthRefreshOptions::from(options).token_endpoint();
     if value["issuer"].as_str() != Some(&expected_issuer)
         || value["authorization_endpoint"].as_str() != Some(&authorize)
         || value["token_endpoint"].as_str() != Some(&token)

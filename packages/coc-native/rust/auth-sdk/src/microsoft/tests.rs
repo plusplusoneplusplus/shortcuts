@@ -97,6 +97,9 @@ struct FakeHttp {
     claim_override: Mutex<Option<serde_json::Value>>,
     pending: Mutex<VecDeque<&'static str>>,
     requests: Mutex<Vec<Vec<(String, String)>>>,
+    token_response: Mutex<Option<(u16, String)>>,
+    token_delay: Mutex<Duration>,
+    token_started: tokio::sync::Notify,
     delay: Mutex<Duration>,
     refresh_id: bool,
 }
@@ -109,6 +112,9 @@ impl Default for FakeHttp {
             claim_override: Mutex::default(),
             pending: Mutex::default(),
             requests: Mutex::default(),
+            token_response: Mutex::default(),
+            token_delay: Mutex::new(Duration::ZERO),
+            token_started: tokio::sync::Notify::new(),
             delay: Mutex::new(Duration::ZERO),
             refresh_id: true,
         }
@@ -156,6 +162,12 @@ impl HttpTransport for FakeHttp {
         assert!(url.ends_with("/token"));
         let form = form.unwrap();
         self.requests.lock().unwrap().push(form.to_vec());
+        self.token_started.notify_one();
+        let delay = *self.token_delay.lock().unwrap();
+        tokio::time::sleep(delay).await;
+        if let Some((status, body)) = self.token_response.lock().unwrap().as_ref() {
+            return Ok(HttpResponse { status: *status, body: Secret::new(body.clone()) });
+        }
         if let Some(error) = self.pending.lock().unwrap().pop_front() {
             return Ok(output(
                 400,
@@ -1039,6 +1051,112 @@ async fn refresh_without_id_token_uses_only_our_verified_stored_account() {
     let token =
         f.provider(Refresh::Auto, true).get_token(false, &CancellationToken::new()).await.unwrap();
     assert_eq!(token.account.id, ACCOUNT);
+}
+
+#[tokio::test]
+async fn native_refresh_without_rotation_retains_verified_credential_and_request_shape() {
+    let f = Fixture::new();
+    let mut options = f.options(Refresh::Auto, true);
+    if let MicrosoftTokenSource::OAuth { options, .. } = &mut options.source {
+        options.resource = Some("https://resource.example".into());
+    }
+    f.seed(&f.oauth());
+    *f.http.token_response.lock().unwrap() = Some((
+        200,
+        r#"{"access_token":"opaque-fixture","token_type":"Bearer","expires_in":3600}"#.into(),
+    ));
+    let p = MicrosoftTokenProvider::with_dependencies(options, f.deps.clone()).unwrap();
+    let token = p.get_token(false, &CancellationToken::new()).await.unwrap();
+    assert_eq!(token.account, Account { id: ACCOUNT.into(), tenant: TENANT.into() });
+    assert_eq!(token.expires_at, NOW + 3_600_000);
+    assert_eq!(token.target, "fixture-resource");
+    assert!(token.granted_scopes.is_none());
+    assert_eq!(f.http.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        f.http.requests.lock().unwrap()[0],
+        vec![
+            ("grant_type".into(), "refresh_token".into()),
+            ("client_id".into(), CLIENT.into()),
+            ("refresh_token".into(), "initial-fixture".into()),
+            ("scope".into(), "openid profile offline_access requested.scope".into()),
+            ("resource".into(), "https://resource.example".into()),
+        ]
+    );
+    assert_eq!(f.store.writes.load(Ordering::SeqCst), 2);
+    let key = f.oauth().credential_key(&token.account);
+    assert_eq!(
+        f.store.read(&key).unwrap().unwrap().expose(),
+        format!("v1\n{TENANT}\n{ACCOUNT}\ninitial-fixture")
+    );
+}
+
+#[tokio::test]
+async fn native_refresh_verifies_identity_before_persisting_rotation() {
+    let f = Fixture::new();
+    f.seed(&f.oauth());
+    let account = Account { id: ACCOUNT.into(), tenant: TENANT.into() };
+    let key = f.oauth().credential_key(&account);
+    let p = f.provider(Refresh::Auto, true);
+    for (claims, expected) in [
+        (serde_json::json!({"oid":SUBSCRIPTION}), ErrorCode::AccountMismatch),
+        (serde_json::json!({"aud":SUBSCRIPTION}), ErrorCode::IdentityVerificationFailed),
+        (serde_json::json!({"tid":SUBSCRIPTION}), ErrorCode::IdentityVerificationFailed),
+    ] {
+        *f.http.claim_override.lock().unwrap() = Some(claims);
+        assert_eq!(code(p.get_token(false, &CancellationToken::new()).await), expected);
+        assert_eq!(f.store.writes.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            f.store.read(&key).unwrap().unwrap().expose(),
+            format!("v1\n{TENANT}\n{ACCOUNT}\ninitial-fixture")
+        );
+    }
+    *f.http.claim_override.lock().unwrap() = None;
+    p.get_token(false, &CancellationToken::new()).await.unwrap();
+    assert_eq!(f.store.writes.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        f.store.read(&key).unwrap().unwrap().expose(),
+        format!("v1\n{TENANT}\n{ACCOUNT}\nrotated-fixture-3")
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_refresh_exchange_cancellation_deadline_and_disposal_preserve_storage() {
+    for action in 0..3 {
+        let f = Fixture::new();
+        f.seed(&f.oauth());
+        *f.http.token_delay.lock().unwrap() = Duration::from_secs(10);
+        let mut options = f.options(Refresh::Auto, true);
+        options.timeout = Duration::from_millis(100);
+        let p = MicrosoftTokenProvider::with_dependencies(options, f.deps.clone()).unwrap();
+        let cancel = CancellationToken::new();
+        let (result, _) = tokio::join!(p.get_token(false, &cancel), async {
+            if action != 0 {
+                f.http.token_started.notified().await;
+                if action == 1 {
+                    cancel.cancel();
+                } else {
+                    p.dispose();
+                }
+            }
+        });
+        assert_eq!(
+            code(result),
+            [ErrorCode::TimedOut, ErrorCode::Cancelled, ErrorCode::Disposed][action]
+        );
+        assert_eq!(f.http.requests.lock().unwrap().len(), 1);
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        assert_eq!(f.store.writes.load(Ordering::SeqCst), 1);
+        let account = Account { id: ACCOUNT.into(), tenant: TENANT.into() };
+        assert_eq!(
+            f.store.read(&f.oauth().credential_key(&account)).unwrap().unwrap().expose(),
+            format!("v1\n{TENANT}\n{ACCOUNT}\ninitial-fixture")
+        );
+        if action != 2 {
+            *f.http.token_delay.lock().unwrap() = Duration::ZERO;
+            p.get_token(false, &CancellationToken::new()).await.unwrap();
+            assert_eq!(f.store.writes.load(Ordering::SeqCst), 2);
+        }
+    }
 }
 
 #[tokio::test]
