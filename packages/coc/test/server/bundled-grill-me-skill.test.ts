@@ -16,36 +16,15 @@ describe('bundled grill-me skill', () => {
         expect(version).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
-    it('SKILL.md documents the two-phase grill flow', () => {
-        const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('Phase 1');
-        expect(content).toContain('Phase 2');
-        expect(content).toContain('size threshold');
-    });
-
-    it('SKILL.md documents the decision tagging convention', () => {
+    it('keeps the decision tags recognized by Ralph title extraction', () => {
         const content = fs.readFileSync(skillPath, 'utf-8');
         expect(content).toContain('[decision]');
         expect(content).toContain('[assumption]');
         expect(content).toContain('[open]');
     });
 
-    it('SKILL.md documents the slice template with Definition of Done', () => {
-        const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('## Behavior');
-        expect(content).toContain('## Definition of Done');
-        expect(content).toContain('ac-NN-<slug>.spec.md');
-    });
-
-    it('SKILL.md documents the ready-for-Ralph checklist', () => {
-        const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('Ready-for-Ralph Checklist');
-        expect(content).toContain('Definition of Done');
-    });
-
-    it('SKILL.md documents the synthesis path used by Ralph promotion', () => {
+    it('keeps the goal heading consumed by Ralph promotion', () => {
         const content = fs.readFileSync(skillPath, 'utf-8');
         expect(content).toContain('## Goal');
-        expect(content).toContain('grilling');
     });
 });

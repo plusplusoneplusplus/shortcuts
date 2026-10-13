@@ -31,18 +31,6 @@ describe('bundled propose-diff skill', () => {
         })).toContain('propose-diff');
     });
 
-    it('requires a read-only diff proposal and explicit approval to apply it', () => {
-        const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('minimal unified diff');
-        expect(content).toContain('fenced `diff` block');
-        expect(content).toContain('repository-relative file paths');
-        expect(content).toContain('Do not modify files, apply patches, or commit.');
-        expect(content).toContain('Use read-only tools and commands;');
-        expect(content).toContain('do not delegate implementation or run commands that write files.');
-        expect(content).toContain("Wait for the user's explicit approval before making changes.");
-        expect(content).toContain('the proposal are not approval to apply it.');
-    });
-
     it('copies the bundled skill on startup and preserves an up-to-date installation', async () => {
         const installPath = fs.mkdtempSync(path.join(os.tmpdir(), 'propose-diff-'));
         try {

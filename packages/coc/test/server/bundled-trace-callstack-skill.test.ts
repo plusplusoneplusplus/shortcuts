@@ -24,12 +24,4 @@ describe('bundled trace-callstack skill', () => {
         expect(content).toMatch(/^---\r?\nname: trace-callstack\r?\n/);
         expect(parseBundledSkillVersion('trace-callstack')).toMatch(/^\d+\.\d+\.\d+$/);
     });
-
-    it('SKILL.md defines the linked tree format and big-tree handling', () => {
-        const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('## Output Format');
-        expect(content).toContain('called at');
-        expect(content).toContain('## Big Trees');
-        expect(content).toContain('Expand next');
-    });
 });

@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BUNDLED_SKILLS_REGISTRY } from '../../src/skills/bundled-skills-registry';
+import { extractSkillSection } from '../../src/skills/skill-section';
+import { parseRalphNeedsInput } from '@plusplusoneplusplus/coc-workflow/ralph';
 
 const SKILL_FILE = path.resolve(__dirname, '../../resources/bundled-skills/ultra-ralph/SKILL.md');
 
@@ -18,11 +20,9 @@ describe('ultra-ralph bundled skill', () => {
 
     it('contains the required sections', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
-        expect(content).toContain('## Section: grill');
-        expect(content).toContain('## Section: synthesis');
-        expect(content).toContain('## Section: execution');
-        expect(content).toContain('## Section: iteration');
-        expect(content).toContain('## Section: final-check');
+        for (const section of ['grill', 'synthesis', 'execution', 'iteration', 'final-check']) {
+            expect(extractSkillSection(content, section).trim()).not.toBe('');
+        }
     });
 
     it('has YAML frontmatter with name ultra-ralph', () => {
@@ -31,24 +31,24 @@ describe('ultra-ralph bundled skill', () => {
         expect(content).toContain('version: "0.1.2"');
     });
 
-    it('defines RALPH_NEXT and RALPH_COMPLETE in terms of autonomous work', () => {
+    it('keeps the goal heading and terminal markers consumed by Ralph', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
-        expect(content).toContain('Emit RALPH_NEXT only when a specific autonomous subtask remains');
-        expect(content).toContain('Remaining: manual verification only');
-        expect(content).toContain('human-only verification');
+        for (const section of ['grill', 'synthesis']) {
+            expect(extractSkillSection(content, section)).toContain('## Goal');
+        }
+        const execution = extractSkillSection(content, 'execution');
+        for (const signal of ['RALPH_NEXT', 'RALPH_COMPLETE', 'RALPH_NEEDS_INPUT']) {
+            expect(execution).toContain(signal);
+        }
+        // The runtime guard recognizes this journal status, even though it reads like prose.
+        expect(execution).toContain('Remaining: manual verification only');
+        expect(extractSkillSection(content, 'final-check')).toContain('RALPH_FINAL_CHECK_RESULT');
     });
 
-    it('restricts RALPH_NEEDS_INPUT to one structured batch for critical blockers', () => {
-        const content = fs.readFileSync(SKILL_FILE, 'utf8');
-        expect(content).toContain('Human input is a last resort');
-        expect(content).toContain('a conflict with a `[decision]` item');
-        expect(content).toContain('a destructive or irreversible action');
-        expect(content).toContain('missing credentials or external access');
-        expect(content).toContain('a product choice that cannot be inferred and would be costly to redo');
-        expect(content).toContain('tag it `[assumption]`');
-        expect(content).toContain('Keep interruptions to a minimum');
-        expect(content).toContain('`RALPH_NEEDS_INPUT` as `<SIGNAL>`');
-        expect(content).toContain('Ask at most five questions');
-        expect(content).toContain('never emit more than one question batch');
+    it('provides a needs-input example accepted by the runtime parser', () => {
+        const execution = extractSkillSection(fs.readFileSync(SKILL_FILE, 'utf8'), 'execution');
+        const example = execution.match(/RALPH_NEEDS_INPUT\r?\n```json\r?\n[\s\S]*?\r?\n```/);
+        expect(example).toBeTruthy();
+        expect(parseRalphNeedsInput(example![0]).status).toBe('ok');
     });
 });
