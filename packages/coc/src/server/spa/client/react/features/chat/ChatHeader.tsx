@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../ui/ReferencesDropdown';
 import { BottomSheet } from '../../ui/BottomSheet';
 import { type MetaRow } from './conversation/ConversationMetadataPopover';
-import { ChatMetadataButton } from './conversation/ChatMetadataButton';
+import { ChatMetadataButton, type ChatHeaderMetadata } from './conversation/ChatMetadataButton';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
 import { ChatStatusPill } from './ChatStatusPill';
 import { chatMarkdownToHtml } from './conversation/markdownHtml';
@@ -55,6 +55,7 @@ const CHAT_HEADER_WIDE_THRESHOLD = 960;
 export interface ChatHeaderProps {
     task: any;
     metadataProcess: any;
+    toolInventoryTarget?: ChatHeaderMetadata['toolInventoryTarget'];
     planPath: string;
     createdFiles: { filePath: string }[];
     pinnedFile: { filePath: string } | undefined;
@@ -334,6 +335,7 @@ export function buildOverflowItems(
 export function ChatHeader({
     task,
     metadataProcess,
+    toolInventoryTarget,
     planPath,
     createdFiles,
     pinnedFile,
@@ -514,6 +516,7 @@ export function ChatHeader({
                     always visible instead of buried in the overflow menu. */}
                 <ChatMetadataButton
                     metadataProcess={metadataProcess}
+                    toolInventoryTarget={toolInventoryTarget}
                     turnsCount={turns.length}
                     isPending={isPending}
                     resumeSessionId={resumeSessionId}

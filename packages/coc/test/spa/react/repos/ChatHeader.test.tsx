@@ -66,9 +66,12 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onCopyResumeCommand, onStartFreshSameContext, startingFreshSameContext, extraRows }: any) => (
+    ConversationMetadataPopover: ({ resumeSessionId, onLaunchInteractiveResume, onCopyResumeCommand, onStartFreshSameContext, startingFreshSameContext, extraRows, toolInventoryTarget }: any) => (
         <span
             data-testid="metadata-popover"
+            data-tools-owner={toolInventoryTarget?.workspaceId ?? ''}
+            data-tools-process={toolInventoryTarget?.processId ?? ''}
+            data-tools-refresh={toolInventoryTarget?.refreshKey ?? ''}
             data-resume-session-id={resumeSessionId ?? ''}
             data-has-resume-handler={onLaunchInteractiveResume ? 'true' : 'false'}
             data-has-copy-handler={onCopyResumeCommand ? 'true' : 'false'}
@@ -801,6 +804,19 @@ describe('ChatHeader', () => {
     });
 
     describe('metadata info button placement', () => {
+        it.each([
+            { variant: 'inline' as const, isPopOut: false },
+            { variant: 'floating' as const, isPopOut: false },
+            { variant: 'inline' as const, isPopOut: true },
+        ])('preserves inventory identity through the $variant header (popout=$isPopOut)', host => {
+            const toolInventoryTarget = { client: { processes: {} } as any, workspaceId: 'raw-remote-owner', processId: 'remote-process', refreshKey: 'started-turn' };
+            render(<ChatHeader {...defaultProps({ ...host, toolInventoryTarget })} />);
+            const metadata = screen.getByTestId('metadata-popover');
+            expect(metadata.getAttribute('data-tools-owner')).toBe('raw-remote-owner');
+            expect(metadata.getAttribute('data-tools-process')).toBe('remote-process');
+            expect(metadata.getAttribute('data-tools-refresh')).toBe('started-turn');
+        });
+
         it('renders the metadata popover inline in the identity group (next to the title), not in overflow', () => {
             setTier('wide');
             render(<ChatHeader {...defaultProps()} />);
