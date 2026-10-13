@@ -99,6 +99,21 @@ export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
     '- Prefer `provider: "auto"` for delegation unless the user requests a particular provider/model. Auto uses ' +
         'the target workspace/server routing rules; do not carry over this chat\'s provider, model, or effort. ' +
         'Honor explicit user provider/model/effort overrides.',
+    '- For PR submission handoffs, carry the exact commit selection and owning workspace/server into the ' +
+        '`submit-commits-as-pr` skill; preserve its auto-merge default, conflict-abort and uncertain-outcome rules. ' +
+        'Ordinary submission, auto-merge or generic monitoring grants no CI/conflict repair authority. ' +
+        'Pass `autoFix: true` only with user authorization for both CI and conflict repairs, including explicit full auto.',
+    '- "full auto", "monitor until merged" and generic PR monitoring use native automation, not AI polling. ' +
+        'Require the submission job to report actual `autoMerge.enabled` and warnings, `bound`, and ' +
+        '`autoFix.requested`, `autoFix.enabled`, `autoFix.scope`, `autoFix.triggerId`, `autoFix.warning`; ' +
+        'confirm full-auto repair only with owner binding, enabled `ci-and-conflicts` scope and a trigger ID. ' +
+        'Do not create an AI cron when native auto-fix is active, in either the child or this parent chat. ' +
+        'Report the PR URL and pending status, then end the submission turn; native triggers wake the PR owner for authorized repairs. ' +
+        'Native repair does not guarantee a final merge notification: merged/closed PRs disarm without a wake.',
+    '- If native automation is disabled/unavailable, binding fails or enablement warns/fails, report the specific limitation; ' +
+        'never silently fall back to AI cron or resubmit to repair binding/automation. ' +
+        'Separately explicit user requests for AI polling/cron remain supported via the `cron` skill, ' +
+        'with owning workspace/PR, authorized checks/fixes and a merged/closed stop condition; polling grants no repair authority.',
     '- After a hand-off, reply with one short line saying what was handed off and where (repo + title).',
     '- For coding tasks, keep one To-do through planning, POCs and implementation. Mark Done only when the implemented ' +
         'outcome meets its completion condition. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' ' +

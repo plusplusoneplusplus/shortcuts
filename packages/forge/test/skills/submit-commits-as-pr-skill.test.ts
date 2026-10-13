@@ -13,6 +13,7 @@ describe('submit-commits-as-pr skill', () => {
         expect(match).not.toBeNull();
         const metadata = yaml.load(match![1]) as { name: string; description: string };
         expect(metadata.name).toBe(path.basename(skillDir));
+        expect(metadata.name.length).toBeLessThanOrEqual(64);
         expect(metadata.name).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
         expect(metadata.description.length).toBeGreaterThan(0);
         expect(metadata.description.length).toBeLessThanOrEqual(1024);
@@ -31,6 +32,34 @@ describe('submit-commits-as-pr skill', () => {
         }
     });
 
+    it('uses confirmed native automation for full auto without duplicate AI polling', () => {
+        const prose = content.replace(/\s+/g, ' ');
+        for (const instruction of [
+            '"full auto", "monitor until merged", and generic PR monitoring as requests for native automation, not AI polling',
+            'autoFix.requested', 'autoFix.enabled', 'autoFix.scope', 'autoFix.triggerId', 'autoFix.warning',
+            'enabled is true, scope is `ci-and-conflicts`, a trigger ID is returned, and the PR is bound to the owner conversation',
+            'Do not create an AI cron when native auto-fix is active',
+            'report the PR URL and current pending status, then end the submission turn',
+            'submission chat or its Sentinel parent',
+            'disarms on merged or closed PRs without firing a wake',
+        ]) expect(prose).toContain(instruction);
+        expect(content).not.toContain('## Monitor mode');
+    });
+
+    it('keeps failures visible and polling and repair authorization explicit', () => {
+        const prose = content.replace(/\s+/g, ' ');
+        for (const instruction of [
+            'Ordinary submission, auto-merge, and generic monitoring requests grant no repair authority',
+            'autoFix: true` only when the user authorizes both CI and conflict repairs',
+            'native automation is disabled or unavailable, binding fails, or auto-merge or auto-fix enablement warns/fails',
+            'report the specific limitation and actual PR status',
+            'Never silently fall back to AI cron',
+            'Do not resubmit to repair automation or binding',
+            'Separately explicit user requests for AI polling/cron remain supported',
+            'owning workspace, PR, authorized checks/fixes, and a stop condition when merged or closed',
+        ]) expect(prose).toContain(instruction);
+    });
+
     it('preserves authorized defaults, conflicts, ownership and retry boundaries', () => {
         for (const instruction of [
             'autoMerge: true', 'autoMerge: false', 'Invoking this skill authorizes',
@@ -38,7 +67,6 @@ describe('submit-commits-as-pr skill', () => {
             "Never switch the active worktree's branch", 'bound: false',
             'Before any retry, check local/remote submission branches',
             'never blindly rerun', 'writable CoC context', 'requested repository',
-            'only when the user explicitly asks to monitor the PR',
         ]) expect(content).toContain(instruction);
     });
 });
