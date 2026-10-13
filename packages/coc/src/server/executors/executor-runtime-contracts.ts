@@ -50,6 +50,7 @@ import type { TurnPerformanceRecorder } from './turn-performance-tracker';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import type { BrowserToolStateStore } from '../llm-tools/browser-tools';
+import type { ConversationToolInventoryStore } from '../storage/conversation-tool-inventory-store';
 
 // ============================================================================
 // Feature dependency bundles
@@ -162,6 +163,8 @@ export interface ExecutorRuntimeCapabilities {
      * settled turn through it; recording is skipped when unset.
      */
     readonly getTurnPerformanceStore?: () => TurnPerformanceRecorder | undefined;
+    /** Latest-started-turn inventory, persisted outside process streaming payloads. */
+    readonly getToolInventoryStore?: () => Pick<ConversationToolInventoryStore, 'beginTurn' | 'record'> | undefined;
     /**
      * Live read of the admin-configured global system prompt
      * (`chat.globalSystemPrompt`), backed by RuntimeConfigService so edits take
@@ -231,6 +234,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'
+    | 'getToolInventoryStore'
     | 'getGlobalSystemPrompt'
     | 'resolveAiServiceForProvider'
     | 'getAskUserQuestionRelay'

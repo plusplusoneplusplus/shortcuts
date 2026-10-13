@@ -24,6 +24,8 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
+import type { ExecutorRuntimeCapabilities } from '../../../src/server/executors/executor-runtime-contracts';
+import { ConversationToolInventoryStore } from '../../../src/server/storage/conversation-tool-inventory-store';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -102,6 +104,28 @@ describe('createQueueInfrastructure', () => {
         );
 
         expect(registry).toBeInstanceOf(RepoQueueRegistry);
+    });
+
+    it('forwards the inventory store getter into restored and lazy executor runtimes', () => {
+        let inventoryStore: ConversationToolInventoryStore | undefined;
+        const getInventory = () => inventoryStore;
+        const args: Parameters<typeof createQueueInfrastructure> = [
+            store, dataDir, { queue: { autoStart: false } }, DEFAULT_QUEUE_RUNTIME_CONFIG, getWsServer,
+        ];
+        args[27] = getInventory;
+        const result = createQueueInfrastructure(...args);
+        try {
+            const runtime = (result.bridge as unknown as {
+                defaultOptions: { runtime: ExecutorRuntimeCapabilities };
+            }).defaultOptions.runtime;
+            expect(runtime.getToolInventoryStore).toBe(getInventory);
+            expect(runtime.getToolInventoryStore?.()).toBeUndefined();
+            inventoryStore = new ConversationToolInventoryStore(store.getDatabase());
+            expect(runtime.getToolInventoryStore?.()).toBe(inventoryStore);
+        } finally {
+            result.queuePersistence.dispose();
+            result.bridge.dispose();
+        }
     });
 
     it('passes followUpSuggestions to bridge without throwing', () => {

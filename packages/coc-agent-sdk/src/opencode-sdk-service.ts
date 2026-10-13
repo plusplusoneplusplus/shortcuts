@@ -47,6 +47,7 @@ import type { SendMessageOptions, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import type { ToolCall } from './tool-call';
 import { serializeToolResultWithImages } from './tool-result-images';
+import { unavailableToolInventory } from './tool-inventory';
 import { denyAllPermissions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, RewindResult, CompactResult } from './sdk-service-interface';
 import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-interface';
@@ -452,6 +453,7 @@ export class OpenCodeSDKService implements ISDKService {
             const onAbort = () => abortController.abort();
             options.signal.addEventListener('abort', onAbort);
             signalCleanup = () => options.signal!.removeEventListener('abort', onAbort);
+            if (options.signal.aborted) onAbort();
         }
 
         if (options.timeoutMs && options.timeoutMs > 0) {
@@ -544,6 +546,15 @@ export class OpenCodeSDKService implements ISDKService {
 
             if (abortController.signal.aborted) {
                 return { success: false, error: 'Request aborted', sessionId };
+            }
+
+            if (options.onToolInventory) {
+                // OpenCode's provider/model catalog is not session-scoped and
+                // cannot certify the effective agent, prompt or MCP tool set.
+                await options.onToolInventory(unavailableToolInventory(OPENCODE_PROVIDER));
+                if (abortController.signal.aborted) {
+                    return { success: false, error: 'Request aborted', sessionId };
+                }
             }
 
             // Subscribe to SSE events for real-time streaming when callbacks are provided

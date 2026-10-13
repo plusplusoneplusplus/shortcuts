@@ -305,6 +305,26 @@ describe('Section 2: Workspace-Scoped Event Filtering', () => {
         wsServer = new ProcessWebSocketServer();
     });
 
+    it('scopes descriptor-free tool inventory invalidations to the owning workspace and forwards them to relays', () => {
+        const owner = makeMockClient('owner', { workspaceId: 'ws-owner' });
+        const foreign = makeMockClient('foreign', { workspaceId: 'ws-other' });
+        const global = makeMockClient('global');
+        injectClient(wsServer, owner);
+        injectClient(wsServer, foreign);
+        injectClient(wsServer, global);
+        const relay = vi.fn();
+        const unsubscribe = wsServer.onBroadcast(relay);
+        const message: ServerMessage = { type: 'tool-inventory-changed', workspaceId: 'ws-owner',
+            processId: 'proc-1', turnId: 'new-turn', state: 'pending' };
+        wsServer.broadcastProcessEvent(message);
+        expect(owner.send).toHaveBeenCalledWith(JSON.stringify(message));
+        expect(global.send).toHaveBeenCalledWith(JSON.stringify(message));
+        expect(foreign.send).not.toHaveBeenCalled();
+        expect(relay).toHaveBeenCalledWith(JSON.stringify(message));
+        unsubscribe();
+        wsServer.closeAll();
+    });
+
     it('client subscribed to ws-111 receives tasks-changed for ws-111', () => {
         const clientA = makeMockClient('a', { workspaceId: 'ws-111' });
         injectClient(wsServer, clientA);

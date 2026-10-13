@@ -212,6 +212,18 @@ describe('NotesChatHeader', () => {
             onCopyResumeCommand: vi.fn(),
         };
 
+        it.each(['lens', 'side-panel', 'embedded'] as const)('opens owner-scoped Tools in %s Notes chat', async windowMode => {
+            const getToolInventory = vi.fn().mockResolvedValue({ state: 'unavailable' });
+            const toolInventoryTarget = { client: { processes: { getToolInventory } } as any, workspaceId: 'notes-owner', processId: 'notes-process' };
+            renderHeader({ windowMode, chatMetadata: { ...META, toolInventoryTarget } });
+            expect(getToolInventory).not.toHaveBeenCalled();
+            fireEvent.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+            await screen.findByText('Inventory unavailable');
+            expect(getToolInventory).toHaveBeenCalledWith('notes-process', { workspace: 'notes-owner' }, { signal: expect.any(AbortSignal) });
+            expect(screen.queryByText('Conversation metadata')).toBeNull();
+        });
+
         it('renders no metadata button without a bundle', () => {
             renderHeader();
             expect(screen.queryByRole('button', { name: /conversation metadata/i })).toBeNull();

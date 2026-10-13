@@ -42,7 +42,8 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
         connectionRef.current = getSpaCocClient().events.connect({
             onMessage: msg => {
                 if (browserRelayRef.current?.onMessage(msg)) return;
-                if (broadcastProcessUpdates && (msg.type === 'process-added' || msg.type === 'process-updated')) {
+                if (broadcastProcessUpdates && (msg.type === 'process-added' || msg.type === 'process-updated'
+                    || msg.type === 'tool-inventory-changed')) {
                     window.dispatchEvent(new CustomEvent('coc-local-ws-message', { detail: msg }));
                 }
                 onMessageRef.current(msg);

@@ -45,6 +45,7 @@ import { readCodexRolloutContextUsage } from './codex-rollout-usage';
 import { createMidTurnUsagePoller, type MidTurnTokenUsage } from './mid-turn-usage';
 import { IdleWatchdog, idleTimeoutErrorMessage } from './idle-watchdog';
 import { resolveCodexExecutablePath } from './codex-exec-path';
+import { unavailableToolInventory } from './tool-inventory';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as readline from 'readline';
@@ -1394,13 +1395,31 @@ export class CodexSDKService implements ISDKService {
             const streamed = await thread.runStreamed(this.buildCodexInput(options), { signal: abortController.signal });
             watchdog.start();
 
+            let inventoryCaptured = false;
+            const captureInventory = async () => {
+                if (inventoryCaptured || !options.onToolInventory) return;
+                if (abortController.signal.aborted) throw new Error('Request aborted');
+                inventoryCaptured = true;
+                // codex exec's SDK stream exposes startup and invocation events,
+                // but no initialized tool catalog. Neither configured bridge
+                // tools nor tools observed in this stream prove availability.
+                try {
+                    await options.onToolInventory(unavailableToolInventory(CODEX_PROVIDER));
+                } catch (error) {
+                    abortController.abort();
+                    throw error;
+                }
+                if (abortController.signal.aborted) throw new Error('Request aborted');
+            };
+
             for await (const event of streamed.events) {
                 // Every provider frame counts as activity, whatever its type.
                 watchdog.reset();
                 if (event.type === 'thread.started') {
                     notifySessionCreated(event.thread_id);
-                    continue;
                 }
+                await captureInventory();
+                if (event.type === 'thread.started') continue;
                 if (event.type === 'turn.completed') {
                     tokenUsage = addCodexUsage(tokenUsage, event.usage, effectiveModel);
                     continue;
@@ -1429,6 +1448,9 @@ export class CodexSDKService implements ISDKService {
                     continue;
                 }
             }
+
+            // A quiet stream also needs an explicit unavailable snapshot.
+            await captureInventory();
 
             // A timed-out turn settles as a failure even when the provider ends
             // the stream quietly on abort instead of throwing.

@@ -8,6 +8,7 @@ import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { GitOpsStore } from '@plusplusoneplusplus/forge';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
+import type { ConversationToolInventoryStore } from '../storage/conversation-tool-inventory-store';
 import type { Route } from '../types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -25,6 +26,7 @@ export interface ApiRouteContext {
     getSentinelMirror?: () => import('../messaging/sentinel-mirror-service').SentinelMirrorService | undefined;
     gitOpsStore: GitOpsStore;
     db?: NativeDatabase;
+    toolInventoryStore?: Pick<ConversationToolInventoryStore, 'getForProcess'>;
     /**
      * Whether the cron/recurring follow-up subsystem is enabled.
      * Remains startup-captured because cron infrastructure (executor, timers)

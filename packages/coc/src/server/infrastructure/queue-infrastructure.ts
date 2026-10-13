@@ -81,6 +81,7 @@ export function createQueueInfrastructure(
     getSentinelDependencyAdmission?: ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'],
     getBrowserControlRuntime?: ExecutorRuntimeCapabilities['getBrowserControlRuntime'],
     getBrowserToolState?: ExecutorRuntimeCapabilities['getBrowserToolState'],
+    getToolInventoryStore?: ExecutorRuntimeCapabilities['getToolInventoryStore'],
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -118,6 +119,7 @@ export function createQueueInfrastructure(
         getSentinelScrubber,
         getMcpOauthManager,
         getTurnPerformanceStore,
+        getToolInventoryStore,
         getDecisionService,
         getAskUserQuestionRelay,
         getGlobalSystemPrompt,

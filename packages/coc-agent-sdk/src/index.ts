@@ -1,3 +1,6 @@
+export type { RuntimeToolInventory, ToolInventoryDescriptor, ToolInventoryCategory, ToolInventorySource } from './tool-inventory';
+export { createRuntimeToolInventory, unavailableToolInventory } from './tool-inventory';
+
 export {
     MCPServerConfigBase,
     MCPLocalServerConfig,

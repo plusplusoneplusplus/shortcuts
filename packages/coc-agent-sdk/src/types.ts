@@ -599,6 +599,9 @@ export interface SendMessageOptions {
      */
     onSessionCreated?: (sessionId: string) => void;
 
+    /** Once after runtime initialization, before inference; contains only safe descriptors. */
+    onToolInventory?: (inventory: import('./tool-inventory').RuntimeToolInventory) => void | Promise<void>;
+
     /**
      * Callback invoked for each streaming chunk as it arrives from the SDK.
      * When provided, streaming mode is automatically enabled.

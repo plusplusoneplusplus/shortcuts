@@ -23,6 +23,7 @@ import { getHostname } from '../utils/config';
 import { registerCloneBaseUrls } from '../repos/cloneRegistry';
 import { WorkspaceOwnerContext } from '../repos/workspaceOwnerContext';
 import { parseRemoteCloneKey } from '../repos/cloneIdentity';
+import { getCocClientFor } from '../api/cocClient';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,21 @@ function PopOutContent({
     const owner = useMemo(() => ownerKey && workspaceId && sourceSelectionId
         ? { workspaceId, selectionId: sourceSelectionId, baseUrl: cloneBaseUrl }
         : null, [ownerKey, workspaceId, sourceSelectionId, cloneBaseUrl]);
+
+    useEffect(() => {
+        if (!cloneBaseUrl) return;
+        let active = true;
+        // This standalone window has no dashboard remote-clone event bridge.
+        const connection = getCocClientFor(cloneBaseUrl).events.connect({
+            onOpen: () => {
+                if (active) window.dispatchEvent(new CustomEvent('coc-remote-ws-connect', { detail: { baseUrl: cloneBaseUrl } }));
+            },
+            onMessage: message => {
+                if (active) window.dispatchEvent(new CustomEvent('coc-remote-ws-message', { detail: { baseUrl: cloneBaseUrl, message } }));
+            },
+        });
+        return () => { active = false; connection.close(); };
+    }, [cloneBaseUrl]);
 
     // Populate this window's own (otherwise empty) QueueProvider so ChatDetail can
     // resolve the implement-plan run's live status instead of showing 'Unknown'.

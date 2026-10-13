@@ -37,6 +37,7 @@ import { ensureMyLifeWorkspace, seedMyLifeDefaultNotes } from './workspaces/my-l
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createCronInfrastructure } from './infrastructure/cron-infrastructure';
 import { createTurnPerformanceInfrastructure } from './infrastructure/turn-performance-infrastructure';
+import { ConversationToolInventoryStore } from './storage/conversation-tool-inventory-store';
 import { createEnqueueWakeup } from './cron/enqueue-wakeup';
 import { createTriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCiChecksFetcher } from './triggers/ci-checks-fetcher';
@@ -299,6 +300,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — turn-performance infra is created after queue infra;
     // executors read the store lazily through the getter passed to the bridge.
     let turnPerformanceInfra: import('./infrastructure/turn-performance-infrastructure').TurnPerformanceInfrastructure | undefined;
+    const toolInventoryStore = store instanceof SqliteProcessStore
+        ? new ConversationToolInventoryStore(store.getDatabase()) : undefined;
 
     // Forward declaration — the in-process enqueue capability for the opt-in
     // `send_to_conversation` tool is bound at the route layer (where the queue
@@ -499,6 +502,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => getSentinelDependencyAdmissionCapability?.(),
         () => getBrowserRuntime?.(),
         () => browserState,
+        () => toolInventoryStore,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -846,6 +850,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         bindAddress: host,
         syncEngines,
         getTurnPerformanceStore: () => turnPerformanceInfra?.turnPerformanceStore,
+        toolInventoryStore,
         nativeCopilotSessionDbPath: options.nativeCopilotSessionDbPath,
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },

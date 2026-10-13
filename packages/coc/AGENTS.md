@@ -110,6 +110,30 @@ references before editing. Paths are package-relative.
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
+- `storage/conversation-tool-inventory-store.ts` borrows the process database and
+  retains one pending/captured inventory per process outside metadata, transcripts
+  and SSE. Server composition shares it through `getToolInventoryStore`; initial
+  and follow-up executors begin pending before runtime initialization and forward
+  capture through `chat-turn-runner.ts`. Capture once under the opaque turn identity;
+  cancelled, settled and stale callbacks cannot overwrite newer turns. Reads/writes
+  verify the persisted process owner. Safe descriptor projection and byte limits
+  apply on writes and lazy reads; persistence failures fail the turn.
+  `GET /api/processes/:id/tool-inventory` requires the owning `workspace` and uses
+  the composed store's `getForProcess` without transcript hydration or runtime probes.
+  Missing/foreign processes return 404; owned chats without snapshots are unavailable.
+  Use cancellable `processes.getToolInventory` on the owner-resolved client.
+  `ChatDetail` binds inspection to its current hydrated owner client and persisted
+  raw workspace/process; loading replacements and unresolved owners omit the target.
+  `ChatHeaderMetadata.toolInventoryTarget` carries this identity and an owner-scoped
+  refresh key through normal and Notes headers. Durable pending/capture writes emit
+  descriptor-free `tool-inventory-changed` WebSocket invalidations; exact-owner
+  observers refresh open readers at both boundaries and on reconnect. Remote pop-outs
+  maintain their own owning-server event stream. A supplied target enables
+  the metadata footer's Tools action beside Fork, including a Tools-only footer;
+  metadata-only native sessions omit it. Opening `ConversationToolsDialog` closes the
+  popover/mobile sheet and performs lazy storage retrieval only. Scope/turn changes
+  clear stale results; pending captures poll while open. Preserve explicit completeness
+  gaps and use `Dialog`'s focus trap with the surviving metadata trigger for focus return.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain

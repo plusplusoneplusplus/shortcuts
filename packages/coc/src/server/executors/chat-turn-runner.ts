@@ -181,6 +181,7 @@ export interface ChatTurnSendOptionsInput {
     onToolEvent: SendMessageOptions['onToolEvent'];
     onTokenUsage: SendMessageOptions['onTokenUsage'];
     onBackgroundTasksChanged: SendMessageOptions['onBackgroundTasksChanged'];
+    onToolInventory?: SendMessageOptions['onToolInventory'];
     /** From `buildMcpOAuthHandler`; `undefined` disables OAuth tracking. */
     onMcpOAuthRequired: SendMessageOptions['onMcpOAuthRequired'];
     /**
@@ -245,6 +246,7 @@ export function buildChatTurnSendOptions(input: ChatTurnSendOptionsInput): SendM
         onToolEvent: input.onToolEvent,
         onTokenUsage: input.onTokenUsage,
         onBackgroundTasksChanged: input.onBackgroundTasksChanged,
+        ...(input.onToolInventory ? { onToolInventory: input.onToolInventory } : {}),
         onMcpOAuthRequired: input.onMcpOAuthRequired,
         ...(onMcpAuthRequest ? { onMcpAuthRequest, managedMcpAuthServers } : {}),
         ...(input.dangerousCommandGuard?.enabled ? { dangerousCommandGuard: input.dangerousCommandGuard } : {}),

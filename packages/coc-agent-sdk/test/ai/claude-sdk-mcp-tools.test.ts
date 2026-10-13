@@ -22,6 +22,7 @@ import {
     COC_LLM_TOOLS_TOKEN_ENV,
 } from '../../src/llm-tools/mcp-config';
 import type { Tool } from '../../src/types';
+import { captureClaudeToolInventory } from '../../src/claude-tool-inventory';
 
 const mockDynamicImport = vi.mocked(dynamicImportModule);
 
@@ -59,6 +60,82 @@ describe('ClaudeSDKService MCP tool wiring', () => {
     afterEach(() => {
         svc.dispose();
         cocToolBridgeServer.closeAll();
+    });
+
+    it('captures unused initialized tools once, awaiting persistence before response delivery', async () => {
+        const init = {
+            type: 'system', subtype: 'init', session_id: 's1',
+            tools: ['Read', 'mcp__coc_llm_tools__ask_user', 'mcp__external__lookup'],
+            mcp_servers: [{ name: 'coc_llm_tools', status: 'connected' }, { name: 'external', status: 'connected' }],
+            env: { SECRET: 'never persist' },
+        };
+        queryFn.mockReturnValue(makeHandle([init, { ...init, tools: ['LaterTool'] }, SUCCESS]));
+        const order: string[] = [];
+        const onToolInventory = vi.fn(async (_inventory: any) => { await Promise.resolve(); order.push('inventory'); });
+        const result = await svc.sendMessage({
+            prompt: 'hi', tools: [tool('ask_user'), tool('not_advertised')], onToolInventory,
+            onStreamingChunk: () => { order.push('response'); },
+        });
+        expect(result.success).toBe(true);
+        expect(onToolInventory).toHaveBeenCalledTimes(1);
+        const inventory = onToolInventory.mock.calls[0][0];
+        expect(inventory.provider).toBe('claude');
+        expect(inventory.tools).toEqual([
+            { name: 'Read', source: 'builtin' },
+            { name: 'ask_user', source: 'coc', description: 'desc ask_user', inputSchema: { type: 'object', properties: {} } },
+            { name: 'mcp__external__lookup', source: 'mcp', serverName: 'external' },
+        ]);
+        expect(inventory.categories.every((category: any) => category.status === 'partial')).toBe(true);
+        expect(JSON.stringify(inventory)).not.toContain('SECRET');
+        expect(JSON.stringify(inventory)).not.toContain('handler');
+        expect(order[0]).toBe('inventory');
+    });
+
+    it('does not infer a catalog from configured tools when startup metadata is absent', async () => {
+        queryFn.mockReturnValue(makeHandle([SUCCESS]));
+        const onToolInventory = vi.fn();
+        await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user')], onToolInventory });
+        expect(onToolInventory).toHaveBeenCalledTimes(1);
+        expect(onToolInventory.mock.calls[0][0].tools).toEqual([]);
+        expect(onToolInventory.mock.calls[0][0].categories.every((c: any) => c.status === 'unavailable')).toBe(true);
+    });
+
+    it('captures independent catalogs on resumed turns', async () => {
+        const init = (name: string) => ({ type: 'system', subtype: 'init', tools: [name], mcp_servers: [] });
+        queryFn.mockReturnValueOnce(makeHandle([init('Read'), SUCCESS]))
+            .mockReturnValueOnce(makeHandle([init('Grep'), SUCCESS]));
+        const onToolInventory = vi.fn();
+        await svc.sendMessage({ prompt: 'first', onToolInventory });
+        await svc.sendMessage({ prompt: 'next', sessionId: 's1', onToolInventory });
+        expect(onToolInventory.mock.calls.map(call => call[0].tools.map((t: any) => t.name))).toEqual([['Read'], ['Grep']]);
+    });
+
+    it('stops response delivery when aborted during inventory persistence', async () => {
+        queryFn.mockReturnValue(makeHandle([
+            { type: 'system', subtype: 'init', tools: ['Read'], mcp_servers: [] }, SUCCESS,
+        ]));
+        const controller = new AbortController();
+        const onStreamingChunk = vi.fn();
+        await svc.sendMessage({
+            prompt: 'hi', signal: controller.signal, onStreamingChunk,
+            onToolInventory: async () => { controller.abort(); },
+        });
+        // The existing completion callback may signal end-of-stream, but no result content is delivered.
+        expect(onStreamingChunk.mock.calls.flat().every(chunk => chunk === '')).toBe(true);
+    });
+
+    it('propagates persistence failure and releases the bridge', async () => {
+        queryFn.mockReturnValue(makeHandle([
+            { type: 'system', subtype: 'init', tools: [], mcp_servers: [] }, SUCCESS,
+        ]));
+        const result = await svc.sendMessage({
+            prompt: 'hi', tools: [tool('ask_user')],
+            onToolInventory: async () => { throw new Error('inventory write failed'); },
+        });
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('inventory write failed');
+        expect((svc as any).sessions.size).toBe(0);
+        expect(cocToolBridgeServer.activeCount).toBe(0);
     });
 
     it('passes a mcpServers map with the coc bridge entry when tools are present', async () => {
@@ -197,5 +274,39 @@ describe('ClaudeSDKService MCP tool wiring', () => {
         const otherEvent = startEvents.find((e: any) => e.toolCallId === 't2');
         expect(cocEvent.toolName).toBe('ask_user'); // stripped
         expect(otherEvent.toolName).toBe('mcp__other_server__some_tool'); // untouched
+    });
+});
+
+describe('Claude startup inventory classification', () => {
+    it('marks malformed metadata unavailable and never falls back to bridge descriptors', () => {
+        const result = captureClaudeToolInventory({ tools: null }, [{ name: 'ask_user', description: 'desc', inputSchema: {} }]);
+        expect(result.tools).toEqual([]);
+        expect(result.categories.every(c => c.status === 'unavailable')).toBe(true);
+    });
+
+    it('matches actual MCP server labels, including underscores, without treating unknown MCP names as built-ins', () => {
+        const result = captureClaudeToolInventory({
+            tools: ['mcp__a__b__lookup', 'mcp__unknown__read', null, 'Read', 'Read'],
+            mcp_servers: [{ name: 'a', status: 'connected' }, { name: 'a__b', status: 'connected' }],
+        }, []);
+        expect(result.tools).toEqual([
+            { name: 'mcp__a__b__lookup', source: 'mcp', serverName: 'a__b' }, { name: 'Read', source: 'builtin' },
+        ]);
+        expect(result.categories.every(c => c.status === 'partial')).toBe(true);
+    });
+
+    it('does not classify an external reserved-name server as CoC without the active bridge', () => {
+        const result = captureClaudeToolInventory({
+            tools: ['mcp__coc_llm_tools__lookup'], mcp_servers: [{ name: 'coc_llm_tools', status: 'connected' }],
+        }, []);
+        expect(result.tools[0]).toEqual({ name: 'mcp__coc_llm_tools__lookup', source: 'mcp', serverName: 'coc_llm_tools' });
+    });
+
+    it('reports all confirmed CoC descriptors complete but missing native metadata partial', () => {
+        const result = captureClaudeToolInventory({
+            tools: ['mcp__coc_llm_tools__ask_user'], mcp_servers: [{ name: 'coc_llm_tools', status: 'connected' }],
+        }, [{ name: 'ask_user', description: 'desc', inputSchema: {} }]);
+        expect(result.categories.find(c => c.source === 'coc')?.status).toBe('complete');
+        expect(result.categories.find(c => c.source === 'mcp')?.status).toBe('partial');
     });
 });

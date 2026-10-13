@@ -40,6 +40,8 @@ vi.mock('../../src/sdk-esm-loader', () => ({
 }));
 
 import { dynamicImportModule } from '../../src/sdk-esm-loader';
+import { cocToolBridgeServer } from '../../src/llm-tools/bridge-server';
+import type { RuntimeToolInventory } from '../../src/tool-inventory';
 const mockDynamicImport = vi.mocked(dynamicImportModule);
 
 // ============================================================================
@@ -256,6 +258,202 @@ describe('OpenCodeSDKService', () => {
         it('throws after dispose', async () => {
             svc.dispose();
             await expect(svc.listModels()).rejects.toThrow('disposed');
+        });
+    });
+
+    describe('startup tool inventory', () => {
+        afterEach(() => {
+            cocToolBridgeServer.closeAll();
+        });
+
+        it('awaits one unavailable snapshot after setup and before inference or streaming', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+            const order: string[] = [];
+            client.event.subscribe.mockImplementation(async () => {
+                order.push('subscribe');
+                return { stream: (async function* () {
+                    yield { type: 'message.chunk', sessionID: 'new-session-1', content: 'ok' };
+                    yield { type: 'done', sessionID: 'new-session-1' };
+                })() };
+            });
+            client.session.prompt.mockImplementation(async () => {
+                order.push('prompt');
+                return { data: {
+                    info: { id: 'msg-1', sessionID: 'new-session-1', role: 'assistant' },
+                    parts: [{ type: 'text', text: 'ok' }],
+                } };
+            });
+            const onToolInventory = vi.fn(async (inventory: RuntimeToolInventory) => {
+                expect(svc.hasActiveSession('new-session-1')).toBe(true);
+                expect(cocToolBridgeServer.activeCount).toBe(1);
+                expect(inventory.provider).toBe('opencode');
+                expect(inventory.tools).toEqual([]);
+                expect(inventory.truncated).toBe(false);
+                expect(Number.isNaN(Date.parse(inventory.capturedAt))).toBe(false);
+                expect(inventory.categories.map(({ source, status }) => ({ source, status }))).toEqual([
+                    { source: 'builtin', status: 'unavailable' },
+                    { source: 'coc', status: 'unavailable' },
+                    { source: 'mcp', status: 'unavailable' },
+                ]);
+                order.push('capture');
+                await Promise.resolve();
+                order.push('persisted');
+            });
+            const result = await svc.sendMessage({
+                prompt: 'hi', onToolInventory,
+                tools: [{ name: 'read', description: 'read', parameters: {}, handler: async () => 'ok' }],
+                onSessionCreated: () => order.push('session'),
+                onStreamingChunk: chunk => { if (chunk) order.push('response'); },
+            });
+            expect(result.success).toBe(true);
+            expect(order.slice(0, 5)).toEqual(['session', 'capture', 'persisted', 'subscribe', 'prompt']);
+            expect(order.slice(5)).toEqual(['response']);
+            expect(onToolInventory).toHaveBeenCalledOnce();
+            expect(client.session.create).toHaveBeenCalledOnce();
+            expect(cocToolBridgeServer.activeCount).toBe(0);
+        });
+
+        it('does not infer availability from configured tools, global catalogs or tool calls', async () => {
+            const client = createMockClient();
+            const tool = { ids: vi.fn(), list: vi.fn() };
+            const mcp = { status: vi.fn(), connect: vi.fn() };
+            stubSDKWithClient({ ...client, tool, mcp });
+            const onToolInventory = vi.fn();
+            const onToolEvent = vi.fn(() => expect(onToolInventory).toHaveBeenCalledOnce());
+            client.session.prompt.mockResolvedValue({ data: {
+                info: { id: 'msg-1', sessionID: 'new-session-1', role: 'assistant' },
+                parts: [{
+                    type: 'tool', tool: 'external_read', callID: 'call-1',
+                    state: { status: 'completed', input: { secret: 'private' }, output: 'ok' },
+                }],
+            } });
+            const result = await svc.sendMessage({
+                prompt: 'hi', onToolInventory, onToolEvent,
+                tools: [{ name: 'never_called', description: 'configured', parameters: {}, handler: async () => 'ok' }],
+            });
+            expect(result.success).toBe(true);
+            expect(onToolEvent).toHaveBeenCalled();
+            expect(onToolInventory).toHaveBeenCalledOnce();
+            expect(onToolInventory.mock.calls[0][0].tools).toEqual([]);
+            expect(JSON.stringify(onToolInventory.mock.calls[0][0])).not.toContain('private');
+            expect(tool.ids).not.toHaveBeenCalled();
+            expect(tool.list).not.toHaveBeenCalled();
+            expect(mcp.status).not.toHaveBeenCalled();
+            expect(mcp.connect).not.toHaveBeenCalled();
+            expect(client.config.get).not.toHaveBeenCalled();
+            expect(cocToolBridgeServer.activeCount).toBe(0);
+        });
+
+        it('captures fresh unavailable snapshots on resumed non-streaming turns', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+            const onToolInventory = vi.fn();
+            for (let i = 0; i < 2; i++) {
+                const result = await svc.sendMessage({ prompt: 'hi', sessionId: 'resumed', onToolInventory });
+                expect(result.success).toBe(true);
+            }
+            expect(onToolInventory).toHaveBeenCalledTimes(2);
+            expect(onToolInventory.mock.calls[0][0]).not.toBe(onToolInventory.mock.calls[1][0]);
+            expect(client.session.create).not.toHaveBeenCalled();
+            expect(client.session.prompt).toHaveBeenCalledTimes(2);
+            expect(client.event.subscribe).not.toHaveBeenCalled();
+        });
+
+        it('captures unavailable even when the response has no parts', async () => {
+            const client = createMockClient();
+            client.session.prompt.mockResolvedValue({ data: {
+                info: { id: 'msg-1', sessionID: 'new-session-1', role: 'assistant' }, parts: [],
+            } });
+            stubSDKWithClient(client);
+            const onToolInventory = vi.fn();
+            expect((await svc.sendMessage({ prompt: 'hi', onToolInventory })).success).toBe(true);
+            expect(onToolInventory).toHaveBeenCalledOnce();
+            expect(onToolInventory.mock.calls[0][0].categories.every(
+                (category: { status: string }) => category.status === 'unavailable',
+            )).toBe(true);
+        });
+
+        it('stops inference and releases the bridge when persistence rejects', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+            const onStreamingChunk = vi.fn();
+            const result = await svc.sendMessage({
+                prompt: 'hi', onStreamingChunk,
+                tools: [{ name: 'read', description: 'read', parameters: {}, handler: async () => 'ok' }],
+                onToolInventory: async () => { throw new Error('inventory storage failed'); },
+            });
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('OpenCode SDK error: inventory storage failed');
+            expect(client.session.prompt).not.toHaveBeenCalled();
+            expect(client.event.subscribe).not.toHaveBeenCalled();
+            expect(onStreamingChunk).not.toHaveBeenCalled();
+            expect(cocToolBridgeServer.activeCount).toBe(0);
+            expect(svc.hasActiveSession('new-session-1')).toBe(false);
+        });
+
+        it('suppresses capture when cancelled during session startup', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+            const controller = new AbortController();
+            const onToolInventory = vi.fn();
+            const result = await svc.sendMessage({
+                prompt: 'hi', signal: controller.signal, onToolInventory,
+                onSessionCreated: () => controller.abort(),
+            });
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Request aborted');
+            expect(onToolInventory).not.toHaveBeenCalled();
+            expect(client.session.prompt).not.toHaveBeenCalled();
+            expect(svc.getActiveSessionCount()).toBe(0);
+        });
+
+        it('rechecks cancellation after awaited persistence and cleans up', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+            const controller = new AbortController();
+            const result = await svc.sendMessage({
+                prompt: 'hi', signal: controller.signal,
+                tools: [{ name: 'read', description: 'read', parameters: {}, handler: async () => 'ok' }],
+                onToolInventory: async () => {
+                    await Promise.resolve();
+                    controller.abort();
+                },
+            });
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Request aborted');
+            expect(client.session.prompt).not.toHaveBeenCalled();
+            expect(cocToolBridgeServer.activeCount).toBe(0);
+            expect(svc.getActiveSessionCount()).toBe(0);
+        });
+
+        it('suppresses late capture when cancelled while connecting to the server', async () => {
+            const client = createMockClient();
+            const controller = new AbortController();
+            client.global.health.mockImplementation(async () => {
+                controller.abort();
+                return { data: { healthy: true, version: '1.0.0' } };
+            });
+            stubSDKWithClient(client);
+            const onToolInventory = vi.fn();
+            const result = await svc.sendMessage({ prompt: 'hi', signal: controller.signal, onToolInventory });
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Request aborted');
+            expect(onToolInventory).not.toHaveBeenCalled();
+            expect(client.session.prompt).not.toHaveBeenCalled();
+            expect(svc.getActiveSessionCount()).toBe(0);
+        });
+
+        it('does not capture when session initialization fails', async () => {
+            const client = createMockClient();
+            client.session.create.mockRejectedValue(new Error('session initialization failed'));
+            stubSDKWithClient(client);
+            const onToolInventory = vi.fn();
+            const result = await svc.sendMessage({ prompt: 'hi', onToolInventory });
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('session initialization failed');
+            expect(onToolInventory).not.toHaveBeenCalled();
+            expect(client.session.prompt).not.toHaveBeenCalled();
         });
     });
 

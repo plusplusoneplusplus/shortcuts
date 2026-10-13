@@ -83,6 +83,22 @@ describe('useWebSocket', () => {
         window.removeEventListener('coc-local-ws-message', listener);
     });
 
+    it('publishes inventory invalidations only from the designated owner socket', () => {
+        const listener = vi.fn();
+        window.addEventListener('coc-local-ws-message', listener);
+        const owner = renderHook(() => useWebSocket({ onMessage: vi.fn(), broadcastProcessUpdates: true }));
+        act(() => owner.result.current.connect());
+        const message = { type: 'tool-inventory-changed', workspaceId: 'ws-owner',
+            processId: 'queue_chat', turnId: 'new-turn', state: 'pending' };
+        act(() => MockWebSocket.last._message(message));
+        expect(listener.mock.calls[0][0].detail).toEqual(message);
+        const secondary = renderHook(() => useWebSocket({ onMessage: vi.fn() }));
+        act(() => secondary.result.current.connect());
+        act(() => MockWebSocket.last._message(message));
+        expect(listener).toHaveBeenCalledOnce();
+        window.removeEventListener('coc-local-ws-message', listener);
+    });
+
     beforeEach(() => {
         MockWebSocket.reset();
         vi.stubGlobal('WebSocket', MockWebSocket);

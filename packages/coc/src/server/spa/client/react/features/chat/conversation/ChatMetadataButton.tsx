@@ -8,7 +8,7 @@
  */
 
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
-import { ConversationMetadataPopover, type MetaRow } from './ConversationMetadataPopover';
+import { ConversationMetadataPopover, type MetaRow, type ConversationToolInventoryTarget } from './ConversationMetadataPopover';
 import { readBotControl } from '../../../utils/botControl';
 
 /**
@@ -20,6 +20,7 @@ import { readBotControl } from '../../../utils/botControl';
 export interface ChatHeaderMetadata {
     /** Output of `buildMetadataProcess` — queue task merged with the process record. */
     metadataProcess: any;
+    toolInventoryTarget?: ConversationToolInventoryTarget;
     turnsCount: number;
     isPending: boolean;
     resumeSessionId: string | null | undefined;
@@ -42,6 +43,7 @@ export interface ChatMetadataButtonProps extends ChatHeaderMetadata {
 
 export function ChatMetadataButton({
     metadataProcess,
+    toolInventoryTarget,
     turnsCount,
     isPending,
     resumeSessionId,
@@ -62,6 +64,7 @@ export function ChatMetadataButton({
     return (
         <ConversationMetadataPopover
             process={metadataProcess}
+            toolInventoryTarget={toolInventoryTarget}
             turnsCount={turnsCount}
             extraRows={extraRows}
             triggerClassName={triggerClassName}

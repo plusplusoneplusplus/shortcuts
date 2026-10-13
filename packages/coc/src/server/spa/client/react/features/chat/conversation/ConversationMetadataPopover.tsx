@@ -5,6 +5,7 @@ import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
+import { ConversationToolsDialog, type ConversationToolsDialogProps } from './ConversationToolsDialog';
 import { getRalphContext, readCommitChatContext } from '../../../../../../tasks/task-types';
 import { useSessionTurnPerformance } from '../hooks/useSessionTurnPerformance';
 import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
@@ -579,8 +580,12 @@ export function buildCompactRows(rows: MetaRow[]): MetaRow[] {
     return compactRows;
 }
 
+export type ConversationToolInventoryTarget = Pick<ConversationToolsDialogProps, 'client' | 'workspaceId' | 'processId' | 'refreshKey'>;
+
 export interface ConversationMetadataPopoverProps {
     process: any;
+    /** Supplied only by a host that knows the exact persisted conversation owner. */
+    toolInventoryTarget?: ConversationToolInventoryTarget;
     turnsCount?: number;
     /** When provided, a "Resume In CLI" action button is shown at the bottom of the popover. */
     resumeSessionId?: string | null;
@@ -611,8 +616,9 @@ export interface ConversationMetadataPopoverProps {
 
 const DEFAULT_TRIGGER_CLASS = 'inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[12px] font-semibold italic text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0';
 
-export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onCopyResumeCommand, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows, triggerClassName }: ConversationMetadataPopoverProps) {
+export function ConversationMetadataPopover({ process, toolInventoryTarget, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onCopyResumeCommand, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows, triggerClassName }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
+    const [toolsOpen, setToolsOpen] = useState(false);
     const [systemPromptOpen, setSystemPromptOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -689,7 +695,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
         return () => document.removeEventListener('keydown', handler);
     }, [open]);
 
-    if (rows.length === 0 && (!extraRows || extraRows.length === 0)) return null;
+    if (!toolInventoryTarget && rows.length === 0 && (!extraRows || extraRows.length === 0)) return null;
 
     const popoverContent = (
         <>
@@ -769,7 +775,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                     </div>
                 )}
             </div>
-            {(resumeSessionId && (onLaunchInteractiveResume || onCopyResumeCommand) || onFork || onStartFreshSameContext) && (
+            {(resumeSessionId && (onLaunchInteractiveResume || onCopyResumeCommand) || onFork || onStartFreshSameContext || toolInventoryTarget) && (
                 <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-wrap gap-2">
                     {resumeSessionId && onLaunchInteractiveResume && (
                         <button
@@ -821,6 +827,16 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                             {forking ? 'Forking…' : 'Fork'}
                         </button>
                     )}
+                    {toolInventoryTarget && (
+                        <button
+                            type="button"
+                            onClick={() => { setOpen(false); setToolsOpen(true); }}
+                            title="Inspect tools available to the latest started turn"
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs text-[#0078d4] dark:text-[#3794ff] border border-[#0078d4] dark:border-[#3794ff] hover:bg-[#e8f0fb] dark:hover:bg-[#1a2a40] transition-colors"
+                        >
+                            Tools
+                        </button>
+                    )}
                 </div>
             )}
         </>
@@ -857,6 +873,15 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                     {popoverContent}
                 </div>,
                 document.body
+            )}
+
+            {toolInventoryTarget && (
+                <ConversationToolsDialog
+                    {...toolInventoryTarget}
+                    open={toolsOpen}
+                    onClose={() => setToolsOpen(false)}
+                    returnFocusRef={triggerRef}
+                />
             )}
 
             <Dialog

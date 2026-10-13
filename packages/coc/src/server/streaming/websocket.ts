@@ -122,6 +122,7 @@ export type ServerMessage =
     | { type: 'pong' }
     | { type: 'process-added'; process: ProcessSummary }
     | { type: 'process-updated'; process: ProcessSummary }
+    | { type: 'tool-inventory-changed'; workspaceId: string; processId: string; turnId: string; state: 'pending' | 'captured' }
     | { type: 'process-removed'; processId: string }
     | { type: 'processes-cleared'; count: number }
     | { type: 'queue-updated'; queue: QueueSnapshot }
@@ -515,6 +516,7 @@ export class ProcessWebSocketServer {
             message.type === 'work-item-updated' ||
             message.type === 'work-item-removed' ||
             message.type === 'sentinel-todos-changed' ||
+            message.type === 'tool-inventory-changed' ||
             message.type === 'sentinel-scrubber-changed'
         ) {
             return message.workspaceId;

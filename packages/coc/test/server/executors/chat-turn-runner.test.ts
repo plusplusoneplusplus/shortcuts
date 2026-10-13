@@ -185,6 +185,7 @@ describe('buildChatTurnSendOptions', () => {
             tools: [makeTool('ask_user')],
             skillDirectories: ['/skills'],
             disabledSkills: ['noisy'],
+            onToolInventory: vi.fn(),
         });
 
         const options = buildChatTurnSendOptions(input);
@@ -205,6 +206,7 @@ describe('buildChatTurnSendOptions', () => {
         expect(options.onToolEvent).toBe(input.onToolEvent);
         expect(options.onTokenUsage).toBe(input.onTokenUsage);
         expect(options.onBackgroundTasksChanged).toBe(input.onBackgroundTasksChanged);
+        expect(options.onToolInventory).toBe(input.onToolInventory);
     });
 
     it('spreads the resolved model, effort, and context tier only when present', () => {

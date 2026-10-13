@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import type { ConnectEventsOptions } from '@plusplusoneplusplus/coc-client';
+
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/api/cocClient')>(),
+    getCocClientFor: (baseUrl: string) => ({
+        events: { connect: (options: ConnectEventsOptions) => {
+            const close = vi.fn();
+            connections.push({ baseUrl, options, close });
+            return { close };
+        } },
+    }),
+}));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     AppProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -44,9 +56,10 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () =
         data-popout={String(isPopOut)} />,
 }));
 
-const { bootstrapQueue, postMessage } = vi.hoisted(() => ({
+const { bootstrapQueue, postMessage, connections } = vi.hoisted(() => ({
     bootstrapQueue: vi.fn().mockResolvedValue(undefined),
     postMessage: vi.fn(),
+    connections: [] as Array<{ baseUrl: string; options: ConnectEventsOptions; close: ReturnType<typeof vi.fn> }>,
 }));
 import { PopOutChatShell } from '../../../../src/server/spa/client/react/layout/PopOutChatShell';
 import { lookupCloneBaseUrl, registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
@@ -60,6 +73,7 @@ function setOwner(owner: string, endpoint?: string) {
 beforeEach(() => {
     registerCloneBaseUrls([]);
     vi.clearAllMocks();
+    connections.length = 0;
 });
 
 describe('PopOutChatShell selection ownership', () => {
@@ -78,6 +92,41 @@ describe('PopOutChatShell selection ownership', () => {
         expect(chat.getAttribute('data-popout')).toBe('true');
         if (endpoint) expect(lookupCloneBaseUrl(owner)).toBe(endpoint);
         expect(bootstrapQueue).toHaveBeenCalledOnce();
+        expect(connections.map(connection => connection.baseUrl)).toEqual(endpoint ? [endpoint] : []);
+    });
+
+    it('relays exact-owner inventory invalidations and reconnects, replacing and closing the remote transport', () => {
+        setOwner('remote:server-a:ws-1', 'https://clone-a.example.test');
+        const messageListener = vi.fn();
+        const connectListener = vi.fn();
+        window.addEventListener('coc-remote-ws-message', messageListener);
+        window.addEventListener('coc-remote-ws-connect', connectListener);
+        const view = render(<PopOutChatShell />);
+        const first = connections[0];
+        const message = { type: 'tool-inventory-changed', workspaceId: 'ws-1',
+            processId: 'proc-1', turnId: 'next-turn', state: 'pending' };
+        first.options.onMessage(message);
+        first.options.onOpen?.();
+        expect(messageListener.mock.calls[0][0].detail).toEqual({ baseUrl: first.baseUrl, message });
+        expect(connectListener.mock.calls[0][0].detail).toEqual({ baseUrl: first.baseUrl });
+        setOwner('remote:server-b:ws-1', 'https://clone-b.example.test');
+        view.rerender(<PopOutChatShell />);
+        expect(first.close).toHaveBeenCalledOnce();
+        first.options.onMessage(message);
+        first.options.onOpen?.();
+        expect(messageListener).toHaveBeenCalledOnce();
+        expect(connectListener).toHaveBeenCalledOnce();
+        const second = connections[1];
+        second.options.onMessage({ ...message, state: 'captured' });
+        expect(messageListener.mock.calls[1][0].detail).toEqual({
+            baseUrl: second.baseUrl, message: { ...message, state: 'captured' },
+        });
+        view.unmount();
+        expect(second.close).toHaveBeenCalledOnce();
+        second.options.onMessage(message);
+        expect(messageListener).toHaveBeenCalledTimes(2);
+        window.removeEventListener('coc-remote-ws-message', messageListener);
+        window.removeEventListener('coc-remote-ws-connect', connectListener);
     });
 
     it('replaces the explicit owner when the window route changes', () => {

@@ -16,6 +16,7 @@ import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
+import { useToolInventoryUpdates } from './hooks/useToolInventoryUpdates';
 import { isChatStyle, type ChatStyle, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl, resolveCloneRoute } from '../../repos/cloneRegistry';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../repos/cloneIdentity';
@@ -232,13 +233,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const cloneBaseUrl = useCloneBaseUrl(workspaceId);
     const scopedOwner = useWorkspaceOwner(workspaceId);
     const historyOwner = scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId;
-    const historyBaseUrl = scopedOwner?.baseUrl ?? sourceBaseUrl ?? cloneBaseUrl;
+    const historyBaseUrl = scopedOwner ? scopedOwner.baseUrl : sourceBaseUrl ?? cloneBaseUrl;
     const client = useMemo(() => historyBaseUrl ? getCocClientFor(historyBaseUrl) : routedClient, [historyBaseUrl, routedClient]);
     const historyOwnerAvailable = !historyOwner?.startsWith('remote:') || !!historyBaseUrl;
     const pagingEnabled = useChatHistoryPagingEnabled(historyBaseUrl, historyOwnerAvailable, taskId);
     const conversationStateKey = scopedOwner ? `${scopedOwner.selectionId}|${taskId}`
         : historyBaseUrl ? `${historyBaseUrl}|${historyOwner ?? ''}|${taskId}` : taskId;
     const historyRef = useRef<ReturnType<typeof useChatHistoryPaging> | null>(null);
+    // Bind loaded process data to its owner before publishing an inspection target.
+    const [hydrationScope, setHydrationScope] = useState<{ client: typeof client; key: string }>();
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -427,6 +430,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
     const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
     const browserWorkspaceId = parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId;
+    const toolInventoryRevision = useToolInventoryUpdates(
+        historyBaseUrl, browserWorkspaceId, processDetails?.id,
+    );
     const browserSourceClone = parseRemoteCloneKey(historyOwner) ?? parseRemoteCloneKey(owningWorkspaceId);
     const browserRoutingRef = browserWorkspaceId
         ? browserSourceClone ? buildRemoteCloneKey(browserSourceClone.serverId, browserWorkspaceId) : browserWorkspaceId
@@ -2037,6 +2043,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         isInitialLoadRef.current = true;
         const loadId = ++loadCounterRef.current;
         const currentTaskId = taskId;
+        setHydrationScope({ client, key: conversationStateKey });
         setLoading(true);
         setError(null);
         setSessionExpired(false);
@@ -2869,8 +2876,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     // One bundle feeding both the built-in header and `onHeaderMetadataChange`,
     // so the visible header and the published metadata can never diverge.
+    const toolInventoryTarget = useMemo(() => {
+        if (loading || !historyOwnerAvailable || !browserWorkspaceId || !processDetails?.id
+            || hydrationScope?.client !== client
+            || hydrationScope?.key !== conversationStateKey) return undefined;
+        return { client, workspaceId: browserWorkspaceId, processId: processDetails.id as string, refreshKey: toolInventoryRevision };
+    }, [loading, historyOwnerAvailable, browserWorkspaceId, processDetails?.id, client, conversationStateKey, hydrationScope, toolInventoryRevision]);
     const headerMetadata: ChatHeaderMetadata = useMemo(() => ({
         metadataProcess,
+        toolInventoryTarget,
         turnsCount: turns.length,
         isPending,
         resumeSessionId,
@@ -2884,7 +2898,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // Deps deliberately omit launchInteractiveResume / copyResumeCommand:
         // both are plain functions re-created every render, so including them
         // would rebuild the bundle — and re-emit it — on every poll.
-    }), [metadataProcess, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
+    }), [metadataProcess, toolInventoryTarget, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
 
     const onHeaderMetadataChangeRef = useRef(onHeaderMetadataChange);
     onHeaderMetadataChangeRef.current = onHeaderMetadataChange;
@@ -2903,6 +2917,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 <ChatHeader
                     task={task}
                     metadataProcess={headerMetadata.metadataProcess}
+                    toolInventoryTarget={headerMetadata.toolInventoryTarget}
                     planPath={effectivePlanPath}
                     createdFiles={displayFiles}
                     pinnedFile={pinnedFile}

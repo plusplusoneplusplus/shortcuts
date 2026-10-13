@@ -18,6 +18,7 @@ import type {
   ProcessGetOptions,
   ProcessTurnsQuery,
   ConversationTurnsPage,
+  ConversationToolInventoryResponse,
   CreatePendingProcessMessageResponse,
   ProcessListQuery,
   ProcessListResponse,
@@ -110,6 +111,13 @@ export class ProcessesClient {
   listTurns(processId: string, query?: ProcessTurnsQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ConversationTurnsPage> {
     return this.transport.request<ConversationTurnsPage>(`/processes/${encodePathSegment(processId)}/turns`, {
       query: query ? { ...query } : undefined,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+  }
+
+  getToolInventory(processId: string, query: { workspace: string }, options?: Pick<CocRequestOptions, 'signal'>): Promise<ConversationToolInventoryResponse> {
+    return this.transport.request<ConversationToolInventoryResponse>(`/processes/${encodePathSegment(processId)}/tool-inventory`, {
+      query,
       ...(options?.signal ? { signal: options.signal } : {}),
     });
   }

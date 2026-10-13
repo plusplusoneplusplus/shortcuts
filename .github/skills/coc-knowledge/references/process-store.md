@@ -131,6 +131,39 @@ counts to separate native/transport cost from Forge hydration.
 | `task_groups` | Parent/child task-group registry: one row per hierarchical run/session or chat folder (type, title, normalized status, hidden flag, origin process, `parent_group_id`, extra JSON) |
 | `task_group_members` | Child links per group: role (`generation`/`item`/`reduce`/`iteration`/`final-check`/`analyzer`/`critic`), task/process IDs, `itemKey`, `memberIndex` |
 
+### Conversation tool inventory storage
+
+`server/storage/conversation-tool-inventory-store.ts` owns an additive
+`conversation_tool_inventory` table in the shared native database. Its process
+foreign key cascades deletion; workspace authorization joins the current process
+owner, preserving workspace re-keying. Inventory data stays outside process
+metadata, transcripts, prompts and streaming payloads.
+
+`beginTurn` atomically replaces the latest snapshot with pending and an opaque
+turn identity. `record` captures once using compare-and-set; stale callbacks
+cannot overwrite newer turns. `get` lazily returns unavailable, pending or
+captured; `getForProcess` distinguishes absent/foreign processes from owned
+conversations without captures through a transcript-free owner join.
+SDK descriptor projection bounds snapshots to 1 MiB; metadata
+validation and bounded reads surface malformed data and persistence failures.
+Completed snapshots retain their captured provider/time independently of settings.
+
+Server composition borrows `SqliteProcessStore.getDatabase()` and publishes
+`getToolInventoryStore` through the shared executor runtime. `ChatBaseExecutor`
+begins capture before initial-turn setup; `FollowUpExecutor` begins before
+runtime/tool setup with the continuation's concrete provider. The common options
+builder forwards `onToolInventory`; its callback writes under the exact persisted
+owner and turn token, and stops accepting results on cancellation or settlement.
+Pending/capture write errors follow ordinary turn failure handling.
+
+The same composed store supplies `GET /api/processes/:id/tool-inventory`.
+The route requires the owning workspace, handles queue-prefixed aliases locally,
+and projects only display turn identity and safe snapshot fields. It returns 404
+for absent/foreign processes and unavailable for owned historical chats without
+captures. Retrieval never initializes providers or MCP servers. The framework-free
+`coc-client` contract and cancellable `processes.getToolInventory` preserve explicit
+pending, unavailable, partial and truncated states; callers select the owner client.
+
 ### Sentinel to-do store
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive

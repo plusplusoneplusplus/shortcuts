@@ -24,6 +24,7 @@ import type {
     ProcessStore,
     QueuedTask,
     SDKInvocationResult,
+    SendMessageOptions,
     SystemMessageConfig,
     TimelineItem,
     TokenUsage,
@@ -1108,6 +1109,41 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     // Shared execute — AI call lifecycle
     // ========================================================================
 
+    protected async beginToolInventoryCapture(
+        processId: string, provider: ChatProvider, signal: AbortSignal,
+        expectedWorkspaceId?: string, assistantTurnIndex?: number,
+    ) {
+        const inventoryStore = this.runtime.getToolInventoryStore?.();
+        if (!inventoryStore) return undefined;
+        const process = await this.store.getProcess(processId, expectedWorkspaceId);
+        const workspaceId = process?.metadata?.workspaceId;
+        if (!process || typeof workspaceId !== 'string' || !workspaceId) {
+            throw new Error('Conversation tool inventory owner not found');
+        }
+        const turnIndex = assistantTurnIndex ?? ((process.conversationTurns ?? [])
+            .reduce((max, turn) => Math.max(max, turn.turnIndex), -1) + 1);
+        const turn = inventoryStore.beginTurn(workspaceId, processId, provider, turnIndex);
+        const notify = (state: 'pending' | 'captured') => {
+            this.runtime.getWsServer?.()?.broadcastProcessEvent({
+                type: 'tool-inventory-changed', workspaceId, processId, turnId: turn.turnId, state,
+            });
+        };
+        notify('pending');
+        let active = true;
+        const onToolInventory: NonNullable<SendMessageOptions['onToolInventory']> = inventory => {
+            if (!active || signal.aborted) {
+                getLogger().debug(LogCategory.AI, '[ToolInventory] Ignoring capture after turn cancellation or settlement');
+                return;
+            }
+            if (!inventoryStore.record(turn, inventory)) {
+                getLogger().debug(LogCategory.AI, '[ToolInventory] Ignoring superseded or duplicate capture');
+            } else {
+                notify('captured');
+            }
+        };
+        return { onToolInventory, dispose: () => { active = false; } };
+    }
+
     /**
      * Execute a chat-mode AI task.
      *
@@ -1127,14 +1163,23 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const processId = toQueueProcessId(task.id);
         const provider = (task.payload as unknown as ChatPayload).provider ?? this.provider;
         const turnAbort = this.registerTurnAbortController(processId, provider);
+        let inventoryCapture: Awaited<ReturnType<ChatBaseExecutor['beginToolInventoryCapture']>>;
         try {
-            return await this.executeTurn(task, prompt, turnAbort);
+            inventoryCapture = await this.beginToolInventoryCapture(
+                processId, provider, turnAbort.signal,
+                (task.payload as unknown as ChatPayload).workspaceId,
+            );
+            return await this.executeTurn(task, prompt, turnAbort, inventoryCapture);
         } finally {
+            inventoryCapture?.dispose();
             this.releaseTurnAbortController(processId, turnAbort);
         }
     }
 
-    private async executeTurn(task: QueuedTask, prompt: string, turnAbort: AbortController): Promise<ChatModeExecutionResult> {
+    private async executeTurn(
+        task: QueuedTask, prompt: string, turnAbort: AbortController,
+        inventoryCapture?: Awaited<ReturnType<ChatBaseExecutor['beginToolInventoryCapture']>>,
+    ): Promise<ChatModeExecutionResult> {
         const processId = toQueueProcessId(task.id);
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
@@ -1405,6 +1450,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     onToolEvent: toolEventHandler,
                     onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
                     onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                    onToolInventory: inventoryCapture?.onToolInventory,
                     onMcpOAuthRequired: buildMcpOAuthHandler({
                         store: this.store,
                         processId,
@@ -1418,7 +1464,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             };
 
             let result: SDKInvocationResult;
-            result = await effectiveAiService.sendMessage(sendOptions) as SDKInvocationResult;
+            result = await effectiveAiService.sendMessage(sendOptions)
+                .finally(() => inventoryCapture?.dispose()) as SDKInvocationResult;
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');

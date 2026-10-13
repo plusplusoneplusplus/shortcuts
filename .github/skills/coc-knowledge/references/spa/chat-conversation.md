@@ -197,6 +197,29 @@ server read model.
 saying `USD pricing unavailable` when there is none; Copilot premium request units are
 not rendered. `QueuedFollowUps` renders pending messages as cancellable cards.
 
+### Tool inventory reader
+
+`ChatDetail` supplies its owner-selected client, persisted raw workspace and process ID
+only for the current hydrated owner. Unresolved owners and loading replacements omit
+the target. `ChatHeaderMetadata.toolInventoryTarget` carries that identity and an owner-scoped
+turn refresh key through `ChatHeader` and the compact Notes header to
+`ConversationMetadataPopover`. A supplied target enables the Tools footer action beside
+Fork, including a footer with Tools alone. Opening the reader closes the popover or
+mobile sheet; the surviving metadata trigger receives focus when the reader closes.
+Metadata-only native session adapters omit the target rather than guessing an owner.
+
+`useToolInventoryUpdates` observes the existing exact-server/workspace/process socket
+for descriptor-free pending/captured invalidations and owner reconnects. It supplies
+`refreshKey` without fetching inventory or using optimistic send/status transitions.
+Remote pop-outs relay their own owning-server event stream; local pop-outs use
+`ReposProvider`'s designated socket.
+
+`ConversationToolsDialog` lazily reads `processes.getToolInventory`, cancels closed or
+superseded reads, and polls only pending snapshots while open. Its `refreshKey`
+immediately hides preceding-turn data and rejects delayed reads. Search matches names,
+descriptions and server labels; source/server groups retain actual descriptors and
+explicit completeness gaps. The shared `Dialog` provides opt-in focus containment.
+
 ### Bot-managed conversation presentation
 
 `utils/botControl.ts` consumes only the owning server's default-off, gated public

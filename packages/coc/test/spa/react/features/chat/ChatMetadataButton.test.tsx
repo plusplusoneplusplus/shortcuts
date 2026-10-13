@@ -100,6 +100,13 @@ describe('ChatMetadataButton', () => {
         expect(popoverProps[0].extraRows).toBe(extraRows);
     });
 
+    it.each([false, true])('preserves the exact inventory target on mobile=%s', mobile => {
+        mockBreakpoint.isMobile = mobile;
+        const toolInventoryTarget = { client: { processes: {} } as any, workspaceId: 'raw-owner', processId: 'owned-process', refreshKey: 'latest-turn' };
+        renderButton({ toolInventoryTarget });
+        expect(popoverProps[0].toolInventoryTarget).toBe(toolInventoryTarget);
+    });
+
     it('passes a custom trigger class through to the popover', () => {
         renderButton({ triggerClassName: 'h-6 w-6' });
         expect(popoverProps[0].triggerClassName).toBe('h-6 w-6');

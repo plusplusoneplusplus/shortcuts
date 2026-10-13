@@ -44,7 +44,9 @@ import { getSDKLogger } from './logger';
 import { createMidTurnUsagePoller, type MidTurnTokenUsage, type MidTurnUsagePoller } from './mid-turn-usage';
 import { IdleWatchdog, idleTimeoutErrorMessage } from './idle-watchdog';
 import { screenDangerousCommand, isScreenedShellTool } from './dangerous-command-guard';
-import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
+import { CocToolRuntime, type RuntimeToolDescriptor } from './llm-tools/coc-tool-runtime';
+import { captureClaudeToolInventory } from './claude-tool-inventory';
+import { unavailableToolInventory } from './tool-inventory';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { evaluateClaudeImageFile } from './image-converter';
@@ -328,6 +330,7 @@ interface ClaudePermissionDeniedMessage {
 
 /** Maps an SDK `system` message `subtype` to its concrete message shape. */
 interface ClaudeSystemSubtypeMap {
+    init: ClaudeSystemMessage & { subtype: 'init' };
     task_started: ClaudeTaskStartedMessage;
     task_updated: ClaudeTaskUpdatedMessage;
     task_notification: ClaudeTaskNotificationMessage;
@@ -1243,7 +1246,7 @@ export class ClaudeSDKService implements ISDKService {
 
         try {
             const effort = this.normalizeClaudeEffort(options.reasoningEffort);
-            const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
+            const { servers: mcpServers, allowedTools, cleanup, inventoryTools } = await this.buildClaudeMcpServers(options);
             mcpServerNames = Object.keys(mcpServers).sort();
             mcpCleanup = cleanup;
             const disallowedTools = resolveClaudeDisallowedTools(options);
@@ -1411,6 +1414,14 @@ export class ClaudeSDKService implements ISDKService {
                 armPostDrainSettle();
             };
 
+            let inventoryCaptured = false;
+            const captureInventory = async (frame?: Record<string, unknown>) => {
+                if (inventoryCaptured || !options.onToolInventory || abortController.signal.aborted) return;
+                inventoryCaptured = true;
+                await options.onToolInventory(frame
+                    ? captureClaudeToolInventory(frame, inventoryTools)
+                    : unavailableToolInventory(CLAUDE_PROVIDER));
+            };
             watchdog.start();
 
             for await (const msg of handle) {
@@ -1421,6 +1432,12 @@ export class ClaudeSDKService implements ISDKService {
                 // is still arriving, so restart the post-drain window.
                 clearPostDrainSettle();
                 publishProviderSessionId(this.extractSessionId(msg));
+                if (this.isClaudeSystemSubtype(msg, 'init')) {
+                    await captureInventory(msg);
+                } else if (this.isAssistantMessage(msg) || this.isResultMessage(msg)) {
+                    await captureInventory();
+                }
+                if (abortController.signal.aborted) break;
                 if (this.isAssistantMessage(msg)) {
                     const isMainAgent = !msg.parent_tool_use_id;
                     for (const block of msg.message.content) {
@@ -1563,6 +1580,8 @@ export class ClaudeSDKService implements ISDKService {
                     else getSDKLogger().warn(denialFields, denialText);
                 }
             }
+
+            await captureInventory();
 
             // A timed-out turn settles as a failure rather than a partial
             // success: the loop above breaks on abort, so without this an idle
@@ -1736,7 +1755,7 @@ export class ClaudeSDKService implements ISDKService {
      */
     private async buildClaudeMcpServers(
         options: SendMessageOptions,
-    ): Promise<{ servers: Record<string, ClaudeMcpServerConfig>; allowedTools: string[]; cleanup: () => void }> {
+    ): Promise<{ servers: Record<string, ClaudeMcpServerConfig>; allowedTools: string[]; cleanup: () => void; inventoryTools: RuntimeToolDescriptor[] }> {
         const servers: Record<string, ClaudeMcpServerConfig> = {};
 
         if (options.mcpServers) {
@@ -1748,7 +1767,7 @@ export class ClaudeSDKService implements ISDKService {
 
         const tools = options.tools;
         if (!tools || tools.length === 0) {
-            return { servers, allowedTools: [], cleanup: () => {} };
+            return { servers, allowedTools: [], cleanup: () => {}, inventoryTools: [] };
         }
 
         const runtime = new CocToolRuntime(tools, { sessionId: options.sessionId });
@@ -1768,12 +1787,14 @@ export class ClaudeSDKService implements ISDKService {
         // for (or block) them — parity with Copilot, which runs the same bundle
         // without permission prompts. Each tool is allowed under its namespaced
         // MCP name (`mcp__<server>__<tool>`).
-        const allowedTools = runtime.listTools().map(
+        const inventoryTools = runtime.listTools();
+        const allowedTools = inventoryTools.map(
             tool => `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__${tool.name}`,
         );
         return {
             servers,
             allowedTools,
+            inventoryTools,
             cleanup: () => {
                 registration.unregister();
                 runtime.dispose();

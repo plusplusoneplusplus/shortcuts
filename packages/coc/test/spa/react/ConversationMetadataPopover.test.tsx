@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
     ConversationMetadataPopover,
     getSessionIdFromProcess,
@@ -1236,5 +1237,57 @@ describe('buildRows – chat style', () => {
     it('shows Default when the recorded style is not a stable wire value', () => {
         const rows = buildRows({ id: 'p-bogus', metadata: { chatStyle: 'friendly' } });
         expect(rows.find(r => r.label === 'Style')!.value).toBe('Default');
+    });
+});
+
+
+describe('conversation Tools footer', () => {
+    function target() {
+        const getToolInventory = vi.fn().mockResolvedValue({ state: 'unavailable' });
+        return { client: { processes: { getToolInventory } } as any, workspaceId: 'owning-workspace', processId: 'owned-process', refreshKey: 'turn-1' };
+    }
+
+    it.each([false, true])('opens a Tools-only footer and returns focus to metadata (mobile=%s)', async mobile => {
+        if (mobile) vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: query === '(max-width: 767px)', media: query,
+            addEventListener: vi.fn(), removeEventListener: vi.fn(),
+        }));
+        const toolInventoryTarget = target();
+        render(<ConversationMetadataPopover process={{}} toolInventoryTarget={toolInventoryTarget} />);
+        const metadata = screen.getByRole('button', { name: 'Show conversation metadata' });
+        expect(toolInventoryTarget.client.processes.getToolInventory).not.toHaveBeenCalled();
+        fireEvent.click(metadata);
+        const tools = screen.getByRole('button', { name: 'Tools' });
+        expect(tools.parentElement?.className).toContain('border-t');
+        expect(screen.queryByRole('button', { name: 'Fork' })).toBeNull();
+        tools.focus();
+        await userEvent.setup().keyboard('{Enter}');
+        expect(screen.queryByText('Conversation metadata')).toBeNull();
+        expect(screen.getByRole('dialog', { name: 'Tools' })).toBeTruthy();
+        await screen.findByText('Inventory unavailable');
+        expect(toolInventoryTarget.client.processes.getToolInventory).toHaveBeenCalledWith(
+            'owned-process', { workspace: 'owning-workspace' }, { signal: expect.any(AbortSignal) });
+        expect(document.activeElement).toBe(screen.getByRole('searchbox', { name: 'Search tools' }));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(document.activeElement).toBe(metadata);
+    });
+
+    it('places Tools directly beside Fork without running the fork action', async () => {
+        const onFork = vi.fn();
+        const toolInventoryTarget = target();
+        render(<ConversationMetadataPopover process={BASE_PROCESS} toolInventoryTarget={toolInventoryTarget} onFork={onFork} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        const fork = screen.getByRole('button', { name: /Fork$/ });
+        expect(fork.nextElementSibling).toBe(screen.getByRole('button', { name: 'Tools' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+        await screen.findByText('Inventory unavailable');
+        expect(onFork).not.toHaveBeenCalled();
+    });
+
+    it('does not guess inventory ownership for metadata-only native sessions', () => {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        expect(screen.queryByRole('button', { name: 'Tools' })).toBeNull();
     });
 });
