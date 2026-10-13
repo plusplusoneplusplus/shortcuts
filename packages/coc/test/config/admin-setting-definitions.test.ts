@@ -611,14 +611,21 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatFolders: true } }).chatFoldersEnabled).toBe(true);
     });
 
-    it('exposes Sentinel result cards as default-off, live and presentation-only', () => {
+    it('exposes Sentinel result cards as default-on, live and presentation-only with explicit opt-out', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelResultCards')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.ui?.tab).toBe('chat');
-        expect(DEFAULT_CONFIG.features.sentinelResultCards).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).sentinelResultCardsEnabled).toBe(false);
+        expect(def.ui?.hint).toMatch(/enabled by default/i);
+        expect(def.ui?.hint).toMatch(/presentation only/i);
+        expect(DEFAULT_CONFIG.features.sentinelResultCards).toBe(true);
+        expect(readAdminSettingValue(def, {})).toBe(true);
+        expect(readAdminSettingValue(def, { features: { sentinelResultCards: false } })).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelResultCardsEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).sentinelResultCardsEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: {} }).sentinelResultCardsEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ features: { sentinelResultCards: true } }).sentinelResultCardsEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { sentinelResultCards: false } }).sentinelResultCardsEnabled).toBe(false);
     });
 
     it('exposes the scheduler delay hint as a default-off live Appearance setting', () => {

@@ -1550,7 +1550,7 @@ timeout: 300
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sentinelDesktopMirror": false,
-                    "sentinelResultCards": false,
+                    "sentinelResultCards": true,
                     "sentinelTodoDependencies": false,
                     "sentinelTodoLedger": true,
                     "sentinelTodoScrubber": false,

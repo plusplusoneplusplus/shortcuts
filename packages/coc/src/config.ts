@@ -1090,7 +1090,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatStyleSelector: true,
         chatProviderSwitching: false,
         chatHistoryPaging: false,
-        sentinelResultCards: false,
+        sentinelResultCards: true,
         defaultChatStyle: 'default',
         chatStylePrompts: {},
     },

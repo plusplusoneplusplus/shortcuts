@@ -1105,10 +1105,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelResultCards', default: false, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
+        key: 'features.sentinelResultCards', default: true, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
         ui: {
             tab: 'chat', group: 'aiModes', order: 48, label: 'Sentinel result cards', badge: 'experimental',
-            hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Disabled by default.',
+            hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Enabled by default.',
             testId: 'toggle-sentinel-result-cards-enabled',
         },
     }),

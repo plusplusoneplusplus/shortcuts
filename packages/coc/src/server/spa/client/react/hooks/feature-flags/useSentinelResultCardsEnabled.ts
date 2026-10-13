@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, getFeatureValue } from '../../utils/config';
 
-/** Page-wide presentation preference; does not change the owner's execution capabilities. */
+/** Default-on page-wide presentation preference; does not change the owner's execution capabilities. */
 export function useSentinelResultCardsEnabled(): boolean {
-    const read = () => isFeatureEnabled('sentinelResultCardsEnabled');
+    const read = () => getFeatureValue('sentinelResultCardsEnabled') !== false;
     const [enabled, setEnabled] = useState(read);
     useEffect(() => {
         const update = () => setEnabled(read());
