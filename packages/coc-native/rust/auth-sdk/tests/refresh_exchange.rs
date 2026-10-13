@@ -14,8 +14,10 @@ const CLIENT: &str = "33333333-3333-4333-8333-333333333333";
 const SUCCESS: &str =
     r#"{"access_token":"opaque-fixture","token_type":"Bearer","expires_in":3600}"#;
 
+type CapturedRequest = (String, Vec<(String, String)>);
+
 struct SyntheticHttp {
-    requests: Mutex<Vec<(String, Vec<(String, String)>)>>,
+    requests: Mutex<Vec<CapturedRequest>>,
     status: u16,
     body: Secret,
     delay: Duration,
