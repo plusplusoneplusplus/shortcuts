@@ -14,10 +14,13 @@ Local runtime patches and owner config/reconnect notifications refresh capabilit
 unresolved remote selections cannot hydrate locally.
 
 REST hydration, queued transitions and SSE snapshots share the revision-aware merger.
-Same-revision snapshots replace the
-latest tail while retaining loaded older pages; revision changes cancel reads and reset
-to the latest page and bottom. Conversation caches retain only that latest page
-and mark it as paged, so disabling the flag cannot reuse it as full history.
+Owner WebSocket process-added/updated notifications coalesce into one detail GET per
+microtask batch; later notifications can start another read. Each matching notification
+supersedes prior handler results, and effect cleanup discards scheduled work.
+Same-revision snapshots replace the latest tail while retaining loaded older pages;
+revision changes cancel reads and reset to the latest page and bottom. Conversation
+caches retain only that latest page and mark it as paged, so disabling the flag cannot
+reuse it as full history.
 
 An IntersectionObserver loads shared `PAGE_TURNS` pages through the owner client, with
 one in-flight read, layout anchoring and automatic capped backoff. Hash `turn`/`turnIndex`,

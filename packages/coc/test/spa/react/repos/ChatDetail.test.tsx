@@ -1037,6 +1037,133 @@ describe('ChatDetail Sentinel implementation banners', () => {
     });
 });
 
+describe('ChatDetail owner WebSocket refresh batching', () => {
+    const processId = 'queue_refresh';
+    const workspaceId = 'ws-fixture';
+    function ownerFixture(baseUrl?: string, mode = 'ask') {
+        mockState.chatHistoryPagingEnabled = true;
+        const owner = { workspaceId, selectionId: baseUrl ? 'remote:fixture:ws-fixture' : workspaceId, baseUrl };
+        const detailUrl = `${baseUrl ?? ''}/api/processes/${processId}?workspace=${workspaceId}&turnsLimit=30`;
+        const data = (content: string) => ({
+            process: makeProcess({
+                id: processId, workspaceId, metadata: { mode, sessionId: 'fixture-session' },
+                conversationTurns: [{ role: 'assistant', content, turnIndex: 0, timeline: [] }],
+            }),
+            history: { oldestTurnIndex: 0, hasMore: false, totalTurns: 1, historyRevision: 0 },
+        });
+        setupFetch({
+            '/config/runtime': { body: { features: { chatHistoryPagingEnabled: true } } },
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { body: data('initial history') },
+        });
+        const notify = (type = 'process-updated', id = processId, workspace = workspaceId, endpoint = baseUrl) => {
+            const message = { type, process: { id, workspaceId: workspace } };
+            window.dispatchEvent(new CustomEvent(endpoint ? 'coc-remote-ws-message' : 'coc-local-ws-message', {
+                detail: endpoint ? { baseUrl: endpoint, message } : message,
+            }));
+        };
+        const reads = () => fetchMock.mock.calls.filter(([url]) => url === detailUrl).length;
+        const tree = (selection = owner) => <Wrap><WorkspaceOwnerContext.Provider value={selection}>
+            <ChatDetail taskId={processId} workspaceId={workspaceId} />
+        </WorkspaceOwnerContext.Provider></Wrap>;
+        return { owner, data, notify, reads, tree, detailUrl };
+    }
+
+    it.each([
+        { mode: 'ask' }, { mode: 'sentinel' },
+        { mode: 'ask', baseUrl: 'https://owner.example.test' },
+        { mode: 'sentinel', baseUrl: 'https://owner.example.test' },
+    ])('coalesces same-tick updates and retains later refreshes for $mode at $baseUrl', async ({ mode, baseUrl }) => {
+        const fixture = ownerFixture(baseUrl, mode);
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const initialReads = fixture.reads();
+        setupFetch({
+            '/turns/pinned': { body: { turns: [] } },
+            '/processes/': { body: fixture.data('refreshed history') },
+        });
+        await act(async () => {
+            fixture.notify('process-added');
+            fixture.notify();
+            fixture.notify();
+            expect(fixture.reads()).toBe(initialReads);
+        });
+        expect(fixture.reads()).toBe(initialReads + 1);
+        expect(screen.getByText('refreshed history')).toBeTruthy();
+        await act(async () => fixture.notify());
+        expect(fixture.reads()).toBe(initialReads + 2);
+    });
+
+    it('ignores other owners, workspaces, processes and event types without scheduling reads', async () => {
+        const fixture = ownerFixture('https://owner.example.test');
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const initialReads = fixture.reads();
+        await act(async () => {
+            fixture.notify('process-updated', processId, workspaceId, 'https://other.example.test');
+            fixture.notify('process-updated', processId, workspaceId, '');
+            fixture.notify('process-updated', 'queue_other');
+            fixture.notify('process-updated', processId, 'ws-other');
+            fixture.notify('process-removed');
+        });
+        expect(fixture.reads()).toBe(initialReads);
+    });
+
+    it('preserves newer-event supersession while a prior refresh is pending', async () => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const initialReads = fixture.reads();
+        let resolveOld!: (response: Response) => void;
+        let resolveNew!: (response: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveOld = resolve; }));
+        await act(async () => fixture.notify());
+        fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveNew = resolve; }));
+        await act(async () => { fixture.notify(); fixture.notify(); });
+        expect(fixture.reads()).toBe(initialReads + 2);
+        const response = (content: string) => new Response(JSON.stringify(fixture.data(content)), {
+            headers: { 'content-type': 'application/json' },
+        });
+        await act(async () => resolveNew(response('newest history')));
+        await act(async () => resolveOld(response('obsolete history')));
+        expect(screen.getByText('newest history')).toBeTruthy();
+        expect(screen.queryByText('obsolete history')).toBeNull();
+    });
+
+    it('allows another refresh after a batched request fails', async () => {
+        const fixture = ownerFixture();
+        render(fixture.tree());
+        await screen.findByText('initial history');
+        const initialReads = fixture.reads();
+        fetchMock.mockImplementationOnce(() => Promise.reject(new Error('fixture network failure')));
+        await act(async () => { fixture.notify(); fixture.notify(); });
+        expect(fixture.reads()).toBe(initialReads + 1);
+        expect(screen.getByText('CoC API request failed before receiving a response')).toBeTruthy();
+        await act(async () => fixture.notify());
+        expect(fixture.reads()).toBe(initialReads + 2);
+    });
+
+    it.each(['unmount', 'owner-change'])('discards scheduled work on %s', async action => {
+        const fixture = ownerFixture();
+        const view = render(fixture.tree());
+        await screen.findByText('initial history');
+        const scheduled: VoidFunction[] = [];
+        vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(callback => { scheduled.push(callback); });
+        act(() => fixture.notify());
+        expect(scheduled).toHaveLength(1);
+        if (action === 'unmount') view.unmount();
+        else view.rerender(fixture.tree({ ...fixture.owner, selectionId: 'replacement-owner' }));
+        const readsAfterCleanup = fixture.reads();
+        await act(async () => scheduled.forEach(callback => callback()));
+        expect(fixture.reads()).toBe(readsAfterCleanup);
+        if (action === 'owner-change') {
+            act(() => fixture.notify());
+            await act(async () => scheduled.at(-1)!());
+            expect(fixture.reads()).toBe(readsAfterCleanup + 1);
+        }
+    });
+});
+
 describe('ChatDetail', () => {
     it('keeps persisted metadata authoritative over the queue provider when the binding is absent', async () => {
         setupStandardFetch(
