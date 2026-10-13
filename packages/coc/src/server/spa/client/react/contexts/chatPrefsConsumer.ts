@@ -4,7 +4,7 @@
  * Pin action) keep working where tests replace ChatPreferencesContext wholesale.
  */
 
-import { createContext, useCallback, useContext, type Dispatch } from 'react';
+import { createContext, useCallback, useContext, useRef, type Dispatch } from 'react';
 import {
     pinProcess as apiPinProcess,
     unpinProcess as apiUnpinProcess,
@@ -64,17 +64,26 @@ export function useOptionalChatPrefs(): ChatPrefsAPI | null {
     const owner = useWorkspaceOwner(workspaceId);
     const ownerClient = useCocClient(workspaceId);
     const client = owner ? ownerClient : undefined;
+    const scope = useRef({ workspaceId, client });
+    if (scope.current.workspaceId !== workspaceId || scope.current.client !== client) {
+        scope.current = { workspaceId, client };
+    }
 
     const setChatPinned = useCallback(async (taskId: string, pinned: boolean) => {
+        const requestScope = scope.current;
         const wasPinned = state.pinnedIds.includes(taskId);
         const wasArchived = state.archivedIds.includes(taskId);
         dispatch({ type: pinned ? 'PIN' : 'UNPIN', taskId });
         try {
             if (client) await (pinned ? apiPinProcess : apiUnpinProcess)(taskId, workspaceId, client);
             else await (pinned ? apiPinProcess : apiUnpinProcess)(taskId, workspaceId);
+            // A history sync can replace optimistic state while the request runs.
+            if (scope.current === requestScope) dispatch({ type: pinned ? 'PIN' : 'UNPIN', taskId });
         } catch (err) {
-            if (wasPinned !== pinned) dispatch({ type: wasPinned ? 'PIN' : 'UNPIN', taskId });
-            if (pinned && wasArchived) dispatch({ type: 'ARCHIVE', taskId });
+            if (scope.current === requestScope) {
+                if (wasPinned !== pinned) dispatch({ type: wasPinned ? 'PIN' : 'UNPIN', taskId });
+                if (pinned && wasArchived) dispatch({ type: 'ARCHIVE', taskId });
+            }
             throw err;
         }
     }, [dispatch, state.pinnedIds, state.archivedIds, workspaceId, client]);

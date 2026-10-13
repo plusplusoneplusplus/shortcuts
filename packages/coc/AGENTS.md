@@ -49,7 +49,9 @@ references before editing. Paths are package-relative.
 - Collapsed workspace-rail job previews share `RailHoverPreview`. Pinned rows come
   from the owning workspace's full pinned-process read, overlaid with the chat
   list's live pin/archive state and tab/type visibility; do not derive them from
-  queue status arrays or aggregate member pins for a selected group. `RailJobMetadata`
+  queue status arrays or aggregate member pins for a selected group. Preview unpin
+  shares the list's owner-scoped pin action; discard stale reads/results and return
+  focus to a surviving row or rail control without expanding. `RailJobMetadata`
   keeps status/type separate from execution-mode pills. Queue and pinned snapshots
   project owner-verified current process modes in a transcript-free batch; Ralph
   identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.

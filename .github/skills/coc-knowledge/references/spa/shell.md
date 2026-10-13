@@ -379,8 +379,12 @@ unknown modes. Committed mode changes invalidate active queue snapshots through
 the existing WebSocket channel; pills add no browser reads or polling.
 Pinned rows use the owner's complete pinned-process endpoint plus the chat list's
 live pin/archive state and visibility rules; group scope does not aggregate member
-pins. Scope or transport changes dispose previews. Icon clicks retain sidebar
-expansion, and `queueJobHash` preserves conversation/workflow owner routes.
+pins. Unpin uses the shared `setChatPinned` action with canonical process IDs,
+retains pending rows, rejects duplicate clicks and reports failures. Successful
+unpins remove snapshot rows and supersede older reads; owner changes discard late
+results and rollback. Row removal moves focus to a neighbor or a stable rail
+control. Scope or transport changes dispose previews. Rail trigger clicks expand
+the sidebar; row actions stay collapsed, and `queueJobHash` preserves owner routes.
 
 ### Collapsed-rail Git tiles
 

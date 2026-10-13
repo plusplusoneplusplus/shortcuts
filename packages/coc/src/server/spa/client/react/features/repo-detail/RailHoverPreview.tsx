@@ -18,6 +18,8 @@ export interface RailControls {
     hoverEnabled: boolean;
     onExpand: () => void;
     onPreview: () => void;
+    /** Focus a stable rail control when the last preview row is removed. */
+    onFocusRail?: () => void;
     /** Expand the sidebar with its Git half open; `changes` reveals the working tree. */
     onOpenGit?: (target: 'changes' | 'branch') => void;
 }
@@ -34,7 +36,7 @@ export interface RailPreviewControl {
     badgeClassName: string;
     icon: ReactNode;
     /** List rows; `dismiss` closes the preview without restoring focus. */
-    renderRows: (dismiss: () => void) => ReactNode;
+    renderRows: (dismiss: () => void, focusAfterRemoval: (action: HTMLElement) => void) => ReactNode;
     /** Replaces the icon and count badge (status tiles that are not counts). */
     content?: ReactNode;
     /** Replaces the default 28px square trigger size. */
@@ -54,7 +56,7 @@ interface Props extends RailControls {
     scopeLabel?: string;
 }
 
-export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand, onPreview }: Props) {
+export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand, onPreview, onFocusRail }: Props) {
     const [active, setActive] = useState<string | null>(null);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -91,6 +93,17 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     }, [clearTimers]);
     const escape = useCallback(() => dismiss(true), [dismiss]);
     const close = useCallback(() => dismiss(), [dismiss]);
+    const focusAfterRemoval = (action: HTMLElement) => {
+        const row = action.closest('li');
+        if (!row?.contains(document.activeElement)) return;
+        const neighbor = row.nextElementSibling ?? row.previousElementSibling;
+        if (neighbor) {
+            neighbor.querySelector<HTMLElement>('a, button:not([disabled])')?.focus();
+        } else {
+            dismiss();
+            onFocusRail?.();
+        }
+    };
     useHoverPopoverDismissal(open, triggerRef, panelRef, dismiss, escape);
     useEffect(() => () => clearTimers(), [clearTimers]);
     useEffect(() => {
@@ -250,7 +263,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                             </div>
                             <button type="button" aria-label={current.closeLabel ?? 'Close job preview'} className="h-[22px] w-[22px] flex-shrink-0 rounded text-xs text-[#848484] hover:bg-[#f3f3f3] focus-visible:outline focus-visible:outline-[#007acc] dark:hover:bg-[#333]" onClick={() => dismiss(true)}>x</button>
                         </header>
-                        <ul>{current.renderRows(close)}</ul>
+                        <ul>{current.renderRows(close, focusAfterRemoval)}</ul>
                     </div>
                 </div>, portal,
             )}
@@ -263,10 +276,11 @@ interface RowProps {
     meta: ReactNode;
     href?: string;
     onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
+    action?: ReactNode;
 }
 
 /** One compact preview row: clamped title, status/type meta, and an Open job link. */
-export function RailPreviewRow({ title, meta, href, onOpen }: RowProps) {
+export function RailPreviewRow({ title, meta, href, onOpen, action }: RowProps) {
     return (
         <li className="flex items-start gap-2 border-b border-[#e5e5e5] px-3 py-2 last:border-0 dark:border-[#3c3c3c]">
             <div className="min-w-0 flex-1">
@@ -276,6 +290,7 @@ export function RailPreviewRow({ title, meta, href, onOpen }: RowProps) {
             {href && <a href={href} aria-label={`Open job: ${title}`}
                 className="flex-shrink-0 rounded border border-[#d0d7de] px-1.5 py-0.5 text-[10px] text-[#1878c8] hover:bg-[#eaf4ff] focus-visible:outline focus-visible:outline-[#007acc] dark:border-[#3c3c3c] dark:text-[#3794ff] dark:hover:bg-[#19384f]"
                 onClick={onOpen}>Open job</a>}
+            {action}
         </li>
     );
 }
