@@ -611,7 +611,7 @@ revisions through conflicts; rebasing is explicit. Abortable readiness reads
 refresh on any ledger revision. A prerequisite-first accessible chain navigates
 the same ledger; artifact evidence opens its prerequisite content workspace's
 read-only preview on the ledger's owning server.
-Readiness chips, saved action settings/authority and review warnings supplement
+Waiting/Ready chips and durable evidence-review warnings supplement
 fulfillment status. Manual items remain tracking-only; the tab adds no job
 launch/retry/cancel or authorization controls.
 

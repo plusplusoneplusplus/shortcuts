@@ -158,21 +158,20 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
                 if (!item) return `To-do item ${itemId} not found in this chat's ledger. Nothing was launched.`;
                 if (item.type === 'manual') return `${MANUAL_TRACKING_GUIDANCE} Nothing was launched.`;
                 if (item.archived) return `To-do item ${itemId} is archived; ask the user to restore it first. Nothing was launched.`;
-                if (item.dependsOn?.length && !service.dependencyActions) return 'This item has native prerequisites; dependency-authorized admission is required. Nothing was launched.';
+                if (item.dependsOn?.length && !service.dependencyActions) return 'This item has native prerequisites; native readiness admission is required. Nothing was launched.';
                 return undefined;
             } catch (err) {
                 return `Could not read the to-do ledger (${err instanceof Error ? err.message : String(err)}). Nothing was launched.`;
             }
         },
-        async prepare(itemId, args) {
+        async prepare(itemId) {
             const item = (await service.list(owner)).items.find(item => item.id === itemId);
             if (!item) throw new SentinelTodoError('not_found', 'To-do item not found');
             const context = service.dependenciesEnabled?.() && service.dependencyActions
-                ? await service.dependencyActions.context(owner, itemId, args) : undefined;
-            const dependencyBound = !!item.dependsOn?.length || !!item.dependencyAction;
-            if (dependencyBound && !context) throw new SentinelTodoError('invalid', 'Historical dependency authority requires native admission; disabled capability cannot become an ordinary launch');
-            return { context, ...(item.dependencyAction ? { requestId: item.dependencyAction.taskId } : {}),
-                dependencyBound };
+                ? await service.dependencyActions.context(owner, itemId) : undefined;
+            const dependencyBound = !!item.dependsOn?.length || !!item.dependencyReadiness;
+            if (dependencyBound && !context) throw new SentinelTodoError('invalid', 'Native prerequisites require readiness admission');
+            return { context, dependencyBound };
         },
         async link(itemId, job) {
             try {

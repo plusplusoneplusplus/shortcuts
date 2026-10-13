@@ -100,18 +100,13 @@ live gate. Ordinary create/update cannot author edges or evidence. These command
 preserve fulfillment and grant no authority; accepted designs remain pending coding
 completion.
 
-The tool reads `dependencyAction` and `dependencyReadiness` but cannot authorize
-actions. Dependency-bound `send_to_conversation` requires the exact
-saved prompt, mode, concrete provider/model and local workspace plus `todoItemId`;
-it carries owner/item/action revision into central enqueue and first execution.
-Missing or revoked authority needs approval. Consumed/blocked actions require
-fresh explicit user authorization, not tool retries or post-mode escalation.
-Manual items stay tracking-only; native cross-server admission rejects without
-local fallback.
-
-Removing all edges or disabling authoring never converts historical native
-authority into an ordinary launch. Started work exposes durable `requiresReview`
-warnings without changing fulfillment; warnings grant no rerun authority.
+The tool reads `dependencyReadiness`. Normally user-authorized
+`send_to_conversation` carries owner/item tracking into central enqueue and first
+execution, which evaluate all prerequisites and retain durable duplicate guards.
+Dispatch uses ordinary prompt/mode/provider/model selection. Readiness grants no
+new permissions and never executes items automatically. Manual items remain
+tracking-only; native cross-server admission rejects without local fallback.
+Started work exposes durable review warnings without changing fulfillment.
 Operational receipts and transport recovery are described in
 [process-store.md](process-store.md#sentinel-dependency-operations).
 

@@ -741,7 +741,7 @@ below jobs, with no execution or review label.
 
 `SentinelTodoDependencies` is gated by default-off
 `sentinelTodoDependenciesEnabled`. Its owner/item-keyed details add independent
-Waiting/Ready/Needs approval chips, typed prerequisite drafts and exact PR-output
+Waiting/Ready chips, typed prerequisite drafts and exact PR-output
 binding with visible provenance. Readiness reads use the owner client, abort on
 revision/owner changes and refresh for prerequisite-only ledger edits. Graph and
 binding saves keep their captured revision; conflicts retain drafts and require an
@@ -749,8 +749,9 @@ explicit rebase before retrying. The prerequisite-first, cycle-bounded chain use
 the same owner-ledger item navigation as triggers. Artifact evidence opens the
 prerequisite content workspace's read-only preview on the owning server, never a raw
 file reference as a browser URL.
-Saved mode/provider/model/target/scope and authority appear separately from
-readiness and fulfillment; Requires review warnings do not cancel running work.
+Durable prerequisite-review warnings appear separately from readiness and
+fulfillment; they do not cancel running work. Sentinel follows ordinary user
+authorization in the owning conversation.
 Manual items remain Tracking only. No launch, retry, cancel or approval controls
 are added to the To-do tracking surface.
 

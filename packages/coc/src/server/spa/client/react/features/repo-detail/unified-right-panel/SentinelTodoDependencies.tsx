@@ -97,10 +97,7 @@ function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLed
     const choices = items.filter(source => source.id !== item.id && !source.archived && !selected.has(source.id));
     const isManual = item.type === 'manual';
     const hasDependencies = (item.dependsOn?.length ?? 0) > 0;
-    const action = item.dependencyAction;
-    const state = evaluation?.state === 'ready'
-        ? (isManual || (action?.state === 'authorized' && item.dependencyReadiness?.state !== 'needs_approval') ? 'Ready' : 'Needs approval')
-        : 'Waiting';
+    const state = evaluation?.state === 'ready' ? 'Ready' : 'Waiting';
     const saveFailure = (failure: unknown) => {
         setError(sentinelTodoSaveError(failure).message);
         const current = typeof failure === 'object' && failure !== null && 'body' in failure
@@ -219,18 +216,9 @@ function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLed
                 {evaluation?.blocker && <div role="note">{evaluation.blocker}</div>}
                 {readError && <div role="alert">Evidence unavailable: {readError} <Button size="sm" variant="ghost" onClick={() => setRefresh(value => value + 1)}>Retry evidence read</Button></div>}
                 {isManual ? <span className={MUTED}>Tracking only - dependencies never authorize work.</span>
-                    : <span className={MUTED}>Readiness is not authorization. Approve actions in the owning conversation.</span>}
-                {action && <dl aria-label="Saved action configuration" className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 rounded bg-[#848484]/10 p-2">
-                    <dt>Mode</dt><dd>{action.mode === 'ask' ? 'Ask' : action.mode === 'ralph' ? 'Ralph' : 'Autopilot'}</dd>
-                    <dt>Provider</dt><dd>{action.provider}</dd>
-                    <dt>Model</dt><dd className="break-all">{action.model}</dd>
-                    <dt>Target workspace</dt><dd className="break-all">{action.targetWorkspaceId}</dd>
-                    <dt>Authority</dt><dd>{action.state === 'authorized' ? 'Previously authorized' : action.state === 'revoked' ? 'Revoked'
-                        : action.state === 'consumed' ? 'Consumed - fresh approval required to rerun' : 'Blocked - review required'}</dd>
-                    <dt>Authorized scope</dt><dd className="whitespace-pre-wrap break-words">{action.scope}</dd>
-                </dl>}
-                {action?.requiresReview && <div role="alert">Requires review - prerequisite evidence changed after admission. Running work is not cancelled.</div>}
-                {(action?.error || item.dependencyReadiness?.error) && <div role="alert">{action?.error ?? item.dependencyReadiness?.error}</div>}
+                    : <span className={MUTED}>Readiness does not start work. Sentinel follows your conversation instructions.</span>}
+                {item.dependencyReadiness?.requiresReview && <div role="alert">Requires review - prerequisite evidence changed after admission. Running work is not cancelled.</div>}
+                {item.dependencyReadiness?.error && <div role="alert">{item.dependencyReadiness.error}</div>}
                 {editing && <form aria-label="Edit dependencies" className="flex flex-col gap-1" onSubmit={event => { event.preventDefault(); void saveDependencies(); }}>
                     {draft.map((edge, index) => <fieldset key={edge.itemId} className="flex flex-col gap-1 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]">
                         <legend>{items.find(source => source.id === edge.itemId)?.title ?? 'Unavailable prerequisite'}</legend>

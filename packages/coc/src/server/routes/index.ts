@@ -553,7 +553,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const dependencyReceipts = new SentinelDependencyStore(todoDb, todoStore);
     const dependencyActions = new SentinelDependencyActions({
-        receipts: dependencyReceipts, service: sentinelTodos, dataDir,
+        receipts: dependencyReceipts, service: sentinelTodos,
         hasTask: taskId => !!bridge.getTask(taskId),
         coexistingTransport: (owner, itemId, evaluation, triggerId) => {
             const ledger = todoStore.get(owner);
@@ -594,10 +594,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
             if (!sentinelTodos.dependenciesEnabled()) throw new Error('Sentinel dependency admission is disabled');
             if (!opts.triggerManager) throw new Error('Existing trigger scheduler is unavailable for dependency wakes');
-            if (provider !== 'copilot' && config?.[provider]?.enabled !== true) throw new Error('Saved provider is disabled');
-            if (!sdkServiceRegistry.get(provider)) throw new Error('Saved provider is unavailable');
-            if (!bridge.getManagerByRepoId(workspaceId)) throw new Error('Saved target workspace is unavailable');
-            if (mode === 'ralph' && !getRalphEnabled()) throw new Error('Saved Ralph mode is disabled');
+            if (provider && provider !== 'copilot' && config?.[provider]?.enabled !== true) throw new Error('Selected provider is disabled');
+            if (provider && !sdkServiceRegistry.get(provider)) throw new Error('Selected provider is unavailable');
+            if (!bridge.getManagerByRepoId(workspaceId)) throw new Error('Selected target workspace is unavailable');
+            if (mode === 'ralph' && !getRalphEnabled()) throw new Error('Ralph mode is disabled');
             if (store instanceof SqliteProcessStore) {
                 const parent = todoDb.prepare('SELECT metadata FROM processes WHERE id = ?').get<{ metadata: string }>(owner.processId);
                 const metadata = parent?.metadata ? JSON.parse(parent.metadata) : undefined;
@@ -605,7 +605,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 if (parent ? metadata?.mode !== 'sentinel' || metadata?.workspaceId !== owner.workspaceId
                     : queued?.payload.mode !== 'sentinel' || (queued?.payload.workspaceId ?? queued?.repoId) !== owner.workspaceId
                         || !['queued', 'running'].includes(queued?.status ?? '')) {
-                    throw new Error('Saved Sentinel owner is unavailable');
+                    throw new Error('Sentinel owner is unavailable');
                 }
                 const workspace = todoDb.prepare('SELECT root_path, virtual FROM workspaces WHERE id = ?')
                     .get<{ root_path: string; virtual: number }>(workspaceId);
@@ -624,7 +624,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     sentinelTodos.dependencyActions = dependencyActions;
     const dependencyRalphFailure: NonNullable<RalphLaunchDeps['onTrackedLaunchFailure']> = (input, error) => {
         const token = input.sentinelTodoTracking;
-        if (token) dependencyActions.block(token.owner, token.itemId, token.actionRevision, error);
+        if (token) dependencyActions.block(token.owner, token.itemId, error, input.requestId);
     };
     opts.setSentinelDependencyAdmission?.(() => dependencyActions);
     const disposeDependencyPolling = opts.triggerManager?.setDependencyPolling({
@@ -734,12 +734,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             if (!sentinelTodos.dependenciesEnabled() || context?.sentinelScrub || typeof context?.spawnedFromProcessId !== 'string') return;
             const parent = await store.getProcess(context.spawnedFromProcessId);
             const queued = !parent && isQueueProcessId(context.spawnedFromProcessId) ? bridge.getTask(toTaskId(context.spawnedFromProcessId)) : undefined;
-            if (parent?.metadata?.mode === 'sentinel' || queued?.payload.mode === 'sentinel') throw new Error('Sentinel tracked launches require owner/item/action admission context');
+            if (parent?.metadata?.mode === 'sentinel' || queued?.payload.mode === 'sentinel') throw new Error('Sentinel tracked launches require owner/item admission context');
         },
         onTrackedFailure: (input, error) => {
             const token = (input.payload.context as Record<string, unknown> | undefined)?.sentinelTodoTracking as
                 import('@plusplusoneplusplus/coc-client').SentinelTodoTrackedAdmission | undefined;
-            if (token && !bridge.getTask(input.id!)) dependencyActions.block(token.owner, token.itemId, token.actionRevision, error);
+            if (token && !bridge.getTask(input.id!)) dependencyActions.block(token.owner, token.itemId, error, input.id);
         },
     });
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
@@ -769,13 +769,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Publish the bound follow-up delivery capability so executors can offer the
     // post mode of `send_to_conversation` (posting into an existing conversation).
-    const sendToolMessage = createSendMessageCapability(store, bridge);
-    opts.setSendMessage?.(async input => {
-        const process = await store.getProcess(input.processId);
-        const ralph = process?.metadata?.ralph as { sessionId?: string } | undefined;
-        dependencyActions.assertToolPostAllowed(input.processId, ralph?.sessionId);
-        return sendToolMessage(input);
-    });
+    opts.setSendMessage?.(createSendMessageCapability(store, bridge));
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. cronEnabled stays startup-captured

@@ -62,7 +62,7 @@ describe('Sentinel delegation admission', () => {
     });
 
     it('passes tracked owner/item/action context through local and native Ralph tool admission', async () => {
-        const tracking = { owner: { workspaceId: parentWorkspace, processId: parentId }, itemId: 'dependent', actionRevision: 3 };
+        const tracking = { owner: { workspaceId: parentWorkspace, processId: parentId }, itemId: 'dependent' };
         const taskId = '00000000-0000-4000-8000-000000000001';
         const tool = createSendToConversationTool({
             store, workspaceId: parentWorkspace, parentProcessId: parentId,

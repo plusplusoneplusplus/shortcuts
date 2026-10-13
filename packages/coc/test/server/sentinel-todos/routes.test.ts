@@ -153,31 +153,11 @@ describe('Sentinel to-do routes', () => {
         },
     );
 
-    it('requires confirmed owner-user action approval, exact settings and revision; revokes separately from artifact acceptance', async () => {
-        const s = await track(await startServer({ dependenciesEnabled: true,
-            dataDir: fs.mkdtempSync(path.join(process.cwd(), '.dependency-action-route-')) }));
-        const client = new CocClient({ baseUrl: s.baseUrl });
-        const source = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Source', status: 'done' })).item;
-        const dependent = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Dependent' })).item;
-        await client.sentinelTodos.setDependencies('ws-a', 'queue_s1', dependent.id, {
-            expectedRevision: 1, dependsOn: [{ itemId: source.id, condition: { kind: 'done' } }],
-        });
-        const request = { expectedRevision: 2, confirmed: true as const, action: {
-            mode: 'ask' as const, provider: 'copilot' as const, model: 'gpt-5.4',
-            targetWorkspaceId: 'ws-child', prompt: 'Review approved design', scope: 'Read-only design',
-        } };
-        const url = `${ledger}/items/${dependent.id}/dependency-action`;
-        expect((await req(s.baseUrl, 'PUT', url, { ...request, actor: 'sentinel' })).status).toBe(400);
-        expect((await req(s.baseUrl, 'PUT', url, { ...request, confirmed: false })).status).toBe(400);
-        expect((await req(s.baseUrl, 'PUT', url.replace('queue_s1', 'queue_s3'), request)).status).toBe(404);
-        const approved = await client.sentinelTodos.authorizeDependencyAction('ws-a', 'queue_s1', dependent.id, request);
-        expect(approved.item.dependencyAction).toMatchObject({ ...request.action, state: 'authorized', revision: 1 });
-        expect(approved.item.status).toBe('todo');
-        expect((await req(s.baseUrl, 'PUT', url, request)).status).toBe(409);
-        const revoked = await client.sentinelTodos.revokeDependencyAction('ws-a', 'queue_s1', dependent.id, { expectedRevision: approved.item.revision });
-        expect(revoked.item.dependencyAction).toMatchObject({ state: 'revoked', revision: 2 });
-        s.dependenciesEnabled.value = false;
-        expect((await req(s.baseUrl, 'DELETE', url, { expectedRevision: revoked.item.revision })).status).toBe(404);
+    it('has no separate dependency-action approval or revocation endpoint', async () => {
+        const s = await track(await startServer({ dependenciesEnabled: true }));
+        for (const method of ['PUT', 'DELETE']) {
+            expect((await req(s.baseUrl, method, `${ledger}/items/item/dependency-action`, {})).status).toBe(404);
+        }
     });
 
     it('hides every endpoint when the feature is off', async () => {

@@ -268,33 +268,26 @@ references before editing. Paths are package-relative.
   under the shared writer transaction, returning conjunctive readiness and
   blockers. Native evidence/evaluation tables are machine-local and wiped;
   diagnostic evaluations are not admission receipts. Re-evaluate before use.
-  `SentinelDependencyActions` reserves immutable evidence and one wake per graph/action
-  generation before `ProcessMessageDeliveryService.deliverOnce` transports it. Local
-  polling and transport recovery reuse the existing trigger scheduler; matching
-  owner/item/PR merge rules can own transport without rule mutation or duplicate wakes.
-  Explicit user-only, confirmed, revision-checked action authorization snapshots
-  mode, concrete provider/model, registered local target, prompt and scope.
-  Target validation materializes the registered concrete workspace's lazy queue
-  through the existing router before synchronous availability checks; it admits
-  no task and never falls back to the parent's queue.
-  Tools cannot create authority; manual items remain tracking-only. Central enqueue
-  consumes authority under the native writer and first execution rechecks current
-  evidence, graph/action revisions and provider/target availability. Preparation
-  leaves the admission unstarted; the SDK handoff repeats the check and durably marks
-  the start. Each graph replacement records an exact generation, including identical
-  selectors and removal of all edges. Native mutation hooks and fresh evidence reads
-  invalidate pending readiness/admissions atomically; immutable wake evidence stays
-  retained and invalidated pending wakes stop transport. Captured upstream generations
-  and known ancestor input proofs protect descendants. Started actions receive durable
-  `requiresReview` warnings without cancellation or fulfillment/user-verdict writes;
-  replacement authorization does not erase historical warnings. Historical native
-  action gating remains authoritative after edge removal or feature disablement. Stable identities
-  reconcile acceptance; errors and uncertain admissions require fresh authorization,
-  never automatic work retry. Native Ralph step-start receipts prevent execution
-  replay; started whole-session continuations preserve captured settings and scope.
-  The late-bound `getSentinelDependencyAdmission` receipt guard stays available when
-  authoring is disabled, so valid running work can finish. Dependency authoring and
-  artifact acceptance never grant execution authority or change fulfillment.
+  `SentinelDependencyActions` reserves immutable evidence and one wake per graph
+  generation before `ProcessMessageDeliveryService.deliverOnce` transports it.
+  Polling and transport recovery use the trigger scheduler; matching owner/item/PR
+  merge rules can own transport without rule mutation. Wakes ask the owner Sentinel
+  to decide under ordinary user authorization; readiness never launches work.
+  Normally authorized dispatch rechecks all prerequisites under the native writer
+  and reserves a durable launch receipt. Target validation materializes the concrete
+  registered workspace's queue through the router without falling back to the parent.
+  Manual items remain tracking-only. Preparation and SDK handoff repeat readiness
+  checks; handoff durably marks the start. Native admission and Ralph step identities
+  prevent duplicate execution across restart. Queue failures and uncertain acceptance
+  never re-arm work. Ordinary task permissions and Ralph Start approval stay intact.
+  Each graph replacement records an exact generation, including identical selectors
+  and empty edge sets. Source/upstream revisions and known ancestor input proofs
+  invalidate pending readiness/admissions atomically; invalidated pending wakes stop
+  transport. Started admissions expose `dependencyReadiness.requiresReview` and
+  errors without cancellation or fulfillment/user-verdict writes. Removing edges
+  cannot erase duplicate guards. Started whole-session Ralph continuations retain
+  their native session/step identities through the late-bound admission guard.
+  Dependency authoring and artifact acceptance grant no execution permissions.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
   including evidence-based Done with a reason; Notes and Done when are optional.

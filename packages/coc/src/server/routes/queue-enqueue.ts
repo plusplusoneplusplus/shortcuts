@@ -614,14 +614,6 @@ export async function prepareTaskForEnqueue(
             payload.context = { ...context, ...(active ? { browserMode: true } : {}) };
         }
     }
-    const context = payload.context as { sentinelTodoTracking?: { actionRevision?: unknown } } | undefined;
-    if (typeof context?.sentinelTodoTracking?.actionRevision === 'number') {
-        const model = input.config?.model;
-        if (!isChatProvider(payload.provider) || typeof model !== 'string' || !model
-            || resolveModelForProvider(payload.provider, model).coerced) {
-            throw new Error('Tracked dependency actions require compatible explicit saved provider/model; no fallback is allowed');
-        }
-    }
     await resolveDefaultProviderForTask(input, ctx);
     resolveEffortTierConfig(input, ctx);
 }
