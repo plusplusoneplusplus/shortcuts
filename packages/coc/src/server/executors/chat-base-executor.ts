@@ -1123,6 +1123,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const turnIndex = assistantTurnIndex ?? ((process.conversationTurns ?? [])
             .reduce((max, turn) => Math.max(max, turn.turnIndex), -1) + 1);
         const turn = inventoryStore.beginTurn(workspaceId, processId, provider, turnIndex);
+        const notify = (state: 'pending' | 'captured') => {
+            this.runtime.getWsServer?.()?.broadcastProcessEvent({
+                type: 'tool-inventory-changed', workspaceId, processId, turnId: turn.turnId, state,
+            });
+        };
+        notify('pending');
         let active = true;
         const onToolInventory: NonNullable<SendMessageOptions['onToolInventory']> = inventory => {
             if (!active || signal.aborted) {
@@ -1131,6 +1137,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
             if (!inventoryStore.record(turn, inventory)) {
                 getLogger().debug(LogCategory.AI, '[ToolInventory] Ignoring superseded or duplicate capture');
+            } else {
+                notify('captured');
             }
         };
         return { onToolInventory, dispose: () => { active = false; } };

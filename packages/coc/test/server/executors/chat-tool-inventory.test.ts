@@ -9,6 +9,7 @@ import { FollowUpExecutor } from '../../../src/server/executors/follow-up-execut
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import type { ChatProvider } from '../../../src/server/tasks/task-types';
 import { ConversationToolInventoryStore } from '../../../src/server/storage/conversation-tool-inventory-store';
+import { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import { createMockProcessStore } from '../../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
@@ -45,6 +46,7 @@ describe('chat startup tool inventory persistence', () => {
     let db: NativeDatabase;
     let inventoryStore: ConversationToolInventoryStore;
     let processes: ReturnType<typeof createMockProcessStore>;
+    let wsServer: ProcessWebSocketServer;
     const sdk = createMockSDKService();
     let sentOptions: SendMessageOptions | undefined;
     const processId = toQueueProcessId('inventory-task');
@@ -67,6 +69,7 @@ describe('chat startup tool inventory persistence', () => {
             resolveSkillConfig: async () => ({}),
             runtime: {
                 getToolInventoryStore: () => inventoryStore,
+                getWsServer: () => wsServer,
                 resolveAiServiceForProvider: () => sdk.service,
             },
         };
@@ -95,6 +98,8 @@ describe('chat startup tool inventory persistence', () => {
         db.prepare('INSERT INTO processes (id, workspace_id, status, start_time) VALUES (?, ?, ?, ?)')
             .run(processId, 'owner', 'completed', new Date().toISOString());
         inventoryStore = new ConversationToolInventoryStore(db);
+        wsServer = new ProcessWebSocketServer();
+        vi.spyOn(wsServer, 'broadcastProcessEvent');
         processes = createMockProcessStore({ initialProcesses: [processFixture()] });
         sdk.resetAll();
         sdk.mockIsAvailable.mockResolvedValue({ available: true });
@@ -111,7 +116,59 @@ describe('chat startup tool inventory persistence', () => {
         if (inventory.state !== 'pending') throw new Error('Expected pending inventory');
         return inventory.turn.provider;
     }
-    afterEach(() => db.close());
+    afterEach(() => { wsServer.closeAll(); db.close(); });
+
+    it.each(['first', 'follow-up', 'automated'] as const)(
+        'notifies the exact owner after durable pending/capture on %s starts, without descriptors or status changes',
+        async path => {
+            previousSnapshot();
+            const broadcast = vi.spyOn(wsServer, 'broadcastProcessEvent').mockImplementation(message => {
+                if (message.type !== 'tool-inventory-changed') return;
+                const persisted = inventoryStore.get('owner', processId);
+                expect(persisted.state).toBe(message.state);
+                expect(persisted.state !== 'unavailable' && persisted.turn.turnId).toBe(message.turnId);
+                expect(message).toEqual({
+                    type: 'tool-inventory-changed', workspaceId: 'owner', processId,
+                    turnId: expect.any(String), state: message.state,
+                });
+            });
+            if (path === 'first') {
+                const executor = new InventoryChatExecutor(processes, options());
+                executor.assembled.mockImplementation(() => {
+                    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ state: 'pending' }));
+                });
+                await executor.execute(task(), 'next');
+            } else {
+                processes.processes.set(processId, { ...processFixture(), status: 'running' });
+                await new FollowUpExecutor(processes, options()).executeFollowUp(
+                    processId, 'next', undefined, 'ask', undefined, undefined, undefined, undefined,
+                    path === 'automated' ? { source: 'cron' } : undefined,
+                );
+            }
+            const messages = broadcast.mock.calls.map(([message]) => message)
+                .filter(message => message.type === 'tool-inventory-changed');
+            expect(messages).toHaveLength(2);
+            expect(messages.map(message => message.state)).toEqual(['pending', 'captured']);
+            expect(messages[0].turnId).toBe(messages[1].turnId);
+            expect(processes.emitProcessEvent).not.toHaveBeenCalledWith(processId,
+                expect.objectContaining({ type: 'tool-inventory-changed' }));
+            await sentOptions?.onToolInventory?.(unavailableToolInventory('copilot'));
+            expect(broadcast.mock.calls.filter(([message]) => message.type === 'tool-inventory-changed')).toHaveLength(2);
+        },
+    );
+
+    it('does not notify a superseded or duplicate capture', async () => {
+        sdk.mockSendMessage.mockImplementation(async (sendOptions: SendMessageOptions) => {
+            await sendOptions.onToolInventory?.(unavailableToolInventory('copilot'));
+            await sendOptions.onToolInventory?.(unavailableToolInventory('copilot'));
+            inventoryStore.beginTurn('owner', processId, 'copilot', 3);
+            await sendOptions.onToolInventory?.(unavailableToolInventory('copilot'));
+            return { success: true, response: 'done' };
+        });
+        await new InventoryChatExecutor(processes, options()).execute(task(), 'next');
+        expect(vi.mocked(wsServer.broadcastProcessEvent).mock.calls
+            .filter(([message]) => message.type === 'tool-inventory-changed')).toHaveLength(2);
+    });
 
     it.each(['copilot', 'codex', 'claude', 'opencode'] as const)(
         'replaces the preceding snapshot before first-turn %s initialization and retains capture after settlement',
@@ -198,6 +255,7 @@ describe('chat startup tool inventory persistence', () => {
         }
         await sentOptions?.onToolInventory?.(unavailableToolInventory('copilot'));
         expect(inventoryStore.get('owner', processId)).toMatchObject({ state: 'pending' });
+        expect(wsServer.broadcastProcessEvent).not.toHaveBeenCalledWith(expect.objectContaining({ state: 'captured' }));
     });
 
     it.each(['first', 'follow-up'] as const)('suppresses a cancelled %s startup callback', async path => {
@@ -273,6 +331,7 @@ describe('chat startup tool inventory persistence', () => {
         expect(executor.assembled).not.toHaveBeenCalled();
         expect(sdk.mockIsAvailable).not.toHaveBeenCalled();
         expect(sdk.mockSendMessage).not.toHaveBeenCalled();
+        expect(wsServer.broadcastProcessEvent).not.toHaveBeenCalled();
     });
 
     it('fails closed before provider calls for a mismatched owner', async () => {

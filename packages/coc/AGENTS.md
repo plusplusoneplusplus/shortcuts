@@ -124,8 +124,11 @@ references before editing. Paths are package-relative.
   Use cancellable `processes.getToolInventory` on the owner-resolved client.
   `ChatDetail` binds inspection to its current hydrated owner client and persisted
   raw workspace/process; loading replacements and unresolved owners omit the target.
-  `ChatHeaderMetadata.toolInventoryTarget` carries this identity and an optional
-  refresh key through normal and Notes headers. A supplied target enables
+  `ChatHeaderMetadata.toolInventoryTarget` carries this identity and an owner-scoped
+  refresh key through normal and Notes headers. Durable pending/capture writes emit
+  descriptor-free `tool-inventory-changed` WebSocket invalidations; exact-owner
+  observers refresh open readers at both boundaries and on reconnect. Remote pop-outs
+  maintain their own owning-server event stream. A supplied target enables
   the metadata footer's Tools action beside Fork, including a Tools-only footer;
   metadata-only native sessions omit it. Opening `ConversationToolsDialog` closes the
   popover/mobile sheet and performs lazy storage retrieval only. Scope/turn changes

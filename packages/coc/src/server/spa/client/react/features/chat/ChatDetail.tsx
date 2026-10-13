@@ -16,6 +16,7 @@ import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
+import { useToolInventoryUpdates } from './hooks/useToolInventoryUpdates';
 import { isChatStyle, type ChatStyle, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl, resolveCloneRoute } from '../../repos/cloneRegistry';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../repos/cloneIdentity';
@@ -232,7 +233,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const cloneBaseUrl = useCloneBaseUrl(workspaceId);
     const scopedOwner = useWorkspaceOwner(workspaceId);
     const historyOwner = scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId;
-    const historyBaseUrl = scopedOwner?.baseUrl ?? sourceBaseUrl ?? cloneBaseUrl;
+    const historyBaseUrl = scopedOwner ? scopedOwner.baseUrl : sourceBaseUrl ?? cloneBaseUrl;
     const client = useMemo(() => historyBaseUrl ? getCocClientFor(historyBaseUrl) : routedClient, [historyBaseUrl, routedClient]);
     const historyOwnerAvailable = !historyOwner?.startsWith('remote:') || !!historyBaseUrl;
     const pagingEnabled = useChatHistoryPagingEnabled(historyBaseUrl, historyOwnerAvailable, taskId);
@@ -429,6 +430,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
     const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
     const browserWorkspaceId = parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId;
+    const toolInventoryRevision = useToolInventoryUpdates(
+        historyBaseUrl, browserWorkspaceId, processDetails?.id,
+    );
     const browserSourceClone = parseRemoteCloneKey(historyOwner) ?? parseRemoteCloneKey(owningWorkspaceId);
     const browserRoutingRef = browserWorkspaceId
         ? browserSourceClone ? buildRemoteCloneKey(browserSourceClone.serverId, browserWorkspaceId) : browserWorkspaceId
@@ -2876,8 +2880,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (loading || !historyOwnerAvailable || !browserWorkspaceId || !processDetails?.id
             || hydrationScope?.client !== client
             || hydrationScope?.key !== conversationStateKey) return undefined;
-        return { client, workspaceId: browserWorkspaceId, processId: processDetails.id as string };
-    }, [loading, historyOwnerAvailable, browserWorkspaceId, processDetails?.id, client, conversationStateKey, hydrationScope]);
+        return { client, workspaceId: browserWorkspaceId, processId: processDetails.id as string, refreshKey: toolInventoryRevision };
+    }, [loading, historyOwnerAvailable, browserWorkspaceId, processDetails?.id, client, conversationStateKey, hydrationScope, toolInventoryRevision]);
     const headerMetadata: ChatHeaderMetadata = useMemo(() => ({
         metadataProcess,
         toolInventoryTarget,

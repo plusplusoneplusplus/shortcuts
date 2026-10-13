@@ -153,6 +153,16 @@ gate before broadcast. Read failures produce content-free diagnostics without a
 success-shaped snapshot. Disabled queue broadcasts remain synchronous and perform
 no ownership reads.
 
+### Conversation inventory invalidation
+
+Chat executors broadcast `tool-inventory-changed` only after durable pending replacement
+or an accepted capture write. The workspace-filtered message carries process ID,
+opaque turn ID and pending/captured state, never descriptors or snapshot payloads.
+SPA exact-owner observers invalidate lazy REST reads independently of transcript/status
+changes, including automated continuations. Existing local/remote sockets publish these
+notifications; standalone remote chat pop-outs own one remote event connection.
+Reconnects invalidate open readers to recover missed boundaries.
+
 ### Per-clone global sockets
 
 `useWebSocket` opens the global `/ws` to the LOCAL server only. When remote clones are shown,
@@ -248,6 +258,7 @@ ProcessStore
 | Event Type | Sender |
 |---|---|
 | `process-added` / `process-updated` / `process-removed` | store.onProcessChange → websocket-infrastructure |
+| `tool-inventory-changed` | ChatBaseExecutor after durable pending/capture writes |
 | `drain-start/progress/complete/timeout` | Queue bridge → websocket-infrastructure |
 | `tasks-changed`, `workflows-changed`, `templates-changed` | watcher-infrastructure, routes/index |
 | `notes-changed` | watcher-infrastructure |

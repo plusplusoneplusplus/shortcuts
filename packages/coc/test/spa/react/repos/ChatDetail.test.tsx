@@ -3557,6 +3557,33 @@ describe('ChatDetail — onHeaderMetadataChange', () => {
 describe('ChatDetail — tool inventory owner target', () => {
     const inventoryReads = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/tool-inventory'));
 
+    it.each([undefined, 'https://owner.example.test'])(
+        'publishes inventory refreshes for actual owner turn boundaries, without fetching while closed (%s)', async baseUrl => {
+            const publish = vi.fn();
+            const owner = { workspaceId: 'ws-owner', selectionId: baseUrl ? 'remote:server:ws-owner' : 'ws-owner', baseUrl };
+            setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-owner', mode: 'ask' } }));
+            render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+                <ChatDetail taskId="task-1" workspaceId="ws-owner" sourceBaseUrl="https://conflicting.example.test"
+                    hideHeader onHeaderMetadataChange={publish} />
+            </WorkspaceOwnerContext.Provider></Wrap>);
+            await waitFor(() => expect(publish.mock.calls.at(-1)?.[0]?.toolInventoryTarget).toBeDefined());
+            const initial = publish.mock.calls.at(-1)![0].toolInventoryTarget;
+            const message = { type: 'tool-inventory-changed', workspaceId: 'ws-owner',
+                processId: 'proc-1', turnId: 'new-turn', state: 'pending' };
+            const emit = (detail: unknown) => act(() => {
+                window.dispatchEvent(new CustomEvent(baseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message', { detail }));
+            });
+            emit(baseUrl ? { baseUrl: 'https://other.example.test', message } : { ...message, workspaceId: 'other' });
+            expect(publish.mock.calls.at(-1)![0].toolInventoryTarget.refreshKey).toBe(initial.refreshKey);
+            emit(baseUrl ? { baseUrl, message } : message);
+            await waitFor(() => expect(publish.mock.calls.at(-1)![0].toolInventoryTarget.refreshKey).toBe(initial.refreshKey + 1));
+            emit(baseUrl ? { baseUrl, message: { ...message, state: 'captured' } } : { ...message, state: 'captured' });
+            await waitFor(() => expect(publish.mock.calls.at(-1)![0].toolInventoryTarget.refreshKey).toBe(initial.refreshKey + 2));
+            expect(publish.mock.calls.at(-1)![0].toolInventoryTarget.client).toBe(initial.client);
+            expect(inventoryReads()).toHaveLength(0);
+        },
+    );
+
     it.each([{ variant: 'inline' as const }, { variant: 'floating' as const }, { isPopOut: true }])(
         'uses persisted ownership and process ID in shared chat chrome %j', async props => {
             setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-owner', mode: 'ask' } }));

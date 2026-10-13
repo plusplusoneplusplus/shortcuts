@@ -2,7 +2,8 @@ import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ConversationToolInventoryResponse } from '@plusplusoneplusplus/coc-client';
-import { ConversationToolsDialog } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationToolsDialog';
+import { ConversationToolsDialog, type ConversationToolsDialogProps } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationToolsDialog';
+import { useToolInventoryUpdates } from '../../../src/server/spa/client/react/features/chat/hooks/useToolInventoryUpdates';
 
 const turn = { turnId: 'latest', turnIndex: 3, provider: 'copilot', startedAt: '2026-10-13T10:00:00Z' };
 const captured: ConversationToolInventoryResponse = {
@@ -24,6 +25,11 @@ function fixture(response: ConversationToolInventoryResponse = captured) {
     const onClose = vi.fn();
     const props = { open: true, client, workspaceId: 'owner-workspace', processId: 'proc-1', onClose };
     return { props, getToolInventory, onClose };
+}
+
+function LiveReader({ baseUrl, ...props }: ConversationToolsDialogProps & { baseUrl?: string }) {
+    const refreshKey = useToolInventoryUpdates(baseUrl, props.workspaceId, props.processId);
+    return <ConversationToolsDialog {...props} refreshKey={refreshKey} />;
 }
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -120,6 +126,52 @@ describe('ConversationToolsDialog', () => {
         expect(other.getToolInventory.mock.calls[0][1]).toEqual({ workspace: 'remote-owner' });
         expect(f.getToolInventory.mock.calls[1][2].signal.aborted).toBe(true);
     });
+
+    it.each([undefined, 'https://owner.example.test'])(
+        'invalidates an open reader on actual starts and capture from owner %s, ignoring stale reads and recovering on reconnect',
+        async baseUrl => {
+            const f = fixture();
+            const view = render(<LiveReader {...f.props} baseUrl={baseUrl} />);
+            await screen.findByText('read_file');
+            const emit = (state: 'pending' | 'captured', turnId = 'next-turn') => {
+                const message = { type: 'tool-inventory-changed', workspaceId: f.props.workspaceId,
+                    processId: f.props.processId, turnId, state };
+                act(() => { window.dispatchEvent(new CustomEvent(
+                    baseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message',
+                    { detail: baseUrl ? { baseUrl, message } : message },
+                )); });
+            };
+            let finishOld!: (response: ConversationToolInventoryResponse) => void;
+            f.getToolInventory.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+            // A reconnect read of the preceding capture can still be in flight at the new start.
+            act(() => { window.dispatchEvent(new CustomEvent(
+                baseUrl ? 'coc-remote-ws-connect' : 'coc-local-ws-connect', { detail: { baseUrl } },
+            )); });
+            const oldSignal = f.getToolInventory.mock.calls[1][2].signal;
+            const nextTurn = { ...turn, turnId: 'next-turn', provider: 'claude' };
+            f.getToolInventory.mockResolvedValue({ state: 'pending', turn: nextTurn });
+            emit('pending');
+            expect(screen.queryByText('read_file')).toBeNull();
+            expect(oldSignal.aborted).toBe(true);
+            await screen.findByText(/Inventory pending/);
+            await act(async () => { finishOld(captured); });
+            expect(screen.queryByText('read_file')).toBeNull();
+            const nextCapture: ConversationToolInventoryResponse = { ...captured, turn: nextTurn,
+                snapshot: { ...captured.snapshot, provider: 'claude', tools: [{ source: 'builtin', name: 'new_unused_tool' }] } };
+            f.getToolInventory.mockResolvedValue(nextCapture);
+            emit('captured');
+            await screen.findByText('new_unused_tool');
+            expect(screen.queryByText('read_file')).toBeNull();
+            expect(screen.getByText(/Latest started turn · claude/)).toBeTruthy();
+            view.rerender(<LiveReader {...f.props} baseUrl={baseUrl} open={false} />);
+            const reads = f.getToolInventory.mock.calls.length;
+            emit('pending', 'another-turn');
+            expect(f.getToolInventory).toHaveBeenCalledTimes(reads);
+            view.rerender(<LiveReader {...f.props} baseUrl={baseUrl} />);
+            await screen.findByText('new_unused_tool');
+            expect(f.getToolInventory).toHaveBeenCalledTimes(reads + 1);
+        },
+    );
 
     it('shows retrieval errors without provider error bodies or a successful empty inventory', async () => {
         const f = fixture(); f.getToolInventory.mockRejectedValue(new Error('secret provider body'));
