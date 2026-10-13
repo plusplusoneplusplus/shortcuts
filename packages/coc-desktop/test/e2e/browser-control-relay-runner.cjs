@@ -125,21 +125,24 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     await new Promise((resolve, reject) => {
         get(origin + '/pending', response => { response.resume(); resolve(); }).on('error', reject);
     });
-    console.log('E2E::' + JSON.stringify({
+    const report = {
         initialTabs: tabs.tabs.length, tabs: listed.tabs.length, selected: opened.tab === listed.tabs[0].id,
         read: read.text, value: JSON.parse(evaluated.valueJson), imageType: screenshot.image.mimeType, size, cropSize,
         popupSelected: popupSelection.tab === popup.id, popupRead: popupRead.text,
-    }));
-    win.destroy();
+    };
+    console.error('Fixture cleanup: disposing browser views');
     await disposeBrowserViews();
+    console.error('Fixture cleanup: destroying owner window');
+    win.destroy();
     sockets.closeAll();
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
+    console.log('E2E::' + JSON.stringify({ ...report, disposed: true, serverClosed: true }));
     app.exit(0);
 })().catch(async error => {
     console.error(error);
-    if (win && !win.isDestroyed()) win.destroy();
     await disposeBrowserViews().catch(() => {});
+    if (win && !win.isDestroyed()) win.destroy();
     sockets.closeAll();
     server.closeAllConnections();
     server.close();

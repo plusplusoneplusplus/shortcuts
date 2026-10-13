@@ -34,6 +34,7 @@ describe.skipIf(skip)('real server → SPA → preload → main browser relay', 
                 });
             });
             expect(result).toMatchObject({ initialTabs: 0, tabs: 1, selected: true, value: { saved: 'Fixture value' }, imageType: 'image/jpeg', popupSelected: true });
+            expect(result).toMatchObject({ disposed: true, serverClosed: true });
             expect(result.read).toContain('# Local fixture');
             expect(result.read).toContain('Fixture value');
             expect(result.popupRead).toContain('# Local fixture');

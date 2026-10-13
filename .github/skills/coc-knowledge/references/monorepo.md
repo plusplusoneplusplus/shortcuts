@@ -279,7 +279,8 @@ artifacts and runs the workflow on Linux/macOS and Windows WebView2; feature adm
 uses default-off `browserControl.enabled` ([tools](llm-tools.md)).
 Linux native-frame assertions require a window manager on the isolated display;
 framed control windows are mapped before measuring decoration extents. Relay
-fixtures close active HTTP connections before awaiting server shutdown.
+fixtures dispose browser views while the owner window remains alive, close active
+HTTP connections, and report success only after server shutdown.
 
 ### Container image
 
