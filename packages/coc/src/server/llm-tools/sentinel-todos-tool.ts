@@ -97,7 +97,8 @@ const REASON_REQUIRED: ReadonlySet<SentinelTodoStatus> = new Set(['done', 'needs
 
 const DESCRIPTION =
     'Read and maintain this Sentinel chat\'s to-do ledger (bookkeeping only — it never starts, retries, or ' +
-    'cancels jobs). `list` returns the last 50 unarchived items in stored order (add `includeArchived: true` for archived ones). ' +
+    'cancels jobs). `list` returns all non-Done unarchived items first, then recent Done items up to 50 total; ' +
+    'all active items remain included even above 50 (add `includeArchived: true` for archived history after Done). ' +
     'Use `offset`/`nextOffset` for older pages, `limit` for an explicit page size, or `itemId` to read an exact older item. `create` needs ' +
     '`title`; normal items also need a brief `completionCondition` covering the intended feature/outcome\'s final deliverable, not just ' +
     'the next phase. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' Reuse the same ' +
@@ -206,8 +207,8 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
                 limit: { type: 'integer', minimum: 1, maximum: MAX_TODO_ITEMS, default: SENTINEL_TODO_RECENT_LIMIT,
-                    description: 'list: page size, default 50; does not limit storage or execution eligibility.' },
-                offset: { type: 'integer', minimum: 0, description: 'list: skip this many recent eligible items to read older pages.' },
+                    description: 'list: recent-list budget, default 50; the first page always includes all active items even above this budget.' },
+                offset: { type: 'integer', minimum: 0, description: 'list: use nextOffset to page past active items into older Done/archived history.' },
                 itemId: { type: 'string', description: 'list: exact item lookup, including older records; update/attach_reference/create_trigger/edit_trigger: the owning item.' },
                 expectedRevision: { type: 'number', description: 'The item revision for item edits, or rule revision for trigger lifecycle actions.' },
                 conversationId: { type: 'string', description: 'attach_reference: process ID of the existing conversation to reference.' },

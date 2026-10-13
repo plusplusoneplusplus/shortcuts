@@ -76,8 +76,9 @@ is on: the route layer publishes `getSentinelTodos`, which returns the shared
 `SentinelTodoService` or `undefined` when the flag is off. Not in `LLM_TOOL_REGISTRY`; flag-off
 turns get no tool and no guidance. The owner is the invoking chat (`workspaceId`, `processId`),
 never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
-`list` (last 50 unarchived items in stored order; `includeArchived` adds archived,
-`limit`/`offset` page older records with `nextOffset`, `itemId` reads an exact item;
+`list` (all unarchived non-Done items first, then recently updated Done within a
+50-item budget; active counts above 50 stay complete. `includeArchived` adds history
+after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining history, `itemId` reads an exact item;
 internal tracking and graph reads retain the full ledger), `create` (normal items require `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
 return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,

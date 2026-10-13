@@ -212,8 +212,11 @@ references before editing. Paths are package-relative.
   the process store's native `processes.db` handle; ledger, item and job rows are scoped
   by workspace and parent chat. Mutations acquire the database writer before reading
   and compare revisions; stale item writers receive `409` with the current item.
-  Recent REST/tool lists default to the last 50 items in stored order, with explicit
-  limit/offset paging and item-ID lookup. `SentinelTodoService.list` and store reads
+  Recent REST/tool/panel lists include every unarchived non-Done item first, then
+  recently updated Done items within a 50-item budget; active counts above 50 stay
+  complete. Archived history follows Done. `nextOffset` pages the remaining history;
+  item-ID lookup is exact. Saved fulfillment determines selection, not job execution.
+  `SentinelTodoService.list` and store reads
   remain full-ledger; the 500-item storage capacity is independent of presentation.
   REST `full=true` supplies complete authoring/projection snapshots.
   The internal `setDependencies` graph command replaces ordered, typed prerequisites
@@ -680,8 +683,9 @@ references before editing. Paths are package-relative.
   not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
   `SentinelTodoService.list` (non-Sentinel → explicit reply; ledger flag off → off reply;
   non-local workspace → unsupported reply). Status labels come from the client's
-  dependency-free `sentinelTodoStatusModel.ts`; the last 50 unfinished items are grouped
-  by Normal/Manual tracking, with omitted items counted. Replies chunk via
+  dependency-free `sentinelTodoStatusModel.ts`; all active items are grouped by
+  Normal/Manual tracking, followed by recent Done within the shared 50-item budget.
+  Only omitted Done history is counted. Replies chunk via
   `chunkWhatsAppText`. Read-only: no ledger
   write, enqueue, selection change or result acknowledgement.
   Git reads reuse native parsers and forge's WSL runner with optional locks disabled,

@@ -1,5 +1,5 @@
 /**
- * Read-only `list todos` reply: the not-done items of one Sentinel chat's
+ * Read-only `list todos` reply: active items and recent Done items of one Sentinel chat's
  * ledger, as plain phone-readable lines. Reads through `SentinelTodoService.list`
  * (which proves the owner is a Sentinel chat of the workspace) and never
  * writes the ledger, enqueues a turn, changes the selection, or acknowledges
@@ -13,12 +13,13 @@ import {
     SENTINEL_TODO_STATUS_LABELS,
     sentinelTodoDisplayStatus,
     sentinelTodoPriority,
+    sentinelTodoRecentPage,
     sentinelTodoSections,
 } from '../spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoStatusModel';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 
-/** Items listed per reply; the rest are counted, never silently dropped. */
+/** Recent-list budget; active items are never capped. */
 export const MAX_LISTED_TODOS = SENTINEL_TODO_RECENT_LIMIT;
 
 export const TODOS_NO_TARGET_REPLY = '❌ No topic selected. Reply to a Sentinel chat message, or use `list topics`, then `select topic <n>`.';
@@ -36,23 +37,29 @@ function itemLine(n: number, item: SentinelTodoItem): string {
     return `${n}. [${status}${job}${priority}] ${item.title}${reason}`;
 }
 
-/** Plain-text list of non-Done, non-archived items, normal first, then Manual tracking. */
+/** Active normal and manual items first, then recent Done; archived items stay omitted. */
 export function formatTodosReply(title: string, items: readonly SentinelTodoItem[], limit = MAX_LISTED_TODOS): string {
-    const unfinished = items.filter(item => !item.archived && item.status !== 'done');
-    const recent = unfinished.slice(Math.max(0, unfinished.length - limit));
-    const normal = sentinelTodoSections(recent, 'normal').active;
-    const manual = sentinelTodoSections(recent, 'manual').active;
-    const total = unfinished.length;
-    if (!total) return `📋 To-do · "${title}"\nNo unfinished items.`;
+    const page = sentinelTodoRecentPage(items.filter(item => !item.archived), limit);
+    const normal = sentinelTodoSections(page.items, 'normal');
+    const manual = sentinelTodoSections(page.items, 'manual');
+    const total = normal.active.length + manual.active.length;
+    if (!page.total) return `📋 To-do · "${title}"\nNo unfinished items.`;
     const lines = [`📋 To-do · "${title}" — ${total} not done`];
     let n = 0;
-    for (const item of normal) if (n < limit) lines.push(itemLine(++n, item));
-    const shownManual = manual.slice(0, Math.max(0, limit - n));
-    if (shownManual.length) {
+    for (const item of normal.active) lines.push(itemLine(++n, item));
+    if (manual.active.length) {
         lines.push('', 'Manual tracking (tracked only, never run):');
-        for (const item of shownManual) lines.push(itemLine(++n, item));
+        for (const item of manual.active) lines.push(itemLine(++n, item));
     }
-    if (n < total) lines.push('', `…${total - n} more not shown. Open the chat's To-do tab in CoC for the full list.`);
+    if (normal.done.length) {
+        lines.push('', 'Done:');
+        for (const item of normal.done) lines.push(itemLine(++n, item));
+    }
+    if (manual.done.length) {
+        lines.push('', 'Done · Manual tracking (tracked only, never run):');
+        for (const item of manual.done) lines.push(itemLine(++n, item));
+    }
+    if (page.hasMore) lines.push('', `…${page.total - n} older Done items not shown. Open the chat's To-do tab in CoC for the full list.`);
     return lines.join('\n');
 }
 

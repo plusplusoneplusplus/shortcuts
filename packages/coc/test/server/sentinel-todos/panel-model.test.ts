@@ -37,11 +37,12 @@ import {
     visibleTabs,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { openMenuActions } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
+import { sentinelTodoRecentPage } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoStatusModel';
 
 let seq = 0;
 function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     seq += 1;
-    const stamp = `2026-10-09T00:00:${String(seq).padStart(2, '0')}.000Z`;
+    const stamp = new Date(Date.UTC(2026, 9, 9, 0, 0, seq)).toISOString();
     return {
         id: `item-${seq}`, title: `Item ${seq}`, completionCondition: '', notes: '', status: 'todo', archived: false,
         revision: 1, createdAt: stamp, updatedAt: stamp, createdBy: 'user', updatedBy: 'user', jobs: [],
@@ -57,6 +58,49 @@ function job(execution: SentinelTodoJobLink['execution'], overrides: Partial<Sen
 }
 
 const OWNER = { ownerWorkspaceId: 'ws-1', processId: 'queue_sentinel' };
+
+describe('sentinelTodoRecentPage', () => {
+    it.each([0, 1, 49, 50, 51, 60])('keeps all %s active items, fills only the remaining budget with Done and pages without duplicates', count => {
+        const active = Array.from({ length: count }, (_, index) => item({
+            id: `active-${index}`, status: index % 3 === 0 ? 'in_progress' : index % 3 === 1 ? 'needs_attention' : 'todo',
+            type: index % 2 ? 'manual' : 'normal',
+            updatedAt: '2025-01-01T00:00:00Z',
+            jobs: [job({ state: 'completed', review: { state: 'delivered', assessment: 'reviewed' } })],
+        }));
+        const done = Array.from({ length: 60 }, (_, index) => item({
+            id: `done-${index}`, status: 'done', updatedAt: '2026-01-01T00:00:00Z',
+        }));
+        const items = [...active, ...done];
+        const before = structuredClone(items);
+        const first = sentinelTodoRecentPage(items);
+        const budget = Math.max(0, 50 - count);
+        expect(first.items).toEqual([...active, ...done.slice().reverse().slice(0, budget)]);
+        expect(first).toMatchObject({ total: count + 60, hasMore: true, nextOffset: Math.max(count, 50) });
+        const all = [...first.items];
+        let page = first;
+        while (page.nextOffset !== null) {
+            page = sentinelTodoRecentPage(items, 50, page.nextOffset);
+            expect(page.items.every(item => item.status === 'done')).toBe(true);
+            all.push(...page.items);
+        }
+        expect(all).toEqual([...active, ...done.slice().reverse()]);
+        expect(new Set(all.map(item => item.id)).size).toBe(items.length);
+        expect(sentinelTodoRecentPage(items, 50, items.length + 1)).toMatchObject({ items: [], hasMore: false, nextOffset: null });
+        expect(items).toEqual(before);
+    });
+
+    it('uses updated recency for Done, keeps archived history after Done and does not derive fulfillment from jobs', () => {
+        const progress = item({ status: 'in_progress', jobs: [job({ state: 'completed' })] });
+        const recentDone = item({ status: 'done', updatedAt: '2026-02-01T00:00:00Z' });
+        const olderDone = item({ status: 'done', updatedAt: '2026-01-01T00:00:00Z', jobs: [job({ state: 'running' })] });
+        const archived = item({ archived: true, updatedAt: '2026-03-01T00:00:00Z' });
+        const items = [progress, recentDone, olderDone, archived];
+        expect(sentinelTodoRecentPage(items, 2)).toMatchObject({ items: [progress, recentDone], nextOffset: 2 });
+        expect(sentinelTodoRecentPage(items, 2, 2)).toMatchObject({ items: [olderDone, archived], hasMore: false });
+        expect(sentinelTodoRecentPage([progress])).toMatchObject({ items: [progress], hasMore: false, nextOffset: null });
+        expect(sentinelTodoRecentPage([])).toMatchObject({ items: [], total: 0, hasMore: false, nextOffset: null });
+    });
+});
 
 describe('sentinelTodoDependencyChain', () => {
     it('includes every reachable prerequisite once in prerequisite-first order, not unrelated ledger items', () => {

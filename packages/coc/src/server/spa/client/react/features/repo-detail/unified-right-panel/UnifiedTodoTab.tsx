@@ -41,6 +41,7 @@ import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
 import { SentinelTodoScrubber } from './SentinelTodoScrubber';
+import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import {
     endSentinelTodoExcursion,
     isPinnedSentinelTodo,
@@ -325,18 +326,19 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
 
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
 
-    const recentItems = useMemo(() => ledger?.items.slice(-visibleLimit) ?? [], [ledger, visibleLimit]);
+    const orderedItems = useMemo(() => sentinelTodoRecentPage(ledger?.items ?? [], ledger?.items.length).items, [ledger]);
+    const recentItems = useMemo(() => sentinelTodoRecentPage(ledger?.items ?? [], visibleLimit).items, [ledger, visibleLimit]);
     const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
     const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
     useEffect(() => {
         if (!ledger) {
             return;
         }
-        const firstOpen = ledger.items.findIndex(item => expanded.has(item.id) || item.id === selectedId);
-        if (firstOpen >= 0) {
-            setVisibleLimit(limit => Math.max(limit, ledger.items.length - firstOpen));
+        const lastOpen = orderedItems.reduce((last, item, index) => expanded.has(item.id) || item.id === selectedId ? index : last, -1);
+        if (lastOpen >= 0) {
+            setVisibleLimit(limit => Math.max(limit, lastOpen + 1));
         }
-    }, [ledger, expanded, selectedId]);
+    }, [ledger, orderedItems, expanded, selectedId]);
     const normalCount = sections.active.length + sections.done.length + sections.archived.length;
     const manualCount = manual.active.length + manual.done.length + manual.archived.length;
     const attentionCount = sections.active.filter(item => sentinelTodoDisplayStatus(item) === 'needs_attention').length;
@@ -388,7 +390,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         if (currentView.current.ownerKey !== ownerKey) return;
         const item = ledger?.items.find(candidate => candidate.id === itemId);
         if (!item) return;
-        setVisibleLimit(limit => Math.max(limit, ledger.items.length - ledger.items.indexOf(item)));
+        setVisibleLimit(limit => Math.max(limit, orderedItems.indexOf(item) + 1));
         const isManual = sentinelTodoType(item) === 'manual';
         if (isManual) setShowManual(true);
         if (!item.archived && item.status === 'done') {
@@ -660,11 +662,11 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             {renderList(sections.archived)}
                         </Section>
                     )}
-                    {ledger.items.length > visibleLimit && (
+                    {ledger.items.length > recentItems.length && (
                         <Button size="sm" variant="secondary"
-                            onClick={() => setVisibleLimit(limit => limit + SENTINEL_TODO_RECENT_LIMIT)}
+                            onClick={() => setVisibleLimit(recentItems.length + SENTINEL_TODO_RECENT_LIMIT)}
                             data-testid="sentinel-todo-show-older">
-                            Show older items ({ledger.items.length - visibleLimit})
+                            Show older items ({ledger.items.length - recentItems.length})
                         </Button>
                     )}
                     <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />

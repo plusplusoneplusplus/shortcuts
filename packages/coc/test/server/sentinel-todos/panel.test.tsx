@@ -127,27 +127,37 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
-    it.each([false, true])('shows 50 recent rows with unchanged status ordering and older access (split=%s)', async split => {
+    it.each([false, true])('shows older active work plus recent Done with Refresh and older access (split=%s)', async split => {
         applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: split });
         const items = Array.from({ length: 105 }, (_, index) => item({
-            id: `item-${index}`, title: `Item ${index}`, status: index === 80 ? 'needs_attention' : 'todo',
+            id: `item-${index}`, title: `Item ${index}`,
+            status: index === 0 ? 'in_progress' : index === 80 ? 'needs_attention' : 'done',
             createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+            updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+            ...(index === 0 ? { jobs: [{
+                processId: 'queue_intermediate', workspaceId: 'ws-1', kind: 'local' as const,
+                openLink: '#repos/ws-1/chats/intermediate', linkedAt: '2026-01-01T00:00:00Z',
+                execution: { state: 'completed' as const, review: { state: 'delivered' as const, assessment: 'reviewed' as const } },
+            }] } : {}),
         }));
         get.mockResolvedValue(ledger(items));
         render(<UnifiedTodoTab owner={OWNER} />);
-        await screen.findByTestId('sentinel-todo-row-item-104');
+        const progress = await screen.findByTestId('sentinel-todo-row-item-0');
+        expect(within(progress).getByTestId('sentinel-todo-status-in_progress')).toBeTruthy();
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-done-section')).getByRole('button', { name: 'Done (48)' }));
+        expect(screen.getByTestId('sentinel-todo-row-item-104')).toBeTruthy();
         expect(get).toHaveBeenCalledWith(OWNER.ownerWorkspaceId, OWNER.processId, { full: true });
         const rows = () => [...screen.getByTestId('sentinel-todo-tab').querySelectorAll('[data-testid^="sentinel-todo-row-"]')];
         expect(rows()).toHaveLength(50);
         expect(rows()[0].getAttribute('data-testid')).toBe('sentinel-todo-row-item-80');
-        expect(screen.queryByTestId('sentinel-todo-row-item-0')).toBeNull();
+        expect(screen.queryByTestId('sentinel-todo-row-item-1')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
         await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
         expect(rows()).toHaveLength(50);
         expect(rows()[0].getAttribute('data-testid')).toBe('sentinel-todo-row-item-80');
         fireEvent.click(screen.getByTestId('sentinel-todo-show-older'));
         expect(rows()).toHaveLength(100);
-        expect(screen.queryByTestId('sentinel-todo-row-item-0')).toBeNull();
+        expect(screen.queryByTestId('sentinel-todo-row-item-1')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
         await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
         expect(rows()).toHaveLength(100);
@@ -159,9 +169,31 @@ describe('UnifiedTodoTab', () => {
         expect(items).toHaveLength(105);
     });
 
+    it.each([false, true])('keeps every normal and manual active item above 50 before revealing Done (split=%s)', async split => {
+        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: split });
+        const active = Array.from({ length: 55 }, (_, index) => item({
+            id: `active-${index}`, title: `Active ${index}`, type: index === 0 ? 'manual' : 'normal',
+        }));
+        get.mockResolvedValue(ledger([...active, item({ id: 'done', status: 'done' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-active-0');
+        expect(screen.getByTestId('sentinel-todo-tab').querySelectorAll('[data-testid^="sentinel-todo-row-"]')).toHaveLength(55);
+        expect(screen.getByTestId('sentinel-todo-show-older').textContent).toContain('(1)');
+        expect(screen.queryByTestId('sentinel-todo-done-section')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        expect(screen.queryByTestId('sentinel-todo-done-section')).toBeNull();
+        fireEvent.click(screen.getByTestId('sentinel-todo-show-older'));
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-done-section')).getByRole('button', { name: 'Done (1)' }));
+        expect(screen.getByTestId('sentinel-todo-row-done')).toBeTruthy();
+        expect(screen.queryByTestId('sentinel-todo-show-older')).toBeNull();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it('keeps hidden older prerequisites in the full dependency chain and reveals their rows on lookup', async () => {
         applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: true });
-        const source = item({ id: 'source', title: 'Older source' });
+        const source = item({ id: 'source', title: 'Older source', status: 'done', updatedAt: '2025-01-01T00:00:00Z' });
         const filler = Array.from({ length: 50 }, (_, index) => item({ id: `filler-${index}`, title: `Filler ${index}` }));
         const dependent = item({ id: 'dependent', title: 'Dependent',
             dependsOn: [{ itemId: source.id, condition: { kind: 'done' } }] });
@@ -181,7 +213,7 @@ describe('UnifiedTodoTab', () => {
     });
 
     it.each(['normal', 'manual'] as const)('does not claim an older %s section is empty and reveals it on demand', async type => {
-        const older = item({ id: 'older', title: 'Older item', type });
+        const older = item({ id: 'older', title: 'Older item', type, status: 'done', updatedAt: '2025-01-01T00:00:00Z' });
         const recentType = type === 'normal' ? 'manual' : 'normal';
         const recent = Array.from({ length: 50 }, (_, index) => item({
             id: `recent-${index}`, title: `Recent ${index}`, type: recentType,
@@ -192,6 +224,7 @@ describe('UnifiedTodoTab', () => {
         expect(screen.queryByTestId('sentinel-todo-row-older')).toBeNull();
         expect(screen.getByText(new RegExp(`No ${type} items in this recent view`))).toBeTruthy();
         fireEvent.click(screen.getByTestId('sentinel-todo-show-older'));
+        fireEvent.click(within(screen.getByTestId(`sentinel-todo-${type === 'manual' ? 'manual-' : ''}done-section`)).getByRole('button', { name: 'Done (1)' }));
         expect(screen.getByTestId('sentinel-todo-row-older')).toBeTruthy();
     });
 

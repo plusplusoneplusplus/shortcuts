@@ -677,9 +677,12 @@ asynchronously), and hides the `+` menu's To-do entry.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
-and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` presents the last
-50 stored items, with Show older items revealing 50 more. Existing section ordering
-is applied within that recent window. Explicit prerequisite/rule links and restored
+and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` shares
+`sentinelTodoRecentPage` with REST/tool/messaging lists: every unarchived non-Done
+item is included, then recently updated Done items fill a 50-item budget. Active
+counts above 50 stay complete; archived history follows Done. Saved fulfillment,
+not linked job completion, determines selection. Show older items reveals 50 more
+history items, with section ordering applied to the selected rows. Explicit prerequisite/rule links and restored
 open details reveal older rows. Dependencies, triggers and Scrubber projections
 receive the full snapshot independently of visible rows. The tab splits the visible items by type
 (`sentinelTodoType`; a missing type reads as normal) through

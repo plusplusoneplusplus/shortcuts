@@ -83,21 +83,22 @@ describe('Sentinel to-do routes', () => {
     };
     const ledger = '/api/workspaces/ws-a/sentinel-todos/queue_s1';
 
-    it('defaults to the last 50 in stored order while retaining older pages, exact reads and full-store dependencies', async () => {
+    it('includes all active items before recent Done while retaining older pages, exact reads and full-store dependencies', async () => {
         const s = await track(await startServer({ dependenciesEnabled: true }));
         const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
         const items = Array.from({ length: 105 }, (_, index) => s.todos.create(owner, {
-            title: `Item ${index}`, ...(index === 0 ? { status: 'done' as const } : {}),
+            title: `Item ${index}`, status: index === 1 ? 'in_progress' : index === 104 ? 'todo' : 'done',
         }, { actor: 'user', idempotencyKey: `item-${index}` }).item);
         const client = new CocClient({ baseUrl: s.baseUrl });
         const recent = await client.sentinelTodos.get(owner.workspaceId, owner.processId);
-        expect(recent.items.map(item => item.id)).toEqual(items.slice(-50).map(item => item.id));
+        const ordered = [items[1], items[104], ...items.slice(2, 104).reverse(), items[0]];
+        expect(recent.items.map(item => item.id)).toEqual(ordered.slice(0, 50).map(item => item.id));
         expect(recent).toMatchObject({ total: 105, hasMore: true, nextOffset: 50 });
         const older = await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: recent.nextOffset! });
-        expect(older.items.map(item => item.id)).toEqual(items.slice(5, 55).map(item => item.id));
+        expect(older.items.map(item => item.id)).toEqual(ordered.slice(50, 100).map(item => item.id));
         expect(older).toMatchObject({ hasMore: true, nextOffset: 100 });
         const last = await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: 100 });
-        expect(last.items.map(item => item.id)).toEqual(items.slice(0, 5).map(item => item.id));
+        expect(last.items.map(item => item.id)).toEqual(ordered.slice(100).map(item => item.id));
         expect(last).toMatchObject({ hasMore: false, nextOffset: null });
         expect(await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: 200 }))
             .toMatchObject({ items: [], total: 105, hasMore: false, nextOffset: null });
@@ -124,6 +125,24 @@ describe('Sentinel to-do routes', () => {
         const reopened = await track(await startServer({ dataDir: s.dataDir }), false);
         expect((await new CocClient({ baseUrl: reopened.baseUrl }).sentinelTodos.get(owner.workspaceId, owner.processId, { full: true })).items)
             .toHaveLength(105);
+    });
+
+    it('returns more than 50 active items and pages only the remaining Done history', async () => {
+        const s = await track(await startServer());
+        const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
+        const active = Array.from({ length: 55 }, (_, index) => s.todos.create(owner, {
+            title: `Active ${index}`, status: index === 0 ? 'in_progress' : 'todo',
+        }, { actor: 'user' }).item);
+        const done = s.todos.create(owner, { title: 'Done', status: 'done' }, { actor: 'user' }).item;
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const first = await client.sentinelTodos.get(owner.workspaceId, owner.processId);
+        expect(first.items).toEqual(active);
+        expect(first).toMatchObject({ total: 56, hasMore: true, nextOffset: 55 });
+        expect(await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: first.nextOffset! }))
+            .toMatchObject({ items: [done], hasMore: false, nextOffset: null });
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { limit: 1 })).items).toEqual(active);
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { itemId: done.id, offset: 55 })).items)
+            .toEqual([done]);
     });
 
     it.each(['limit=0', 'limit=501', 'limit=1.5', 'limit=NaN', 'offset=-1', 'offset=1.5', 'full=invalid'])(

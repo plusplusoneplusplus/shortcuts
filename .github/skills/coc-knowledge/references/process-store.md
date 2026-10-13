@@ -142,7 +142,9 @@ groups and chats; unique scoped idempotency keys and job identities make replays
 safe. Transactions acquire the database writer before mutation reads and compare
 ledger/item revisions. Item edits, terminal evidence and review acknowledgments
 commit together. Reads use a consistent full-ledger snapshot; the 500-item creation
-capacity is independent of the 50-item recent REST/tool/panel presentation limit.
+capacity is independent of the recent REST/tool/panel presentation budget: all
+unarchived non-Done items are included, then recently updated Done items fill 50
+slots; active counts above 50 stay complete. Archived history follows Done.
 Paging and exact older-item reads never truncate stored records or graph evaluation.
 Structured fields use JSON
 inside SQLite; machine-local items are excluded from export/import and cleared

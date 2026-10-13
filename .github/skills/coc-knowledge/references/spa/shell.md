@@ -569,8 +569,11 @@ ledger from the owning server through `client.sentinelTodos.get` with `full: tru
 only the descriptor persists. Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Pending reads block duplicate manual admission;
 reloads retain the snapshot, selection, drafts and section visibility, with read
-failures surfaced through the retry notice. The list presents the last 50 stored
-items with retained older-item expansion and unchanged section sorting; dependency,
+failures surfaced through the retry notice. Shared `sentinelTodoRecentPage` includes
+all unarchived non-Done items, then recently updated Done within a 50-item budget;
+active counts above 50 stay complete and archived history follows Done. Saved
+fulfillment determines selection, not job completion. Older-item expansion and
+section sorting apply to this selection; dependency,
 trigger and Scrubber controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. Collapsed/latest and expanded/earlier titles share compact
