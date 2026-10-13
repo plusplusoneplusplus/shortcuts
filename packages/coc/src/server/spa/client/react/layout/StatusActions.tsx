@@ -116,6 +116,8 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                     >
                         &#9881;
                     </button>
+                    <NotificationBell placement="up" />
+                    <AgentProviderQuotaIndicator placement="up" routingTarget={quotaRoutingTarget} railContainer={railSlot} />
                     {railSlot && ReactDOM.createPortal(
                         <button
                             type="button"
@@ -132,8 +134,6 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                         </button>,
                         railSlot,
                     )}
-                    <NotificationBell placement="up" />
-                    <AgentProviderQuotaIndicator placement="up" routingTarget={quotaRoutingTarget} railContainer={railSlot} />
                     <button
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                         aria-label="Dev tools"

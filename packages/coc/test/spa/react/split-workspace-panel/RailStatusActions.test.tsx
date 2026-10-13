@@ -104,16 +104,16 @@ describe('collapsed-rail Admin and quota shortcuts', () => {
         _resetRuntimeConfig();
     });
 
-    it('shows the Admin gear and quota ring by default in a bottom rail group, after the other rail controls', async () => {
+    it('shows quota above Admin by default in a bottom rail group, after the other rail controls', async () => {
         renderPanel();
         const group = within(rail()).getByTestId('split-workspace-left-status');
         expect(group.className).toContain('mt-auto');
         const buttons = within(group).getAllByRole('button');
-        expect(buttons.map(b => b.getAttribute('aria-label'))).toEqual(['Admin', 'Agent provider quota']);
-        expect(buttons[0].textContent).toBe('⚙');
+        expect(buttons.map(b => b.getAttribute('aria-label'))).toEqual(['Agent provider quota', 'Admin']);
+        expect(buttons[1].textContent).toBe('⚙');
         // Same narrow-rail sizing as the expand / new-chat buttons.
         for (const b of buttons) expect(b.className).toContain('w-7 h-7');
-        expect(buttons[0].getAttribute('title')).toBe('Admin');
+        expect(buttons[1].getAttribute('title')).toBe('Admin');
         // The group sits after the expand control, i.e. below per-chat controls.
         const expand = within(rail()).getByTestId('split-workspace-left-expand');
         expect(expand.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -121,6 +121,25 @@ describe('collapsed-rail Admin and quota shortcuts', () => {
         expect(screen.getByTestId('sidebar-admin-toggle').id).toBe('admin-toggle');
         expect(document.querySelectorAll('#admin-toggle')).toHaveLength(1);
         await waitFor(() => expect(within(rail()).getByTestId('rail-agent-provider-quota-indicator').getAttribute('data-state')).toBe('finite'));
+    });
+
+    it('preserves expanded toolbar order and quota-before-Admin order across collapse cycles', () => {
+        renderPanel({ collapsed: false });
+        const footerLabels = () => within(screen.getByTestId('sidebar-status-actions'))
+            .getAllByRole('button').map(b => b.getAttribute('aria-label'));
+        const expectedFooter = ['Admin', 'Notifications', 'Agent provider quota', 'Dev tools', 'Toggle theme'];
+        expect(footerLabels()).toEqual(expectedFooter);
+
+        for (let cycle = 0; cycle < 2; cycle++) {
+            fireEvent.click(screen.getByTestId('split-workspace-left-collapse'));
+            const group = within(rail()).getByTestId('split-workspace-left-status');
+            expect(within(group).getAllByRole('button').map(b => b.getAttribute('aria-label')))
+                .toEqual(['Agent provider quota', 'Admin']);
+            fireEvent.click(screen.getByTestId('split-workspace-left-expand'));
+            expect(screen.queryByTestId('rail-admin-toggle')).toBeNull();
+            expect(screen.queryByTestId('rail-agent-provider-quota-indicator')).toBeNull();
+            expect(footerLabels()).toEqual(expectedFooter);
+        }
     });
 
     it('opens Admin through the footer action without expanding the rail', () => {
@@ -223,8 +242,9 @@ describe('collapsed-rail Admin and quota shortcuts', () => {
         await waitFor(() => expect(mocks.localQuota).toHaveBeenCalledTimes(1));
 
         act(() => applyRuntimeConfigPatch({ railStatusActionsEnabled: true }));
-        expect(within(rail()).getByTestId('rail-admin-toggle')).toBeTruthy();
-        expect(within(rail()).getByTestId('rail-agent-provider-quota-indicator')).toBeTruthy();
+        const group = within(rail()).getByTestId('split-workspace-left-status');
+        expect(within(group).getAllByRole('button').map(b => b.getAttribute('aria-label')))
+            .toEqual(['Agent provider quota', 'Admin']);
         // Enabling the rail copy does not start another quota read.
         expect(mocks.localQuota).toHaveBeenCalledTimes(1);
 
