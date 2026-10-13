@@ -367,7 +367,15 @@ vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', ()
 // ConversationMetadataPopover — getSessionIdFromProcess + stub component
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
     getSessionIdFromProcess: (proc: any) => proc?.sdkSessionId ?? proc?.sessionId ?? proc?.metadata?.sessionId ?? null,
-    ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' }),
+    ConversationMetadataPopover: (props: any) => React.createElement('div', { 'data-testid': 'metadata-popover' },
+        props.toolInventoryTarget && React.createElement('button', {
+            'data-testid': 'inspect-tools',
+            onClick: () => {
+                const { client, workspaceId, processId } = props.toolInventoryTarget;
+                void client.processes.getToolInventory(processId, { workspace: workspaceId });
+            },
+        }, 'Tools'),
+    ),
 }));
 
 // shared — use real module (Badge, Button, Spinner, etc.)
@@ -3543,6 +3551,94 @@ describe('ChatDetail — onHeaderMetadataChange', () => {
         );
 
         expect(onHeaderMetadataChange).toHaveBeenCalledWith(null);
+    });
+});
+
+describe('ChatDetail — tool inventory owner target', () => {
+    const inventoryReads = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/tool-inventory'));
+
+    it.each([{ variant: 'inline' as const }, { variant: 'floating' as const }, { isPopOut: true }])(
+        'uses persisted ownership and process ID in shared chat chrome %j', async props => {
+            setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-owner', mode: 'ask' } }));
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-page" {...props} /></Wrap>);
+            await waitFor(() => expect(screen.getByTestId('inspect-tools')).toBeTruthy());
+            expect(inventoryReads()).toHaveLength(0);
+            fireEvent.click(screen.getByTestId('inspect-tools'));
+            await waitFor(() => expect(inventoryReads()).toHaveLength(1));
+            expect(String(inventoryReads()[0][0])).toContain('/processes/proc-1/tool-inventory?workspace=ws-owner');
+        },
+    );
+
+    it('publishes the same lazy target to Notes without workspace props', async () => {
+        const publish = vi.fn();
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-stored', mode: 'ask' } }));
+        render(<Wrap><ChatDetail taskId="task-1" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await waitFor(() => expect(publish.mock.calls.at(-1)?.[0]?.toolInventoryTarget).toBeDefined());
+        const target = publish.mock.calls.at(-1)![0].toolInventoryTarget;
+        expect(target.workspaceId).toBe('ws-stored');
+        expect(target.processId).toBe('proc-1');
+        expect(inventoryReads()).toHaveLength(0);
+        await target.client.processes.getToolInventory(target.processId, { workspace: target.workspaceId });
+        expect(String(inventoryReads()[0][0])).toContain('/processes/proc-1/tool-inventory?workspace=ws-stored');
+    });
+
+    it('keeps group member reads on the scoped server despite conflicting source props', async () => {
+        const owner = { workspaceId: 'ws-member', selectionId: 'remote:server-a:ws-member', baseUrl: 'https://owner.example.test' };
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member' } }));
+        render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId="remote:server-b:ws-member" sourceBaseUrl="https://other.example.test" />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('inspect-tools')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('inspect-tools'));
+        await waitFor(() => expect(inventoryReads()).toHaveLength(1));
+        expect(String(inventoryReads()[0][0])).toBe(`${owner.baseUrl}/api/processes/proc-1/tool-inventory?workspace=ws-member`);
+    });
+
+    it('decodes remote clone selections and refreshes the exact client after route replacement', async () => {
+        const selection = 'remote:server:ws-member';
+        registerCloneBaseUrls([{ cloneKey: selection, workspaceId: 'ws-member', baseUrl: 'https://first.example.test' }]);
+        setupStandardFetch(makeTask(), makeProcess());
+        const view = render(<Wrap><ChatDetail taskId="task-1" workspaceId={selection} /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('inspect-tools')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('inspect-tools'));
+        await waitFor(() => expect(inventoryReads()).toHaveLength(1));
+        expect(String(inventoryReads()[0][0])).toBe('https://first.example.test/api/processes/proc-1/tool-inventory?workspace=ws-member');
+        act(() => registerCloneBaseUrls([{ cloneKey: selection, workspaceId: 'ws-member', baseUrl: 'https://second.example.test' }]));
+        view.rerender(<Wrap><ChatDetail taskId="task-1" workspaceId={selection} /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('inspect-tools')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('inspect-tools'));
+        await waitFor(() => expect(inventoryReads()).toHaveLength(2));
+        expect(String(inventoryReads()[1][0])).toBe('https://second.example.test/api/processes/proc-1/tool-inventory?workspace=ws-member');
+    });
+
+    it('withdraws the loaded target while another owner with equal IDs hydrates', async () => {
+        const publish = vi.fn();
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member' } }));
+        const view = render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId="remote:first:ws-member"
+            sourceBaseUrl="https://first.example.test" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await waitFor(() => expect(publish.mock.calls.at(-1)?.[0]?.toolInventoryTarget).toBeDefined());
+        publish.mockClear();
+        const previousFetch = fetchMock.getMockImplementation()!;
+        fetchMock.mockImplementation((url, init) => String(url).startsWith('https://second.example.test')
+            ? new Promise(() => {}) : previousFetch(url, init));
+        view.rerender(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId="remote:second:ws-member"
+            sourceBaseUrl="https://second.example.test" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await act(async () => {});
+        expect(publish.mock.calls.length).toBeGreaterThan(0);
+        expect(publish.mock.calls.some(([meta]) => meta?.toolInventoryTarget)).toBe(false);
+        expect(inventoryReads()).toHaveLength(0);
+    });
+
+    it('omits targets for unresolved remote owners and unknown workspaces', async () => {
+        setupStandardFetch();
+        const publish = vi.fn();
+        const view = render(<Wrap><ChatDetail taskId="task-1" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await waitFor(() => expect(publish.mock.calls.at(-1)?.[0]?.turnsCount).toBe(2));
+        expect(publish.mock.calls.at(-1)?.[0]?.toolInventoryTarget).toBeUndefined();
+        view.rerender(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId="remote:missing:ws-member" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await act(async () => {});
+        expect(publish.mock.calls.filter(([meta]) => meta?.toolInventoryTarget)).toHaveLength(0);
+        expect(inventoryReads()).toHaveLength(0);
     });
 });
 

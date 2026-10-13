@@ -239,6 +239,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const conversationStateKey = scopedOwner ? `${scopedOwner.selectionId}|${taskId}`
         : historyBaseUrl ? `${historyBaseUrl}|${historyOwner ?? ''}|${taskId}` : taskId;
     const historyRef = useRef<ReturnType<typeof useChatHistoryPaging> | null>(null);
+    // Bind loaded process data to its owner before publishing an inspection target.
+    const [hydrationScope, setHydrationScope] = useState<{ client: typeof client; key: string }>();
     const [task, setTask] = useState<any>(null);
     const [fullTask, setFullTask] = useState<any>(null);
 
@@ -2037,6 +2039,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         isInitialLoadRef.current = true;
         const loadId = ++loadCounterRef.current;
         const currentTaskId = taskId;
+        setHydrationScope({ client, key: conversationStateKey });
         setLoading(true);
         setError(null);
         setSessionExpired(false);
@@ -2869,8 +2872,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     // One bundle feeding both the built-in header and `onHeaderMetadataChange`,
     // so the visible header and the published metadata can never diverge.
+    const toolInventoryTarget = useMemo(() => {
+        if (loading || !historyOwnerAvailable || !browserWorkspaceId || !processDetails?.id
+            || hydrationScope?.client !== client
+            || hydrationScope?.key !== conversationStateKey) return undefined;
+        return { client, workspaceId: browserWorkspaceId, processId: processDetails.id as string };
+    }, [loading, historyOwnerAvailable, browserWorkspaceId, processDetails?.id, client, conversationStateKey, hydrationScope]);
     const headerMetadata: ChatHeaderMetadata = useMemo(() => ({
         metadataProcess,
+        toolInventoryTarget,
         turnsCount: turns.length,
         isPending,
         resumeSessionId,
@@ -2884,7 +2894,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // Deps deliberately omit launchInteractiveResume / copyResumeCommand:
         // both are plain functions re-created every render, so including them
         // would rebuild the bundle — and re-emit it — on every poll.
-    }), [metadataProcess, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
+    }), [metadataProcess, toolInventoryTarget, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
 
     const onHeaderMetadataChangeRef = useRef(onHeaderMetadataChange);
     onHeaderMetadataChangeRef.current = onHeaderMetadataChange;
@@ -2903,6 +2913,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 <ChatHeader
                     task={task}
                     metadataProcess={headerMetadata.metadataProcess}
+                    toolInventoryTarget={headerMetadata.toolInventoryTarget}
                     planPath={effectivePlanPath}
                     createdFiles={displayFiles}
                     pinnedFile={pinnedFile}

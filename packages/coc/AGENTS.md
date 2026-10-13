@@ -122,8 +122,10 @@ references before editing. Paths are package-relative.
   the composed store's `getForProcess` without transcript hydration or runtime probes.
   Missing/foreign processes return 404; owned chats without snapshots are unavailable.
   Use cancellable `processes.getToolInventory` on the owner-resolved client.
-  `ChatHeaderMetadata.toolInventoryTarget` carries the exact client, raw workspace,
-  process and refresh key through normal and Notes headers. A supplied target enables
+  `ChatDetail` binds inspection to its current hydrated owner client and persisted
+  raw workspace/process; loading replacements and unresolved owners omit the target.
+  `ChatHeaderMetadata.toolInventoryTarget` carries this identity and an optional
+  refresh key through normal and Notes headers. A supplied target enables
   the metadata footer's Tools action beside Fork, including a Tools-only footer;
   metadata-only native sessions omit it. Opening `ConversationToolsDialog` closes the
   popover/mobile sheet and performs lazy storage retrieval only. Scope/turn changes

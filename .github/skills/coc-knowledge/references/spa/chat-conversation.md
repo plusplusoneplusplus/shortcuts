@@ -199,8 +199,10 @@ not rendered. `QueuedFollowUps` renders pending messages as cancellable cards.
 
 ### Tool inventory reader
 
-`ChatHeaderMetadata.toolInventoryTarget` carries the exact owner client, raw workspace,
-process ID and turn refresh key through `ChatHeader` and the compact Notes header to
+`ChatDetail` supplies its owner-selected client, persisted raw workspace and process ID
+only for the current hydrated owner. Unresolved owners and loading replacements omit
+the target. `ChatHeaderMetadata.toolInventoryTarget` carries that identity and an optional
+turn refresh key through `ChatHeader` and the compact Notes header to
 `ConversationMetadataPopover`. A supplied target enables the Tools footer action beside
 Fork, including a footer with Tools alone. Opening the reader closes the popover or
 mobile sheet; the surviving metadata trigger receives focus when the reader closes.
