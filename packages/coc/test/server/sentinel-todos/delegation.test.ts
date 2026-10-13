@@ -504,7 +504,7 @@ describe('Sentinel to-do job links', () => {
             expect(plain.description).not.toContain('Reuse the same feature/outcome item');
         });
 
-        it('launches untracked when the addon gets no Sentinel to-do deps (flag off)', async () => {
+        it('preserves standalone dispatch when the addon has no server ledger capability', async () => {
             const store = { getProcess: async (id: string) => processes.get(id), getWorkspaces: async () => [{ id: 'ws-a' }] } as any;
             const enqueue = vi.fn(async () => 'task-9');
             const off = buildSendToConversationAddon(store, 'ws-a', enqueue, owner.processId);

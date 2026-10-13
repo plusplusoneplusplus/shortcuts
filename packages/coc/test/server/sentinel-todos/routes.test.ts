@@ -20,13 +20,12 @@ const processes: Record<string, { mode: string; workspaceId: string }> = {
     queue_ask: { mode: 'ask', workspaceId: 'ws-a' },
 };
 
-async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: boolean; dataDir?: string } = {}) {
+async function startServer(opts: { dependenciesEnabled?: boolean; dataDir?: string } = {}) {
     const database = createTodoTestDatabase(opts.dataDir ?? createTodoTestDirectory());
     const { dataDir, db } = database;
     const todos = new SentinelTodoStore(db);
     const routes: Route[] = [];
     const onChange = vi.fn();
-    const enabled = { value: opts.enabled ?? true };
     const dependenciesEnabled = { value: opts.dependenciesEnabled ?? false };
     const service = new SentinelTodoService({
         todos,
@@ -43,7 +42,6 @@ async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: bool
     });
     registerSentinelTodoRoutes({
         routes,
-        getEnabled: () => enabled.value,
         service,
     });
     const server = http.createServer(createRouter({ routes, spaHtml: '' }));
@@ -52,7 +50,7 @@ async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: bool
     if (!address || typeof address === 'string') throw new Error('no address');
     let closed = false;
     return {
-        dataDir, db, todos, service, onChange, enabled, dependenciesEnabled,
+        dataDir, db, todos, service, onChange, dependenciesEnabled,
         baseUrl: `http://127.0.0.1:${address.port}`,
         close: async () => {
             if (closed) return;
@@ -160,13 +158,16 @@ describe('Sentinel to-do routes', () => {
         }
     });
 
-    it('hides every endpoint when the feature is off', async () => {
-        const s = await track(await startServer({ enabled: false }));
-        expect((await req(s.baseUrl, 'GET', ledger)).status).toBe(404);
-        expect((await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'x' })).status).toBe(404);
-        expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/x`, { expectedRevision: 1 })).status).toBe(404);
-        expect(s.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_ledgers').get()).toEqual({ count: 0 });
-        expect(s.onChange).not.toHaveBeenCalled();
+    it('exposes bookkeeping without a feature gate while dependencies stay disabled', async () => {
+        const s = await track(await startServer());
+        expect((await req(s.baseUrl, 'GET', ledger)).status).toBe(200);
+        const created = await req(s.baseUrl, 'POST', `${ledger}/items`, { title: 'Always tracked' });
+        expect(created.status).toBe(201);
+        expect((await req(s.baseUrl, 'PATCH', `${ledger}/items/${created.body.item.id}`,
+            { expectedRevision: 1, title: 'Edited' })).status).toBe(200);
+        expect((await req(s.baseUrl, 'PUT', `${ledger}/items/${created.body.item.id}/dependencies`,
+            { expectedRevision: 2, dependsOn: [] })).status).toBe(404);
+        expect(s.onChange).toHaveBeenCalledTimes(2);
     });
 
     it('shares gated owner-validated exact evidence and readiness with the client', async () => {

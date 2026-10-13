@@ -766,8 +766,8 @@ export function buildCreatePullRequestAddon(
 
 /**
  * Builds the `sentinel_todos` bookkeeping tool plus its dispatcher guidance.
- * Callers pass deps only for a Sentinel chat with `features.sentinelTodoLedger`
- * on; absent → no tool and no guidance, so flag-off turns are unchanged.
+ * Callers pass deps for Sentinel chats with the server capability. Other modes
+ * and standalone executors without that capability receive no ledger addon.
  */
 export function buildSentinelTodosAddon(
     deps: SentinelTodosToolDeps | undefined,

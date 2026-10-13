@@ -51,7 +51,7 @@ test.beforeAll(async () => {
                     return { process: { id: args[0], workspaceId: 'child',
                         jobPreview: { excerpt: 'Recorded job result', source: 'progress', updatedAt: at } } }; } }
             };
-            applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true,
+            applyRuntimeConfigPatch({
                 sentinelTodoDependenciesEnabled: false, sentinelTodoScrubberEnabled: false, triggersEnabled: false });
             createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab scopeWorkspaceId="parent"
                 chatId="sentinel" owner={{ ownerWorkspaceId: 'parent', ownerRoutingRef: null, processId: 'sentinel' }} />);

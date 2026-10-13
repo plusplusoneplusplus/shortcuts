@@ -141,9 +141,8 @@ export interface ExecutorRuntimeCapabilities {
     /** Provider/tier helpers and the local + remote workspace directory for `send_to_conversation` / `list_workspaces`. */
     readonly getSendToConversationRuntime?: () => SendToConversationRuntimeOptions | undefined;
     /**
-     * Shared Sentinel to-do command service, bound at the route layer. Returns
-     * `undefined` while `features.sentinelTodoLedger` is off, so Sentinel chats
-     * get the `sentinel_todos` tool only when the flag is on.
+     * Shared Sentinel to-do command service, bound at the route layer for
+     * Sentinel chats. Standalone executors may omit this server capability.
      */
     readonly getSentinelTodos?: () => SentinelTodoService | undefined;
     /** Receipt-only admission stays available to finish running work when authoring is disabled. */

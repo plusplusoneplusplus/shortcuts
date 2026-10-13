@@ -377,17 +377,16 @@ describe('readAdminSettingValue', () => {
 describe('Features card UI metadata', () => {
     const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
 
-    it('exposes the Sentinel to-do ledger as a live, default-off toggle', () => {
-        const ledger = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelTodoLedger')!;
-        expect(ledger.default).toBe(false);
-        expect(ledger.runtime).toBe('live');
-        expect(ledger.ui).toMatchObject({ group: 'aiModes', testId: 'toggle-sentinel-todo-ledger-enabled' });
-        expect(DEFAULT_CONFIG.features.sentinelTodoLedger).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoLedgerEnabled).toBe(false);
-        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { sentinelTodoLedger: true },
-        })).sentinelTodoLedgerEnabled).toBe(true);
-        expect(() => CLIConfigSchema.parse({ features: { sentinelTodoLedger: 'yes' } })).toThrow();
+    it('omits the retired ledger setting from schema, Admin and runtime even in old configs', () => {
+        expect(ADMIN_SETTING_DEFINITIONS.some(d => d.key === 'features.sentinelTodoLedger')).toBe(false);
+        expect(DEFAULT_CONFIG.features).not.toHaveProperty('sentinelTodoLedger');
+        for (const sentinelTodoLedger of [false, true]) {
+            const parsed = CLIConfigSchema.parse({ features: { sentinelTodoLedger } });
+            const config = mergeConfig(DEFAULT_CONFIG, parsed);
+            expect(buildRuntimeFeatures(config)).not.toHaveProperty('sentinelTodoLedgerEnabled');
+            expect(buildRuntimeFeatures(config).sentinelTodoDependenciesEnabled).toBe(false);
+            expect(buildRuntimeFeatures(config).sentinelTodoScrubberEnabled).toBe(false);
+        }
     });
 
     it('exposes the Sentinel To-do Scrubber as a live, default-off toggle', () => {
@@ -746,7 +745,6 @@ describe('feature toggle settings-tab placement', () => {
         'forEach.enabled': 'ai',
         'mapReduce.enabled': 'ai',
         'sentinel.enabled': 'ai',
-        'features.sentinelTodoLedger': 'ai',
         'features.sentinelTodoDependencies': 'ai',
         'features.sentinelTodoScrubber': 'ai',
         'dangerousCommandGuard.enabled': 'ai',

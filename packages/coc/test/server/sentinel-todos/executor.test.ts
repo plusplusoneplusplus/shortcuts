@@ -1,6 +1,5 @@
 /**
- * Executor wiring for the Sentinel to-do ledger: only Sentinel chats with the
- * flag on receive `sentinel_todos` and its guidance, the tool is bound to the
+ * Executor wiring for the Sentinel to-do ledger: Sentinel chats receive `sentinel_todos` and its guidance, the tool is bound to the
  * invoking chat, and Sentinel stays read-only.
  */
 
@@ -122,20 +121,20 @@ describe('sentinel to-do ledger executor wiring', () => {
         expect(service.list).toHaveBeenCalledWith({ workspaceId: 'ws-1', processId: 'queue_task-s1' });
     });
 
-    it('leaves the sentinel turn unchanged when the flag is off', async () => {
+    it('supports standalone Sentinel executors without server ledger infrastructure', async () => {
         const executor = new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelTodos: () => undefined }));
-        await executor.execute(makeTask('sentinel', 'task-s-off'), 'Hello');
-        const flagOff = lastCall();
+        await executor.execute(makeTask('sentinel', 'task-standalone'), 'Hello');
+        const standalone = lastCall();
 
         const plain = new ChatExecutor(createMockProcessStore(), makeOptions());
-        await plain.execute(makeTask('sentinel', 'task-s-off'), 'Hello');
+        await plain.execute(makeTask('sentinel', 'task-standalone'), 'Hello');
 
-        expect(toolNames(flagOff)).not.toContain(SENTINEL_TODOS_TOOL_NAME);
-        expect(flagOff.systemMessage?.content).not.toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
-        expect(flagOff.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
-        expect(flagOff.systemMessage).toEqual(lastCall().systemMessage);
-        expect(toolNames(flagOff)).toEqual(toolNames(lastCall()));
-        expect(flagOff.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(toolNames(standalone)).not.toContain(SENTINEL_TODOS_TOOL_NAME);
+        expect(standalone.systemMessage?.content).not.toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
+        expect(standalone.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(standalone.systemMessage).toEqual(lastCall().systemMessage);
+        expect(toolNames(standalone)).toEqual(toolNames(lastCall()));
+        expect(standalone.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
     });
 
     it('never offers the tool to ask chats', async () => {
@@ -161,26 +160,26 @@ describe('sentinel to-do ledger executor wiring', () => {
         expect(service.list).toHaveBeenCalledWith({ workspaceId: 'ws-1', processId: 'queue_parent' });
     });
 
-    it('keeps review rules but no ledger tool or guidance on flag-off sentinel follow-ups', async () => {
+    it('supports standalone Sentinel follow-ups without server ledger infrastructure', async () => {
         const store = createMockProcessStore();
         await store.addProcess(makeProcess('queue_parent', 'sentinel'));
         await new FollowUpExecutor(store, makeOptions({ getSentinelTodos: () => undefined }))
             .executeFollowUp('queue_parent', 'next', undefined, 'sentinel');
-        const flagOff = lastCall();
+        const standalone = lastCall();
 
         const plainStore = createMockProcessStore();
         await plainStore.addProcess(makeProcess('queue_parent', 'sentinel'));
         await new FollowUpExecutor(plainStore, makeOptions())
             .executeFollowUp('queue_parent', 'next', undefined, 'sentinel');
 
-        expect(toolNames(flagOff)).not.toContain(SENTINEL_TODOS_TOOL_NAME);
-        expect(toolNames(flagOff)).not.toContain('create_pull_request');
-        expect(flagOff.mode).toBe('interactive');
-        expect(flagOff.systemMessage?.content).not.toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
-        expect(flagOff.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
-        expect(flagOff.systemMessage).toEqual(lastCall().systemMessage);
-        expect(toolNames(flagOff)).toEqual(toolNames(lastCall()));
-        expect(flagOff.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(toolNames(standalone)).not.toContain(SENTINEL_TODOS_TOOL_NAME);
+        expect(toolNames(standalone)).not.toContain('create_pull_request');
+        expect(standalone.mode).toBe('interactive');
+        expect(standalone.systemMessage?.content).not.toContain(SENTINEL_TODO_LEDGER_GUIDANCE);
+        expect(standalone.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(standalone.systemMessage).toEqual(lastCall().systemMessage);
+        expect(toolNames(standalone)).toEqual(toolNames(lastCall()));
+        expect(standalone.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
     });
 
     it('does not offer the tool on ask follow-ups', async () => {

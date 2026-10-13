@@ -628,18 +628,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTodoLedger', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoLedgerEnabled',
-        ui: {
-            tab: 'ai', group: 'aiModes', order: 32.5, label: 'Sentinel to-do ledger', badge: 'experimental',
-            hint: 'Give each Sentinel chat a persistent To-do tab for planned work, delegated jobs, and reviewed outcomes. Bookkeeping only; never starts or cancels jobs. Disabled by default.',
-            testId: 'toggle-sentinel-todo-ledger-enabled',
-        },
-    }),
-    bool({
         key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
-            hint: 'Author explicit prerequisites in one Sentinel ledger. Requires the To-do ledger; readiness never grants execution authority. Disabled by default.',
+            hint: 'Author explicit prerequisites in one Sentinel ledger. Readiness never grants execution authority. Disabled by default.',
             testId: 'toggle-sentinel-todo-dependencies-enabled',
         },
     }),
@@ -647,7 +639,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
-            hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Requires the Sentinel to-do ledger. Disabled by default.',
+            hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Disabled by default.',
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
     }),

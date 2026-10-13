@@ -48,7 +48,6 @@ import { sentinelTodoTabInput } from '../../../src/server/spa/client/react/featu
 import { resolveDashboardRoute, buildRepoGroupChatHash } from '../../../src/server/spa/client/react/layout/dashboardRoutes';
 import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
-import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'chat-s' };
 const ORIGIN: SentinelTodoExcursionOrigin = {
@@ -83,7 +82,6 @@ afterEach(() => {
     clearSentinelTodoExcursion();
     clearSentinelTodoChats();
     clearUnifiedPanelState();
-    applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
 });
 
 describe('excursion path rules', () => {
@@ -199,8 +197,6 @@ describe('excursion store', () => {
 });
 
 describe('pinned To-do in the visited chat panel', () => {
-    beforeEach(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true }));
-
     it('shows the pinned tab while the chat is on the path, never stores it, and ends the excursion on close', () => {
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-a'));
         expect(result.current.pinnedId).toBeNull();
@@ -233,12 +229,11 @@ describe('pinned To-do in the visited chat panel', () => {
         expect(result.current.active).toMatchObject({ kind: 'todo', resourceId: OWNER.processId, chatId: ORIGIN.chatId });
     });
 
-    it('adds nothing while the ledger flag is off', () => {
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
+    it('adds the pinned ledger without runtime feature configuration', () => {
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-a'));
         act(() => { startSentinelTodoExcursion(ORIGIN); visitSentinelTodoExcursionChat(stop('chat-a')); });
-        expect(result.current.pinnedId).toBeNull();
-        expect(result.current.tabs).toEqual([]);
+        expect(result.current.pinnedId).not.toBeNull();
+        expect(result.current.tabs).toEqual([expect.objectContaining({ kind: 'todo', resourceId: OWNER.processId })]);
     });
 });
 

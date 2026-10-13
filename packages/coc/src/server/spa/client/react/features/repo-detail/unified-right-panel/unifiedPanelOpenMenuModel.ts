@@ -60,7 +60,7 @@ export interface OpenMenuActionsInput {
      */
     chatHasChanges?: boolean;
     /**
-     * The selected chat is a Sentinel with the to-do ledger enabled. Gates the
+     * The selected chat is a hosted Sentinel. Gates the
      * To-do entry, which opens (or reopens) that chat's ledger tab; omitted
      * rather than disabled for every other chat.
      */

@@ -295,10 +295,10 @@ references before editing. Paths are package-relative.
   Manual items never authorize execution, delegation, job links, or automatic result
   reviews. Execution requests require clarification; never create a normal-item copy,
   convert, or hand off a manual item. Never let ledger edits
-  start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
+  start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
-  `getSentinelTodos` runtime capability (undefined while the flag is off).
-  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived normal
+  `getSentinelTodos` runtime capability.
+  Sentinel `send_to_conversation` create mode requires an unarchived normal
   `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local
   terminal results reach normal items through `createSentinelTodoDelegationHooks` (first result
@@ -329,7 +329,7 @@ references before editing. Paths are package-relative.
   Committed delivery and conversation-mode changes invalidate linked ledgers without advancing
   their revisions; badges never require per-job transcript reads or polling.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
-  Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
+  Sentinel `ChatDetail` publishes its ledger owner; stored tabs remain visible.
   Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
   prove the Sentinel owner through `SentinelTodoService.list` before accessing
   scrubber state, and use the engine for revision-checked Accept/Undo. The shared
@@ -707,7 +707,7 @@ references before editing. Paths are package-relative.
   this command bypasses pending question answers and never changes selection or invokes AI.
   WhatsApp-only `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`) lists the
   not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
-  `SentinelTodoService.list` (non-Sentinel → explicit reply; ledger flag off → off reply;
+  `SentinelTodoService.list` (non-Sentinel → explicit reply; missing server infrastructure → unavailable reply;
   non-local workspace → unsupported reply). Status labels come from the client's
   dependency-free `sentinelTodoStatusModel.ts`; all active items are grouped by
   Normal/Manual tracking, followed by recent Done within the shared 50-item budget.

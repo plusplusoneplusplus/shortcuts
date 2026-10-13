@@ -196,7 +196,7 @@ can participate without job authority; dependency edits preserve fulfillment and
 user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
 Dependency authoring shares the owner-validated service through PUT
 `.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
-default-off `features.sentinelTodoDependencies` and the ledger flag. Native
+default-off `features.sentinelTodoDependencies`. Native
 tracked admission checks readiness while Sentinel follows ordinary user authorization.
 Graph and evidence rows are machine-local and cleared with the ledger wipe.
 Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding

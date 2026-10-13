@@ -87,8 +87,8 @@ export interface ChatToolBundleOptions {
      */
     createPullRequest?: CreatePullRequestToolDeps;
     /**
-     * `sentinel_todos` wiring. Pass it only for a Sentinel chat with the
-     * to-do ledger flag on — absent → no tool and no guidance.
+     * `sentinel_todos` wiring for a Sentinel chat; absent in other modes
+     * or standalone executors without the server capability.
      */
     sentinelTodos?: SentinelTodosToolDeps;
     /**

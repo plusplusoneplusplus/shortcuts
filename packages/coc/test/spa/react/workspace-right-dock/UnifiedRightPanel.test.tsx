@@ -109,7 +109,6 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 import { publishSentinelTodoChat, clearSentinelTodoChats } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
-import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-1';
 
@@ -148,7 +147,6 @@ function openViaMenu(testId: string) {
 
 describe('UnifiedRightPanel', () => {
     it.each([null, 'remote:server-a:group-g'])('keeps a member Sentinel owner on the group server (%s)', routingRef => {
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true });
         publishSentinelTodoChat('group-g', 'chat-s', { ownerWorkspaceId: WS, processId: 'chat-s', title: 'Sentinel' });
         try {
             renderPanel({ workspaceId: 'group-g', chatId: 'chat-s', routingRef });
@@ -159,7 +157,6 @@ describe('UnifiedRightPanel', () => {
         } finally {
             cleanup();
             clearSentinelTodoChats();
-            applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
             todoEventOwners.mockClear();
         }
     });

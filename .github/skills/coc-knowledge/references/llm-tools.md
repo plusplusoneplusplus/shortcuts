@@ -25,7 +25,7 @@ list when their flags are off. `browser` is filtered when `browserControlEnabled
 ### To-do Scrubber child chats
 
 `getSentinelScrubber` is a late-bound executor capability published by route composition
-and gated by both `sentinelTodoLedger` and `sentinelTodoScrubber`. Ask tasks carrying
+and gated by `sentinelTodoScrubber`. Ask tasks carrying
 `context.sentinelScrub` mark their run running and receive only `submit_scrub_findings`
 from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat tools,
 ledger writers and `send_to_conversation` are excluded. Scrubber turns are unattended:
@@ -71,10 +71,10 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 
 ### sentinel_todos
 
-Offered only to Sentinel chats (first turn and follow-ups) while `features.sentinelTodoLedger`
-is on: the route layer publishes `getSentinelTodos`, which returns the shared
-`SentinelTodoService` or `undefined` when the flag is off. Not in `LLM_TOOL_REGISTRY`; flag-off
-turns get no tool and no guidance. The owner is the invoking chat (`workspaceId`, `processId`),
+Offered to every Sentinel chat (first turn and follow-ups): the route layer
+publishes `getSentinelTodos`, which returns the shared `SentinelTodoService`.
+Not in `LLM_TOOL_REGISTRY`. Standalone executors may omit this server capability.
+The owner is the invoking chat (`workspaceId`, `processId`),
 never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
 `list` (all unarchived non-Done items first, then recently updated Done within a
 50-item budget; active counts above 50 stay complete. `includeArchived` adds history
@@ -89,7 +89,7 @@ default `regular`; ledger metadata only, independent of status). `done`/`needs_a
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
 arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
-With default-off `features.sentinelTodoDependencies` and the ledger enabled,
+With default-off `features.sentinelTodoDependencies` enabled,
 `set_dependencies` replaces all prerequisites using `itemId`, `expectedRevision`
 and typed `dependsOn` edges. `bind_pr_output` explicitly selects one exact produced
 PR with named output slot and tracked-job or owner-selection provenance/reason;

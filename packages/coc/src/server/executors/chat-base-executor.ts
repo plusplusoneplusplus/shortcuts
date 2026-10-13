@@ -714,8 +714,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * evaluated at call time, so the schema stays byte-identical.
      */
     /**
-     * `sentinel_todos` wiring for one turn: Sentinel chats only, and only while
-     * the route layer reports the to-do ledger flag on. The owner is this chat,
+     * `sentinel_todos` wiring for one turn: Sentinel chats only. The owner is this chat,
      * so the tool can never write another chat's ledger.
      */
     protected buildSentinelTodoDeps(

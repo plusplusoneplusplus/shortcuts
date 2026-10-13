@@ -191,7 +191,7 @@ Crons are separate from the schedule subsystem. They share only `ScheduleTimerRe
 
 `sentinel-scrubber/scrubber-scheduler.ts` uses `ScheduleTimerRegistry` and cron-expression
 utilities for one timer per `(workspaceId, processId)`. Config is disabled by default,
-revision-checked in the ledger's native database and requires both ledger/scrubber flags.
+revision-checked in the ledger's native database and requires the scrubber flag.
 Startup arms future ticks after interrupted-run recovery, without catch-up. Config/run
 changes refresh timers; live flag changes and owner removal invalidate pending checks.
 Each tick proves the workspace and Sentinel owner, then delegates to `ScrubberRunService`

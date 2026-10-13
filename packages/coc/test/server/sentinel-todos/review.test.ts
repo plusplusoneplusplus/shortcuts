@@ -18,7 +18,6 @@ const flush = () => new Promise<void>(resolve => setTimeout(resolve, 20));
 describe('Sentinel to-do reviewed outcomes', () => {
     let dataDir: string;
     let database: ReturnType<typeof createTodoTestDatabase>;
-    let enabled: boolean;
     let jobs: DelegatedJobStore;
     let todos: SentinelTodoStore;
     let service: SentinelTodoService;
@@ -31,7 +30,7 @@ describe('Sentinel to-do reviewed outcomes', () => {
     let onChange: ReturnType<typeof vi.fn>;
 
     function wire() {
-        const hooks = createSentinelTodoDelegationHooks(service, () => enabled);
+        const hooks = createSentinelTodoDelegationHooks(service);
         reviews = new DelegatedJobReviews({
             jobs, store, queue: queue as any, delivery: { deliverOnce, deliverNoticeOnce } as any,
             findTodo: job => hooks.findTodo(job),
@@ -46,7 +45,6 @@ describe('Sentinel to-do reviewed outcomes', () => {
     beforeEach(() => {
         database = createTodoTestDatabase(createTodoTestDirectory());
         dataDir = database.dataDir;
-        enabled = true;
         const parent = {
             id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
             metadata: { workspaceId: owner.workspaceId, mode: 'sentinel' },
@@ -332,7 +330,7 @@ describe('Sentinel to-do reviewed outcomes', () => {
         const content: string = deliverOnce.mock.calls[0][3].content;
         expect(content).not.toContain(manual.title);
         expect(JSON.parse(content.slice(content.indexOf('{'))).todo.id).toBe(linked.id);
-        const hooks = createSentinelTodoDelegationHooks(service, () => enabled);
+        const hooks = createSentinelTodoDelegationHooks(service);
         expect(hooks.findTodo(jobs.list(owner.workspaceId)[0])?.id).toBe(linked.id);
     });
 
@@ -478,16 +476,14 @@ describe('Sentinel to-do reviewed outcomes', () => {
         expect(deliverOnce).not.toHaveBeenCalled();
     });
 
-    it('leaves items and review prompts untouched when the feature flag is off', async () => {
+    it('always records linked outcomes and includes the item in the review', async () => {
         const linked = await linkedItem();
-        enabled = false;
         finish('failed', 'Tests failed');
         await flush();
-        expect(item(linked.id)).toMatchObject({ status: 'in_progress', revision: linked.revision });
-        expect(item(linked.id).jobs[0].result).toBeUndefined();
+        expect(item(linked.id)).toMatchObject({ status: 'needs_attention' });
+        expect(item(linked.id).jobs[0].result?.outcome).toBe('failed');
         const content: string = deliverOnce.mock.calls[0][3].content;
-        expect(content).not.toContain('sentinel_todos');
-        expect(JSON.parse(content.slice(content.indexOf('{'))).todo).toBeUndefined();
+        expect(JSON.parse(content.slice(content.indexOf('{'))).todo).toMatchObject({ id: linked.id });
     });
 
     it('still delivers the review when the ledger cannot be read', async () => {

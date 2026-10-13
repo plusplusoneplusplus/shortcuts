@@ -663,17 +663,17 @@ as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
 
 ## Sentinel To-do
 
-Gated by the live `features.sentinelTodoLedger` flag (`sentinelTodoLedgerEnabled`).
+Every hosted Sentinel chat has a persistent To-do ledger.
 A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
 and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
-withdraws it with the host; the panel applies the flag. The `todo` descriptor is
+withdraws it with the host. The `todo` descriptor is
 one tab per concrete owner and chat: `resourceId` is the parent process id.
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
 including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
 (`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
-`sentinel-todos-changed` events on a workspace-subscribed socket. Flag-off hides
-stored `todo` tabs in `useUnifiedPanelTabs` without deleting them (the flag loads
-asynchronously), and hides the `+` menu's To-do entry.
+`sentinel-todos-changed` events on a workspace-subscribed socket. Stored `todo`
+tabs remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
+selected hosted Sentinel chat.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
@@ -770,7 +770,7 @@ with full accessible descriptions; titles and pills wrap without extra reads,
 polling or focus targets. Delayed hover/focus and persistent info actions share a
 bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
 departure dismiss. Title and Open job anchors retain excursion navigation and
-modifier clicks. The existing ledger flag gates this surface.
+modifier clicks.
 
 Preview reads are lazy and abortable, pinned to the job's workspace and concrete
 server or ledger-owner route. Unresolved remote owners never fall through locally;
@@ -787,8 +787,8 @@ read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
 ### To-do Scrubber
 
-`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by both
-live ledger and scrubber flags. Its owner/endpoint-keyed strip uses
+`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by the
+live scrubber flag. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
 late reads and mutations cannot update a remounted owner. A visibility-aware
 poll refreshes missed events. All-open and selected runs start separate queued

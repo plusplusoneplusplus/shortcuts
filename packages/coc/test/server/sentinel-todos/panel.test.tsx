@@ -2,8 +2,8 @@
  * UnifiedTodoTab — the Sentinel To-do tab against a fake owning-server client:
  * loading vs. empty, add/edit/status/archive with revisions, retained input on
  * save failures and conflicts, live refresh from ledger events, late
- * responses after an owner change, job links, and the flag-off hiding of
- * stored To-do tabs.
+ * responses after an owner change, job links, and restoration of
+ * persistent To-do tabs.
  *
  * @vitest-environment jsdom
  */
@@ -286,7 +286,7 @@ describe('UnifiedTodoTab', () => {
         expect(dependencyEvaluate).toHaveBeenCalledWith(OWNER.ownerWorkspaceId, OWNER.processId, dependent.id, { signal: expect.any(AbortSignal) });
     });
     it.each(['row', 'strip', 'toolbar'])('renders collapsed findings and archives accepted Obsolete through %s', async entryPoint => {
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
         get.mockResolvedValue(ledger([item()]));
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
             runs: [{ id: 'r1', status: 'completed', trigger: 'manual', createdAt: '2026-10-11T00:00:00Z', counts: { done: 0, proposals: 1, unverified: 0 }, itemCount: 1, deferredCount: 0, awaitingReviewCount: 0 }] });
@@ -314,7 +314,7 @@ describe('UnifiedTodoTab', () => {
     });
 
     it('mounts the enabled scrubber above the list only after the ledger loads', async () => {
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
         const read = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValue(read.promise);
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 }, runs: [] });
@@ -1358,7 +1358,7 @@ describe('UnifiedTodoTab split layout', () => {
     });
 
     it('keeps scrubber chat excursions independent of item selection and preserves findings/actions', async () => {
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
         get.mockResolvedValue(ledger([item()]));
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
             runs: [{ id: 'r1', childProcessId: 'scrub-chat', status: 'completed', trigger: 'manual', createdAt: '2026-10-11T00:00:00Z',
@@ -1833,11 +1833,10 @@ describe('UnifiedTodoTab Manual tracking', () => {
     });
 });
 
-describe('Sentinel chat registry and flag gating', () => {
+describe('Sentinel chat registry and persistent tabs', () => {
     afterEach(() => {
         clearSentinelTodoChats();
         clearUnifiedPanelState();
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
     });
 
     it('publishes per panel scope and chat and withdraws on unmount', () => {
@@ -1851,13 +1850,10 @@ describe('Sentinel chat registry and flag gating', () => {
         expect(result.current).toBeNull();
     });
 
-    it('hides stored To-do tabs while the flag is off and shows them when it turns on', () => {
+    it('restores stored To-do tabs without runtime feature configuration', () => {
         act(() => writeUnifiedPanelState('ws-1', openTab(EMPTY_UNIFIED_PANEL, sentinelTodoTabInput(OWNER, 'chat-1'))));
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-1'));
-        expect(result.current.tabs).toEqual([]);
-        expect(result.current.activeId).toBeNull();
-        act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true }));
         expect(result.current.tabs.map(tab => tab.kind)).toEqual(['todo']);
+        expect(result.current.active?.resourceId).toBe(OWNER.processId);
     });
 });

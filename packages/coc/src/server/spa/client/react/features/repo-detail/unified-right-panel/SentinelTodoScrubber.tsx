@@ -17,7 +17,7 @@ function subscribeConfig(listener: () => void) {
     return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
 }
 function readEnabled() {
-    return isFeatureEnabled('sentinelTodoLedgerEnabled') && isFeatureEnabled('sentinelTodoScrubberEnabled');
+    return isFeatureEnabled('sentinelTodoScrubberEnabled');
 }
 
 type Props = {

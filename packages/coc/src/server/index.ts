@@ -323,7 +323,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — the WhatsApp/Teams ask_user question relay, bound at
     // the route layer where the connectors are created.
     let askUserQuestionRelay: import('./messaging/ask-user-relay').AskUserQuestionRelay | undefined;
-    // Forward declaration — the flag-gated Sentinel to-do service getter, bound
+    // Forward declaration — the Sentinel to-do service getter, bound
     // at the route layer where the ledger service is created.
     let getSentinelTodosCapability: (() => import('./sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined) | undefined;
     let getSentinelDependencyAdmissionCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'];

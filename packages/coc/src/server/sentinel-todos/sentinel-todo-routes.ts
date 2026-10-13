@@ -1,5 +1,5 @@
 /**
- * Sentinel to-do ledger REST API (guarded by `features.sentinelTodoLedger`).
+ * Sentinel to-do ledger REST API.
  *
  *   GET   /api/workspaces/:workspaceId/sentinel-todos/:processId                — ledger
  *   POST  /api/workspaces/:workspaceId/sentinel-todos/:processId/items          — create
@@ -30,12 +30,10 @@ const EVIDENCE = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/(
 export function registerSentinelTodoRoutes(opts: {
     routes: Route[];
     service: SentinelTodoService;
-    getEnabled: () => boolean;
 }): void {
-    const { routes, service, getEnabled } = opts;
+    const { routes, service } = opts;
 
     const owner = (res: http.ServerResponse, match: RegExpMatchArray | null | undefined) => {
-        if (!getEnabled()) return sendError(res, 404, 'Sentinel to-do ledger is disabled');
         const workspaceId = decodeURIComponent(match![1]);
         const processId = decodeURIComponent(match![2]);
         if (!isValidWorkspaceId(workspaceId) || !processId) return sendError(res, 400, 'Invalid workspace or chat');

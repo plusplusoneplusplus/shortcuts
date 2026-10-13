@@ -324,7 +324,7 @@ export interface RegisterRoutesOptions {
      * mode "ralph".
      */
     setLaunchRalph?: (fn: LaunchRalphFn) => void;
-    /** Publish the flag-gated Sentinel to-do service getter to the executor runtime. */
+    /** Publish the Sentinel to-do service getter to the executor runtime. */
     setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
     setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
     setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
@@ -521,11 +521,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
-    // Sentinel to-do ledger: bookkeeping only, never job control. Live-gated by
-    // `features.sentinelTodoLedger` (default off).
-    const getSentinelTodoLedgerEnabled = opts.runtimeConfigService
-        ? () => opts.runtimeConfigService!.config.features?.sentinelTodoLedger === true
-        : () => opts.resolvedConfig?.features?.sentinelTodoLedger === true;
+    // Sentinel to-do ledger: always available for Sentinel bookkeeping, never job control.
     // Production borrows the process-store connection; stub stores use native
     // in-memory SQLite, like the queue infrastructure.
     const todoDb = store instanceof SqliteProcessStore ? store.getDatabase() : new NativeDatabase(':memory:');
@@ -540,8 +536,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         todos: todoStore, store, jobs: delegatedJobs, dataDir,
         fetchPr: createPrStatusFetcher({ dataDir }),
         resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
-        getDependenciesEnabled: () => getSentinelTodoLedgerEnabled()
-            && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
+        getDependenciesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
         getTask: taskId => bridge.getTask(taskId),
         onChange: ({ owner, ledgerRevision, item }) => {
             opts.triggerManager?.refreshDependencyPolling();
@@ -632,10 +627,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         persist: entry => dependencyReceipts.persistPoll(entry),
         tick: entry => dependencyActions.poll(entry.owner),
     });
-    registerSentinelTodoRoutes({ routes, service: sentinelTodos, getEnabled: getSentinelTodoLedgerEnabled });
-    opts.setSentinelTodos?.(() => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined);
-    const getScrubberEnabled = () => getSentinelTodoLedgerEnabled()
-        && (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
+    registerSentinelTodoRoutes({ routes, service: sentinelTodos });
+    opts.setSentinelTodos?.(() => sentinelTodos);
+    const getScrubberEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
     const scrubber = new ScrubberStore(todoDb);
     const scrubberEngine = new ScrubberEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
     let scrubberScheduler: ScrubberScheduler | undefined;
@@ -693,7 +687,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     opts.setSentinelScrubber?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
     registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
-    const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos, getSentinelTodoLedgerEnabled);
+    const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos);
     // Bound after the WhatsApp connector is wired below.
     let autoCompactionOrigins: ReturnType<typeof createAutoCompactionOrigins> | undefined;
     const jobNotices = new MessagingJobNotices({
@@ -1387,7 +1381,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         remotes: workspaceDirectory,
         questions: questionRelay,
         handOff: messagingHandOff,
-        getTodos: () => getSentinelTodoLedgerEnabled() ? sentinelTodos : undefined,
+        getTodos: () => sentinelTodos,
         getTask: taskId => queueFacade.getTask(taskId),
         topicQueue: queueFacade,
         enqueue: async (workspaceId, message, mode, processId, taskId, botControl, images, admissionHeld = false) => {
