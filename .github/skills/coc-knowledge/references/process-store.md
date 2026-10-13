@@ -131,6 +131,21 @@ counts to separate native/transport cost from Forge hydration.
 | `task_groups` | Parent/child task-group registry: one row per hierarchical run/session or chat folder (type, title, normalized status, hidden flag, origin process, `parent_group_id`, extra JSON) |
 | `task_group_members` | Child links per group: role (`generation`/`item`/`reduce`/`iteration`/`final-check`/`analyzer`/`critic`), task/process IDs, `itemKey`, `memberIndex` |
 
+### Conversation tool inventory storage
+
+`server/storage/conversation-tool-inventory-store.ts` owns an additive
+`conversation_tool_inventory` table in the shared native database. Its process
+foreign key cascades deletion; workspace authorization joins the current process
+owner, preserving workspace re-keying. Inventory data stays outside process
+metadata, transcripts, prompts and streaming payloads.
+
+`beginTurn` atomically replaces the latest snapshot with pending and an opaque
+turn identity. `record` captures once using compare-and-set; stale callbacks
+cannot overwrite newer turns. `get` lazily returns unavailable, pending or
+captured. SDK descriptor projection bounds snapshots to 1 MiB; metadata
+validation and bounded reads surface malformed data and persistence failures.
+Completed snapshots retain their captured provider/time independently of settings.
+
 ### Sentinel to-do store
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive
