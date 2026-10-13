@@ -95,25 +95,8 @@ describe('useAdminFeatureSettings', () => {
         expect(view.result.current.featuresDirty).toBe(false);
     });
 
-    it('saves the default-off Sentinel layout on Appearance and propagates only that tab live', async () => {
-        const key = 'features.sentinelTodoSplitLayout';
-        const definition = FEATURES_CARD_SETTINGS.find(setting => setting.key === key)!;
-        expect(definition.default).toBe(false);
-        expect(definition.runtime).toBe('live');
-        expect(definition.ui?.label).toBe('Sentinel To-do split layout');
-        const { view } = renderController();
-        act(() => view.result.current.hydrate({}));
-        expect(view.result.current.featureValues[key]).toBe(false);
-        act(() => view.result.current.setFeatureValues(previous => ({
-            ...previous, [key]: true, 'features.sentinelTodoLedger': true,
-        })));
-        await act(async () => { await view.result.current.handleSaveTab('appearance'); });
-        expect(updateConfig.mock.calls[0][0][key]).toBe(true);
-        expect(updateConfig.mock.calls[0][0]).not.toHaveProperty('features.sentinelTodoLedger');
-        expect(applyRuntimeConfigPatch.mock.calls[0][0].sentinelTodoSplitLayoutEnabled).toBe(true);
-        expect(applyRuntimeConfigPatch.mock.calls[0][0]).not.toHaveProperty('sentinelTodoLedgerEnabled');
-        expect(view.result.current.isTabDirty('appearance')).toBe(false);
-        expect(view.result.current.isTabDirty('ai')).toBe(true);
+    it('keeps To-do layout unconditional and absent from Admin preferences', () => {
+        expect(FEATURES_CARD_SETTINGS.some(setting => setting.key === 'features.sentinelTodoSplitLayout')).toBe(false);
     });
 
     it('clears the search string when the Features sub-tab is left', () => {

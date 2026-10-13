@@ -1167,14 +1167,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTodoSplitLayout', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoSplitLayoutEnabled',
-        ui: {
-            tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Sentinel To-do split layout', badge: 'experimental',
-            hint: 'Show a compact item list beside selected details when the To-do panel has room. Narrow panels use a list and Back navigation. Layout only; disabled by default.',
-            testId: 'toggle-sentinel-todo-split-layout-enabled',
-        },
-    }),
-    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 72, label: 'HTML page tabs',

@@ -716,28 +716,27 @@ reserved `pl-1` gutter (every row reserves it, so priority changes never shift c
 visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
 missing value (older owning server) as Regular. Priority never reorders sections. The header shows the
 active normal count and, when nonzero, how many normal items display Needs attention (stored or derived).
-With `features.sentinelTodoSplitLayout` off, a collapsed inline row is the toggle
-(status, High, title, chevron), muted target/Updated metadata, a Needs attention reason
-preview, the latest job (`+N earlier jobs`), and `Ref` links. The default-off live
-Appearance preference **Sentinel To-do split layout** publishes
-`sentinelTodoSplitLayoutEnabled`. It uses `useContainerWidth` on the actual panel:
-at 660px the compact selectable list and existing item editor scroll independently;
-below that width selection opens details and Back returns focus to the selected row.
-Native pressed buttons expose selection; arrows/Home/End move row focus without
-selecting. Visited editors stay mounted but hidden across selection and resizing,
-retaining item, status-reason and dependency drafts. The editor is shared with inline
-rows; layout changes grant no execution authority or tag functionality.
+`UnifiedTodoTab` always uses list/detail presentation measured by `useContainerWidth`
+on the actual panel. At 660px the compact selectable list and detail editor scroll
+independently; below that width selection opens details and Back returns focus to
+the selected row. Native pressed buttons expose selection; arrows/Home/End move
+row focus without selecting. Visited editors stay mounted but hidden across
+selection and resizing, retaining item, status-reason and dependency drafts.
+List cards combine status, priority, wrapping title and Attach in a compact header,
+with target/Updated/latest-job metadata below. Identical item/job titles use an
+accessible Open job link; distinct job titles remain visible. Full job history,
+references and editing controls live in the detail pane.
 With session-context attachments enabled, item cards are copy-drag sources
 and expose an accessible Attach action for their owning Sentinel composer. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
-on drop and send (see the composer knowledge reference). Expanding lists every job, notes when the displayed status is derived
+on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
 start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
 `Tracked only · never run` tag. Referenced conversations
-(`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
+(`item.references`, absent on older servers) render in the detail pane as compact, truncated `Ref` links
 below jobs, with no execution or review label.
 
 `SentinelTodoDependencies` is gated by default-off

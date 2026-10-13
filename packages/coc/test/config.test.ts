@@ -1188,7 +1188,6 @@ timeout: 300
                 '  sentinelTodoLedger: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoScrubber: true',
-                '  sentinelTodoSplitLayout: true',
                 '  sessionContextAttachments: true',
                 '  commitChatLens: true',
                 '  commitChatLensDormantMode: pill',
@@ -1253,7 +1252,7 @@ timeout: 300
         });
 
         describe.each([
-            'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelTodoSplitLayout',
+            'sentinelTodoDependencies', 'sentinelResultCards',
             'railManualRefresh', 'railStatusActions',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
@@ -1554,7 +1553,6 @@ timeout: 300
                     "sentinelTodoDependencies": false,
                     "sentinelTodoLedger": true,
                     "sentinelTodoScrubber": false,
-                    "sentinelTodoSplitLayout": false,
                     "sessionContextAttachments": true,
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
@@ -1782,7 +1780,6 @@ timeout: 300
                   "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoLedger": "file",
                   "features.sentinelTodoScrubber": "default",
-                  "features.sentinelTodoSplitLayout": "default",
                   "features.sessionContextAttachments": "default",
                   "features.teamsAiAnswerRelay": "file",
                   "features.teamsBridgeObservability": "file",

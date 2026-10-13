@@ -740,7 +740,6 @@ describe('Features card UI metadata', () => {
 
 describe('feature toggle settings-tab placement', () => {
     const EXPECTED_TABS: Record<string, FeatureSettingTab> = {
-        'features.sentinelTodoSplitLayout': 'appearance',
         // AI & Execution
         'ralph.enabled': 'ai',
         'features.ralphMultiAgentGrill': 'ai',

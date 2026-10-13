@@ -78,6 +78,7 @@ function deferred<T>() {
     return { promise, resolve };
 }
 beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
     clearSentinelTodoExcursion();
     vi.clearAllMocks();
     mocks.refs.length = 0;
@@ -94,9 +95,9 @@ beforeEach(() => {
     mocks.prList.mockReset().mockResolvedValue({ pullRequests: [{ title: 'Local PR', number: 7, webUrl: preview().pr.url }], total: 1 });
     mocks.get.mockReset().mockResolvedValue({ items: [item()], revision: 1 });
     mocks.route.mockReturnValue({ kind: 'remote', baseUrl: 'https://server.example.test' });
-    applyRuntimeConfigPatch({ triggersEnabled: true, sentinelTodoSplitLayoutEnabled: false });
+    applyRuntimeConfigPatch({ triggersEnabled: true });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false, sentinelTodoSplitLayoutEnabled: false }); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false }); });
 
 describe('Sentinel To-do Triggers', () => {
     it('hides the section with no rules, but retains a first-add entry point', async () => {
@@ -482,7 +483,6 @@ describe('Sentinel To-do Triggers', () => {
         ['manual', 'done', false, ['manual', 'manual-done']],
         ['manual', 'done', true, ['manual', 'manual-archived']],
     ] as const)('split navigation selects only the target and required %s / %s / archived=%s containers', async (type, status, archived, opened) => {
-        applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: true });
         const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
         try {
             mocks.get.mockResolvedValue({ items: [
@@ -550,10 +550,10 @@ describe('Sentinel To-do Triggers', () => {
                 if (section.startsWith('manual-') && !requiredSections.includes('manual')) continue;
                 expect(sectionToggle(section).getAttribute('aria-expanded')).toBe(String(requiredSections.includes(section)));
             }
-            expect(within(activeRow).getByRole('button', { name: /normal active/ }).getAttribute('aria-expanded')).toBe('true');
+            expect(within(activeRow).getByRole('button', { name: /normal active/ }).getAttribute('aria-pressed')).toBe('false');
             for (const other of items.filter(candidate => candidate.id !== 'item-1' && candidate.id !== 'normal-active')) {
                 const row = screen.queryByTestId(`sentinel-todo-row-${other.id}`);
-                if (row) expect(within(row).getByRole('button', { name: new RegExp(other.title) }).getAttribute('aria-expanded')).toBe('false');
+                if (row) expect(within(row).getByRole('button', { name: new RegExp(other.title) }).getAttribute('aria-pressed')).toBe('false');
             }
         };
         const user = userEvent.setup();
@@ -563,7 +563,7 @@ describe('Sentinel To-do Triggers', () => {
             const target = await screen.findByTestId('sentinel-todo-row-item-1');
             await waitFor(() => expect(target.dataset.sentinelTriggerHighlight).toBe('true'));
             expect(document.activeElement).toBe(within(target).getByRole('button', { name: /Follow-up work/ }));
-            expect(within(target).getByRole('button', { name: /Follow-up work/ }).getAttribute('aria-expanded')).toBe('true');
+            expect(within(target).getByRole('button', { name: /Follow-up work/ }).getAttribute('aria-pressed')).toBe('true');
             assertState();
         }
         expect(mocks.get).toHaveBeenCalledTimes(1);
@@ -587,7 +587,7 @@ describe('Sentinel To-do Triggers', () => {
         await waitFor(() => expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBe('true'));
         expect(done.getAttribute('aria-expanded')).toBe('true');
         expect(manualDone.getAttribute('aria-expanded')).toBe('true');
-        expect(within(screen.getByTestId('sentinel-todo-row-done')).getByRole('button', { name: /Done item/ }).getAttribute('aria-expanded')).toBe('false');
+        expect(within(screen.getByTestId('sentinel-todo-row-done')).getByRole('button', { name: /Done item/ }).getAttribute('aria-pressed')).toBe('false');
         expect(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button').getAttribute('aria-expanded')).toBe('false');
     });
 
@@ -636,7 +636,7 @@ describe('Sentinel To-do Triggers', () => {
         expect(screen.queryByText('Stale target')).toBeNull();
         expect(scroll).not.toHaveBeenCalled();
         expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBeUndefined();
-        expect(within(screen.getByTestId('sentinel-todo-row-item-1')).getByRole('button', { name: /New owner item/ }).getAttribute('aria-expanded')).toBe('false');
+        expect(within(screen.getByTestId('sentinel-todo-row-item-1')).getByRole('button', { name: /New owner item/ }).getAttribute('aria-pressed')).toBe('false');
         expect(screen.getByTestId('sentinel-todo-row-item-1').contains(document.activeElement)).toBe(false);
     });
 });

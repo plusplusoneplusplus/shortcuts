@@ -298,7 +298,6 @@ export interface RuntimeDashboardConfig {
     teamsMessageReactionEnabled: boolean;
     sentinelTodoLedgerEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
-    sentinelTodoSplitLayoutEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;
     botManagedConversationsEnabled: boolean;
