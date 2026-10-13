@@ -153,8 +153,19 @@ status and only the allow-listed `InvalidGrant`, `InteractionRequired` or
 discarded. Cache callers can keep 5xx failures transient using the status.
 Native acquisition maps errors to the existing codes, retains trusted discovery,
 verifies returned identity and persists rotation under its credential lock.
-This exchange is Rust-only; the addon and Node background refresher keep their
-own APIs and behavior.
+The native package exports
+`exchangeMicrosoftRefreshToken(options, refreshToken, signal?)`. Options contain
+`authority`, `clientId`, `scopes`, optional `resource` and optional `timeoutMs`
+(default 30,000; range 100..900,000 ms). It returns an immutable
+`{ accessToken, tokenType, expiresIn, scope?, refreshToken? }`, with relative expiry
+in seconds and only reported scope/rotation. Unverified ID tokens stay in Rust.
+Each call owns a one-shot native cancellation handle; abort/timeout drops HTTP work
+and prevents late publication, including after dispatch or Node delivery delays.
+`MicrosoftOAuthRefreshError` extends `AuthError` with optional `status` and
+`rejection` (`invalid_grant`, `interaction_required`, `consent_required`).
+Only the exact rejection supports cache invalidation, not the broader SDK code;
+status still informs transient-failure policy. No raw error is retained as cause.
+The Node background refresher retains its separate HTTP, timer and cache behavior.
 
 `expiryMarginSeconds` defaults to 60. A token is usable only when
 `expiresAt > now + margin`; equality requires renewal. Provider `timeoutMs`
@@ -288,3 +299,8 @@ real user authentication.
 config fixtures. Rust Windows tests create and remove unique generic credentials;
 the ignored `github::tests::isolated_macos_cli_keychain_fixture` checks exact
 same-account CLI Keychain import on macOS with scoped cleanup.
+`cargo test --locked -p coc-native auth::refresh::tests` uses trusted Rust
+HTTP injection for boundary conversion, safe errors, one-shot handles and
+cancelled/timed-out work cleanup. `test/oauth-refresh.test.ts` covers built-addon
+validation and trusted loader fixtures for the exported TypeScript wrapper.
+Refresh tests make no auth network requests or credential-store accesses.

@@ -14,6 +14,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 
 mod github;
+mod refresh;
 
 fn error(error: AuthError) -> Error {
     Error::from_reason(format!("[auth-sdk:{:?}] Authentication operation failed.", error.code))
