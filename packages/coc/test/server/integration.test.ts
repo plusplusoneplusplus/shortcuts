@@ -91,13 +91,13 @@ describe('Server Integration', () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-'));
         store = new FileProcessStore({ dataDir: tmpDir });
         const { service: mockAiService } = createMockSDKService();
-        server = await createExecutionServer({ store, port: 0, host: '127.0.0.1', dataDir: tmpDir, aiService: mockAiService as any });
+        server = await createExecutionServer({ store, port: 0, host: '127.0.0.1', dataDir: tmpDir, fileConfig: {}, aiService: mockAiService as any });
         baseUrl = server.url;
 
         // Create a second server using the default stub store (no store option)
         stubTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-stub-'));
         const { service: stubMockAiService } = createMockSDKService();
-        stubServer = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: stubTmpDir, aiService: stubMockAiService as any });
+        stubServer = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: stubTmpDir, fileConfig: {}, aiService: stubMockAiService as any });
         stubBaseUrl = stubServer.url;
     });
 
@@ -218,6 +218,16 @@ describe('Server Integration', () => {
     // SSE Streaming
     // ------------------------------------------------------------------
     describe('sse streaming', () => {
+        it('uses explicit fixture defaults independently of ambient configuration', async () => {
+            for (const url of [baseUrl, stubBaseUrl]) {
+                const res = await request(`${url}/api/config/runtime`);
+                expect(res.status).toBe(200);
+                const { features } = JSON.parse(res.body);
+                expect(features.chatHistoryPagingEnabled).toBe(false);
+                expect(features.browserControlEnabled).toBe(false);
+            }
+        });
+
         it('should return 404 for non-existent process', async () => {
             const res = await request(`${baseUrl}/api/processes/nonexistent/stream`);
             expect(res.status).toBe(404);
@@ -700,7 +710,7 @@ describe('Server Integration', () => {
             const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-persist-'));
             const persistStore = new FileProcessStore({ dataDir: persistDir });
             const { service: persistMockAi } = createMockSDKService();
-            const persistServer = await createExecutionServer({ store: persistStore, port: 0, host: '127.0.0.1', dataDir: persistDir, aiService: persistMockAi as any });
+            const persistServer = await createExecutionServer({ store: persistStore, port: 0, host: '127.0.0.1', dataDir: persistDir, fileConfig: {}, aiService: persistMockAi as any });
 
             try {
                 // Create a process via API
@@ -738,7 +748,7 @@ describe('Server Integration', () => {
             // --- First server lifecycle ---
             const store1 = new FileProcessStore({ dataDir: restartDir });
             const { service: s1MockAi } = createMockSDKService();
-            const server1 = await createExecutionServer({ store: store1, port: 0, host: '127.0.0.1', dataDir: restartDir, aiService: s1MockAi as any });
+            const server1 = await createExecutionServer({ store: store1, port: 0, host: '127.0.0.1', dataDir: restartDir, fileConfig: {}, aiService: s1MockAi as any });
 
             await request(`${server1.url}/api/processes`, {
                 method: 'POST',
@@ -754,7 +764,7 @@ describe('Server Integration', () => {
             // --- Second server lifecycle (same dataDir) ---
             const store2 = new FileProcessStore({ dataDir: restartDir });
             const { service: s2MockAi } = createMockSDKService();
-            const server2 = await createExecutionServer({ store: store2, port: 0, host: '127.0.0.1', dataDir: restartDir, aiService: s2MockAi as any });
+            const server2 = await createExecutionServer({ store: store2, port: 0, host: '127.0.0.1', dataDir: restartDir, fileConfig: {}, aiService: s2MockAi as any });
 
             try {
                 const listRes = await request(`${server2.url}/api/processes`);
@@ -773,7 +783,7 @@ describe('Server Integration', () => {
             const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-ws-'));
             const wsStore = new FileProcessStore({ dataDir: wsDir });
             const { service: wsMockAi } = createMockSDKService();
-            const wsServer = await createExecutionServer({ store: wsStore, port: 0, host: '127.0.0.1', dataDir: wsDir, aiService: wsMockAi as any });
+            const wsServer = await createExecutionServer({ store: wsStore, port: 0, host: '127.0.0.1', dataDir: wsDir, fileConfig: {}, aiService: wsMockAi as any });
 
             try {
                 const res = await request(`${wsServer.url}/api/workspaces`, {

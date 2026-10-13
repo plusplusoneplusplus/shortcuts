@@ -30,6 +30,7 @@
 
 import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, SystemMessageConfig, TokenUsage, Attachment } from './types';
 import type { ToolEvent } from './types';
+import { serializeToolResultWithImages } from './tool-result-images';
 import { denyAllPermissions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult, TransformOptions, TransformResult, RewindResult, CompactResult } from './sdk-service-interface';
 import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-interface';
@@ -2146,6 +2147,8 @@ export class ClaudeSDKService implements ISDKService {
     }
 
     private stringifyClaudeToolResult(content: unknown): string {
+        const withImages = serializeToolResultWithImages(content);
+        if (withImages !== undefined) return withImages;
         if (content == null) return '';
         if (typeof content === 'string') return content;
         if (Array.isArray(content)) {

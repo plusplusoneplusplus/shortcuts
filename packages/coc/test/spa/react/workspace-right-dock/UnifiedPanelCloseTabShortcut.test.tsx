@@ -44,7 +44,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
         tree: async () => ({ entries: [] }),
     },
 }));
-vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>(),
     getCocClientForWorkspace: () => ({
         canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) },
         workspaces: { deleteTerminal: async () => undefined },

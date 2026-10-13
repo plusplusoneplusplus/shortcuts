@@ -42,6 +42,7 @@ export function createWebSocketInfrastructure(
     languageServerWsServer?: LanguageServerWebSocketServer,
     botManagedConversationsEnabled: () => boolean = () => false,
     onProcessModeChanged?: (process: AIProcess) => void,
+    onProcessRemoved?: (process: AIProcess) => void,
 ): ProcessWebSocketServer {
     const wsServer = new ProcessWebSocketServer();
     wsServer.attachConnectionHandler();
@@ -93,6 +94,7 @@ export function createWebSocketInfrastructure(
                 break;
             case 'process-removed':
                 if (event.process) {
+                    onProcessRemoved?.(event.process);
                     processControlSnapshots.delete(event.process.id);
                     processModeSnapshots.delete(event.process.id);
                     wsServer.broadcastProcessEvent({

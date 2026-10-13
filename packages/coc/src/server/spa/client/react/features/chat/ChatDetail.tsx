@@ -18,7 +18,8 @@ import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useCh
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
 import { isChatStyle, type ChatStyle, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl, resolveCloneRoute } from '../../repos/cloneRegistry';
-import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
+import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../repos/cloneIdentity';
+import { useBrowserControlScope } from '../../shared/file-path/browser-control-scope';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { useWorkspaceRemoteUrl } from '../../repos/useWorkspaceRemoteUrl';
 import { getConversationTurns, getRetryProvider } from './conversation/chatConversationUtils';
@@ -35,6 +36,7 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
+import { useBrowserToolEnabled } from './hooks/useBrowserMode';
 import { scanTurnsForCreatedFiles, scanTurnsForPlanCanvas } from '../../utils/conversationScan';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
@@ -424,6 +426,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // "not known yet" state — and the origin-scoped effects re-run once it lands.
     const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
     const owningWorkspaceId = resolveChatWorkspaceId(undefined, processDetails, task) ?? effectiveWorkspaceId;
+    const browserWorkspaceId = parseRemoteCloneKey(owningWorkspaceId)?.workspaceId ?? owningWorkspaceId;
+    const browserSourceClone = parseRemoteCloneKey(historyOwner) ?? parseRemoteCloneKey(owningWorkspaceId);
+    const browserRoutingRef = browserWorkspaceId
+        ? browserSourceClone ? buildRemoteCloneKey(browserSourceClone.serverId, browserWorkspaceId) : browserWorkspaceId
+        : undefined;
     const forEachGeneration = metadataProcess?.metadata?.forEach?.kind === 'generation'
         ? metadataProcess.metadata.forEach as ForEachGenerationMetadata
         : null;
@@ -507,7 +514,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, [composerProvider, conversationProvider, effortOverride, modelCommand.modelOverride, modelCommand.setModelOverride, selectedFollowUpEffortTier]);
     const cronEnabled = isCronEnabled();
     const canvasEnabled = isCanvasEnabled();
-    const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled }), [cronEnabled, canvasEnabled]);
+    const browserEnabled = useBrowserToolEnabled(browserRoutingRef);
+    const handleBrowserModeChange = useCallback((browserMode: boolean) => {
+        const update = (prev: any) => prev ? { ...prev, metadata: { ...prev.metadata, browserMode } } : prev;
+        setProcessDetails(update);
+        setTask(update);
+    }, []);
+    const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled, browserEnabled }), [cronEnabled, canvasEnabled, browserEnabled]);
     const augmentedSkills = useMemo(
         () => mergeSkillsWithMeta(skills, getMetaSkillItems(slashCommandFeatures), slashCommandFeatures),
         [skills, slashCommandFeatures],
@@ -651,6 +664,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // chat panels), or while the panel is showing another chat's tabs — in all
     // of those the entry points below keep their existing sibling columns.
     const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
+    useBrowserControlScope(unifiedPanelHost || isPopOut ? browserRoutingRef : null, unifiedPanelHost?.workspaceId);
 
     // Path resolution for a clicked source link needs the remote-server
     // workspaces folded in, exactly as the docked canvas's own hook does — a
@@ -3176,6 +3190,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     )}
                     {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (
                         <FollowUpInputArea
+                            browserOwner={browserWorkspaceId && browserRoutingRef ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef } : undefined}
+                            browserModeActive={metadataProcess?.metadata?.browserMode === true}
+                            onBrowserModeChange={handleBrowserModeChange}
                             getAttachedContext={attachedContext.getItems}
                             sentinelTodoOwner={sentinelTodoOwner}
                             attachmentDestinationId={sourceSelectionId}
@@ -3330,6 +3347,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             )}
             {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea
+                    browserOwner={browserWorkspaceId && browserRoutingRef ? { workspaceId: browserWorkspaceId, routingRef: browserRoutingRef } : undefined}
+                    browserModeActive={metadataProcess?.metadata?.browserMode === true}
+                    onBrowserModeChange={handleBrowserModeChange}
                     getAttachedContext={attachedContext.getItems}
                     sentinelTodoOwner={sentinelTodoOwner}
                     attachmentDestinationId={sourceSelectionId}

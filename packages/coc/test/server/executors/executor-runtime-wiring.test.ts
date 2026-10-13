@@ -44,6 +44,8 @@ function makeSentinelRuntime() {
     const sentinels = {
         getWsServer: vi.fn(() => undefined),
         getKustoRuntime: vi.fn(() => undefined),
+        getBrowserControlRuntime: vi.fn(() => undefined),
+        getBrowserToolState: vi.fn(() => undefined),
         getCronInfra: vi.fn(() => undefined),
         getTriggerInfra: vi.fn(() => undefined),
         getEnqueueChat: vi.fn(() => undefined),

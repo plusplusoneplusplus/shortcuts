@@ -57,7 +57,8 @@ describe('automatic Copilot CLI credentials', () => {
         expect((await read()).token).toBe(testCopilotToken('ghu', 'cli_selected'));
         expect(users).not.toHaveBeenCalled();
     });
-    it.each(['ghp_fixture', 'ghs_fixture'])('retains the RPC source token policy for %s', async token => {
+    it.each(['ghp', 'ghs'] as const)('retains the RPC source token policy for %s', async family => {
+        const token = testCopilotToken(family, 'rpc_source');
         current.mockResolvedValue({ authInfo: { type: 'token', host: 'https://github.com', token } });
         expect((await read()).token).toBe(token);
     });

@@ -34,7 +34,8 @@ vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
     cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+vi.mock('../../../../../src/server/spa/client/react/utils/config', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../../src/server/spa/client/react/utils/config')>(),
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isFeatureEnabled: () => false,
     isChatFoldersEnabled: () => false,

@@ -64,6 +64,20 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // Selected-skills directive in initial turn
 // ============================================================================
 
+describe('ProcessLifecycleRunner browser activation', () => {
+    it('materializes accepted initial activation into durable process metadata', async () => {
+        const store = createMockProcessStore();
+        const runner = new ProcessLifecycleRunner(store, undefined, vi.fn());
+        const task = makeTask({ payload: {
+            kind: 'chat', mode: 'ask', prompt: '/browser browse', workspaceId: 'ws-abc',
+            context: { browserMode: true },
+        } });
+        expect((await runner.run(task, makeOpts({ getWorkingDirectoryFn: () => undefined }))).success).toBe(true);
+        expect((await store.getProcess('queue_task-1'))?.metadata?.browserMode).toBe(true);
+        expect((await store.getProcess('queue_task-1'))?.metadata?.workspaceId).toBe('ws-abc');
+    });
+});
+
 describe('ProcessLifecycleRunner — admitted attachment cancellation', () => {
     let tempDir: string;
     beforeEach(() => {

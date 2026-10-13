@@ -1,12 +1,13 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
 import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
+import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -56,6 +57,205 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
     });
     return { manager, hosts, fileHost, files, created, send, changed, history, savePageZoom };
 }
+
+describe('trusted controlling-turn visibility', () => {
+    afterEach(() => vi.restoreAllMocks());
+    async function setup(popout = false) {
+        const h = harness();
+        h.manager.bindControlScope(1, 'w', 'w');
+        await h.manager.open(2, 'view', 'https://fixture.test/', 'w');
+        const view = h.created[0].view;
+        view.cdp = vi.fn(async () => ({ result: { value: { title: 'Fixture', url: 'https://fixture.test/', elements: [], nextRef: 1 } } }));
+        view.setControlActivity = vi.fn();
+        if (popout) h.created[0].sink.controlPopoutOpened!('popup', view);
+        return { ...h, view, target: popout ? 't2:popup' : 't2:view' };
+    }
+    it('reveals and badges the actual owner on remembered nonmutating commands and follow-ups', async () => {
+        const h = await setup();
+        for (const turnId of ['first', 'follow-up']) {
+            await h.manager.executeControl(1, { id: turnId, turnId, workspaceId: 'w', processId: 'p',
+                selectedTab: h.target, command: { action: 'snapshot' } });
+            expect(h.send).toHaveBeenCalledWith(2, BROWSER_CONTROL_REVEAL_CHANNEL, expect.objectContaining({ viewId: 'view', turnId, routingOwnerId: 1 }));
+            expect(h.send).toHaveBeenCalledWith(2, BROWSER_CONTROL_ACTIVITY_CHANNEL, expect.objectContaining({ active: true, processId: 'p', turnId, routingOwnerId: 1 }));
+        }
+        h.send.mockClear();
+        h.manager.finishControl(1, 'first');
+        expect(h.send).not.toHaveBeenCalled();
+        h.manager.finishControl(1, 'follow-up');
+        expect(h.send).toHaveBeenCalledWith(2, BROWSER_CONTROL_ACTIVITY_CHANNEL, expect.objectContaining({ active: false, turnId: 'follow-up' }));
+        await expect(h.manager.executeControl(1, { id: 'late', turnId: 'follow-up', workspaceId: 'w', processId: 'p',
+            selectedTab: h.target, command: { action: 'snapshot' } })).rejects.toThrow('turn has finished');
+        await h.manager.dispose();
+    });
+    it('keeps native Stop owner-bound and hidden by default, ignoring stale tokens', async () => {
+        const h = await setup(true);
+        const request = { id: 'r', turnId: 'current', workspaceId: 'w', processId: 'p', selectedTab: h.target, command: { action: 'snapshot' as const } };
+        await h.manager.executeControl(1, request);
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith(null);
+        h.created[0].sink.controlStopRequested!('popup', 'current');
+        expect(h.send).not.toHaveBeenCalledWith(1, BROWSER_CONTROL_STOP_CHANNEL, expect.anything());
+        h.manager.setControlVisible(1, true, 'w');
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith('current');
+        h.created[0].sink.controlStopRequested!('popup', 'old');
+        h.created[0].sink.controlStopRequested!('popup', 'current');
+        expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_STOP_CHANNEL, expect.objectContaining({ turnId: 'current', processId: 'p', routingRef: 'w' }));
+        h.manager.setControlVisible(1, false, 'w');
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith(null);
+        h.manager.finishControl(1, 'current');
+        h.manager.setControlVisible(1, true, 'w');
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith(null);
+        await h.manager.dispose();
+    });
+    it('isolates native chrome flags and scoped disconnects across local and clone activities of the same SPA', async () => {
+        const h = await setup(true);
+        const request = { id: 'local', turnId: 'local-turn', workspaceId: 'w', processId: 'p',
+            selectedTab: h.target, command: { action: 'snapshot' as const } };
+        h.manager.setControlVisible(1, true, 'w');
+        await h.manager.executeControl(1, request);
+        await h.manager.open(2, 'clone', 'https://fixture.test/', 'remote:server:w');
+        const cloneView = h.created[1].view;
+        cloneView.cdp = h.view.cdp;
+        cloneView.setControlActivity = vi.fn();
+        h.created[1].sink.controlPopoutOpened!('clone-popup', cloneView);
+        h.manager.bindControlScope(1, 'w', 'remote:server:w');
+        await h.manager.executeControl(1, { ...request, id: 'clone', turnId: 'clone-turn', selectedTab: 't2:clone-popup' });
+        h.manager.setControlVisible(1, false, 'remote:server:w');
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith('local-turn');
+        expect(cloneView.setControlActivity).toHaveBeenLastCalledWith(null);
+        h.manager.setControlVisible(1, false, 'w');
+        h.manager.setControlVisible(1, true, 'remote:server:w');
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith(null);
+        expect(cloneView.setControlActivity).toHaveBeenLastCalledWith('clone-turn');
+        h.manager.setControlVisible(9, true, 'w');
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith(null);
+        h.manager.finishControl(1, undefined, true, 'w');
+        expect(cloneView.setControlActivity).toHaveBeenLastCalledWith('clone-turn');
+        h.manager.finishControl(1, undefined, true, 'remote:server:w');
+        await Promise.resolve();
+        expect(cloneView.setControlActivity).toHaveBeenLastCalledWith(null);
+        await h.manager.dispose();
+    });
+    it.each(['routing-disconnect', 'target-close'])('clears other-window chrome on %s and rejects late restoration', async mode => {
+        const h = await setup(true);
+        h.manager.setControlVisible(1, true, 'w');
+        await h.manager.executeControl(1, { id: 'r', turnId: 'turn', workspaceId: 'w', processId: 'p', selectedTab: h.target, command: { action: 'snapshot' } });
+        if (mode === 'routing-disconnect') h.manager.finishControl(1);
+        else await h.manager.closeOwner(2);
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenLastCalledWith(null);
+        expect(h.send).toHaveBeenCalledWith(2, BROWSER_CONTROL_ACTIVITY_CHANNEL, expect.objectContaining({ active: false, turnId: 'turn' }));
+        await h.manager.dispose();
+    });
+    it.each(['socket-disconnect', 'owner-close', 'owner-reload'])('keeps a foreign routing turn usable after target %s', async mode => {
+        const h = await setup(true);
+        await h.manager.open(3, 'remaining', 'https://fixture.test/remaining', 'w');
+        h.created[1].view.cdp = h.view.cdp;
+        const request = { id: 'target', turnId: 'live-routing-turn', workspaceId: 'w', processId: 'p',
+            selectedTab: h.target, command: { action: 'snapshot' as const } };
+        await h.manager.executeControl(1, request);
+        h.send.mockClear();
+        if (mode === 'socket-disconnect') h.manager.finishControl(2, undefined, true, 'w');
+        else if (mode === 'owner-close') await h.manager.closeOwner(2);
+        else await h.manager.reloadOwner(2);
+        expect(h.send).not.toHaveBeenCalledWith(2, BROWSER_CONTROL_ACTIVITY_CHANNEL,
+            expect.objectContaining({ turnId: request.turnId, finished: true }));
+        const tabs = await h.manager.executeControl(1, { ...request, id: 'list', command: { action: 'tabs' } });
+        expect(tabs.tabs).toEqual(expect.arrayContaining([expect.objectContaining({ id: 't3:remaining' })]));
+        await expect(h.manager.executeControl(1, { ...request, id: 'select', command: { action: 'select', tab: 't3:remaining' } }))
+            .resolves.toMatchObject({ tab: 't3:remaining' });
+        await expect(h.manager.executeControl(1, { ...request, id: 'open', selectedTab: 't3:remaining',
+            command: { action: 'open', url: 'https://fixture.test/next' } })).resolves.toMatchObject({ tab: 't3:remaining' });
+        h.manager.finishControl(1, request.turnId);
+        await expect(h.manager.executeControl(1, { ...request, id: 'terminal', command: { action: 'tabs' } }))
+            .rejects.toThrow('turn has finished');
+        await h.manager.dispose();
+    });
+    it('still honors a qualified cancellation from the target owner for another routing window', async () => {
+        const h = await setup();
+        const request = { id: 'target', turnId: 'cancelled-turn', workspaceId: 'w', processId: 'p',
+            selectedTab: h.target, command: { action: 'snapshot' as const } };
+        await h.manager.executeControl(1, request);
+        h.manager.finishControl(2, request.turnId);
+        expect(h.send).toHaveBeenCalledWith(2, BROWSER_CONTROL_ACTIVITY_CHANNEL,
+            expect.objectContaining({ active: false, finished: true, turnId: request.turnId }));
+        await expect(h.manager.executeControl(1, { ...request, id: 'late', command: { action: 'tabs' } }))
+            .rejects.toThrow('turn has finished');
+        await h.manager.dispose();
+    });
+    it.each(['sync', 'async'])('requests source Stop when visible native chrome fails %s', async mode => {
+        const h = await setup(true);
+        const error = new Error('Fixture chrome failure');
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        h.view.setControlActivity = vi.fn(turnId => {
+            if (!turnId) return;
+            if (mode === 'sync') throw error;
+            return Promise.reject(error);
+        });
+        h.manager.setControlVisible(1, true, 'w');
+        await h.manager.executeControl(1, { id: 'failing', turnId: 'visible-failure', workspaceId: 'w',
+            processId: 'p', selectedTab: h.target, command: { action: 'snapshot' } });
+        await vi.waitFor(() => expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_STOP_CHANNEL,
+            expect.objectContaining({ turnId: 'visible-failure', routingOwnerId: 1, routingRef: 'w' })));
+        expect(logged).toHaveBeenCalledWith('[coc-desktop] Browser control chrome failed:', error);
+        expect(h.send).not.toHaveBeenCalledWith(2, BROWSER_CONTROL_STOP_CHANNEL, expect.anything());
+        await h.manager.dispose();
+    });
+    it.each(['superseded', 'hidden', 'finished'])('does not cancel another turn after a delayed chrome failure is %s', async mode => {
+        const h = await setup(true);
+        const error = new Error('Delayed fixture chrome failure');
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        let fail!: (error: Error) => void;
+        h.view.setControlActivity = vi.fn().mockImplementationOnce(() => new Promise<void>((_, reject) => { fail = reject; }));
+        h.manager.setControlVisible(1, true, 'w');
+        const request = { id: 'first', turnId: 'old-turn', workspaceId: 'w', processId: 'p',
+            selectedTab: h.target, command: { action: 'snapshot' as const } };
+        await h.manager.executeControl(1, request);
+        if (mode === 'superseded') await h.manager.executeControl(1, { ...request, id: 'next', turnId: 'new-turn' });
+        else if (mode === 'hidden') h.manager.setControlVisible(1, false, 'w');
+        else h.manager.finishControl(1, 'old-turn');
+        h.send.mockClear();
+        fail(error);
+        await vi.waitFor(() => expect(logged).toHaveBeenCalledWith('[coc-desktop] Browser control chrome failed:', error));
+        expect(h.send).not.toHaveBeenCalledWith(expect.anything(), BROWSER_CONTROL_STOP_CHANNEL, expect.anything());
+        if (mode === 'superseded') expect(h.view.setControlActivity).toHaveBeenLastCalledWith('new-turn');
+        await h.manager.dispose();
+    });
+    it.each(['sync', 'async'])('does not request Stop when null/cleanup native chrome fails %s', async mode => {
+        const h = await setup(true);
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        h.manager.setControlVisible(1, true, 'w');
+        await h.manager.executeControl(1, { id: 'current', turnId: 'live-turn', workspaceId: 'w',
+            processId: 'p', selectedTab: h.target, command: { action: 'snapshot' } });
+        h.view.setControlActivity = vi.fn(turnId => {
+            if (turnId) return;
+            const error = new Error('Fixture cleanup failure');
+            if (mode === 'sync') throw error;
+            return Promise.reject(error);
+        });
+        h.send.mockClear();
+        h.manager.setControlVisible(1, false, 'w');
+        await vi.waitFor(() => expect(logged).toHaveBeenCalled());
+        expect(h.send).not.toHaveBeenCalledWith(expect.anything(), BROWSER_CONTROL_STOP_CHANNEL, expect.anything());
+        await h.manager.dispose();
+    });
+    it('resolves activity when deferred chrome runs rather than restoring an already-finished turn', async () => {
+        const h = await setup(true);
+        await h.manager.executeControl(1, { id: 'current', turnId: 'finished-before-apply', workspaceId: 'w',
+            processId: 'p', selectedTab: h.target, command: { action: 'snapshot' } });
+        vi.mocked(h.view.setControlActivity!).mockClear();
+        h.manager.setControlVisible(1, true, 'w');
+        h.manager.finishControl(1, 'finished-before-apply');
+        await Promise.resolve();
+        expect(h.view.setControlActivity).toHaveBeenCalled();
+        expect(vi.mocked(h.view.setControlActivity!).mock.calls.every(([turnId]) => turnId === null)).toBe(true);
+        await h.manager.dispose();
+    });
+});
 
 describe('browser manager history integration', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-manager-history-'));
@@ -469,6 +669,144 @@ describe('engine availability and startup errors', () => {
     });
 });
 
+describe('owner-scoped browser control', () => {
+    it.each<BrowserEngine>(['electron', 'webview2'])('returns shared page results from %s and retains refs across navigation', async engine => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const cdp = vi.fn(async (_method: string, _params?: Record<string, unknown>) => ({
+            result: { value: { url: 'https://fixture.test/', title: 'Fixture', elements: [], nextRef: 12 } },
+        }));
+        h.created[0].view.cdp = cdp;
+        const result = await h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot());
+        expect(result.title).toBe('Fixture');
+        await h.manager.navigate(1, 'view', 'https://next.test/');
+        await h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot());
+        expect(cdp.mock.calls[1][1]?.expression).toContain('"nextRef":12');
+        expect(h.created[0].view.navigate).toHaveBeenCalledWith('https://next.test/');
+        await h.manager.dispose();
+    });
+
+    it('requires the exact owner, view and workspace without falling back to another tab', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        await h.manager.open(2, 'view', 'https://other.test/', 'workspace-b');
+        const operation = vi.fn();
+        await expect(h.manager.withControlPage(3, 'view', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'not-found' });
+        await expect(h.manager.withControlPage(1, 'missing', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'not-found' });
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-b', operation)).rejects.toMatchObject({ reason: 'bad-session' });
+        await expect(h.manager.withControlPage(2, 'view', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'bad-session' });
+        await expect(h.manager.withControlPage(1, 'view', '', operation)).rejects.toMatchObject({ reason: 'bad-session' });
+        expect(operation).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('rejects views lacking CDP even when the requested command is a wait', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const operation = vi.fn();
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'unsupported' });
+        expect(operation).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('preserves the engine error rather than converting it into a void UI command', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const error = new Error('Debugger detached');
+        h.created[0].view.cdp = vi.fn().mockRejectedValue(error);
+        h.send.mockClear();
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot())).rejects.toBe(error);
+        expect(h.send).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it.each(['close', 'closeOwner', 'reloadOwner', 'dispose', 'crash', 'guest-close'] as const)(
+        '%s rejects active and queued commands while preserving another owner',
+        async event => {
+            const h = harness();
+            await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+            await h.manager.open(2, 'view', 'https://other.test/', 'workspace-b');
+            const gate = deferred<unknown>();
+            h.created[0].view.cdp = vi.fn(() => gate.promise);
+            h.created[1].view.cdp = vi.fn(async () => ({}));
+            const first = h.manager.withControlPage(1, 'view', 'workspace-a', page => page.scroll('down'));
+            const queued = vi.fn();
+            const second = h.manager.withControlPage(1, 'view', 'workspace-a', queued);
+            await vi.waitFor(() => expect(h.created[0].view.cdp).toHaveBeenCalledOnce());
+            const firstError = expect(first).rejects.toThrow(event === 'crash' ? 'crashed' : 'closed');
+            const secondError = expect(second).rejects.toThrow(event === 'crash' ? 'crashed' : 'closed');
+            if (event === 'close') await h.manager.close(1, 'view');
+            else if (event === 'closeOwner') await h.manager.closeOwner(1);
+            else if (event === 'reloadOwner') await h.manager.reloadOwner(1);
+            else if (event === 'dispose') await h.manager.dispose();
+            else if (event === 'crash') h.created[0].sink.state({ ...h.created[0].view.snapshot(), errorCode: 'runtime-crashed', error: 'Browser tab crashed' });
+            else h.created[0].sink.closed!();
+            await Promise.all([firstError, secondError]);
+            gate.resolve({});
+            if (event !== 'dispose') {
+                await h.manager.withControlPage(2, 'view', 'workspace-b', page => page.scroll('down'));
+                expect(h.created[1].view.cdp).toHaveBeenCalledOnce();
+            }
+            expect(queued).not.toHaveBeenCalled();
+            await h.manager.dispose();
+        },
+    );
+
+    it('rejects a command during pending startup immediately when the tab closes', async () => {
+        const h = harness();
+        const gate = deferred<BrowserHostedView>();
+        vi.mocked(h.hosts.electron.create).mockImplementationOnce(() => gate.promise);
+        const opened = h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        const operation = vi.fn();
+        const command = h.manager.withControlPage(1, 'view', 'workspace-a', operation);
+        const rejected = expect(command).rejects.toThrow('closed');
+        await vi.waitFor(() => expect(h.hosts.electron.create).toHaveBeenCalledOnce());
+        const closed = h.manager.close(1, 'view');
+        await rejected;
+        const view: BrowserHostedView = {
+            snapshot: vi.fn(), navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(), cdp: vi.fn(),
+        };
+        gate.resolve(view);
+        await closed;
+        expect(await opened).toMatchObject({ ok: false, reason: 'not-found' });
+        expect(view.close).toHaveBeenCalledOnce();
+        expect(operation).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+
+    it('propagates startup failure and supports an explicit open retry', async () => {
+        const h = harness();
+        const error = new BrowserHostError('startup-failed', 'Engine failed');
+        vi.mocked(h.hosts.electron.create).mockRejectedValueOnce(error);
+        const opened = h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        await expect(h.manager.withControlPage(1, 'view', 'workspace-a', page => page.snapshot())).rejects.toBe(error);
+        expect(await opened).toMatchObject({ ok: false, reason: 'startup-failed' });
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        h.created[0].view.cdp = vi.fn(async () => ({}));
+        await h.manager.withControlPage(1, 'view', 'workspace-a', page => page.scroll('down'));
+        await h.manager.dispose();
+    });
+
+    it('passes turn cancellation into waits and preserves the cancellation reason', async () => {
+        const h = harness();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        h.created[0].view.cdp = vi.fn();
+        const controller = new AbortController();
+        const started = deferred<void>();
+        const command = h.manager.withControlPage(1, 'view', 'workspace-a', (page, signal) => {
+            started.resolve();
+            return page.wait(30_000, signal);
+        }, controller.signal);
+        await started.promise;
+        const error = new Error('Turn cancelled');
+        controller.abort(error);
+        await expect(command).rejects.toBe(error);
+        await h.manager.withControlPage(1, 'view', 'workspace-a', async () => {});
+        expect(h.created[0].view.cdp).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+});
+
 describe('file previews', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-file-preview-'));
     const page = path.join(dir, 'index.html');
@@ -476,6 +814,17 @@ describe('file previews', () => {
     fs.writeFileSync(page, '<!doctype html>');
     fs.writeFileSync(other, '<!doctype html>');
     afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('excludes file previews from agent control even if a host accidentally exposes CDP', async () => {
+        const h = harness();
+        await h.manager.openFile(1, 'preview', page, 'workspace-a');
+        h.files[0].view.cdp = vi.fn();
+        const operation = vi.fn();
+        await expect(h.manager.withControlPage(1, 'preview', 'workspace-a', operation)).rejects.toMatchObject({ reason: 'unsupported' });
+        expect(operation).not.toHaveBeenCalled();
+        expect(h.files[0].view.cdp).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
 
     it.each<BrowserEngine>(['electron', 'webview2'])('always use the file host when the default engine is %s', async engine => {
         const h = harness(engine);

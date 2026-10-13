@@ -79,6 +79,8 @@ export function createQueueInfrastructure(
     getKustoRuntime?: import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getKustoRuntime'],
     getSentinelScrubber?: ExecutorRuntimeCapabilities['getSentinelScrubber'],
     getSentinelDependencyAdmission?: ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'],
+    getBrowserControlRuntime?: ExecutorRuntimeCapabilities['getBrowserControlRuntime'],
+    getBrowserToolState?: ExecutorRuntimeCapabilities['getBrowserToolState'],
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -101,6 +103,8 @@ export function createQueueInfrastructure(
     // forwards this object by identity, so adding a capability here is enough
     // to make it reach its consumer.
     const runtime: ExecutorRuntimeCapabilities = {
+        getBrowserControlRuntime,
+        getBrowserToolState,
         getKustoRuntime,
         getWsServer,
         getCronInfra,

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { CONFIG_FILE_NAME } from '../../../src/config';
+import { BrowserToolStateStore } from '../../../src/server/llm-tools/browser-tools';
 
 const WS_ID = 'ws-tools';
 
@@ -15,6 +16,24 @@ function makeStore(searchEnabled = true) {
 }
 
 describe('buildChatToolBundle', () => {
+    it('browser honors live enablement and normal per-repo disable preferences', () => {
+        let enabled = false;
+        const options = {
+            dataDir: tmpDir, workspaceId: WS_ID, processId: 'browser-process', store: makeStore(),
+            browserRuntime: { getEnabled: () => enabled, execute: vi.fn() },
+            browserState: new BrowserToolStateStore(),
+            canvasToolsEnabled: false, kustoToolsEnabled: false, systemOneToolEnabled: false,
+        };
+        expect(buildChatToolBundle(options).tools.map(tool => tool.name)).not.toContain('browser');
+        enabled = true;
+        expect(buildChatToolBundle(options).tools.map(tool => tool.name)).toContain('browser');
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['browser'] });
+        expect(buildChatToolBundle(options).tools.map(tool => tool.name)).not.toContain('browser');
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+        expect(buildChatToolBundle(options).tools.map(tool => tool.name)).toContain('browser');
+        enabled = false;
+        expect(buildChatToolBundle(options).tools.map(tool => tool.name)).not.toContain('browser');
+    });
     let tmpDir: string;
 
     beforeEach(() => {

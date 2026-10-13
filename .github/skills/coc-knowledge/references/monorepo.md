@@ -236,6 +236,52 @@ with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.
 `packages/coc-desktop/electron-builder.container.cjs` selects the container variant.
 
+URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
+`ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
+its own attachment on close and retains the debugger emitter for destruction-safe
+listener cleanup. Pending calls reject on destruction, crash, detach
+or a 30-second timeout and retire timers/listeners. WebView2 forwards owner-qualified
+requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rejecting
+on tab/helper close or crash. Correlated native popup events register hosted handles
+in the root tab's owner/workspace; popup state stays independent. Close/crash retires
+popup handles and requests, root close/crash retires descendants, and helper disposal
+removes owner listeners. CDP timeouts retire individual requests. File previews
+omit CDP; the primitive has no renderer IPC surface by itself.
+
+`BrowserHostManager.executeControl` resolves owner-qualified URL tabs and popouts
+through an exact-source SPA main frame's workspace/session binding. Typed preload
+commands expose no arbitrary CDP. `withControlPage` checks the selected view's identity;
+its `BrowserControlQueue` retains one page across navigation and serializes whole
+input sequences. Turn abort, close, crash or 30 seconds including queue time reject
+callers. Cancellation keeps outstanding CDP serialized, releases dispatched presses
+and retains late snapshot counters. Every driven view receives owner-qualified,
+factory-stable turn activity, including remembered selections across SPA windows.
+Native popouts use trusted, viewport-reserving chrome: Electron's separate sandboxed
+toolbar admits exact-source Stop IPC; WebView2 uses native controls. Stop routes to
+the source conversation. Visibility is keyed by routing owner and concrete clone
+reference; token-qualified completion cannot erase or restore another turn.
+
+`browser-control-page.ts` shares snapshots, trusted input, waits, markdown reads,
+eval and cropped inline JPEG capture across engines. macOS replacement uses CDP's
+`selectAll` editing command; native dropdowns use bounded trusted typeahead with
+exact-value verification, while list boxes use Home/arrow input. Dropdown options
+without searchable labels fail explicitly. Its monotonic counter seeds
+self-contained DOM/ARIA maps covering same-origin frames and open shadows.
+Navigation and inaccessible frame documents expire refs. Targets scroll and translate
+frame bounds before input; screenshots account for pixel ratio. Large snapshots stage
+complete JSON in the page and transfer 64000-character chunks, retaining complete
+baselines and ref counters. Read pages and eval JSON are bounded before CDP.
+WebView2 caps native CDP replies at 900000 bytes; transport rejects/drains oversized
+individual replies and rejects oversized writes without killing unrelated views.
+Live fixtures exercise large results, cross-window turns and native-popup Stop
+through the parser/tool/WebSocket/SPA/preload/main/CDP chain. Desktop CI builds server/SPA
+artifacts and runs the workflow on Linux/macOS and Windows WebView2; feature admission
+uses default-off `browserControl.enabled` ([tools](llm-tools.md)).
+Linux native-frame assertions require a window manager on the isolated display;
+framed control windows are mapped before measuring decoration extents. Relay
+fixtures dispose browser views while the owner window remains alive, close active
+HTTP connections, and report success only after server shutdown.
+
 ### Container image
 
 The root `Dockerfile` ships the CoC server, distinct from the `coccontainer`

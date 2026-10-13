@@ -522,6 +522,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         task: QueuedTask,
         prompt: string,
         workingDirectory: string | undefined,
+        signal?: AbortSignal,
     ): Promise<ChatModeAIOptions>;
 
     /** Build Memory V2 addon (redesigned coc-memory system). */
@@ -935,6 +936,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         prompt: string,
         mode: 'ask' | 'autopilot',
         workingDirectory: string | undefined,
+        signal?: AbortSignal,
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
         const isAsk = mode === 'ask';
@@ -969,6 +971,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
             kustoRuntime: this.runtime.getKustoRuntime?.(),
+            browserRuntime: this.runtime.getBrowserControlRuntime?.(),
+            browserState: this.runtime.getBrowserToolState?.(),
+            browserSignal: signal,
+            browserActivation: 'resumedFrom' in payload ? false : undefined,
             // Autopilot-only: ask mode is read-only and never opens PRs.
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Sentinel runs on the ask path; only it gets the to-do ledger tool.
@@ -1041,7 +1047,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 : autoFolderContext,
         });
         await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
-        const effectivePrompt = prependChatModeDirective(grilledPrompt, modeDirective);
+        const effectivePrompt = prependChatModeDirective(
+            ctx.browserPrompt ? `${ctx.browserPrompt}\n\n${grilledPrompt}` : grilledPrompt, modeDirective);
 
         return {
             agentMode: (isAsk ? 'interactive' : 'autopilot') as AgentMode,
@@ -1105,7 +1112,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * Execute a chat-mode AI task.
      *
      * Flow:
-     * 1. Resolve working directory from task payload
+     * 1. Register turn cancellation and resolve working directory from task payload
      * 2. Call buildModeOptions() to get mode-specific params
      * 3. Initialize session, register flush handler
      * 4. Rehydrate and save images to temp files
@@ -1118,10 +1125,36 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      */
     async execute(task: QueuedTask, prompt: string): Promise<ChatModeExecutionResult> {
         const processId = toQueueProcessId(task.id);
+        const provider = (task.payload as unknown as ChatPayload).provider ?? this.provider;
+        const turnAbort = this.registerTurnAbortController(processId, provider);
+        try {
+            return await this.executeTurn(task, prompt, turnAbort);
+        } finally {
+            this.releaseTurnAbortController(processId, turnAbort);
+        }
+    }
+
+    private async executeTurn(task: QueuedTask, prompt: string, turnAbort: AbortController): Promise<ChatModeExecutionResult> {
+        const processId = toQueueProcessId(task.id);
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
 
-        let { agentMode, systemMessage, tools, effectivePrompt, excludedTools, dispose: modeDispose, ralphGrillPlanning, dangerousCommandGuard } = await this.buildModeOptions(task, prompt, workingDirectory);
+        let { agentMode, systemMessage, tools, effectivePrompt, excludedTools, dispose: modeDispose, ralphGrillPlanning, dangerousCommandGuard } = await this.buildModeOptions(task, prompt, workingDirectory, turnAbort.signal);
+        // Specialized chat executors keep their own bundles but share the browser turn context.
+        if (!getScrubChildContext(task.payload) && !tools.some(tool => tool.name === 'browser')
+            && this.runtime.getBrowserControlRuntime?.()?.getEnabled()) {
+            const browser = await buildChatTurnContext({
+                browserOnly: true, dataDir: this.dataDir, store: this.store,
+                workspaceId: payload.workspaceId, processId, query: prompt,
+                browserRuntime: this.runtime.getBrowserControlRuntime?.(),
+                browserState: this.runtime.getBrowserToolState?.(),
+                browserSignal: turnAbort.signal,
+                browserActivation: 'resumedFrom' in payload ? false : undefined,
+                onLlmToolApprovalDecision: record => this.recordLlmToolApproval(processId, record),
+            });
+            tools.push(...browser.tools);
+            if (browser.browserPrompt) effectivePrompt = `${browser.browserPrompt}\n\n${effectivePrompt}`;
+        }
 
         this.persistSystemPromptAsync(processId, task.type, systemMessage?.content);
 
@@ -1178,8 +1211,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const chatMode = normalizeChatModeOrDefault(payload.mode);
         let policyModelId: string | undefined;
         let policyReasoningEffort: string | undefined;
-
-        const turnAbort = this.registerTurnAbortController(processId, taskProvider);
 
         // Provider segment this turn's response belongs to, known once the
         // provider reports its session. Handed back with the result so the

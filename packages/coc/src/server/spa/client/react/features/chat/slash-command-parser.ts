@@ -9,12 +9,13 @@
  */
 
 /** Built-in meta-commands (not skills). */
-export const META_COMMANDS = ['model', 'cron', 'compact', 'delegate', 'canvas'] as const;
+export const META_COMMANDS = ['model', 'cron', 'compact', 'delegate', 'canvas', 'browser'] as const;
 export type MetaCommand = (typeof META_COMMANDS)[number];
 
 export interface SlashCommandFeatureState {
     cronEnabled: boolean;
     canvasEnabled: boolean;
+    browserEnabled?: boolean;
 }
 
 /**
@@ -24,7 +25,8 @@ export interface SlashCommandFeatureState {
 export function getActiveMetaCommands(features: SlashCommandFeatureState): readonly MetaCommand[] {
     return META_COMMANDS.filter(command =>
         (command !== 'cron' || features.cronEnabled)
-        && (command !== 'canvas' || features.canvasEnabled),
+        && (command !== 'canvas' || features.canvasEnabled)
+        && (command !== 'browser' || features.browserEnabled === true),
     );
 }
 

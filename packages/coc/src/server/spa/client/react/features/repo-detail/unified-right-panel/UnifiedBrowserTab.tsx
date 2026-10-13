@@ -3,6 +3,7 @@ import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
 import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
+import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
@@ -17,6 +18,8 @@ import {
 } from '../../../shared/file-path/browser-bridge';
 
 export interface UnifiedBrowserTabProps {
+    workspaceId?: string;
+    routingRef?: string | null;
     tabId: string;
     /** The desktop view id: the tab's unique resource id. */
     viewId: string;
@@ -49,7 +52,7 @@ export interface UnifiedBrowserTabProps {
  * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey,
+    workspaceId, routingRef, tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState, onOpenHistoryUrl, historyOwnerKey,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const [error, setError] = useState<string | null>(null);
@@ -174,6 +177,7 @@ export function UnifiedBrowserTab({
                 event.stopPropagation();
             }}
         >
+            {workspaceId && <BrowserControlBadge workspaceId={workspaceId} routingRef={routingRef} tabId={tabId} />}
             {bridge && (
                 <NativeViewNavButtons
                     canGoBack={Boolean(page?.canGoBack)}

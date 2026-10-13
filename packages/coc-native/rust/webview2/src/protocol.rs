@@ -30,10 +30,83 @@ pub struct Command {
     pub action: Option<String>,
     pub cookies: Option<Vec<ImportCookie>>,
     pub page_zoom_percent: Option<f64>,
+    pub method: Option<String>,
+    pub params: Option<serde_json::Map<String, Value>>,
+    pub turn_id: Option<String>,
+}
+
+pub fn cdp_arguments(command: &Command) -> Option<(&str, String)> {
+    let method = command.method.as_deref()?;
+    // A protocol method is Domain.command, not a script or a transport endpoint.
+    let (domain, name) = method.split_once('.')?;
+    if domain.is_empty()
+        || name.is_empty()
+        || method.len() > 256
+        || !domain.bytes().chain(name.bytes()).all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
+        return None;
+    }
+    Some((method, serde_json::to_string(&command.params.clone().unwrap_or_default()).ok()?))
+}
+
+pub fn cdp_response(id: u64, json: &str) -> std::result::Result<Value, serde_json::Error> {
+    // Leave framing overhead below the desktop's 1 MiB per-message boundary.
+    if json.len() > 900_000 {
+        return Ok(serde_json::json!({
+            "id": id, "ok": false, "reason": "invalid",
+            "message": "WebView2 CDP result exceeds the transport limit; return a smaller result."
+        }));
+    }
+    let result: Value = serde_json::from_str(json)?;
+    Ok(serde_json::json!({ "id": id, "ok": true, "result": result }))
 }
 
 pub fn allowed_page_zoom(percent: f64) -> bool {
     percent.is_finite() && (50.0..=200.0).contains(&percent) && (percent - 50.0) % 25.0 == 0.0
+}
+
+pub fn allowed_control_turn(turn: Option<&str>) -> bool {
+    turn.is_none_or(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
+}
+
+pub fn control_content_top(height: i32, dpi: i32, active: bool) -> i32 {
+    if active {
+        (40 * dpi.max(96) / 96).min(height.max(0))
+    } else {
+        0
+    }
+}
+
+#[cfg(test)]
+mod control_chrome_tests {
+    use super::*;
+
+    #[test]
+    fn trusted_activity_is_explicit_bounded_and_clearable_without_script_or_cdp() {
+        let active: Command = serde_json::from_str(
+            r#"{"id":1,"op":"control-activity","viewId":"7:tab:1:popup:1","turnId":"turn"}"#,
+        )
+        .unwrap();
+        assert_eq!(active.turn_id.as_deref(), Some("turn"));
+        assert!(allowed_control_turn(active.turn_id.as_deref()));
+        let clear: Command = serde_json::from_str(
+            r#"{"id":2,"op":"control-activity","viewId":"7:tab:1:popup:1","turnId":null}"#,
+        )
+        .unwrap();
+        assert!(allowed_control_turn(clear.turn_id.as_deref()));
+        for invalid in ["".to_string(), "x".repeat(513), "line\nbreak".to_string()] {
+            assert!(!allowed_control_turn(Some(&invalid)));
+        }
+    }
+
+    #[test]
+    fn popup_content_reserves_trusted_chrome_at_each_dpi_and_restores_the_full_viewport() {
+        assert_eq!(control_content_top(560, 96, true), 40);
+        assert_eq!(control_content_top(560, 192, true), 80);
+        assert_eq!(control_content_top(20, 192, true), 20);
+        assert_eq!(control_content_top(0, 192, true), 0);
+        assert_eq!(control_content_top(560, 192, false), 0);
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,7 +172,7 @@ pub fn history_message(view_id: &str, url: &str, title: &str, visit: bool) -> Op
     allowed_url(url, false).then(|| {
         serde_json::json!({
             "event": if visit { "visited" } else { "title-updated" },
-            "viewId": view_id, "url": url, "title": title
+            "viewId": view_id, "url": url, "title": title.chars().take(4096).collect::<String>()
         })
     })
 }
@@ -124,6 +197,57 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cdp_validates_methods_and_preserves_json_results_and_request_ids() {
+        let command: Command = serde_json::from_str(
+            r#"{"id":42,"op":"cdp","viewId":"7:tab:1","method":"Runtime.evaluate","params":{"expression":"'quoted\\value'","returnByValue":true}}"#,
+        ).unwrap();
+        let (method, params) = cdp_arguments(&command).unwrap();
+        assert_eq!(method, "Runtime.evaluate");
+        assert_eq!(
+            serde_json::from_str::<Value>(&params).unwrap(),
+            serde_json::json!(command.params)
+        );
+        for method in
+            ["", "Runtime", ".evaluate", "Runtime.", "Runtime.evaluate()", "A.B.C", "A.\nB"]
+        {
+            let command: Command =
+                serde_json::from_value(serde_json::json!({"id":1,"op":"cdp","method":method}))
+                    .unwrap();
+            assert!(cdp_arguments(&command).is_none());
+        }
+        assert!(serde_json::from_str::<Command>(
+            r#"{"id":1,"op":"cdp","method":"Runtime.evaluate","params":[]}"#
+        )
+        .is_err());
+        assert_eq!(
+            cdp_response(42, r#"{"result":{"value":42}}"#).unwrap(),
+            serde_json::json!({"id":42,"ok":true,"result":{"result":{"value":42}}})
+        );
+        assert!(cdp_response(42, "malformed").is_err());
+    }
+
+    #[test]
+    fn oversized_cdp_results_return_small_correlated_errors() {
+        let large = serde_json::json!({ "result": { "value": "x".repeat(1_100_000) } }).to_string();
+        let response = cdp_response(42, &large).unwrap();
+        assert_eq!(response["id"], 42);
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["reason"], "invalid");
+        assert!(response.to_string().len() < 256);
+        assert_eq!(cdp_response(43, r#"{"result":{"value":42}}"#).unwrap()["ok"], true);
+        let unicode = serde_json::json!({ "value": "\u{1f600}".repeat(250_000) }).to_string();
+        assert_eq!(cdp_response(44, &unicode).unwrap()["ok"], false);
+    }
+
+    #[test]
+    fn page_owned_history_titles_cannot_exceed_native_framing_limits() {
+        let title = "\u{1f600}".repeat(300_000);
+        let event = history_message("owned-view", "https://fixture.test/", &title, true).unwrap();
+        assert_eq!(event["title"].as_str().unwrap().chars().count(), 4096);
+        assert!(event.to_string().len() < 20_000);
+    }
 
     #[test]
     fn page_zoom_is_bounded_stepped_and_uses_a_typed_controller_command() {

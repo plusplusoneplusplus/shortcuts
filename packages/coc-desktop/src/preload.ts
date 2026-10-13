@@ -9,6 +9,8 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
+import type { BrowserControlActivityEvent } from './browser-control-command';
 
 // The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
 // its `require` can only load the 'electron' builtin, and a relative import —
@@ -18,6 +20,15 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // They must match the exported constants in find-in-page.ts / devtunnel-modal.ts;
 // preload.test.ts asserts they stay in sync.
 const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
+const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
+const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
+const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
+const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
+const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
+const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
+const BROWSER_CONTROL_FINISH_CHANNEL = 'coc-desktop:browser-control-finish';
+const BROWSER_CONTROL_STOP_CHANNEL = 'coc-desktop:browser-control-stop';
+const BROWSER_CONTROL_VISIBLE_CHANNEL = 'coc-desktop:browser-control-visible';
 const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
 const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
 const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
@@ -224,6 +235,27 @@ type BrowserHistoryQueryResult = { ok: true; entries: BrowserHistoryEntry[]; tot
 type BrowserHistorySuggestResult = { ok: true; entries: (BrowserHistoryEntry & { completion: string | null })[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
 
 const browser = {
+    control: {
+        bindScope: (workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number }> =>
+            ipcRenderer.invoke(BROWSER_CONTROL_SCOPE_CHANNEL, workspaceId, sessionKey),
+        execute: (request: BrowserCommandRequest): Promise<BrowserCommandResult> =>
+            ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request),
+        cancel: (id: string): void => ipcRenderer.send(BROWSER_CONTROL_CANCEL_CHANNEL, id),
+        finish: (turnId?: string, routingRef?: string): void => ipcRenderer.send(BROWSER_CONTROL_FINISH_CHANNEL, turnId, routingRef),
+        setVisible: (visible: boolean, routingRef: string): void => ipcRenderer.send(BROWSER_CONTROL_VISIBLE_CHANNEL, visible, routingRef),
+        onActivity: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_ACTIVITY_CHANNEL, callback),
+        onStop: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_STOP_CHANNEL, callback),
+        onFocused: (callback: () => void) => {
+            const listener = () => callback();
+            ipcRenderer.on(BROWSER_CONTROL_FOCUSED_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(BROWSER_CONTROL_FOCUSED_CHANNEL, listener);
+        },
+        onReveal: (callback: (event: { workspaceId: string; processId: string; turnId?: string; viewId: string; url?: string; routingRef?: string; routingOwnerId?: number }) => void) => {
+            const listener = (_event: unknown, payload: { workspaceId: string; processId: string; turnId?: string; viewId: string; url?: string; routingRef?: string; routingOwnerId?: number }) => callback(payload);
+            ipcRenderer.on(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
+        },
+    },
     history: {
         suggest: (search = ''): Promise<BrowserHistorySuggestResult> => ipcRenderer.invoke(BROWSER_HISTORY_SUGGEST_CHANNEL, search),
         query: (search = '', offset = 0, limit = 50): Promise<BrowserHistoryQueryResult> =>

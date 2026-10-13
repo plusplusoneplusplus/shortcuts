@@ -26,6 +26,9 @@ import { buildChatToolBundle } from './chat-tool-builder';
 import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { ChatToolBundle } from './chat-tool-builder';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
+import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
+import type { BrowserToolStateStore } from '../llm-tools/browser-tools';
+import { processOperationAdmission } from '../processes/process-operation-admission';
 
 // ============================================================================
 // Types
@@ -67,6 +70,11 @@ export interface ChatTurnContextInput {
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
     kustoRuntime?: KustoToolsRuntime;
+    browserRuntime?: BrowserControlRuntime;
+    browserState?: BrowserToolStateStore;
+    browserSignal?: AbortSignal;
+    browserActivation?: boolean;
+    browserOnly?: boolean;
     /**
      * `create_pull_request` wiring. Autopilot-only: pass it for write-capable
      * turns and omit it in ask mode so read-only chats never see the tool.
@@ -90,6 +98,7 @@ export interface ChatTurnContextInput {
 }
 
 export interface ChatTurnContext {
+    browserPrompt: string;
     /** AI-callable tool definitions. */
     tools: Tool<any>[];
     /** Aggregated tool-guidance prose — route into system message via `appendToolGuidance`. */
@@ -168,7 +177,7 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  * ```
  */
 export async function buildChatTurnContext(input: ChatTurnContextInput): Promise<ChatTurnContext> {
-    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.scrubFindings;
+    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.scrubFindings && !input.browserOnly;
 
     const memoryV2: MemoryV2Addon = includeMemoryV2
         ? await buildMemoryV2Addon(input.dataDir, input.workspaceId, input.query, input.processId)
@@ -190,14 +199,39 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         askUser: input.askUser,
         systemOne: input.systemOne,
         kustoRuntime: input.kustoRuntime,
+        browserRuntime: input.browserRuntime,
+        browserState: input.browserState,
+        browserSignal: input.browserSignal,
         createPullRequest: input.createPullRequest,
         sentinelTodos: input.sentinelTodos,
         scrubFindings: input.scrubFindings,
         excludeTools: input.excludeTools,
         onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,
+        ...(input.browserOnly ? {
+            includeFollowUpSuggestions: false, includeSearchConversations: false,
+            includeTavilyWebSearch: false, includeScheduleWakeup: false,
+            includeCanvasTools: false, includeKustoTools: false, includeSystemOneTool: false,
+        } : {}),
     });
 
+    let browserPrompt = '';
+    if (toolBundle.tools.some(tool => tool.name === 'browser') && input.processId) {
+        const processId = input.processId;
+        browserPrompt = await processOperationAdmission.runExclusive(processId, async () => {
+            const process = await input.store.getProcess(processId, input.workspaceId);
+            const activated = input.browserActivation ?? /(?:^|\s)\/browser(?=\s|$)/i.test(input.query ?? '');
+            if (activated && process && process.metadata?.browserMode !== true) {
+                await input.store.updateProcess(processId, {
+                    metadata: { type: process.metadata?.type ?? 'chat', ...process.metadata, browserMode: true },
+                });
+            }
+            return activated || process?.metadata?.browserMode === true
+                ? 'Browser mode is active. Use the browser tool to browse and interact with the desktop browser.'
+                : '';
+        });
+    }
     return {
+        browserPrompt,
         tools: toolBundle.tools,
         toolGuidance: toolBundle.toolGuidance,
         memoryV2,

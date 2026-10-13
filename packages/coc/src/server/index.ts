@@ -311,6 +311,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // store + queue bridge live) after the queue infra is created; the late-bound
     // getter passed to createQueueInfrastructure reads this once routes register.
     let sendMessageCapability: import('./llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
+    let getBrowserRuntime: (() => import('@plusplusoneplusplus/coc-client').BrowserControlRuntime | undefined) | undefined;
+    let browserState: import('./llm-tools/browser-tools').BrowserToolStateStore | undefined;
     let sendToConversationRuntime: import('./llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     // Forward declaration — the in-process Ralph launch behind
     // `send_to_conversation` mode "ralph", bound at the route layer.
@@ -495,6 +497,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => kustoRuntime,
         () => getSentinelScrubberCapability?.(),
         () => getSentinelDependencyAdmissionCapability?.(),
+        () => getBrowserRuntime?.(),
+        () => browserState,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -846,6 +850,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
         setSendMessage: (fn) => { sendMessageCapability = fn; },
+        setBrowserControl: (getRuntime, state) => { getBrowserRuntime = getRuntime; browserState = state; },
         setLaunchRalph: (fn) => { launchRalphCapability = fn; },
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
@@ -965,7 +970,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             const workspaceId = process.metadata?.workspaceId;
             if (typeof workspaceId === 'string') getSentinelTodosCapability?.()?.notifyJobModeChanged(process.id, workspaceId);
         },
+        process => {
+            const workspaceId = process.metadata?.workspaceId;
+            if (typeof workspaceId === 'string') browserState?.delete(workspaceId, process.id);
+        },
     );
+    wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
 

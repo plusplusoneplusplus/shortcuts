@@ -169,6 +169,18 @@ references before editing. Paths are package-relative.
   pausing retains existing suggestions. Keep desktop settings out of server config.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
+- `browserControl.enabled` is a live, default-off tool/relay/UI gate. Publish
+  `getBrowserControlRuntime` and the composition-owned `getBrowserToolState`
+  through the shared executor runtime. Route registration precedes WebSocket
+  creation: resolve the broker lazily and bind its guard after infrastructure
+  initialization. Process removal deletes owner-qualified tool state.
+  Never load browser config per turn.
+  `/browser` persists prompt-only `metadata.browserMode`; tool execution does
+  not require activation. Ask, Autopilot and follow-ups share registration,
+  preferences and turn cancellation; create the turn AbortController before
+  assembling tool bundles, and pass its signal into the browser factory.
+  The desktop pill clears state through
+  the existing owner-scoped metadata mutation API.
 - Kusto uses only native Microsoft auth pinned to
   Azure CLI/auto refresh. Empty `kusto.azureCli` identity settings select the native
   active-account mode; complete settings pin account/tenant/subscription, and partial settings fail.

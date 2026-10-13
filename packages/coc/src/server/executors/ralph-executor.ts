@@ -60,6 +60,7 @@ export class RalphExecutor extends ChatBaseExecutor {
         task: QueuedTask,
         prompt: string,
         workingDirectory: string | undefined,
+        signal?: AbortSignal,
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
@@ -89,6 +90,9 @@ export class RalphExecutor extends ChatBaseExecutor {
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
             kustoRuntime: this.runtime.getKustoRuntime?.(),
+            browserRuntime: this.runtime.getBrowserControlRuntime?.(),
+            browserState: this.runtime.getBrowserToolState?.(),
+            browserSignal: signal,
             // Iterations and submit write (submit opens the PR); final-check is read-only.
             createPullRequest: kind === 'final-check'
                 ? undefined
@@ -132,7 +136,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
             tools: ctx.tools,
-            effectivePrompt,
+            effectivePrompt: ctx.browserPrompt ? `${ctx.browserPrompt}\n\n${effectivePrompt}` : effectivePrompt,
             excludedTools: ctx.excludedTools,
             dispose: ctx.dispose,
         };

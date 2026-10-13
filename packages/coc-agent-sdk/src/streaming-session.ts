@@ -24,6 +24,7 @@ import type { Attachment, DeliveryMode, TokenUsage } from './types';
 import { StreamingStateMachine, StreamingState } from './streaming-state-machine';
 import { SessionTimerManager } from './session-timer-manager';
 import { SessionTelemetry } from './session-telemetry';
+import type { CapturedToolExecutionResult } from './tool-result-images';
 
 // Re-export for backward compatibility
 export { StreamingState } from './streaming-state-machine';
@@ -102,7 +103,7 @@ export interface ISessionEvent {
         arguments?: unknown;
         parentToolCallId?: string;
         success?: boolean;
-        result?: { content?: string };
+        result?: CapturedToolExecutionResult;
         error?: { message?: string; code?: string };
         toolTelemetry?: Record<string, unknown>;
         // Tool progress (tool.execution_progress)

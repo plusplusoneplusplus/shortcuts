@@ -11,7 +11,9 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 import React, { createRef } from 'react';
 
 // Hoist a call tracker so the mock factory can reference it before imports
-const { tracker, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockGetSentinelTodos } = vi.hoisted(() => ({
+const { tracker, mockBrowserEnabled, mockPatchMetadata, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockGetSentinelTodos } = vi.hoisted(() => ({
+    mockBrowserEnabled: { value: false },
+    mockPatchMetadata: vi.fn(),
     tracker: {
         calls: [] as Array<[string, number?]>,
         domValue: '',
@@ -47,6 +49,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isBrowserControlEnabled: () => mockBrowserEnabled.value,
     isComposerWordHintEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isRalphEnabled: () => mockRalphEnabled.value,
@@ -58,6 +61,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        processes: { patchMetadata: mockPatchMetadata },
         sentinelTodos: { get: mockGetSentinelTodos },
         preferences: {
             getLlmToolsConfig: mockGetLlmToolsConfig,
@@ -88,10 +92,13 @@ import { useAttachedContext } from '../../../../src/server/spa/client/react/feat
 import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 
 afterEach(() => {
+    delete (window as any).cocDesktop;
     vi.restoreAllMocks();
 });
 
 beforeEach(() => {
+    mockBrowserEnabled.value = false;
+    mockPatchMetadata.mockReset().mockResolvedValue({ process: { metadata: { browserMode: false } } });
     tracker.calls = [];
     tracker.domValue = '';
     tracker.onChange = undefined;
@@ -197,6 +204,41 @@ function makeProps(overrides: Partial<FollowUpInputAreaProps> = {}): FollowUpInp
         ...overrides,
     };
 }
+
+describe('FollowUpInputArea browser mode', () => {
+    it('uses the concrete conversation owner rather than the selected repo group', async () => {
+        mockBrowserEnabled.value = true;
+        (window as any).cocDesktop = { browser: {} };
+        mockGetLlmToolsConfig.mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: [] });
+        render(<FollowUpInputArea {...makeProps({ browserModeActive: true, workspaceId: 'group-scope',
+            browserOwner: { workspaceId: 'ws-child', routingRef: 'ws-child' } })} />);
+        await screen.findByTestId('browser-mode-pill');
+        expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-child');
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Turn off browser mode' })); });
+        expect(mockPatchMetadata).toHaveBeenCalledWith('current-process', { set: { browserMode: false } }, { workspace: 'ws-child' });
+    });
+    it('persists removal on the owning process without submitting a message', async () => {
+        mockBrowserEnabled.value = true;
+        (window as any).cocDesktop = { browser: {} };
+        mockGetLlmToolsConfig.mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: [] });
+        const onChange = vi.fn();
+        const props = makeProps({ browserModeActive: true, onBrowserModeChange: onChange });
+        render(<FollowUpInputArea {...props} />);
+        await screen.findByTestId('browser-mode-pill');
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Turn off browser mode' })); });
+        expect(mockPatchMetadata).toHaveBeenCalledWith('current-process', { set: { browserMode: false } }, { workspace: 'ws-1' });
+        expect(onChange).toHaveBeenCalledWith(false);
+        expect(props.onSend).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('browser-mode-pill')).toBeNull();
+    });
+    it.each([false, true])('suppresses persisted browser mode when flag/repo gating is off: flag=%s', async flag => {
+        mockBrowserEnabled.value = flag;
+        (window as any).cocDesktop = { browser: {} };
+        mockGetLlmToolsConfig.mockResolvedValue({ tools: [{ name: 'browser' }], disabledLlmTools: ['browser'] });
+        await act(async () => { render(<FollowUpInputArea {...makeProps({ browserModeActive: true })} />); });
+        expect(screen.queryByTestId('browser-mode-pill')).toBeNull();
+    });
+});
 
 describe('FollowUpInputArea — cursor regression', () => {
     /**

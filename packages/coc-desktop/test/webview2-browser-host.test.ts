@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebView2BrowserHost } from '../src/webview2-browser-host';
-import type { BrowserEventSink } from '../src/browser-host-contract';
+import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
+import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -9,6 +10,9 @@ import * as path from 'node:path';
 const mocks = vi.hoisted(() => ({
     request: vi.fn().mockResolvedValue(undefined),
     running: true,
+    rejectView: vi.fn(),
+    dispose: vi.fn().mockResolvedValue(undefined),
+    onFailure: vi.fn<(error: BrowserHostError) => void>(),
     window: {
         isDestroyed: () => false,
         isFullScreen: () => false,
@@ -34,18 +38,223 @@ vi.mock('electron', () => ({
 vi.mock('../src/webview2-process', async importOriginal => ({
     ...await importOriginal<typeof import('../src/webview2-process')>(),
     WebView2Process: class {
-        constructor(_binary: () => string, _profile: string, onEvent: (message: Record<string, unknown>) => void) {
+        constructor(_binary: () => string, _profile: string, onEvent: (message: Record<string, unknown>) => void, onFailure: (error: BrowserHostError) => void) {
             mocks.onEvent.mockImplementation(onEvent);
+            mocks.onFailure.mockImplementation(onFailure);
         }
         get running() { return mocks.running; }
         request = mocks.request;
+        rejectView = mocks.rejectView;
+        dispose = mocks.dispose;
     },
 }));
 
 const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
+describe('WebView2 owner-scoped native popups', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.request.mockReset().mockResolvedValue(undefined);
+        mocks.dispose.mockReset().mockResolvedValue(undefined);
+        mocks.running = true;
+    });
+
+    async function opened() {
+        const popups = new Map<string, BrowserHostedView>();
+        const sink: BrowserEventSink = {
+            state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(),
+            controlPopoutOpened: vi.fn((id, popup) => popups.set(id, popup)),
+            controlPopoutClosed: vi.fn(id => popups.delete(id)), controlFocused: vi.fn(),
+            controlStopRequested: vi.fn(),
+        };
+        const host = new WebView2BrowserHost('profile');
+        const root = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        const event = (suffix: number, url = 'https://fixture.test/popup') =>
+            mocks.onEvent({ event: 'popup-opened', viewId: `7:tab:1:popup:${suffix}`, rootId: '7:tab:1', url });
+        event(1);
+        const [id, popup] = [...popups][0];
+        return { host, root, sink, popups, id, popup, event };
+    }
+
+    it('uses an explicit native-only activity command and forwards Stop with its public owner-bound popup id', async () => {
+        const h = await opened();
+        await h.popup.setControlActivity!('turn');
+        expect(mocks.request).toHaveBeenLastCalledWith('control-activity', { viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        expect(h.sink.controlStopRequested).toHaveBeenCalledExactlyOnceWith(h.id, 'turn');
+        await h.popup.setControlActivity!(null);
+        expect(mocks.request).toHaveBeenLastCalledWith('control-activity', { viewId: '7:tab:1:popup:1', turnId: null });
+        mocks.request.mockClear();
+        await h.root.setControlActivity!('turn');
+        expect(mocks.request).not.toHaveBeenCalled();
+        await h.popup.close();
+        mocks.onEvent({ event: 'control-stop', viewId: '7:tab:1:popup:1', turnId: 'turn' });
+        expect(h.sink.controlStopRequested).toHaveBeenCalledOnce();
+        await h.host.dispose();
+    });
+
+    it('registers correlated native popups and routes control, zoom, navigation and focus to their own handle', async () => {
+        const h = await opened();
+        expect(h.id).toMatch(/^browser-popout-/);
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1:popup:1', state: {
+            url: 'https://fixture.test/redirect', title: 'Popup', canGoBack: true, canGoForward: false, loading: false,
+        } });
+        expect(h.popup.snapshot()).toMatchObject({ viewId: h.id, url: 'https://fixture.test/redirect', title: 'Popup', engine: 'webview2' });
+        expect(h.root.snapshot()).toMatchObject({ title: '', url: 'https://fixture.test/' });
+        expect(h.sink.state).not.toHaveBeenCalled();
+        mocks.request.mockResolvedValueOnce({ result: { value: 42 } });
+        await expect(h.popup.cdp!('Runtime.evaluate', { expression: '42' })).resolves.toEqual({ result: { value: 42 } });
+        expect(mocks.request).toHaveBeenLastCalledWith('cdp', { viewId: '7:tab:1:popup:1', method: 'Runtime.evaluate', params: { expression: '42' } });
+        await h.popup.focus();
+        expect(mocks.request).toHaveBeenLastCalledWith('focus', { viewId: '7:tab:1:popup:1' });
+        await h.popup.navigate('https://fixture.test/next');
+        expect(mocks.request).toHaveBeenLastCalledWith('navigate', { viewId: '7:tab:1:popup:1', url: 'https://fixture.test/next' });
+        await h.popup.nav('back');
+        expect(mocks.request).toHaveBeenLastCalledWith('nav', { viewId: '7:tab:1:popup:1', action: 'back' });
+        await h.popup.setPageZoom!(150);
+        expect(mocks.request).toHaveBeenLastCalledWith('page-zoom', { viewId: '7:tab:1:popup:1', pageZoomPercent: 150 });
+        mocks.request.mockClear();
+        await h.popup.setBounds(null);
+        expect(mocks.request).not.toHaveBeenCalled();
+        mocks.onEvent({ event: 'control-focused', viewId: '7:tab:1:popup:1' });
+        expect(h.sink.controlFocused).toHaveBeenCalledOnce();
+        await h.host.dispose();
+    });
+
+    it('ignores duplicate, foreign, invalid and late opener events; permits blank authentication popups', async () => {
+        const h = await opened();
+        h.event(1);
+        for (const message of [
+            { viewId: '8:tab:1:popup:2', rootId: '7:tab:1', url: 'https://fixture.test/' },
+            { viewId: '7:tab:1:popup:2', rootId: '8:tab:1', url: 'https://fixture.test/' },
+            { viewId: '7:tab:1:popup:2', rootId: '7:tab:1', url: 'file:///preview.html' },
+            { viewId: '7:tab:1:popup:wrong', rootId: '7:tab:1', url: 'https://fixture.test/' },
+        ]) mocks.onEvent({ event: 'popup-opened', ...message });
+        expect(h.popups.size).toBe(1);
+        h.event(2, 'about:blank');
+        expect(h.popups.size).toBe(2);
+        await h.root.close();
+        h.event(3);
+        expect(h.popups.size).toBe(0);
+        expect(h.sink.controlPopoutOpened).toHaveBeenCalledTimes(2);
+        await h.host.dispose();
+    });
+
+    it.each(['popup-closed', 'crash'])('retires only the affected popup on %s and ignores late state', async outcome => {
+        const h = await opened();
+        h.event(2);
+        if (outcome === 'crash') {
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1:popup:1', state: {
+                url: 'https://fixture.test/popup', title: '', canGoBack: false, canGoForward: false, loading: false,
+                errorCode: 'runtime-crashed', error: 'Popup crashed',
+            } });
+        } else mocks.onEvent({ event: 'popup-closed', viewId: '7:tab:1:popup:1', rootId: '7:tab:1' });
+        expect(h.sink.controlPopoutClosed).toHaveBeenCalledExactlyOnceWith(h.id);
+        expect(mocks.rejectView).toHaveBeenCalledWith('7:tab:1:popup:1');
+        await expect(h.popup.cdp!('Runtime.evaluate')).rejects.toThrow('closed');
+        await expect(h.root.cdp!('Runtime.evaluate')).resolves.toBeUndefined();
+        expect(h.popups.size).toBe(1);
+        mocks.onEvent({ event: 'popup-closed', viewId: '7:tab:1:popup:1' });
+        mocks.onEvent({ event: 'control-focused', viewId: '7:tab:1:popup:1' });
+        expect(h.sink.controlPopoutClosed).toHaveBeenCalledTimes(1);
+        expect(h.sink.controlFocused).not.toHaveBeenCalled();
+        await h.host.dispose();
+    });
+
+    it('closes an individual popup without closing its root or siblings', async () => {
+        const h = await opened();
+        h.event(2);
+        await h.popup.close();
+        expect(mocks.request).toHaveBeenLastCalledWith('close', { viewId: '7:tab:1:popup:1' });
+        expect(h.popups.size).toBe(1);
+        await expect(h.root.cdp!('Runtime.evaluate')).resolves.toBeUndefined();
+        await h.host.dispose();
+    });
+
+    it.each(['close', 'root-crash', 'helper-crash', 'dispose', 'failed-dispose'])('cleans popup handles and owner listeners on %s', async outcome => {
+        const h = await opened();
+        h.event(2);
+        if (outcome === 'close') await h.root.close();
+        else if (outcome === 'root-crash') mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+            url: 'https://fixture.test/', title: '', loading: false, canGoBack: false, canGoForward: false,
+            errorCode: 'runtime-crashed', error: 'Root crashed',
+        } });
+        else if (outcome === 'helper-crash') mocks.onFailure(new BrowserHostError('runtime-crashed', 'Helper crashed'));
+        else if (outcome === 'failed-dispose') {
+            mocks.dispose.mockRejectedValueOnce(new Error('Shutdown failed'));
+            await expect(h.host.dispose()).rejects.toThrow('Shutdown failed');
+        } else await h.host.dispose();
+        expect(h.popups.size).toBe(0);
+        expect(h.sink.controlPopoutClosed).toHaveBeenCalledTimes(2);
+        await expect(h.popup.cdp!('Runtime.evaluate')).rejects.toThrow('closed');
+        if (outcome === 'root-crash' || outcome === 'helper-crash') {
+            h.event(3);
+            expect(h.popups.size).toBe(0);
+            expect(h.sink.controlPopoutOpened).toHaveBeenCalledTimes(2);
+        }
+        if (outcome !== 'helper-crash' && outcome !== 'root-crash') {
+            expect(mocks.window.removeListener).toHaveBeenCalledWith('move', expect.any(Function));
+            expect(mocks.window.removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
+        } else expect(h.sink.state).toHaveBeenCalledWith(expect.objectContaining({ errorCode: 'runtime-crashed' }));
+        await h.host.dispose();
+    });
+
+    it('makes actual WebView2 popup handles discoverable and controllable only in the owning manager workspace', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const manager = new BrowserHostManager({
+            history: { recordVisit: async () => true, updateTitle: async () => true, flush: async () => {}, clearEngine: async () => true },
+            hosts: { webview2: host, electron: { ...host, engine: 'electron', availability: async () => ({ engine: 'electron', available: true }), create: vi.fn(), clearData: vi.fn(), dispose: vi.fn() } },
+            fileHost: { create: vi.fn(), dispose: vi.fn() },
+            getDefault: () => 'webview2', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send: vi.fn(), changed: vi.fn(),
+        });
+        vi.spyOn(host, 'availability').mockResolvedValue({ engine: 'webview2', available: true });
+        manager.bindControlScope(7, 'workspace', 'workspace');
+        manager.bindControlScope(8, 'other', 'other');
+        expect(await manager.open(7, 'tab', 'https://fixture.test/', 'workspace')).toMatchObject({ ok: true });
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:tab:1:popup:1', rootId: '7:tab:1', url: 'https://fixture.test/popup' });
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1:popup:1', state: {
+            url: 'https://fixture.test/popup', title: 'Popup', canGoBack: false, canGoForward: false, loading: false,
+        } });
+        const run = (ownerId: number, workspaceId: string, command: { action: 'tabs' } | { action: 'select'; tab: string }) =>
+            manager.executeControl(ownerId, { id: 'r', processId: 'p', workspaceId, command });
+        const tabs = (await run(7, 'workspace', { action: 'tabs' })).tabs!;
+        const popup = tabs.find(tab => tab.title === 'Popup')!;
+        expect(popup.id).toMatch(/^t7:browser-popout-/);
+        expect((await run(8, 'other', { action: 'tabs' })).tabs).toEqual([]);
+        await expect(run(8, 'other', { action: 'select', tab: popup.id })).rejects.toThrow('not found');
+        mocks.request.mockImplementation(async (op, payload) => op === 'cdp' ? {
+            result: { value: { title: 'Popup', url: 'https://fixture.test/popup', elements: [], nextRef: 1 } },
+        } : undefined);
+        expect((await run(7, 'workspace', { action: 'select', tab: popup.id })).tab).toBe(popup.id);
+        expect(mocks.request).toHaveBeenCalledWith('focus', { viewId: '7:tab:1:popup:1' });
+        const waiting = manager.executeControl(7, { id: 'wait', processId: 'p', workspaceId: 'workspace', selectedTab: popup.id, command: { action: 'wait', ms: 30_000 } });
+        mocks.onEvent({ event: 'popup-closed', viewId: '7:tab:1:popup:1' });
+        await expect(waiting).rejects.toThrow('popout closed');
+        expect((await run(7, 'workspace', { action: 'tabs' })).tabs).toHaveLength(1);
+        await manager.dispose();
+    });
+});
+
 describe('WebView2 native focus handoff', () => {
+    it('exposes CDP results only for the live owner-qualified native tab', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test' }, sink);
+        mocks.request.mockResolvedValueOnce({ result: { value: 42 } });
+        await expect(view.cdp!('Runtime.evaluate', { expression: '6 * 7' })).resolves.toEqual({ result: { value: 42 } });
+        expect(mocks.request).toHaveBeenLastCalledWith('cdp', { viewId: '7:tab:1', method: 'Runtime.evaluate', params: { expression: '6 * 7' } });
+        mocks.request.mockRejectedValueOnce(new Error('Protocol error'));
+        await expect(view.cdp!('Bad.command')).rejects.toThrow('Protocol error');
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: {
+            url: 'https://example.test', title: '', canGoBack: false, canGoForward: false, loading: false,
+            errorCode: 'runtime-crashed', error: 'Page crashed',
+        } });
+        await expect(view.cdp!('Runtime.evaluate')).rejects.toThrow('Page crashed');
+        await view.close();
+        expect(mocks.rejectView).toHaveBeenCalledWith('7:tab:1');
+        await expect(view.cdp!('Runtime.evaluate')).rejects.toThrow('Browser tab is closed');
+    });
+
     it('initializes, changes and restores page zoom through native controller commands', async () => {
         const host = new WebView2BrowserHost('profile');
         const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test', pageZoomPercent: 150 }, sink);

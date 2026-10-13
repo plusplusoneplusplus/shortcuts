@@ -229,8 +229,31 @@ It uses `webview2-com` with a statically linked loader; the installed Evergreen
 runtime remains required. Its main thread initializes COM as STA and owns all
 windows/controllers. A stdin reader only queues typed JSON commands and wakes
 the UI message pump. COM callbacks and controller operations stay on that
-thread. The helper-process boundary isolates this lifecycle from Electron's
+thread. Typed `cdp` commands target an existing view and call
+`CallDevToolsProtocolMethod`; completion callbacks return JSON results with the
+original request id. Method names use `Domain.command` and params are objects.
+Results above 900000 UTF-8 bytes produce a small correlated error before stdout;
+desktop read/eval and staged snapshot chunks bound page-owned serialization before
+CDP. Transport bounds each frame/write at 1 MiB, drains oversized CDP replies
+independently, and preserves other views. Native state/history titles cap at 4096
+Unicode characters.
+The desktop transport retires CDP requests on tab close, page/helper crash,
+shutdown or a 30-second timeout, ignoring late replies. CDP timeouts preserve
+other tabs and the helper process. The helper-process boundary isolates this lifecycle from Electron's
 Node event loop and from server N-API capabilities.
+Native popups publish correlated `popup-opened`, per-popup `state`,
+`control-focused` and `popup-closed` events. Desktop hosted handles inherit the
+root tab's owner/workspace without replacing its navigation state. Popup startup
+retains the exact opener identity, rejecting completion after close/replacement.
+Closing a popup preserves its root and siblings; root close/crash retires all
+descendants. Popup runtime failures close the controller/window and retire CDP
+work. Cleanup attempts every controller/window and reports the first failure.
+Popups inherit page zoom and retain native top-level bounds across DPI changes.
+Typed `control-activity` sets/clears a bounded turn ID for popup-only native
+badge/Stop controls. DPI-aware layout reserves a 40-DIP strip outside WebView2
+content; keyboard focus can traverse Stop and the page. Button events publish
+`control-stop` with native view/turn identity for owning-conversation cancellation.
+Hosted pages have no access to this chrome or its transport.
 Embedded bounds are renderer-relative DIP plus a physical screen `contentOrigin`
 from Electron's content bounds. The helper maps that origin into the parent HWND's
 client coordinates and DPI-scales only the relative bounds, keeping native views

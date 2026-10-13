@@ -194,6 +194,39 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('registerAllRoutes', () => {
+    it('publishes browser state before the socket exists and resolves the live broker later', async () => {
+        let socket: any;
+        let getRuntime!: Parameters<NonNullable<RegisterRoutesOptions['setBrowserControl']>>[0];
+        let state!: Parameters<NonNullable<RegisterRoutesOptions['setBrowserControl']>>[1];
+        const opts = makeOpts({ dataDir: tmpDir, getWsServer: () => socket,
+            setBrowserControl: (get, value) => { getRuntime = get; state = value; } });
+        (opts.runtimeConfigService!.config as any).browserControl = { enabled: false };
+        const composition = registerAllRoutes([], opts);
+        try {
+            expect(state).toBeDefined();
+            expect(getRuntime()).toBeUndefined();
+            let enabled = () => false;
+            const broker = { setEnabledGetter: (get: () => boolean) => { enabled = get; },
+                getEnabled: () => enabled(), execute: vi.fn() };
+            socket = { ...makeWsServer(), browserControl: broker };
+            expect(getRuntime()).toBe(broker);
+            expect(broker.getEnabled()).toBe(false);
+            (opts.runtimeConfigService!.config as any).browserControl.enabled = true;
+            expect(broker.getEnabled()).toBe(true);
+            expect(getRuntime()).toBe(broker);
+        } finally {
+            composition.whatsappMessagingManager.dispose();
+            composition.teamsMessagingManager.dispose();
+            composition.autoPullManager.dispose();
+            composition.workItemGitHubPullPoller.dispose();
+            composition.workItemAzureBoardsPullPoller.dispose();
+            composition.activeWorkspaceBackgroundRefresher.dispose();
+            composition.dreamIdleScheduler.dispose();
+            composition.repoTreeService.dispose();
+            composition.agentProvidersQuotaCache?.dispose();
+            composition.quotaPauseWatcher?.dispose();
+        }
+    });
     let tmpDir: string;
 
     beforeEach(async () => {

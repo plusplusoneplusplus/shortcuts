@@ -29,6 +29,9 @@ import { ChatStyleSelector } from './ChatStyleSelector';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
+import { BrowserModePill } from './BrowserModePill';
+import { useBrowserToolEnabled } from './hooks/useBrowserMode';
+import { useCocClient } from '../../repos/cloneRouting';
 import type { ContextAutoCompact } from '../../ui/ContextUsagePopover';
 import { useContainerWidth } from './hooks/useContainerWidth';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
@@ -79,6 +82,9 @@ import { ProviderSwitchConfirmDialog } from './conversation/ProviderSwitchConfir
 import { recordProviderSwitchUiTelemetry } from './providerSwitchTelemetry';
 
 export interface FollowUpInputAreaProps {
+    browserOwner?: { workspaceId: string; routingRef: string };
+    browserModeActive?: boolean;
+    onBrowserModeChange?: (active: boolean) => void;
     richTextRef: React.RefObject<RichTextInputHandle>;
     inputDisabled: boolean;
     sending: boolean;
@@ -342,6 +348,9 @@ export function FollowUpInputArea({
     ralphGrillDefaultEffortTier,
     ralphGrillEffortLevelsEnabled = true,
     ralphGrillComposerUsesEffortTierMode = false,
+    browserModeActive,
+    browserOwner,
+    onBrowserModeChange,
 }: FollowUpInputAreaProps) {
     const [pendingContextReads, setPendingContextReads] = useState(0);
     const contextOwnerKey = sentinelTodoOwner ? sentinelTodoOwnerKey(sentinelTodoOwner) : '';
@@ -404,6 +413,24 @@ export function FollowUpInputArea({
     const rootRef = useRef<HTMLDivElement>(null);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
+    const browserWorkspaceId = browserOwner?.workspaceId ?? activeWorkspaceId;
+    const browserRoutingRef = browserOwner?.routingRef ?? activeWorkspaceId;
+    const browserEnabled = useBrowserToolEnabled(browserRoutingRef);
+    const browserClient = useCocClient(browserRoutingRef);
+    const [browserCleared, setBrowserCleared] = useState(false);
+    const persistedBrowserMode = browserModeActive ?? task?.metadata?.browserMode === true;
+    const browserModeVisible = browserEnabled && (
+        /(?:^|\s)\/browser(?=\s|$)/i.test(followUpInput) || persistedBrowserMode && !browserCleared);
+    useEffect(() => { setBrowserCleared(false); }, [activeProcessId, persistedBrowserMode]);
+    const clearBrowserMode = async () => {
+        if (!activeProcessId || !browserWorkspaceId) return;
+        await browserClient.processes.patchMetadata(activeProcessId, { set: { browserMode: false } }, { workspace: browserWorkspaceId });
+        setBrowserCleared(true);
+        onBrowserModeChange?.(false);
+        const text = followUpInput.replace(/(^|\s)\/browser(?=\s|$)/gi, '$1').trim();
+        setFollowUpInput(text);
+        richTextRef.current?.setValue(text);
+    };
     const pastePanelHost = useUnifiedPanelHostForChat(activeProcessId);
     const rawPasteContent = pastePreview?.pastedContent;
     // `#repo_name` mentions: only in a repo-group chat, and only once the
@@ -1213,6 +1240,9 @@ export function FollowUpInputArea({
                             </div>
                         )}
                         {prComposerChips}
+                        {browserModeVisible && <div className="px-2 pt-1">
+                            <BrowserModePill active onRemove={() => { void clearBrowserMode().catch(() => {}); }} />
+                        </div>}
                         <RichTextInput
                             ref={richTextRef}
                             disabled={inputDisabled}

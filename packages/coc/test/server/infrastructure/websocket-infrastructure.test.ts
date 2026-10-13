@@ -107,6 +107,17 @@ describe('createWebSocketInfrastructure', () => {
     });
 
     describe('store process change wiring', () => {
+        it('passes the removed process to host-owned state cleanup', () => {
+            const removed = vi.fn();
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,
+                undefined, undefined, () => false, undefined, removed);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+            const process = { id: 'browser-process', metadata: { workspaceId: 'ws-browser' } } as any;
+            store.onProcessChange({ type: 'process-removed', process });
+            expect(removed).toHaveBeenCalledOnce();
+            expect(removed).toHaveBeenCalledWith(process);
+            expect(broadcast).toHaveBeenCalledWith({ type: 'process-removed', processId: process.id });
+        });
         it('invalidates linked modes only on mode/owner changes, including follow-ups and removal/re-add', () => {
             const changed = vi.fn();
             createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,

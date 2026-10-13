@@ -583,6 +583,29 @@ target switch never retargets it. Tabs are workspace-owned, so they stay
 across chat switches, and `browser` is an ephemeral kind: neither the tab, its
 URL, nor its selection reaches storage, so a restart starts with none.
 `updateBrowserTab` follows the page's URL and label without activating the tab.
+AI browser control uses the same session-only descriptors and imperative
+`openUnifiedPanelTab` seam, so commands can reveal a collapsed or unmounted dock.
+Main's `browser.control.onReveal` supplies the native resource id and trusted
+concrete owner; `findBrowserPanelView` retains an existing tab's panel scope.
+Conversation scope comes from `browser-control-scope.ts`, not a repo-group picker
+or an unrelated selected chat. Server-owned selection is separate from an
+explicit `select(tab)` command target; other actions use the request's
+`selectedTab` envelope. Main-qualified ids include the owning desktop window;
+only same-owner-workspace URL views and their URL popouts participate, excluding
+file previews and other clones. The SPA relays structured commands on existing
+local/clone sockets and never receives a raw CDP/debugger capability.
+`UnifiedBrowserTab` includes `BrowserControlBadge` for its concrete workspace,
+clone route and unified descriptor id. The relay maps native tab ids only through
+the trusted owning window and starts activity immediately on reveal, before a
+slow command completes. Activity is turn-scoped: successful commands update the
+tab without ending ownership; terminal/cancelling process notifications and
+disconnects clear it. Local and remote activities use distinct source-qualified
+keys. Late replies cannot restore a finished turn; another command or reveal
+requires an authoritative running notification to resume a finished process.
+The badge requires the
+desktop bridge and live feature/per-repo tool admission. It never locks user
+input; Stop uses the owning client's existing `processes.cancel` and clears
+activity only after cancellation succeeds.
 In the desktop app `UnifiedBrowserTab` drives `window.cocDesktop.browser`
 (`shared/file-path/browser-bridge.ts`): the tab's `resourceId` is the view id
 and `browserSessionKey(tab)` the routing owner. Browser profiles persist per

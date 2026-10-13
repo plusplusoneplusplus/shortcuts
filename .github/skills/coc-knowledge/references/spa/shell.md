@@ -206,6 +206,34 @@ queries; history invalidations refresh open results.
 
 The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
+### Desktop browser control
+
+`shared/file-path/browser-control-relay.ts` attaches to existing local/clone
+sockets. Only preload hosts with `browser.control` advertise capability. A visible
+conversation publishes its concrete owner and panel scope through
+`browser-control-scope.ts`, preserving repo-group and clone routing. Main binds
+that scope separately from each structured command, requires a registered
+exact-source SPA main frame, and resolves owner-qualified tab ids against URL
+views sharing the concrete session key. File previews and other clones stay
+outside this scope; Electron URL popouts inherit their opener's owner.
+
+Main reveal events open or reuse ordinary descriptors through
+`openUnifiedPanelTab`, including collapsed/unmounted panels. Existing descriptors
+retain their original panel scope. `BrowserHostManager.executeControl` returns
+raw contract results; conversation selection, output hints and deltas belong on
+the server. Subtree/all snapshots include a separate full interactive baseline.
+Each view retains one `BrowserControlPage` and serial command queue across
+navigation. Shared DOM reads transport-page markdown at `command.offset` in
+8000-character slices with `textTotal`; evaluation returns values or visible
+exceptions. CDP screenshots return inline JPEG base64 with a 1280px
+width limit and optional ref crop. No debugger API reaches the renderer.
+
+Cancellation, workspace changes, reload and owner close reject IPC calls and
+cancel queued actions. Outstanding CDP calls retain the serialization barrier
+until they settle; release events complete dispatched key/mouse presses. The
+local-only Electron relay fixture exercises WebSocket, SPA tab creation, preload,
+main, trusted input, markdown, evaluation, JPEG crops and popup discovery.
+
 ### Shared web-page zoom
 
 `browser.setPageZoom(percent)` validates 50-200% in 25-point steps; reset is 100%.

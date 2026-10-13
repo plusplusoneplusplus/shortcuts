@@ -56,6 +56,10 @@ export interface LlmToolMeta {
  */
 export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
+        name: 'browser', label: 'Browser', description: 'Control the CoC desktop browser.',
+        enabledByDefault: true,
+    },
+    {
         name: 'suggest_follow_ups',
         label: 'Follow-Up Suggestions',
         description: 'Suggests follow-up actions after the AI responds.',
@@ -169,7 +173,7 @@ export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; llmToolSystemOneEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
     if (!opts.cronEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
@@ -179,6 +183,9 @@ export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canva
     }
     if (!opts.kustoEnabled) {
         registry = registry.filter(t => !(KUSTO_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
+    }
+    if (!opts.browserControlEnabled) {
+        registry = registry.filter(t => t.name !== 'browser');
     }
     if (!opts.llmToolSystemOneEnabled) {
         registry = registry.filter(t => !(SYSTEM_ONE_LLM_TOOL_NAMES as readonly string[]).includes(t.name));

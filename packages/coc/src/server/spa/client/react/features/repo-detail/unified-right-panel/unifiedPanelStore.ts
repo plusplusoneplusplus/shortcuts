@@ -28,6 +28,7 @@ import {
     serializeUnifiedPanelState,
     unifiedPanelStorageKey,
     type UnifiedPanelState,
+    type UnifiedPanelTab,
     closeTab,
 } from './unifiedPanelTabsModel';
 import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
@@ -40,6 +41,7 @@ const listeners = new Map<string, Set<() => void>>();
 
 /** Last (raw string → parsed state) per key, for referential stability. */
 const snapshotCache = new Map<string, { raw: string; value: UnifiedPanelState }>();
+const panelScopes = new Map<string, string>();
 
 function subscribe(storageKey: string, listener: () => void): () => void {
     let set = listeners.get(storageKey);
@@ -61,6 +63,7 @@ function subscribe(storageKey: string, listener: () => void): () => void {
  */
 export function readUnifiedPanelState(workspaceId: string): UnifiedPanelState {
     const storageKey = unifiedPanelStorageKey(workspaceId);
+    panelScopes.set(storageKey, workspaceId);
     let raw: string | null = null;
     try {
         raw = localStorage.getItem(storageKey);
@@ -78,7 +81,19 @@ export function readUnifiedPanelState(workspaceId: string): UnifiedPanelState {
 /** Persist a workspace's state and wake every subscriber on that key. */
 export function writeUnifiedPanelState(workspaceId: string, next: UnifiedPanelState): void {
     const storageKey = unifiedPanelStorageKey(workspaceId);
+    panelScopes.set(storageKey, workspaceId);
     writeState(storageKey, next);
+}
+
+/** Find a live URL tab's existing panel without inferring owner scope from the selected repo. */
+export function findBrowserPanelView(viewId: string, workspaceId: string, routingRef: string): { scope: string; tab: UnifiedPanelTab } | undefined {
+    for (const [key, snapshot] of snapshotCache) {
+        const tab = snapshot.value.workspaceTabs.find(tab => tab.kind === 'browser' && tab.resourceId === viewId
+            && tab.ownerWorkspaceId === workspaceId && (tab.ownerRoutingRef || workspaceId) === routingRef);
+        const scope = panelScopes.get(key);
+        if (tab && scope) return { scope, tab };
+    }
+    return undefined;
 }
 
 function writeState(storageKey: string, next: UnifiedPanelState): void {
@@ -187,6 +202,7 @@ export function clearUnifiedPanelState(workspaceId?: string): void {
             /* ignore */
         }
         snapshotCache.delete(key);
+        panelScopes.delete(key);
         listeners.get(key)?.forEach(listener => listener());
     }
 }

@@ -23,6 +23,11 @@ const mocks = vi.hoisted(() => ({
         id: 8, on: vi.fn(), once: vi.fn(), setWindowOpenHandler: vi.fn(),
         isDestroyed: () => false, loadURL: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
+        removeListener: vi.fn(),
+        debugger: {
+            on: vi.fn(), removeListener: vi.fn(), isAttached: vi.fn(() => false),
+            attach: vi.fn(), detach: vi.fn(), sendCommand: vi.fn().mockResolvedValue({ value: 'fixture' }),
+        },
         setZoomFactor: vi.fn(),
         setBackgroundThrottling: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
@@ -115,6 +120,27 @@ async function view() {
     };
     return { sink, hosted, press };
 }
+
+describe('Electron browser CDP capability', () => {
+    it('uses only the adopted guest and detaches before closing it', async () => {
+        const { hosted } = await view();
+        await expect(hosted.cdp!('Runtime.evaluate', { expression: 'document.title' })).resolves.toEqual({ value: 'fixture' });
+        expect(mocks.contents.debugger.sendCommand).toHaveBeenCalledWith('Runtime.evaluate', { expression: 'document.title' });
+        mocks.contents.debugger.isAttached.mockReturnValueOnce(true);
+        await hosted.close();
+        expect(mocks.contents.debugger.detach).toHaveBeenCalledOnce();
+        expect(mocks.contents.debugger.detach.mock.invocationCallOrder[0]).toBeLessThan(mocks.contents.close.mock.invocationCallOrder[0]);
+        await expect(hosted.cdp!('Runtime.evaluate')).rejects.toThrow('closed');
+    });
+
+    it('rejects commands before guest attachment without acquiring a debugger', async () => {
+        mocks.deferAttach = true;
+        const { hosted } = await view();
+        await expect(hosted.cdp!('Runtime.evaluate')).rejects.toThrow('not attached');
+        expect(mocks.contents.debugger.attach).not.toHaveBeenCalled();
+        await hosted.close();
+    });
+});
 
 describe('Electron browser add-menu forwarding', () => {
     it('retains shared page zoom before attachment and reapplies it on navigation without touching the owner', async () => {
@@ -351,7 +377,7 @@ describe('Electron successful history events', () => {
             ...mocks.contents, id: 90, getTitle: () => 'Popup',
             on: (name: string, handler: (...args: any[]) => void) => handlers.set(name, handler),
         };
-        mocks.handlers.get('did-create-window')![0]({ webContents: popup, once: vi.fn(), isDestroyed: () => true });
+        mocks.handlers.get('did-create-window')![0]({ webContents: popup, once: vi.fn(), on: vi.fn(), isDestroyed: () => true });
         vi.mocked(sink.state).mockClear();
         handlers.get('did-navigate')!({}, 'https://popup.test/final', 200);
         handlers.get('did-frame-finish-load')!({}, false);

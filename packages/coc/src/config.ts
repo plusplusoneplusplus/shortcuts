@@ -256,6 +256,8 @@ export interface CLIConfig {
     canvas?: {
         enabled?: boolean;
     };
+    /** Desktop browser control. Disabled by default. */
+    browserControl?: { enabled?: boolean };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -651,6 +653,8 @@ export interface ResolvedCLIConfig {
     canvas: {
         enabled: boolean;
     };
+    /** Desktop browser control. */
+    browserControl: { enabled: boolean };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -986,6 +990,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
+    browserControl: { enabled: false },
     LLMToolSystemOne: {
         enabled: false,
     },

@@ -1,3 +1,5 @@
+import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
+
 /** Reply to `browser.open` / `browser.navigate`. */
 export type BrowserEngine = 'electron' | 'webview2';
 /** What `browser.open` loads; a bare string is a `url` source. */
@@ -62,6 +64,17 @@ export interface BrowserDownloadEvent {
 
 /** The desktop preload's browser tab API (see coc-desktop browser-view-host.ts). */
 export interface DesktopBrowserBridge {
+    control?: {
+        bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
+        execute(request: BrowserCommandRequest): Promise<BrowserCommandResult>;
+        cancel(id: string): void;
+        finish?(turnId?: string, routingRef?: string): void;
+        setVisible?(visible: boolean, routingRef: string): void;
+        onActivity?(callback: (event: BrowserControlActivityEvent) => void): () => void;
+        onStop?(callback: (event: BrowserControlActivityEvent) => void): () => void;
+        onFocused?(callback: () => void): () => void;
+        onReveal(callback: (event: BrowserControlReveal) => void): () => void;
+    };
     /** Installation-wide history; absent on older desktop hosts. */
     history?: DesktopBrowserHistory;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
@@ -91,6 +104,27 @@ export interface DesktopBrowserBridge {
     onOpenMenuRequested?(callback: (event: { viewId: string }) => void): () => void;
     onCloseRequested?(callback: (event: { viewId: string }) => void): () => void;
     onClosed(callback: (event: { viewId: string; engine: BrowserEngine }) => void): () => void;
+}
+
+export interface BrowserControlReveal {
+    routingOwnerId?: number;
+    workspaceId: string;
+    processId: string;
+    viewId: string;
+    url?: string;
+    routingRef?: string;
+    turnId?: string;
+}
+
+export interface BrowserControlActivityEvent {
+    routingOwnerId?: number;
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    routingRef: string;
+    viewId: string;
+    active: boolean;
+    finished?: boolean;
 }
 
 /** Event a chat web-link click sends to ask the right panel for a browser tab. */

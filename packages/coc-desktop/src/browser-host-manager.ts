@@ -8,6 +8,12 @@ import {
 import { parseBrowserCookies } from './browser-cookie-import';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
+import { BrowserControlQueue } from './browser-control-queue';
+import type { BrowserControlPage } from './browser-control-page';
+import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab } from '@plusplusoneplusplus/coc-client';
+import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, type BrowserControlActivityEvent, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
     ownerId: number;
@@ -21,6 +27,9 @@ interface Entry {
     ready: Promise<BrowserHostedView>;
     view?: BrowserHostedView;
     startupFailed?: boolean;
+    control?: BrowserControlQueue;
+    popout?: boolean;
+    activity?: BrowserControlActivityEvent & { routingOwnerId: number };
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -42,6 +51,9 @@ export interface BrowserManagerOptions {
 }
 
 export class BrowserHostManager {
+    private readonly controlScopes = new Map<number, { workspaceId: string; sessionKey: string }>();
+    private readonly finishedTurns = new Map<number, Set<string>>();
+    private readonly visibleControl = new Map<number, Map<string, boolean>>();
     private readonly owners = new Map<number, Map<string, Entry>>();
     private readonly clearing = new Set<BrowserEngine>();
     private disposed = false;
@@ -49,6 +61,183 @@ export class BrowserHostManager {
     private zoomUpdate: Promise<unknown> = Promise.resolve();
 
     constructor(private readonly options: BrowserManagerOptions) {}
+
+    finishControl(ownerId: number, turnId?: string, includeOwned = true, routingRef?: string): void {
+        if (!turnId) {
+            if (routingRef) this.visibleControl.get(ownerId)?.delete(routingRef);
+            else this.visibleControl.delete(ownerId);
+        }
+        if (turnId) {
+            const finished = this.finishedTurns.get(ownerId) ?? new Set<string>();
+            finished.add(turnId);
+            this.finishedTurns.set(ownerId, finished);
+        }
+        // Target ownership does not imply turn ownership during anonymous source teardown.
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (entry.activity && (entry.activity.routingOwnerId === ownerId || !!turnId && includeOwned && entry.ownerId === ownerId)
+                && (!routingRef || entry.activity.routingRef === routingRef) && (!turnId || entry.activity.turnId === turnId)) {
+                this.clearControlEntry(entry);
+            }
+        }
+    }
+
+    setControlVisible(ownerId: number, visible: boolean, routingRef: string): void {
+        if (!isValidBrowserSessionKey(routingRef)) return;
+        const scopes = this.visibleControl.get(ownerId) ?? new Map<string, boolean>();
+        scopes.set(routingRef, visible);
+        this.visibleControl.set(ownerId, scopes);
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (entry.activity?.routingOwnerId === ownerId && entry.activity.routingRef === routingRef) this.nativeActivity(entry);
+        }
+    }
+
+    private nativeActivity(entry: Entry): void {
+        let appliedTurnId: string | null = null;
+        void Promise.resolve().then(() => {
+            const activity = entry.activity;
+            appliedTurnId = activity && this.visibleControl.get(activity.routingOwnerId)?.get(activity.routingRef) === true ? activity.turnId : null;
+            return entry.view?.setControlActivity?.(appliedTurnId);
+        }).catch(error => {
+            console.error('[coc-desktop] Browser control chrome failed:', error);
+            if (appliedTurnId) this.stopControl(entry, appliedTurnId);
+        });
+    }
+
+    private clearControlEntry(entry: Entry, finished = true): void {
+        const activity = entry.activity;
+        if (!activity) return;
+        if (finished) {
+            const turns = this.finishedTurns.get(activity.routingOwnerId) ?? new Set<string>();
+            turns.add(activity.turnId);
+            this.finishedTurns.set(activity.routingOwnerId, turns);
+        }
+        entry.activity = undefined;
+        this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
+        this.nativeActivity(entry);
+    }
+
+    private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest): void {
+        const turnId = request.turnId ?? request.processId;
+        if (this.finishedTurns.get(routingOwnerId)?.has(turnId)) throw new Error('Browser conversation turn has finished');
+        for (const entries of this.owners.values()) for (const other of entries.values()) {
+            if (other !== entry && other.activity?.routingRef === entry.sessionKey && other.activity.processId === request.processId) this.clearControlEntry(other, false);
+        }
+        if (entry.activity && entry.activity.turnId !== turnId) this.clearControlEntry(entry, entry.activity.processId === request.processId);
+        entry.activity = { workspaceId: request.workspaceId, processId: request.processId, turnId,
+            routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId };
+        this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, entry.activity);
+        this.nativeActivity(entry);
+    }
+
+    private stopControl(entry: Entry, turnId: string): void {
+        const activity = entry.activity;
+        if (!activity || activity.turnId !== turnId || this.visibleControl.get(activity.routingOwnerId)?.get(activity.routingRef) !== true) return;
+        this.options.send(activity.routingOwnerId, BROWSER_CONTROL_STOP_CHANNEL, activity);
+    }
+
+    bindControlScope(ownerId: number, workspaceId: unknown, sessionKey: unknown): void {
+        if (workspaceId === null && sessionKey === null) {
+            this.finishControl(ownerId, undefined, false);
+            this.controlScopes.delete(ownerId);
+            return;
+        }
+        if (typeof workspaceId !== 'string' || !isValidBrowserSessionKey(workspaceId) || !isValidBrowserSessionKey(sessionKey)) throw new TypeError('Invalid browser workspace scope');
+        this.controlScopes.set(ownerId, { workspaceId, sessionKey });
+    }
+
+    private controlId(entry: Entry): string { return `t${entry.ownerId}:${entry.viewId}`; }
+
+    private scopedEntries(ownerId: number, workspaceId: string): Entry[] {
+        const scope = this.controlScopes.get(ownerId);
+        if (!scope || scope.workspaceId !== workspaceId) throw new Error('Browser workspace scope changed');
+        return [...this.owners.values()].flatMap(entries => [...entries.values()]).filter(entry =>
+            !entry.closed && entry.sourceKind === 'url' && entry.sessionKey === scope.sessionKey);
+    }
+
+    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal): Promise<BrowserCommandResult> {
+        const request = validateBrowserCommandRequest(input);
+        signal?.throwIfAborted();
+        if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
+        let entries = this.scopedEntries(ownerId, request.workspaceId);
+        const command = request.command;
+        if (command.action === 'tabs') {
+            const tabs: BrowserControlTab[] = [];
+            for (const entry of entries) {
+                const view = await entry.ready;
+                signal?.throwIfAborted();
+                if (entry.closed) continue;
+                const state = view.snapshot();
+                if (!validateBrowserUrl(state.url).ok) continue;
+                tabs.push({ id: this.controlId(entry), title: state.title, url: state.url, engine: entry.engine });
+            }
+            return { tabs };
+        }
+        const target = command.action === 'select' ? command.tab : request.selectedTab;
+        let entry = target ? entries.find(entry => this.controlId(entry) === target) : undefined;
+        let created = false;
+        // Select fails closed; open can replace a vanished remembered selection.
+        if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
+        if (command.action === 'open' && (command.newTab || !entry)) {
+            const viewId = `browser-${randomUUID()}`;
+            const scope = this.controlScopes.get(ownerId)!;
+            const opened = this.open(ownerId, viewId, command.url!, scope.sessionKey);
+            // Publish through the existing unified panel before Electron waits for guest adoption.
+            this.options.send(ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
+                workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId, url: command.url, routingRef: scope.sessionKey, routingOwnerId: ownerId,
+            });
+            const result = await opened;
+            if (!result.ok) throw new Error(result.message ?? result.reason);
+            entries = this.scopedEntries(ownerId, request.workspaceId);
+            entry = entries.find(entry => entry.ownerId === ownerId && entry.viewId === viewId);
+            created = true;
+        }
+        if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
+        const selected = entry;
+        if (!selected.popout) this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
+            workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId: selected.viewId, routingOwnerId: ownerId,
+            url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey,
+        });
+        return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
+            this.scopedEntries(ownerId, request.workspaceId);
+            if (selected.popout) await view.focus();
+            activeSignal.throwIfAborted();
+            this.activateControl(selected, ownerId, request);
+            switch (command.action) {
+                case 'open':
+                    if (!created && view.snapshot().url !== command.url) await view.navigate(command.url!);
+                    break;
+                case 'select': break;
+                case 'snapshot': {
+                    const snapshot = await page.snapshot({ ref: command.ref, all: command.all });
+                    const interactive = command.ref || command.all ? await page.snapshot() : snapshot;
+                    return {
+                        tab: this.controlId(selected), title: snapshot.title, url: snapshot.url,
+                        elements: snapshot.elements, interactiveElements: interactive.elements,
+                    };
+                }
+                case 'read': {
+                    return { tab: this.controlId(selected), ...await page.readPage(command.ref, command.offset ?? 0) };
+                }
+                case 'eval': return { tab: this.controlId(selected), ...await page.evaluateForTool(command.js!) };
+                case 'screenshot': return { tab: this.controlId(selected), image: await page.screenshot(command.ref) };
+                case 'click': await page.click(command.ref!); break;
+                case 'type': await page.type(command.ref!, command.text!, command.submit); break;
+                case 'select_option': await page.selectOption(command.ref!, command.value!); break;
+                case 'press': await page.press(command.key!); break;
+                case 'scroll': await page.scroll((command.direction ?? 'down') as 'up' | 'down' | 'left' | 'right', command.ref); break;
+                case 'navigate': await view.nav(command.direction as 'back' | 'forward' | 'reload'); break;
+                case 'wait': await page.wait(command.text ?? command.ms!, activeSignal); break;
+            }
+            activeSignal.throwIfAborted();
+            await view.waitForControlReady?.(activeSignal);
+            while (view.snapshot().loading) {
+                await delay(25, undefined, { signal: activeSignal });
+                activeSignal.throwIfAborted();
+            }
+            const snapshot = await page.snapshot();
+            return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements };
+        }, signal);
+    }
 
     private entry(ownerId: number, viewId: unknown): Entry | undefined {
         return isValidBrowserViewId(viewId) ? this.owners.get(ownerId)?.get(viewId) : undefined;
@@ -152,6 +341,13 @@ export class BrowserHostManager {
         if (!entries) { entries = new Map(); this.owners.set(init.ownerId, entries); }
         const entry = { ...init, closed: false } as Entry;
         entry.ready = Promise.resolve().then(() => create(entry));
+        if (entry.sourceKind === 'url') {
+            entry.control = new BrowserControlQueue((method, params) => {
+                if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
+                if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+                return entry.view.cdp(method, params);
+            });
+        }
         entries.set(init.viewId, entry);
         return entry;
     }
@@ -196,7 +392,14 @@ export class BrowserHostManager {
     private async start(entry: Entry, create: (sink: BrowserEventSink) => Promise<BrowserHostedView>): Promise<BrowserHostedView> {
         if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab closed during startup.'); }
         const view = await create({
-            state: state => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state)); } },
+            state: state => {
+                if (entry.closed) return;
+                if (state.errorCode === 'runtime-crashed') {
+                    this.clearControlEntry(entry, false);
+                    entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
+                }
+                this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state));
+            },
             visited: (url, title) => {
                 if (!entry.closed && entry.sourceKind === 'url') {
                     void this.options.history.recordVisit(entry.engine, url, title)
@@ -223,6 +426,33 @@ export class BrowserHostManager {
             },
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
             closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
+            controlPopoutOpened: (viewId, view) => {
+                if (entry.closed || entry.sourceKind !== 'url' || !isValidBrowserViewId(viewId) || !view.cdp) return;
+                const popout: Entry = {
+                    ownerId: entry.ownerId, viewId, sessionKey: entry.sessionKey, engine: entry.engine,
+                    sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true,
+                };
+                popout.control = new BrowserControlQueue((method, params) => {
+                    if (popout.closed || this.disposed) throw new Error('Browser popout closed');
+                    return view.cdp!(method, params);
+                });
+                this.owners.get(entry.ownerId)?.set(viewId, popout);
+            },
+            controlPopoutClosed: viewId => {
+                const popout = this.entry(entry.ownerId, viewId);
+                if (!popout?.popout) return;
+                this.clearControlEntry(popout, false);
+                popout.closed = true;
+                popout.control?.cancel(new Error('Browser popout closed'));
+                this.owners.get(entry.ownerId)?.delete(viewId);
+            },
+            controlFocused: () => {
+                if (!entry.closed && entry.sourceKind === 'url') this.options.send(entry.ownerId, BROWSER_CONTROL_FOCUSED_CHANNEL, {});
+            },
+            controlStopRequested: (viewId, turnId) => {
+                const popout = this.entry(entry.ownerId, viewId);
+                if (popout?.popout && !popout.closed) this.stopControl(popout, turnId);
+            },
         });
         if (entry.closed) {
             await view.close();
@@ -315,6 +545,27 @@ export class BrowserHostManager {
         }
     }
 
+    /** Internal main-process control path; unlike UI commands, results and errors reach the caller. */
+    async withControlPage<T>(
+        ownerId: number, viewId: unknown, sessionKey: unknown,
+        operation: (page: BrowserControlPage, signal: AbortSignal, view: BrowserHostedView) => Promise<T>, signal?: AbortSignal,
+    ): Promise<T> {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab not found');
+        if (!isValidBrowserSessionKey(sessionKey) || entry.sessionKey !== sessionKey) {
+            throw new BrowserHostError('bad-session', 'Browser tab belongs to another workspace');
+        }
+        if (!entry.control) throw new BrowserHostError('unsupported', 'Browser control supports URL tabs only');
+        return entry.control.run(async (page, commandSignal) => {
+            const view = await entry.ready;
+            commandSignal.throwIfAborted();
+            if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
+            await view.waitForControlReady?.(commandSignal);
+            while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
+            return operation(page, commandSignal, view);
+        }, signal);
+    }
+
     /** Hand a view's current page to the system: an http(s) page for `url` views, the previewed `file:` page for `file` views. */
     openExternal(ownerId: number, viewId: unknown, open: (url: string) => Promise<void>): Promise<void> {
         const sourceKind = this.entry(ownerId, viewId)?.sourceKind;
@@ -339,7 +590,9 @@ export class BrowserHostManager {
 
     private async closeEntry(entry: Entry, notify = false): Promise<void> {
         if (!entry || entry.closed) { return; }
+        this.clearControlEntry(entry, false);
         entry.closed = true;
+        entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
         if (current?.get(entry.viewId) === entry) { current.delete(entry.viewId); }
         if (notify) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSED_CHANNEL, { viewId: entry.viewId, engine: entry.engine }); }
@@ -352,6 +605,9 @@ export class BrowserHostManager {
     }
 
     async closeOwner(ownerId: number): Promise<void> {
+        this.finishControl(ownerId);
+        this.visibleControl.delete(ownerId);
+        this.controlScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
         this.owners.delete(ownerId);
         const results = await Promise.allSettled([...entries?.values() ?? []].map(entry => this.closeEntry(entry)));

@@ -187,10 +187,10 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('includes scheduleWakeup when cronEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
     it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
@@ -202,8 +202,15 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // scheduleWakeup + 3 canvas tools + 1 kusto tool + system_one = 6 filtered
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 6);
+        // Wakeup, three canvas tools, Kusto, System One and browser are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 7);
+    });
+
+    it('hides browser by default and includes it only when its live flag is enabled', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        expect(getEffectiveLlmToolRegistry().map(tool => tool.name)).not.toContain('browser');
+        expect(getEffectiveLlmToolRegistry({ browserControlEnabled: false }).map(tool => tool.name)).not.toContain('browser');
+        expect(getEffectiveLlmToolRegistry({ browserControlEnabled: true }).find(tool => tool.name === 'browser')?.enabledByDefault).toBe(true);
     });
 
     it('filters out canvas tools when canvasEnabled is false', async () => {

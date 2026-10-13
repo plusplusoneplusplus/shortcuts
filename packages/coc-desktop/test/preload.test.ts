@@ -111,7 +111,7 @@ const preloadSource = readFileSync(
 
 describe('preload sandbox-safety', () => {
     it('imports nothing but the electron builtin (sandboxed require)', () => {
-        const imports = [...preloadSource.matchAll(/^import\s[^;]*?from\s+['"]([^'"]+)['"]/gms)]
+        const imports = [...preloadSource.matchAll(/^import\s+(?!type\b)[^;]*?from\s+['"]([^'"]+)['"]/gms)]
             .map((m) => m[1]);
         expect(imports).toEqual(['electron']);
     });
@@ -130,6 +130,32 @@ describe('preload bridge', () => {
         expect(exposeInMainWorld).toHaveBeenCalledWith('cocDesktop', expect.anything());
         return exposeInMainWorld.mock.calls[0][1];
     }
+
+    it('exposes structured browser-control IPC and reveal/cancellation, never a raw debugger sender', async () => {
+        const { control } = exposedApi().browser;
+        const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' }, selectedTab: 't1:view' };
+        invoke.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ tabs: [] });
+        await control.bindScope('w', 'w');
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-scope', 'w', 'w');
+        expect(await control.execute(request)).toEqual({ tabs: [] });
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-command', request);
+        control.cancel('r');
+        expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-cancel', 'r');
+        control.setVisible(true, 'remote:server:w');
+        expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-visible', true, 'remote:server:w');
+        control.finish(undefined, 'remote:server:w');
+        expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-finish', undefined, 'remote:server:w');
+        const callback = vi.fn();
+        const unsubscribe = control.onReveal(callback);
+        expect(on).toHaveBeenLastCalledWith('coc-desktop:browser-control-reveal', expect.any(Function));
+        const listener = on.mock.calls.at(-1)![1] as Function;
+        const payload = { workspaceId: 'w', processId: 'p', viewId: 'view', url: 'https://fixture.test/' };
+        listener({}, payload);
+        expect(callback).toHaveBeenCalledWith(payload);
+        unsubscribe();
+        expect(removeListener).toHaveBeenLastCalledWith('coc-desktop:browser-control-reveal', listener);
+        expect(control.cdp).toBeUndefined();
+    });
 
     it('returns native keyboard focus to the host on pointer and DOM focus changes, without intercepting keys', () => {
         document.dispatchEvent(new Event('pointerdown'));

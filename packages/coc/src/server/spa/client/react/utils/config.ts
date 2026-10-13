@@ -44,6 +44,7 @@ interface DashboardConfig {
     excalidrawEnabled?: boolean;
     canvasEnabled?: boolean;
     kustoEnabled?: boolean;
+    browserControlEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
@@ -488,6 +489,10 @@ export function isCanvasEnabled(): boolean {
 /** Returns true when the Kusto query canvas is enabled. */
 export function isKustoEnabled(): boolean {
     return getConfig().kustoEnabled === true;
+}
+
+export function isBrowserControlEnabled(): boolean {
+    return isFeatureEnabled('browserControlEnabled');
 }
 
 export function isMcpOauthEnabled(): boolean {

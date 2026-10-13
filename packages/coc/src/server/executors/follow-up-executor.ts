@@ -519,6 +519,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 cronTools: cronDeps.cronTools,
                 systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),
                 kustoRuntime: this.runtime.getKustoRuntime?.(),
+                browserRuntime: this.runtime.getBrowserControlRuntime?.(),
+                browserState: this.runtime.getBrowserToolState?.(),
+                browserSignal: turnAbort.signal,
                 // Write-capable modes only: an ask-mode follow-up never opens PRs.
                 createPullRequest: currentMode === 'autopilot' || currentMode === 'ralph'
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
@@ -573,7 +576,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // `shouldInjectRepoGroupContext`.
             const decorated = await this.decorateChatTurnPrompt({
                 processId,
-                prompt: message,
+                prompt: chatCtx.browserPrompt ? `${chatCtx.browserPrompt}\n\n${message}` : message,
                 workspaceId: wsId,
                 selectedSkillNames,
                 skillDirectories,

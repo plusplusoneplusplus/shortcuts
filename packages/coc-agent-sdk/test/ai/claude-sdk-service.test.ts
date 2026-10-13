@@ -1372,6 +1372,26 @@ describe('ClaudeSDKService.sendMessage', () => {
         });
     });
 
+    it.each(['anthropic', 'mcp'])('preserves mixed %s screenshot content in tool events and persisted calls', async shape => {
+        const image = { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/jpeg' };
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'assistant', message: { content: [
+                { type: 'tool_use', id: 'shot', name: 'browser', input: { action: 'screenshot' } },
+            ] } },
+            { type: 'user', message: { content: [
+                { type: 'tool_result', tool_use_id: 'shot', content: [
+                    { type: 'text', text: 'ok' },
+                    shape === 'mcp' ? image : { type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.data } },
+                ] },
+            ] } },
+            { type: 'result', subtype: 'success' },
+        ]));
+        const onToolEvent = vi.fn();
+        const result = await svc.sendMessage({ prompt: 'screenshot', onToolEvent });
+        expect(JSON.parse(result.toolCalls![0].result!)).toEqual({ content: [{ type: 'text', text: 'ok' }, image] });
+        expect(onToolEvent.mock.calls.find(([event]) => event.type === 'tool-complete')?.[0].result).toBe(result.toolCalls![0].result);
+    });
+
     it('stringifies structured Claude Bash tool results from stdout and stderr', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {

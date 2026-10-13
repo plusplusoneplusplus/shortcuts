@@ -35,6 +35,7 @@ import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-b
 import { isInheritedLensChatMode, normalizeChatMode, resolveChatProvider, VALID_CHAT_PROVIDERS, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { MirrorAttachmentError, type MirrorUploadSource } from '../messaging/sentinel-mirror-attachments';
+import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 
 type ResolvedDefaultProviderResolution = AutoProviderResolutionResult & { provider: ChatProvider };
 
@@ -598,9 +599,21 @@ export async function prepareTaskForEnqueue(
         QueueRouteContext,
         'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'
         | 'getEffortTiersForProvider'
+        | 'browserControlEnabled' | 'dataDir'
     >,
 ): Promise<void> {
     const payload = input.payload;
+    if (payload.kind === 'chat' && !payload.processId && !payload.resumedFrom) {
+        const workspaceId = payload.workspaceId;
+        const active = ctx.browserControlEnabled?.() === true
+            && typeof workspaceId === 'string'
+            && (!ctx.dataDir || !readEffectiveDisabledLlmTools(ctx.dataDir, workspaceId).includes('browser'))
+            && /(?:^|\s)\/browser(?=\s|$)/i.test(String(payload.prompt ?? ''));
+        const { browserMode: _ignored, ...context } = (payload.context ?? {}) as Record<string, unknown>;
+        if (active || _ignored !== undefined) {
+            payload.context = { ...context, ...(active ? { browserMode: true } : {}) };
+        }
+    }
     const context = payload.context as { sentinelTodoTracking?: { actionRevision?: unknown } } | undefined;
     if (typeof context?.sentinelTodoTracking?.actionRevision === 'number') {
         const model = input.config?.model;

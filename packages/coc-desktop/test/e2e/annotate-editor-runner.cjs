@@ -126,10 +126,20 @@ app.whenReady().then(async () => {
 
         // A framed control window, so "frameless" is a real discriminator and not
         // just an artefact of this window manager.
+        // X11 publishes frame extents only after the window has been mapped.
+        mainWin.show();
+        const decorated = await waitFor(() => {
+            const bounds = mainWin.getBounds();
+            const content = mainWin.getContentBounds();
+            return bounds.x !== content.x || bounds.y !== content.y
+                || bounds.width !== content.width || bounds.height !== content.height;
+        }, 5000);
+        if (!decorated) throw new Error('The fixture requires a window manager that decorates framed windows.');
         emit('framed-control', {
             bounds: mainWin.getBounds(),
             content: mainWin.getContentBounds(),
         });
+        mainWin.hide();
 
         // ── Round 1: the full AC-01/02/03 demo ────────────────────────────────
         const editor = await captureAndCrop(mainWin);

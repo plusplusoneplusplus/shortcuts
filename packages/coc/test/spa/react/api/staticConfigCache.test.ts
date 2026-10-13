@@ -18,6 +18,7 @@ import {
     DEFAULT_CONFIG_TTL_MS,
     _clearConfigCache,
     _getConfigCacheSize,
+    subscribeConfigInvalidation,
 } from '../../../../src/server/spa/client/react/api/staticConfigCache';
 
 /** Resolves the microtask queue so `.then` callbacks on already-settled promises run. */
@@ -25,6 +26,22 @@ const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 beforeEach(() => {
     _clearConfigCache();
+});
+
+describe('config invalidation observers', () => {
+    it('notifies only exact owner/workspace keys and releases the subscription', () => {
+        const listener = vi.fn();
+        const key = configCacheKey.llmToolsConfig('workspace-a');
+        const unsubscribe = subscribeConfigInvalidation(key, listener);
+        invalidateConfig(configCacheKey.llmToolsConfig('workspace-b'));
+        invalidateConfig(configCacheKey.llmToolsConfig('workspace-a', 'https://owner.example'));
+        expect(listener).not.toHaveBeenCalled();
+        invalidateConfig(key);
+        expect(listener).toHaveBeenCalledTimes(1);
+        unsubscribe();
+        invalidateConfig(key);
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('configCacheKey', () => {

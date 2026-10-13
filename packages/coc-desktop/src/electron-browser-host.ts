@@ -35,12 +35,17 @@ import {
 } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
 import { authorizeBrowserWebview, isBrowserEmbedder } from './browser-webview-guard';
+import { ElectronBrowserCdp } from './electron-browser-cdp';
+import { setTimeout as delay } from 'node:timers/promises';
+import { randomUUID } from 'node:crypto';
+import { browserPopupChrome } from './browser-popup-chrome';
 
 interface BrowserEntry {
     win: BrowserWindow;
     /** SPA webContents id, kept because `win.webContents` is unreadable once the window is destroyed. */
     ownerId: number;
     contents?: WebContents;
+    cdp?: ElectronBrowserCdp;
     shown: boolean;
     pageZoom: number;
     authorization?: ReturnType<typeof authorizeBrowserWebview>;
@@ -92,6 +97,7 @@ function pushState(entry: BrowserEntry): void {
 function destroyEntry(entry: BrowserEntry): void {
     if (entry.closed) { return; }
     entry.closed = true;
+    entry.cdp?.dispose();
     entries.delete(entry);
     for (const popup of [...entry.popups]) {
         if (!popup.isDestroyed()) {
@@ -165,7 +171,40 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
     });
     wc.on('did-create-window', (popup) => {
         entry.popups.add(popup);
-        popup.once('closed', () => entry.popups.delete(popup));
+        const viewId = `browser-popout-${randomUUID()}`;
+        const contents = popup.webContents;
+        const cdp = entry.sink.controlPopoutOpened ? new ElectronBrowserCdp(contents) : undefined;
+        const setControlActivity = browserPopupChrome(popup, turnId => entry.sink.controlStopRequested?.(viewId, turnId));
+        contents.setZoomFactor(entry.pageZoom / 100);
+        popup.on('focus', () => entry.sink.controlFocused?.());
+        entry.sink.controlPopoutOpened?.(viewId, {
+            snapshot: () => ({
+                viewId, engine: 'electron', url: contents.isDestroyed() ? '' : contents.getURL(),
+                title: contents.isDestroyed() ? '' : contents.getTitle(),
+                canGoBack: !contents.isDestroyed() && contents.navigationHistory.canGoBack(),
+                canGoForward: !contents.isDestroyed() && contents.navigationHistory.canGoForward(),
+                loading: !contents.isDestroyed() && contents.isLoading(),
+            }),
+            cdp: (method, params) => cdp!.send(method, params),
+            setControlActivity,
+            waitForControlReady: signal => waitForControlContents(() => contents, () => popup.isDestroyed(), signal),
+            navigate: async url => { await contents.loadURL(url); },
+            nav: action => {
+                if (action === 'reload') contents.reload();
+                if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
+                if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
+                if (action === 'stop') contents.stop();
+            },
+            focus: () => { if (!popup.isDestroyed()) { popup.show(); popup.focus(); } },
+            setPageZoom: percent => contents.setZoomFactor(percent / 100),
+            setBounds: () => {},
+            close: () => { if (!popup.isDestroyed()) popup.close(); },
+        });
+        popup.once('closed', () => {
+            cdp?.dispose();
+            entry.popups.delete(popup);
+            entry.sink.controlPopoutClosed?.(viewId);
+        });
         wireNavigation(entry, popup.webContents);
     });
     const guard = (event: Electron.Event, url: string) => {
@@ -222,6 +261,7 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
 
 function wireView(entry: BrowserEntry): void {
     const wc = entry.contents!;
+    entry.cdp = new ElectronBrowserCdp(wc);
     // Hidden web tabs must still process shared zoom and layout changes.
     wc.setBackgroundThrottling(false);
     const applyZoom = () => {
@@ -349,6 +389,18 @@ function setBounds(entry: BrowserEntry, bounds: HtmlPageBounds | null): void {
     entry.shown = bounds !== null;
 }
 
+async function waitForControlContents(getContents: () => WebContents | undefined, closed: () => boolean, signal: AbortSignal): Promise<void> {
+    const deadline = Date.now() + 30_000;
+    while (true) {
+        signal.throwIfAborted();
+        const contents = getContents();
+        if (closed() || contents?.isDestroyed()) throw new Error('Browser tab closed');
+        if (contents && !contents.isLoading() && contents.getURL()) return;
+        if (Date.now() >= deadline) throw new Error('Browser page did not become ready after 30s');
+        await delay(20, undefined, { signal });
+    }
+}
+
 export class ElectronBrowserHost implements BrowserEngineHost {
     readonly engine = 'electron' as const;
 
@@ -390,6 +442,15 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
+            cdp: (method, params) => {
+                if (entry.closed) { return Promise.reject(new BrowserHostError('not-found', 'Browser tab is closed.')); }
+                if (!entry.cdp) { return Promise.reject(new BrowserHostError('busy', 'Browser guest is not attached yet.')); }
+                return entry.cdp.send(method, params);
+            },
+            waitForControlReady: async signal => {
+                await waitForControlContents(() => entry.contents, () => entry.closed, signal);
+                if (entry.error) throw new Error(entry.error);
+            },
             setPageZoom: percent => {
                 entry.pageZoom = percent;
                 if (entry.contents && !entry.contents.isDestroyed()) { entry.contents.setZoomFactor(percent / 100); }

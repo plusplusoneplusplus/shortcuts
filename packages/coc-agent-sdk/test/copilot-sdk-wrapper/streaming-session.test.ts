@@ -13,6 +13,7 @@ import {
     StreamingSessionRunOptions,
 } from '../../src/streaming-session';
 import type { ToolEvent } from '../../src/types';
+import type { ToolExecutionCompleteResult } from '@github/copilot-sdk';
 
 // Suppress logger output during tests
 
@@ -56,6 +57,25 @@ function baseOptions(overrides: Partial<StreamingSessionRunOptions> = {}): Strea
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('StreamingSession — state transitions', () => {
+    it.each(['binaryResultsForLlm', 'contents'] as const)('preserves real SDK screenshot %s in events and persisted results', async field => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const events: ToolEvent[] = [];
+        const promise = ss.run(session, baseOptions({ onToolEvent: event => events.push(event) }));
+        const image = { type: 'image' as const, data: 'aW1hZ2U=', mimeType: 'image/jpeg' };
+        const sdkResult = (field === 'binaryResultsForLlm'
+            ? { content: 'ok', binaryResultsForLlm: [image] }
+            : { content: 'ok', contents: [image] }) satisfies ToolExecutionCompleteResult;
+        emit({ type: 'tool.execution_start', data: { toolCallId: 'shot', toolName: 'browser', arguments: { action: 'screenshot' } } });
+        emit({ type: 'tool.execution_complete', data: {
+            toolCallId: 'shot', success: true, result: sdkResult,
+        } });
+        emit({ type: 'session.idle' });
+        const result = await promise;
+        expect(JSON.parse(result.toolCalls![0].result!)).toEqual({ content: [{ type: 'text', text: 'ok' }, image] });
+        expect(events.find(event => event.type === 'tool-complete')?.result).toBe(result.toolCalls![0].result);
+    });
+
     beforeEach(() => { vi.useFakeTimers(); });
     afterEach(() => { vi.useRealTimers(); });
 

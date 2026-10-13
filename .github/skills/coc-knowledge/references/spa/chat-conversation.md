@@ -358,7 +358,12 @@ the synthetic assistant turn the same way.
 `buildToolCallRenderModel` (`toolCallRenderModel.ts`) is a pure kernel deriving normalized
 identity, summary, truncation, preview eligibility, and the whisper-row metric. Whisper-row
 and card variants share one `ToolCallDetailSections` body; inside `WhisperCollapsedGroup` a
-call is one flat row. The shared body ends with a muted timing line, `Started <start> ·
+call is one flat row. Browser actions always use that compact row, summarizing the action
+and ref, URL or selected tab. `toolResultPresentation.ts` extracts inline raster images
+from provider-neutral `binaryResultsForLlm` or MCP image blocks; `ToolResultThumbnails`
+shares thumbnail/lightbox presentation between details and the tool-result popover,
+without rendering binary payloads as text or reading image files.
+The shared body ends with a muted timing line, `Started <start> ·
 <duration>`, using `startTimeDetailLabel` (`formatStartTimeDetailed`, seconds precision);
 the collapsed card header keeps the minute-precision `startTimeLabel`. Omitted when the
 tool call has no parseable start time.

@@ -24,6 +24,7 @@ interface ToolCallData {
     toolName?: string;
     name?: string;
     args?: any;
+    parameters?: unknown;
     result?: string;
     error?: string;
     status?: string;
@@ -115,7 +116,7 @@ export function ToolCallView({
     if (depth > 20) return null;
 
     const depthLevel = Math.max(0, Math.min(depth, 8));
-    const isWhisperRow = variant === 'whisper-row';
+    const isWhisperRow = variant === 'whisper-row' || model.name === 'browser';
 
     // Status is carried by text as well as motion: the label names the tool and
     // the state, and reduced-motion users get the same element without spin.
@@ -248,7 +249,7 @@ export function ToolCallView({
                             {model.duration}
                         </span>
                     )}
-                    {isMobile && hasHoverResult && (
+                    {(isMobile || name === 'browser') && hasHoverResult && (
                         <button
                             type="button"
                             className="text-[#9aa0a6] hover:text-[#0969da] dark:hover:text-[#79c0ff] shrink-0 text-[11px]"

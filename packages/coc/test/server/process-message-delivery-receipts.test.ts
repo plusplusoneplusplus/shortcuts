@@ -88,19 +88,23 @@ describe('durable review admission', () => {
     }
 
     it('puts repairs ahead of waiting work, FIFO, without interrupting the running task', async () => {
-        const running = normal('active');
-        queue.markStarted(running);
-        normal('waiting');
-        await store.addProcess({ id: 'queue_second', type: 'chat', status: 'completed', startTime: new Date(),
-            promptPreview: 'Second PR', metadata: { workspaceId, mode: 'ask' } });
-        await repair();
-        await repair('repair-2', 'queue_second');
-        expect(queue.getQueued().map(task => task.id)).toEqual(['repair-1', 'repair-2', 'waiting']);
-        expect(queue.getRunning().map(task => task.id)).toEqual(['active']);
-        expect(bridge.steerProcess).not.toHaveBeenCalled();
-        queue.markStarted('repair-1');
-        queue.markRetry('repair-1');
-        expect(queue.getQueued().map(task => task.id)).toEqual(['repair-1', 'repair-2', 'waiting']);
+        let timestamp = Date.now();
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => timestamp++);
+        try {
+            const running = normal('active');
+            queue.markStarted(running);
+            normal('waiting');
+            await store.addProcess({ id: 'queue_second', type: 'chat', status: 'completed', startTime: new Date(),
+                promptPreview: 'Second PR', metadata: { workspaceId, mode: 'ask' } });
+            await repair();
+            await repair('repair-2', 'queue_second');
+            expect(queue.getQueued().map(task => task.id)).toEqual(['repair-1', 'repair-2', 'waiting']);
+            expect(queue.getRunning().map(task => task.id)).toEqual(['active']);
+            expect(bridge.steerProcess).not.toHaveBeenCalled();
+            queue.markStarted('repair-1');
+            queue.markRetry('repair-1');
+            expect(queue.getQueued().map(task => task.id)).toEqual(['repair-1', 'repair-2', 'waiting']);
+        } finally { clock.mockRestore(); }
     });
 
     it('respects existing pause markers during admission and retry', async () => {

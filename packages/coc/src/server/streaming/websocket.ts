@@ -19,6 +19,8 @@ import { getServerLogger } from '../logging/server-logger';
 import { isLoopbackOrigin } from '../shared/cors';
 import type { BotControlPresentation, ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { projectBotControl } from '../processes/bot-control-read-model';
+import { BrowserControlRelay } from './browser-control-relay';
+import type { BrowserCommandRequest, BrowserCommandReply } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Types
@@ -113,6 +115,9 @@ export interface QueueSnapshot {
 
 /** Server → Client message types */
 export type ServerMessage =
+    | { type: 'browser-command'; request: BrowserCommandRequest }
+    | { type: 'browser-command-cancel'; id: string }
+    | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string }
     | { type: 'welcome'; clientId: string; timestamp: number }
     | { type: 'pong' }
     | { type: 'process-added'; process: ProcessSummary }
@@ -167,6 +172,9 @@ export type ServerMessage =
 
 /** Client → Server message types */
 export type ClientMessage =
+    | { type: 'browser-capability'; workspaceId: string; focused: boolean }
+    | { type: 'browser-capability-clear' }
+    | { type: 'browser-command-result'; reply: BrowserCommandReply }
     | { type: 'ping' }
     | { type: 'subscribe'; workspaceId: string }
     | { type: 'subscribe-wiki'; wikiId: string }
@@ -184,6 +192,7 @@ const HEARTBEAT_INTERVAL_MS = 60_000;
  * and broadcasts process lifecycle events to connected clients.
  */
 export class ProcessWebSocketServer {
+    readonly browserControl = new BrowserControlRelay();
     private clients: Set<WSClient> = new Set();
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     private wss: WebSocketServer;
@@ -239,6 +248,7 @@ export class ProcessWebSocketServer {
                     }
                 },
                 close: () => {
+                    this.browserControl.disconnect(client);
                     try { ws.close(); } catch { /* ignore */ }
                     this.clients.delete(client);
                 },
@@ -266,10 +276,12 @@ export class ProcessWebSocketServer {
             });
 
             ws.on('close', (code: number, reason: Buffer) => {
+                this.browserControl.disconnect(client);
                 this.clients.delete(client);
                 getServerLogger().debug({ clientId, reason: reason.toString() }, 'WebSocket disconnected');
             });
             ws.on('error', (err: Error) => {
+                this.browserControl.disconnect(client);
                 this.clients.delete(client);
                 getServerLogger().warn({ clientId, err }, 'WebSocket error');
             });
@@ -282,6 +294,9 @@ export class ProcessWebSocketServer {
      * Broadcast a process event to connected clients, applying workspace filtering.
      */
     broadcastProcessEvent(message: ServerMessage): void {
+        if (message.type === 'process-updated' && ['completed', 'cancelled', 'failed', 'cancelling'].includes(message.process.status)) {
+            this.browserControl.finishProcess(message.process.workspaceId ?? '', message.process.id);
+        }
         const data = JSON.stringify(message);
         const eventWorkspaceId = this.getMessageWorkspaceId(message);
 
@@ -415,6 +430,15 @@ export class ProcessWebSocketServer {
     private handleClientMessage(client: WSClient, message: ClientMessage): void {
         client.lastSeen = Date.now();
         switch (message.type) {
+            case 'browser-capability':
+                this.browserControl.advertise(client, message.workspaceId, message.focused);
+                break;
+            case 'browser-capability-clear':
+                this.browserControl.disconnect(client);
+                break;
+            case 'browser-command-result':
+                this.browserControl.reply(client, message.reply);
+                break;
             case 'ping':
                 client.send(JSON.stringify({ type: 'pong' }));
                 break;
