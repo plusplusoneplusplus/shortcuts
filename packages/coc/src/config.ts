@@ -372,6 +372,8 @@ export interface CLIConfig {
         chatProviderSwitching?: boolean;
         /** Load chat history in turn-count pages. Disabled by default. */
         chatHistoryPaging?: boolean;
+        /** Compact delegated-result cards in chat. Presentation only, disabled by default. */
+        sentinelResultCards?: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle?: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -780,6 +782,7 @@ export interface ResolvedCLIConfig {
         chatProviderSwitching: boolean;
         /** Load chat history in turn-count pages. Disabled by default. */
         chatHistoryPaging: boolean;
+        sentinelResultCards: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -1087,6 +1090,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatStyleSelector: true,
         chatProviderSwitching: false,
         chatHistoryPaging: false,
+        sentinelResultCards: false,
         defaultChatStyle: 'default',
         chatStylePrompts: {},
     },

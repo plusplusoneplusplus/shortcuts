@@ -544,6 +544,10 @@ references before editing. Paths are package-relative.
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
   prompts. Sentinel completion messages contain only the untrusted-result prefix and
   result JSON; non-Sentinel parents receive the shared rules inline.
+  `features.sentinelResultCards` is a default-off, live presentation gate. Cards require
+  server delivery correlation, the exact result envelope and matching parent identity;
+  invalid messages keep ordinary rendering. Inert summary Markdown and exact raw JSON
+  never change model payloads, assessment or authorization. Job links inherit the source owner.
   `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
   requests a particular provider/model. Enabled Auto uses target routing without parent AI

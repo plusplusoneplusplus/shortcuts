@@ -118,6 +118,7 @@ function createChatMarked(
     excalidrawEmbedEnabled: boolean = false,
     canvasEmbedEnabled: boolean = false,
     svgFenceEnabled: boolean = false,
+    inert: boolean = false,
 ): Marked {
     let mermaidBlockIndex = 0;
 
@@ -126,6 +127,7 @@ function createChatMarked(
         breaks: true,
         renderer: {
             code(code: string, infostring: string | undefined, escaped: boolean): string {
+                if (inert) return `<pre><code>${escaped ? code : escapeHtml(code)}</code></pre>\n`;
                 const language = (infostring ?? '').trim().split(/\s+/)[0] || '';
                 if (svgFenceEnabled && language.toLowerCase() === 'svg') {
                     svgFenceIndex++;
@@ -157,6 +159,7 @@ function createChatMarked(
                 return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
             },
             link(href: string, title: string | null | undefined, text: string): string {
+                if (inert) return `${text} (${escapeHtml(href ?? '')})`;
                 const safeHref = escapeAttr(href ?? '');
                 if (excalidrawEmbedEnabled && href && /^excalidraw:\/\//i.test(href)) {
                     const parsed = parseExcalidrawLink(href);
@@ -182,6 +185,7 @@ function createChatMarked(
                 return `<a href="${safeHref}"${titleAttr}${classAttr}>${text}</a>`;
             },
             image(href: string, title: string | null | undefined, text: string): string {
+                if (inert) return escapeHtml(text || title || 'Image');
                 if (htmlEmbedEnabled && isEmbeddableHtmlPath(href)) {
                     return `<div class="md-html-embed" data-html-path="${escapeAttr(href ?? '')}" data-embed-height="${DEFAULT_HTML_EMBED_HEIGHT}"></div>`;
                 }
@@ -244,19 +248,24 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
 export function chatMarkdownToHtml(
     content: string,
     wsId?: string,
-    options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean; svgFenceEnabled?: boolean },
+    options?: {
+        htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean; canvasEmbedEnabled?: boolean; svgFenceEnabled?: boolean;
+        /** Readable untrusted data without active links, images, diagrams or embeds. */
+        inert?: boolean;
+    },
 ): string {
     if (!content || !content.trim()) {
         return '';
     }
     const linkNormalized = normalizeMarkdownLinkUrls(content);
     const normalized = normalizeWindowsPathsInText(linkNormalized);
-    const excalidrawEnabled = options?.excalidrawEmbedEnabled === true;
-    const canvasEnabled = options?.canvasEmbedEnabled === true || excalidrawEnabled;
-    const svgEnabled = options?.svgFenceEnabled === true;
-    let html = linkifyFilePaths(
-        createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled, svgEnabled).parse(normalized) as string,
-    );
+    const inert = options?.inert === true;
+    const excalidrawEnabled = !inert && options?.excalidrawEmbedEnabled === true;
+    const canvasEnabled = !inert && (options?.canvasEmbedEnabled === true || excalidrawEnabled);
+    const svgEnabled = !inert && options?.svgFenceEnabled === true;
+    const rendered = createChatMarked(!inert && options?.htmlEmbedEnabled === true, excalidrawEnabled, canvasEnabled, svgEnabled, inert)
+        .parse(normalized) as string;
+    let html = inert ? rendered : linkifyFilePaths(rendered);
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
     }

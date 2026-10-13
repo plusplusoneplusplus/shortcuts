@@ -611,6 +611,16 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatFolders: true } }).chatFoldersEnabled).toBe(true);
     });
 
+    it('exposes Sentinel result cards as default-off, live and presentation-only', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelResultCards')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.ui?.tab).toBe('chat');
+        expect(DEFAULT_CONFIG.features.sentinelResultCards).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelResultCardsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { sentinelResultCards: true } }).sentinelResultCardsEnabled).toBe(true);
+    });
+
     it('exposes the scheduler delay hint as a default-off live Appearance setting', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.schedulerDelayHint')!;
         expect(def.default).toBe(false);
@@ -741,6 +751,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.chatFolders': 'chat',
         'features.chatProviderSwitching': 'chat',
         'features.chatHistoryPaging': 'chat',
+        'features.sentinelResultCards': 'chat',
         'features.composerWordHint': 'chat',
         'features.quickAskSidenotes': 'chat',
         'features.sessionContextAttachments': 'chat',

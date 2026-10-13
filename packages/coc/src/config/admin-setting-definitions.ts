@@ -1104,6 +1104,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-chat-history-paging-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelResultCards', default: false, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
+        ui: {
+            tab: 'chat', group: 'aiModes', order: 48, label: 'Sentinel result cards', badge: 'experimental',
+            hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Disabled by default.',
+            testId: 'toggle-sentinel-result-cards-enabled',
+        },
+    }),
 
     // Deliberately has no `ui` block: the control lives on the dedicated Chat
     // Style settings section (`#admin/settings/chat-style`), not on the
