@@ -146,6 +146,14 @@ captured. SDK descriptor projection bounds snapshots to 1 MiB; metadata
 validation and bounded reads surface malformed data and persistence failures.
 Completed snapshots retain their captured provider/time independently of settings.
 
+Server composition borrows `SqliteProcessStore.getDatabase()` and publishes
+`getToolInventoryStore` through the shared executor runtime. `ChatBaseExecutor`
+begins capture before initial-turn setup; `FollowUpExecutor` begins before
+runtime/tool setup with the continuation's concrete provider. The common options
+builder forwards `onToolInventory`; its callback writes under the exact persisted
+owner and turn token, and stops accepting results on cancellation or settlement.
+Pending/capture write errors follow ordinary turn failure handling.
+
 ### Sentinel to-do store
 
 `packages/coc/src/server/sentinel-todos/sentinel-todo-store.ts` owns additive

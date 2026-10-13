@@ -21,6 +21,7 @@ export const RUNTIME_CAPABILITY_KEYS = [
     'getSentinelTodos',
     'getMcpOauthManager',
     'getTurnPerformanceStore',
+    'getToolInventoryStore',
     'getGlobalSystemPrompt',
     'getChatStyleSelectorEnabled',
     'getDefaultChatStyle',

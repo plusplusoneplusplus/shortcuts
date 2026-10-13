@@ -457,10 +457,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         const turnPerformanceOrdinal = computeAssistantResponseOrdinal(process.conversationTurns);
 
         let chatCtx: ChatTurnContext | undefined;
+        let inventoryCapture: Awaited<ReturnType<FollowUpExecutor['beginToolInventoryCapture']>>;
 
         const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
         let imagesAccepted = false;
         try {
+            inventoryCapture = await this.beginToolInventoryCapture(
+                processId, sessionProvider, turnAbort.signal, wsId,
+                runningAssistantTurnIndex + (turnSource && !options?.userTurnPersisted ? 1 : 0),
+            );
             await assertIncomingImageFiles(attachments, images, options?.imageTempDir,
                 this.dataDir ?? path.join(os.homedir(), '.coc'), wsId, turnAbort.signal);
             assertChatImageTransport(sessionProvider, attachments, workingDirectory);
@@ -770,6 +775,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ),
                     onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
                     onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                    onToolInventory: inventoryCapture?.onToolInventory,
                     // An MCP server can demand OAuth on any turn, not just the
                     // one that opened the session. This path used to omit the
                     // handler entirely, so a mid-conversation prompt was
@@ -790,7 +796,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             };
 
             let result: SDKInvocationResult;
-            result = await followUpAiService.sendMessage(sendOptions) as SDKInvocationResult;
+            result = await followUpAiService.sendMessage(sendOptions)
+                .finally(() => inventoryCapture?.dispose()) as SDKInvocationResult;
 
             if (resolvedDeliveryMode === 'immediate') {
                 const turnIndex = process.conversationTurns?.length ?? 0;
@@ -1008,6 +1015,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }
         } finally {
+            inventoryCapture?.dispose();
             await this.finalizeChatTurn(processId, {
                 controller: turnAbort,
                 dispose: chatCtx?.dispose,

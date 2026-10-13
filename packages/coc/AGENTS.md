@@ -112,10 +112,12 @@ references before editing. Paths are package-relative.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
-  and SSE. Begin before provider initialization; capture once under its opaque turn
-  identity. Reads/writes verify the process's workspace; stale callbacks cannot
-  overwrite newer turns. Safe descriptor projection and byte limits apply on writes
-  and lazy reads; persistence failures propagate.
+  and SSE. Server composition shares it through `getToolInventoryStore`; initial
+  and follow-up executors begin pending before runtime initialization and forward
+  capture through `chat-turn-runner.ts`. Capture once under the opaque turn identity;
+  cancelled, settled and stale callbacks cannot overwrite newer turns. Reads/writes
+  verify the persisted process owner. Safe descriptor projection and byte limits
+  apply on writes and lazy reads; persistence failures fail the turn.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
