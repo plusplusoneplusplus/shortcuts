@@ -80,7 +80,7 @@ export interface ChatTurnContextInput {
      * turns and omit it in ask mode so read-only chats never see the tool.
      */
     createPullRequest?: CreatePullRequestToolDeps;
-    /** `sentinel_todos` wiring; Sentinel chats with the to-do ledger flag on only. */
+    /** `sentinel_todos` wiring; Sentinel chats only. */
     sentinelTodos?: SentinelTodosToolDeps;
     /** A scrubber child chat's only tool; also skips Memory V2. */
     scrubFindings?: Tool<any>;

@@ -28,6 +28,10 @@ export interface WorkingTreeChange {
     stage: 'staged' | 'unstaged' | 'untracked';
     repositoryRoot: string;
     repositoryName: string;
+    /** Counts for this section only; absent when unavailable or binary. */
+    additions?: number;
+    deletions?: number;
+    isBinary?: boolean;
 }
 
 interface WorkingTreeProps {
@@ -127,6 +131,24 @@ function ActionButton({ label, title, onClick, disabled, colorClass, testId }: A
     );
 }
 
+/** Accessible counts stay visible independently of the hover actions. */
+function FileLineCounts({ change }: { change: WorkingTreeChange }) {
+    const { additions, deletions, isBinary, stage } = change;
+    const available = typeof additions === 'number' && Number.isSafeInteger(additions) && additions >= 0
+        && typeof deletions === 'number' && Number.isSafeInteger(deletions) && deletions >= 0;
+    const label = isBinary ? 'Binary file; line counts unavailable'
+        : available ? `${stage}: ${additions} lines added, ${deletions} lines deleted`
+            : `${stage}: line counts unavailable`;
+    return (
+        <span role="img" aria-label={label} title={label} className="inline-flex gap-1 whitespace-nowrap text-[10px] tabular-nums flex-shrink-0">
+            {available && !isBinary ? <>
+                <span aria-hidden="true" className="text-[#16825d] dark:text-[#3fb950]">+{additions}</span>
+                <span aria-hidden="true" className="text-[#d32f2f] dark:text-[#f48771]">−{deletions}</span>
+            </> : <span aria-hidden="true" className="text-[#848484]">{isBinary ? 'Binary' : '—'}</span>}
+        </span>
+    );
+}
+
 /** Renders the action buttons (stage/unstage/discard/delete/copy) for a file row. */
 function FileActions({
     change,
@@ -148,7 +170,7 @@ function FileActions({
     };
 
     return (
-        <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
             <button
                 className="w-5 h-5 flex items-center justify-center rounded text-[10px] text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#3c3c3c] transition-colors"
                 title={copied ? 'Copied!' : 'Copy path'}
@@ -479,9 +501,6 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
     /** Whether the change set spans multiple repos (affects display-path prefixing). */
     const multiRepo = hasMultipleRepos(changes);
 
-    /** changeLookup keyed by the same display path used for the tree/list rows. */
-    const changeLookup = new Map(changes.map(c => [relDisplayPath(c, multiRepo), c]));
-
     /**
      * The selected file's display path. `selectedFilePath` from the parent is the
      * absolute `filePath`, so it must be mapped to the same relative display path
@@ -494,25 +513,28 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         ? relDisplayPath(selectedChange, multiRepo)
         : selectedFilePath ?? null;
 
-    /** Render file actions for a file identified by path */
-    const renderFileActionsForPath = useCallback((filePath: string) => {
-        const change = changeLookup.get(filePath);
-        if (!change) return null;
-        return (
-            <FileActions
-                change={change}
-                onAction={action => handleAction(action, change.filePath)}
-                busy={busyFiles.has(change.filePath)}
-            />
-        );
-    }, [changeLookup, handleAction, busyFiles]);
-
-    /** Render a section's file list using shared components */
+    /** Render a section's file list using shared components. */
     const renderSectionFiles = (sectionChanges: WorkingTreeChange[]) => {
         const fileChanges = toFileChanges(sectionChanges, multiRepo);
+        // A partially staged path occurs in both sections with different actions.
+        const changeLookup = new Map(sectionChanges.map(c => [relDisplayPath(c, multiRepo), c]));
         const handleSelect = (filePath: string) => {
             const change = changeLookup.get(filePath);
             if (change && onFileSelect) onFileSelect(change.filePath, change.stage);
+        };
+        const renderFileActionsForPath = (filePath: string) => {
+            const change = changeLookup.get(filePath);
+            if (!change) return null;
+            return (
+                <span className="flex items-center gap-1.5 flex-shrink-0">
+                    <FileLineCounts change={change} />
+                    <FileActions
+                        change={change}
+                        onAction={action => handleAction(action, change.filePath)}
+                        busy={busyFiles.has(change.filePath)}
+                    />
+                </span>
+            );
         };
 
         if (wtViewMode === 'tree') {

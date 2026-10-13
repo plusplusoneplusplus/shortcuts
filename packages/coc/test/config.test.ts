@@ -1185,10 +1185,8 @@ timeout: 300
                 '  teamsMessageReaction: true',
                 '  sentinelDesktopMirror: true',
                 '  sentinelResultCards: true',
-                '  sentinelTodoLedger: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoScrubber: true',
-                '  sentinelTodoSplitLayout: true',
                 '  sessionContextAttachments: true',
                 '  commitChatLens: true',
                 '  commitChatLensDormantMode: pill',
@@ -1253,7 +1251,7 @@ timeout: 300
         });
 
         describe.each([
-            'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelTodoSplitLayout',
+            'sentinelTodoDependencies', 'sentinelResultCards',
             'railManualRefresh', 'railStatusActions',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
@@ -1395,7 +1393,6 @@ timeout: 300
                 '  teamsAiAnswerRelay: true',
                 '  teamsBridgeObservability: false',
                 '  teamsMessageReaction: true',
-                '  sentinelTodoLedger: true',
                 'memoryPromotion:',
                 '  batchSize: 10',
                 '  timeoutMs: 70000',
@@ -1550,11 +1547,9 @@ timeout: 300
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sentinelDesktopMirror": false,
-                    "sentinelResultCards": false,
+                    "sentinelResultCards": true,
                     "sentinelTodoDependencies": false,
-                    "sentinelTodoLedger": true,
                     "sentinelTodoScrubber": false,
-                    "sentinelTodoSplitLayout": false,
                     "sessionContextAttachments": true,
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
@@ -1780,9 +1775,7 @@ timeout: 300
                   "features.sentinelDesktopMirror": "default",
                   "features.sentinelResultCards": "default",
                   "features.sentinelTodoDependencies": "default",
-                  "features.sentinelTodoLedger": "file",
                   "features.sentinelTodoScrubber": "default",
-                  "features.sentinelTodoSplitLayout": "default",
                   "features.sessionContextAttachments": "default",
                   "features.teamsAiAnswerRelay": "file",
                   "features.teamsBridgeObservability": "file",

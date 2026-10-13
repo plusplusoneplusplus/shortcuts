@@ -3,7 +3,7 @@ import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/server/messaging/whatsapp-command-router';
-import { formatTodosReply, TODOS_DISABLED_REPLY, TODOS_NO_TARGET_REPLY } from '../../../src/server/messaging/messaging-todos';
+import { formatTodosReply, TODOS_UNAVAILABLE_REPLY, TODOS_NO_TARGET_REPLY } from '../../../src/server/messaging/messaging-todos';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
@@ -21,7 +21,7 @@ describe('WhatsApp list todos', () => {
     let react: ReturnType<typeof vi.fn>;
     let store: WhatsAppRouterDeps['store'];
     let router: WhatsAppCommandRouter;
-    let enabled: boolean;
+    let available: boolean;
     const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }, { id: GLOBAL, name: 'Global' }];
     const startTime = new Date(Date.now() - 1000);
     const processes = [
@@ -52,14 +52,14 @@ describe('WhatsApp list todos', () => {
         await bindings.restore(store);
         todos = new SentinelTodoStore(database.db);
         service = new SentinelTodoService({ todos, store: store as never });
-        enabled = true;
+        available = true;
         const queue = new TaskQueueManager();
         enqueue = vi.fn();
         send = vi.fn(async (_text: string, quoted: string) => `out-${quoted}-${send.mock.calls.length}`);
         react = vi.fn().mockResolvedValue(undefined);
         router = new WhatsAppCommandRouter({
             store, bindings, groupJid: () => 'group@g.us', enqueue, send, react,
-            getTask: id => queue.getTask(id), getTodos: () => enabled ? service : undefined,
+            getTask: id => queue.getTask(id), getTodos: () => available ? service : undefined,
         });
     });
     afterEach(() => database.dispose());
@@ -132,7 +132,7 @@ describe('WhatsApp list todos', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('answers truthfully with no target, a non-Sentinel chat, the ledger off, or a foreign repo', async () => {
+    it('answers truthfully with no target, a non-Sentinel chat, missing ledger infrastructure, or a foreign repo', async () => {
         seedLedger();
         await router.handle(inbound('list todos', 'none'));
         expect(send).toHaveBeenLastCalledWith(TODOS_NO_TARGET_REPLY, 'none');
@@ -149,10 +149,10 @@ describe('WhatsApp list todos', () => {
         quoteBinding('ws-gone', 'sent-x', 'answer-x');
         await router.handle(inbound('list todos', 'foreign', { quotedMessageId: 'answer-x' }));
         expect(send).toHaveBeenLastCalledWith('❌ That chat\'s repo is not on this server. Select a local topic.', 'foreign');
-        enabled = false;
+        available = false;
         bindings.selectTopic('ws-a', 'sent-a');
-        await router.handle(inbound('list todos', 'off'));
-        expect(send).toHaveBeenLastCalledWith(TODOS_DISABLED_REPLY, 'off');
+        await router.handle(inbound('list todos', 'unavailable'));
+        expect(send).toHaveBeenLastCalledWith(TODOS_UNAVAILABLE_REPLY, 'unavailable');
         expect(enqueue).not.toHaveBeenCalled();
         expect(bindings.topic('ws-a')).toBe('sent-a');
     });

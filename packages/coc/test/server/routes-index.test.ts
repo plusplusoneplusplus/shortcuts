@@ -259,7 +259,7 @@ describe('registerAllRoutes', () => {
         const wsServer = makeWsServer();
         const opts = makeOpts({ store, bridge, dataDir: tmpDir, getWsServer: () => wsServer });
         const flags = opts.runtimeConfigService!.config.features as any;
-        flags.sentinelTodoLedger = true;
+        flags.sentinelTodoLedger = false; // Retired config must not gate the scrubber.
         flags.sentinelTodoScrubber = true;
         let getScrubber!: () => ScrubberRunService | undefined;
         opts.setSentinelScrubber = get => { getScrubber = get; };
@@ -309,8 +309,7 @@ describe('registerAllRoutes', () => {
             await found.route.handler(fakeJsonReq('POST', {}), disabled, found.match);
             expect(disabled.statusCode).toBe(404);
             flags.sentinelTodoScrubber = true;
-            flags.sentinelTodoLedger = false;
-            expect(getScrubber()).toBeUndefined();
+            expect(getScrubber()).toBeDefined();
             await store.removeProcess(owner.processId);
             expect(refreshAll).toHaveBeenCalledTimes(3);
             composition.whatsappMessagingManager.dispose();
@@ -336,7 +335,7 @@ describe('registerAllRoutes', () => {
         });
         const previousJobs = delegatedJobs.list(owner.workspaceId);
         const base = makeOpts();
-        base.runtimeConfigService!.config.features.sentinelTodoLedger = true;
+        (base.runtimeConfigService!.config.features as unknown as Record<string, unknown>).sentinelTodoLedger = false;
         let getTodos: (() => SentinelTodoService | undefined) | undefined;
         const opts = makeOpts({
             store, dataDir: tmpDir,
@@ -377,7 +376,7 @@ describe('registerAllRoutes', () => {
             metadata: { workspaceId: 'ws-fixture', mode: 'sentinel' },
         });
         const base = makeOpts();
-        base.runtimeConfigService!.config.features.sentinelTodoLedger = true;
+        (base.runtimeConfigService!.config.features as unknown as Record<string, unknown>).sentinelTodoLedger = false;
         let getTodos: (() => SentinelTodoService | undefined) | undefined;
         const composition = registerAllRoutes([], makeOpts({
             store, dataDir: tmpDir, runtimeConfigService: base.runtimeConfigService,

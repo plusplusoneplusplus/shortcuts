@@ -10,7 +10,7 @@ export function createSentinelDependencyTargetValidator(
     return async workspaceId => {
         const workspace = (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId);
         if (!workspace || workspace.virtual || !workspace.rootPath || workspaceId.startsWith('remote:')) {
-            throw new SentinelTodoError('invalid', 'Dependency action requires an exact registered local concrete workspace');
+            throw new SentinelTodoError('invalid', 'Dependency launch requires an exact registered local concrete workspace');
         }
         bridge.registerRepoId(workspace.id, workspace.rootPath);
         bridge.getOrCreateBridge(workspace.rootPath);

@@ -48,7 +48,6 @@ import { sentinelTodoTabInput } from '../../../src/server/spa/client/react/featu
 import { resolveDashboardRoute, buildRepoGroupChatHash } from '../../../src/server/spa/client/react/layout/dashboardRoutes';
 import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
-import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'chat-s' };
 const ORIGIN: SentinelTodoExcursionOrigin = {
@@ -72,16 +71,17 @@ function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
 }
 
 beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
     get.mockReset().mockResolvedValue({ revision: 1, items: [item()] });
     window.location.hash = '#repos/ws-1/chats/chat-s';
 });
 
 afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
     clearSentinelTodoExcursion();
     clearSentinelTodoChats();
     clearUnifiedPanelState();
-    applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
 });
 
 describe('excursion path rules', () => {
@@ -197,8 +197,6 @@ describe('excursion store', () => {
 });
 
 describe('pinned To-do in the visited chat panel', () => {
-    beforeEach(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true }));
-
     it('shows the pinned tab while the chat is on the path, never stores it, and ends the excursion on close', () => {
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-a'));
         expect(result.current.pinnedId).toBeNull();
@@ -231,12 +229,11 @@ describe('pinned To-do in the visited chat panel', () => {
         expect(result.current.active).toMatchObject({ kind: 'todo', resourceId: OWNER.processId, chatId: ORIGIN.chatId });
     });
 
-    it('adds nothing while the ledger flag is off', () => {
-        applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false });
+    it('adds the pinned ledger without runtime feature configuration', () => {
         const { result } = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-a'));
         act(() => { startSentinelTodoExcursion(ORIGIN); visitSentinelTodoExcursionChat(stop('chat-a')); });
-        expect(result.current.pinnedId).toBeNull();
-        expect(result.current.tabs).toEqual([]);
+        expect(result.current.pinnedId).not.toBeNull();
+        expect(result.current.tabs).toEqual([expect.objectContaining({ kind: 'todo', resourceId: OWNER.processId })]);
     });
 });
 
@@ -244,6 +241,8 @@ describe('UnifiedTodoTab links and remembered view', () => {
     async function renderOrigin() {
         publishSentinelTodoChat('ws-1', 'chat-s', { ownerWorkspaceId: 'ws-1', processId: OWNER.processId, title: 'Release coordination' });
         const view = render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" chatId="chat-s" />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        if (!screen.queryByTestId('sentinel-todo-detail-i1')) fireEvent.click(row.querySelector('[data-todo-select]')!);
         return { ...view, link: await screen.findByRole('link', { name: 'Spike notes' }) };
     }
 
@@ -290,14 +289,15 @@ describe('UnifiedTodoTab links and remembered view', () => {
         unmount();
         get.mockResolvedValue({ revision: 1, items: [item()] });
         render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(row.querySelector('[data-todo-select]')!);
         fireEvent.click(await screen.findByRole('link', { name: 'Spike notes' }));
         expect(getSentinelTodoExcursion()).toBeNull();
     });
 
-    it('restores expanded rows and scroll per owner, and focuses the followed link after Back', async () => {
+    it('restores selected details and list scroll per owner, and focuses the followed link after Back', async () => {
         const first = await renderOrigin();
-        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { expanded: false }));
-        const scroller = screen.getByTestId('sentinel-todo-tab');
+        const scroller = screen.getByTestId('sentinel-todo-list');
         scroller.scrollTop = 120;
         fireEvent.scroll(scroller);
         fireEvent.click(first.link);
@@ -306,8 +306,8 @@ describe('UnifiedTodoTab links and remembered view', () => {
 
         returnFromSentinelTodoExcursion();
         const second = await renderOrigin();
-        expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { expanded: true })).toBeTruthy();
-        expect(screen.getByTestId('sentinel-todo-tab').scrollTop).toBe(120);
+        expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: true })).toBeTruthy();
+        expect(screen.getByTestId('sentinel-todo-list').scrollTop).toBe(120);
         expect(document.activeElement).toBe(second.link);
         expect(recallSentinelTodoView(OWNER).focusLinkKey).toBeUndefined();
     });

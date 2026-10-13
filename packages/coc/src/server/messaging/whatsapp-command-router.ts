@@ -58,7 +58,7 @@ export interface WhatsAppRouterDeps {
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
     isOwnMirrorMessage?: (message: InboundWAMessage) => boolean | Promise<boolean>;
-    /** Read-only Sentinel to-do ledgers for `list todos`; undefined while the ledger is off. */
+    /** Read-only Sentinel to-do ledgers for `list todos`; absent without server ledger infrastructure. */
     getTodos?: () => MessagingTodoReader | undefined;
 }
 

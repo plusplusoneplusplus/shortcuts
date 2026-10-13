@@ -11,7 +11,6 @@
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 import { isSentinelTodoChangeFor, type SentinelTodoChangeEvent, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 /** What a hosted Sentinel chat publishes: its ledger owner, without a route, and its title. */
@@ -71,20 +70,6 @@ export function useSentinelTodoChat(scopeWorkspaceId: string, chatId: string | n
     }, [key]);
     const getSnapshot = () => getSentinelTodoChat(scopeWorkspaceId, chatId);
     return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-/** The live `features.sentinelTodoLedger` flag (runtime `sentinelTodoLedgerEnabled`). */
-export function useSentinelTodoLedgerEnabled(): boolean {
-    return useSyncExternalStore(subscribeDashboardConfig, readSentinelTodoFlag, readSentinelTodoFlag);
-}
-
-function subscribeDashboardConfig(listener: () => void): () => void {
-    window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
-    return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
-}
-
-function readSentinelTodoFlag(): boolean {
-    return isFeatureEnabled('sentinelTodoLedgerEnabled');
 }
 
 /**

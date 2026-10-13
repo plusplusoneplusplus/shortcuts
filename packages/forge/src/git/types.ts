@@ -25,6 +25,10 @@ export interface GitChange {
     repositoryRoot: string;
     /** Repository display name (folder name or basePath alias) */
     repositoryName: string;
+    /** Counts for this section only; absent when unavailable or binary. */
+    additions?: number;
+    deletions?: number;
+    isBinary?: boolean;
 }
 
 export interface GitChangeCounts {

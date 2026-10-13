@@ -49,7 +49,9 @@ references before editing. Paths are package-relative.
 - Collapsed workspace-rail job previews share `RailHoverPreview`. Pinned rows come
   from the owning workspace's full pinned-process read, overlaid with the chat
   list's live pin/archive state and tab/type visibility; do not derive them from
-  queue status arrays or aggregate member pins for a selected group. `RailJobMetadata`
+  queue status arrays or aggregate member pins for a selected group. Preview unpin
+  shares the list's owner-scoped pin action; discard stale reads/results and return
+  focus to a surviving row or rail control without expanding. `RailJobMetadata`
   keeps status/type separate from execution-mode pills. Queue and pinned snapshots
   project owner-verified current process modes in a transcript-free batch; Ralph
   identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.
@@ -266,33 +268,26 @@ references before editing. Paths are package-relative.
   under the shared writer transaction, returning conjunctive readiness and
   blockers. Native evidence/evaluation tables are machine-local and wiped;
   diagnostic evaluations are not admission receipts. Re-evaluate before use.
-  `SentinelDependencyActions` reserves immutable evidence and one wake per graph/action
-  generation before `ProcessMessageDeliveryService.deliverOnce` transports it. Local
-  polling and transport recovery reuse the existing trigger scheduler; matching
-  owner/item/PR merge rules can own transport without rule mutation or duplicate wakes.
-  Explicit user-only, confirmed, revision-checked action authorization snapshots
-  mode, concrete provider/model, registered local target, prompt and scope.
-  Target validation materializes the registered concrete workspace's lazy queue
-  through the existing router before synchronous availability checks; it admits
-  no task and never falls back to the parent's queue.
-  Tools cannot create authority; manual items remain tracking-only. Central enqueue
-  consumes authority under the native writer and first execution rechecks current
-  evidence, graph/action revisions and provider/target availability. Preparation
-  leaves the admission unstarted; the SDK handoff repeats the check and durably marks
-  the start. Each graph replacement records an exact generation, including identical
-  selectors and removal of all edges. Native mutation hooks and fresh evidence reads
-  invalidate pending readiness/admissions atomically; immutable wake evidence stays
-  retained and invalidated pending wakes stop transport. Captured upstream generations
-  and known ancestor input proofs protect descendants. Started actions receive durable
-  `requiresReview` warnings without cancellation or fulfillment/user-verdict writes;
-  replacement authorization does not erase historical warnings. Historical native
-  action gating remains authoritative after edge removal or feature disablement. Stable identities
-  reconcile acceptance; errors and uncertain admissions require fresh authorization,
-  never automatic work retry. Native Ralph step-start receipts prevent execution
-  replay; started whole-session continuations preserve captured settings and scope.
-  The late-bound `getSentinelDependencyAdmission` receipt guard stays available when
-  authoring is disabled, so valid running work can finish. Dependency authoring and
-  artifact acceptance never grant execution authority or change fulfillment.
+  `SentinelDependencyActions` reserves immutable evidence and one wake per graph
+  generation before `ProcessMessageDeliveryService.deliverOnce` transports it.
+  Polling and transport recovery use the trigger scheduler; matching owner/item/PR
+  merge rules can own transport without rule mutation. Wakes ask the owner Sentinel
+  to decide under ordinary user authorization; readiness never launches work.
+  Normally authorized dispatch rechecks all prerequisites under the native writer
+  and reserves a durable launch receipt. Target validation materializes the concrete
+  registered workspace's queue through the router without falling back to the parent.
+  Manual items remain tracking-only. Preparation and SDK handoff repeat readiness
+  checks; handoff durably marks the start. Native admission and Ralph step identities
+  prevent duplicate execution across restart. Queue failures and uncertain acceptance
+  never re-arm work. Ordinary task permissions and Ralph Start approval stay intact.
+  Each graph replacement records an exact generation, including identical selectors
+  and empty edge sets. Source/upstream revisions and known ancestor input proofs
+  invalidate pending readiness/admissions atomically; invalidated pending wakes stop
+  transport. Started admissions expose `dependencyReadiness.requiresReview` and
+  errors without cancellation or fulfillment/user-verdict writes. Removing edges
+  cannot erase duplicate guards. Started whole-session Ralph continuations retain
+  their native session/step identities through the late-bound admission guard.
+  Dependency authoring and artifact acceptance grant no execution permissions.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
   including evidence-based Done with a reason; Notes and Done when are optional.
@@ -300,10 +295,10 @@ references before editing. Paths are package-relative.
   Manual items never authorize execution, delegation, job links, or automatic result
   reviews. Execution requests require clarification; never create a normal-item copy,
   convert, or hand off a manual item. Never let ledger edits
-  start, retry, or cancel jobs. Gate everything on `features.sentinelTodoLedger`. The
+  start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
-  `getSentinelTodos` runtime capability (undefined while the flag is off).
-  With the flag on, Sentinel `send_to_conversation` create mode requires an unarchived normal
+  `getSentinelTodos` runtime capability.
+  Sentinel `send_to_conversation` create mode requires an unarchived normal
   `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local
   terminal results reach normal items through `createSentinelTodoDelegationHooks` (first result
@@ -334,7 +329,7 @@ references before editing. Paths are package-relative.
   Committed delivery and conversation-mode changes invalidate linked ledgers without advancing
   their revisions; badges never require per-job transcript reads or polling.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
-  Sentinel `ChatDetail` publishes its ledger owner, and the flag hides stored tabs.
+  Sentinel `ChatDetail` publishes its ledger owner; stored tabs remain visible.
   Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
   prove the Sentinel owner through `SentinelTodoService.list` before accessing
   scrubber state, and use the engine for revision-checked Accept/Undo. The shared
@@ -570,8 +565,9 @@ references before editing. Paths are package-relative.
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
   prompts. Sentinel completion messages contain only the untrusted-result prefix and
   result JSON; non-Sentinel parents receive the shared rules inline.
-  `features.sentinelResultCards` is a default-off, live presentation gate. Cards require
-  server delivery correlation, the exact result envelope and matching parent identity;
+  `features.sentinelResultCards` is a default-on, live presentation gate; explicit false
+  opts out. Cards require server delivery correlation, the exact result envelope and
+  matching parent identity;
   invalid messages keep ordinary rendering. Inert summary Markdown and exact raw JSON
   never change model payloads, assessment or authorization. Job links inherit the source owner.
   `send_to_conversation` create mode from a
@@ -711,7 +707,7 @@ references before editing. Paths are package-relative.
   this command bypasses pending question answers and never changes selection or invokes AI.
   WhatsApp-only `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`) lists the
   not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
-  `SentinelTodoService.list` (non-Sentinel → explicit reply; ledger flag off → off reply;
+  `SentinelTodoService.list` (non-Sentinel → explicit reply; missing server infrastructure → unavailable reply;
   non-local workspace → unsupported reply). Status labels come from the client's
   dependency-free `sentinelTodoStatusModel.ts`; all active items are grouped by
   Normal/Manual tracking, followed by recent Done within the shared 50-item budget.

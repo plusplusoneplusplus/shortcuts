@@ -51,8 +51,7 @@ test.beforeAll(async () => {
                     return { process: { id: args[0], workspaceId: 'child',
                         jobPreview: { excerpt: 'Recorded job result', source: 'progress', updatedAt: at } } }; } }
             };
-            window.setLayout = enabled => applyRuntimeConfigPatch({ sentinelTodoSplitLayoutEnabled: enabled });
-            applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoSplitLayoutEnabled: false,
+            applyRuntimeConfigPatch({
                 sentinelTodoDependenciesEnabled: false, sentinelTodoScrubberEnabled: false, triggersEnabled: false });
             createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab scopeWorkspaceId="parent"
                 chatId="sentinel" owner={{ ownerWorkspaceId: 'parent', ownerRoutingRef: null, processId: 'sentinel' }} />);
@@ -76,9 +75,6 @@ async function mount(page: Page, dark: boolean) {
     await page.addScriptTag({ content: script });
     await expect(page.getByTestId('sentinel-todo-row-first')).toBeVisible();
 }
-async function setLayout(page: Page, enabled: boolean) {
-    await page.evaluate(value => (window as Window & { setLayout(enabled: boolean): void }).setLayout(value), enabled);
-}
 async function width(page: Page, pixels: number) {
     await page.locator('#fixture').evaluate((element, size) => { element.style.width = `${size}px`; }, pixels);
     await expect(page.getByTestId('sentinel-todo-tab')).toHaveAttribute('data-layout', pixels >= 660 ? 'split' : 'single');
@@ -91,27 +87,24 @@ for (const dark of [false, true]) {
         const refresh = page.getByRole('button', { name: 'Refresh to-do list' });
         const add = page.getByTestId('sentinel-todo-add');
         const readCount = () => page.evaluate(() => (window as Window & { todoReadCount: number }).todoReadCount);
-        for (const split of [false, true]) {
-            await setLayout(page, split);
-            for (const pixels of [220, 800]) {
-                await page.locator('#fixture').evaluate((element, size) => { element.style.width = `${size}px`; }, pixels);
-                await expect(page.getByTestId('sentinel-todo-tab')).toHaveAttribute('data-layout', split ? (pixels >= 660 ? 'split' : 'single') : 'inline');
-                await expect(refresh).toBeVisible();
-                await expect(refresh).toHaveAttribute('title', 'Refresh to-do list');
-                await expect(add).toBeVisible();
-                const refreshBox = (await refresh.boundingBox())!;
-                const addBox = (await add.boundingBox())!;
-                expect(refreshBox.x + refreshBox.width).toBeLessThanOrEqual(addBox.x);
-                expect(Math.abs(refreshBox.y + refreshBox.height / 2 - addBox.y - addBox.height / 2)).toBeLessThan(1);
-                expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-                const before = await readCount();
-                await refresh.focus();
-                await page.keyboard.press(pixels === 220 ? 'Enter' : 'Space');
-                await expect.poll(readCount).toBe(before + 1);
-                await expect(refresh).toHaveAttribute('aria-busy', 'false');
-                await expect(refresh).toBeEnabled();
-                await expect(page.getByTestId('sentinel-todo-row-first')).toBeVisible();
-            }
+        for (const pixels of [220, 800]) {
+            await page.locator('#fixture').evaluate((element, size) => { element.style.width = `${size}px`; }, pixels);
+            await expect(page.getByTestId('sentinel-todo-tab')).toHaveAttribute('data-layout', pixels >= 660 ? 'split' : 'single');
+            await expect(refresh).toBeVisible();
+            await expect(refresh).toHaveAttribute('title', 'Refresh to-do list');
+            await expect(add).toBeVisible();
+            const refreshBox = (await refresh.boundingBox())!;
+            const addBox = (await add.boundingBox())!;
+            expect(refreshBox.x + refreshBox.width).toBeLessThanOrEqual(addBox.x);
+            expect(Math.abs(refreshBox.y + refreshBox.height / 2 - addBox.y - addBox.height / 2)).toBeLessThan(1);
+            expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+            const before = await readCount();
+            await refresh.focus();
+            await page.keyboard.press(pixels === 220 ? 'Enter' : 'Space');
+            await expect.poll(readCount).toBe(before + 1);
+            await expect(refresh).toHaveAttribute('aria-busy', 'false');
+            await expect(refresh).toBeEnabled();
+            await expect(page.getByTestId('sentinel-todo-row-first')).toBeVisible();
         }
         expect(await page.evaluate(() => (window as Window & { reads: unknown[] }).reads)).toEqual([]);
     });
@@ -122,9 +115,6 @@ for (const dark of [false, true]) {
         await page.setViewportSize({ width: 1280, height: 720 });
         await mount(page, dark);
         const tab = page.getByTestId('sentinel-todo-tab');
-        await expect(tab).toHaveAttribute('data-layout', 'inline');
-        await expect(page.getByTestId('sentinel-todo-details')).toHaveCount(0);
-        await setLayout(page, true);
         await expect(tab).toHaveAttribute('data-layout', 'split');
         await expect(page.getByText('Select an item to view its details.')).toBeVisible();
         const row = page.getByTestId('sentinel-todo-row-first');
@@ -173,9 +163,6 @@ for (const dark of [false, true]) {
         await expect(details).toBeVisible();
         expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
         await expect(details.getByLabel('Notes', { exact: true })).toHaveValue('Retain this draft across actual panel resizes');
-        await setLayout(page, false);
-        await expect(tab).toHaveAttribute('data-layout', 'inline');
-        await expect(page.getByLabel('Notes', { exact: true })).toHaveValue('Retain this draft across actual panel resizes');
         expect(await page.evaluate(() => (window as Window & { reads: unknown[] }).reads)).toEqual([]);
         expect(errors).toEqual([]);
     });

@@ -321,13 +321,9 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
-        /** Per-chat Sentinel to-do ledger (REST, AI tools, right-panel tab). Disabled by default. */
-        sentinelTodoLedger?: boolean;
-        /** Native prerequisite authoring and admission. Requires the ledger; disabled by default. */
+        /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
-        /** Compact Sentinel item list beside selected details. Disabled by default. */
-        sentinelTodoSplitLayout?: boolean;
-        /** Sentinel To-do Scrubber (visible evidence checks, cron). Requires `sentinelTodoLedger`. Disabled by default. */
+        /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
@@ -734,11 +730,8 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
-        /** Per-chat Sentinel to-do ledger (REST, AI tools, right-panel tab). Disabled by default. */
-        sentinelTodoLedger: boolean;
         sentinelTodoDependencies: boolean;
-        sentinelTodoSplitLayout: boolean;
-        /** Sentinel To-do Scrubber (visible evidence checks, cron). Requires `sentinelTodoLedger`. Disabled by default. */
+        /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
@@ -1063,9 +1056,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
-        sentinelTodoLedger: false,
         sentinelTodoDependencies: false,
-        sentinelTodoSplitLayout: false,
         sentinelTodoScrubber: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
@@ -1090,7 +1081,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatStyleSelector: true,
         chatProviderSwitching: false,
         chatHistoryPaging: false,
-        sentinelResultCards: false,
+        sentinelResultCards: true,
         defaultChatStyle: 'default',
         chatStylePrompts: {},
     },

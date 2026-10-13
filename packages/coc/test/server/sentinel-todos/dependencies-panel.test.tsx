@@ -76,10 +76,10 @@ describe('owner-scoped dependency details', () => {
         expect(screen.queryByRole('button', { name: /launch|retry job|cancel job/i })).toBeNull();
     });
 
-    it('shows Needs approval for satisfied normal dependencies, but manual readiness stays tracking-only', async () => {
+    it('shows Ready for satisfied normal dependencies while manual items stay tracking-only', async () => {
         evaluate.mockResolvedValue(evaluation(dependent, 'ready'));
         const view = render(<SentinelTodoDependencies {...props()} />);
-        await screen.findByText('Needs approval');
+        await screen.findByText('Ready');
         const manual = { ...dependent, type: 'manual' as const };
         view.rerender(<SentinelTodoDependencies {...props(manual)} />);
         await screen.findByText('Ready');
@@ -173,7 +173,7 @@ describe('owner-scoped dependency details', () => {
         await screen.findByText('Waiting');
         evaluate.mockResolvedValue(evaluation(dependent, 'ready'));
         view.rerender(<SentinelTodoDependencies {...props()} items={[{ ...source, revision: 2, status: 'done' }, dependent]} ledgerRevision={3} />);
-        await screen.findByText('Needs approval');
+        await screen.findByText('Ready');
         expect(evaluate).toHaveBeenCalledTimes(2);
     });
 
@@ -220,24 +220,12 @@ describe('owner-scoped dependency details', () => {
         expect(screen.getByRole('button', { name: 'Rebind PR output' })).toBeTruthy();
     });
 
-    it('keeps captured action settings and authority separate from readiness and exposes review warnings', async () => {
-        const current = { ...dependent, dependencyAction: {
-            revision: 1, state: 'authorized' as const, mode: 'ask' as const, provider: 'claude' as const,
-            model: 'captured-model', targetWorkspaceId: 'ws-execution', prompt: 'Design only', scope: 'Design only, no implementation',
-            taskId: 'fixed-child', authorizedAt: '2026-01-01T00:00:00Z', authorizedBy: 'user' as const,
-        } };
+    it('shows durable review warnings separately from readiness and fulfillment', async () => {
+        const current = { ...dependent, dependencyReadiness: { state: 'ready' as const, requiresReview: true } };
         evaluate.mockResolvedValue(evaluation(current, 'ready'));
-        const view = render(<SentinelTodoDependencies {...props(current)} />);
+        render(<SentinelTodoDependencies {...props(current)} />);
         await screen.findByText('Ready');
-        expect(screen.getByLabelText('Saved action configuration')).toBeTruthy();
-        expect(screen.getByText('Ask')).toBeTruthy();
-        expect(screen.getByText('claude')).toBeTruthy();
-        expect(screen.getByText('captured-model')).toBeTruthy();
-        expect(screen.getByText('ws-execution')).toBeTruthy();
-        expect(screen.getByText('Design only, no implementation')).toBeTruthy();
-        view.rerender(<SentinelTodoDependencies {...props({ ...current, dependencyAction: { ...current.dependencyAction, state: 'revoked', requiresReview: true } })} />);
-        await screen.findByText('Needs approval');
-        expect(screen.getByText('Revoked')).toBeTruthy();
+        expect(screen.queryByLabelText('Saved action configuration')).toBeNull();
         expect(screen.getByText(/Requires review - prerequisite evidence changed/)).toBeTruthy();
     });
 });

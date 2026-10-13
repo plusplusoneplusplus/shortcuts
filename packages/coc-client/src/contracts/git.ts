@@ -282,6 +282,10 @@ export interface GitWorkingTreeChange {
   stage: 'staged' | 'unstaged' | 'untracked' | string;
   repositoryRoot: string;
   repositoryName: string;
+  /** Counts for this section only; absent when unavailable or binary. */
+  additions?: number;
+  deletions?: number;
+  isBinary?: boolean;
 }
 
 export interface GitWorkingTreeChangesResponse {

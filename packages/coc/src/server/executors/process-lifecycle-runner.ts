@@ -492,7 +492,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const nativeTracking = this.store instanceof SqliteProcessStore
             ? SentinelDependencyStore.jobTracking(this.store.getDatabase(), task.id)
                 ?? SentinelDependencyStore.ralphTracking(this.store.getDatabase(), ralphSession) : undefined;
-        if (nativeTracking && !trackedContext?.sentinelTodoTracking) {
+        if (nativeTracking) {
             trackedContext = { ...trackedContext, sentinelTodoTracking: nativeTracking,
                 spawnedFromProcessId: trackedContext?.spawnedFromProcessId ?? nativeTracking.owner.processId };
             task.payload.context = trackedContext;
@@ -727,9 +727,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         applyEffortTierForProvider(task, taskProvider, opts);
         const providerModel = resolveModelForProvider(taskProvider, task.config.model);
         if (providerModel.coerced) {
-            if (typeof (trackedContext?.sentinelTodoTracking as { actionRevision?: number } | undefined)?.actionRevision === 'number') {
-                throw new Error('Saved dependency action model is unavailable; no execution-time fallback is allowed');
-            }
             if (isChatPayload(task.payload) && isAutoProviderRoutingRequested(task.payload)) {
                 throw new Error(`Model '${providerModel.requestedModel}' is not compatible with Auto-selected provider '${taskProvider}'.`);
             }

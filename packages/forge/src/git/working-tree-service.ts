@@ -158,7 +158,7 @@ export class WorkingTreeService {
     /**
      * Get all working-tree changes (staged, unstaged, and untracked).
      */
-    async getAllChanges(repoRoot: string): Promise<GitChange[]> {
+    async getAllChanges(repoRoot: string, options?: { includeStats?: boolean }): Promise<GitChange[]> {
         const repositoryName = path.basename(repoRoot);
         // Deliberately outside the try: every *git* failure here means "no
         // changes to show", but a missing or capability-stale binary is a
@@ -167,7 +167,31 @@ export class WorkingTreeService {
         const addon = loadNativeGit();
         try {
             const entries = await readStatusEntries(addon, repoRoot);
-            return entries.map(entry => toGitChange(entry, repoRoot, repositoryName));
+            const changes = entries.map(entry => toGitChange(entry, repoRoot, repositoryName));
+            if (options?.includeStats) {
+                // One batched patch per populated section, never one diff per row.
+                // Keep status visible if a stat read fails or a path disappears.
+                for (const stage of ['staged', 'unstaged'] as const) {
+                    const section = changes.filter(change => change.stage === stage && change.status !== 'conflict');
+                    if (!section.length) continue;
+                    try {
+                        const patch = await loadWorkingTreePatch(repoRoot, stage, undefined, { contextLines: 0, maxLines: 0 });
+                        const files = new Map(patch.files.map(file => [path.join(repoRoot, file.path), file]));
+                        for (const change of section) {
+                            const file = files.get(change.filePath);
+                            if (!file) continue;
+                            change.isBinary = file.isBinary;
+                            if (!file.isBinary) {
+                                change.additions = file.additions;
+                                change.deletions = file.deletions;
+                            }
+                        }
+                    } catch (error) {
+                        getLogger().error('Git', `${stage} line counts unavailable`, error instanceof Error ? error : undefined);
+                    }
+                }
+            }
+            return changes;
         } catch (error) {
             getLogger().error('Git', 'getAllChanges failed', error instanceof Error ? error : undefined);
             return [];

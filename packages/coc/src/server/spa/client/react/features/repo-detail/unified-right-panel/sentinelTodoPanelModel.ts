@@ -134,23 +134,6 @@ export function sentinelTodoTabInput(owner: SentinelTodoOwner, chatId: string): 
     };
 }
 
-/**
- * The panel state with every To-do tab hidden, for a flag-off session. The
- * descriptors stay in storage — the flag loads asynchronously, so deleting
- * them on a not-yet-enabled first render would lose tabs on every reload.
- * Returns the same reference when there is nothing to hide.
- */
-export function withoutSentinelTodoTabs(state: UnifiedPanelState): UnifiedPanelState {
-    let changed = false;
-    const chatTabs: Record<string, readonly UnifiedPanelTab[]> = {};
-    for (const [key, tabs] of Object.entries(state.chatTabs)) {
-        const kept = tabs.filter(tab => tab.kind !== 'todo');
-        if (kept.length !== tabs.length) changed = true;
-        chatTabs[key] = kept;
-    }
-    return changed ? { ...state, chatTabs } : state;
-}
-
 export interface SentinelTodoChangeEvent {
     workspaceId: string;
     processId: string;

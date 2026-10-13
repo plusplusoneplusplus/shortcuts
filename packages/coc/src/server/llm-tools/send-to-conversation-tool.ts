@@ -215,7 +215,7 @@ export interface SendToConversationToolOptions {
      * `search_conversations` addon's `processId` threading.
      */
     parentProcessId?: string;
-    /** Present only for flag-enabled Sentinel chats; adds the `todoItemId` parameter. */
+    /** Present for hosted Sentinel chats; adds the `todoItemId` parameter. */
     todoTracking?: SendToConversationTodoTracking;
 }
 

@@ -130,7 +130,6 @@ export interface AdminResolvedConfig {
     teamsBridgeObservability?: boolean;
     teamsAiAnswerRelay?: boolean;
     teamsMessageReaction?: boolean;
-    sentinelTodoLedger?: boolean;
     sentinelTodoScrubber?: boolean;
     sentinelDesktopMirror?: boolean;
     botManagedConversations?: boolean;
@@ -229,7 +228,6 @@ export interface AdminConfigUpdate {
   'features.teamsBridgeObservability'?: boolean;
   'features.teamsAiAnswerRelay'?: boolean;
   'features.teamsMessageReaction'?: boolean;
-  'features.sentinelTodoLedger'?: boolean;
   'features.sentinelTodoScrubber'?: boolean;
   'features.sentinelDesktopMirror'?: boolean;
   'features.quickAskSidenotes'?: boolean;
@@ -296,9 +294,7 @@ export interface RuntimeDashboardConfig {
     teamsBridgeObservabilityEnabled: boolean;
     teamsAiAnswerRelayEnabled: boolean;
     teamsMessageReactionEnabled: boolean;
-    sentinelTodoLedgerEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
-    sentinelTodoSplitLayoutEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;
     botManagedConversationsEnabled: boolean;

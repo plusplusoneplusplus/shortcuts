@@ -1,30 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getRepoDataPath, SqliteProcessStore, TaskQueueManager, type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, TaskQueueManager, type CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelDependencyStore } from '../../../src/server/sentinel-todos/sentinel-dependency-store';
 import { SentinelDependencyActions } from '../../../src/server/sentinel-todos/sentinel-dependency-actions';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
-import { createSentinelTodoTracking, createSentinelTodosTool } from '../../../src/server/llm-tools/sentinel-todos-tool';
+import { createSentinelTodoTracking } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
-import type { SentinelTodoDependencyActionSettings } from '@plusplusoneplusplus/coc-client';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
-import { validateAndParseTask } from '../../../src/server/routes/queue-shared';
-import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
-import { launchRalphSession } from '../../../src/server/ralph/ralph-launch-service';
 import { artifactVersion } from '../../../src/server/sentinel-todos/sentinel-todo-evidence';
-import { buildRalphIterationTask } from '../../../src/server/ralph/enqueue-iteration';
 import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
 
 const owner = { workspaceId: 'ws-parent', processId: 'queue_parent' };
-const saved: SentinelTodoDependencyActionSettings = {
+const saved = {
     mode: 'ask', provider: 'copilot', model: 'gpt-5.4', targetWorkspaceId: 'ws-child',
-    prompt: 'Review the explicitly approved output', scope: 'Read-only design review',
 };
 
-describe('native dependency authority and durable activation', () => {
+describe('native dependency readiness and durable admission', () => {
     let directory: string;
     let processes: SqliteProcessStore;
     let queue: TaskQueueManager;
@@ -42,7 +36,7 @@ describe('native dependency authority and durable activation', () => {
     let coexisting: 'waiting' | 'delivered' | undefined;
     let fetchPr: ReturnType<typeof vi.fn>;
     const current = (id = itemId) => todos.get(owner).items.find(item => item.id === id)!;
-    const record = () => receipts.action(owner, itemId)!;
+    const record = () => receipts.records(owner).find(row => row.itemId === itemId)?.record;
 
     function wire(onChange?: () => void) {
         todos = new SentinelTodoStore(processes.getDatabase());
@@ -50,7 +44,7 @@ describe('native dependency authority and durable activation', () => {
             fetchPr, resolveWorkspaceRoot: async () => directory });
         receipts = new SentinelDependencyStore(processes.getDatabase(), todos);
         actions = new SentinelDependencyActions({
-            receipts, service, dataDir: directory, delivery: new ProcessMessageDeliveryService({ store: processes, bridge }),
+            receipts, service, delivery: new ProcessMessageDeliveryService({ store: processes, bridge }),
             validateProvider,
             validateTarget: async target => {
                 if (!targetAvailable || target !== saved.targetWorkspaceId) throw new Error('Saved target unavailable');
@@ -70,6 +64,8 @@ describe('native dependency authority and durable activation', () => {
         enabled = targetAvailable = providerAvailable = true;
         coexisting = undefined;
         processes = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
+        await processes.registerWorkspace({ id: owner.workspaceId, name: 'Parent', rootPath: directory });
+        await processes.registerWorkspace({ id: saved.targetWorkspaceId, name: 'Child', rootPath: directory });
         queue = new TaskQueueManager();
         bridge = {
             enqueue: vi.fn(async (input: CreateTaskInput) => queue.enqueue(input)),
@@ -88,21 +84,14 @@ describe('native dependency authority and durable activation', () => {
     });
     afterEach(() => { processes.close(); fs.rmSync(directory, { recursive: true, force: true }); });
 
-    async function authorize(action = saved) {
-        return actions.authorize(owner, itemId, { expectedRevision: current().revision, confirmed: true, action }, 'user');
-    }
-    async function input(mode = saved.mode): Promise<CreateTaskInput> {
-        return { id: record().action.taskId, type: 'chat', priority: 'normal',
-            config: { model: saved.model }, payload: {
-                kind: 'chat', mode, workspaceId: saved.targetWorkspaceId, provider: saved.provider,
-                prompt: mode === 'ralph' ? buildRalphIterationTask({ workspaceId: saved.targetWorkspaceId,
-                    sessionId: `ralph-approved-${record().action.taskId}`, originalGoal: saved.prompt,
-                    iteration: 1, maxIterations: 1, dataDir: directory }).payload.prompt : saved.prompt, context: {
-                    spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, itemId),
-                    ...(mode === 'ralph' ? { ralph: { originalGoal: saved.prompt, currentIteration: 1,
-                        phase: 'executing', maxIterations: 1, sessionId: `ralph-approved-${record().action.taskId}` } } : {}),
-                },
-            } };
+    async function input(mode = 'ask'): Promise<CreateTaskInput> {
+        return { type: 'chat', priority: 'normal', config: { model: saved.model }, payload: {
+            kind: 'chat', mode, workspaceId: saved.targetWorkspaceId, provider: saved.provider,
+            prompt: 'User-authorized review', context: {
+                spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, itemId),
+                ...(mode === 'ralph' ? { ralph: { sessionId: 'ralph-session', currentIteration: 1, phase: 'executing' } } : {}),
+            },
+        } };
     }
     async function restart() {
         processes.close();
@@ -110,56 +99,153 @@ describe('native dependency authority and durable activation', () => {
         wire();
     }
 
-    it('AC04 invalidates pending transport while retaining the immutable wake and requiring fresh authority', async () => {
-        await authorize();
-        bridge.enqueue = vi.fn(async () => { throw new Error('Transport unavailable'); });
-        await actions.poll(owner);
-        const original = receipts.wakes(owner)[0];
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        expect(record().action.state).toBe('blocked');
-        expect(receipts.evaluation(owner, itemId)?.state).toBe('waiting');
-        await restart();
-        await actions.poll(owner);
-        expect(bridge.enqueue).toHaveBeenCalledTimes(1);
-        expect(receipts.wakes(owner)[0]).toMatchObject({
-            id: original.id, evidence: original.evidence, prompt: original.prompt, generation: original.generation,
-            invalidatedAt: expect.any(String),
-        });
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'done' }, 'user');
-        await actions.poll(owner);
-        expect(record().action.state).toBe('blocked');
-        expect(receipts.wakes(owner)).toHaveLength(1);
-        expect(bridge.enqueue).toHaveBeenCalledTimes(1);
+    it.each(['ask', 'autopilot', 'ralph'])('admits normally authorized %s without an approval snapshot or prior poll', async mode => {
+        const tracking = createSentinelTodoTracking({ service, owner });
+        expect(await tracking.check(itemId)).toBeUndefined();
+        expect(await tracking.prepare!(itemId, { content: 'User-authorized review' })).toMatchObject({ dependencyBound: true });
+        const task = await input(mode);
+        await actions.guard(task, 'enqueue');
+        expect(task.id).toBeTruthy();
+        expect(current().jobs).toHaveLength(1);
+        expect(current().jobs[0].workspaceId).toBe('ws-child');
+        expect((await service.list(owner)).items.find(item => item.id === itemId)).not.toHaveProperty('dependencyAction');
+        await service.evaluateDependencies(owner, itemId);
+        expect(actions.project(owner, current()).dependencyReadiness?.state).toBe('ready');
+        await actions.guard(task, 'check');
+        expect(record()?.started).not.toBe(true);
+        await actions.guard(task, 'start');
+        expect(record()?.started).toBe(true);
+        await expect(actions.guard(task, 'start')).rejects.toThrow('already started');
     });
 
-    it('AC04 keeps a queued consumed action blocked across reopen/reclose and restart', async () => {
-        await authorize();
+    it('send_to_conversation dispatches ready normally authorized work without a saved action', async () => {
+        const enqueueChat = vi.fn(async (task: CreateTaskInput) => {
+            await actions.guard(task, 'enqueue');
+            return queue.enqueue(task);
+        });
+        const { tool } = createSendToConversationTool({
+            store: processes, workspaceId: owner.workspaceId, parentProcessId: owner.processId,
+            enqueueChat, todoTracking: createSentinelTodoTracking({ service, owner }),
+        });
+        const result = await tool.handler({ content: 'Please review the output as authorized in chat', mode: 'ask',
+            provider: 'copilot', model: saved.model, workspaceId: saved.targetWorkspaceId, todoItemId: itemId },
+        { sessionId: 'owner-session', toolCallId: 'ready-dispatch', toolName: 'send_to_conversation', arguments: {} });
+        expect(result).not.toHaveProperty('error');
+        expect(enqueueChat).toHaveBeenCalledTimes(1);
+        expect(record()?.taskId).toBeTruthy();
+        expect(current().jobs).toHaveLength(1);
+    });
+
+    it('admits Auto and provider/model defaults through ordinary resolution', async () => {
+        const task = await input();
+        delete task.payload.provider;
+        delete task.config!.model;
+        (task.payload.context as any).autoProviderRouting = { requested: true };
+        await actions.guard(task, 'enqueue');
+        await actions.guard(task, 'check');
+        task.payload.provider = 'copilot';
+        await actions.guard(task, 'start');
+        expect(record()?.started).toBe(true);
+    });
+
+    it('blocks unsatisfied conjunctive prerequisites without reserving a launch', async () => {
+        const other = todos.create(owner, { title: 'Not ready' }, { actor: 'user' }).item;
+        todos.setDependencies(owner, itemId, current().revision, [
+            { itemId: sourceId, condition: { kind: 'done' } }, { itemId: other.id, condition: { kind: 'done' } },
+        ], 'user');
+        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('not ready');
+        expect(record()).toBeUndefined();
+        expect(current().jobs).toHaveLength(0);
+    });
+
+    it('manual items stay tracking-only even with satisfied prerequisites', async () => {
+        const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
+        todos.setDependencies(owner, manual.id, manual.revision, [{ itemId: sourceId, condition: { kind: 'done' } }], 'user');
+        expect((await service.evaluateDependencies(owner, manual.id)).state).toBe('ready');
+        await expect(actions.context(owner, manual.id)).rejects.toThrow('Manual');
+        expect(await createSentinelTodoTracking({ service, owner }).check(manual.id)).toContain('manual');
         await actions.poll(owner);
+        expect(receipts.wakes(owner, manual.id)).toHaveLength(0);
+    });
+
+    it.each(['workspace', 'parent', 'target', 'archived', 'done'])('rejects invalid %s ownership/eligibility', async change => {
+        const task = await input();
+        if (change === 'workspace') (task.payload.context as any).sentinelTodoTracking.owner.workspaceId = 'foreign';
+        if (change === 'parent') (task.payload.context as any).spawnedFromProcessId = 'foreign';
+        if (change === 'target') task.payload.workspaceId = 'foreign';
+        if (change === 'archived') todos.update(owner, itemId, current().revision, { archived: true }, 'user');
+        if (change === 'done') todos.update(owner, itemId, current().revision, { status: 'done' }, 'user');
+        await expect(actions.guard(task, 'enqueue')).rejects.toThrow();
+        expect(record()).toBeUndefined();
+    });
+
+    it('serializes concurrent dispatch and preserves duplicate guards across restart and edge removal', async () => {
+        const task = await input();
+        const results = await Promise.allSettled([actions.guard(task, 'enqueue'), actions.guard(structuredClone(task), 'enqueue')]);
+        expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+        await restart();
+        todos.setDependencies(owner, itemId, current().revision, [], 'user');
+        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('durable launch');
+        expect(current().jobs).toHaveLength(1);
+    });
+
+    it.each(['queued', 'started'])('invalidates %s work without cancelling or changing fulfillment', async state => {
         const task = await input();
         await actions.guard(task, 'enqueue');
-        queue.enqueue(task);
-        const identity = record().action.taskId;
+        if (state === 'started') await actions.guard(task, 'start');
+        const status = current().status;
         todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
         todos.update(owner, sourceId, current(sourceId).revision, { status: 'done' }, 'user');
         await restart();
-        await actions.poll(owner);
+        expect(record()?.error).toBeTruthy();
+        expect(record()?.requiresReview).toBe(state === 'started' ? true : undefined);
+        expect(current().status).toBe(status);
+        expect(bridge.enqueue).not.toHaveBeenCalled();
         await expect(actions.guard(task, 'start')).rejects.toThrow();
-        expect(record().started).toBeUndefined();
-        expect(record().action).toMatchObject({ state: 'blocked', taskId: identity });
-        expect(current().jobs).toHaveLength(1);
-        expect(record().action.requiresReview).toBeUndefined();
-        await authorize();
-        await actions.poll(owner);
-        const fresh = await input();
-        expect(fresh.id).not.toBe(identity);
-        await actions.guard(fresh, 'enqueue');
-        await expect(actions.guard(task, 'start')).rejects.toThrow();
-        expect(record().action.state).toBe('consumed');
     });
 
-    it('AC04 rechecks after execution preparation before the first SDK handoff', async () => {
-        await authorize();
+    it.each(['queued', 'started'])('invalidates %s ancestor artifact evidence independently of intermediate Done', async state => {
+        fs.writeFileSync(path.join(directory, 'ancestor.txt'), 'Accepted design');
+        const upstream = todos.create(owner, { title: 'Ancestor', status: 'done' }, { actor: 'user' }).item;
+        const version = artifactVersion(directory, 'ancestor.txt');
+        await service.acceptArtifact(owner, upstream.id, { expectedRevision: upstream.revision,
+            phase: 'design', reference: 'ancestor.txt', version }, 'user');
+        todos.setDependencies(owner, sourceId, current(sourceId).revision, [{ itemId: upstream.id,
+            condition: { kind: 'accepted_artifact', phase: 'design', reference: 'ancestor.txt', version } }], 'user');
+        await service.evaluateDependencies(owner, sourceId);
+        const task = await input();
+        await actions.guard(task, 'enqueue');
+        if (state === 'started') await actions.guard(task, 'start');
+        fs.writeFileSync(path.join(directory, 'ancestor.txt'), 'Changed design');
+        if (state === 'queued') await expect(actions.guard(task, 'start')).rejects.toThrow();
+        else await actions.poll(owner);
+        expect(record()?.error).toContain('Upstream');
+        expect(current(sourceId).status).toBe('done');
+        expect(record()?.requiresReview).toBe(state === 'started' ? true : undefined);
+    });
+
+    it('a rejected duplicate failure cannot block the accepted job', async () => {
+        const task = await input();
+        await actions.guard(task, 'enqueue');
+        actions.block(owner, itemId, new Error('Duplicate rejected'), 'other-task');
+        expect(record()?.error).toBeUndefined();
+        await actions.guard(task, 'start');
+    });
+
+    it('migrates wake guidance and reuses existing graph receipts without duplicate delivery', async () => {
         await actions.poll(owner);
+        const wake = receipts.wakes(owner)[0];
+        processes.getDatabase().prepare('UPDATE sentinel_dependency_wakes SET generation = ?, receipt = ? WHERE id = ?')
+            .run('prior-generation', JSON.stringify({ ...wake, generation: 'prior-generation', prompt: 'Read saved dependencyAction approval' }), wake.id);
+        await restart();
+        await actions.poll(owner);
+        expect(receipts.wakes(owner)).toHaveLength(1);
+        expect(receipts.wakes(owner)[0]).toMatchObject({ id: wake.id, evidence: wake.evidence });
+        expect(receipts.wakes(owner)[0].prompt).not.toContain('dependencyAction');
+        expect(bridge.enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechecks readiness between preparation and SDK handoff', async () => {
         const task = await input();
         await actions.guard(task, 'enqueue');
         const taskId = queue.enqueue(task);
@@ -170,472 +256,16 @@ describe('native dependency authority and durable activation', () => {
         const result = await runner.run(queue.getTask(taskId)!, {
             cancelledTasks: new Set(), executeByTypeFn, executeFollowUpFn: vi.fn(),
             getWorkingDirectoryFn: () => {
-                expect(record().started).not.toBe(true);
                 todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
                 return directory;
             },
-        });
+        } as never);
         expect(result.success).toBe(false);
         expect(executeByTypeFn).not.toHaveBeenCalled();
-        expect(record().started).not.toBe(true);
-        expect(record().action).toMatchObject({ state: 'blocked' });
-        expect(record().action.requiresReview).toBeUndefined();
+        expect(record()?.started).not.toBe(true);
     });
 
-    it('AC04 marks started work for durable review without cancelling or rewriting the user verdict', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        const taskId = queue.enqueue(task);
-        const cancel = vi.spyOn(queue, 'cancelTask');
-        const runner = new ProcessLifecycleRunner(processes, directory, vi.fn(), 'copilot', {
-            getSentinelDependencyAdmission: () => actions,
-        });
-        const executeByTypeFn = vi.fn(async () => {
-            expect(record().started).toBe(true);
-            todos.update(owner, itemId, current().revision, {
-                status: 'done', statusReason: 'Explicit owner verdict', notes: 'Retain this verdict',
-                outcome: 'Owner accepted the result',
-            }, 'user');
-            todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-            expect(record().action).toMatchObject({ state: 'consumed', requiresReview: true });
-            return { success: true, response: 'Finished within the saved scope' };
-        });
-        expect((await runner.run(queue.getTask(taskId)!, {
-            cancelledTasks: new Set(), executeByTypeFn, executeFollowUpFn: vi.fn(), getWorkingDirectoryFn: () => directory,
-        })).success).toBe(true);
-        expect(cancel).not.toHaveBeenCalled();
-        await restart();
-        expect(current()).toMatchObject({ status: 'done', statusReason: 'Explicit owner verdict', notes: 'Retain this verdict',
-            outcome: { summary: 'Owner accepted the result', recordedBy: 'user' } });
-        expect((await service.list(owner)).items.find(item => item.id === itemId)?.dependencyAction).toMatchObject({
-            state: 'consumed', requiresReview: true, error: expect.stringContaining('evidence'),
-        });
-    });
-
-    it.each(['authorized', 'revoked', 'queued', 'started'] as const)('AC04 edge removal cannot bypass %s historical native authority', async state => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        if (state === 'revoked') await actions.revoke(owner, itemId, { expectedRevision: current().revision }, 'user');
-        if (state === 'queued' || state === 'started') await actions.guard(task, 'enqueue');
-        if (state === 'started') await actions.guard(task, 'start');
-        const wake = receipts.wakes(owner)[0];
-        todos.setDependencies(owner, itemId, current().revision, [], 'user');
-        await restart();
-        const tracker = createSentinelTodoTracking({ service, owner });
-        const request = { content: saved.prompt, mode: saved.mode, provider: saved.provider, model: saved.model,
-            workspaceId: saved.targetWorkspaceId };
-        await expect(tracker.prepare!(itemId, request)).rejects.toThrow();
-        expect(receipts.wakes(owner)[0]).toMatchObject({ id: wake.id, evidence: wake.evidence, invalidatedAt: expect.any(String) });
-        if (state === 'started') expect(record().action).toMatchObject({ state: 'consumed', requiresReview: true });
-        enabled = false;
-        expect((await service.list(owner)).items.find(item => item.id === itemId)?.dependencyAction).toBeDefined();
-        await expect(tracker.prepare!(itemId, request)).rejects.toThrow('Historical dependency authority');
-    });
-
-    it('AC04 distinguishes graph generations even when an identical edge is saved again', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const old = receipts.wakes(owner)[0];
-        const graphRevision = record().graphRevision;
-        todos.setDependencies(owner, itemId, current().revision, current().dependsOn, 'user');
-        expect(todos.dependencyRevision(owner, itemId)).toBeGreaterThan(graphRevision!);
-        expect(record().action.state).toBe('blocked');
-        expect(receipts.wakes(owner)[0]).toMatchObject({ id: old.id, evidence: old.evidence, generation: old.generation });
-        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('revision changed');
-    });
-
-    it.each(['queued', 'started'] as const)('AC04 prerequisite archival invalidates %s work without erasing receipts', async state => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const task = await input('ralph');
-        await actions.guard(task, 'enqueue');
-        if (state === 'started') await actions.guard(task, 'start');
-        todos.update(owner, sourceId, current(sourceId).revision, { archived: true }, 'user');
-        expect(record().action).toMatchObject(state === 'started'
-            ? { state: 'consumed', requiresReview: true } : { state: 'blocked' });
-        expect(receipts.wakes(owner)).toHaveLength(1);
-        if (state === 'started') {
-            const next = structuredClone(task);
-            next.id = 'continues-with-warning';
-            next.continuationOfSessionId = `ralph-approved-${task.id}`;
-            (next.payload.context as any).ralph.currentIteration = 2;
-            await actions.guard(next, 'start');
-        } else await expect(actions.guard(task, 'start')).rejects.toThrow();
-    });
-
-    it.each(['queued', 'started'] as const)('AC04 unavailable owner leaves %s authority durably blocked or warned', async state => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        if (state === 'started') await actions.guard(task, 'start');
-        await processes.removeProcess(owner.processId);
-        await expect(actions.poll(owner)).rejects.toThrow();
-        await restart();
-        expect(record().action).toMatchObject(state === 'started'
-            ? { state: 'consumed', requiresReview: true, error: expect.stringContaining('owner') }
-            : { state: 'blocked', error: expect.stringContaining('owner') });
-        expect(receipts.wakes(owner)).toHaveLength(1);
-    });
-
-    it.each(['failed', 'cancelled'] as const)('AC04 %s prerequisite jobs cannot satisfy explicit Done or retry work', async outcome => {
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        todos.linkJob(owner, sourceId, { processId: 'prerequisite-child', workspaceId: saved.targetWorkspaceId, kind: 'local', openLink: '#' });
-        todos.recordJobResult(owner, 'prerequisite-child', { terminalEventId: `terminal-${outcome}`, outcome,
-            recordedAt: new Date().toISOString() }, result => `Prerequisite ${result.outcome}`);
-        await authorize();
-        await actions.poll(owner);
-        expect((await service.evaluateDependencies(owner, itemId)).state).toBe('waiting');
-        expect(receipts.wakes(owner)).toHaveLength(0);
-        expect(queue.getAll()).toHaveLength(0);
-        expect(current(sourceId).status).not.toBe('done');
-    });
-
-    it('AC04 external artifact invalidation persists a review warning through byte restoration and fresh authorization', async () => {
-        const file = path.join(directory, 'accepted.txt');
-        fs.writeFileSync(file, 'Explicit accepted design');
-        const version = artifactVersion(directory, 'accepted.txt');
-        await service.acceptArtifact(owner, sourceId, { expectedRevision: current(sourceId).revision,
-            phase: 'design', reference: 'accepted.txt', version }, 'user');
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: sourceId,
-            condition: { kind: 'accepted_artifact', phase: 'design', reference: 'accepted.txt', version } }], 'user');
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        fs.writeFileSync(file, 'Unaccepted replacement');
-        await actions.poll(owner);
-        expect(record().action).toMatchObject({ state: 'consumed', requiresReview: true });
-        fs.writeFileSync(file, 'Explicit accepted design');
-        await restart();
-        await actions.poll(owner);
-        expect(record().action.requiresReview).toBe(true);
-        await authorize();
-        expect((await service.list(owner)).items.find(item => item.id === itemId)?.dependencyAction?.requiresReview).toBe(true);
-        expect(current().status).toBe('in_progress');
-    });
-
-    it('AC04 revocation preserves the original started Ralph admission generation during invalidation', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const task = await input('ralph');
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        const original = receipts.admission(owner, itemId, task.id!)!;
-        await actions.revoke(owner, itemId, { expectedRevision: current().revision }, 'user');
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        expect(receipts.admission(owner, itemId, task.id!)?.action.revision).toBe(original.action.revision);
-        const next = structuredClone(task);
-        next.id = 'revoked-but-running';
-        next.continuationOfSessionId = `ralph-approved-${task.id}`;
-        (next.payload.context as any).ralph.currentIteration = 2;
-        await actions.guard(next, 'start');
-        expect(record().action).toMatchObject({ state: 'revoked', requiresReview: true });
-    });
-
-    it('AC04 manual prerequisite reopening invalidates authority without acquiring execution privileges', async () => {
-        const manual = todos.create(owner, { title: 'Manual decision', type: 'manual', status: 'done' }, { actor: 'user' }).item;
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: manual.id, condition: { kind: 'done' } }], 'user');
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        todos.update(owner, manual.id, current(manual.id).revision, { status: 'todo' }, 'user');
-        await expect(actions.guard(task, 'start')).rejects.toThrow();
-        expect(record().action.state).toBe('blocked');
-        expect(() => todos.linkJob(owner, manual.id, { processId: 'forbidden', workspaceId: saved.targetWorkspaceId,
-            kind: 'local', openLink: '#' })).toThrow('Manual');
-        expect(current(manual.id).type).toBe('manual');
-    });
-
-    it.each(['queued', 'started'] as const)('AC04 upstream reopening invalidates %s descendants without undoing intermediate Done', async state => {
-        const upstream = todos.create(owner, { title: 'Earlier prerequisite', status: 'done' }, { actor: 'user' }).item;
-        todos.setDependencies(owner, sourceId, current(sourceId).revision, [{ itemId: upstream.id, condition: { kind: 'done' } }], 'user');
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        if (state === 'started') await actions.guard(task, 'start');
-        todos.update(owner, upstream.id, current(upstream.id).revision, { status: 'todo' }, 'user');
-        expect(current(sourceId).status).toBe('done');
-        expect(record().action).toMatchObject(state === 'started'
-            ? { state: 'consumed', requiresReview: true } : { state: 'blocked' });
-        await restart();
-        expect(record().action.error).toContain('Upstream');
-        if (state === 'queued') await expect(actions.guard(task, 'start')).rejects.toThrow();
-    });
-
-    it.each(['queued', 'started'] as const)('AC04 changed ancestor artifact proof invalidates %s descendants without rewriting Done', async state => {
-        fs.writeFileSync(path.join(directory, 'ancestor.txt'), 'Accepted ancestor');
-        const upstream = todos.create(owner, { title: 'Accepted input', status: 'done' }, { actor: 'user' }).item;
-        const version = artifactVersion(directory, 'ancestor.txt');
-        await service.acceptArtifact(owner, upstream.id, { expectedRevision: current(upstream.id).revision,
-            phase: 'design', reference: 'ancestor.txt', version }, 'user');
-        todos.setDependencies(owner, sourceId, current(sourceId).revision, [{ itemId: upstream.id,
-            condition: { kind: 'accepted_artifact', phase: 'design', reference: 'ancestor.txt', version } }], 'user');
-        await service.evaluateDependencies(owner, sourceId);
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        if (state === 'started') await actions.guard(task, 'start');
-        fs.writeFileSync(path.join(directory, 'ancestor.txt'), 'Changed ancestor');
-        if (state === 'queued') await expect(actions.guard(task, 'start')).rejects.toThrow();
-        else await actions.poll(owner);
-        expect(current(sourceId).status).toBe('done');
-        expect(record().action).toMatchObject(state === 'started'
-            ? { state: 'consumed', requiresReview: true } : { state: 'blocked' });
-    });
-
-    it.each(['queued', 'started'] as const)('AC04 missing artifact evidence blocks or warns %s work without retry', async state => {
-        fs.writeFileSync(path.join(directory, 'required.txt'), 'Exact required output');
-        const version = artifactVersion(directory, 'required.txt');
-        await service.acceptArtifact(owner, sourceId, { expectedRevision: current(sourceId).revision,
-            phase: 'design', reference: 'required.txt', version }, 'user');
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: sourceId,
-            condition: { kind: 'accepted_artifact', phase: 'design', reference: 'required.txt', version } }], 'user');
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        if (state === 'started') await actions.guard(task, 'start');
-        fs.rmSync(path.join(directory, 'required.txt'));
-        await actions.poll(owner);
-        expect(record().action).toMatchObject(state === 'started'
-            ? { state: 'consumed', requiresReview: true } : { state: 'blocked' });
-        expect(record().action.error).toContain('unavailable');
-        expect(current(sourceId).status).toBe('done');
-        expect(receipts.wakes(owner)).toHaveLength(1);
-        if (state === 'queued') await expect(actions.guard(task, 'start')).rejects.toThrow();
-    });
-
-    it('AC04 a delayed poll racing launch cannot admit rebound PR evidence or manufacture a new wake', async () => {
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: sourceId, condition: { kind: 'pr_merge', outputSlot: 'code' } }], 'user');
-        await service.bindPrOutput(owner, sourceId, { expectedRevision: current(sourceId).revision, outputSlot: 'code',
-            prUrl: 'https://github.com/example/project/pull/42',
-            provenance: { kind: 'owner_selection', reason: 'Explicit produced output' } }, 'user');
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        let release!: () => void;
-        let entered!: () => void;
-        let reads = 0;
-        const delay = new Promise<void>(resolve => { release = resolve; });
-        const reading = new Promise<void>(resolve => { entered = resolve; });
-        fetchPr.mockImplementation(async () => {
-            if (++reads === 2) entered();
-            await delay;
-            return { status: 'merged', url: 'https://github.com/example/project/pull/42', title: 'Output' };
-        });
-        const pending = Promise.allSettled([actions.poll(owner), actions.guard(task, 'enqueue')]);
-        await reading;
-        await service.bindPrOutput(owner, sourceId, { expectedRevision: current(sourceId).revision, outputSlot: 'code',
-            prUrl: 'https://github.com/example/project/pull/43',
-            provenance: { kind: 'owner_selection', reason: 'Explicit replacement output' } }, 'user');
-        release();
-        expect((await pending).every(result => result.status === 'rejected')).toBe(true);
-        expect(record().action.state).toBe('blocked');
-        expect(current().jobs).toHaveLength(0);
-        expect(receipts.wakes(owner)).toHaveLength(1);
-        expect(receipts.wakes(owner)[0].invalidatedAt).toBeDefined();
-    });
-
-    it('AC04 graph removal and restoration during PR I/O rejects the old queued generation', async () => {
-        const edges = [{ itemId: sourceId, condition: { kind: 'pr_merge' as const, outputSlot: 'code' } }];
-        todos.setDependencies(owner, itemId, current().revision, edges, 'user');
-        await service.bindPrOutput(owner, sourceId, { expectedRevision: current(sourceId).revision, outputSlot: 'code',
-            prUrl: 'https://github.com/example/project/pull/42',
-            provenance: { kind: 'owner_selection', reason: 'Explicit produced output' } }, 'user');
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        fetchPr.mockImplementationOnce(async () => {
-            todos.setDependencies(owner, itemId, current().revision, [], 'user');
-            todos.setDependencies(owner, itemId, current().revision, edges, 'user');
-            return { status: 'merged', url: 'https://github.com/example/project/pull/42', title: 'Output' };
-        });
-        await expect(actions.guard(task, 'start')).rejects.toThrow('sources changed');
-        expect(current().dependsOn).toEqual(edges);
-        expect(record().action.state).toBe('blocked');
-        expect(record().started).not.toBe(true);
-    });
-
-    it('AC04 failed warning notifications cannot stop running Ralph work after an external writer change', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const task = await input('ralph');
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        const notify = vi.fn(() => { throw new Error('Notification transport unavailable'); });
-        wire(notify);
-        const writer = new SentinelTodoStore(processes.getDatabase());
-        writer.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        const next = structuredClone(task);
-        next.id = 'continued-after-notification-error';
-        next.continuationOfSessionId = `ralph-approved-${task.id}`;
-        (next.payload.context as any).ralph.currentIteration = 2;
-        await actions.guard(next, 'start');
-        expect(notify).toHaveBeenCalled();
-        expect(record().action).toMatchObject({ state: 'consumed', requiresReview: true });
-    });
-
-    it('AC04 tracked post-mode attempts block native authority rather than using an ordinary conversation', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const sendMessage = vi.fn();
-        const { tool } = createSendToConversationTool({
-            store: processes, workspaceId: owner.workspaceId, parentProcessId: owner.processId,
-            enqueueChat: vi.fn(), sendMessage, todoTracking: createSentinelTodoTracking({ service, owner }),
-        });
-        const result = await tool.handler({ content: saved.prompt, mode: saved.mode, provider: saved.provider,
-            model: saved.model, workspaceId: saved.targetWorkspaceId, todoItemId: itemId, processId: 'ordinary-thread' },
-        { sessionId: 'owner-session', toolCallId: 'tracked-post', toolName: 'send_to_conversation', arguments: {} });
-        expect(result).toMatchObject({ code: 'untracked' });
-        expect(record().action.state).toBe('blocked');
-        expect(sendMessage).not.toHaveBeenCalled();
-        expect(current().jobs).toHaveLength(0);
-    });
-
-    it('commits immutable readiness and one fixed wake before transport, without granting authority or fulfillment', async () => {
-        const original = bridge.enqueue!;
-        bridge.enqueue = async task => {
-            expect(receipts.wakes(owner)).toHaveLength(1);
-            expect(receipts.wakes(owner)[0].evidence.state).toBe('ready');
-            return original(task);
-        };
-        await actions.poll(owner);
-        expect(current().status).toBe('todo');
-        expect(receipts.action(owner, itemId)).toBeUndefined();
-        expect((await service.list(owner)).items.find(item => item.id === itemId)?.dependencyReadiness?.state).toBe('needs_approval');
-        expect(queue.getAll()).toHaveLength(1);
-        expect(queue.getAll()[0].config).toMatchObject({ respectQueueBarriers: true });
-        expect(queue.getAll()[0].payload.context).toMatchObject({ source: 'trigger', deliveryId: receipts.wakes(owner)[0].id });
-    });
-
-    it('concurrent duplicate polls and restart recover exactly one delivered wake', async () => {
-        await Promise.all([actions.poll(owner), actions.poll(owner), actions.poll(owner)]);
-        const wake = receipts.wakes(owner)[0];
-        await restart();
-        await Promise.all([actions.poll(owner), actions.poll(owner)]);
-        expect(receipts.wakes(owner)).toEqual([wake]);
-        expect(queue.getAll()).toHaveLength(1);
-        expect((await processes.getProcess(owner.processId))?.conversationTurns).toHaveLength(1);
-    });
-
-    it('recovers a crash before delivery using the already committed receipt', async () => {
-        bridge.enqueue = vi.fn(async () => { throw new Error('Crash before queue acceptance'); });
-        await actions.poll(owner);
-        expect(receipts.wakes(owner)[0]).toMatchObject({ delivery: 'pending', error: expect.stringContaining('enqueue') });
-        const id = receipts.wakes(owner)[0].id;
-        bridge.enqueue = async task => queue.enqueue(task);
-        await restart();
-        await actions.poll(owner);
-        expect(receipts.wakes(owner)[0]).toMatchObject({ id, delivery: 'delivered' });
-        expect(queue.getAll()).toHaveLength(1);
-    });
-
-    it('recovers transport failure after acceptance without a duplicate task or turn', async () => {
-        bridge.enqueue = async task => { queue.enqueue(task); throw new Error('Observer failed after acceptance'); };
-        await actions.poll(owner);
-        await restart();
-        bridge.enqueue = async task => queue.enqueue(task);
-        await actions.poll(owner);
-        expect(queue.getAll()).toHaveLength(1);
-        expect((await processes.getProcess(owner.processId))?.conversationTurns).toHaveLength(1);
-    });
-
-    it('recovers a crash after delivery but before the wake acknowledgement without replaying transport', async () => {
-        vi.spyOn(receipts, 'delivery').mockImplementationOnce(() => { throw new Error('Wake acknowledgement interrupted'); });
-        await actions.poll(owner);
-        expect(receipts.wakes(owner)[0].delivery).toBe('pending');
-        await restart();
-        await actions.poll(owner);
-        expect(receipts.wakes(owner)[0].delivery).toBe('delivered');
-        expect(queue.getAll()).toHaveLength(1);
-        expect((await processes.getProcess(owner.processId))?.conversationTurns).toHaveLength(1);
-    });
-
-    it('coalesces transport with an existing merge rule without firing, editing or consuming it', async () => {
-        coexisting = 'waiting';
-        await actions.poll(owner);
-        expect(queue.getAll()).toHaveLength(0);
-        expect(receipts.wakes(owner)[0]).toMatchObject({ delivery: 'pending', transportTriggerId: 'existing-owner-rule' });
-        coexisting = 'delivered';
-        await restart();
-        await actions.poll(owner);
-        expect(receipts.wakes(owner)[0].delivery).toBe('delivered');
-        expect(queue.getAll()).toHaveLength(0);
-        expect(current().status).toBe('todo');
-    });
-
-    it('continues an already running Ralph session/final check after revocation, graph edits and fresh authorization', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const task = await input('ralph');
-        const sessionId = `ralph-approved-${task.id}`;
-        (task.payload.context as any).ralph.sessionId = sessionId;
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        await actions.revoke(owner, itemId, { expectedRevision: current().revision }, 'user');
-        await authorize({ ...saved, mode: 'ask' });
-        const next = structuredClone(task);
-        next.id = 'next-native-iteration';
-        next.continuationOfSessionId = sessionId;
-        (next.payload.context as any).ralph.currentIteration = 2;
-        await actions.guard(next, 'start');
-        const finalCheck = structuredClone(next);
-        finalCheck.id = 'native-final-check';
-        (finalCheck.payload.context as any).ralph.currentIteration = 1;
-        (finalCheck.payload.context as any).ralph.finalCheck = { kind: 'goal-gap-check', checkIndex: 1 };
-        await actions.guard(finalCheck, 'start');
-        expect(record().action).toMatchObject({ state: 'authorized', mode: 'ask' });
-        (next.payload.context as any).ralph.sessionId = 'foreign-session';
-        await expect(actions.guard(next, 'start')).rejects.toThrow('continuation');
-    });
-
-    it('does not silently resolve launch defaults even when current defaults happen to match', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const tracking = createSentinelTodoTracking({ service, owner });
-        await expect(tracking.prepare!(itemId, { content: saved.prompt, todoItemId: itemId })).rejects.toThrow('defaults/Auto');
-        expect(record().action.state).toBe('blocked');
-    });
-
-    it('keeps native running Ralph admission available after authoring is disabled, but blocks fresh starts', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const task = await input('ralph');
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        const next = structuredClone(task);
-        next.id = 'continued-after-disable';
-        next.continuationOfSessionId = `ralph-approved-${task.id}`;
-        (next.payload.context as any).ralph.currentIteration = 2;
-        delete (next.payload.context as any).sentinelTodoTracking;
-        delete (next.payload.context as any).spawnedFromProcessId;
-        enabled = false;
-        const runner = new ProcessLifecycleRunner(processes, directory, vi.fn(), 'copilot', {
-            getSentinelTodos: () => undefined, getSentinelDependencyAdmission: () => actions,
-        });
-        const executeByTypeFn = vi.fn(async () => ({ success: true }));
-        const nextId = queue.enqueue(next);
-        const result = await runner.run(queue.getTask(nextId)!, {
-            cancelledTasks: new Set(), executeByTypeFn, getWorkingDirectoryFn: () => directory,
-            executeFollowUpFn: vi.fn(),
-        });
-        expect(result.success).toBe(true);
-        expect(executeByTypeFn).toHaveBeenCalledTimes(1);
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow();
-    });
-
-    it('restores native local admission when queued execution loses both owner and tracking context', async () => {
-        await authorize();
-        await actions.poll(owner);
+    it('recovers omitted tracking from native receipts rather than allowing replay', async () => {
         const task = await input();
         await actions.guard(task, 'enqueue');
         delete task.payload.context;
@@ -648,389 +278,82 @@ describe('native dependency authority and durable activation', () => {
         const result = await runner.run(queue.getTask(taskId)!, { cancelledTasks: new Set(), executeByTypeFn } as never);
         expect(result.success).toBe(false);
         expect(executeByTypeFn).not.toHaveBeenCalled();
-        expect(record().action.state).toBe('blocked');
     });
 
-    it.each(['executor-mode', 'session', 'phase'] as const)('rejects incompatible native Ralph %s before consuming saved work', async field => {
-        await authorize({ ...saved, mode: 'ralph' });
+    it('blocks uncertain admission after restart without retrying or minting another identity', async () => {
+        const task = await input();
+        await actions.guard(task, 'enqueue');
+        await restart();
         await actions.poll(owner);
-        const task = await input('ralph');
-        if (field === 'executor-mode') task.payload.mode = 'autopilot';
-        if (field === 'session') (task.payload.context as any).ralph.sessionId = 'foreign-session';
-        if (field === 'phase') (task.payload.context as any).ralph.phase = 'grilling';
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow('parameters');
-        expect(record().action.state).toBe('blocked');
+        expect(record()?.error).toContain('unknown');
+        expect(record()?.taskId).toBe(task.id);
+        await expect(actions.guard(task, 'start')).rejects.toThrow('blocked');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
     });
 
-    it('blocks uncertain native Ralph admission receipts without reattempting work', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
+    it('keeps queue failures durably blocked without retrying work', async () => {
+        const task = await input();
+        await actions.guard(task, 'enqueue');
+        actions.block(owner, itemId, new Error('Queue admission outcome unknown'), task.id);
+        await restart();
         await actions.poll(owner);
-        const launch = {
-            requestId: record().action.taskId, goalSpec: saved.prompt, workspaceId: saved.targetWorkspaceId,
-            aiSelection: { provider: saved.provider, config: { model: saved.model } },
-            spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, itemId),
-        };
-        const sessionId = `ralph-approved-${launch.requestId}`;
-        const file = getRepoDataPath(directory, launch.workspaceId, `ralph-sessions/${sessionId}/admission.json`);
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, JSON.stringify({ goalSpec: launch.goalSpec, status: 'admitting',
-            trackedFingerprint: JSON.stringify({ tracking: launch.sentinelTodoTracking, workspaceId: launch.workspaceId,
-                aiSelection: launch.aiSelection, parent: launch.spawnedFromProcessId }) }));
-        const enqueue = vi.fn();
-        const result = await launchRalphSession(launch, {
-            dataDir: directory, store: processes, bridge: { getTask: () => undefined, enqueue } as never,
-            getRalphEnabled: () => true, guardTrackedLaunch: input => actions.preflightRalph(input),
-            onTrackedLaunchFailure: (input, error) => {
-                const token = input.sentinelTodoTracking!;
-                actions.block(token.owner, token.itemId, token.actionRevision, error);
-            },
-        });
-        expect(result).toMatchObject({ ok: false, error: expect.stringContaining('uncertain') });
-        expect(enqueue).not.toHaveBeenCalled();
-        expect(record().action).toMatchObject({ state: 'blocked', error: expect.stringContaining('uncertain') });
+        await expect(actions.guard(task, 'start')).rejects.toThrow('blocked');
+        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('durable launch');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
     });
 
-    it('rejects a forged Ralph execution prompt even when its declared goal matches saved authority', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
+    it('wakes once with ordinary authorization guidance and never launches work', async () => {
         await actions.poll(owner);
-        const task = await input('ralph');
-        task.payload.prompt = 'Execute an unrelated instruction';
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow('canonical saved goal');
-        expect(record().action.state).toBe('blocked');
+        await actions.poll(owner);
+        expect(receipts.wakes(owner)).toHaveLength(1);
+        const prompt = receipts.wakes(owner)[0].prompt;
+        expect(prompt).toContain('authorized by the user');
+        expect(prompt).not.toMatch(/dependencyAction|saved prompt|needs approval/i);
+        expect(record()).toBeUndefined();
+        expect(current().jobs).toHaveLength(0);
+        expect(bridge.enqueue).toHaveBeenCalledTimes(1); // Owner wake only.
     });
 
-    it('durably prevents Ralph iteration replay after crashes, including a fresh task ID', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
+    it('invalidates undelivered wakes and leaves their durable evidence intact', async () => {
+        coexisting = 'waiting';
         await actions.poll(owner);
+        const wake = receipts.wakes(owner)[0];
+        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
+        await actions.poll(owner);
+        expect(receipts.wakes(owner)[0]).toMatchObject({ id: wake.id, evidence: wake.evidence, invalidatedReason: expect.any(String) });
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('continues started Ralph sessions after invalidation but durably rejects step replay', async () => {
         const task = await input('ralph');
         await actions.guard(task, 'enqueue');
         await actions.guard(task, 'start');
+        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
+        enabled = false;
         const next = structuredClone(task);
-        next.id = 'next-step';
-        next.continuationOfSessionId = `ralph-approved-${task.id}`;
-        await expect(actions.guard(next, 'start')).rejects.toThrow('already started');
+        next.id = 'step-2'; next.continuationOfSessionId = 'ralph-session';
         (next.payload.context as any).ralph.currentIteration = 2;
         await actions.guard(next, 'start');
         await restart();
-        next.id = 'retry-same-step';
-        await expect(actions.guard(next, 'start')).rejects.toThrow('fresh explicit authority');
+        next.id = 'step-2-replay';
+        await expect(actions.guard(next, 'start')).rejects.toThrow('already started');
+        expect(record()?.requiresReview).toBe(true);
+        expect(SentinelDependencyStore.ralphTracking(processes.getDatabase(), 'ralph-session')).toEqual({ owner, itemId });
     });
 
-    it('deduplicates busy parent buffering across restart', async () => {
-        await processes.updateProcess(owner.processId, { status: 'running' });
-        await Promise.all([actions.poll(owner), actions.poll(owner)]);
-        expect((await processes.getProcess(owner.processId))?.pendingMessages).toHaveLength(1);
-        expect(queue.getAll()).toHaveLength(0);
+    it('migrates admitted identities while removing unused approvals without resetting the ledger', async () => {
+        const db = processes.getDatabase();
+        db.exec('CREATE TABLE sentinel_dependency_actions (record TEXT)');
+        db.prepare('INSERT INTO sentinel_dependency_actions VALUES (?)').run(JSON.stringify({ state: 'authorized' }));
+        db.prepare('INSERT INTO sentinel_dependency_admissions VALUES (?, ?, ?, ?, ?)').run('prior-task', owner.workspaceId,
+            owner.processId, itemId, JSON.stringify({ action: { taskId: 'prior-task', mode: 'ralph', state: 'consumed',
+                revision: 1, targetWorkspaceId: saved.targetWorkspaceId, prompt: 'discard', scope: 'discard' }, itemRevision: current().revision,
+                dependencies: JSON.stringify(current().dependsOn), started: true }));
         await restart();
-        await actions.poll(owner);
-        expect((await processes.getProcess(owner.processId))?.pendingMessages).toHaveLength(1);
-        expect(bridge.steerProcess).not.toHaveBeenCalled();
-    });
-
-    it('requires explicit user approval and rejects actor/unknown field/default substitution', async () => {
-        await expect(actions.authorize(owner, itemId, { expectedRevision: current().revision, confirmed: true, action: saved }, 'sentinel' as never)).rejects.toThrow('owner-user');
-        for (const action of [{ ...saved, provider: 'auto' }, { ...saved, model: '' }, { ...saved, scope: '' }, { ...saved, provider: 'claude' }, { ...saved, targetWorkspaceId: 'remote:server:ws' }]) {
-            await expect(authorize(action as never)).rejects.toThrow();
-        }
-        await expect(actions.authorize(owner, itemId, { expectedRevision: current().revision, action: saved }, 'user')).rejects.toThrow();
-        expect(receipts.action(owner, itemId)).toBeUndefined();
-    });
-
-    it.each(['ask', 'autopilot', 'ralph'] as const)('snapshots %s without changing provider/model/target, and consumes once', async mode => {
-        await authorize({ ...saved, mode });
-        await actions.poll(owner);
-        const task = await input(mode);
-        const results = await Promise.allSettled([actions.guard(task, 'enqueue'), actions.guard(structuredClone(task), 'enqueue')]);
-        expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-        expect(record().action).toMatchObject({ ...saved, mode, state: 'consumed' });
-        queue.enqueue(task);
-        await actions.guard(task, 'start');
-        expect(task.payload.prompt).toContain(saved.scope);
-        await expect(actions.guard(task, 'start')).rejects.toThrow('already started');
-        expect(current().jobs).toHaveLength(1);
-    });
-
-    it('reconciles accepted durable identity after crash and refuses automatic work replay', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        queue.enqueue(task);
-        await restart();
-        await actions.poll(owner);
-        expect(record().action.state).toBe('consumed');
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow('consumed');
-        await actions.guard(task, 'start');
-        expect(record().started).toBe(true);
-    });
-
-    it('blocks an uncertain consumed admission after crash before queue delivery; only fresh authority rearms it', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        await restart();
-        await actions.poll(owner);
-        expect(record().action).toMatchObject({ state: 'blocked', error: expect.stringContaining('unknown') });
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow('fresh');
-        const previousId = record().action.taskId;
-        await authorize();
-        expect(record().action.taskId).not.toBe(previousId);
-        expect(record().action.revision).toBe(2);
-    });
-
-    it.each(['mode', 'provider', 'model', 'target', 'prompt', 'parent', 'routing', 'folder', 'repo', 'retries'] as const)('blocks incompatible %s rather than replacing captured settings', async field => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        if (field === 'mode') task.payload.mode = 'autopilot';
-        if (field === 'provider') task.payload.provider = 'claude';
-        if (field === 'model') task.config.model = 'gpt-5.5';
-        if (field === 'target') task.payload.workspaceId = 'ws-other';
-        if (field === 'prompt') task.payload.prompt = 'Implement instead';
-        if (field === 'parent') (task.payload.context as any).spawnedFromProcessId = 'other';
-        if (field === 'routing') (task.payload.context as any).autoProviderRouting = { requested: true };
-        if (field === 'folder') task.folderPath = 'other-folder';
-        if (field === 'repo') task.repoId = 'ws-other';
-        if (field === 'retries') task.config.retryOnFailure = true;
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow();
-        expect(record().action).toMatchObject({ ...saved, state: 'blocked', error: expect.any(String) });
-        expect(current().jobs).toHaveLength(0);
-    });
-
-    it.each(['source', 'graph', 'action', 'provider', 'target'] as const)('rechecks stale %s at first execution and never rearms consumed authority', async change => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        if (change === 'source') todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        if (change === 'graph') todos.setDependencies(owner, itemId, current().revision, [], 'user');
-        if (change === 'action') await actions.revoke(owner, itemId, { expectedRevision: current().revision }, 'user');
-        if (change === 'provider') providerAvailable = false;
-        if (change === 'target') targetAvailable = false;
-        await expect(actions.guard(task, 'start')).rejects.toThrow();
-        expect(record().started).not.toBe(true);
-        expect(['blocked', 'revoked']).toContain(record().action.state);
-    });
-
-    it('rejects missing/revoked authority without letting artifact/readiness acceptance authorize work', async () => {
-        await actions.poll(owner);
-        const task: CreateTaskInput = { type: 'chat', priority: 'normal', config: { model: saved.model },
-            payload: { kind: 'chat', ...saved, workspaceId: saved.targetWorkspaceId,
-                context: { spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, itemId) } } };
-        await expect(actions.guard(task, 'enqueue')).rejects.toThrow('Needs approval');
-        await authorize();
-        const approved = await input();
-        await actions.revoke(owner, itemId, { expectedRevision: current().revision }, 'user');
-        await actions.poll(owner);
-        await expect(actions.guard(approved, 'enqueue')).rejects.toThrow('revoked');
-        expect(actions.project(owner, current()).dependencyReadiness?.state).toBe('needs_approval');
-    });
-
-    it('requires fresh authority after source generations change even if Done is restored', async () => {
-        await authorize();
-        await actions.poll(owner);
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'done' }, 'user');
-        await actions.poll(owner);
-        expect(receipts.wakes(owner)).toHaveLength(1);
-        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('stale');
-        expect(record().action.state).toBe('blocked');
-    });
-
-    it('does not cancel already running work on revocation or changed prerequisites', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        queue.enqueue(task);
-        await actions.guard(task, 'start');
-        queue.markStarted(task.id!);
-        await actions.revoke(owner, itemId, { expectedRevision: current().revision }, 'user');
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        await actions.poll(owner);
-        expect(queue.getTask(task.id!)?.status).toBe('running');
-    });
-
-    it('keeps manual dependents tracking-only and does not expose approval through tools', async () => {
-        const manual = todos.create(owner, { type: 'manual', title: 'Human task' }, { actor: 'user' }).item;
-        todos.setDependencies(owner, manual.id, 1, [{ itemId: sourceId, condition: { kind: 'done' } }], 'user');
-        await expect(actions.authorize(owner, manual.id, { expectedRevision: 2, confirmed: true, action: saved }, 'user')).rejects.toThrow('normal');
-        await expect(actions.context(owner, manual.id)).rejects.toThrow('Manual');
-        const tool = createSentinelTodosTool({ service, owner }).tool;
-        expect(JSON.stringify(tool.parameters)).not.toContain('authorize_dependency');
-        const tracking = createSentinelTodoTracking({ service, owner });
-        expect(await tracking.check(manual.id)).toContain('Manual');
-    });
-
-    it('accepts a manual prerequisite verdict without granting it job authority', async () => {
-        const manual = todos.create(owner, { type: 'manual', title: 'Human sign-off', status: 'done' }, { actor: 'user' }).item;
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: manual.id, condition: { kind: 'done' } }], 'user');
-        await authorize();
-        await actions.poll(owner);
-        await actions.guard(await input(), 'enqueue');
-        expect(current(manual.id).jobs).toHaveLength(0);
-        expect(record().action.state).toBe('consumed');
-    });
-
-    it('rejects disabled/unavailable/foreign owner access without changing receipts', async () => {
-        await authorize();
-        enabled = false;
-        await expect(actions.context(owner, itemId)).rejects.toThrow('disabled');
-        enabled = true;
-        await expect(actions.context({ ...owner, workspaceId: 'foreign' }, itemId)).rejects.toThrow();
-        await processes.updateProcess(owner.processId, { metadata: { workspaceId: owner.workspaceId, mode: 'ask' } });
-        await expect(actions.poll(owner)).rejects.toThrow();
-        expect(receipts.wakes(owner)).toHaveLength(0);
-    });
-
-    it('validates Ralph intent before native session side effects and rejects grilling escalation', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        const launch = { requestId: record().action.taskId, goalSpec: saved.prompt, workspaceId: saved.targetWorkspaceId,
-            spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, itemId),
-            aiSelection: { provider: saved.provider, config: { model: saved.model } } };
-        await actions.preflightRalph(launch);
-        await expect(actions.preflightRalph({ ...launch, entryPoint: 'grill' })).rejects.toThrow('saved action');
-        expect(record().action.state).toBe('blocked');
-    });
-
-    it('reconciles the native Ralph request identity and rejects replay with different settings or removed tracking proof', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const launch = { requestId: record().action.taskId, goalSpec: saved.prompt, workspaceId: saved.targetWorkspaceId,
-            spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, itemId),
-            aiSelection: { provider: saved.provider, config: { model: saved.model } } };
-        const guardTrackedLaunch = vi.fn(request => actions.preflightRalph(request));
-        const deps = { dataDir: directory, getRalphEnabled: () => true,
-            store: { getWorkspaces: async () => [{ id: saved.targetWorkspaceId, rootPath: directory }] } as never,
-            bridge: { getTask: (id: string) => queue.getTask(id), enqueue: async (task: CreateTaskInput) => {
-                await actions.guard(task, 'enqueue');
-                return queue.enqueue(task);
-            } } as never, guardTrackedLaunch };
-        const first = await launchRalphSession(launch, deps);
-        expect(first.ok).toBe(true);
-        expect(await launchRalphSession(launch, deps)).toEqual(first);
-        expect(guardTrackedLaunch).toHaveBeenCalledTimes(1);
-        expect((await launchRalphSession({ ...launch, aiSelection: { provider: 'claude', config: { model: saved.model } } }, deps)).ok).toBe(false);
-        expect((await launchRalphSession({ ...launch, sentinelTodoTracking: undefined }, deps)).ok).toBe(false);
-        expect(queue.getAll().filter(task => task.payload.mode === 'ralph')).toHaveLength(1);
-        expect(record().action.state).toBe('consumed');
-    });
-
-    it('blocks tool post-mode retries/escalation of native children and token-stripped Ralph resumes', async () => {
-        await authorize({ ...saved, mode: 'ralph' });
-        await actions.poll(owner);
-        const task = await input('ralph');
-        const sessionId = `ralph-approved-${task.id}`;
-        (task.payload.context as any).ralph.sessionId = sessionId;
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        expect(() => actions.assertToolPostAllowed(`queue_${task.id}`)).toThrow('post mode');
-        expect(() => actions.assertToolPostAllowed('another-iteration', sessionId)).toThrow('post mode');
-        expect(() => actions.assertToolPostAllowed('unrelated-chat')).not.toThrow();
-        const resumed = structuredClone(task);
-        resumed.id = 'resumed-without-native-context';
-        delete (resumed.payload.context as any).sentinelTodoTracking;
-        delete (resumed.payload.context as any).spawnedFromProcessId;
-        const resumedId = queue.enqueue(resumed);
-        const executeByTypeFn = vi.fn();
-        const runner = new ProcessLifecycleRunner(processes, directory, vi.fn(), 'copilot', { getSentinelTodos: () => service });
-        expect((await runner.run(queue.getTask(resumedId)!, { cancelledTasks: new Set(), executeByTypeFn } as never)).success).toBe(false);
-        expect(executeByTypeFn).not.toHaveBeenCalled();
-    });
-
-    it('never upgrades a started Ask receipt into a forged Ralph continuation', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        await actions.guard(task, 'start');
-        const forged = structuredClone(task);
-        const sessionId = `ralph-approved-${task.id}`;
-        forged.continuationOfSessionId = sessionId;
-        forged.payload.mode = 'ralph';
-        (forged.payload.context as any).ralph = { sessionId, currentIteration: 2, originalGoal: saved.prompt, phase: 'executing' };
-        await expect(actions.guard(forged, 'start')).rejects.toThrow('continuation');
-        expect(record().action.mode).toBe('ask');
-    });
-
-    it('rejects source changes during authoritative PR I/O under the admission writer transaction', async () => {
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: sourceId, condition: { kind: 'pr_merge', outputSlot: 'code' } }], 'user');
-        await service.bindPrOutput(owner, sourceId, { expectedRevision: current(sourceId).revision, outputSlot: 'code',
-            prUrl: 'https://github.com/example/project/pull/42', provenance: { kind: 'owner_selection', reason: 'Reviewed exact produced output' } }, 'user');
-        await authorize();
-        await actions.poll(owner);
-        fetchPr.mockImplementationOnce(async () => {
-            todos.update(owner, sourceId, current(sourceId).revision, { notes: 'Changed while checking PR evidence' }, 'user');
-            return { status: 'merged', url: 'https://github.com/example/project/pull/42', title: 'Output' };
-        });
-        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('sources changed');
-        expect(record().action.state).toBe('blocked');
-        expect(current().jobs).toHaveLength(0);
-    });
-
-    it('rejects replaced accepted artifact bytes without treating acceptance as renewed authority', async () => {
-        fs.writeFileSync(path.join(directory, 'design.md'), 'Approved exact design');
-        const version = artifactVersion(directory, 'design.md');
-        await service.acceptArtifact(owner, sourceId, { expectedRevision: current(sourceId).revision,
-            phase: 'design', reference: 'design.md', version }, 'user');
-        todos.setDependencies(owner, itemId, current().revision, [{ itemId: sourceId,
-            condition: { kind: 'accepted_artifact', phase: 'design', reference: 'design.md', version } }], 'user');
-        await authorize();
-        await actions.poll(owner);
-        fs.writeFileSync(path.join(directory, 'design.md'), 'Different unaccepted content');
-        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('not ready');
-        expect(record().action.state).toBe('blocked');
-        expect(current().jobs).toHaveLength(0);
-    });
-
-    it('does not consume fresh authority when an older admission races an explicit replacement', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const oldTask = await input();
-        validateProvider.mockImplementationOnce(async () => { await authorize({ ...saved, mode: 'autopilot' }); });
-        await expect(actions.guard(oldTask, 'enqueue')).rejects.toThrow('revision changed');
-        expect(record().action).toMatchObject({ state: 'authorized', revision: 2, mode: 'autopilot' });
-        expect(current().jobs).toHaveLength(0);
-    });
-
-    it('guards a stale queued first execution and a direct token-free dispatch before SDK/process creation', async () => {
-        await authorize();
-        await actions.poll(owner);
-        const task = await input();
-        await actions.guard(task, 'enqueue');
-        const taskId = queue.enqueue(task);
-        todos.update(owner, sourceId, current(sourceId).revision, { status: 'todo' }, 'user');
-        const executeByType = vi.fn();
-        const runner = new ProcessLifecycleRunner(processes, directory, vi.fn(), 'copilot', { getSentinelTodos: () => service });
-        const result = await runner.run(queue.getTask(taskId)!, { cancelledTasks: new Set(), executeByType } as never);
-        expect(result.success).toBe(false);
-        expect(executeByType).not.toHaveBeenCalled();
-        expect(await processes.getProcess(`queue_${taskId}`)).toBeUndefined();
-        const direct = structuredClone(task);
-        direct.id = 'untracked-native-launch';
-        delete (direct.payload.context as any).sentinelTodoTracking;
-        const directId = queue.enqueue(direct);
-        expect((await runner.run(queue.getTask(directId)!, { cancelledTasks: new Set(), executeByType } as never)).success).toBe(false);
-        expect(executeByType).not.toHaveBeenCalled();
-    });
-
-    it('rejects incompatible or omitted tracked queue parameters before canonical default/coercion machinery', async () => {
-        await authorize();
-        const task = await input();
-        for (const field of ['provider', 'model', 'mode']) {
-            const raw = structuredClone(task);
-            if (field === 'model') delete raw.config.model;
-            else delete raw.payload[field];
-            expect(validateAndParseTask(raw).valid).toBe(false);
-        }
-        const wrong = structuredClone(task);
-        wrong.payload.provider = 'claude';
-        expect(validateAndParseTask(wrong).valid).toBe(false);
-        await expect(prepareTaskForEnqueue(wrong, { getDefaultProvider: () => 'copilot' })).rejects.toThrow('no fallback');
-        const omitted = structuredClone(task);
-        delete omitted.payload.provider;
-        await expect(prepareTaskForEnqueue(omitted, { getDefaultProvider: () => 'copilot' })).rejects.toThrow('explicit');
-        expect(record().action).toMatchObject({ ...saved, state: 'authorized' });
+        expect(record()).toMatchObject({ taskId: 'prior-task', started: true, sessionId: 'ralph-approved-prior-task' });
+        expect(record()).not.toHaveProperty('action');
+        expect(processes.getDatabase().prepare("SELECT 1 FROM sqlite_master WHERE name = 'sentinel_dependency_actions'").get()).toBeUndefined();
+        expect(current().title).toBe('Dependent');
+        await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('durable launch');
     });
 });

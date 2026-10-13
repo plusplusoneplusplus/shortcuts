@@ -20,7 +20,8 @@ const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 const LINK = 'rounded text-[#0078d4] hover:underline focus-visible:outline focus-visible:outline-[#0078d4] dark:text-[#3794ff]';
 
 /** One ledger-validated job reference. Reads only compact owner-scoped metadata, never transcripts. */
-export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspaceId, linkKey, onFollowLink }: {
+export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspaceId, linkKey, onFollowLink, itemTitle }: {
+    itemTitle?: string;
     job: SentinelTodoJobLink; owner: SentinelTodoOwner; targetRepo?: SentinelTodoTargetRepo; currentWorkspaceId?: string; linkKey: string;
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
 }) {
@@ -62,6 +63,7 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
     const pointerWithin = useRef(false);
     const id = useId();
     const title = job.title ?? job.processId;
+    const linkTitle = itemTitle !== undefined && title === itemTitle ? 'Open job' : title;
     const external = /^https?:\/\//i.test(job.openLink);
     // The ledger validates stored destinations; an unresolved remote may use its
     // external destination but must never acquire a page-origin hash fallback.
@@ -174,7 +176,7 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
                 event.preventDefault(); show(true);
             }
         }}>
-            <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} aria-description="Focus to preview; ArrowDown enters preview actions." className={`${LINK} min-w-0 break-words [overflow-wrap:anywhere]`} aria-disabled={!navigable || undefined}>{title}</a>
+            <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} title={title} aria-label={linkTitle === title ? undefined : `Open job: ${title}`} aria-description="Focus to preview; ArrowDown enters preview actions." className={`${LINK} min-w-0 break-words [overflow-wrap:anywhere]`} aria-disabled={!navigable || undefined}>{linkTitle}</a>
             {jobOwner.showBadge && <span role="note" data-testid="sentinel-todo-job-owner" title={jobOwner.description} aria-label={jobOwner.description}
                 className="inline-block min-w-0 max-w-full truncate rounded-full border border-[#d0d7de] bg-black/[0.04] px-1.5 py-0.5 text-[10px] text-[#616161] dark:border-[#4a4a4a] dark:bg-white/[0.06] dark:text-[#bbbbbb]"
                 style={{ maxWidth: 'min(100%, 15rem)' }}>

@@ -3,7 +3,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import { parseSentinelResult, sentinelResultJobHref } from '../../../src/server/spa/client/react/features/chat/conversation/sentinelResult';
 import { SENTINEL_JOB_REVIEW_PREFIX } from '../../../src/server/delegation/sentinel-job-review-instructions';
-import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 import { copyToClipboard } from '../../../src/server/spa/client/react/utils/format';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
@@ -41,12 +41,30 @@ function parse(message = turn()) {
 }
 
 beforeEach(() => {
-    applyRuntimeConfigPatch({ sentinelResultCardsEnabled: true });
+    _resetRuntimeConfig();
+    delete (window as any).__DASHBOARD_CONFIG__;
     registerCloneBaseUrls([]);
     vi.mocked(copyToClipboard).mockReset().mockResolvedValue(undefined);
 });
 
 describe('Sentinel result presentation', () => {
+    it.each([undefined, {}, { sentinelResultCardsEnabled: true }])(
+        'renders cards by default with bootstrap features %j', features => {
+            if (features !== undefined) {
+                (window as any).__DASHBOARD_CONFIG__ = { features };
+            }
+            const view = bubble();
+            expect(view.getByTestId('sentinel-result-card')).toBeTruthy();
+        },
+    );
+
+    it('honors explicit false in bootstrap features', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { features: { sentinelResultCardsEnabled: false } };
+        const view = bubble();
+        expect(view.queryByTestId('sentinel-result-card')).toBeNull();
+        expect(view.getByTestId('user-plain-text')).toBeTruthy();
+    });
+
     it('replaces the huge JSON bubble with a collapsed result, not a To-do verdict', () => {
         const message = turn();
         const original = JSON.stringify(message);
@@ -85,7 +103,7 @@ describe('Sentinel result presentation', () => {
         expect(view.container.querySelector('.raw-content-view pre')?.textContent).toBe(message.content);
     });
 
-    it('keeps ordinary rendering by default and switches live without mutating the turn', () => {
+    it('honors explicit opt-out and switches live without mutating the turn', () => {
         applyRuntimeConfigPatch({ sentinelResultCardsEnabled: false });
         const view = bubble();
         expect(view.queryByTestId('sentinel-result-card')).toBeNull();

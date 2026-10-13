@@ -48,7 +48,7 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
 
-            const allChanges = await workingTreeService.getAllChanges(ws.rootPath);
+            const allChanges = await workingTreeService.getAllChanges(ws.rootPath, { includeStats: true });
             const repoState = await branchService.getRepoState(ws.rootPath);
 
             // Cap only the untracked entries. If there are more untracked files than

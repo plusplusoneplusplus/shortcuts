@@ -26,7 +26,7 @@ export function registerScrubberRoutes(opts: {
     scrubber: ScrubberStore;
     engine: Pick<ScrubberEngine, 'accept' | 'dismiss' | 'undo'>;
     runs: Pick<ScrubberRunService, 'start' | 'cancel'>;
-    /** True only when both the ledger and scrubber flags are enabled. */
+    /** True only when the scrubber flag is enabled. */
     getEnabled: () => boolean;
     onChange?: (owner: SentinelTodoOwner, change: { runId?: string; ledgerChanged?: boolean; configChanged?: boolean }) => void;
 }): void {

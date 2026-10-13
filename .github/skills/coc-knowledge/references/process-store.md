@@ -196,8 +196,8 @@ can participate without job authority; dependency edits preserve fulfillment and
 user-verdict bookkeeping. Old records read with empty `dependsOn` arrays.
 Dependency authoring shares the owner-validated service through PUT
 `.../items/:itemId/dependencies` and the Sentinel `set_dependencies` tool, gated by
-default-off `features.sentinelTodoDependencies` and the ledger flag. Native
-tracked admission uses explicit saved user authorization, independently of evidence.
+default-off `features.sentinelTodoDependencies`. Native
+tracked admission checks readiness while Sentinel follows ordinary user authorization.
 Graph and evidence rows are machine-local and cleared with the ledger wipe.
 Evidence receipts carry actor, receipt ID, recording item revision, timestamp and exact PR output binding
 or phase/reference/SHA-256 artifact acceptance. Rebinding/reacceptance advances
@@ -215,37 +215,34 @@ Callers re-evaluate before using readiness; stale external-I/O snapshots conflic
 
 ### Sentinel dependency operations
 
-`sentinel-dependency-store.ts` owns machine-local `sentinel_dependency_actions`,
-`sentinel_dependency_wakes`, `sentinel_dependency_polls`,
-`sentinel_dependency_admissions` and `sentinel_dependency_ralph_starts`. The
-ledger wipe clears them transactionally; snapshot import/export excludes them.
-Actions bind an item/graph revision to concrete saved execution settings and a
-fixed task identity. Target validation uses the canonical router to materialize a
-registered concrete workspace's lazy queue without admitting a task or falling
-back to the parent. Admissions retain started whole-session proof independently
-of replacement authorization. Ralph step-start keys prevent replay across task IDs.
+`sentinel-dependency-store.ts` owns machine-local `sentinel_dependency_wakes`,
+`sentinel_dependency_polls`, `sentinel_dependency_admissions` and
+`sentinel_dependency_ralph_starts`. Ledger wipe clears them transactionally;
+snapshot import/export excludes them. Startup migration retains admitted job
+identities and evidence while removing approval settings. Pending wake guidance
+uses ordinary Sentinel conversation authorization.
 
-`SentinelDependencyActions` commits immutable ready evidence and one wake per
-graph/action generation before `deliverOnce` transports it. Local polling and
-transport recovery share the existing trigger scheduler. Matching owner/item/PR
-merge rules can carry transport without changing those rules.
+`SentinelDependencyActions` commits ready evidence and one wake per graph
+generation before `deliverOnce` transports it. Local polling and transport
+recovery share the trigger scheduler; matching owner/item/PR merge rules can own
+transport. Readiness wakes the owning Sentinel for a decision and never launches
+work automatically. Manual items remain tracking-only.
 
-Queue admission, preparation and SDK handoff recheck evidence and authority under
-the shared writer. Preparation leaves the action unstarted; SDK handoff persists
-the start. Graph replacements record exact generations, including identical
-selectors and empty edge sets. Ready receipts pin source and upstream item
-generations plus known ancestor input proofs. Mutation hooks and evidence
-evaluations invalidate pending readiness/admissions atomically; reads/recovery
-catch unavailable data and persisted generations. Immutable wake identity,
-prompt and evidence remain retained; invalidated pending wakes stop transport.
+Normally user-authorized dispatch evaluates all prerequisites under the shared
+writer before reserving a durable launch receipt. Owner and concrete local target
+routing remain distinct. Preparation and SDK handoff recheck evidence; handoff
+persists the start. Admission identities and Ralph step-start keys block duplicate
+execution across restart. Queue errors and uncertain acceptance never re-arm work;
+recovery retries transport only. Normal task permissions and Ralph Start approval
+remain enforced by their existing paths.
 
-Started admissions persist `requiresReview` and an evidence error independently
-of fulfillment and user verdicts. Warnings survive restart and fresh authorization;
-original Ralph admission generations remain stable through revocation. Historical
-native authority stays gated after removing all edges or disabling authoring.
-Failure/unknown acceptance requires fresh approval; recovery retries transport
-only. Started Ralph continuations retain saved scope/settings through the
-receipt guard, without cancellation or execution replay.
+Graph replacements record exact generations, including identical selectors and
+empty edge sets. Source/upstream item revisions and known ancestor evidence
+invalidate pending wakes and admissions atomically. Started admissions expose
+`dependencyReadiness.requiresReview` and errors without cancellation or changes
+to fulfillment/user verdicts. Started whole-session Ralph continuations retain
+their native session and step identities through later graph edits. Removing
+edges cannot erase existing duplicate guards.
 
 ### Chat binding stores
 

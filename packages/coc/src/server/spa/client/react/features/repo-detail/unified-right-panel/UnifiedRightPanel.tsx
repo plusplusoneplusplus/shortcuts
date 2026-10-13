@@ -116,7 +116,7 @@ import {
 import { desktopHtmlPageBridge, HTML_PAGE_VIEW_PREFIX, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
-import { useSentinelTodoChat, useSentinelTodoEvents, useSentinelTodoLedgerEnabled } from './sentinelTodoChats';
+import { useSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { sentinelTodoTabInput, shouldAutoOpenSentinelTodoTab, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import type {
     EditorNavigationController,
@@ -1591,16 +1591,15 @@ export function UnifiedRightPanel({
 
     // A hosted Sentinel chat's To-do tab. The owner is the chat's parent
     // workspace on the panel's server, including repo-group members.
-    const todoEnabled = useSentinelTodoLedgerEnabled();
     const sentinelChat = useSentinelTodoChat(workspaceId, chatId);
     const todoOwner = useMemo<SentinelTodoOwner | null>(() => {
-        if (!todoEnabled || sentinelChat === null) return null;
+        if (sentinelChat === null) return null;
         return {
             ownerWorkspaceId: sentinelChat.ownerWorkspaceId,
             processId: sentinelChat.processId,
             ownerRoutingRef: routingRefForPanelOwner(routingRef, sentinelChat.ownerWorkspaceId),
         };
-    }, [todoEnabled, sentinelChat, workspaceId, routingRef]);
+    }, [sentinelChat, workspaceId, routingRef]);
     const todoInput = useMemo(
         () => (todoOwner !== null && chatId !== null ? sentinelTodoTabInput(todoOwner, chatId) : null),
         [todoOwner, chatId],

@@ -628,18 +628,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTodoLedger', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoLedgerEnabled',
-        ui: {
-            tab: 'ai', group: 'aiModes', order: 32.5, label: 'Sentinel to-do ledger', badge: 'experimental',
-            hint: 'Give each Sentinel chat a persistent To-do tab for planned work, delegated jobs, and reviewed outcomes. Bookkeeping only; never starts or cancels jobs. Disabled by default.',
-            testId: 'toggle-sentinel-todo-ledger-enabled',
-        },
-    }),
-    bool({
         key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
-            hint: 'Author explicit prerequisites in one Sentinel ledger. Requires the To-do ledger; readiness never grants execution authority. Disabled by default.',
+            hint: 'Author explicit prerequisites in one Sentinel ledger. Readiness never grants execution authority. Disabled by default.',
             testId: 'toggle-sentinel-todo-dependencies-enabled',
         },
     }),
@@ -647,7 +639,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
-            hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Requires the Sentinel to-do ledger. Disabled by default.',
+            hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Disabled by default.',
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
     }),
@@ -1105,10 +1097,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelResultCards', default: false, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
+        key: 'features.sentinelResultCards', default: true, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
         ui: {
             tab: 'chat', group: 'aiModes', order: 48, label: 'Sentinel result cards', badge: 'experimental',
-            hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Disabled by default.',
+            hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Enabled by default.',
             testId: 'toggle-sentinel-result-cards-enabled',
         },
     }),
@@ -1164,14 +1156,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'dashboard', order: 71, label: 'Markdown panel preview', badge: 'experimental',
             hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
-        },
-    }),
-    bool({
-        key: 'features.sentinelTodoSplitLayout', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoSplitLayoutEnabled',
-        ui: {
-            tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Sentinel To-do split layout', badge: 'experimental',
-            hint: 'Show a compact item list beside selected details when the To-do panel has room. Narrow panels use a list and Back navigation. Layout only; disabled by default.',
-            testId: 'toggle-sentinel-todo-split-layout-enabled',
         },
     }),
     bool({

@@ -15,7 +15,7 @@ import { queueJobHash } from '../../queue/queueJobRoute';
 import { RailControlsContext, RailHoverPreview, RailPreviewRow } from '../repo-detail/RailHoverPreview';
 import { RailJobMetadata } from './RailJobMetadata';
 import { getChatRowTitle } from './latestSentinelChat';
-import { loadedPinKeys, selectRailPinnedJobs, type PinnedSnapshot, type RailPinnedTab } from './rail-pinned-jobs';
+import { loadedPinKeys, pinnedJobKey, selectRailPinnedJobs, type PinnedSnapshot, type RailPinnedTab } from './rail-pinned-jobs';
 import { ToastContext } from '../../contexts/ToastContext';
 
 const REFETCH_DEBOUNCE_MS = 300;
@@ -55,8 +55,16 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
     const [snapshot, setSnapshot] = useState<(PinnedSnapshot & { scope: string }) | null>(null);
     const fetched = useRef<string | null>(null);
     const revision = useRef(0);
+    const requests = useRef(new Map<string, object>());
+    const [pending, setPending] = useState<{ scope: string; rows: any[] }>({ scope, rows: [] });
     const owner = useRef(scope);
-    if (owner.current !== scope) { owner.current = scope; revision.current++; }
+    if (owner.current !== scope) {
+        owner.current = scope;
+        revision.current++;
+        requests.current.clear();
+        setPending({ scope, rows: [] });
+    }
+    useEffect(() => () => { requests.current.clear(); }, []);
     const liveSignature = useRef(signature);
     if (liveSignature.current !== signature) { liveSignature.current = signature; revision.current++; }
     const refresh = useCallback(async () => {
@@ -92,14 +100,45 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
     }, [client, workspaceId, scope, signature, unresolvedRemote, refresh]);
 
     const rows = useMemo(() => selectRailPinnedJobs({
-        snapshot: snapshot?.scope === scope ? snapshot : null,
+        snapshot: {
+            entries: [
+                ...(snapshot?.scope === scope ? snapshot.entries : []),
+                ...(pending.scope === scope ? pending.rows.map(row => ({ ...row, id: pinnedJobKey(row) })) : []),
+            ],
+        },
         running,
         history,
-        pinnedIds,
+        pinnedIds: pinnedIds && pending.scope === scope ? [...pinnedIds, ...pending.rows.map(pinnedJobKey)] : pinnedIds,
         archivedIds: archivedIds ?? new Set(),
         excludedTypes,
         tab,
-    }), [snapshot, scope, running, history, pinnedIds, archivedIds, excludedTypes, tab]);
+    }), [snapshot, scope, running, history, pinnedIds, pending, archivedIds, excludedTypes, tab]);
+
+    const unpin = async (row: any, action: HTMLButtonElement, focusAfterRemoval: (action: HTMLElement) => void) => {
+        const id = pinnedJobKey(row);
+        if (!prefs || requests.current.has(id)) return;
+        const request = {};
+        requests.current.set(id, request);
+        setPending(current => ({ scope, rows: [...(current.scope === scope ? current.rows : []), row] }));
+        try {
+            await prefs.setChatPinned(id, false);
+            if (owner.current !== scope || requests.current.get(id) !== request) return;
+            focusAfterRemoval(action);
+            revision.current++;
+            setSnapshot(current => current?.scope === scope
+                ? { ...current, entries: current.entries.filter(entry => pinnedJobKey(entry) !== id) }
+                : current);
+        } catch (error) {
+            if (owner.current === scope && requests.current.get(id) === request) {
+                toastRef.current?.addToast(`Could not unpin job: ${error instanceof Error ? error.message : String(error)}`, 'error');
+            }
+        } finally {
+            if (requests.current.get(id) === request) {
+                requests.current.delete(id);
+                setPending(current => ({ ...current, rows: current.rows.filter(row => pinnedJobKey(row) !== id) }));
+            }
+        }
+    };
 
     if (!rail || unresolvedRemote) return null;
     const count = rows.length;
@@ -120,11 +159,12 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
                         <path d="M4.456.734a1.75 1.75 0 0 1 2.826.504l.613 1.327a3.08 3.08 0 0 0 2.084 1.707l2.454.584c1.332.317 1.8 1.972.832 2.94L11.06 10l3.72 3.72a.75.75 0 1 1-1.061 1.06L10 11.06l-2.204 2.205c-.968.968-2.623.5-2.94-.832l-.584-2.454a3.08 3.08 0 0 0-1.707-2.084l-1.327-.613a1.75 1.75 0 0 1-.504-2.826L4.456.734ZM5.92 1.866a.25.25 0 0 0-.404-.072L1.794 5.516a.25.25 0 0 0 .072.404l1.328.613A4.58 4.58 0 0 1 5.73 9.63l.584 2.454a.25.25 0 0 0 .42.12l5.47-5.47a.25.25 0 0 0-.12-.42L9.63 5.73a4.58 4.58 0 0 1-3.098-2.537L5.92 1.866Z" />
                     </svg>
                 ),
-                renderRows: dismiss => rows.map(row => {
+                renderRows: (dismiss, focusAfterRemoval) => rows.map(row => {
                     const title = getChatRowTitle(row);
+                    const busy = pending.scope === scope && pending.rows.some(task => pinnedJobKey(task) === pinnedJobKey(row));
                     return (
                         <RailPreviewRow
-                            key={String(row.id)}
+                            key={pinnedJobKey(row)}
                             title={title}
                             href={queueJobHash(routeId, row, tab)}
                             onOpen={event => {
@@ -133,6 +173,23 @@ export function RailPinnedJobs({ workspaceId, routeId, client, running, history,
                                 onOpen(row);
                             }}
                             meta={<RailJobMetadata job={row} />}
+                            action={prefs && <button
+                                type="button"
+                                aria-label={`Unpin job: ${title}`}
+                                title="Unpin job"
+                                aria-disabled={busy}
+                                aria-busy={busy}
+                                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[#656d76] hover:bg-[#f3f3f3] focus-visible:outline focus-visible:outline-[#007acc] aria-disabled:opacity-50 dark:text-[#aaa] dark:hover:bg-[#333]"
+                                onClick={event => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    void unpin(row, event.currentTarget, focusAfterRemoval);
+                                }}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                                    <path d="m6 2 7 7-3 1-2 3-5-5 3-2V2ZM2 14l4-4M1 1l14 14" />
+                                </svg>
+                            </button>}
                         />
                     );
                 }),

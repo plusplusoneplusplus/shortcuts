@@ -379,8 +379,12 @@ unknown modes. Committed mode changes invalidate active queue snapshots through
 the existing WebSocket channel; pills add no browser reads or polling.
 Pinned rows use the owner's complete pinned-process endpoint plus the chat list's
 live pin/archive state and visibility rules; group scope does not aggregate member
-pins. Scope or transport changes dispose previews. Icon clicks retain sidebar
-expansion, and `queueJobHash` preserves conversation/workflow owner routes.
+pins. Unpin uses the shared `setChatPinned` action with canonical process IDs,
+retains pending rows, rejects duplicate clicks and reports failures. Successful
+unpins remove snapshot rows and supersede older reads; owner changes discard late
+results and rollback. Row removal moves focus to a neighbor or a stable rail
+control. Scope or transport changes dispose previews. Rail trigger clicks expand
+the sidebar; row actions stay collapsed, and `queueJobHash` preserves owner routes.
 
 ### Collapsed-rail Git tiles
 
@@ -562,11 +566,17 @@ text in a panel-scope/resource-id memory map. Panel writes release snapshots
 when their last referencing tab closes; inherited draft/chat tabs share them.
 Clearing a panel releases its snapshots. `UnifiedPasteTab` reads its snapshot by
 panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-text
-copy action and no save or dirty-state registration. With
-`features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
+copy action and no save or dirty-state registration. Every
+hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos.get` with `full: true`;
-only the descriptor persists. Events, manual refresh and post-write reloads share
+only the descriptor persists. The panel always uses list/detail presentation:
+at 660px the panes scroll independently; narrower panels use selection and Back.
+Visited detail editors stay mounted across selection and resizing to retain drafts.
+Compact list headers combine wrapping titles, status, priority and Attach; job
+metadata wraps below. Identical item/job titles use accessible Open job links,
+while distinct job titles remain visible. Full content and controls live in details.
+Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Pending reads block duplicate manual admission;
 reloads retain the snapshot, selection, drafts and section visibility, with read
 failures surfaced through the retry notice. Shared `sentinelTodoRecentPage` includes
@@ -576,7 +586,7 @@ fulfillment determines selection, not job completion. Older-item expansion and
 section sorting apply to this selection; dependency,
 trigger and Scrubber controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
-per-reference caching. Collapsed/latest and expanded/earlier titles share compact
+per-reference caching. List/latest and detail/all-job titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and
 unknown modes omitted. Owner labels resolve each job's server-qualified workspace
 from cached local/remote/group metadata; the current repo omits its badge and
@@ -590,7 +600,7 @@ Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show
 bar (Back to Sentinel + breadcrumb) and a transient, owner-labelled pinned To-do tab that is
 never persisted. The return route selects the ledger owner's workspace/process on its
 concrete server, preserving matching group routes and reapplying an unchanged hash.
-Back restores the list's scroll, expanded rows and link focus. The full
+Back restores the list's scroll, selection, drafts and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 ### Sentinel To-do dependencies
@@ -601,7 +611,7 @@ revisions through conflicts; rebasing is explicit. Abortable readiness reads
 refresh on any ledger revision. A prerequisite-first accessible chain navigates
 the same ledger; artifact evidence opens its prerequisite content workspace's
 read-only preview on the ledger's owning server.
-Readiness chips, saved action settings/authority and review warnings supplement
+Waiting/Ready chips and durable evidence-review warnings supplement
 fulfillment status. Manual items remain tracking-only; the tab adds no job
 launch/retry/cancel or authorization controls.
 

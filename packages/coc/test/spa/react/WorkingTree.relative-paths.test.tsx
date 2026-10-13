@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 
 const h = vi.hoisted(() => {
     const getWorkingTreeChanges = vi.fn();
@@ -27,7 +27,7 @@ const h = vi.hoisted(() => {
             deleteUntrackedFile: vi.fn(),
         },
     };
-    return { getWorkingTreeChanges, listDiffComments, client };
+    return { getWorkingTreeChanges, listDiffComments, client, mode: 'flat' as 'flat' | 'tree' };
 });
 
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
@@ -36,7 +36,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
 
 // Force flat mode so rows render without touching preferences APIs.
 vi.mock('../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => ({
-    useFilesViewMode: () => ({ mode: 'flat', setMode: vi.fn() }),
+    useFilesViewMode: () => ({ mode: h.mode, setMode: vi.fn() }),
 }));
 
 import {
@@ -112,6 +112,7 @@ describe('hasMultipleRepos', () => {
 describe('WorkingTree relative-path rows', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        h.mode = 'flat';
         h.listDiffComments.mockResolvedValue({ comments: [] });
     });
 
@@ -158,4 +159,45 @@ describe('WorkingTree relative-path rows', () => {
         expect(screen.getByTestId('stage-btn-/repoA/README.md')).toBeTruthy();
         expect(screen.getByTestId('stage-btn-/repoB/README.md')).toBeTruthy();
     });
+    it.each(['flat', 'tree'] as const)('keeps partially staged counts, navigation and actions section-correct in %s mode', async (mode) => {
+        h.mode = mode;
+        h.getWorkingTreeChanges.mockResolvedValue({ changes: [
+            change({ filePath: '/repo/partial.ts', stage: 'staged', additions: 3, deletions: 1 }),
+            change({ filePath: '/repo/partial.ts', stage: 'unstaged', additions: 8, deletions: 2 }),
+        ], repoState: {} });
+        h.client.git.unstageFile.mockResolvedValue({ success: true });
+        h.client.git.stageFile.mockResolvedValue({ success: true });
+        const onFileSelect = vi.fn();
+        render(<WorkingTree workspaceId="remote-member" onFileSelect={onFileSelect} compact />);
+        const rows = await screen.findAllByTestId('working-tree-file-row-partial.ts');
+        expect(within(rows[0]).getByRole('img', { name: 'staged: 3 lines added, 1 lines deleted' })).toBeTruthy();
+        expect(within(rows[1]).getByRole('img', { name: 'unstaged: 8 lines added, 2 lines deleted' })).toBeTruthy();
+        fireEvent.click(rows[0]);
+        fireEvent.click(rows[1]);
+        expect(onFileSelect.mock.calls).toEqual([['/repo/partial.ts', 'staged'], ['/repo/partial.ts', 'unstaged']]);
+        await act(async () => { fireEvent.click(within(rows[0]).getByTestId('unstage-btn-/repo/partial.ts')); });
+        expect(h.client.git.unstageFile).toHaveBeenCalledWith('remote-member', '/repo/partial.ts');
+        expect(onFileSelect).toHaveBeenCalledTimes(2);
+        await act(async () => { fireEvent.click(within(rows[1]).getByTestId('stage-btn-/repo/partial.ts')); });
+        expect(h.client.git.stageFile).toHaveBeenCalledWith('remote-member', '/repo/partial.ts');
+    });
+
+    it('shows binary and unavailable markers without invented zero counts, and refreshes counts', async () => {
+        const changes = [
+            change({ filePath: '/repo/binary', isBinary: true }),
+            change({ filePath: '/repo/new', stage: 'untracked' }),
+            change({ filePath: '/repo/missing' }),
+            change({ filePath: '/repo/empty', additions: 0, deletions: 0 }),
+        ];
+        h.getWorkingTreeChanges.mockResolvedValue({ changes, repoState: {} });
+        const { rerender } = render(<WorkingTree workspaceId="ws-1" refreshKey={0} />);
+        expect(await screen.findByRole('img', { name: 'Binary file; line counts unavailable' })).toBeTruthy();
+        expect(await screen.findByRole('img', { name: 'untracked: line counts unavailable' })).toBeTruthy();
+        expect(screen.getByRole('img', { name: 'unstaged: 0 lines added, 0 lines deleted' })).toBeTruthy();
+        expect(within(screen.getByTestId('working-tree-file-row-missing')).queryByText('+0')).toBeNull();
+        h.getWorkingTreeChanges.mockResolvedValue({ changes: [change({ filePath: '/repo/empty', additions: 5, deletions: 1 })], repoState: {} });
+        rerender(<WorkingTree workspaceId="ws-1" refreshKey={1} />);
+        expect(await screen.findByRole('img', { name: 'unstaged: 5 lines added, 1 lines deleted' })).toBeTruthy();
+    });
+
 });

@@ -75,8 +75,9 @@ and historical session-id fallbacks.
 
 ### Sentinel result cards
 
-The live, default-off `features.sentinelResultCards` page-wide presentation flag selects
-`SentinelResultCard` for receipt-correlated user turns with the exact review prefix,
+The live, default-on `features.sentinelResultCards` page-wide presentation flag selects
+`SentinelResultCard` unless explicitly false, including when configuration/runtime flags
+are absent. Cards require receipt-correlated user turns with the exact review prefix,
 validated result schema and matching parent workspace/process. Unknown envelopes keep
 ordinary rendering. Native disclosures separate readable inert chat Markdown from exact
 JSON view/copy; links, images and embeds in summaries remain inactive. Open-job routes

@@ -2,7 +2,7 @@ import { isQueueProcessId, toTaskId, type ProcessStore, type TaskQueueManager } 
 import { grillingResultJob, type DelegatedJob, type DelegatedJobStore } from '../delegation/delegated-job-store';
 import { buildChatOpenLink } from '../servers/workspace-directory';
 import { normalizeChatMode } from '../tasks/task-types';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoDependencyAction, SentinelTodoDependencyReadiness, SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoDependencyReadiness, SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from '../triggers/pr-status-fetcher';
 import {
@@ -54,7 +54,6 @@ export type SentinelTodoJobMode = 'ask' | 'autopilot' | 'ralph';
 export type SentinelTodoJobLinkView = SentinelTodoJobLink & { execution: SentinelTodoJobExecution; mode?: SentinelTodoJobMode };
 export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & {
     jobs: SentinelTodoJobLinkView[];
-    dependencyAction?: SentinelTodoDependencyAction;
     dependencyReadiness?: SentinelTodoDependencyReadiness;
 };
 export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItemView[] };
@@ -66,16 +65,14 @@ export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItem
  * after the write committed. Nothing here starts, retries, or cancels a job.
  */
 export class SentinelTodoService {
-    /** Bound once by route composition; tools receive reads/admission, never approval actor selection. */
+    /** Bound once by route composition; tools share readiness and durable launch tracking. */
     dependencyActions?: {
-        project(owner: SentinelTodoOwner, item: SentinelTodoItem): Pick<SentinelTodoItemView, 'dependencyAction' | 'dependencyReadiness'>;
-        authorize(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user'): Promise<{ item: SentinelTodoItemView; ledgerRevision: number }>;
-        revoke(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user'): Promise<{ item: SentinelTodoItemView; ledgerRevision: number }>;
+        project(owner: SentinelTodoOwner, item: SentinelTodoItem): Pick<SentinelTodoItemView, 'dependencyReadiness'>;
         guard(input: CreateTaskInput, phase: 'enqueue' | 'check' | 'start'): Promise<void>;
         refresh(owner: SentinelTodoOwner): void;
         evaluated(owner: SentinelTodoOwner, evaluation: SentinelTodoDependencyEvaluation): string[];
         notify(owner: SentinelTodoOwner, itemIds: readonly string[]): void;
-        context(owner: SentinelTodoOwner, itemId: string, requested?: unknown): Promise<SentinelTodoTrackedAdmission>;
+        context(owner: SentinelTodoOwner, itemId: string): Promise<SentinelTodoTrackedAdmission>;
     };
     constructor(private readonly deps: {
         todos: SentinelTodoStore;

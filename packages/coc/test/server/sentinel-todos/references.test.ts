@@ -177,11 +177,9 @@ describe('Sentinel to-do conversation references', () => {
     describe('REST', () => {
         let server: http.Server;
         let baseUrl: string;
-        const enabled = { value: true };
         beforeEach(async () => {
-            enabled.value = true;
             const routes: Route[] = [];
-            registerSentinelTodoRoutes({ routes, service, getEnabled: () => enabled.value });
+            registerSentinelTodoRoutes({ routes, service });
             server = http.createServer(createRouter({ routes, spaHtml: '' }));
             await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
             const address = server.address() as { port: number };
@@ -208,9 +206,8 @@ describe('Sentinel to-do conversation references', () => {
             expect((await post(item.id, { processId: 'queue_design', workspaceId: 'ws-a' })).status).toBe(400);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_design', workspaceId: 'ws-a', jobs: [] })).status).toBe(400);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_nope', workspaceId: 'ws-a' })).status).toBe(404);
-            enabled.value = false;
-            expect((await post(item.id, { expectedRevision: 2, processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(404);
-            expect(todos.get(owner).items[0].references).toHaveLength(1);
+            expect((await post(item.id, { expectedRevision: 2, processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(200);
+            expect(todos.get(owner).items[0].references).toHaveLength(2);
         });
     });
 

@@ -23,8 +23,6 @@
 
 import { useCallback, useMemo, useRef } from 'react';
 import { useUnifiedPanelState } from './unifiedPanelStore';
-import { useSentinelTodoLedgerEnabled } from './sentinelTodoChats';
-import { withoutSentinelTodoTabs } from './sentinelTodoPanelModel';
 import {
     endSentinelTodoExcursion,
     pinnedSentinelTodoTabId,
@@ -114,17 +112,13 @@ export interface UnifiedPanelTabsApi {
  */
 export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null): UnifiedPanelTabsApi {
     const [storedState, setState] = useUnifiedPanelState(workspaceId);
-    // Flag-off hides To-do tabs from every read; writes keep the stored ones.
-    // Flag-on reads add the excursion's pinned To-do; writes never store it.
-    const todoEnabled = useSentinelTodoLedgerEnabled();
+    // Excursion tabs are transient; only the chat's own tabs persist.
     const excursion = useSentinelTodoExcursion();
     const state = useMemo(
-        () => (todoEnabled
-            ? withPinnedSentinelTodo(storedState, excursion, workspaceId, chatId)
-            : withoutSentinelTodoTabs(storedState)),
-        [storedState, todoEnabled, excursion, workspaceId, chatId],
+        () => withPinnedSentinelTodo(storedState, excursion, workspaceId, chatId),
+        [storedState, excursion, workspaceId, chatId],
     );
-    const pinnedId = todoEnabled ? pinnedSentinelTodoTabId(excursion, workspaceId, chatId) : null;
+    const pinnedId = pinnedSentinelTodoTabId(excursion, workspaceId, chatId);
     const latestPinned = useRef(pinnedId);
     latestPinned.current = pinnedId;
 

@@ -23,7 +23,7 @@ import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-servic
 export const MAX_LISTED_TODOS = SENTINEL_TODO_RECENT_LIMIT;
 
 export const TODOS_NO_TARGET_REPLY = '❌ No topic selected. Reply to a Sentinel chat message, or use `list topics`, then `select topic <n>`.';
-export const TODOS_DISABLED_REPLY = 'To-do lists are turned off on this server.';
+export const TODOS_UNAVAILABLE_REPLY = 'To-do lists are unavailable on this server.';
 
 export type MessagingTodoReader = Pick<SentinelTodoService, 'list'>;
 
@@ -69,7 +69,7 @@ export async function listTodosReply(
     store: Pick<ProcessStore, 'getProcess'>,
     owner: SentinelTodoOwner,
 ): Promise<string> {
-    if (!todos) return TODOS_DISABLED_REPLY;
+    if (!todos) return TODOS_UNAVAILABLE_REPLY;
     try {
         const ledger = await todos.list(owner);
         const process = await store.getProcess(owner.processId, owner.workspaceId).catch(() => undefined);

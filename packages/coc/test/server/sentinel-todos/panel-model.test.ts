@@ -1,7 +1,7 @@
 /**
  * Pure rules of the Sentinel To-do tab: ledger sections and order, job vs.
  * fulfillment wording, tab identity per owner and chat, persistence of the
- * descriptor only, flag-off hiding, the open-menu entry, and when the first
+ * descriptor only, the open-menu entry, and when the first
  * tracking use may open the tab without stealing focus.
  */
 import { describe, expect, it } from 'vitest';
@@ -23,7 +23,6 @@ import {
     sentinelTodoStatusReason,
     sentinelTodoTabInput,
     shouldAutoOpenSentinelTodoTab,
-    withoutSentinelTodoTabs,
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import {
     EMPTY_UNIFIED_PANEL,
@@ -301,19 +300,10 @@ describe('To-do tab descriptor', () => {
         const restored = parseUnifiedPanelState(raw);
         expect(visibleTabs(restored, 'chat-1')).toEqual([expect.objectContaining({ kind: 'todo', resourceId: 'queue_sentinel' })]);
     });
-
-    it('flag-off hides To-do tabs without dropping them from the stored state', () => {
-        const input = sentinelTodoTabInput(OWNER, 'chat-1');
-        const state = openTab(openTab(EMPTY_UNIFIED_PANEL, { kind: 'canvas', ownerWorkspaceId: 'ws-1', chatId: 'chat-1', resourceId: 'c1', label: 'C' }), input);
-        const hidden = withoutSentinelTodoTabs(state);
-        expect(visibleTabs(hidden, 'chat-1').map(tab => tab.kind)).toEqual(['canvas']);
-        expect(visibleTabs(state, 'chat-1').map(tab => tab.kind)).toEqual(['canvas', 'todo']);
-        expect(withoutSentinelTodoTabs(hidden)).toBe(hidden);
-    });
 });
 
 describe('open menu entry', () => {
-    it('lists To-do only for an enabled Sentinel chat', () => {
+    it('lists To-do only for a hosted Sentinel chat', () => {
         const ids = (todoAvailable?: boolean, chatId: string | null = 'chat-1') =>
             openMenuActions({ targetWorkspaceId: 'ws-1', chatId, todoAvailable }).map(action => action.id);
         expect(ids(true)).toContain('todo');

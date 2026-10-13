@@ -364,6 +364,7 @@ export function SplitWorkspacePanel({
     // Rail shortcuts are usually portaled in from another React subtree, so a
     // React handler here would never see their clicks; listen on the DOM node.
     const railShortcutsRef = useRef<HTMLDivElement | null>(null);
+    const expandButtonRef = useRef<HTMLButtonElement | null>(null);
     const closePeek = hoverPeek.close;
     const hasRailShortcuts = railShortcuts != null;
     // Bottom rail slot the docked footer portals its Admin/quota shortcuts into
@@ -520,6 +521,7 @@ export function SplitWorkspacePanel({
         hoverEnabled: hasFinePointer,
         onExpand: toggleLeftCollapsed,
         onPreview: hoverPeek.close,
+        onFocusRail: () => expandButtonRef.current?.focus(),
         onOpenGit: target => {
             if (leftCollapsed) toggleLeftCollapsed();
             if (gitCollapsed) toggleGit();
@@ -564,6 +566,7 @@ export function SplitWorkspacePanel({
                     onMouseLeave={hoverPeek.onRailPointerLeave}
                 >
                     <button
+                        ref={expandButtonRef}
                         type="button"
                         className={`w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]${peeking ? ' bg-[#e8e8e8] text-[#333] ring-1 ring-[#007acc]/40 dark:bg-[#2d2d2d] dark:text-[#ddd]' : ''}`}
                         onClick={toggleLeftCollapsed}

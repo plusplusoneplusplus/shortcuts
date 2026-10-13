@@ -663,17 +663,17 @@ as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
 
 ## Sentinel To-do
 
-Gated by the live `features.sentinelTodoLedger` flag (`sentinelTodoLedgerEnabled`).
+Every hosted Sentinel chat has a persistent To-do ledger.
 A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
 and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
-withdraws it with the host; the panel applies the flag. The `todo` descriptor is
+withdraws it with the host. The `todo` descriptor is
 one tab per concrete owner and chat: `resourceId` is the parent process id.
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
 including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
 (`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
-`sentinel-todos-changed` events on a workspace-subscribed socket. Flag-off hides
-stored `todo` tabs in `useUnifiedPanelTabs` without deleting them (the flag loads
-asynchronously), and hides the `+` menu's To-do entry.
+`sentinel-todos-changed` events on a workspace-subscribed socket. Stored `todo`
+tabs remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
+selected hosted Sentinel chat.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
@@ -716,33 +716,32 @@ reserved `pl-1` gutter (every row reserves it, so priority changes never shift c
 visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
 missing value (older owning server) as Regular. Priority never reorders sections. The header shows the
 active normal count and, when nonzero, how many normal items display Needs attention (stored or derived).
-With `features.sentinelTodoSplitLayout` off, a collapsed inline row is the toggle
-(status, High, title, chevron), muted target/Updated metadata, a Needs attention reason
-preview, the latest job (`+N earlier jobs`), and `Ref` links. The default-off live
-Appearance preference **Sentinel To-do split layout** publishes
-`sentinelTodoSplitLayoutEnabled`. It uses `useContainerWidth` on the actual panel:
-at 660px the compact selectable list and existing item editor scroll independently;
-below that width selection opens details and Back returns focus to the selected row.
-Native pressed buttons expose selection; arrows/Home/End move row focus without
-selecting. Visited editors stay mounted but hidden across selection and resizing,
-retaining item, status-reason and dependency drafts. The editor is shared with inline
-rows; layout changes grant no execution authority or tag functionality.
+`UnifiedTodoTab` always uses list/detail presentation measured by `useContainerWidth`
+on the actual panel. At 660px the compact selectable list and detail editor scroll
+independently; below that width selection opens details and Back returns focus to
+the selected row. Native pressed buttons expose selection; arrows/Home/End move
+row focus without selecting. Visited editors stay mounted but hidden across
+selection and resizing, retaining item, status-reason and dependency drafts.
+List cards combine status, priority, wrapping title and Attach in a compact header,
+with target/Updated/latest-job metadata below. Identical item/job titles use an
+accessible Open job link; distinct job titles remain visible. Full job history,
+references and editing controls live in the detail pane.
 With session-context attachments enabled, item cards are copy-drag sources
 and expose an accessible Attach action for their owning Sentinel composer. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
-on drop and send (see the composer knowledge reference). Expanding lists every job, notes when the displayed status is derived
+on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
 start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
 `Tracked only · never run` tag. Referenced conversations
-(`item.references`, absent on older servers) render on the collapsed card as compact, truncated `Ref` links
+(`item.references`, absent on older servers) render in the detail pane as compact, truncated `Ref` links
 below jobs, with no execution or review label.
 
 `SentinelTodoDependencies` is gated by default-off
 `sentinelTodoDependenciesEnabled`. Its owner/item-keyed details add independent
-Waiting/Ready/Needs approval chips, typed prerequisite drafts and exact PR-output
+Waiting/Ready chips, typed prerequisite drafts and exact PR-output
 binding with visible provenance. Readiness reads use the owner client, abort on
 revision/owner changes and refresh for prerequisite-only ledger edits. Graph and
 binding saves keep their captured revision; conflicts retain drafts and require an
@@ -750,8 +749,9 @@ explicit rebase before retrying. The prerequisite-first, cycle-bounded chain use
 the same owner-ledger item navigation as triggers. Artifact evidence opens the
 prerequisite content workspace's read-only preview on the owning server, never a raw
 file reference as a browser URL.
-Saved mode/provider/model/target/scope and authority appear separately from
-readiness and fulfillment; Requires review warnings do not cancel running work.
+Durable prerequisite-review warnings appear separately from readiness and
+fulfillment; they do not cancel running work. Sentinel follows ordinary user
+authorization in the owning conversation.
 Manual items remain Tracking only. No launch, retry, cancel or approval controls
 are added to the To-do tracking surface.
 
@@ -770,7 +770,7 @@ with full accessible descriptions; titles and pills wrap without extra reads,
 polling or focus targets. Delayed hover/focus and persistent info actions share a
 bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
 departure dismiss. Title and Open job anchors retain excursion navigation and
-modifier clicks. The existing ledger flag gates this surface.
+modifier clicks.
 
 Preview reads are lazy and abortable, pinned to the job's workspace and concrete
 server or ledger-owner route. Unresolved remote owners never fall through locally;
@@ -787,8 +787,8 @@ read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
 ### To-do Scrubber
 
-`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by both
-live ledger and scrubber flags. Its owner/endpoint-keyed strip uses
+`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by the
+live scrubber flag. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
 late reads and mutations cannot update a remounted owner. A visibility-aware
 poll refreshes missed events. All-open and selected runs start separate queued

@@ -279,6 +279,25 @@ describe('API status normalization — unified file data shape', () => {
     // ========================================================================
 
     describe('working-tree /changes normalizes word status to single char', () => {
+        it('requests section stats for the owning workspace and preserves counts and absence through normalization', async () => {
+            const common = { filePath: `${WORKSPACE_ROOT}/partial.ts`, status: 'modified', repositoryRoot: WORKSPACE_ROOT, repositoryName: 'repo' };
+            mockGetAllChanges.mockResolvedValue([
+                { ...common, stage: 'staged', additions: 2, deletions: 1 },
+                { ...common, stage: 'unstaged', additions: 4, deletions: 3 },
+                { ...common, filePath: `${WORKSPACE_ROOT}/binary`, stage: 'staged', isBinary: true },
+                { ...common, filePath: `${WORKSPACE_ROOT}/unavailable`, stage: 'unstaged' },
+            ]);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes`);
+            expect(res.status).toBe(200);
+            expect(mockGetAllChanges).toHaveBeenCalledWith(WORKSPACE_ROOT, { includeStats: true });
+            expect(res.json().changes).toEqual([
+                { ...common, status: 'M', stage: 'staged', additions: 2, deletions: 1 },
+                { ...common, status: 'M', stage: 'unstaged', additions: 4, deletions: 3 },
+                { ...common, status: 'M', filePath: `${WORKSPACE_ROOT}/binary`, stage: 'staged', isBinary: true },
+                { ...common, status: 'M', filePath: `${WORKSPACE_ROOT}/unavailable`, stage: 'unstaged' },
+            ]);
+        });
+
         it('converts word statuses returned by WorkingTreeService', async () => {
             mockGetAllChanges.mockResolvedValue([
                 { filePath: '/test/repo/src/a.ts', status: 'modified', stage: 'unstaged', repositoryRoot: WORKSPACE_ROOT, repositoryName: 'repo' },

@@ -39,12 +39,13 @@ beforeEach(() => {
     mock.connect.mockReturnValue({ close: vi.fn() });
     mock.route = { kind: 'local' };
     mock.refs.length = 0;
-    applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: true, sentinelTodoScrubberEnabled: true });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
 });
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }); });
 
 describe('To-do Scrubber strip', () => {
-    it.each(['sentinelTodoLedgerEnabled', 'sentinelTodoScrubberEnabled'])('requires live %s and stops subscriptions when disabled', async flag => {
+    it('requires the live scrubber setting and stops subscriptions when disabled', async () => {
+        const flag = 'sentinelTodoScrubberEnabled';
         applyRuntimeConfigPatch({ [flag]: false });
         render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
         expect(screen.queryByRole('region', { name: 'To-do Scrubber' })).toBeNull();
