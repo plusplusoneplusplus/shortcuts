@@ -89,7 +89,9 @@ SDK file fallback uses `readCliAccountToken`; native direct HTTP lookup preserve
 
 `IAccountQuotaSnapshot.remainingPercentage` is a **0-1 fraction** for every provider; the dashboard, auto-provider router, and quota pause watcher all read it that way. The Copilot CLI's `account.getQuota` RPC reports it on a 0-100 scale, so `CopilotSDKService.getAccountQuota()` divides by 100 and clamps it through `normalizeCopilotAccountQuota`. Codex and Claude build fractions directly. `usageAllowedWithExhaustedQuota` means the provider lets usage continue past the limit; the AI Provider page's quota cell shows an `Overage allowed` caption for it, adding `(N over)` when `overage > 0`.
 
-### Tool telemetry
+### Tool inventory and telemetry
+
+`SendMessageOptions.onToolInventory` receives a descriptor-only startup snapshot. Copilot initializes its session tool catalog after mode/model setup and reads `getCurrentMetadata` before inference. `tool-inventory.ts` bounds descriptors to 512 tools / 1 MiB, clones JSON schemas, and marks omissions partial. Missing or failed discovery reports unavailable; MCP completeness remains partial. Discovery has a five-second deadline and follows turn cancellation. Capture uses the active session, excludes handlers/configuration, and never derives tools from invocation history.
 
 `SessionTelemetry` normalizes streaming tool events into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; a terminal event supplying or correcting the parent updates the stored `ToolCall`, keeping sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.
 

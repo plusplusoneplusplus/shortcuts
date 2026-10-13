@@ -36,6 +36,7 @@ import {
 } from './types';
 import { StreamingSession, StreamingResult } from './streaming-session';
 import { createMidTurnUsageThrottle } from './mid-turn-usage';
+import { captureCopilotToolInventory } from './copilot-tool-inventory';
 import type { TransformOptions, TransformResult } from './sdk-service-interface';
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
@@ -490,6 +491,13 @@ export class RequestRunner {
             }
 
             this.sessionManager.track(session);
+
+            if (options.onToolInventory) {
+                const inventory = await captureCopilotToolInventory(session, options.tools ?? [], options.signal);
+                throwIfAborted();
+                await options.onToolInventory(inventory);
+                throwIfAborted();
+            }
 
             const timeoutMs = options.timeoutMs ?? this.defaultTimeoutMs;
             let response: string;

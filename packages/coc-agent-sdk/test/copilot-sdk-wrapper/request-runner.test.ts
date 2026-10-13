@@ -55,6 +55,42 @@ function makeRunner(overrides?: {
 // send() — availability check
 // ============================================================================
 
+describe('RequestRunner.send() — tool inventory startup', () => {
+    it.each([undefined, 'existing-session'])('captures after initialization and before inference for session %s', async sessionId => {
+        const { runner, mockSession } = makeRunner();
+        const order: string[] = [];
+        const initializeAndValidate = vi.fn(async () => { order.push('initialize'); return {}; });
+        const getCurrentMetadata = vi.fn(async () => ({ tools: [{ name: 'unused_tool', description: 'Unused', input_schema: { type: 'object' } }] }));
+        Object.assign(mockSession, { rpc: { mode: { set: vi.fn(async () => { order.push('mode'); }) }, tools: { initializeAndValidate, getCurrentMetadata } } });
+        mockSession.sendAndWait.mockImplementation(async () => { order.push('send'); return { data: { content: 'reply' } }; });
+        const onToolInventory = vi.fn(async inventory => {
+            order.push('capture');
+            expect(inventory.tools).toEqual([{ name: 'unused_tool', source: 'builtin', description: 'Unused', inputSchema: { type: 'object' } }]);
+        });
+        const result = await runner.send({ prompt: 'test', sessionId, mode: 'interactive', loadDefaultMcpConfig: false, onToolInventory });
+        expect(result.success).toBe(true);
+        expect(order).toEqual(['mode', 'initialize', 'capture', 'send']);
+        expect(onToolInventory).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports unavailable discovery without failing the turn or listing configured tools', async () => {
+        const { runner } = makeRunner();
+        const onToolInventory = vi.fn();
+        const result = await runner.send({ prompt: 'test', loadDefaultMcpConfig: false, tools: [{ name: 'configured' }], onToolInventory });
+        expect(result.success).toBe(true);
+        expect(onToolInventory.mock.calls[0][0].tools).toEqual([]);
+        expect(onToolInventory.mock.calls[0][0].categories.every((c: { status: string }) => c.status === 'unavailable')).toBe(true);
+    });
+
+    it('does not query discovery when the caller does not request capture', async () => {
+        const { runner, mockSession } = makeRunner();
+        const initializeAndValidate = vi.fn();
+        Object.assign(mockSession, { rpc: { tools: { initializeAndValidate } } });
+        expect((await runner.send({ prompt: 'test', loadDefaultMcpConfig: false })).success).toBe(true);
+        expect(initializeAndValidate).not.toHaveBeenCalled();
+    });
+});
+
 describe('RequestRunner.send() — availability', () => {
     it('returns failure when SDK is not available', async () => {
         const { runner } = makeRunner({
