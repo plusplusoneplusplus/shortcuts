@@ -19,12 +19,57 @@ import {
 } from '../src/terminal-copy';
 
 function makeTarget(id = 7): MenuCopyTarget & { send: ReturnType<typeof vi.fn>; copy: ReturnType<typeof vi.fn> } {
-    return { id, send: vi.fn(), copy: vi.fn() };
+    return { id, send: vi.fn(), copy: vi.fn(), isDestroyed: () => false };
 }
 
 describe('createMenuCopyDelegate', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
+
+    it('copies focused DevTools or guest contents immediately without SPA IPC', () => {
+        const target = { id: 8, copy: vi.fn(), isDestroyed: () => false };
+        const delegate = createMenuCopyDelegate({ getTarget: () => target });
+
+        delegate.requestCopy();
+
+        expect(target.copy).toHaveBeenCalledTimes(1);
+        vi.advanceTimersByTime(MENU_COPY_FALLBACK_DELAY_MS);
+        expect(target.copy).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels pending SPA copy when Copy is invoked in DevTools', () => {
+        const spa = makeTarget();
+        const devTools = { id: 8, copy: vi.fn(), isDestroyed: () => false };
+        let focused: MenuCopyTarget = spa;
+        const delegate = createMenuCopyDelegate({ getTarget: () => focused });
+        delegate.requestCopy();
+        focused = devTools;
+
+        delegate.requestCopy();
+        vi.advanceTimersByTime(MENU_COPY_FALLBACK_DELAY_MS);
+
+        expect(spa.copy).not.toHaveBeenCalled();
+        expect(devTools.copy).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a destroyed focused target', () => {
+        const target = { ...makeTarget(), isDestroyed: () => true };
+        const delegate = createMenuCopyDelegate({ getTarget: () => target });
+        delegate.requestCopy();
+        vi.advanceTimersByTime(MENU_COPY_FALLBACK_DELAY_MS);
+        expect(target.send).not.toHaveBeenCalled();
+        expect(target.copy).not.toHaveBeenCalled();
+    });
+
+    it('does not copy a target destroyed while waiting for terminal delegation', () => {
+        let destroyed = false;
+        const target = { ...makeTarget(), isDestroyed: () => destroyed };
+        const delegate = createMenuCopyDelegate({ getTarget: () => target });
+        delegate.requestCopy();
+        destroyed = true;
+        vi.advanceTimersByTime(MENU_COPY_FALLBACK_DELAY_MS);
+        expect(target.copy).not.toHaveBeenCalled();
+    });
 
     it('asks the focused renderer before copying anything itself', () => {
         const target = makeTarget();

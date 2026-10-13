@@ -8,7 +8,8 @@
  * and on macOS that accelerator is owned by the menu, so it never even reaches
  * the renderer's key handler.
  *
- * The fix: the Edit menu's Copy item asks the focused renderer first. The
+ * The Edit menu's Copy item asks the focused CoC SPA renderer first. DevTools
+ * and browser guests use native copy directly, without terminal IPC. The SPA
  * renderer answers on {@link MENU_COPY_HANDLED_CHANNEL} when a focused terminal
  * with a live selection took the request; if no answer arrives within
  * {@link MENU_COPY_FALLBACK_DELAY_MS}, the main process falls back to
@@ -35,8 +36,10 @@ export const MENU_COPY_FALLBACK_DELAY_MS = 60;
 export interface MenuCopyTarget {
     /** Identity used to match a renderer's reply against the pending request. */
     id: number;
-    send(channel: string): void;
+    /** Only CoC SPA targets delegate to the terminal; other contents copy directly. */
+    send?: (channel: string) => void;
     copy(): void;
+    isDestroyed(): boolean;
 }
 
 export interface MenuCopyDelegate {
@@ -73,12 +76,16 @@ export function createMenuCopyDelegate({
         requestCopy(): void {
             const target = getTarget();
             clearPending();
-            if (!target) return;
+            if (!target || target.isDestroyed()) return;
+            if (!target.send) {
+                target.copy();
+                return;
+            }
             target.send(MENU_COPY_CHANNEL);
             const timer = setTimeout(() => {
                 pending = null;
                 // Nobody claimed it — this was an ordinary DOM selection.
-                target.copy();
+                if (!target.isDestroyed()) target.copy();
             }, delayMs);
             // Never hold the event loop open just for a clipboard fallback.
             (timer as { unref?: () => void }).unref?.();

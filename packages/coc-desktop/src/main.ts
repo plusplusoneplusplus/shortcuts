@@ -43,10 +43,10 @@ import {
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput, DebugMenuHandlers } from './app-menu';
 import { attachFindBar, registerFindBarIpc } from './find-bar-host';
 import {
-    createMenuCopyDelegate,
     MENU_COPY_HANDLED_CHANNEL,
     type MenuCopyDelegate,
 } from './terminal-copy';
+import { createDesktopMenuCopyDelegate } from './menu-copy-host';
 import { registerScreenshotShortcut, unregisterScreenshotShortcut } from './screenshot-capture';
 import { startScreenshotCapture, setScreenshotMainWindowProvider } from './screenshot-capture-host';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
@@ -598,18 +598,7 @@ function getElevation(): ElevationState {
 let menuCopyDelegate: MenuCopyDelegate | null = null;
 function getMenuCopyDelegate(): MenuCopyDelegate {
     if (!menuCopyDelegate) {
-        menuCopyDelegate = createMenuCopyDelegate({
-            getTarget: () => {
-                const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
-                if (!win || win.isDestroyed()) return null;
-                const contents = win.webContents;
-                return {
-                    id: contents.id,
-                    send: (channel: string) => contents.send(channel),
-                    copy: () => contents.copy(),
-                };
-            },
-        });
+        menuCopyDelegate = createDesktopMenuCopyDelegate();
         ipcMain.on(MENU_COPY_HANDLED_CHANNEL, (event) => {
             menuCopyDelegate?.markHandled(event.sender.id);
         });
