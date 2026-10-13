@@ -183,6 +183,10 @@ and migration boundaries belong in the native instructions below.
 It is independent of Node; its Microsoft module provides immutable source-pinned
 OAuth/Azure CLI providers and explicit PKCE/device sign-in. The addon exposes
 `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through `src/auth.ts`.
+Rust-only `exchange_refresh_token` shares the Microsoft transport/parser and
+accepts caller-owned refresh secrets without account metadata or storage access;
+native OAuth acquisition retains discovery, identity checks and locked persistence.
+The generic non-Teams Node refresher owns its timer, scope policy and Copilot cache.
 Kusto, ADO and Teams Azure CLI authentication use native providers. Forge's ADO
 resolver shares a source-pinned provider per host data directory across PR and
 Azure Boards callers, with native caching/renewal and host shutdown disposal.

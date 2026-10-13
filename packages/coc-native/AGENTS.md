@@ -98,6 +98,11 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 `rust/auth-sdk/` is a standalone Node-independent Rust crate. Shared secrets,
 token DTOs, clocks, lifecycle, storage and errors are vendor-neutral;
 `auth_sdk::microsoft` owns Microsoft OAuth and Azure CLI protocols.
+Its Rust-only `exchange_refresh_token` accepts caller-owned secrets and validated
+`OAuthRefreshOptions`, returns secret-wrapped endpoint fields and safe status/rejection
+diagnostics, and has no storage or verified-account dependency. Scope policy,
+scheduling and cache ownership stay with the caller. Native OAuth acquisition reuses
+the exchange within its existing discovery, identity verification and locked rotation.
 `rust/napi/src/auth/` runs asynchronous operations on Tokio; `src/auth.ts`
 exports `MicrosoftTokenProvider`, explicit `MicrosoftOAuthSignIn` handles,
 sanitized typed errors and a complete capability guard.

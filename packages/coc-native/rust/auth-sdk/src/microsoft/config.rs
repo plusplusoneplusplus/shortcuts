@@ -20,6 +20,28 @@ pub struct OAuthOptions {
     pub coordination_dir: PathBuf,
 }
 
+/// Configuration for a storage-independent Microsoft v2 refresh exchange.
+#[derive(Clone, Debug)]
+pub struct OAuthRefreshOptions {
+    /// Supported Microsoft login origin with a tenant UUID or common/organizations/consumers.
+    pub authority: String,
+    pub client_id: String,
+    /// Caller-prepared scopes; identity scopes are not required.
+    pub scopes: Vec<String>,
+    pub resource: Option<String>,
+}
+
+impl From<&OAuthOptions> for OAuthRefreshOptions {
+    fn from(options: &OAuthOptions) -> Self {
+        Self {
+            authority: options.authority.clone(),
+            client_id: options.client_id.clone(),
+            scopes: options.scopes.clone(),
+            resource: options.resource.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AzureCliOptions {
     pub namespace: String,
@@ -95,7 +117,7 @@ pub(crate) fn timeout_valid(timeout: Duration) -> bool {
     (Duration::from_millis(100)..=Duration::from_secs(900)).contains(&timeout)
 }
 
-impl OAuthOptions {
+impl OAuthRefreshOptions {
     pub fn validate(&self) -> Result<()> {
         let url = Url::parse(&self.authority)
             .map_err(|_| crate::AuthError::new(ErrorCode::InvalidConfiguration))?;
@@ -109,17 +131,32 @@ impl OAuthOptions {
             || url.password().is_some()
             || url.query().is_some()
             || url.fragment().is_some()
-            || !guid(tenant)
+            || !(guid(tenant) || ["common", "organizations", "consumers"].contains(&tenant))
             || !guid(&self.client_id)
-            || !text(&self.namespace, 256)
-            || !text(&self.target, 2048)
             || self.scopes.is_empty()
             || self.scopes.len() > 64
             || self.scopes.iter().any(|s| !text(s, 2048) || s.chars().any(char::is_whitespace))
+            || self.resource.as_ref().is_some_and(|r| !cli_argument(r))
+        {
+            return fail(ErrorCode::InvalidConfiguration);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn token_endpoint(&self) -> String {
+        format!("{}/oauth2/v2.0/token", self.authority.trim_end_matches('/').to_ascii_lowercase())
+    }
+}
+
+impl OAuthOptions {
+    pub fn validate(&self) -> Result<()> {
+        OAuthRefreshOptions::from(self).validate()?;
+        if !guid(&self.tenant())
+            || !text(&self.namespace, 256)
+            || !text(&self.target, 2048)
             || !self.scopes.iter().any(|s| s == "openid")
             || !self.scopes.iter().any(|s| s == "profile")
             || !self.scopes.iter().any(|s| s == "offline_access")
-            || self.resource.as_ref().is_some_and(|r| !cli_argument(r))
             || !self.coordination_dir.is_absolute()
         {
             return fail(ErrorCode::InvalidConfiguration);
