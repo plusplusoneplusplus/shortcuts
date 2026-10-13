@@ -795,6 +795,10 @@ references before editing. Paths are package-relative.
   including broker sign-in with no browser URL or token JSON file. Pending flows
   poll bounded runtime status and shared-cache state; late results cannot overwrite
   a cancelled flow. Empty login responses alone never count as authenticated.
+  Opt-in background maintenance keeps scheduling, scope policy and Copilot-cache
+  persistence in Node; `coc-native.exchangeMicrosoftRefreshToken` owns the bounded
+  Rust exchange. Native Teams resources are excluded. Only typed terminal
+  rejections below HTTP 500 invalidate entries; diagnostics exclude provider bodies.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

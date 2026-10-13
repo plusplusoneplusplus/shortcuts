@@ -101,7 +101,9 @@ prove vault state. Sessions without managed servers retain their provider-owned 
 
 When `mcpOauth.autoRefresh.enabled` is true (disabled by default, restart required; see [admin-config.md](admin-config.md)), a background loop runs every 5 minutes against `~/.copilot/mcp-oauth-config/`: it dedups the duplicate entries the SDK accumulates per `serverUrl` and refreshes AAD tokens within 10 minutes of expiry. The configured native Teams resource is excluded from both operations. Cached scopes pass through `sanitizeRequestScope`, which drops `<resource>/.default` when other scopes for the same resource exist (AAD rejects that combination with HTTP 400); `offline_access` is then appended so refresh tokens keep rolling.
 
-Only `invalid_grant`, `interaction_required`, and `consent_required` delete the cache entry; every other 4xx (including `invalid_request`, `invalid_scope`) is treated as transient, so request-shape bugs do not force a re-auth. Failure response bodies are logged redacted and capped at 400 chars to keep AADSTS errors diagnosable. Interval and window are hardcoded. Implementation: `packages/coc/src/server/mcp-oauth/mcp-oauth-refresher.ts`.
+Node owns scheduling, scope policy, deduplication and Copilot-cache persistence. It calls `coc-native.exchangeMicrosoftRefreshToken` for the bounded Rust `auth-sdk` exchange, then writes access-token expiry, returned scopes and the rotated refresh token, retaining cached scopes/token when replacements are omitted. No native credential-store import is involved.
+
+Only typed `invalid_grant`, `interaction_required`, and `consent_required` rejections with HTTP status below 500 delete the cache entry. Other failures, including request-shape errors, malformed responses and timeouts, retain it. Logs include safe error codes, HTTP status and rejection categories, never provider bodies or tokens. Interval and window are hardcoded. Implementation: `packages/coc/src/server/mcp-oauth/mcp-oauth-refresher.ts`.
 
 ## Invariants
 

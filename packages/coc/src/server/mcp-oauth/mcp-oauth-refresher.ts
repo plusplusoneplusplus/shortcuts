@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getLogger, LogCategory, loadDefaultMcpConfig } from '@plusplusoneplusplus/forge';
 import type { Logger } from '@plusplusoneplusplus/forge';
+import { AuthError, exchangeMicrosoftRefreshToken, MicrosoftOAuthRefreshError } from '@plusplusoneplusplus/coc-native';
 import { getMcpOauthCacheDir } from './mcp-oauth-token-cache';
 import { isTeamsMcpServer } from '../messaging/teams-native-auth';
 
@@ -57,7 +58,7 @@ export interface MaintenancePassOptions {
     homeDir?: string;
     expiryWindowSeconds?: number;
     now?: () => number;
-    fetch?: typeof fetch;
+    exchangeRefreshToken?: typeof exchangeMicrosoftRefreshToken;
     logger?: Logger;
 }
 
@@ -278,11 +279,7 @@ async function refreshNearExpiry(
     const now = (options.now ?? (() => Date.now()))();
     const nowSec = Math.floor(now / 1000);
     const windowSec = options.expiryWindowSeconds ?? DEFAULT_EXPIRY_WINDOW_SECONDS;
-    const fetchFn = options.fetch ?? globalThis.fetch;
-    if (typeof fetchFn !== 'function') {
-        log.debug(LogCategory.MCP, `[McpOauthRefresher] no fetch available; skipping refresh`);
-        return;
-    }
+    const exchange = options.exchangeRefreshToken ?? exchangeMicrosoftRefreshToken;
 
     for (const entry of survivors) {
         if (!entry.tokens.refreshToken) continue;
@@ -294,69 +291,42 @@ async function refreshNearExpiry(
         result.refresh.attempted++;
 
         try {
-            const body = new URLSearchParams({
-                client_id: entry.metadata.clientId,
-                grant_type: 'refresh_token',
-                refresh_token: entry.tokens.refreshToken,
-                scope: composeRefreshScope(entry.tokens.scope),
-            });
-            const response = await fetchFn(tokenEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body,
-            });
-            const text = await response.text();
-            if (!response.ok) {
-                if (isTerminalRefreshError(response.status, text)) {
-                    deletePair(entry);
-                    result.refresh.invalidated++;
-                    log.warn(
-                        LogCategory.MCP,
-                        `[McpOauthRefresher] refresh token rejected for url=${entry.metadata.serverUrl} `
-                        + `status=${response.status}; cleared entry hash=${entry.hash.slice(0, 12)}.. `
-                        + `body=${redactBody(text)}`,
-                    );
-                } else {
-                    result.refresh.transientFailures++;
-                    log.warn(
-                        LogCategory.MCP,
-                        `[McpOauthRefresher] transient refresh failure for url=${entry.metadata.serverUrl} `
-                        + `status=${response.status}; left entry untouched body=${redactBody(text)}`,
-                    );
-                }
-                continue;
-            }
-            const parsed = safeParse(text);
-            if (!parsed || typeof parsed.access_token !== 'string' || typeof parsed.expires_in !== 'number') {
-                result.refresh.transientFailures++;
-                log.warn(
-                    LogCategory.MCP,
-                    `[McpOauthRefresher] malformed refresh response for url=${entry.metadata.serverUrl}; left entry untouched`,
-                );
-                continue;
-            }
+            const response = await exchange({
+                authority: tokenEndpoint.slice(0, -'/oauth2/v2.0/token'.length),
+                clientId: entry.metadata.clientId,
+                scopes: composeRefreshScope(entry.tokens.scope).split(/\s+/),
+            }, entry.tokens.refreshToken);
 
             const updated: CachedTokens = {
-                accessToken: parsed.access_token,
-                expiresAt: Math.floor(now / 1000) + parsed.expires_in,
-                scope: typeof parsed.scope === 'string' ? parsed.scope : entry.tokens.scope,
-                refreshToken: typeof parsed.refresh_token === 'string' && parsed.refresh_token.length > 0
-                    ? parsed.refresh_token
-                    : entry.tokens.refreshToken,
+                accessToken: response.accessToken,
+                expiresAt: Math.floor(now / 1000) + response.expiresIn,
+                scope: response.scope ?? entry.tokens.scope,
+                refreshToken: response.refreshToken || entry.tokens.refreshToken,
             };
             fs.writeFileSync(entry.tokensPath, JSON.stringify(updated));
             result.refresh.succeeded++;
             log.info(
                 LogCategory.MCP,
                 `[McpOauthRefresher] refreshed url=${entry.metadata.serverUrl} `
-                + `hash=${entry.hash.slice(0, 12)}.. expiresIn=${parsed.expires_in}s`,
+                + `hash=${entry.hash.slice(0, 12)}.. expiresIn=${response.expiresIn}s`,
             );
         } catch (err) {
-            result.refresh.transientFailures++;
+            const terminal = err instanceof MicrosoftOAuthRefreshError
+                && err.status !== undefined && err.status < 500 && err.rejection !== undefined;
+            if (terminal) {
+                deletePair(entry);
+                result.refresh.invalidated++;
+            } else {
+                result.refresh.transientFailures++;
+            }
+            const code = err instanceof AuthError ? err.code : 'RefreshFailed';
+            const diagnostics = err instanceof MicrosoftOAuthRefreshError
+                ? ` status=${err.status ?? 'unknown'} rejection=${err.rejection ?? 'none'}`
+                : '';
             log.warn(
                 LogCategory.MCP,
-                `[McpOauthRefresher] refresh threw for url=${entry.metadata.serverUrl}: `
-                + `${err instanceof Error ? err.message : String(err)}`,
+                `[McpOauthRefresher] refresh failed for url=${entry.metadata.serverUrl} `
+                + `code=${code}${diagnostics}; ${terminal ? 'cleared entry' : 'left entry untouched'}`,
             );
         }
     }
@@ -402,34 +372,4 @@ export function sanitizeRequestScope(scope: string): string {
         seen.add(t);
     }
     return kept.join(' ');
-}
-
-// Only these errors mean the cached refresh token is unrecoverable. Other 4xx
-// (e.g. invalid_request, invalid_scope) are request-shape problems — deleting
-// the cache for those would force unnecessary re-auth.
-export function isTerminalRefreshError(status: number, body: string): boolean {
-    if (status >= 500) return false;
-    const parsed = safeParse(body);
-    if (parsed && typeof parsed.error === 'string') {
-        return parsed.error === 'invalid_grant'
-            || parsed.error === 'interaction_required'
-            || parsed.error === 'consent_required';
-    }
-    return /\binvalid_grant\b|\binteraction_required\b|\bconsent_required\b/i.test(body);
-}
-
-// AAD error bodies hold error/error_description/correlation_id/trace_id — no
-// tokens. Strip control chars so a single-line ndjson record stays parseable.
-export function redactBody(body: string, maxLen = 400): string {
-    const oneLine = body.replace(/[\r\n\t\u0000-\u001F\u007F]+/g, ' ').trim();
-    return oneLine.length > maxLen ? `${oneLine.slice(0, maxLen)}…` : oneLine;
-}
-
-function safeParse(text: string): Record<string, unknown> | undefined {
-    try {
-        const v = JSON.parse(text) as unknown;
-        return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : undefined;
-    } catch {
-        return undefined;
-    }
 }

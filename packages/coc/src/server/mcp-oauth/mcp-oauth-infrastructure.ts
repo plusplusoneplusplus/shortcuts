@@ -12,7 +12,7 @@ export interface McpOauthInfrastructure {
 }
 
 export interface CreateMcpOauthInfrastructureOptions extends McpOauthManagerOptions {
-    autoRefresh?: { enabled: boolean } & Omit<MaintenanceTimerOptions, 'logger' | 'fetch' | 'now'>;
+    autoRefresh?: { enabled: boolean } & Omit<MaintenanceTimerOptions, 'logger' | 'exchangeRefreshToken' | 'now'>;
 }
 
 export function createMcpOauthInfrastructure(
