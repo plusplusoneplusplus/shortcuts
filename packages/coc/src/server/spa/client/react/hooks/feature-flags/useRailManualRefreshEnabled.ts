@@ -4,7 +4,7 @@ import { DASHBOARD_CONFIG_UPDATED_EVENT, isRailManualRefreshEnabled } from '../.
 /**
  * Live `features.railManualRefresh` flag; tracks runtime config updates.
  * Gates the collapsed workspace rail's manual refresh control.
- * Global admin setting; disabled by default.
+ * Global admin setting; enabled by default.
  */
 export function useRailManualRefreshEnabled(): boolean {
     const [enabled, setEnabled] = useState(isRailManualRefreshEnabled());

@@ -95,6 +95,51 @@ describe('sentinel_todos tool', () => {
         expect(listed.ledgerRevision).toBe(1);
     });
 
+    it('lists all active items plus recent Done, supports older lookup and never caps tracking or retained records at 50', async () => {
+        const items = Array.from({ length: 60 }, (_, index) => todos.create(owner, {
+            title: `Item ${index}`, completionCondition: 'Delivered', status: index === 0 ? 'in_progress' : 'done',
+        }, { actor: 'user' }).item);
+        todos.update(owner, items[59].id, 1, { archived: true }, 'user');
+        const recent = await call({ action: 'list' });
+        expect(recent.items.map((item: SentinelTodoItem) => item.id)).toEqual([items[0], ...items.slice(10, 59).reverse()].map(item => item.id));
+        expect(recent).toMatchObject({ total: 59, archivedCount: 1, hasMore: true, nextOffset: 50 });
+        const older = await call({ action: 'list', offset: recent.nextOffset });
+        expect(older.items.map((item: SentinelTodoItem) => item.id)).toEqual(items.slice(1, 10).reverse().map(item => item.id));
+        expect(older).toMatchObject({ hasMore: false, nextOffset: null });
+        expect((await call({ action: 'list', itemId: items[0].id })).items).toEqual([items[0]]);
+        expect((await call({ action: 'list', includeArchived: true })).items.map((item: SentinelTodoItem) => item.id))
+            .toEqual(recent.items.map((item: SentinelTodoItem) => item.id));
+        expect((await call({ action: 'list', itemId: items[59].id, includeArchived: true })).items[0].archived).toBe(true);
+        expect((await call({ action: 'list', limit: 500, includeArchived: true })).items).toHaveLength(60);
+        expect(await call({ action: 'list', itemId: items[0].id }, other)).toMatchObject({ code: 'not_found' });
+        const tracking = createSentinelTodoTracking({ service, owner });
+        expect(await tracking.check(items[0].id)).toBeUndefined();
+        expect(await tracking.prepare?.(items[0].id, {})).toMatchObject({ dependencyBound: false });
+        expect(await call({ action: 'update', itemId: items[0].id, expectedRevision: 1, notes: 'Older record' }))
+            .toMatchObject({ item: { notes: 'Older record' } });
+        expect((await service.list(owner)).items).toHaveLength(60);
+        expect(todos.get(owner).items).toHaveLength(60);
+    });
+
+    it('keeps every active item visible above 50 and returns a Done-only continuation', async () => {
+        const active = Array.from({ length: 55 }, (_, index) => todos.create(owner, {
+            title: `Active ${index}`, completionCondition: 'Delivered', type: index === 0 ? 'manual' : 'normal',
+        }, { actor: 'user' }).item);
+        const done = todos.create(owner, { title: 'Done', status: 'done' }, { actor: 'user' }).item;
+        const first = await call({ action: 'list' });
+        expect(first.items).toEqual(active);
+        expect(first).toMatchObject({ total: 56, hasMore: true, nextOffset: 55 });
+        expect(await call({ action: 'list', offset: first.nextOffset })).toMatchObject({ items: [done], hasMore: false });
+        expect((await call({ action: 'list', limit: 1 })).items).toEqual(active);
+        expect((await call({ action: 'list', itemId: done.id, offset: 55 })).items).toEqual([done]);
+    });
+
+    it.each([{ limit: 0 }, { limit: 501 }, { limit: 1.5 }, { offset: -1 }, { offset: 1.5 }])(
+        'rejects invalid list paging: %s', async options => {
+            expect(await call({ action: 'list', ...options })).toMatchObject({ code: 'invalid' });
+        },
+    );
+
     it('requires a completion condition on create', async () => {
         const result = await call({ action: 'create', title: 'Vague idea' });
         expect(result).toMatchObject({ code: 'invalid' });

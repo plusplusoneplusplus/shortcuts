@@ -79,7 +79,7 @@ describe('WhatsApp list todos', () => {
         return owner;
     }
 
-    it('lists the selected Sentinel topic\'s unfinished items, grouping manual tracking, read-only', async () => {
+    it('lists active then recent Done items of the selected Sentinel topic, grouping manual tracking, read-only', async () => {
         const owner = seedLedger();
         bindings.selectRepo('ws-a');
         bindings.selectTopic('ws-a', 'sent-a');
@@ -96,6 +96,12 @@ describe('WhatsApp list todos', () => {
             '',
             'Manual tracking (tracked only, never run):',
             '4. [To do] Call the vendor',
+            '',
+            'Done:',
+            '5. [Done] Old done',
+            '',
+            'Done · Manual tracking (tracked only, never run):',
+            '6. [Done] Manual finished',
         ].join('\n'), 'todos');
         // No ledger write, AI admission, selection change; replies are guarded own messages.
         expect(todos.get(owner)).toEqual(before);
@@ -151,22 +157,41 @@ describe('WhatsApp list todos', () => {
         expect(bindings.topic('ws-a')).toBe('sent-a');
     });
 
-    it('chunks long lists and counts items past the bound instead of dropping them', async () => {
+    it('chunks long lists without dropping any active items above 50', async () => {
         const owner = { workspaceId: 'ws-a', processId: 'sent-a' };
         for (let i = 0; i < 105; i++) todos.create(owner, { title: `Item ${i} ${'x'.repeat(150)}` }, { actor: 'user' });
         todos.create(owner, { title: 'Manual tail', type: 'manual' }, { actor: 'user' });
         bindings.selectRepo('ws-a');
         bindings.selectTopic('ws-a', 'sent-a');
+        const before = todos.get(owner);
         await router.handle(inbound('list todos', 'long'));
         const parts = send.mock.calls.map(call => call[0] as string);
         expect(parts.length).toBeGreaterThan(1);
         for (const part of parts) expect(part.length).toBeLessThanOrEqual(4096);
         const text = parts.join('');
         expect(text).toContain('— 106 not done');
-        expect(text).toContain('100. [To do] Item 99 ');
-        expect(text).not.toContain('Item 100 ');
-        expect(text).toContain('…6 more not shown.');
+        expect(text).toContain('1. [To do] Item 0 ');
+        expect(text).toContain('105. [To do] Item 104 ');
+        expect(text).toContain('106. [To do] Manual tail');
+        expect(text).not.toContain('more not shown');
+        expect((text.match(/^\d+\. \[/gm) ?? [])).toHaveLength(106);
+        expect(todos.get(owner)).toEqual(before);
+        expect((await service.list(owner)).items).toHaveLength(106);
         for (let i = 1; i <= parts.length; i++) expect(bindings.isKnownMessage(`out-long-${i}`)).toBe(true);
+    });
+
+    it('fills the remaining budget with recent Done and counts only omitted Done history', async () => {
+        const owner = { workspaceId: 'ws-a', processId: 'sent-a' };
+        todos.create(owner, { title: 'Older ongoing work', status: 'in_progress' }, { actor: 'user' });
+        for (let i = 0; i < 60; i++) todos.create(owner, { title: `Finished ${i}`, status: 'done' }, { actor: 'user' });
+        const before = todos.get(owner);
+        const text = formatTodosReply('S', before.items);
+        expect(text).toContain('1. [In progress] Older ongoing work');
+        expect(text).toContain('[Done] Finished 59');
+        expect(text).not.toContain('[Done] Finished 0\n');
+        expect(text).toContain('11 older Done items not shown');
+        expect((text.match(/^\d+\. \[/gm) ?? [])).toHaveLength(50);
+        expect(todos.get(owner)).toEqual(before);
     });
 
     it('formats derived In review and running job state from the shared read model', () => {

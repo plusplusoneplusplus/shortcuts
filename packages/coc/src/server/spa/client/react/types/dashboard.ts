@@ -132,6 +132,8 @@ export interface ClientConversationTurn {
     pasteExternalized?: boolean;
     /** True for display-only turns (e.g. the `/compact` result notice) excluded from model prompt history. */
     displayOnly?: boolean;
+    /** Server-assigned correlation for automated result delivery. */
+    relayRequestId?: string;
     /** Full provider-generated summary for a `/compact` result turn, revealed behind a disclosure. */
     compactionSummary?: string;
     /** Verbatim repo-group member listing injected into this user turn's prompt, revealed behind a disclosure. */

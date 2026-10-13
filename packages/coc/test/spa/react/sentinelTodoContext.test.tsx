@@ -44,7 +44,7 @@ describe('Sentinel to-do context ownership and serialization', () => {
     it('reads the authoritative owning ledger even in a group view and does not require conversation retrieval', async () => {
         expect(validateSessionContextDrop({ ...validationOptions, payload, existingItems: [] }).ok).toBe(true);
         expect(await resolveSentinelTodoContext(payload, owner)).toEqual(item);
-        expect(getLedger).toHaveBeenCalledWith('ws-1', 'sentinel-1');
+        expect(getLedger).toHaveBeenCalledWith('ws-1', 'sentinel-1', { itemId: item.id });
         expect(origins).toEqual(['local']);
     });
 
@@ -108,7 +108,7 @@ describe('Sentinel to-do context ownership and serialization', () => {
         const remotePayload = createSentinelTodoContextPayload(remoteOwner, item);
         await resolveSentinelTodoContext(remotePayload, remoteOwner);
         expect(origins).toEqual(['https://server-a.example.test']);
-        expect(getLedger).toHaveBeenCalledWith('group-view', 'sentinel-1');
+        expect(getLedger).toHaveBeenCalledWith('group-view', 'sentinel-1', { itemId: item.id });
         getLedger.mockClear();
         await expect(resolveSentinelTodoContext({
             ...remotePayload, sourceRoutingRef: 'remote:server-b:group-view',

@@ -55,6 +55,19 @@ describe('SentinelTodoTriggerFirer', () => {
     });
     afterEach(() => db.close());
 
+    it('fires a PR rule for an older item outside the 50-item recent view without truncating the ledger', async () => {
+        for (let index = 0; index < 55; index++) todos.create(owner, { title: `Newer item ${index}` }, { actor: 'user' });
+        const before = todos.get(owner);
+        expect(before.items.slice(-50).some(item => item.id === rule.binding?.itemId)).toBe(false);
+        await firer.fire(rule.id, 'merged');
+        expect(triggers.getById(rule.id)).toMatchObject({
+            outcome: 'fired', delivery: { state: 'delivered', itemRevision: 1 },
+        });
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(todos.get(owner)).toEqual(before);
+        expect(before.items).toHaveLength(56);
+    });
+
     it('persists the terminal decision, item snapshot and delivery identity before queue work', async () => {
         const before = todos.get(owner);
         execute.mockImplementation(async () => {

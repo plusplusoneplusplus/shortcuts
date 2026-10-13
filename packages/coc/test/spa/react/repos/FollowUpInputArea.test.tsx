@@ -495,7 +495,7 @@ describe('FollowUpInputArea — session context drops', () => {
         expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('Authoritative title');
         expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('todo-1');
         expect(screen.getByTestId('attached-sentinel-todo-context-chip').querySelector('[title="todo-1"]')?.className).toContain('shrink-0');
-        expect(mockGetSentinelTodos).toHaveBeenCalledWith('ws-1', 'current-process');
+        expect(mockGetSentinelTodos).toHaveBeenCalledWith('ws-1', 'current-process', { itemId: 'todo-1' });
         expect(onSend).not.toHaveBeenCalled();
         expect(setFollowUpInput).not.toHaveBeenCalled();
         fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
@@ -516,6 +516,7 @@ describe('FollowUpInputArea — session context drops', () => {
             expect(attachSelectionToChat('ws-1', todoPayload)).toBe('active-chat');
         });
         expect(screen.getByTestId('attached-sentinel-todo-context-chip').textContent).toContain('From keyboard or touch');
+        expect(mockGetSentinelTodos).toHaveBeenCalledWith('ws-1', 'current-process', { itemId: 'todo-1' });
     });
 
     it('enforces the shared context cap when several authoritative drop reads finish together', async () => {

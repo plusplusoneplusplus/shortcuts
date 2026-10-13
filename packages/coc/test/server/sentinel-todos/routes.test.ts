@@ -52,7 +52,7 @@ async function startServer(opts: { enabled?: boolean; dependenciesEnabled?: bool
     if (!address || typeof address === 'string') throw new Error('no address');
     let closed = false;
     return {
-        dataDir, db, onChange, enabled, dependenciesEnabled,
+        dataDir, db, todos, service, onChange, enabled, dependenciesEnabled,
         baseUrl: `http://127.0.0.1:${address.port}`,
         close: async () => {
             if (closed) return;
@@ -82,6 +82,76 @@ describe('Sentinel to-do routes', () => {
         return s;
     };
     const ledger = '/api/workspaces/ws-a/sentinel-todos/queue_s1';
+
+    it('includes all active items before recent Done while retaining older pages, exact reads and full-store dependencies', async () => {
+        const s = await track(await startServer({ dependenciesEnabled: true }));
+        const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
+        const items = Array.from({ length: 105 }, (_, index) => s.todos.create(owner, {
+            title: `Item ${index}`, status: index === 1 ? 'in_progress' : index === 104 ? 'todo' : 'done',
+        }, { actor: 'user', idempotencyKey: `item-${index}` }).item);
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const recent = await client.sentinelTodos.get(owner.workspaceId, owner.processId);
+        const ordered = [items[1], items[104], ...items.slice(2, 104).reverse(), items[0]];
+        expect(recent.items.map(item => item.id)).toEqual(ordered.slice(0, 50).map(item => item.id));
+        expect(recent).toMatchObject({ total: 105, hasMore: true, nextOffset: 50 });
+        const older = await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: recent.nextOffset! });
+        expect(older.items.map(item => item.id)).toEqual(ordered.slice(50, 100).map(item => item.id));
+        expect(older).toMatchObject({ hasMore: true, nextOffset: 100 });
+        const last = await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: 100 });
+        expect(last.items.map(item => item.id)).toEqual(ordered.slice(100).map(item => item.id));
+        expect(last).toMatchObject({ hasMore: false, nextOffset: null });
+        expect(await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: 200 }))
+            .toMatchObject({ items: [], total: 105, hasMore: false, nextOffset: null });
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { itemId: items[0].id })).items)
+            .toEqual([items[0]]);
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { limit: 500 })).items).toHaveLength(105);
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { full: true })).items).toEqual(items);
+        expect((await req(s.baseUrl, 'GET', `${ledger.replace('queue_s1', 'queue_s3')}?itemId=${items[0].id}`)).status).toBe(404);
+        expect((await req(s.baseUrl, 'GET', `${ledger}?itemId=missing`)).status).toBe(404);
+        expect(s.todos.get(owner).items).toEqual(items);
+        expect(s.todos.create(owner, { title: 'Retry' }, { actor: 'user', idempotencyKey: 'item-0' }).item).toEqual(items[0]);
+        await client.sentinelTodos.setDependencies(owner.workspaceId, owner.processId, items[104].id, {
+            expectedRevision: 1, dependsOn: [{ itemId: items[0].id, condition: { kind: 'done' } }],
+        });
+        expect(await client.sentinelTodos.evaluateDependencies(owner.workspaceId, owner.processId, items[104].id))
+            .toMatchObject({ state: 'ready', edges: [{ sourceRevision: 1, satisfied: true }] });
+        await expect(client.sentinelTodos.setDependencies(owner.workspaceId, owner.processId, items[0].id, {
+            expectedRevision: 1, dependsOn: [{ itemId: items[104].id, condition: { kind: 'done' } }],
+        })).rejects.toMatchObject({ status: 400, code: 'invalid' });
+        const edited = await client.sentinelTodos.update(owner.workspaceId, owner.processId, items[0].id, { expectedRevision: 1, notes: 'Retained older item' });
+        expect(edited.item.notes).toBe('Retained older item');
+        expect((await s.service.list(owner)).items).toHaveLength(105);
+        await s.close();
+        const reopened = await track(await startServer({ dataDir: s.dataDir }), false);
+        expect((await new CocClient({ baseUrl: reopened.baseUrl }).sentinelTodos.get(owner.workspaceId, owner.processId, { full: true })).items)
+            .toHaveLength(105);
+    });
+
+    it('returns more than 50 active items and pages only the remaining Done history', async () => {
+        const s = await track(await startServer());
+        const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
+        const active = Array.from({ length: 55 }, (_, index) => s.todos.create(owner, {
+            title: `Active ${index}`, status: index === 0 ? 'in_progress' : 'todo',
+        }, { actor: 'user' }).item);
+        const done = s.todos.create(owner, { title: 'Done', status: 'done' }, { actor: 'user' }).item;
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        const first = await client.sentinelTodos.get(owner.workspaceId, owner.processId);
+        expect(first.items).toEqual(active);
+        expect(first).toMatchObject({ total: 56, hasMore: true, nextOffset: 55 });
+        expect(await client.sentinelTodos.get(owner.workspaceId, owner.processId, { offset: first.nextOffset! }))
+            .toMatchObject({ items: [done], hasMore: false, nextOffset: null });
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { limit: 1 })).items).toEqual(active);
+        expect((await client.sentinelTodos.get(owner.workspaceId, owner.processId, { itemId: done.id, offset: 55 })).items)
+            .toEqual([done]);
+    });
+
+    it.each(['limit=0', 'limit=501', 'limit=1.5', 'limit=NaN', 'offset=-1', 'offset=1.5', 'full=invalid'])(
+        'rejects invalid recent-list options without changing records: %s', async query => {
+            const s = await track(await startServer());
+            expect((await req(s.baseUrl, 'GET', `${ledger}?${query}`)).status).toBe(400);
+            expect(s.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_items').get()).toEqual({ count: 0 });
+        },
+    );
 
     it('requires confirmed owner-user action approval, exact settings and revision; revokes separately from artifact acceptance', async () => {
         const s = await track(await startServer({ dependenciesEnabled: true,
@@ -172,7 +242,7 @@ describe('Sentinel to-do routes', () => {
     it('creates and edits an item that survives a server restart', async () => {
         const s = await track(await startServer(), false);
         cleanups.unshift(() => fs.rmSync(s.dataDir, { recursive: true, force: true }));
-        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [] });
+        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [], total: 0, hasMore: false, nextOffset: null });
 
         const created = await req(s.baseUrl, 'POST', `${ledger}/items`, {
             title: 'Fix login', completionCondition: 'Login e2e passes', idempotencyKey: 'k1',
@@ -297,7 +367,7 @@ describe('Sentinel to-do routes', () => {
         let restoreWrites = failTodoWrites(s.db);
         expect((await req(s.baseUrl, 'POST', `${ledger}/items`, input)).status).toBe(500);
         expect(s.onChange).not.toHaveBeenCalled();
-        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [] });
+        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [], total: 0, hasMore: false, nextOffset: null });
         restoreWrites();
         const created = await req(s.baseUrl, 'POST', `${ledger}/items`, input);
         expect(created.status).toBe(201);
@@ -384,6 +454,6 @@ describe('Sentinel to-do routes', () => {
         expect(res.status).toBe(500);
         expect(res.body.item).toBeUndefined();
         expect(s.onChange).not.toHaveBeenCalled();
-        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [] });
+        expect((await req(s.baseUrl, 'GET', ledger)).body).toEqual({ revision: 0, items: [], total: 0, hasMore: false, nextOffset: null });
     });
 });

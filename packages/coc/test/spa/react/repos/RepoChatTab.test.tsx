@@ -2696,11 +2696,12 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         expect(shortcutIn(rail)?.getAttribute('data-sentinel-task-id')).toBe('sn-run');
     });
 
-    it('renders nothing when the list has no Sentinel chat', async () => {
+    it('omits Sentinel but retains the default refresh control when the list has no Sentinel chat', async () => {
         setupFetchMock({ history: [makeHistoryTask('h1')] });
         const rail = await renderWithRail();
         expect(shortcutIn(rail)).toBeNull();
-        expect(rail.childElementCount).toBe(0);
+        expect(rail.querySelector('[aria-label="Refresh sidebar"]')).toBeTruthy();
+        expect(rail.childElementCount).toBe(1);
     });
 
     it('opens the chat through the list selection path without expanding anything', async () => {
@@ -3012,16 +3013,20 @@ describe('RepoChatTab: manual rail refresh', () => {
     const latestList = () => mockListPane.mock.calls.at(-1)![0];
     const refresh = () => host.querySelector<HTMLButtonElement>('[aria-label="Refresh sidebar"]')!;
 
-    it('defaults off and tracks live setting changes', async () => {
+    it('defaults on and tracks explicit live opt-out and opt-in changes', async () => {
         delete (window as any).__DASHBOARD_CONFIG__;
         await renderTab('ws-1', undefined, props());
+        expect(refresh()).toHaveAttribute('title', 'Refresh sidebar');
+        const { DASHBOARD_CONFIG_UPDATED_EVENT } = await import('../../../../src/server/spa/client/react/utils/config');
+        act(() => {
+            (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: false };
+            window.dispatchEvent(new Event(DASHBOARD_CONFIG_UPDATED_EVENT));
+        });
         expect(refresh()).toBeNull();
         act(() => {
             (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: true };
+            window.dispatchEvent(new Event(DASHBOARD_CONFIG_UPDATED_EVENT));
         });
-        // Use the actual config event constant (the button subscribes to runtime updates).
-        const { DASHBOARD_CONFIG_UPDATED_EVENT } = await import('../../../../src/server/spa/client/react/utils/config');
-        act(() => window.dispatchEvent(new Event(DASHBOARD_CONFIG_UPDATED_EVENT)));
         expect(refresh()).toHaveAttribute('title', 'Refresh sidebar');
     });
 

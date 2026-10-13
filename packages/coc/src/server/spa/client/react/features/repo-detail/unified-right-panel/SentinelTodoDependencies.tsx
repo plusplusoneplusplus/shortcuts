@@ -44,7 +44,7 @@ export function SentinelTodoDependencies(props: Props) {
 }
 
 function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLedgerChange, onItemLink, onArtifactLink }: Props) {
-    const client = useCocClient(owner.ownerRoutingRef);
+    const client = useCocClient(owner.ownerRoutingRef === null ? undefined : owner.ownerRoutingRef ?? owner.ownerWorkspaceId);
     const id = useId();
     const [evaluation, setEvaluation] = useState<SentinelTodoDependencyEvaluation | null>(null);
     const [readError, setReadError] = useState<string | null>(null);

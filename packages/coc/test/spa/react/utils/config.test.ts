@@ -14,12 +14,43 @@ import {
     isDreamsEnabled,
     isFeatureEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
+    isRailManualRefreshEnabled,
+    isRailStatusActionsEnabled,
     isServersEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
 
 afterEach(() => {
     _resetRuntimeConfig();
     delete (window as any).__DASHBOARD_CONFIG__;
+});
+
+describe.each([
+    ['railManualRefreshEnabled', isRailManualRefreshEnabled],
+    ['railStatusActionsEnabled', isRailStatusActionsEnabled],
+] as const)('%s default-on behavior', (flag, isEnabled) => {
+    it('enables an absent setting with or without bootstrap config', () => {
+        expect(isEnabled()).toBe(true);
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: {} },
+        });
+        expect(isEnabled()).toBe(true);
+    });
+
+    it.each([false, true])('preserves an explicit bootstrap setting (%s)', enabled => {
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { [flag]: enabled } },
+        });
+        expect(isEnabled()).toBe(enabled);
+    });
+
+    it('follows live opt-out and opt-in updates', () => {
+        applyRuntimeConfigPatch({ [flag]: false });
+        expect(isEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ [flag]: true });
+        expect(isEnabled()).toBe(true);
+    });
 });
 
 describe('chat history paging runtime flag', () => {

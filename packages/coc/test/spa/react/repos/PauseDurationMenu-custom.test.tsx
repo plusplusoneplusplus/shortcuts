@@ -19,6 +19,8 @@ import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-clien
 import { renderWithProviders } from '../test-utils';
 import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
+import { SplitWorkspacePanel } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
+import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
 
 // ── Mutable quota state controlled per test ──────────────────────────────────
 let mockQuotaData: AgentProvidersQuotaResponse | null = null;
@@ -244,6 +246,15 @@ describe('PauseDurationMenu — Custom… float-hours row', () => {
         expect(props.onSetTaskDelay).not.toHaveBeenCalled();
     });
 
+    it('disposes a portaled menu when its mounted anchor ancestor is hidden', async () => {
+        const { props } = renderPane();
+        openAllMenu();
+        screen.getByTestId('repo-pause-resume-btn').parentElement!.style.display = 'none';
+        await waitFor(() => expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull());
+        expect(props.onPauseResume).not.toHaveBeenCalled();
+        expect(props.onSetTaskDelay).not.toHaveBeenCalled();
+    });
+
     it('switches ALL/AP without leaking the previous custom editor', () => {
         renderPane();
         openAllMenu();
@@ -255,6 +266,56 @@ describe('PauseDurationMenu — Custom… float-hours row', () => {
         expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull();
         expect(screen.queryByTestId('pause-duration-autopilot-custom-input')).toBeNull();
         expect(screen.getByTestId('pause-duration-autopilot-custom')).toBeVisible();
+    });
+
+    it.each(['all', 'autopilot'])('selects %s exactly once from the collapsed preview through the real portal event sequence', scope => {
+        vi.useFakeTimers();
+        const workspaceId = 'preview-owner';
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(workspaceId), '1');
+        try {
+            const props = defaultProps({ workspaceId });
+            renderWithProviders(<SplitWorkspacePanel workspaceId={workspaceId}
+                chatList={<ChatListPane {...props} />} gitList={null} detail={<button>Outside</button>} />);
+            fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+            act(() => { vi.advanceTimersByTime(450); });
+            const trigger = screen.getByTestId(scope === 'all' ? 'repo-pause-resume-btn' : 'autopilot-pause-resume-btn');
+            fireEvent.mouseDown(trigger);
+            fireEvent.click(trigger);
+            const option = screen.getByTestId(`pause-duration-${scope}-indefinite`);
+            expect(option).toHaveFocus();
+            expect(option.closest('[data-testid^="pause-duration-menu"]')?.parentElement).toBe(document.body);
+            fireEvent.mouseDown(option);
+            act(() => { vi.advanceTimersByTime(300); });
+            expect(trigger).toBeVisible();
+            fireEvent.mouseUp(option);
+            fireEvent.click(option);
+            expect(scope === 'all' ? props.onPauseResume : props.onPauseResumeAutopilot).toHaveBeenCalledExactlyOnceWith(undefined);
+            expect(scope === 'all' ? props.onPauseResumeAutopilot : props.onPauseResume).not.toHaveBeenCalled();
+            expect(screen.queryByTestId(`pause-duration-menu-${scope}`)).toBeNull();
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey(workspaceId))).toBe('1');
+        } finally {
+            vi.useRealTimers();
+            localStorage.removeItem(splitWorkspaceLeftCollapsedStorageKey(workspaceId));
+        }
+    });
+
+    it.each([
+        { workspaceId: 'workspace-b' },
+        { quotaRoutingTarget: 'server-b:workspace-a' },
+    ])('disposes an open custom editor when its owner changes to %o', owner => {
+        const { props, rerender } = renderPane({ workspaceId: 'workspace-a', quotaRoutingTarget: 'server-a:workspace-a' });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('pause-duration-all-custom'));
+        fireEvent.change(screen.getByTestId('pause-duration-all-custom-input'), { target: { value: '1.5' } });
+        const onPauseResume = vi.fn();
+        rerender(<ChatListPane {...props} {...owner} onPauseResume={onPauseResume} />);
+        expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull();
+        expect(props.onPauseResume).not.toHaveBeenCalled();
+        openAllMenu();
+        expect(screen.queryByTestId('pause-duration-all-custom-input')).toBeNull();
+        fireEvent.click(screen.getByTestId('pause-duration-all-1h'));
+        expect(onPauseResume).toHaveBeenCalledExactlyOnceWith({ durationHours: 1 });
+        expect(props.onPauseResume).not.toHaveBeenCalled();
     });
 
     it('renders the Custom… row in the AP (autopilot) menu', () => {
@@ -413,6 +474,41 @@ describe('PauseDurationMenu — delay between tasks', () => {
         expect(screen.getByTestId('task-delay-all-custom')).toBeDisabled();
         resolveRequest();
         await waitFor(() => expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull());
+    });
+
+    it.each(['set', 'skip'])('a stale %s completion cannot dismiss a reopened menu for another owner', async operation => {
+        let resolveRequest!: () => void;
+        const request = vi.fn(() => new Promise<void>(resolve => { resolveRequest = resolve; }));
+        const { props, rerender } = renderPane({
+            workspaceId: 'workspace-a', taskDelayUntil: Date.now() + 60_000,
+            onSetTaskDelay: request, onSkipTaskDelay: request,
+        });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId(operation === 'set' ? 'task-delay-all-5' : 'task-delay-all-skip'));
+        expect(request).toHaveBeenCalledTimes(1);
+        const nextRequest = vi.fn().mockResolvedValue(undefined);
+        rerender(<ChatListPane {...props} workspaceId="workspace-b"
+            onSetTaskDelay={nextRequest} onSkipTaskDelay={nextRequest} />);
+        expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull();
+        openAutopilotMenu();
+        await act(async () => { resolveRequest(); });
+        expect(screen.getByTestId('pause-duration-menu-autopilot')).toBeVisible();
+        expect(nextRequest).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByTestId('task-delay-autopilot-15'));
+        await waitFor(() => expect(screen.queryByTestId('pause-duration-menu-autopilot')).toBeNull());
+        expect(nextRequest).toHaveBeenCalledExactlyOnceWith('autopilot', 15);
+    });
+
+    it('a dismissed delay request cannot close a new menu of the same scope and owner', async () => {
+        let resolveRequest!: () => void;
+        renderPane({ onSetTaskDelay: () => new Promise<void>(resolve => { resolveRequest = resolve; }) });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('task-delay-all-5'));
+        fireEvent.mouseDown(document.body);
+        openAllMenu();
+        await act(async () => { resolveRequest(); });
+        expect(screen.getByTestId('pause-duration-menu-all')).toBeVisible();
+        expect(screen.getByTestId('task-delay-all-5')).toBeEnabled();
     });
 
     it('keeps the prior value checked and shows an inline request error', async () => {

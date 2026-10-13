@@ -395,14 +395,15 @@ git-info refreshes; tiles open the expanded Git half (branch overview or member)
 
 ### Collapsed-rail Admin and quota
 
-`features.railStatusActions` (default off) adds a bottom rail group, below a
-separator, only when the panel has a docked `footer`. `SplitWorkspacePanel`
+`features.railStatusActions` (default on, live Appearance setting) adds a bottom
+rail group below a separator, only when the panel has a docked `footer`. `SplitWorkspacePanel`
 provides that node through `RailStatusSlotContext` to the footer while collapsed;
 the footer's `StatusActions` portals a rail Admin gear (same `handleAdmin`, no
 `#admin-toggle` id) and passes it as `railContainer` to its
 `AgentProviderQuotaIndicator`. The indicator renders a second trigger from the same
 hook and dropdown, opening the panel `right` of the rail. Expanding the sidebar
-removes the triggers and closes a rail-anchored dropdown.
+removes the triggers and closes a rail-anchored dropdown. An absent config or SPA
+bootstrap flag enables the controls; an explicit saved false disables them.
 
 `api/repoPreferences.ts` shares SPA preference reads for 30 seconds, keyed by
 server origin, API prefix and workspace. `useRepoPreferences` supplies the same
@@ -564,8 +565,16 @@ panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-
 copy action and no save or dirty-state registration. With
 `features.sentinelTodoLedger` on, a hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
-ledger from the owning server through `client.sentinelTodos`; only the descriptor
-persists. Job-title previews use owner-scoped compact process reads or Ralph
+ledger from the owning server through `client.sentinelTodos.get` with `full: true`;
+only the descriptor persists. Events, manual refresh and post-write reloads share
+the owner/generation-guarded loader. Pending reads block duplicate manual admission;
+reloads retain the snapshot, selection, drafts and section visibility, with read
+failures surfaced through the retry notice. Shared `sentinelTodoRecentPage` includes
+all unarchived non-Done items, then recently updated Done within a 50-item budget;
+active counts above 50 stay complete and archived history follows Done. Saved
+fulfillment determines selection, not job completion. Older-item expansion and
+section sorting apply to this selection; dependency,
+trigger and Scrubber controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. Collapsed/latest and expanded/earlier titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and

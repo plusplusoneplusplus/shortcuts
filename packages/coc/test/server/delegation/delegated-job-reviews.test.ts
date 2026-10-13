@@ -12,6 +12,7 @@ import { DelegatedJobStore, grillingResultJob } from '../../../src/server/delega
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews, delegatedReviewReceipt } from '../../../src/server/delegation/delegated-job-reviews';
 import { SENTINEL_JOB_REVIEW_INSTRUCTIONS, SENTINEL_JOB_REVIEW_PREFIX } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { parseSentinelResult } from '../../../src/server/spa/client/react/features/chat/conversation/sentinelResult';
 
 const parentWorkspace = 'ws-parent';
 const childWorkspace = 'ws-child';
@@ -170,6 +171,13 @@ describe('delegated success/failure review scheduling', () => {
             jobId: job.id, terminalEventId: 'child-terminal',
             outcome, summary: job.terminal?.result.summary, links: job.terminal?.result.links,
             repository: { workspaceId: childWorkspace, name: 'Child repository', rootPath: path.join(directory, 'child') } });
+        const storedTurn = (await store.getProcess(parentId))!.conversationTurns![0];
+        expect(storedTurn.content).toBe(prompt);
+        const presentation = parseSentinelResult({
+            role: storedTurn.role, content: storedTurn.content, relayRequestId: storedTurn.relayRequestId, timeline: [],
+        }, storedTurn.content, parentWorkspace, parentId);
+        expect(presentation?.rawJson).toBe(json);
+        expect(presentation?.data.summary).toBe(job.terminal?.result.summary);
         expect(queue.getAll()).toHaveLength(1);
     });
 

@@ -670,14 +670,21 @@ withdraws it with the host; the panel applies the flag. The `todo` descriptor is
 one tab per concrete owner and chat: `resourceId` is the parent process id.
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
 including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
-(`client.sentinelTodos`, routed like the chat) and refreshed by that server's
+(`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
 `sentinel-todos-changed` events on a workspace-subscribed socket. Flag-off hides
 stored `todo` tabs in `useUnifiedPanelTabs` without deleting them (the flag loads
 asynchronously), and hides the `+` menu's To-do entry.
 
 The first ledger write (`ledgerRevision === 1`) opens the tab only when the chat
 shows no tab at all (`shouldAutoOpenSentinelTodoTab`), so it never steals focus
-and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` splits the ledger by item type
+and never reopens a closed tab; the `+` menu reopens it. `UnifiedTodoTab` shares
+`sentinelTodoRecentPage` with REST/tool/messaging lists: every unarchived non-Done
+item is included, then recently updated Done items fill a 50-item budget. Active
+counts above 50 stay complete; archived history follows Done. Saved fulfillment,
+not linked job completion, determines selection. Show older items reveals 50 more
+history items, with section ordering applied to the selected rows. Explicit prerequisite/rule links and restored
+open details reveal older rows. Dependencies, triggers and Scrubber projections
+receive the full snapshot independently of visible rows. The tab splits the visible items by type
 (`sentinelTodoType`; a missing type reads as normal) through
 `sentinelTodoSections(items, type)`. `sentinelTodoDisplayStatus` derives In review
 from local pending assessment evidence, independently of persisted fulfillment status
@@ -696,7 +703,12 @@ active list. The tab never offers delegation, conversion or copying. Each add fo
 owns its draft and idempotency key (`useAddItemForm`). Every write carries the item revision it was based on; a
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
-Late loads are dropped by a sequence counter. Choosing Needs attention from the status group requires a
+Event invalidation, manual toolbar refresh and post-write reloads share the
+owner-scoped full-snapshot loader. Pending reads disable manual refresh with a
+synchronous admission guard and busy indicator; reloads retain rows, selection,
+drafts, section visibility and older-item expansion. Read failures use the existing
+retry notice without clearing the snapshot. Late loads are dropped by a sequence counter.
+Choosing Needs attention from the status group requires a
 reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
 Done sends `statusReason: null` and records no outcome, a supplied one is also the outcome. Add and Edit forms carry a Priority select
 (Regular default, High); a High row draws an `aria-hidden` red leading band over the card's
@@ -704,9 +716,18 @@ reserved `pl-1` gutter (every row reserves it, so priority changes never shift c
 visible High badge with `High priority` screen-reader text. `sentinelTodoPriority` reads a
 missing value (older owning server) as Regular. Priority never reorders sections. The header shows the
 active normal count and, when nonzero, how many normal items display Needs attention (stored or derived).
-A collapsed row is the toggle (status, High, title, chevron), a muted meta line (target repo, Updated time),
-a one-line truncated reason preview for Needs attention, the latest job only (`+N earlier jobs`), and
-`Ref` links. With session-context attachments enabled, rows are copy-drag sources
+With `features.sentinelTodoSplitLayout` off, a collapsed inline row is the toggle
+(status, High, title, chevron), muted target/Updated metadata, a Needs attention reason
+preview, the latest job (`+N earlier jobs`), and `Ref` links. The default-off live
+Appearance preference **Sentinel To-do split layout** publishes
+`sentinelTodoSplitLayoutEnabled`. It uses `useContainerWidth` on the actual panel:
+at 660px the compact selectable list and existing item editor scroll independently;
+below that width selection opens details and Back returns focus to the selected row.
+Native pressed buttons expose selection; arrows/Home/End move row focus without
+selecting. Visited editors stay mounted but hidden across selection and resizing,
+retaining item, status-reason and dependency drafts. The editor is shared with inline
+rows; layout changes grant no execution authority or tag functionality.
+With session-context attachments enabled, item cards are copy-drag sources
 and expose an accessible Attach action for their owning Sentinel composer. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
@@ -831,8 +852,10 @@ On the path, `useUnifiedPanelTabs` layers the origin's To-do over the read state
 selection is kept with `rememberActiveTab` (the codec drops it), and the shell
 reopens the dock and activates it when `pinnedId` changes. The pinned copy reads
 the origin's ledger owner and shows an owner banner with Unpin. Each owner's view
-(scroll, expanded rows) is remembered in memory across remounts; Back additionally
-focuses the followed link once. Excursions never write ledger, status, review or
+(list scroll, selected item, detail visibility, sections, expanded rows and item/status
+drafts) is remembered in memory across remounts; Back additionally focuses the visible
+followed link once. Owner/transport remounts invalidate pending ledger responses;
+unresolved owners fail without page-origin reads. Excursions never write ledger, status, review or
 chat state and never send messages.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)

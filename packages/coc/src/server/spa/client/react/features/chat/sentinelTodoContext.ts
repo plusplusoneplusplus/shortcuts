@@ -58,7 +58,7 @@ export async function resolveSentinelTodoContext(
     if (error) throw new Error(error);
     const route = resolveCloneRoute(owner.ownerRoutingRef);
     const client = getSentinelTodoContextClient(owner);
-    const ledger = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId);
+    const ledger = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { itemId: source.todoItemId });
     const currentRoute = resolveCloneRoute(owner.ownerRoutingRef);
     if (currentRoute.kind !== route.kind
         || (route.kind === 'remote' && currentRoute.kind === 'remote' && route.baseUrl !== currentRoute.baseUrl)) {

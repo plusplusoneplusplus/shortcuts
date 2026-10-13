@@ -107,6 +107,17 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
         expect(result.features.markdownPanelPreviewEnabled).toBe(false);
         expect(result.features.chatHistoryPagingEnabled).toBe(false);
+        expect(result.features.railManualRefreshEnabled).toBe(true);
+        expect(result.features.railStatusActionsEnabled).toBe(true);
+    });
+
+    it.each([false, true])('retains explicit collapsed-sidebar settings in runtime config (%s)', enabled => {
+        const svc = createMockRuntimeConfigService({
+            features: { railManualRefresh: enabled, railStatusActions: !enabled },
+        });
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.railManualRefreshEnabled).toBe(enabled);
+        expect(result.features.railStatusActionsEnabled).toBe(!enabled);
     });
 
     it('exposes chat history paging only when the owning-server flag is explicitly enabled', () => {

@@ -594,7 +594,7 @@ export function isChatFoldersEnabled(): boolean {
 
 /** Returns true when the collapsed rail offers manual sidebar refresh. */
 export function isRailManualRefreshEnabled(): boolean {
-    return getConfig().railManualRefreshEnabled === true;
+    return getConfig().railManualRefreshEnabled !== false;
 }
 
 /** Returns true when the collapsed workspace rail shows Git status (`features.railGitSummary`). */
@@ -604,7 +604,7 @@ export function isRailGitSummaryEnabled(): boolean {
 
 /** Returns true when the collapsed workspace rail mirrors Admin and quota (`features.railStatusActions`). */
 export function isRailStatusActionsEnabled(): boolean {
-    return getConfig().railStatusActionsEnabled === true;
+    return getConfig().railStatusActionsEnabled !== false;
 }
 
 /**

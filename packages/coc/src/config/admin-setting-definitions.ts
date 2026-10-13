@@ -990,10 +990,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.railManualRefresh', default: false, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
+        key: 'features.railManualRefresh', default: true, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 76, label: 'Refresh on collapsed sidebar', badge: 'experimental',
-            hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Disabled by default.',
+            hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Enabled by default.',
             testId: 'toggle-rail-manual-refresh-enabled',
         },
     }),
@@ -1014,10 +1014,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.railStatusActions', default: false, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
+        key: 'features.railStatusActions', default: true, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 74, label: 'Admin and quota on collapsed sidebar', badge: 'experimental',
-            hint: 'Also shows the Admin gear and the provider quota ring at the bottom of the collapsed workspace sidebar, reusing the status bar\'s actions and quota data. Disabled by default.',
+            hint: 'Also shows the Admin gear and the provider quota ring at the bottom of the collapsed workspace sidebar, reusing the status bar\'s actions and quota data. Enabled by default.',
             testId: 'toggle-rail-status-actions-enabled',
         },
     }),
@@ -1104,6 +1104,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-chat-history-paging-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelResultCards', default: false, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
+        ui: {
+            tab: 'chat', group: 'aiModes', order: 48, label: 'Sentinel result cards', badge: 'experimental',
+            hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Disabled by default.',
+            testId: 'toggle-sentinel-result-cards-enabled',
+        },
+    }),
 
     // Deliberately has no `ui` block: the control lives on the dedicated Chat
     // Style settings section (`#admin/settings/chat-style`), not on the
@@ -1156,6 +1164,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'dashboard', order: 71, label: 'Markdown panel preview', badge: 'experimental',
             hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
+        },
+    }),
+    bool({
+        key: 'features.sentinelTodoSplitLayout', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoSplitLayoutEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Sentinel To-do split layout', badge: 'experimental',
+            hint: 'Show a compact item list beside selected details when the To-do panel has room. Narrow panels use a list and Back navigation. Layout only; disabled by default.',
+            testId: 'toggle-sentinel-todo-split-layout-enabled',
         },
     }),
     bool({

@@ -348,6 +348,7 @@ export function SplitWorkspacePanel({
     const hoverPeek = useHoverPeek({
         enabled: !isMobile && leftCollapsed && hasFinePointer,
         panelRef: peekPanelRef,
+        scopeKey: jobPreview?.scopeKey ?? workspaceId,
     });
     // Drive a one-shot slide-in once the peek opens (matches the ~200ms timing of
     // the classic chat rail's peek).
@@ -640,6 +641,7 @@ export function SplitWorkspacePanel({
                 )}
                 style={{ width: leftColumn.width }}
                 data-testid="split-workspace-left"
+                {...hoverPeek.panelProps}
                 onMouseEnter={leftCollapsed ? hoverPeek.onPanelPointerEnter : undefined}
                 onMouseLeave={leftCollapsed ? hoverPeek.onPanelPointerLeave : undefined}
             >

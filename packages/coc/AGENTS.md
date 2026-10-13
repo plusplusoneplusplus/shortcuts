@@ -41,6 +41,8 @@ references before editing. Paths are package-relative.
 - Workspace/process REST, SSE, and WebSockets target their owner:
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
+  ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
+  batch; preserve later refreshes and discard scheduled work on effect cleanup.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history
   against current active jobs and local process title/preview updates.
@@ -212,6 +214,13 @@ references before editing. Paths are package-relative.
   the process store's native `processes.db` handle; ledger, item and job rows are scoped
   by workspace and parent chat. Mutations acquire the database writer before reading
   and compare revisions; stale item writers receive `409` with the current item.
+  Recent REST/tool/panel lists include every unarchived non-Done item first, then
+  recently updated Done items within a 50-item budget; active counts above 50 stay
+  complete. Archived history follows Done. `nextOffset` pages the remaining history;
+  item-ID lookup is exact. Saved fulfillment determines selection, not job execution.
+  `SentinelTodoService.list` and store reads
+  remain full-ledger; the 500-item storage capacity is independent of presentation.
+  REST `full=true` supplies complete authoring/projection snapshots.
   The internal `setDependencies` graph command replaces ordered, typed prerequisites
   in the same writer transaction as item/ledger revisions. Edges resolve only in the
   owning parent ledger, regardless of execution workspace; self/duplicate/foreign/
@@ -537,6 +546,10 @@ references before editing. Paths are package-relative.
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
   prompts. Sentinel completion messages contain only the untrusted-result prefix and
   result JSON; non-Sentinel parents receive the shared rules inline.
+  `features.sentinelResultCards` is a default-off, live presentation gate. Cards require
+  server delivery correlation, the exact result envelope and matching parent identity;
+  invalid messages keep ordinary rendering. Inert summary Markdown and exact raw JSON
+  never change model payloads, assessment or authorization. Job links inherit the source owner.
   `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
   requests a particular provider/model. Enabled Auto uses target routing without parent AI
@@ -676,8 +689,10 @@ references before editing. Paths are package-relative.
   not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
   `SentinelTodoService.list` (non-Sentinel → explicit reply; ledger flag off → off reply;
   non-local workspace → unsupported reply). Status labels come from the client's
-  dependency-free `sentinelTodoStatusModel.ts`; Manual tracking is grouped separately; at most
-  100 items, the rest counted; replies chunk via `chunkWhatsAppText`. Read-only: no ledger
+  dependency-free `sentinelTodoStatusModel.ts`; all active items are grouped by
+  Normal/Manual tracking, followed by recent Done within the shared 50-item budget.
+  Only omitted Done history is counted. Replies chunk via
+  `chunkWhatsAppText`. Read-only: no ledger
   write, enqueue, selection change or result acknowledgement.
   Git reads reuse native parsers and forge's WSL runner with optional locks disabled,
   without safe-directory writes or fetch. Replies report changes/conflicts, detached/unborn

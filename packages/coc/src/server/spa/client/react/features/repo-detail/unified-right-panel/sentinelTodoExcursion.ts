@@ -17,6 +17,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import type { SentinelTodoPriority, SentinelTodoStatus } from '@plusplusoneplusplus/coc-client';
 import { buildRepoGroupChatHash, parseRepoGroupChatDeepLink } from '../../../layout/dashboardRoutes';
 import { decodeSegment, encodeSegment, repoHashBase, tokenizeHash } from '../../../layout/routePath';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
@@ -195,6 +196,16 @@ export function returnFromSentinelTodoExcursion(): string | null {
 export interface SentinelTodoView {
     scrollTop?: number;
     expandedIds?: readonly string[];
+    selectedId?: string | null;
+    detailOpen?: boolean;
+    sections?: {
+        done: boolean; archived: boolean; manual: boolean; manualDone: boolean; manualArchived: boolean;
+    };
+    itemDrafts?: Readonly<Record<string, {
+        editing: { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority; baseRevision: number } | null;
+        statusDraft: { status: SentinelTodoStatus; reason: string } | null;
+        error: string | null;
+    }>>;
     /** A link to focus once, on the next mount after Back. */
     focusLinkKey?: string;
 }

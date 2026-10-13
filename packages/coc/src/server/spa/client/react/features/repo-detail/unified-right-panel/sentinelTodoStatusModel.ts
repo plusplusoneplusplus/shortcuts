@@ -11,6 +11,24 @@ import type {
     SentinelTodoStatus,
     SentinelTodoType,
 } from '@plusplusoneplusplus/coc-client';
+import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
+
+/** Saved fulfillment, not an intermediate job result, determines the recent-list budget. */
+export function sentinelTodoRecentPage<T extends SentinelTodoItem>(items: readonly T[], limit = SENTINEL_TODO_RECENT_LIMIT, offset = 0) {
+    const active = items.filter(item => !item.archived && item.status !== 'done');
+    const done = items.filter(item => !item.archived && item.status === 'done');
+    const archived = items.filter(item => item.archived);
+    const newestFirst = (a: T, b: T) => b.updatedAt.localeCompare(a.updatedAt);
+    // Reverse before the stable sort so equally recent records prefer newer insertion order.
+    const ordered = [...active, ...done.reverse().sort(newestFirst), ...archived.reverse().sort(newestFirst)];
+    const end = Math.min(ordered.length, offset + (offset === 0 ? Math.max(limit, active.length) : limit));
+    return {
+        items: ordered.slice(offset, end),
+        total: ordered.length,
+        hasMore: end < ordered.length,
+        nextOffset: end < ordered.length ? end : null,
+    };
+}
 
 export type SentinelTodoDisplayStatus = SentinelTodoStatus | 'in_review';
 

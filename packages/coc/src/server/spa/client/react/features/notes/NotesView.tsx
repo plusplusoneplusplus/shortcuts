@@ -301,6 +301,7 @@ export function NotesView({
     const hoverPeek = useHoverPeek({
         enabled: sidebarCollapsedDesktop && hasFinePointer && !isCompact,
         panelRef: peekPanelRef,
+        scopeKey: workspaceId,
     });
     // Drive a one-shot slide-in once the peek opens (matches the split panel's
     // ~200ms rail-peek timing).
@@ -687,6 +688,7 @@ export function NotesView({
                 ref={peekPanelRef}
                 className="flex min-h-0 flex-shrink-0"
                 data-testid="notes-sidebar-peek-panel"
+                {...hoverPeek.panelProps}
                 onMouseDown={compactOverlayOpen ? () => { pressInsideSidebarRef.current = true; } : undefined}
                 onMouseEnter={sidebarCollapsedDesktop ? hoverPeek.onPanelPointerEnter : undefined}
                 onMouseLeave={sidebarCollapsedDesktop ? hoverPeek.onPanelPointerLeave : undefined}

@@ -1597,6 +1597,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if ((!scopedOwner && !historyBaseUrl) || !processId) return;
         let active = true;
         let generation = 0;
+        let scheduled = false;
         const ownerBaseUrl = scopedOwner?.baseUrl ?? historyBaseUrl;
         const ownerWorkspaceId = scopedOwner?.workspaceId ?? workspaceId;
         const eventName = ownerBaseUrl ? 'coc-remote-ws-message' : 'coc-local-ws-message';
@@ -1606,18 +1607,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             const message = ownerBaseUrl ? detail?.message : detail;
             if (message?.type !== 'process-added' && message?.type !== 'process-updated') return;
             if (message.process?.id !== processId || message.process?.workspaceId !== ownerWorkspaceId) return;
-            const request = ++generation;
-            void getOwnerProcess(processId).then(data => {
-                if (!active || request !== generation || !data.process) return;
-                const process = data.process;
-                setTask((prev: any) => prev ? {
-                    ...prev, status: process.status, title: process.title,
-                    customTitle: process.customTitle, metadata: process.metadata,
-                } : prev);
-                setProcessDetails(process);
-                setTurnsAndRef(getConversationTurns(data));
-            }).catch(err => {
-                if (active && request === generation) setError(err?.message ?? 'Could not refresh the owning conversation.');
+            ++generation;
+            if (scheduled) return;
+            scheduled = true;
+            queueMicrotask(() => {
+                scheduled = false;
+                if (!active) return;
+                const request = generation;
+                void getOwnerProcess(processId).then(data => {
+                    if (!active || request !== generation || !data.process) return;
+                    const process = data.process;
+                    setTask((prev: any) => prev ? {
+                        ...prev, status: process.status, title: process.title,
+                        customTitle: process.customTitle, metadata: process.metadata,
+                    } : prev);
+                    setProcessDetails(process);
+                    setTurnsAndRef(getConversationTurns(data));
+                }).catch(err => {
+                    if (active && request === generation) setError(err?.message ?? 'Could not refresh the owning conversation.');
+                });
             });
         };
         window.addEventListener(eventName, handle);

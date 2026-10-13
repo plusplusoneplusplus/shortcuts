@@ -298,6 +298,7 @@ export interface RuntimeDashboardConfig {
     teamsMessageReactionEnabled: boolean;
     sentinelTodoLedgerEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
+    sentinelTodoSplitLayoutEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;
     botManagedConversationsEnabled: boolean;
@@ -327,6 +328,8 @@ export interface RuntimeDashboardConfig {
     chatProviderSwitchingEnabled: boolean;
     /** Whether this owning server enables turn-count paging for chat history. */
     chatHistoryPagingEnabled: boolean;
+    /** Presentation-only collapsed delegated job result cards. */
+    sentinelResultCardsEnabled: boolean;
     /** VS Code-style multiple editor tabs in the File Explorer (`features.explorerEditorTabs`). */
     explorerEditorTabsEnabled: boolean;
     /** Rendered Markdown preview in unified right-panel file tabs (`features.markdownPanelPreview`). */

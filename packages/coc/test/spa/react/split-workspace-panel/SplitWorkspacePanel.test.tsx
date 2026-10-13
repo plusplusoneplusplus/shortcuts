@@ -1054,6 +1054,50 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
         expect(onAdmin).toHaveBeenCalledTimes(1);
         expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
     });
+
+    it('owns nested portals even when they stop bubbling, but not detail portals or subsequent outside presses', () => {
+        vi.useFakeTimers();
+        try {
+            const selected = vi.fn();
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-portals'), '1');
+            render(<SplitWorkspacePanel workspaceId="ws-portals"
+                chatList={createPortal(<div>
+                    {createPortal(<button data-testid="nested-option"
+                        onMouseDown={event => event.stopPropagation()}
+                        onClick={selected}>Select</button>, document.body)}
+                    {createPortal(<div data-pane="detail"><button data-testid="list-owned-detail">Conversation</button></div>, document.body)}
+                </div>, document.body)}
+                gitList={null}
+                detail={createPortal(<button data-testid="unowned-option">Other owner</button>, document.body)}
+            />);
+            const body = screen.getByTestId('split-workspace-left');
+            const open = () => {
+                fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+                act(() => { vi.advanceTimersByTime(450); });
+            };
+            open();
+            const option = screen.getByTestId('nested-option');
+            fireEvent.mouseDown(option);
+            fireEvent.mouseUp(option);
+            fireEvent.click(option);
+            expect(selected).toHaveBeenCalledTimes(1);
+            expect(body.classList.contains('hidden')).toBe(false);
+            fireEvent.mouseDown(screen.getByTestId('unowned-option'));
+            expect(body.classList.contains('hidden')).toBe(true);
+            open();
+            fireEvent.mouseOver(screen.getByTestId('list-owned-detail'));
+            act(() => { vi.advanceTimersByTime(300); });
+            expect(body.classList.contains('hidden')).toBe(true);
+            open();
+            fireEvent.mouseDown(screen.getByTestId('list-owned-detail'));
+            expect(body.classList.contains('hidden')).toBe(true);
+            open();
+            fireEvent.mouseDown(document.body);
+            expect(body.classList.contains('hidden')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
 
 describe('SplitWorkspacePanel collapsed rail — shortcut slot', () => {

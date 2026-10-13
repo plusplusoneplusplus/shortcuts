@@ -325,6 +325,8 @@ export interface CLIConfig {
         sentinelTodoLedger?: boolean;
         /** Native prerequisite authoring and admission. Requires the ledger; disabled by default. */
         sentinelTodoDependencies?: boolean;
+        /** Compact Sentinel item list beside selected details. Disabled by default. */
+        sentinelTodoSplitLayout?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Requires `sentinelTodoLedger`. Disabled by default. */
         sentinelTodoScrubber?: boolean;
         sentinelDesktopMirror?: boolean;
@@ -345,11 +347,11 @@ export interface CLIConfig {
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
         chatFolders?: boolean;
-        /** Manual sidebar data refresh on the collapsed workspace rail. Disabled by default. */
+        /** Manual sidebar data refresh on the collapsed workspace rail. Enabled by default. */
         railManualRefresh?: boolean;
         /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
         railGitSummary?: boolean;
-        /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
+        /** Admin and provider-quota shortcuts on the collapsed workspace rail. Enabled by default. */
         railStatusActions?: boolean;
         schedulerDelayHint?: boolean;
         /** Gray inline hint that finishes the English word being typed in chat composers. Enabled by default. */
@@ -370,6 +372,8 @@ export interface CLIConfig {
         chatProviderSwitching?: boolean;
         /** Load chat history in turn-count pages. Disabled by default. */
         chatHistoryPaging?: boolean;
+        /** Compact delegated-result cards in chat. Presentation only, disabled by default. */
+        sentinelResultCards?: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle?: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -733,6 +737,7 @@ export interface ResolvedCLIConfig {
         /** Per-chat Sentinel to-do ledger (REST, AI tools, right-panel tab). Disabled by default. */
         sentinelTodoLedger: boolean;
         sentinelTodoDependencies: boolean;
+        sentinelTodoSplitLayout: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Requires `sentinelTodoLedger`. Disabled by default. */
         sentinelTodoScrubber: boolean;
         sentinelDesktopMirror: boolean;
@@ -777,6 +782,7 @@ export interface ResolvedCLIConfig {
         chatProviderSwitching: boolean;
         /** Load chat history in turn-count pages. Disabled by default. */
         chatHistoryPaging: boolean;
+        sentinelResultCards: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -1059,6 +1065,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsMessageReaction: false,
         sentinelTodoLedger: false,
         sentinelTodoDependencies: false,
+        sentinelTodoSplitLayout: false,
         sentinelTodoScrubber: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
@@ -1070,9 +1077,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         repoGroupAggregatedChats: false,
         schedulesInScheduledSlide: true,
         chatFolders: false,
-        railManualRefresh: false,
+        railManualRefresh: true,
         railGitSummary: false,
-        railStatusActions: false,
+        railStatusActions: true,
         schedulerDelayHint: false,
         composerWordHint: true,
         gitWorktreeExecution: false,
@@ -1083,6 +1090,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatStyleSelector: true,
         chatProviderSwitching: false,
         chatHistoryPaging: false,
+        sentinelResultCards: false,
         defaultChatStyle: 'default',
         chatStylePrompts: {},
     },

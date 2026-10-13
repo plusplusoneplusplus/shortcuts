@@ -14,6 +14,7 @@ test.beforeAll(async () => {
                 import React from 'react';
                 import { createRoot } from 'react-dom/client';
                 import { PauseDurationMenu } from './src/server/spa/client/react/features/chat/ChatListPane';
+                import { SplitWorkspacePanel } from './src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
                 const quotaData = { providers: ['copilot', 'codex', 'claude'].map((id, i) => ({
                     id, quotaTypes: [{ type: 'seven_day', remainingPercentage: 0.2 + i * 0.1,
                         resetDate: new Date(Date.now() + (i + 1) * 86400000).toISOString() }]
@@ -25,9 +26,7 @@ test.beforeAll(async () => {
                     const apRef = React.useRef(null);
                     const insertRef = React.useRef(null);
                     const record = value => { window.actions.push({ workspace, ...value }); setScope(null); };
-                    return <>
-                        <button id="workspace" onClick={() => { setWorkspace('workspace-b'); setScope(null); }}>Switch workspace</button>
-                        <div id="split" style={{ height: '55vh', width: 'min(280px, 100vw)', overflow: 'hidden', borderBottom: '4px solid gray' }}>
+                    const list = <div id="split" style={{ height: '55vh', width: 'min(280px, 100vw)', overflow: 'hidden', borderBottom: '4px solid gray' }}>
                             <div id="pane" style={{ height: '100%', overflow: 'auto' }}>
                                 <div style={{ height: 90 }} />
                                 <div id="anchor" style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end' }}>
@@ -48,7 +47,14 @@ test.beforeAll(async () => {
                                 </div>
                                 <div style={{ height: 1200 }}>Underlying chat list</div>
                             </div>
-                        </div>
+                        </div>;
+                    return <>
+                        <button id="workspace" onClick={() => { setWorkspace('workspace-b'); setScope(null); }}>Switch workspace</button>
+                        {window.preview ? <div style={{ height: 700, marginLeft: 100 }}>
+                            <SplitWorkspacePanel workspaceId={workspace} chatList={list}
+                                runningCount={1}
+                                gitList={<div>Git pane</div>} detail={<button id="outside" style={{ marginLeft: 500 }}>Outside</button>} />
+                        </div> : list}
                         <div id="git">Git pane</div>
                         <div style={{ height: 1600 }}>Underlying document</div>
                     </>;
@@ -57,7 +63,7 @@ test.beforeAll(async () => {
                 createRoot(document.getElementById('fixture')).render(<Fixture />);
             `,
         },
-        bundle: true, write: false, format: 'iife', platform: 'browser',
+        bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic',
         loader: { '.css': 'empty' },
         plugins: [{
             name: 'private-pause-menu',
@@ -72,10 +78,22 @@ test.beforeAll(async () => {
     script = result.outputFiles[0].text;
 });
 
-async function mount(page: Page) {
+async function mount(page: Page, preview = false) {
+    if (preview) {
+        await page.route('http://fixture.test/**', route => route.fulfill({ body: '<div id="fixture"></div>' }));
+        await page.goto('http://fixture.test/');
+    }
     await page.setContent('<div id="fixture"></div>');
+    if (preview) await page.evaluate(() => {
+        Reflect.set(window, 'preview', true);
+        localStorage.setItem('split-workspace:workspace-a:left-collapsed', '1');
+        localStorage.setItem('split-workspace:workspace-b:left-collapsed', '1');
+    });
     await page.addStyleTag({ content: css });
     await page.addScriptTag({ content: script });
+    if (preview) {
+        await page.getByTestId('split-workspace-left-rail').hover();
+    }
     await expect(page.locator('#all')).toBeVisible();
 }
 
@@ -115,6 +133,101 @@ async function capture(page: Page, menu: Locator, testInfo: TestInfo, name: stri
     await page.screenshot({ path: image });
     await testInfo.attach(name, { path: image, contentType: 'image/png' });
 }
+
+test('collapsed preview keeps its portaled menu anchored through a held option press', async ({ page }, testInfo) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await mount(page, true);
+    await page.locator('#all').click();
+    const menu = page.getByTestId('pause-duration-menu-all');
+    await expectFits(menu);
+    await capture(page, menu, testInfo, 'collapsed-menu');
+    const initial = await metrics(menu);
+    const option = page.getByTestId('pause-duration-all-indefinite');
+    await option.hover();
+    await page.mouse.down();
+    await expect(page.locator('#all')).toBeVisible();
+    // Exceed the existing leave grace period between press and release.
+    await page.waitForTimeout(350);
+    expect((await metrics(menu)).left).toBeCloseTo(initial.left, 0);
+    await page.mouse.up();
+    await expect(menu).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, 'actions'))).toEqual([
+        { workspace: 'workspace-a', pause: 'all', options: undefined },
+    ]);
+    await page.locator('#outside').hover();
+    await expect(page.locator('#all')).toBeHidden();
+    expect(errors).toEqual([]);
+});
+
+for (const scope of ['all', 'autopilot']) {
+    test(`collapsed ${scope}: presets, nested custom editors and keyboard dismissal`, async ({ page }) => {
+        await page.setViewportSize({ width: 1200, height: 1000 });
+        await mount(page, true);
+        const trigger = page.locator(`#${scope}`);
+        const menu = page.getByTestId(`pause-duration-menu-${scope}`);
+        await trigger.click();
+        await expect(page.getByTestId(`pause-duration-${scope}-indefinite`)).toBeFocused();
+        await page.getByTestId(`pause-duration-${scope}-custom`).click();
+        const hours = page.getByTestId(`pause-duration-${scope}-custom-input`);
+        await hours.fill('1.5');
+        await hours.press('Enter');
+        await expect(menu).toHaveCount(0);
+        await trigger.click();
+        await page.getByTestId(`task-delay-${scope}-custom`).click();
+        const minutes = page.getByTestId(`task-delay-${scope}-custom-input`);
+        await minutes.fill('17');
+        // Focus in the owned portal keeps the preview alive even outside its DOM bounds.
+        await page.locator('#outside').hover();
+        await page.waitForTimeout(350);
+        await expect(trigger).toBeVisible();
+        await expect(minutes).toBeFocused();
+        await minutes.press('Enter');
+        await expect(menu).toHaveCount(0);
+        await page.getByTestId('split-workspace-left-rail').hover();
+        await expect(trigger).toBeVisible();
+        await trigger.click();
+        await page.getByTestId(`task-delay-${scope}-5`).click();
+        await expect(menu).toHaveCount(0);
+        await trigger.click();
+        await page.getByTestId(`task-delay-${scope}-skip`).click();
+        await expect(menu).toHaveCount(0);
+        expect(await page.evaluate(() => Reflect.get(window, 'actions'))).toEqual([
+            { workspace: 'workspace-a', pause: scope, options: { durationHours: 1.5 } },
+            { workspace: 'workspace-a', delay: scope, minutes: 17 },
+            { workspace: 'workspace-a', delay: scope, minutes: 5 },
+            { workspace: 'workspace-a', skip: scope },
+        ]);
+        await trigger.focus();
+        await page.keyboard.press('Enter');
+        await expect(menu).toBeVisible();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        await expect(trigger).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(trigger).toBeHidden();
+        await page.getByTestId('split-workspace-left-rail').hover();
+        await expect(trigger).toBeVisible();
+        await trigger.click();
+        await page.locator('#outside').click();
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeHidden();
+    });
+}
+
+test('a rail status preview dismisses menus whose keep-alive anchor becomes hidden', async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await mount(page, true);
+    await page.locator('#all').click();
+    await expect(page.getByTestId('pause-duration-menu-all')).toBeVisible();
+    await page.getByTestId('split-workspace-left-running').hover();
+    await expect(page.locator('#all')).toBeHidden();
+    await expect(page.getByTestId('pause-duration-menu-all')).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, 'actions'))).toEqual([]);
+});
 
 for (const scope of ['all', 'autopilot', 'insert']) {
     test(`${scope}: constrained menu escapes split and owns native wheel scrolling`, async ({ page }, testInfo) => {

@@ -39,6 +39,9 @@ import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
 import { InjectedBlockChips } from './InjectedBlockChips';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
+import { SentinelResultCard } from './SentinelResultCard';
+import { parseSentinelResult } from './sentinelResult';
+import { useSentinelResultCardsEnabled } from '../../../hooks/feature-flags/useSentinelResultCardsEnabled';
 import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, getProviderLabel, type ChatProvider } from '../ProviderBadge';
@@ -1284,6 +1287,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const assistantProviderLabel = getProviderLabel(assistantProvider);
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
+    const sentinelResultCardsEnabled = useSentinelResultCardsEnabled();
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
@@ -1323,6 +1327,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         [isUser, injectedBlocks.text],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';
+    const sentinelResult = useMemo(
+        () => sentinelResultCardsEnabled ? parseSentinelResult(turn, injectedBlocks.text, wsId, processId) : null,
+        [sentinelResultCardsEnabled, turn, injectedBlocks.text, wsId, processId],
+    );
     const largePasteParts = useMemo(
         () => isUser && turn.pasteExternalized ? splitLargePasteTurnContent(userContentText) : null,
         [isUser, turn.pasteExternalized, userContentText],
@@ -1937,7 +1945,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             context={context}
                         />
                     ))}
-                    {isUser && !showRaw && visibleUserContentText.trim() && (
+                    {isUser && !showRaw && sentinelResult && (
+                        <SentinelResultCard key={`${sourceSelectionId}:${sentinelResult.rawJson}`} result={sentinelResult}
+                            sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} />
+                    )}
+                    {isUser && !showRaw && !sentinelResult && visibleUserContentText.trim() && (
                         <div className="markdown-body break-words text-[13px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="user-plain-text"
                             onClick={(e) => openFromTarget(e.target)}
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}
