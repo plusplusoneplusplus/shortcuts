@@ -142,4 +142,45 @@ describe('api-process-routes ask-user response', () => {
         expect(res.status).toBe(400);
         expect(answerAskUserQuestions).not.toHaveBeenCalled();
     });
+
+    it('passes a sensitive-input receipt through as exactly { ok, count }', async () => {
+        const res = await request(baseUrl, '/api/processes/proc-1/ask-user-response', {
+            method: 'POST',
+            body: JSON.stringify({ batchId: 'batch-1', answers: [{ questionId: 'q1', receipt: { ok: true, count: 2 } }] }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(answerAskUserQuestions).toHaveBeenCalledWith('proc-1', 'batch-1', [
+            { questionId: 'q1', skipped: false, receipt: { ok: true, count: 2 } },
+        ]);
+    });
+
+    it('passes an unavailable skip through', async () => {
+        const res = await request(baseUrl, '/api/processes/proc-1/ask-user-response', {
+            method: 'POST',
+            body: JSON.stringify({ batchId: 'batch-1', answers: [{ questionId: 'q1', skipped: true, reason: 'unavailable' }] }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(answerAskUserQuestions).toHaveBeenCalledWith('proc-1', 'batch-1', [
+            { questionId: 'q1', skipped: true, reason: 'unavailable' },
+        ]);
+    });
+
+    it.each([
+        ['extra receipt keys', { receipt: { ok: true, count: 2, value: 'a=1; b=2' } }],
+        ['a free-text reason', { receipt: { ok: false, reason: 'cookie a=1 is invalid' } }],
+        ['a receipt alongside an answer', { receipt: { ok: true, count: 1 }, answer: 'a=1' }],
+        ['a skipped receipt', { receipt: { ok: true, count: 1 }, skipped: true }],
+        ['unavailable without skipped', { reason: 'unavailable', answer: 'x' }],
+        ['an unknown reason', { skipped: true, reason: 'secret' }],
+    ])('rejects %s before reaching the bridge', async (_label, extra) => {
+        const res = await request(baseUrl, '/api/processes/proc-1/ask-user-response', {
+            method: 'POST',
+            body: JSON.stringify({ batchId: 'batch-1', answers: [{ questionId: 'q1', ...extra }] }),
+        });
+
+        expect(res.status).toBe(400);
+        expect(answerAskUserQuestions).not.toHaveBeenCalled();
+    });
 });

@@ -131,3 +131,49 @@ describe('ASK_USER_RESUME_FAILED_MESSAGE', () => {
         expect(ASK_USER_RESUME_FAILED_MESSAGE.toLowerCase()).toContain('restart');
     });
 });
+
+describe('buildPendingAskUserAnswerRecord sensitive-input', () => {
+    const sensitive = question({
+        questionId: 'q1',
+        question: 'Paste cookies',
+        type: 'sensitive-input',
+        sink: 'browser.cookies',
+        sinkArgs: { domain: 'example.com' },
+    });
+
+    it('stores only the redacted receipt as the durable answer', () => {
+        const record = buildPendingAskUserAnswerRecord(
+            [sensitive], 'batch-1', [{ questionId: 'q1', receipt: { ok: true, count: 2 } }], '2026-10-14T00:00:00.000Z',
+        );
+        expect(JSON.parse(record!.answers[0].answer as string)).toEqual({
+            ok: true, sink: 'browser.cookies', domain: 'example.com', count: 2,
+        });
+    });
+
+    it.each([
+        ['a plain answer', { answer: 'a=1; b=2' }],
+        ['no receipt', {}],
+        ['a malformed receipt', { receipt: { ok: true, count: 1, value: 'a=1' } as any }],
+    ])('rejects %s', (_label, input) => {
+        expect(buildPendingAskUserAnswerRecord([sensitive], 'batch-1', [{ questionId: 'q1', ...input }], 'now')).toBeNull();
+    });
+
+    it('rejects a receipt on an ordinary question', () => {
+        expect(buildPendingAskUserAnswerRecord(
+            [question({ questionId: 'q1' })], 'batch-1', [{ questionId: 'q1', answer: 'x', receipt: { ok: true, count: 1 } }], 'now',
+        )).toBeNull();
+    });
+
+    it('accepts an unavailable skip only on a sensitive question', () => {
+        const record = buildPendingAskUserAnswerRecord([sensitive], 'batch-1', [{ questionId: 'q1', skipped: true, reason: 'unavailable' }], 'now');
+        expect(record!.answers[0]).toMatchObject({ skipped: true, answer: null });
+        expect(buildPendingAskUserAnswerRecord(
+            [question({ questionId: 'q1' })], 'batch-1', [{ questionId: 'q1', skipped: true, reason: 'unavailable' }], 'now',
+        )).toBeNull();
+    });
+
+    it('still accepts a skip', () => {
+        const record = buildPendingAskUserAnswerRecord([sensitive], 'batch-1', [{ questionId: 'q1', skipped: true }], 'now');
+        expect(record!.answers[0]).toMatchObject({ skipped: true, answer: null });
+    });
+});

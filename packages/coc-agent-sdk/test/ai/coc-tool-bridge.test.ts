@@ -15,7 +15,8 @@ import {
     COC_LLM_TOOLS_TOKEN_ENV,
     COC_LLM_TOOLS_MCP_SERVER_NAME,
 } from '../../src/llm-tools/mcp-config';
-import type { Tool } from '../../src/types';
+import { runToolScript, toModelPayload } from '../../src/llm-tools/tool-script-runner';
+import type { Tool, ToolInvocation } from '../../src/types';
 
 function tool(name: string, handler: Tool<any>['handler']): Tool<any> {
     return {
@@ -56,6 +57,55 @@ describe('CocToolBridgeServer', () => {
     afterEach(() => {
         server?.closeAll();
         server = undefined;
+    });
+
+    describe('run_tool_script over the bridge (Claude / Codex / OpenCode)', () => {
+        function scriptTool(inner: Tool<any>[]): Tool<any> {
+            return tool('run_tool_script', async (args: { code: string }, inv: ToolInvocation) => {
+                const run = await runToolScript({
+                    code: args.code, runtime: new CocToolRuntime(inner),
+                    scriptToolCallId: inv.toolCallId, depth: 1, signal: inv.signal,
+                });
+                const text = JSON.stringify(toModelPayload(run));
+                return run.ok ? text : { textResultForLlm: text, resultType: 'failure' };
+            });
+        }
+
+        it('runs inner tools in-process and returns only the script result', async () => {
+            server = new CocToolBridgeServer();
+            const inner = vi.fn(async (args: { x?: string }) => JSON.stringify({ echoed: args.x }));
+            const reg = await server.register(new CocToolRuntime([scriptTool([tool('echo', inner as Tool<any>['handler'])])]));
+
+            const res = await postJson(reg.endpoint, '/call', reg.token, {
+                name: 'run_tool_script',
+                arguments: { code: `const a = await tools.echo({ x: '1' }); const b = await tools.echo({ x: '2' }); return [a.echoed, b.echoed];` },
+            });
+            expect(res.status).toBe(200);
+            expect(res.json.isError).toBe(false);
+            expect(JSON.parse(res.json.content[0].text)).toMatchObject({ result: ['1', '2'], callCount: 2 });
+            expect(inner).toHaveBeenCalledTimes(2);
+        });
+
+        it('aborts a running script when the turn disposes the runtime', async () => {
+            server = new CocToolBridgeServer();
+            let started!: () => void;
+            const running = new Promise<void>(resolve => { started = resolve; });
+            const hang = tool('hang', (_args, inv) => {
+                started();
+                return new Promise(resolve => inv.signal?.addEventListener('abort', () => resolve('stopped')));
+            });
+            const runtime = new CocToolRuntime([scriptTool([hang])]);
+            const reg = await server.register(runtime);
+
+            const pending = postJson(reg.endpoint, '/call', reg.token, {
+                name: 'run_tool_script', arguments: { code: 'await tools.hang({});' },
+            });
+            await running;
+            runtime.dispose();
+            const res = await pending;
+            expect(res.json.isError).toBe(true);
+            expect(JSON.parse(res.json.content[0].text).error).toMatchObject({ code: 'ABORTED' });
+        });
     });
 
     it('exposes only the enabled tools the runtime was constructed with', async () => {

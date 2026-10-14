@@ -112,7 +112,10 @@ test('keeps the destructive menu and confirmation usable in a narrow desktop pan
     await enable(serverUrl);
     await gotoWorkspace(page, serverUrl, WORKSPACE);
     await openExplorerPanel(page);
-    await page.getByRole('button', { name: 'Expand panel' }).click();
+    await page.getByRole('button', { name: 'Expand right panel', exact: true }).click();
+    const panel = page.locator('[data-testid="unified-right-panel"]');
+    await expect(panel).toHaveAttribute('data-open', 'true');
+    await expect(panel).toHaveAttribute('data-expanded', 'true');
     const tree = page.locator('[data-testid="unified-panel-explorer-mode"]');
     await expect(tree).toBeVisible();
     const resize = page.getByRole('separator', { name: 'Resize file tree' });

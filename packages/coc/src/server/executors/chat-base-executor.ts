@@ -782,10 +782,24 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             enabled: this.askUser.enabled,
             deps: {
                 emitQuestions: async (questionPayloads, control) => {
-                    const enrichedQuestionPayloads = attachRalphGrillMetadataToAskUserPayloads(
+                    let enrichedQuestionPayloads = attachRalphGrillMetadataToAskUserPayloads(
                         questionPayloads,
                         opts.ralphGrillPlanningState?.plan,
                     );
+                    const process = await this.store.getProcess(processId);
+                    const origin = isMessagingJobOrigin(process?.metadata?.messagingOrigin)
+                        ? process.metadata.messagingOrigin : undefined;
+                    const requestId = opts.questionRelayRequestId?.() ?? (origin ? enrichedQuestionPayloads[0]?.batchId : undefined);
+                    const relay = this.runtime.getAskUserQuestionRelay?.();
+                    // A connector-started turn has nobody at the desktop
+                    // dashboard, the only place a secret can be pasted.
+                    if (requestId && relay?.owns?.({ processId, requestId, origin })) {
+                        for (const question of enrichedQuestionPayloads) {
+                            if (question.type === 'sensitive-input') control.resolveUnavailable(question.questionId);
+                        }
+                        enrichedQuestionPayloads = enrichedQuestionPayloads.filter(question => question.type !== 'sensitive-input');
+                        if (enrichedQuestionPayloads.length === 0) return;
+                    }
                     await this.store.updateProcess(processId, { pendingAskUser: enrichedQuestionPayloads });
                     for (const questionPayload of enrichedQuestionPayloads) {
                         this.store.emitProcessEvent(processId, {
@@ -793,17 +807,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             askUser: questionPayload,
                         });
                     }
-                    const process = await this.store.getProcess(processId);
-                    const origin = isMessagingJobOrigin(process?.metadata?.messagingOrigin)
-                        ? process.metadata.messagingOrigin : undefined;
-                    const requestId = opts.questionRelayRequestId?.() ?? (origin ? enrichedQuestionPayloads[0]?.batchId : undefined);
-                    const questions = enrichedQuestionPayloads.filter(question => !question.approval);
+                    // Approvals and secrets are answered in the dashboard only.
+                    const questions = enrichedQuestionPayloads.filter(question =>
+                        !question.approval && question.type !== 'sensitive-input');
                     if (requestId && questions.length > 0) {
-                        this.runtime.getAskUserQuestionRelay?.()?.relay({ processId, requestId, origin, questions, control });
+                        relay?.relay({ processId, requestId, origin, questions, control });
                     }
                 },
                 computeTurnIndex: opts.computeTurnIndex,
                 ...(opts.isInteractive ? { isInteractive: opts.isInteractive } : {}),
+                isSensitiveInputEnabled: () => this.queueConfig.getSensitiveInput().enabled,
                 onUnavailable: (questionCount) => {
                     getLogger().debug(
                         LogCategory.AI,
@@ -986,6 +999,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // conversation's prefix cache. An autopilot chat open in the
             // dashboard is attended, so the question is answerable.
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
+            includeToolScripting: (payload.provider ?? this.provider) !== 'codex',
+            onNestedToolEvent: this.buildNestedToolEventHandler(processId),
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
                 ...(scrubContext ? { isInteractive: () => false } : {}),

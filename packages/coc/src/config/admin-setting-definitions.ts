@@ -636,6 +636,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoTags', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoTagsEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.56, label: 'Sentinel To-do tags', badge: 'experimental',
+            hint: 'Parent-scoped user-defined tracking tags with best-effort matching. Tags never grant execution authority. Disabled by default.',
+            testId: 'toggle-sentinel-todo-tags-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
@@ -769,6 +777,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             group: 'review', order: 64, label: 'System One tool', badge: 'experimental',
             hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-6-luna), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Disabled by default.',
             testId: 'toggle-llm-tool-system-one-enabled',
+        },
+    }),
+    bool({
+        key: 'features.toolScripting', default: false, runtime: 'live', runtimeFlag: 'toolScriptingEnabled',
+        ui: {
+            group: 'review', order: 64.5, label: 'Tool scripting', badge: 'experimental',
+            hint: 'Chat AI can call `run_tool_script` to run a short JavaScript script that calls other enabled CoC tools in loops or in parallel, returning only the script result. Approval-gated tools still ask. Disabled by default.',
+            testId: 'toggle-tool-scripting-enabled',
         },
     }),
     bool({
@@ -1197,6 +1213,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             group: 'review', order: 63, label: 'Canvas host APIs', badge: 'experimental',
             hint: 'Lets an extension canvas declare async capabilities, which run in a terminable worker with a 30s budget and can call the model via host.complete (max 3 calls per run). Disabled by default.',
             testId: 'toggle-canvas-host-apis-enabled',
+        },
+    }),
+    bool({
+        key: 'features.sensitiveInput', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 66, label: 'Sensitive input for ask_user', badge: 'experimental',
+            hint: 'Lets the AI ask for a secret (browser login cookies) with an ask_user sensitive-input question. You paste it in the CoC desktop dashboard and it goes straight to the desktop browser; the AI and server only get a count. Disabled by default.',
+            testId: 'toggle-sensitive-input-enabled',
         },
     }),
 ];

@@ -98,6 +98,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
 import { RepoGroupView, repoGroupDockTargets, REPO_GROUP_ROOT_TARGET_LABEL } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 import {
     setWorkspaceDockExpanded,
+    cycleWorkspaceDock,
     setWorkspaceDockOpen,
     workspaceDockOpenStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
@@ -263,12 +264,12 @@ describe('RepoGroupView right panel', () => {
         const content = screen.getByTestId('repo-group-content');
         expect(content.style.display).toBe('');
 
-        act(() => { fireEvent.click(screen.getByTestId('unified-panel-expand-toggle')); });
+        act(() => { cycleWorkspaceDock(GROUP_ID); });
         expect(content.style.display).toBe('none');
         expect(screen.getByTestId('repo-group-content')).toBe(content);
         expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('true');
 
-        act(() => { fireEvent.click(screen.getByTestId('unified-panel-expand-toggle')); });
+        act(() => { cycleWorkspaceDock(GROUP_ID); });
         expect(content.style.display).toBe('');
     });
 
@@ -277,12 +278,29 @@ describe('RepoGroupView right panel', () => {
         act(() => { openUnifiedPanelTab(GROUP_ID, {
             kind: 'notes', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'notes', label: 'Notes',
         }); });
-        act(() => { fireEvent.click(screen.getByTestId('unified-panel-expand-toggle')); });
+        act(() => { cycleWorkspaceDock(GROUP_ID); });
         expect(screen.getByTestId('repo-group-content').style.display).toBe('none');
 
         act(() => { setWorkspaceDockOpen(GROUP_ID, false); });
         expect(screen.getByTestId('repo-group-content').style.display).toBe('');
         expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('false');
+    });
+
+    it('returns from mobile docked after an expanded desktop layout', () => {
+        const view = renderOpen();
+        act(() => { openUnifiedPanelTab(GROUP_ID, {
+            kind: 'notes', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'notes', label: 'Notes',
+        }); });
+        act(() => cycleWorkspaceDock(GROUP_ID));
+        expect(screen.getByTestId('repo-group-content').style.display).toBe('none');
+        mockBreakpoint = 'mobile';
+        view.rerender(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
+        expect(screen.getByTestId('repo-group-content').style.display).toBe('');
+        mockBreakpoint = 'desktop';
+        view.rerender(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('false');
+        expect(screen.getByTestId('repo-group-content').style.display).toBe('');
     });
 
     it('omits the panel on mobile', () => {

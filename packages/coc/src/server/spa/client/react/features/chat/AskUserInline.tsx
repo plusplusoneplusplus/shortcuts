@@ -9,6 +9,7 @@ import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 import { AskUserMarkdown } from './AskUserMarkdown';
 import { DangerousCommandApprovalCard } from './DangerousCommandApprovalCard';
 import { LlmToolApprovalCard } from './LlmToolApprovalCard';
+import { canRunSensitiveInputSink, runSensitiveInputSink } from './sensitiveInputSink';
 import {
     clearAskUserDraft,
     clearOtherAskUserDraftsForProcess,
@@ -246,6 +247,9 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
     const responseAcceptedRef = useRef(false);
     const submittingRef = useRef(false);
     const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => initialAnswers(batch, processId));
+    // Pasted secrets for `sensitive-input` questions. Kept apart from `answers`
+    // so they never reach the draft store, and dropped once submit runs.
+    const [secrets, setSecrets] = useState<Record<string, string>>({});
     const [submitting, setSubmitting] = useState(false);
     const planning = planningSummaryFor(batch);
     const questionGroups = groupQuestions(batch.questions);
@@ -269,7 +273,10 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
     }, [answers, batch.batchId, processId]);
 
     const submissionDisabled = submitting || responseAcceptedRef.current;
-    const canSubmitAll = batch.questions.every(question => isAnswerComplete(question, answers[question.questionId]));
+    const canSubmitAll = batch.questions.every(question => question.type === 'sensitive-input'
+        // Without the desktop bridge the question is reported unavailable.
+        ? answers[question.questionId].disposition !== 'answer' || !canRunSensitiveInputSink(question) || !!secrets[question.questionId]
+        : isAnswerComplete(question, answers[question.questionId]));
 
     const submitAll = useCallback(async (skipAll = false) => {
         if (submittingRef.current || responseAcceptedRef.current || (!skipAll && !canSubmitAll)) {
@@ -278,15 +285,24 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
         submittingRef.current = true;
         setSubmitting(true);
         try {
+            const responses: AskUserResponseRequest['answers'] = [];
+            for (const question of batch.questions) {
+                const state = answers[question.questionId];
+                if (skipAll) {
+                    responses.push({ questionId: question.questionId, skipped: true });
+                } else if (question.type === 'sensitive-input' && state.disposition === 'answer') {
+                    // The sink runs here; only its receipt goes to the server.
+                    responses.push(canRunSensitiveInputSink(question)
+                        ? { questionId: question.questionId, receipt: await runSensitiveInputSink(question, secrets[question.questionId] ?? '') }
+                        : { questionId: question.questionId, skipped: true, reason: 'unavailable' });
+                } else {
+                    responses.push(responseFor(question, state));
+                }
+            }
+            setSecrets({});
             await cloneClient.processes.askUserResponse(processId, {
                 batchId: batch.batchId,
-                answers: batch.questions.map(question => {
-                    const state = answers[question.questionId];
-                    if (skipAll) {
-                        return { questionId: question.questionId, skipped: true };
-                    }
-                    return responseFor(question, state);
-                }),
+                answers: responses,
             });
             responseAcceptedRef.current = true;
             clearAskUserDraft(processId, batch.batchId);
@@ -294,10 +310,11 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
         } catch {
             // The running AI session owns timeout/cleanup if the response cannot be delivered.
         } finally {
+            setSecrets({});
             submittingRef.current = false;
             setSubmitting(false);
         }
-    }, [answers, batch.batchId, batch.questions, canSubmitAll, onAnswered, processId, cloneClient]);
+    }, [answers, secrets, batch.batchId, batch.questions, canSubmitAll, onAnswered, processId, cloneClient]);
 
     const handleReplyKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) {
@@ -563,6 +580,32 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                             data-testid="ask-user-text-input"
                                         />
                                     )}
+
+                                    {question.type === 'sensitive-input' && (canRunSensitiveInputSink(question) ? (
+                                        <div className="mt-1 space-y-1">
+                                            <input
+                                                type="password"
+                                                value={secrets[question.questionId] ?? ''}
+                                                onChange={e => setSecrets(prev => ({ ...prev, [question.questionId]: e.target.value }))}
+                                                disabled={inputDisabled}
+                                                autoComplete="off"
+                                                spellCheck={false}
+                                                maxLength={65536}
+                                                placeholder={`Paste cookies for ${question.sinkArgs?.domain ?? 'the site'}...`}
+                                                aria-label={`Cookies for ${question.sinkArgs?.domain ?? 'the site'}`}
+                                                className="w-full px-2 py-1 text-[13px] font-mono rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                onKeyDown={handleReplyKeyDown}
+                                                data-testid="ask-user-sensitive-input"
+                                            />
+                                            <p className="text-[11px] text-[#848484]">
+                                                Goes straight to the desktop browser for {question.sinkArgs?.domain}. The AI only sees how many cookies were imported.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="mt-1 ml-4 text-[11px] text-[#848484]" data-testid="ask-user-sensitive-unavailable">
+                                            Open CoC desktop to answer this. Submitting here tells the AI it is unavailable.
+                                        </p>
+                                    ))}
 
                                     {(question.type === 'yes-no' || question.type === 'confirm') && (
                                         <div className="mt-1 ml-4 flex items-center gap-3">

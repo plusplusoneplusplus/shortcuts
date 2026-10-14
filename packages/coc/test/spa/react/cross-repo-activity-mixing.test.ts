@@ -189,9 +189,11 @@ describe('Fix 3: per-repo selectedTaskIdByRepo', () => {
         });
     });
 
-    describe('RepoChatTab reads from per-repo map', () => {
-        it('reads selectedTaskId from selectedTaskIdByRepo[workspaceId]', () => {
-            expect(REPO_ACTIVITY_TAB_SOURCE).toContain('queueState.selectedTaskIdByRepo[workspaceId]');
+    describe('RepoChatTab uses the owner-qualified route selection', () => {
+        it('reads selectedTaskId from selectedTaskIdByRepo[routeId]', () => {
+            expect(REPO_ACTIVITY_TAB_SOURCE).toContain('const routeId = sourceSelectionId ?? workspaceId');
+            expect(REPO_ACTIVITY_TAB_SOURCE).toContain('queueState.selectedTaskIdByRepo[routeId]');
+            expect(REPO_ACTIVITY_TAB_SOURCE).not.toContain('queueState.selectedTaskIdByRepo[workspaceId]');
         });
 
         it('does not read from global queueState.selectedTaskId', () => {
@@ -203,12 +205,14 @@ describe('Fix 3: per-repo selectedTaskIdByRepo', () => {
             expect(globalReads).toHaveLength(0);
         });
 
-        it('dispatches SELECT_QUEUE_TASK with repoId when selecting a task', () => {
-            expect(REPO_ACTIVITY_TAB_SOURCE).toContain("type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId");
+        it('dispatches SELECT_QUEUE_TASK with the routeId when selecting a task', () => {
+            expect(REPO_ACTIVITY_TAB_SOURCE).toContain("type: 'SELECT_QUEUE_TASK', id: processId, repoId: routeId");
+            expect(REPO_ACTIVITY_TAB_SOURCE).not.toContain("type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId");
         });
 
-        it('dispatches SELECT_QUEUE_TASK with repoId when clearing selection', () => {
-            expect(REPO_ACTIVITY_TAB_SOURCE).toContain("type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId");
+        it('dispatches SELECT_QUEUE_TASK with the routeId when clearing selection', () => {
+            expect(REPO_ACTIVITY_TAB_SOURCE).toContain("type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId");
+            expect(REPO_ACTIVITY_TAB_SOURCE).not.toContain("type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId");
         });
     });
 
@@ -224,5 +228,26 @@ describe('Fix 3: per-repo selectedTaskIdByRepo', () => {
                 { type: 'SELECT_QUEUE_TASK', id: null, repoId: 'repo-A' },
             ]);
         });
+
+        it.each(['repo-A', 'remote:server-a:repo-A', 'remote:server-b:repo-A'])(
+            'selects and clears %s without changing another owner of the same workspace id',
+            routeId => {
+                const selections = {
+                    'repo-A': 'local-task',
+                    'remote:server-a:repo-A': 'server-a-task',
+                    'remote:server-b:repo-A': 'server-b-task',
+                };
+                let state = makeState({ selectedTaskIdByRepo: selections });
+                const route = `#repos/${encodeURIComponent(routeId)}/chats`;
+                for (const action of resolveQueueActions(`${route}/task-new`)) {
+                    state = queueReducer(state, action);
+                }
+                expect(state.selectedTaskIdByRepo).toEqual({ ...selections, [routeId]: 'task-new' });
+                for (const action of resolveQueueActions(route)) {
+                    state = queueReducer(state, action);
+                }
+                expect(state.selectedTaskIdByRepo).toEqual({ ...selections, [routeId]: null });
+            },
+        );
     });
 });

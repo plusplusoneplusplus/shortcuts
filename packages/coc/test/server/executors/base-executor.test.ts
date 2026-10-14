@@ -55,6 +55,9 @@ class TestExecutor extends BaseExecutor {
     public buildToolEventHandlerPublic(processId: string, computeTurnIndex: () => number) {
         return this.buildToolEventHandler(processId, computeTurnIndex);
     }
+    public buildNestedToolEventHandlerPublic(processId: string) {
+        return this.buildNestedToolEventHandler(processId);
+    }
     public get cancelledTasksPublic(): Set<string> {
         return this.cancelledTasks;
     }
@@ -494,6 +497,37 @@ describe('BaseExecutor', () => {
             expect(buffer).toHaveLength(2);
             expect(buffer[0].toolCall?.progressMessage).toBe('Reading 4 files…');
             expect(buffer[1].toolCall?.progressMessage).toBe('Compiling…');
+        });
+
+        describe('run_tool_script nested events', () => {
+            const parents = (processId: string) => executor.getStreamingStatePublic(processId).timelineBuffer
+                .map(i => [i.toolCall?.id, i.toolCall?.parentToolCallId]);
+
+            it('keeps a parent id that is already on the timeline (Copilot)', () => {
+                const outer = executor.buildToolEventHandlerPublic('proc-nest', () => 0);
+                const nested = executor.buildNestedToolEventHandlerPublic('proc-nest');
+                outer({ type: 'tool-start', toolCallId: 'script', toolName: 'run_tool_script', parameters: {} } as any);
+                nested({ type: 'tool-start', toolCallId: 'inner', toolName: 'read_canvas', parentToolCallId: 'script', parameters: {} } as any);
+                expect(parents('proc-nest')).toEqual([['script', undefined], ['inner', 'script']]);
+            });
+
+            it('maps a bridge-minted parent id to the running script row, once per script', () => {
+                const outer = executor.buildToolEventHandlerPublic('proc-nest-mcp', () => 0);
+                const nested = executor.buildNestedToolEventHandlerPublic('proc-nest-mcp');
+                outer({ type: 'tool-start', toolCallId: 'done-script', toolName: 'mcp__coc_llm_tools__run_tool_script', parameters: {} } as any);
+                outer({ type: 'tool-complete', toolCallId: 'done-script', toolName: 'mcp__coc_llm_tools__run_tool_script', result: '{}' } as any);
+                outer({ type: 'tool-start', toolCallId: 'provider-id', toolName: 'mcp__coc_llm_tools__run_tool_script', parameters: {} } as any);
+                nested({ type: 'tool-start', toolCallId: 'inner', toolName: 'read_canvas', parentToolCallId: 'bridge-uuid', parameters: {} } as any);
+                // A nested script's own id is on the timeline and is kept as-is.
+                nested({ type: 'tool-start', toolCallId: 'deep', toolName: 'read_canvas', parentToolCallId: 'inner', parameters: {} } as any);
+                nested({ type: 'tool-complete', toolCallId: 'inner', toolName: 'read_canvas', parentToolCallId: 'bridge-uuid', result: 'ok' } as any);
+                expect(parents('proc-nest-mcp').slice(3)).toEqual([
+                    ['inner', 'provider-id'], ['deep', 'inner'], ['inner', 'provider-id'],
+                ]);
+                expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-nest-mcp', expect.objectContaining({
+                    type: 'tool-complete', toolCallId: 'inner', parentToolCallId: 'provider-id',
+                }));
+            });
         });
 
         describe('LLM tool approval outcome', () => {

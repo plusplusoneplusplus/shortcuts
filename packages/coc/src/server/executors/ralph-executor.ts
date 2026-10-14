@@ -103,6 +103,8 @@ export class RalphExecutor extends ChatBaseExecutor {
             // the workspace `askUser.enabled` setting says (AC-09).
             excludeTools: ['ask_user'],
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
+            includeToolScripting: (payload.provider ?? this.provider) !== 'codex',
+            onNestedToolEvent: this.buildNestedToolEventHandler(processId),
         });
 
         // System message carries only generic, non-Ralph blocks. All Ralph

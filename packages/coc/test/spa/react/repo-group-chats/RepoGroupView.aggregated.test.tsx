@@ -237,7 +237,7 @@ describe('RepoGroupView — aggregated chats', () => {
         expect(screen.getByTestId('repo-group-member-owner').textContent).toBe('connector · devbox');
         fireEvent.click(screen.getByTestId('repo-group-split-new-chat'));
         expect(location.hash).toBe('#repos/remote%3Asrv-1%3Agroup-ai/chats');
-        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null, repoId: GROUP_ID });
+        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null, repoId: selectionId });
         expect(screen.getAllByTestId('repo-group-chat-row')[0].getAttribute('aria-selected')).toBe('false');
         expect(screen.queryByTestId('stub-member-chat-pane')).toBeNull();
     });

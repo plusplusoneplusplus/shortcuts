@@ -323,8 +323,11 @@ export interface CLIConfig {
         teamsMessageReaction?: boolean;
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
+        sentinelTodoTags?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
+        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
+        toolScripting?: boolean;
         sentinelPrOutcomeWake?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
@@ -357,6 +360,8 @@ export interface CLIConfig {
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis?: boolean;
+        /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
+        sensitiveInput?: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
         explorerEditorTabs?: boolean;
         /** Confirmed permanent Explorer deletion. Disabled by default. */
@@ -735,8 +740,11 @@ export interface ResolvedCLIConfig {
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
         sentinelTodoDependencies: boolean;
+        sentinelTodoTags: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
+        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
+        toolScripting: boolean;
         sentinelPrOutcomeWake: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
@@ -768,6 +776,8 @@ export interface ResolvedCLIConfig {
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis: boolean;
+        /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
+        sensitiveInput: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
         explorerEditorTabs: boolean;
         /** Confirmed permanent Explorer deletion. Disabled by default. */
@@ -1065,7 +1075,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
         sentinelTodoDependencies: false,
+        sentinelTodoTags: false,
         sentinelTodoScrubber: false,
+        toolScripting: false,
         sentinelPrOutcomeWake: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
@@ -1084,6 +1096,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
+        sensitiveInput: false,
         explorerEditorTabs: false,
         explorerDelete: false,
         markdownPanelPreview: false,

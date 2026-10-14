@@ -18,7 +18,76 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 // Types
 // ============================================================================
 
-export type AskUserQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+export type AskUserQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
+
+/**
+ * Where a `sensitive-input` value goes. The dashboard hands the pasted value
+ * straight to the sink, and only a redacted receipt comes back, so the value
+ * never reaches the model or the server. Add a sink here and in the SPA's sink
+ * table to support another kind of secret.
+ */
+export const SENSITIVE_INPUT_SINKS = ['browser.cookies'] as const;
+export type SensitiveInputSink = typeof SENSITIVE_INPUT_SINKS[number];
+
+/** Non-secret parameters for the sink, chosen by the model. */
+export interface SensitiveInputSinkArgs {
+    /** Cookie domain, e.g. `example.com` (`browser.cookies`). */
+    domain: string;
+    /** Browser view to import into; the sink picks one when omitted. */
+    viewId?: string;
+}
+
+/**
+ * Why a sink did not take the value. A fixed code, never parser text, so a
+ * fragment of the pasted secret cannot ride back to the model.
+ */
+export const SENSITIVE_INPUT_FAILURE_REASONS = ['invalid-input', 'import-failed'] as const;
+export type SensitiveInputFailureReason = typeof SENSITIVE_INPUT_FAILURE_REASONS[number];
+
+/** What the dashboard reports after running the sink. Never carries the value. */
+export type SensitiveInputReceiptInput =
+    | { ok: true; count: number }
+    | { ok: false; reason: SensitiveInputFailureReason };
+
+/** The redacted receipt the model gets back as the question's answer. */
+export type SensitiveInputReceipt =
+    | { ok: true; sink: SensitiveInputSink; domain: string; count: number }
+    | { ok: false; sink: SensitiveInputSink; domain: string; reason: SensitiveInputFailureReason };
+
+/**
+ * Accept only the exact receipt shape: `{ ok: true, count }` or
+ * `{ ok: false, reason }`, with no other keys. Anything else is rejected so a
+ * client cannot smuggle a value (or cookie names) through the receipt.
+ */
+export function parseSensitiveInputReceipt(value: unknown): SensitiveInputReceiptInput | null {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (record.ok === true) {
+        if (keys.length !== 2 || !keys.includes('count')) return null;
+        const count = record.count;
+        if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return null;
+        return { ok: true, count };
+    }
+    if (record.ok === false) {
+        if (keys.length !== 2 || !keys.includes('reason')) return null;
+        const reason = record.reason;
+        if (!(SENSITIVE_INPUT_FAILURE_REASONS as readonly unknown[]).includes(reason)) return null;
+        return { ok: false, reason: reason as SensitiveInputFailureReason };
+    }
+    return null;
+}
+
+/** Build the model-facing receipt from the question's non-secret sink args. */
+export function buildSensitiveInputReceipt(
+    sink: SensitiveInputSink,
+    domain: string,
+    input: SensitiveInputReceiptInput,
+): SensitiveInputReceipt {
+    return input.ok
+        ? { ok: true, sink, domain, count: input.count }
+        : { ok: false, sink, domain, reason: input.reason };
+}
 
 export interface AskUserOption {
     value: string;
@@ -35,6 +104,10 @@ export interface AskUserQuestion {
     type: AskUserQuestionType;
     options?: AskUserOption[];
     defaultValue?: string | string[];
+    /** Required when type is `sensitive-input`. */
+    sink?: SensitiveInputSink;
+    /** Required when type is `sensitive-input`. */
+    sinkArgs?: SensitiveInputSinkArgs;
 }
 
 export type AskUserAnswerValue = string | string[] | boolean;
@@ -82,7 +155,8 @@ export interface AskUserRalphGrillMetadata {
 
 export interface AskUserResponse {
     questionId: string;
-    answer: AskUserAnswerValue | null;
+    /** A `sensitive-input` question answers with its redacted receipt. */
+    answer: AskUserAnswerValue | SensitiveInputReceipt | null;
     skipped: boolean;
     reason?: AskUserResponseReason;
     deferred?: boolean;
@@ -156,6 +230,9 @@ export interface AskUserSSEPayload {
     turnIndex: number;
     index: number;
     batchSize: number;
+    /** Set only on `sensitive-input` questions. */
+    sink?: SensitiveInputSink;
+    sinkArgs?: SensitiveInputSinkArgs;
     ralphGrill?: AskUserRalphGrillMetadata;
     /**
      * Set only on an approval prompt (dangerous command or gated LLM tool).
@@ -170,8 +247,15 @@ export interface AskUserAnswerInput {
     answer?: AskUserAnswerValue;
     skipped?: boolean;
     deferred?: boolean;
-    reason?: 'needs-context';
+    /**
+     * `needs-context` marks a deferred answer. `unavailable` (with
+     * `skipped: true`) is only for `sensitive-input`: the dashboard has no
+     * desktop bridge to run the sink.
+     */
+    reason?: 'needs-context' | 'unavailable';
     note?: string;
+    /** The only accepted answer for a `sensitive-input` question; never with `answer`. */
+    receipt?: SensitiveInputReceiptInput;
 }
 
 /**
@@ -207,6 +291,12 @@ export interface AskUserToolDeps {
     isInteractive?: () => boolean;
     /** Optional debug sink for the non-interactive short-circuit. */
     onUnavailable?: (questionCount: number) => void;
+    /**
+     * `features.sensitiveInput`. Read when the tool is built (the schema only
+     * lists `sensitive-input` when on) and again at call time, so a question
+     * of that type is refused once the flag is turned off. Defaults to off.
+     */
+    isSensitiveInputEnabled?: () => boolean;
 }
 
 const NEEDS_CONTEXT_GUIDANCE =
@@ -219,14 +309,39 @@ function isDeferredResponse(response: AskUserAnswerInput): boolean {
 const UNAVAILABLE_GUIDANCE =
     'No user is available to answer in this run. Proceed using your best judgment, state the assumption you made explicitly in your output, and do not call ask_user again this turn.';
 
-function unavailableResponse(questionId: string): AskUserResponse {
+const SENSITIVE_INPUT_UNAVAILABLE_GUIDANCE =
+    'Sensitive input can only be answered in the CoC desktop app dashboard, and nobody can answer it in this run. Do not ask the user to paste the secret into chat or any other channel. Tell the user to open CoC desktop and ask again from there, or continue without it.';
+
+function unavailableResponse(questionId: string, type?: AskUserQuestionType): AskUserResponse {
     return {
         questionId,
         answer: null,
         skipped: true,
         reason: 'unavailable',
-        guidance: UNAVAILABLE_GUIDANCE,
+        guidance: type === 'sensitive-input' ? SENSITIVE_INPUT_UNAVAILABLE_GUIDANCE : UNAVAILABLE_GUIDANCE,
     };
+}
+
+const BASE_QUESTION_TYPES: AskUserQuestionType[] = ['select', 'multi-select', 'yes-no', 'confirm', 'text'];
+
+/**
+ * Reject a `sensitive-input` question the host cannot take: flag off, unknown
+ * sink, or missing domain. Throwing turns into a tool error the model can read.
+ */
+function validateSensitiveInputQuestion(question: AskUserQuestion, enabled: boolean): void {
+    if (!enabled) {
+        throw new Error('ask_user question type "sensitive-input" is not enabled on this server');
+    }
+    if (!question.sink || !(SENSITIVE_INPUT_SINKS as readonly string[]).includes(question.sink)) {
+        throw new Error(`ask_user sensitive-input requires sink to be one of: ${SENSITIVE_INPUT_SINKS.join(', ')}`);
+    }
+    const args = question.sinkArgs;
+    if (!args || typeof args.domain !== 'string' || args.domain.trim() === '') {
+        throw new Error('ask_user sensitive-input requires sinkArgs.domain');
+    }
+    if (args.viewId !== undefined && typeof args.viewId !== 'string') {
+        throw new Error('ask_user sensitive-input sinkArgs.viewId must be a string');
+    }
 }
 
 function deferredResponse(questionId: string, note?: string): AskUserResponse {
@@ -257,7 +372,12 @@ function deferredResponse(questionId: string, note?: string): AskUserResponse {
 export function createAskUserTool(deps: AskUserToolDeps) {
     const pending = new Map<string, {
         resolve: (response: AskUserResponse) => void;
+        type: AskUserQuestionType;
+        /** Set on `sensitive-input` questions; the receipt is built from it. */
+        sensitive?: { sink: SensitiveInputSink; domain: string };
     }>();
+    const isSensitiveInputEnabled = () => deps.isSensitiveInputEnabled?.() === true;
+    const sensitiveInputInSchema = isSensitiveInputEnabled();
     const settleListeners = new Map<string, Array<() => void>>();
     const cancelListeners = new Set<() => void>();
 
@@ -281,7 +401,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             : Promise.resolve(),
         answer: (questionId, answer) => answerQuestion(questionId, answer),
         skip: questionId => skipQuestion(questionId),
-        resolveUnavailable: questionId => settle(questionId, unavailableResponse(questionId)),
+        resolveUnavailable: questionId => settle(questionId, unavailableResponse(questionId, pending.get(questionId)?.type)),
         onCancelAll: listener => {
             cancelListeners.add(listener);
             return () => { cancelListeners.delete(listener); };
@@ -295,7 +415,11 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             'clarification, confirmation, or choices before proceeding. ' +
             'Do NOT use it for a simple yes/no that can be inferred from context. ' +
             'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if still needed instead of treating it as skipped. ' +
-            'Only use when a human is present to answer; never in unattended or automated runs (cron ticks, headless queue runs, background loops).',
+            'Only use when a human is present to answer; never in unattended or automated runs (cron ticks, headless queue runs, background loops).' +
+            (sensitiveInputInSchema
+                ? ' For a secret the user must provide (sink "browser.cookies": browser login cookies for sinkArgs.domain), use type "sensitive-input" — never ask for secrets with a text question. ' +
+                  'The user pastes the value in the CoC desktop dashboard and it goes straight to the sink; you only get a receipt: { ok: true, sink, domain, count } or { ok: false, sink, domain, reason }.'
+                : ''),
         parameters: {
             type: 'object' as const,
             properties: {
@@ -311,8 +435,9 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                             },
                             type: {
                                 type: 'string',
-                                enum: ['select', 'multi-select', 'yes-no', 'confirm', 'text'],
-                                description: 'Question type: select (single choice), multi-select (multiple choices), yes-no, confirm (Confirm/Cancel), text (free-text input).',
+                                enum: sensitiveInputInSchema ? [...BASE_QUESTION_TYPES, 'sensitive-input'] : BASE_QUESTION_TYPES,
+                                description: 'Question type: select (single choice), multi-select (multiple choices), yes-no, confirm (Confirm/Cancel), text (free-text input)' +
+                                    (sensitiveInputInSchema ? ', sensitive-input (masked secret delivered to `sink`; requires sink and sinkArgs).' : '.'),
                             },
                             options: {
                                 type: 'array',
@@ -330,6 +455,22 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                             defaultValue: {
                                 description: 'Pre-selected default value(s).',
                             },
+                            ...(sensitiveInputInSchema ? {
+                                sink: {
+                                    type: 'string',
+                                    enum: [...SENSITIVE_INPUT_SINKS],
+                                    description: 'sensitive-input only: where the secret goes. browser.cookies imports pasted cookies into the desktop browser.',
+                                },
+                                sinkArgs: {
+                                    type: 'object',
+                                    properties: {
+                                        domain: { type: 'string', description: 'Cookie domain, e.g. example.com.' },
+                                        viewId: { type: 'string', description: 'Optional browser view id to import into.' },
+                                    },
+                                    required: ['domain'],
+                                    description: 'sensitive-input only: non-secret sink parameters.',
+                                },
+                            } : {}),
                         },
                         required: ['question', 'type'],
                     },
@@ -342,13 +483,18 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             if (!Array.isArray(args.questions) || args.questions.length === 0) {
                 throw new Error('ask_user requires at least one question');
             }
+            for (const question of args.questions) {
+                if (question?.type === 'sensitive-input') {
+                    validateSensitiveInputQuestion(question, isSensitiveInputEnabled());
+                }
+            }
             // Non-interactive turns (cron / wakeup / trigger ticks) have nobody
             // to answer. Resolve on the same tick rather than emitting a question
             // that can never be resolved — the turn-cleanup cancelAll only runs
             // after the turn ends, so a blocked handler would deadlock the turn.
             if (deps.isInteractive?.() === false) {
                 deps.onUnavailable?.(args.questions.length);
-                return args.questions.map(() => unavailableResponse(randomUUID()));
+                return args.questions.map(question => unavailableResponse(randomUUID(), question.type));
             }
 
             const batchId = randomUUID();
@@ -358,14 +504,27 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                 questionId: randomUUID(),
                 question: question.question,
                 type: question.type,
-                options: question.options,
-                defaultValue: question.defaultValue,
+                ...(question.type === 'sensitive-input'
+                    ? {
+                        sink: question.sink,
+                        sinkArgs: {
+                            domain: question.sinkArgs!.domain.trim(),
+                            ...(question.sinkArgs!.viewId ? { viewId: question.sinkArgs!.viewId } : {}),
+                        },
+                    }
+                    : { options: question.options, defaultValue: question.defaultValue }),
                 turnIndex,
                 index,
                 batchSize: args.questions.length,
             }));
             const responsePromises = payloads.map(payload => new Promise<AskUserResponse>((resolve) => {
-                pending.set(payload.questionId, { resolve });
+                pending.set(payload.questionId, {
+                    resolve,
+                    type: payload.type,
+                    ...(payload.sink && payload.sinkArgs
+                        ? { sensitive: { sink: payload.sink, domain: payload.sinkArgs.domain } }
+                        : {}),
+                });
             }));
 
             try {
@@ -420,7 +579,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         };
 
         const responsePromise = new Promise<AskUserResponse>((resolve) => {
-            pending.set(payload.questionId, { resolve });
+            pending.set(payload.questionId, { resolve, type: payload.type });
         });
 
         try {
@@ -438,6 +597,9 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     }
 
     function answerQuestion(questionId: string, answer: AskUserAnswerValue): boolean {
+        // A sensitive question only takes a receipt through `answerQuestions`;
+        // a plain answer (e.g. from the messaging relay) would be the secret.
+        if (pending.get(questionId)?.sensitive) return false;
         return settle(questionId, { questionId, answer, skipped: false });
     }
 
@@ -455,13 +617,27 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             if (!pending.has(response.questionId)) return false;
             if (response.skipped === true && isDeferredResponse(response)) return false;
             if (response.note !== undefined && typeof response.note !== 'string') return false;
-            if (response.skipped !== true && !isDeferredResponse(response) && response.answer === undefined) return false;
+            const answered = response.skipped !== true && !isDeferredResponse(response);
+            if (response.reason === 'unavailable' && (response.skipped !== true || !pending.get(response.questionId)!.sensitive)) return false;
+            if (pending.get(response.questionId)!.sensitive) {
+                if (response.answer !== undefined) return false;
+                if (answered ? !parseSensitiveInputReceipt(response.receipt) : response.receipt !== undefined) return false;
+            } else {
+                if (response.receipt !== undefined) return false;
+                if (answered && response.answer === undefined) return false;
+            }
         }
         for (const response of responses) {
-            if (response.skipped === true) {
+            if (response.reason === 'unavailable') {
+                settle(response.questionId, unavailableResponse(response.questionId, 'sensitive-input'));
+            } else if (response.skipped === true) {
                 settle(response.questionId, { questionId: response.questionId, answer: null, skipped: true, reason: 'user-skipped' });
             } else if (isDeferredResponse(response)) {
                 settle(response.questionId, deferredResponse(response.questionId, response.note));
+            } else if (pending.get(response.questionId)!.sensitive) {
+                const { sink, domain } = pending.get(response.questionId)!.sensitive!;
+                const receipt = buildSensitiveInputReceipt(sink, domain, parseSensitiveInputReceipt(response.receipt)!);
+                settle(response.questionId, { questionId: response.questionId, answer: receipt, skipped: false });
             } else {
                 settle(response.questionId, { questionId: response.questionId, answer: response.answer as AskUserAnswerValue, skipped: false });
             }

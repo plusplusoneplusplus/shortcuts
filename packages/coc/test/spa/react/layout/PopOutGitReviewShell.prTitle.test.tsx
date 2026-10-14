@@ -34,7 +34,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => (
     ToastProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
 }));
-vi.mock('../../../../src/server/spa/client/react/ui', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/ui')>(),
     Spinner: () => <span data-testid="spinner" />,
     ToastContainer: () => null,
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),

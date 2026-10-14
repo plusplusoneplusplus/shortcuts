@@ -193,6 +193,15 @@ describe('QueueRuntimeConfig — live updates', () => {
         expect(queueConfig.getAskUser()).toEqual({ enabled: false });
     });
 
+    it('re-reads features.sensitiveInput after an admin edit (default off)', async () => {
+        const queueConfig = createQueueRuntimeConfig(service);
+        expect(queueConfig.getSensitiveInput()).toEqual({ enabled: false });
+
+        await service.updateConfig({ 'features.sensitiveInput': true });
+
+        expect(queueConfig.getSensitiveInput()).toEqual({ enabled: true });
+    });
+
     it('re-reads the Ralph final-check loop cap after an admin edit', async () => {
         const queueConfig = createQueueRuntimeConfig(service);
         expect(queueConfig.getRalphFinalCheckPolicy().maxGapFixLoops)
@@ -254,6 +263,7 @@ describe('QueueRuntimeConfig — restart boundary', () => {
             'getDefaultTimeoutMs',
             'getFollowUpSuggestions',
             'getRalphFinalCheckPolicy',
+            'getSensitiveInput',
             'getSkillFolders',
         ]);
     });
@@ -271,6 +281,7 @@ describe('createFixedQueueRuntimeConfig', () => {
             .toEqual(DEFAULT_CONFIG.chat.followUpSuggestions);
         expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getAskUser())
             .toEqual(DEFAULT_CONFIG.chat.askUser);
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSensitiveInput()).toEqual({ enabled: false });
         expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getRalphFinalCheckPolicy().maxGapFixLoops)
             .toBe(DEFAULT_CONFIG.ralph.finalCheck.maxGapFixLoops);
         // No global folders are invented for a caller that supplied no config.

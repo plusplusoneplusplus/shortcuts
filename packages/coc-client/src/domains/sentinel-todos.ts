@@ -1,4 +1,8 @@
 import type {
+  SentinelTodoTagLibrary,
+  WriteSentinelTodoTagRequest,
+  DeleteSentinelTodoTagRequest,
+  SuggestSentinelTodoTagsRequest,
   SentinelScrubberResponse,
   SentinelPrOutcomesResponse,
   SentinelPrOutcomeControlRequest,
@@ -38,6 +42,26 @@ export class SentinelTodosClient {
 
   constructor(private readonly transport: RequestAdapter) {
     this.scrubber = new SentinelScrubberClient(transport);
+  }
+
+  getTags(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoTagLibrary> {
+    return this.transport.request(ledgerPath(workspaceId, processId, '/tags'), options);
+  }
+
+  createTag(workspaceId: string, processId: string, request: WriteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
+    return this.transport.request(ledgerPath(workspaceId, processId, '/tags'), { method: 'POST', body: request });
+  }
+
+  updateTag(workspaceId: string, processId: string, tagId: string, request: WriteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/tags/${encodePathSegment(tagId)}`), { method: 'PATCH', body: request });
+  }
+
+  deleteTag(workspaceId: string, processId: string, tagId: string, request: DeleteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/tags/${encodePathSegment(tagId)}`), { method: 'DELETE', body: request });
+  }
+
+  suggestTags(workspaceId: string, processId: string, itemId: string, request: SuggestSentinelTodoTagsRequest): Promise<SentinelTodoWriteResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/suggest-tags`), { method: 'POST', body: request });
   }
 
   listPrOutcomes(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {

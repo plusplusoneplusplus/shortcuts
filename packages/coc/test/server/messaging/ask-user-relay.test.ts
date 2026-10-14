@@ -97,6 +97,17 @@ describe('buildQuestionLayout', () => {
             expect(capturedOrigin).not.toHaveBeenCalled();
         });
 
+        it('owns a turn only when a connector locates it, never from a captured desktop mirror origin', () => {
+            const capturedOrigin = vi.fn(() => ({ connector: 'whatsapp' as const, chatKey: 'captured-group' }));
+            const hub = new AskUserQuestionRelayHub({ store: {} as never, capturedOrigin });
+            const request = { processId: 'p', requestId: 'r' };
+            expect(hub.owns(request)).toBe(false);
+            hub.register({ platform: 'teams', locate: req => req.requestId === 'r' ? { chatKey: 'c' } : undefined, post: vi.fn() });
+            expect(hub.owns(request)).toBe(true);
+            expect(hub.owns({ processId: 'p', requestId: 'other' })).toBe(false);
+            expect(capturedOrigin).not.toHaveBeenCalled();
+        });
+
         it('does not turn captured receipt lookup failures into origin-less delegation', () => {
             const hub = new AskUserQuestionRelayHub({ store: {} as never,
                 capturedOrigin: () => { throw new Error('Captured origin unavailable'); } });

@@ -7,6 +7,7 @@ import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { MarkdownView } from '../../../shared/MarkdownView';
 import { useInlineImageLightbox } from '../../../shared/useInlineImageLightbox';
 import { ToolCallView } from './tool-calls/ToolCallView';
+import { getResponseSize } from './tool-calls/toolCallRenderModel';
 import { JsonResponseView } from '../../../ui/JsonResponseView';
 import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
@@ -198,6 +199,7 @@ interface RenderToolCall {
     name?: string;
     args: any;
     result?: string;
+    availableResponseBytes?: number;
     error?: string;
     status?: string;
     startTime?: string;
@@ -990,6 +992,7 @@ function buildAssistantRender(
     // Suppress tool results that are already shown as inline content to avoid duplication.
     for (const call of callsById.values()) {
         if (call.result && typeof call.result === 'string' && renderedContentTexts.has(call.result.trim())) {
+            call.availableResponseBytes = getResponseSize(call.result)?.bytes;
             call.result = undefined;
         }
     }

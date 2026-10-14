@@ -1099,7 +1099,7 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s cookie imports', engi
         const view = h.created[0].view;
         view.importCookies = vi.fn(async () => {});
         expect(await h.manager.importCookies(2, 'view', 'app.example.com', 'session=token')).toMatchObject({ ok: false, reason: 'not-found' });
-        expect(await h.manager.importCookies(1, 'view', 'app.example.com', 'session=token')).toEqual({ ok: true });
+        expect(await h.manager.importCookies(1, 'view', 'app.example.com', 'session=token')).toEqual({ ok: true, count: 1 });
         expect(view.importCookies).toHaveBeenCalledWith([expect.objectContaining({ url: 'https://app.example.com/', name: 'session', value: 'token' })]);
         expect(view.navigate).not.toHaveBeenCalled();
         expect(await h.manager.importCookies(1, 'view', 'app.example.com', '[{"name":"a","value":"secret","domain":"evil.test"}]')).toMatchObject({ ok: false, reason: 'invalid' });
@@ -1116,7 +1116,7 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s cookie imports', engi
         expect(await h.manager.importCookies(1, 'view', 'app.example.com', 'a=b')).toEqual({ ok: false, reason: 'busy' });
         expect(h.hosts[engine].clearData).not.toHaveBeenCalled();
         finish();
-        expect(await importing).toEqual({ ok: true });
+        expect(await importing).toEqual({ ok: true, count: 1 });
         expect(await clearing).toEqual({ ok: true });
         expect(h.hosts[engine].clearData).toHaveBeenCalled();
     });
@@ -1133,12 +1133,13 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s cookie imports', engi
 describe.each<BrowserEngine>(['electron', 'webview2'])('%s blank-tab cookie imports', engine => {
     it('imports into the default profile without creating a view or navigating', async () => {
         const h = harness(engine);
-        expect(await h.manager.importCookies(1, null, 'app.example.com', 'a=b')).toEqual({ ok: true });
+        expect(await h.manager.importCookies(1, null, 'app.example.com', 'a=b')).toEqual({ ok: true, count: 1 });
+        expect(await h.manager.importCookies(1, null, 'example.com', 'a=1; b=2')).toEqual({ ok: true, count: 2 });
         expect(h.hosts[engine].importCookies).toHaveBeenCalledWith([expect.objectContaining({ name: 'a', value: 'b' })]);
         expect(h.created).toHaveLength(0);
         expect(h.send).not.toHaveBeenCalled();
         const other = engine === 'electron' ? 'webview2' : 'electron';
-        expect(await h.manager.importCookies(2, null, 'app.example.com', 'a=b', other)).toEqual({ ok: true });
+        expect(await h.manager.importCookies(2, null, 'app.example.com', 'a=b', other)).toEqual({ ok: true, count: 1 });
         expect(h.hosts[other].importCookies).toHaveBeenCalledOnce();
         expect(await h.manager.importCookies(1, 'missing', 'app.example.com', 'a=b')).toMatchObject({ reason: 'not-found' });
         expect(await h.manager.importCookies(1, null, 'app.example.com', 'a=b', 'unknown')).toMatchObject({ reason: 'bad-engine' });
@@ -1153,7 +1154,7 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s blank-tab cookie impo
         expect(await h.manager.importCookies(2, null, 'app.example.com', 'a=b')).toEqual({ ok: false, reason: 'busy' });
         expect(h.hosts[engine].clearData).not.toHaveBeenCalled();
         finish();
-        expect(await importing).toEqual({ ok: true });
+        expect(await importing).toEqual({ ok: true, count: 1 });
         expect(await clearing).toEqual({ ok: true });
     });
     it('returns unavailable-engine errors without creating a browser', async () => {

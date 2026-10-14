@@ -15,6 +15,7 @@ import type { AskUserQuestionRelay, AskUserQuestionRelayRequest } from '../../..
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { nestRuntime } from './runtime-options-helper';
+import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -225,6 +226,76 @@ describe('ask_user question relay wiring', () => {
             type: 'ask-user', askUser: expect.objectContaining({ approval: expect.objectContaining({ kind: 'dangerous-command' }) }),
         }));
         expect(relayed).toEqual([]);
+    });
+
+    describe('sensitive-input questions', () => {
+        const secretQuestion = {
+            question: 'Paste cookies', type: 'sensitive-input', sink: 'browser.cookies', sinkArgs: { domain: 'example.com' },
+        };
+        let results: Promise<any[]>;
+
+        function sensitiveOptions(owns: boolean) {
+            const options = makeOptions();
+            options.queueConfig = createFixedQueueRuntimeConfig({
+                defaultTimeoutMs: 30_000,
+                askUser: { enabled: true },
+                sensitiveInput: { enabled: true },
+            });
+            options.runtime.getAskUserQuestionRelay = () => ({
+                relay: (request: AskUserQuestionRelayRequest) => { relayed.push(request); return owns; },
+                owns: () => owns,
+            });
+            return options;
+        }
+
+        function modelAsksFor(questions: unknown[]) {
+            sdkMocks.mockSendMessage.mockImplementation(async (options: any) => {
+                const tool = options.tools.find((t: any) => t.name === 'ask_user');
+                results = tool.handler({ questions });
+                await new Promise(resolve => setTimeout(resolve, 0));
+                return { success: true, response: 'ok', sessionId: 's1' };
+            });
+        }
+
+        it('resolves a secret as unavailable on a connector turn and never relays or shows it', async () => {
+            modelAsksFor([secretQuestion, { question: 'Which?', type: 'text' }]);
+            const store = createMockProcessStore();
+            const emitSpy = vi.spyOn(store, 'emitProcessEvent');
+            const updateSpy = vi.spyOn(store, 'updateProcess');
+            await new ChatExecutor(store, sensitiveOptions(true)).execute(chatTask('ask', 's1', 'req-s1'), 'Hello');
+            const [secret] = await results;
+            expect(secret).toMatchObject({ answer: null, skipped: true, reason: 'unavailable' });
+            expect(secret.guidance).toContain('CoC desktop');
+            expect(relayed).toHaveLength(1);
+            expect(relayed[0].questions.map(q => q.type)).toEqual(['text']);
+            const askEvents = emitSpy.mock.calls.filter(([, event]) => event.type === 'ask-user');
+            expect(askEvents.map(([, event]) => event.askUser!.type)).toEqual(['text']);
+            const stored = updateSpy.mock.calls.map(([, patch]) => patch.pendingAskUser).find(Boolean);
+            expect(stored!.map(q => q.type)).toEqual(['text']);
+        });
+
+        it('emits nothing when every question in a connector turn is a secret', async () => {
+            modelAsksFor([secretQuestion]);
+            const store = createMockProcessStore();
+            const emitSpy = vi.spyOn(store, 'emitProcessEvent');
+            await new ChatExecutor(store, sensitiveOptions(true)).execute(chatTask('ask', 's2', 'req-s2'), 'Hello');
+            expect((await results)[0]).toMatchObject({ skipped: true, reason: 'unavailable' });
+            expect(relayed).toEqual([]);
+            expect(emitSpy.mock.calls.filter(([, event]) => event.type === 'ask-user')).toEqual([]);
+        });
+
+        it('keeps a secret pending in the dashboard on a dashboard turn but leaves it out of the relay', async () => {
+            modelAsksFor([secretQuestion, { question: 'Which?', type: 'text' }]);
+            const store = createMockProcessStore();
+            const emitSpy = vi.spyOn(store, 'emitProcessEvent');
+            await new ChatExecutor(store, sensitiveOptions(false)).execute(chatTask('ask', 's3', 'req-s3'), 'Hello');
+            const askEvents = emitSpy.mock.calls.filter(([, event]) => event.type === 'ask-user');
+            expect(askEvents.map(([, event]) => event.askUser!.type)).toEqual(['sensitive-input', 'text']);
+            expect(relayed).toHaveLength(1);
+            expect(relayed[0].questions.map(q => q.type)).toEqual(['text']);
+            // Not resolved as unavailable: the turn's cleanup cancels it instead.
+            expect((await results)[0].reason).not.toBe('unavailable');
+        });
     });
 
     it('clears relayed questions when the turn ends', async () => {

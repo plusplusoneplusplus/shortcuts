@@ -299,6 +299,7 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
         sqlDescription,
         sqlQuery,
         sqlOptionsText,
+        scriptCode,
         applyPatchText,
         codexFileChanges,
         visibleResult,
@@ -309,7 +310,7 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
         duration,
     } = model;
 
-    const showGenericArgs = !isShellLike && !isSql
+    const showGenericArgs = !isShellLike && !isSql && !scriptCode
         && name !== 'edit' && name !== 'create' && name !== 'view'
         && !(name === 'apply_patch' && (applyPatchText || codexFileChanges.length > 0))
         && !isTaskComplete && !!argsText;
@@ -364,6 +365,14 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
                     <div className="text-[10px] uppercase text-[#848484] mb-0.5">Options</div>
                     <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
                         <code>{sqlOptionsText}</code>
+                    </pre>
+                </div>
+            )}
+            {scriptCode && (
+                <div>
+                    <div className="text-[10px] uppercase text-[#848484] mb-0.5">Script</div>
+                    <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]" data-testid="tool-script-code">
+                        <code className="language-javascript">{scriptCode}</code>
                     </pre>
                 </div>
             )}

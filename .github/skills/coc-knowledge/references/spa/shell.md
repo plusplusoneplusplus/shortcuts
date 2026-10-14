@@ -485,10 +485,15 @@ features default off.
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
-The desktop workspace header exposes one visibility toggle for the resource-tabbed
-right panel. The classic repository header and remote/virtual TopBar use the same
-persisted panel-scope open store. Search and Explorer are peer controls inside the
-panel; they select or collapse the right-edge navigator without closing the panel.
+The desktop workspace header's single resource-panel control cycles hidden →
+docked → expanded → hidden. Classic repository headers and remote/virtual TopBar
+share the persisted panel-scope open store and session-only expansion store in
+`WorkspaceDockToggle.tsx`. Expansion fills the workspace row while keeping its
+content mounted and the header reachable. Close clears expansion synchronously;
+Escape restores docked size unless another surface owns it. Programmatic opens
+retain an already-expanded panel; the visibility shortcut does not expand.
+Mobile clears expansion, and the cycle preserves docked width and tab drafts.
+Search and Explorer select or collapse the right-edge navigator independently.
 Ctrl/Cmd+T creates and activates a blank browser tab in the visible panel,
 using the selected dock target's workspace and concrete clone route. Its address
 input receives the existing autofocus. Panel and browser address focus own the
@@ -599,8 +604,8 @@ ledger from the owning server through `client.sentinelTodos.get` with `full: tru
 only the descriptor persists. The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
-Compact list headers combine wrapping titles, status, priority and Attach; job
-metadata wraps below. Identical item/job titles use accessible Open job links,
+Compact list headers combine wrapping titles, status, priority and shared overflow
+actions; job metadata wraps below. Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details;
 detail text uses native selection, with attachment dragging scoped to Attach.
 List cards retain whole-card attachment dragging.

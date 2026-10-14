@@ -71,6 +71,11 @@ refresh, and the two layouts. Everything else lives here.
   `applyRoute` resolver and fall back to `getCommit` only when `gitCommitLookup`
   is on and the string is SHA-shaped (`isLookupCandidate`). Direct SHA lookups
   select the detail view; the sidebar lists paginated history only.
+  A transient `SET_GIT_ROUTE.knownCommit` can supply a commit already read by
+  another surface, including rail pages beyond the initial history page. Consume
+  it only when page, member, full SHA and `sourceSelectionId` match; this does not
+  enable direct SHA lookup or persist a second history cache. A fresh supplied
+  commit requests selection even for a repeated route whose detail was closed.
 - **A route belongs to exactly one panel.** `state.gitRouteScope` must name both
   this page owner and this data member before the selection is consumed, and a
   consumed route is keyed on all four fields (page, member, revision, file) via

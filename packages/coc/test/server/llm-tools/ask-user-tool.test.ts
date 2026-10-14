@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createAskUserTool, type AskUserToolDeps, type AskUserSSEPayload } from '../../../src/server/llm-tools/ask-user-tool';
+import { createAskUserTool, parseSensitiveInputReceipt, type AskUserToolDeps, type AskUserSSEPayload, type AskUserEmitControl } from '../../../src/server/llm-tools/ask-user-tool';
 
 describe('createAskUserTool', () => {
     let emitQuestions: ReturnType<typeof vi.fn>;
@@ -250,5 +250,224 @@ describe('createAskUserTool', () => {
             expect(tool.description).not.toMatch(/autopilot/i);
             expect(tool.description).toContain('never in unattended or automated runs');
         });
+    });
+});
+
+describe('createAskUserTool sensitive-input', () => {
+    const cookieQuestion = {
+        question: 'Paste your example.com cookies',
+        type: 'sensitive-input' as const,
+        sink: 'browser.cookies' as const,
+        sinkArgs: { domain: ' example.com ', viewId: 'view-1' },
+    };
+
+    function setup(overrides: Partial<AskUserToolDeps> = {}) {
+        const emitQuestions = vi.fn();
+        const deps: AskUserToolDeps = {
+            emitQuestions,
+            computeTurnIndex: () => 0,
+            isSensitiveInputEnabled: () => true,
+            ...overrides,
+        };
+        return { emitQuestions, ...createAskUserTool(deps) };
+    }
+
+    it('keeps the default schema unchanged when the flag is off or unset', () => {
+        for (const deps of [{}, { isSensitiveInputEnabled: () => false }]) {
+            const params = createAskUserTool({ emitQuestions: vi.fn(), computeTurnIndex: () => 0, ...deps }).tool.parameters as any;
+            const item = params.properties.questions.items;
+            expect(item.properties.type.enum).toEqual(['select', 'multi-select', 'yes-no', 'confirm', 'text']);
+            expect(item.properties.sink).toBeUndefined();
+            expect(item.properties.sinkArgs).toBeUndefined();
+        }
+    });
+
+    it('lists sensitive-input with its sink and sinkArgs when the flag is on', () => {
+        const { tool } = setup();
+        const item = (tool.parameters as any).properties.questions.items;
+        expect(item.properties.type.enum).toContain('sensitive-input');
+        expect(item.properties.sink.enum).toEqual(['browser.cookies']);
+        expect(item.properties.sinkArgs.required).toEqual(['domain']);
+        expect(tool.description).toContain('sensitive-input');
+    });
+
+    it('refuses sensitive-input when the flag is off', async () => {
+        const { tool, emitQuestions } = setup({ isSensitiveInputEnabled: () => false });
+        await expect(tool.handler({ questions: [cookieQuestion] })).rejects.toThrow(/not enabled/);
+        expect(emitQuestions).not.toHaveBeenCalled();
+    });
+
+    it('re-reads the flag at call time', async () => {
+        let enabled = true;
+        const { tool } = setup({ isSensitiveInputEnabled: () => enabled });
+        enabled = false;
+        await expect(tool.handler({ questions: [cookieQuestion] })).rejects.toThrow(/not enabled/);
+    });
+
+    it.each([
+        ['an unknown sink', { ...cookieQuestion, sink: 'secret.store' as any }, /sink/],
+        ['a missing sink', { ...cookieQuestion, sink: undefined }, /sink/],
+        ['missing sinkArgs', { ...cookieQuestion, sinkArgs: undefined }, /domain/],
+        ['a blank domain', { ...cookieQuestion, sinkArgs: { domain: '  ' } }, /domain/],
+        ['a non-string viewId', { ...cookieQuestion, sinkArgs: { domain: 'a.com', viewId: 3 as any } }, /viewId/],
+    ])('rejects %s', async (_label, question, error) => {
+        const { tool, emitQuestions } = setup();
+        await expect(tool.handler({ questions: [question] })).rejects.toThrow(error);
+        expect(emitQuestions).not.toHaveBeenCalled();
+    });
+
+    it('emits sink and normalized sinkArgs, without options or defaultValue', async () => {
+        const { tool, emitQuestions, cancelAll } = setup();
+        const pending = tool.handler({
+            questions: [{ ...cookieQuestion, options: [{ value: 'x', label: 'X' }], defaultValue: 'x' }],
+        });
+        const [payload] = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+        expect(payload.type).toBe('sensitive-input');
+        expect(payload.sink).toBe('browser.cookies');
+        expect(payload.sinkArgs).toEqual({ domain: 'example.com', viewId: 'view-1' });
+        expect(payload).not.toHaveProperty('options');
+        expect(payload).not.toHaveProperty('defaultValue');
+        cancelAll();
+        await pending;
+    });
+
+    it('does not add sink fields to ordinary questions', async () => {
+        const { tool, emitQuestions, cancelAll } = setup();
+        const pending = tool.handler({ questions: [{ question: 'Name?', type: 'text' }] });
+        const [payload] = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+        expect(payload).not.toHaveProperty('sink');
+        expect(payload).not.toHaveProperty('sinkArgs');
+        cancelAll();
+        await pending;
+    });
+
+    it('answers unavailable with desktop guidance on a non-interactive turn', async () => {
+        const { tool, emitQuestions } = setup({ isInteractive: () => false });
+        const [sensitive, plain] = await tool.handler({
+            questions: [cookieQuestion, { question: 'Name?', type: 'text' }],
+        });
+        expect(emitQuestions).not.toHaveBeenCalled();
+        expect(sensitive).toMatchObject({ answer: null, skipped: true, reason: 'unavailable' });
+        expect(sensitive.guidance).toMatch(/CoC desktop/);
+        expect(plain.guidance).not.toMatch(/CoC desktop/);
+    });
+
+    it('resolveUnavailable gives a pending sensitive-input question the desktop guidance', async () => {
+        const { tool, emitQuestions } = setup();
+        const pending = tool.handler({ questions: [cookieQuestion] });
+        const [payloads, control] = emitQuestions.mock.calls[0] as [AskUserSSEPayload[], AskUserEmitControl];
+        expect(control.resolveUnavailable(payloads[0].questionId)).toBe(true);
+        const [response] = await pending;
+        expect(response).toMatchObject({ questionId: payloads[0].questionId, skipped: true, reason: 'unavailable' });
+        expect(response.guidance).toMatch(/CoC desktop/);
+    });
+
+    describe('receipts', () => {
+        async function ask(extra: Partial<AskUserToolDeps> = {}) {
+            const tools = setup(extra);
+            const result = tools.tool.handler({ questions: [cookieQuestion] });
+            const [payloads, control] = tools.emitQuestions.mock.calls[0] as [AskUserSSEPayload[], AskUserEmitControl];
+            return { ...tools, result, questionId: payloads[0].questionId, control };
+        }
+
+        it('answers with { ok, sink, domain, count } built from the question', async () => {
+            const { answerQuestions, result, questionId } = await ask();
+            expect(answerQuestions([{ questionId, receipt: { ok: true, count: 2 } }])).toBe(true);
+            const [response] = await result;
+            expect(response).toEqual({
+                questionId,
+                skipped: false,
+                answer: { ok: true, sink: 'browser.cookies', domain: 'example.com', count: 2 },
+            });
+        });
+
+        it('answers a failed import with a reason code only', async () => {
+            const { answerQuestions, result, questionId } = await ask();
+            expect(answerQuestions([{ questionId, receipt: { ok: false, reason: 'invalid-input' } }])).toBe(true);
+            const [response] = await result;
+            expect(response.answer).toEqual({ ok: false, sink: 'browser.cookies', domain: 'example.com', reason: 'invalid-input' });
+        });
+
+        it.each([
+            ['a plain answer', { answer: 'a=1; b=2' }],
+            ['a receipt plus an answer', { answer: 'a=1', receipt: { ok: true, count: 1 } }],
+            ['no receipt', {}],
+            ['a receipt with extra keys', { receipt: { ok: true, count: 1, names: ['a'] } as any }],
+            ['a negative count', { receipt: { ok: true, count: -1 } }],
+            ['a fractional count', { receipt: { ok: true, count: 1.5 } }],
+            ['a free-text reason', { receipt: { ok: false, reason: 'bad cookie a=1' } as any }],
+            ['a count on a failure', { receipt: { ok: false, reason: 'import-failed', count: 1 } as any }],
+        ])('rejects %s and keeps the question pending', async (_label, input) => {
+            const { answerQuestions, cancelAll, result, questionId, control } = await ask();
+            expect(answerQuestions([{ questionId, ...input }])).toBe(false);
+            expect(control.isPending(questionId)).toBe(true);
+            cancelAll();
+            await result;
+        });
+
+        it('refuses single-answer paths so a relay cannot deliver the secret', async () => {
+            const { answerQuestion, cancelAll, result, questionId, control } = await ask();
+            expect(answerQuestion(questionId, 'a=1')).toBe(false);
+            expect(control.answer(questionId, 'a=1')).toBe(false);
+            expect(control.isPending(questionId)).toBe(true);
+            cancelAll();
+            await result;
+        });
+
+        it('keeps skip and need-more-context working', async () => {
+            const skipped = await ask();
+            expect(skipped.answerQuestions([{ questionId: skipped.questionId, skipped: true }])).toBe(true);
+            expect((await skipped.result)[0]).toMatchObject({ skipped: true, reason: 'user-skipped', answer: null });
+
+            const deferred = await ask();
+            expect(deferred.answerQuestions([{ questionId: deferred.questionId, deferred: true, reason: 'needs-context' }])).toBe(true);
+            expect((await deferred.result)[0]).toMatchObject({ deferred: true, reason: 'needs-context', answer: null });
+        });
+
+        it('answers unavailable with desktop guidance when the dashboard has no bridge', async () => {
+            const { answerQuestions, result, questionId } = await ask();
+            expect(answerQuestions([{ questionId, skipped: true, reason: 'unavailable' }])).toBe(true);
+            const [response] = await result;
+            expect(response).toMatchObject({ skipped: true, reason: 'unavailable', answer: null });
+            expect(response.guidance).toContain('CoC desktop');
+        });
+
+        it('rejects unavailable without skipped or on an ordinary question', async () => {
+            const sensitive = await ask();
+            expect(sensitive.answerQuestions([{ questionId: sensitive.questionId, reason: 'unavailable' }])).toBe(false);
+            expect(sensitive.control.isPending(sensitive.questionId)).toBe(true);
+            sensitive.cancelAll();
+            await sensitive.result;
+
+            const { tool, emitQuestions, answerQuestions, cancelAll } = setup();
+            const result = tool.handler({ questions: [{ question: 'Name?', type: 'text' }] });
+            const [payload] = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+            expect(answerQuestions([{ questionId: payload.questionId, skipped: true, reason: 'unavailable' }])).toBe(false);
+            cancelAll();
+            await result;
+        });
+
+        it('rejects a receipt on an ordinary question', async () => {
+            const { tool, emitQuestions, answerQuestions, cancelAll } = setup();
+            const result = tool.handler({ questions: [{ question: 'Name?', type: 'text' }] });
+            const [payload] = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+            expect(answerQuestions([{ questionId: payload.questionId, answer: 'x', receipt: { ok: true, count: 1 } }])).toBe(false);
+            cancelAll();
+            await result;
+        });
+    });
+});
+
+describe('parseSensitiveInputReceipt', () => {
+    it.each([
+        [{ ok: true, count: 0 }, { ok: true, count: 0 }],
+        [{ ok: false, reason: 'import-failed' }, { ok: false, reason: 'import-failed' }],
+        [{ ok: true }, null],
+        [{ ok: 'yes', count: 1 }, null],
+        [[], null],
+        ['{"ok":true,"count":1}', null],
+        [null, null],
+    ])('parses %j as %j', (input, expected) => {
+        expect(parseSensitiveInputReceipt(input)).toEqual(expected);
     });
 });

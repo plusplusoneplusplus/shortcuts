@@ -160,7 +160,7 @@ export type ServerMessage =
     | { type: 'work-item-removed'; workspaceId: string; itemId: string }
     | { type: 'work-item-pr-created'; workspaceId: string; workItemId: string; prUrl: string; prNumber: number; iteration: number }
     | { type: 'sentinel-scrubber-changed'; workspaceId: string; processId: string; runId?: string; timestamp: number }
-    | { type: 'sentinel-todos-changed'; workspaceId: string; processId: string; ledgerRevision: number; itemId?: string; timestamp: number }
+    | { type: 'sentinel-todos-changed'; workspaceId: string; processId: string; ledgerRevision: number; itemId?: string; tagOnly?: boolean; timestamp: number }
     | { type: 'turn-pinned'; processId: string; turnIndex: number; pinnedAt: string | null }
     | { type: 'turn-archived'; processId: string; turnIndex: number; archived: boolean }
     | { type: 'turn-rewound'; processId: string; turnIndex: number; turnsRemoved: number }

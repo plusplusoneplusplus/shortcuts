@@ -535,17 +535,28 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         if (!(store instanceof SqliteProcessStore)) todoDb.close();
         throw error;
     }
+    const decisionService = opts.decisionService ?? createDecisionService(undefined);
     const sentinelTodos = new SentinelTodoService({
         todos: todoStore, store, jobs: delegatedJobs, dataDir,
         fetchPr: createPrStatusFetcher({ dataDir }),
         resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
         getDependenciesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
+        getTagsEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoTags === true,
+        getTagsGeneration: () => opts.runtimeConfigService?.revision,
+        decisions: decisionService,
+        onTagsChange: (owner, ledgerRevision) => {
+            const event = {
+                type: 'sentinel-todos-changed' as const, workspaceId: owner.workspaceId, processId: owner.processId,
+                ledgerRevision, tagOnly: true, timestamp: Date.now(),
+            };
+            getWsServer().broadcastProcessEvent(event);
+        },
         getTask: taskId => bridge.getTask(taskId),
-        onChange: ({ owner, ledgerRevision, item }) => {
-            opts.triggerManager?.refreshDependencyPolling();
+        onChange: ({ owner, ledgerRevision, item, tagOnly }) => {
+            if (!tagOnly) opts.triggerManager?.refreshDependencyPolling();
             getWsServer().broadcastProcessEvent({
                 type: 'sentinel-todos-changed', workspaceId: owner.workspaceId, processId: owner.processId,
-                ledgerRevision, itemId: item.id, timestamp: Date.now(),
+                ledgerRevision, itemId: item.id, ...(tagOnly ? { tagOnly: true } : {}), timestamp: Date.now(),
             });
         },
     });
@@ -780,6 +791,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
             browserControlEnabled: opts.runtimeConfigService!.config.browserControl?.enabled ?? false,
             llmToolSystemOneEnabled: opts.runtimeConfigService!.config.LLMToolSystemOne?.enabled ?? false,
+            toolScriptingEnabled: opts.runtimeConfigService!.config.features?.toolScripting === true,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.runtimeConfigService!.config.features?.chatHistoryPaging === true,
@@ -792,6 +804,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
             browserControlEnabled: opts.resolvedConfig?.browserControl?.enabled ?? false,
             llmToolSystemOneEnabled: opts.resolvedConfig?.LLMToolSystemOne?.enabled ?? false,
+            toolScriptingEnabled: opts.resolvedConfig?.features?.toolScripting === true,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.resolvedConfig?.features?.chatHistoryPaging === true,
@@ -1742,7 +1755,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerDecisionRoutes({
         routes,
         store,
-        service: opts.decisionService ?? createDecisionService(undefined),
+        service: decisionService,
     });
 
     // Work item routes

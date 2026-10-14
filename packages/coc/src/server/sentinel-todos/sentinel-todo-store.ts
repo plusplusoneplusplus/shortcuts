@@ -1,12 +1,28 @@
 import { randomUUID } from 'node:crypto';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { z } from 'zod';
-import type { SentinelTodoDependencyEvaluation } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
 export const MAX_TODO_REFERENCES = 20;
 export const MAX_TODO_DEPENDENCIES = 50;
+export const MAX_TODO_TAGS = 50;
+const tagIdsSchema = z.array(z.string().min(1).max(200)).max(MAX_TODO_TAGS)
+    .refine(ids => new Set(ids).size === ids.length, 'Duplicate tag IDs');
+const tagMatchSchema = z.object({
+    state: z.enum(['matched', 'no_match', 'unavailable', 'failed']),
+    message: z.string().max(1_000).optional(),
+}).strict();
+const tagWriteSchema = z.object({
+    expectedRevision: z.number().int().nonnegative(),
+    name: z.string().trim().min(1).max(80),
+    color: z.enum(['gray', 'blue', 'violet', 'teal', 'amber']),
+    description: z.string().trim().max(1_000).optional(),
+}).strict();
+const tagDeleteSchema = z.object({
+    expectedRevision: z.number().int().nonnegative(), confirmed: z.literal(true),
+}).strict();
 
 const id = z.string().min(1).max(200);
 export const todoTypeSchema = z.enum(['normal', 'manual']);
@@ -112,6 +128,10 @@ const evidenceSchema = z.discriminatedUnion('kind', [
 ]);
 export type SentinelTodoEvidence = z.infer<typeof evidenceSchema>;
 const itemSchema = z.object({
+    tagRevision: z.number().int().nonnegative().optional(),
+    tagIds: tagIdsSchema.optional(),
+    tagOrigin: z.enum(['manual', 'suggested']).optional(),
+    tagMatch: tagMatchSchema.optional(),
     id,
     type: todoTypeSchema,
     title: z.string().trim().min(1).max(200),
@@ -155,6 +175,8 @@ export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt
 export type SentinelTodoDependency = z.infer<typeof todoDependencySchema>;
 
 export const todoCreateSchema = z.object({
+    tagIds: tagIdsSchema.optional(),
+    matchMultiple: z.boolean().optional(),
     type: todoTypeSchema.optional(),
     title: itemSchema.shape.title,
     completionCondition: itemSchema.shape.completionCondition.optional(),
@@ -166,6 +188,9 @@ export const todoCreateSchema = z.object({
 }).strict();
 /** `null` clears an optional field; omitted fields are left unchanged. */
 export const todoPatchSchema = z.object({
+    expectedTagRevision: z.number().int().nonnegative().optional(),
+    tagIds: tagIdsSchema.optional(),
+    matchMultiple: z.boolean().optional(),
     title: itemSchema.shape.title.optional(),
     completionCondition: itemSchema.shape.completionCondition.optional(),
     notes: itemSchema.shape.notes.optional(),
@@ -203,6 +228,103 @@ export class SentinelTodoError extends Error {
  * The caller owns the database lifetime.
  */
 export class SentinelTodoStore {
+    getTags(owner: SentinelTodoOwner): SentinelTodoTagLibrary {
+        assertOwner(owner);
+        const row = this.db.prepare(`SELECT revision, tags FROM sentinel_todo_tag_libraries
+            WHERE workspace_id = ? AND parent_process_id = ?`)
+            .get<{ revision: number; tags: string }>(owner.workspaceId, owner.processId);
+        return row ? { revision: row.revision, tags: JSON.parse(row.tags) } : { revision: 0, tags: [] };
+    }
+
+    writeTag(owner: SentinelTodoOwner, tagId: string | undefined, input: unknown): SentinelTodoTagLibrary {
+        const body = parse(tagWriteSchema, input);
+        return this.mutate(owner, () => {
+            const library = this.getTags(owner);
+            if (library.revision !== body.expectedRevision) throw new SentinelTodoError('conflict', 'The tag library changed; reload it');
+            const index = tagId === undefined ? -1 : library.tags.findIndex(tag => tag.id === tagId);
+            if (tagId !== undefined && index < 0) throw new SentinelTodoError('not_found', 'Tag not found');
+            if (library.tags.some(tag => tag.id !== tagId && tag.name.toLowerCase() === body.name.toLowerCase())) {
+                throw new SentinelTodoError('invalid', 'Tag names must be unique, ignoring case');
+            }
+            if (tagId === undefined && library.tags.length >= MAX_TODO_TAGS) throw new SentinelTodoError('limit', `At most ${MAX_TODO_TAGS} tags per ledger`);
+            const tag = { id: tagId ?? randomUUID(), name: body.name, color: body.color,
+                ...(body.description ? { description: body.description } : {}) };
+            if (index < 0) library.tags.push(tag);
+            else library.tags[index] = tag;
+            return this.saveTagLibrary(owner, library);
+        }, false);
+    }
+
+    deleteTag(owner: SentinelTodoOwner, tagId: string, input: unknown): SentinelTodoTagLibrary {
+        const body = parse(tagDeleteSchema, input);
+        return this.mutate(owner, () => {
+            const library = this.getTags(owner);
+            if (library.revision !== body.expectedRevision) throw new SentinelTodoError('conflict', 'The tag library changed; reload it');
+            if (!library.tags.some(tag => tag.id === tagId)) throw new SentinelTodoError('not_found', 'Tag not found');
+            library.tags = library.tags.filter(tag => tag.id !== tagId);
+            const ledger = this.read(owner);
+            for (let index = 0; index < ledger.items.length; index++) {
+                const item = ledger.items[index];
+                if (!item.tagIds?.includes(tagId)) continue;
+                // A removed tag cannot turn a manual selection (including empty) into an automatic one.
+                const next = { ...item, tagIds: item.tagIds.filter(id => id !== tagId) };
+                delete next.tagMatch;
+                const result = this.commit(owner, ledger, index, next, 'system', item.updatedAt, true);
+                ledger.items[index] = result.item;
+                ledger.revision = result.ledgerRevision;
+            }
+            return this.saveTagLibrary(owner, library);
+        }, false);
+    }
+
+    setSuggestedTags(owner: SentinelTodoOwner, itemId: string, expectedRevision: number, libraryRevision: number, expectedTagRevision: number,
+        metadata: { tagIds: string[]; tagMatch: z.infer<typeof tagMatchSchema> }, confirmed = false) {
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', 'To-do item not found');
+            const item = ledger.items[index];
+            if (item.revision !== expectedRevision || (item.tagRevision ?? 0) !== expectedTagRevision
+                || this.getTags(owner).revision !== libraryRevision) {
+                throw new SentinelTodoError('conflict', 'The item or tag library changed during classification', item);
+            }
+            if (item.tagOrigin === 'manual' && !confirmed) throw new SentinelTodoError('invalid', 'Confirm replacing manual tag assignments');
+            this.validateTagIds(owner, metadata.tagIds);
+            const failed = metadata.tagMatch.state === 'failed' || metadata.tagMatch.state === 'unavailable';
+            const next = failed ? { ...item, tagMatch: metadata.tagMatch }
+                : { ...item, ...metadata, tagOrigin: 'suggested' };
+            return this.commit(owner, ledger, index, next,
+                'system', item.updatedAt, true);
+        }, false);
+    }
+
+    private saveTagLibrary(owner: SentinelTodoOwner, library: SentinelTodoTagLibrary): SentinelTodoTagLibrary {
+        this.db.prepare(`INSERT INTO sentinel_todo_ledgers VALUES (?, ?, 0) ON CONFLICT DO NOTHING`)
+            .run(owner.workspaceId, owner.processId);
+        const next = { ...library, revision: library.revision + 1 };
+        this.db.prepare(`INSERT INTO sentinel_todo_tag_libraries VALUES (?, ?, ?, ?)
+            ON CONFLICT (workspace_id, parent_process_id) DO UPDATE SET revision = excluded.revision, tags = excluded.tags`)
+            .run(owner.workspaceId, owner.processId, next.revision, JSON.stringify(next.tags));
+        return next;
+    }
+
+    private validateTagIds(owner: SentinelTodoOwner, ids: string[]): void {
+        parse(tagIdsSchema, ids);
+        const library = this.getTags(owner);
+        if (ids.some(id => !library.tags.some(tag => tag.id === id))) {
+            throw new SentinelTodoError('invalid', 'Tag IDs must belong to this parent ledger');
+        }
+    }
+
+    private writeTags(owner: SentinelTodoOwner, item: SentinelTodoItem): void {
+        if (item.tagIds === undefined && item.tagOrigin === undefined && item.tagMatch === undefined) return;
+        this.db.prepare(`INSERT INTO sentinel_todo_tag_assignments VALUES (?, ?, ?, ?)
+            ON CONFLICT (workspace_id, parent_process_id, item_id) DO UPDATE SET metadata = excluded.metadata`)
+            .run(owner.workspaceId, owner.processId, item.id, JSON.stringify({
+                tagIds: item.tagIds, tagOrigin: item.tagOrigin, tagMatch: item.tagMatch, tagRevision: item.tagRevision,
+            }));
+    }
+
     constructor(private readonly db: NativeDatabase) {
         db.transaction(() => db.exec(`
             CREATE TABLE IF NOT EXISTS sentinel_todo_ledgers (
@@ -238,6 +360,24 @@ export class SentinelTodoStore {
                 UNIQUE (workspace_id, parent_process_id, item_order),
                 FOREIGN KEY (workspace_id, parent_process_id)
                     REFERENCES sentinel_todo_ledgers (workspace_id, parent_process_id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_tag_libraries (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                tags TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id),
+                FOREIGN KEY (workspace_id, parent_process_id)
+                    REFERENCES sentinel_todo_ledgers (workspace_id, parent_process_id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS sentinel_todo_tag_assignments (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
             );
             CREATE UNIQUE INDEX IF NOT EXISTS sentinel_todo_items_idempotency
                 ON sentinel_todo_items (workspace_id, parent_process_id, idempotency_key)
@@ -404,6 +544,7 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const fields = parse(todoCreateSchema, input);
+            if (fields.tagIds !== undefined) this.validateTagIds(owner, fields.tagIds);
             assertReviewReason(opts.actor, fields.status, fields.statusReason);
             const item = parse(itemSchema, {
                 id: randomUUID(),
@@ -423,11 +564,13 @@ export class SentinelTodoStore {
                 updatedBy: opts.actor,
                 jobs: [],
                 references: [],
+                ...(fields.tagIds !== undefined ? { tagIds: fields.tagIds, tagOrigin: 'manual', tagRevision: 1 } : {}),
                 ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
             });
             this.db.prepare(`INSERT INTO sentinel_todo_ledgers (workspace_id, parent_process_id, revision)
                 VALUES (?, ?, 0) ON CONFLICT DO NOTHING`).run(owner.workspaceId, owner.processId);
             this.insertItem(owner, item, ledger.items.length);
+            this.writeTags(owner, item);
             this.advanceLedger(owner, ledger.revision);
             return { item, created: true, ledgerRevision: ledger.revision + 1 };
         });
@@ -500,6 +643,15 @@ export class SentinelTodoStore {
     ): { item: SentinelTodoItem; ledgerRevision: number } {
         assertCaller(actor);
         const fields = parse(todoPatchSchema, patch);
+        if (fields.expectedTagRevision !== undefined && fields.tagIds === undefined) {
+            throw new SentinelTodoError('invalid', 'expectedTagRevision requires tagIds');
+        }
+        if (fields.matchMultiple !== undefined && Object.entries(fields)
+            .every(([key, value]) => value === undefined || ['matchMultiple', 'expectedTagRevision'].includes(key))) {
+            throw new SentinelTodoError('invalid', 'Matching options require an item field or tagIds');
+        }
+        const metadataOnly = fields.tagIds !== undefined && Object.keys(fields).every(key =>
+            ['tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) || fields[key as keyof SentinelTodoPatch] === undefined);
         assertReviewReason(actor, fields.status, fields.statusReason);
         return this.mutate(owner, () => {
             const ledger = this.read(owner);
@@ -542,6 +694,20 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = { ...current };
+            if (fields.tagIds !== undefined) {
+                this.validateTagIds(owner, fields.tagIds);
+                if (fields.expectedTagRevision === undefined) throw new SentinelTodoError('invalid', 'Tag assignments require expectedTagRevision');
+                if (fields.expectedTagRevision !== (current.tagRevision ?? 0)) {
+                    throw new SentinelTodoError('conflict', 'Tag assignments changed since they were loaded', current);
+                }
+                if (actor !== 'user' && current.tagOrigin === 'manual') {
+                    throw new SentinelTodoError('invalid', 'Manual tag assignments require user confirmation to replace');
+                }
+                next.tagIds = fields.tagIds;
+                next.tagOrigin = 'manual';
+                next.tagRevision = (current.tagRevision ?? 0) + 1;
+                delete next.tagMatch;
+            }
             for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
                 if (fields[key] !== undefined) next[key] = fields[key];
             }
@@ -560,7 +726,7 @@ export class SentinelTodoStore {
             if (fields.outcome === null) delete next.outcome;
             else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
             // Priority is metadata: a priority-only edit must not supersede a linked job's result.
-            if (actor === 'user' && Object.keys(fields).some(key => key !== 'priority' && fields[key as keyof SentinelTodoPatch] !== undefined)) {
+            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
                 next.userEditedAt = now;
             }
             if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
@@ -571,8 +737,8 @@ export class SentinelTodoStore {
                 && reviewedLinks.includes(link)
                 ? { ...link, result: { ...link.result, reviewed: { recordedAt: now, recordedBy: actor } } }
                 : link);
-            return this.commit(owner, ledger, index, next, actor, now);
-        });
+            return this.commit(owner, ledger, index, next, actor, metadataOnly ? current.updatedAt : now, metadataOnly);
+        }, !metadataOnly);
     }
 
     /**
@@ -751,7 +917,13 @@ export class SentinelTodoStore {
         next: Record<string, unknown>,
         actor: SentinelTodoActor,
         now: string,
+        metadataOnly = false,
     ): { item: SentinelTodoItem; ledgerRevision: number } {
+        if (metadataOnly) {
+            const item = parse(itemSchema, { ...next, tagRevision: (ledger.items[index].tagRevision ?? 0) + 1 });
+            this.writeTags(owner, item);
+            return { item, ledgerRevision: ledger.revision };
+        }
         const item = parse(itemSchema, {
             ...next, revision: ledger.items[index].revision + 1, updatedAt: now, updatedBy: actor,
         });
@@ -764,6 +936,7 @@ export class SentinelTodoStore {
         if (changed !== 1) throw new SentinelTodoError('conflict', 'The item changed since it was loaded');
         this.writeJobs(owner, item);
         this.writeReferences(owner, item);
+        this.writeTags(owner, item);
         this.advanceLedger(owner, ledger.revision);
         return { item, ledgerRevision: ledger.revision + 1 };
     }
@@ -830,7 +1003,11 @@ export class SentinelTodoStore {
         }
         const items = this.db.prepare(`SELECT * FROM sentinel_todo_items
             WHERE workspace_id = ? AND parent_process_id = ? ORDER BY item_order`).all<ItemRow>(...scope);
+        const tags = new Map(this.db.prepare(`SELECT item_id, metadata FROM sentinel_todo_tag_assignments
+            WHERE workspace_id = ? AND parent_process_id = ?`)
+            .all<{ item_id: string; metadata: string }>(...scope).map(row => [row.item_id, JSON.parse(row.metadata)]));
         return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
+            ...tags.get(row.id),
             id: row.id, type: row.type, title: row.title, completionCondition: row.completion_condition,
             notes: row.notes, status: row.status, priority: row.priority, archived: row.archived === 1,
             revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
@@ -893,14 +1070,14 @@ export class SentinelTodoStore {
             .get<{ revision: number }>(owner.workspaceId, owner.processId, itemId)?.revision ?? 0;
     }
 
-    private mutate<T>(owner: SentinelTodoOwner, mutation: () => T): T {
+    private mutate<T>(owner: SentinelTodoOwner, mutation: () => T, invalidateDependencies = true): T {
         assertOwner(owner);
         return this.db.transaction(() => {
             // Native transactions begin deferred. A zero-row write reserves the
             // SQLite writer before reads while the native mutex stays held.
             this.db.prepare('UPDATE sentinel_todo_ledgers SET revision = revision WHERE 0').run();
             const result = mutation();
-            this.onDependencyMutation?.(owner);
+            if (invalidateDependencies) this.onDependencyMutation?.(owner);
             return result;
         })();
     }

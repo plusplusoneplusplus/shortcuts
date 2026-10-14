@@ -5,7 +5,7 @@
  * own branch; it never presents a group branch.
  */
 import { useCallback, useContext, useRef, useState, type ReactNode } from 'react';
-import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, GitCommit } from '@plusplusoneplusplus/coc-client';
 import { BranchPickerModal } from '../git/branches/BranchPickerModal';
 import { isExplorerDirty } from './explorer/explorerDirtyStore';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
@@ -30,6 +30,8 @@ import {
     type RepoRailGitInput,
 } from './railGitModel';
 import { useGroupRailGit, useRepoRailGit } from './useRailGitSummary';
+import { RailOutgoingCommits } from './RailOutgoingCommits';
+import { routingRefForPanelOwner } from './unified-right-panel/unifiedPanelOwnerRouting';
 
 const TONE_CLASS: Record<RailGitTone, string> = {
     clean: 'text-[#16825d] dark:text-[#3fb950]',
@@ -38,8 +40,10 @@ const TONE_CLASS: Record<RailGitTone, string> = {
     muted: 'text-[#656d76] dark:text-[#aaa]',
 };
 const TILE_CLASS = 'border-[#e5e5e5] bg-transparent hover:bg-[#e8e8e8] dark:border-[#3c3c3c] dark:hover:bg-[#2d2d2d]';
-const ACTION_CLASS = 'mt-1.5 mr-1 rounded border border-[#d0d7de] px-1.5 py-0.5 text-[10px] text-[#1878c8] hover:bg-[#eaf4ff] focus-visible:outline focus-visible:outline-[#007acc] dark:border-[#3c3c3c] dark:text-[#3794ff] dark:hover:bg-[#19384f]';
+const COMPACT_ACTION_CLASS = 'rounded border border-[#d0d7de] px-1.5 py-0.5 text-[10px] text-[#1878c8] hover:bg-[#eaf4ff] focus-visible:outline focus-visible:outline-[#007acc] dark:border-[#3c3c3c] dark:text-[#3794ff] dark:hover:bg-[#19384f]';
+const ACTION_CLASS = cn(COMPACT_ACTION_CLASS, 'mt-1.5 mr-1');
 const ROW_CLASS = 'border-b border-[#e5e5e5] px-3 py-2 text-[11px] last:border-0 dark:border-[#3c3c3c]';
+const GROUP_ROW_CLASS = 'border-b border-[#e5e5e5] px-2 py-1 text-[11px] last:border-0 dark:border-[#3c3c3c]';
 const META_CLASS = 'text-[10px] text-[#656d76] dark:text-[#aaa]';
 /** Re-read on preview at most this often; hover alone can retrigger it. */
 const PREVIEW_REFRESH_MS = 5000;
@@ -73,7 +77,7 @@ function StaleMark({ stale }: { stale: boolean }) {
     return stale ? <span aria-hidden="true" className="absolute -right-1 -top-1 text-[8px] leading-none text-[#848484]">◷</span> : null;
 }
 
-function buildControls(tiles: Tiles, group: boolean, actions: Actions, body: (dismiss: () => void) => ReactNode): RailPreviewControl[] {
+function buildControls(tiles: Tiles, group: boolean, actions: Actions, body: (dismiss: () => void, syncPreview: boolean) => ReactNode): RailPreviewControl[] {
     const base = {
         count: 1,
         headingCount: false,
@@ -81,11 +85,11 @@ function buildControls(tiles: Tiles, group: boolean, actions: Actions, body: (di
         description: 'Focus to preview; click opens Git.',
         badgeClassName: '',
         icon: null,
-        renderRows: body,
     };
     const tile = (key: string, value: RailGitTile, heading: string, onClick: () => void, text: ReactNode): RailPreviewControl => ({
         ...base,
         key,
+        renderRows: (dismiss) => body(dismiss, key === 'git-sync'),
         label: value.label,
         heading,
         onClick,
@@ -146,15 +150,20 @@ export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: Rep
         },
     };
     const canSwitch = !!input.info.data?.isGitRepo && !(parseRemoteCloneKey(routingRef) && !client.options?.baseUrl);
-    const body = (dismiss: () => void) => (
+    const openCommit = (commit: GitCommit) => {
+        rail.onOpenGit?.('branch');
+        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: workspaceId, workspaceId, commitHash: commit.hash, filePath: null,
+            knownCommit: { sourceSelectionId: routingRef, commit } });
+    };
+    const body = (dismiss: () => void, syncPreview: boolean) => (
         <RepoPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}:${workspaceId}`}
             routingRef={routingRef} workspaceId={workspaceId} client={client} canSwitch={canSwitch}
-            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} />
+            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} syncPreview={syncPreview} onOpenCommit={openCommit} />
     );
     return <RailHoverPreview controls={buildControls(tiles, false, actions, body)} scopeLabel={scopeLabel} {...rail} />;
 }
 
-function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void }) {
+function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry, syncPreview, onOpenCommit }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void; syncPreview: boolean; onOpenCommit: (commit: GitCommit) => void }) {
     const [pickerOpen, setPickerOpen] = useState(false);
     const branchButton = useRef<HTMLButtonElement>(null);
     const closePicker = () => { setPickerOpen(false); branchButton.current?.focus(); };
@@ -194,6 +203,9 @@ function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, ti
                     : 'Ahead/behind needs an upstream comparison; none is shown.'}
             </div>
             <button type="button" className={ACTION_CLASS} onClick={go(actions.openSync)}>Open branch overview</button>
+            {syncPreview && <RailOutgoingCommits client={client} routingRef={routingRef} workspaceId={workspaceId}
+                info={input.info.data} readAt={input.info.readAt} loading={input.info.loading} failed={input.info.failed}
+                onOpen={commit => { dismiss(); onOpenCommit(commit); }} onRetry={onRetry} />}
         </li>
         <Freshness readAt={input.tree.readAt ?? input.info.readAt} failed={input.info.failed || input.tree.failed} onRetry={onRetry} />
     </>;
@@ -222,30 +234,39 @@ export function GroupRailGit({ selectionId, routingRef, client, members, scopeLa
     };
     const openGit = () => rail.onOpenGit?.('changes');
     const actions: Actions = { openChanges: openGit, openSync: openGit };
-    const openMember = (memberId: string) => {
+    const openMember = (memberId: string, commit?: GitCommit) => {
         rail.onOpenGit?.('branch');
-        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: null, filePath: null });
+        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: commit?.hash ?? null, filePath: null,
+            ...(commit ? { knownCommit: { sourceSelectionId: routingRefForPanelOwner(routingRef, memberId) ?? memberId, commit } } : {}) });
     };
-    const body = (dismiss: () => void) => <GroupPreviewBody input={input} tiles={tiles} dismiss={dismiss} onOpenMember={openMember} onRetry={refresh} />;
+    const body = (dismiss: () => void, syncPreview: boolean) => <GroupPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}`}
+        input={input} tiles={tiles} dismiss={dismiss} onOpenMember={openMember} onRetry={refresh}
+        client={client} routingRef={routingRef} syncPreview={syncPreview} />;
     return <RailHoverPreview controls={buildControls(tiles, true, actions, body)} scopeLabel={scopeLabel} {...rail} />;
 }
 
-function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry }: { input: GroupRailGitInput; tiles: Tiles; dismiss: () => void; onOpenMember: (id: string) => void; onRetry: () => void }) {
+function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry, client, routingRef, syncPreview }: { input: GroupRailGitInput; tiles: Tiles; dismiss: () => void; onOpenMember: (id: string, commit?: GitCommit) => void; onRetry: () => void; client: CocClient; routingRef: string; syncPreview: boolean }) {
     return <>
-        <li className={ROW_CLASS}>
+        <li className={cn(GROUP_ROW_CLASS, META_CLASS, 'break-words')} title="Counts are repositories; each member keeps its own branch.">
             <div>{tiles.changes.label.replace(/^Repository changes: /, '')}</div>
             <div>{tiles.sync.label.replace(/^Repository sync: /, '')}</div>
-            <div className={cn(META_CLASS, 'mt-0.5')}>Counts are repositories; each member keeps its own branch.</div>
         </li>
         {(input.members ?? []).map(member => {
             const line = describeGroupMember(member);
             return (
-                <li key={member.id} className={ROW_CLASS} data-testid="rail-git-member" data-member={member.id}>
-                    <div className="font-medium">{member.name}</div>
-                    <div className="break-all font-mono text-[10px]">{line.branch}</div>
-                    <div className={META_CLASS}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                <li key={member.id} className={cn(GROUP_ROW_CLASS, 'flex items-start gap-2')} data-testid="rail-git-member" data-member={member.id}>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-1.5">
+                            <span className="min-w-0 break-all font-medium">{member.name}</span>
+                            <span className={cn(META_CLASS, 'min-w-0 break-all font-mono')}>{line.branch}</span>
+                        </div>
+                        <div className={cn(META_CLASS, 'break-all')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                        {syncPreview && <RailOutgoingCommits client={client} routingRef={routingRef} workspaceId={member.id}
+                            info={member.info} readAt={input.read.readAt} loading={input.read.loading} failed={member.stale || input.read.failed}
+                            onOpen={commit => { dismiss(); onOpenMember(member.id, commit); }} onRetry={onRetry} />}
+                    </div>
                     {!member.stale && member.info?.isGitRepo && (
-                        <button type="button" className={ACTION_CLASS} aria-label={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Open repository Git</button>
+                        <button type="button" className={cn(COMPACT_ACTION_CLASS, 'shrink-0')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>
                     )}
                 </li>
             );

@@ -157,6 +157,31 @@ describe('CocToolRuntime', () => {
             expect(result.isError).toBe(true);
             expect(result.content[0].text).toContain('disposed');
         });
+
+        it('passes the caller signal and toolCallId into the invocation', async () => {
+            let seen: ToolInvocation | undefined;
+            const runtime = new CocToolRuntime([tool('t', { handler: async (_args: unknown, inv: ToolInvocation) => { seen = inv; return 'ok'; } })]);
+            const controller = new AbortController();
+            await runtime.callTool('t', {}, { signal: controller.signal, toolCallId: 'call-7' });
+            expect(seen?.toolCallId).toBe('call-7');
+            expect(seen?.signal?.aborted).toBe(false);
+            controller.abort();
+            expect(seen?.signal?.aborted).toBe(true);
+        });
+
+        it('aborts the invocation signal of a still-running call on dispose', async () => {
+            let signal: AbortSignal | undefined;
+            const runtime = new CocToolRuntime([tool('t', {
+                handler: (_args: unknown, inv: ToolInvocation) => {
+                    signal = inv.signal;
+                    return new Promise(resolve => inv.signal?.addEventListener('abort', () => resolve('stopped')));
+                },
+            })]);
+            const pending = runtime.callTool('t', {});
+            expect(signal?.aborted).toBe(false);
+            runtime.dispose();
+            expect((await pending).content[0].text).toBe('stopped');
+        });
     });
 
     describe('resolveInputSchema', () => {
