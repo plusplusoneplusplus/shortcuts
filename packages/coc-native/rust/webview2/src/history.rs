@@ -3,10 +3,22 @@
 pub struct HistoryNavigation {
     pending: Option<u64>,
     document_ready: bool,
+    loading: bool,
 }
 
 impl HistoryNavigation {
+    /// Reserve readiness before WebView2 asynchronously emits NavigationStarting.
+    pub fn requested(&mut self) {
+        self.pending = None;
+        self.loading = true;
+    }
+
+    pub fn loading(&self) -> bool {
+        self.loading
+    }
+
     pub fn started(&mut self, id: u64) {
+        self.loading = true;
         self.pending = Some(id);
         self.document_ready = false;
     }
@@ -17,6 +29,7 @@ impl HistoryNavigation {
             return None;
         }
         self.pending = None;
+        self.loading = false;
         self.document_ready = success;
         Some(success)
     }
@@ -26,20 +39,25 @@ impl HistoryNavigation {
             self.document_ready = false;
             return false;
         }
+        // Fragment and same-document history navigation have no NavigationStarting.
+        if self.document_ready && self.pending.is_none() {
+            self.loading = false;
+        }
         self.document_ready
     }
 
     pub fn title_changed(&self) -> bool {
-        self.document_ready
+        self.document_ready && !self.loading
     }
 
     pub fn stop(&mut self) {
-        if self.pending.is_some() {
+        if self.loading {
             self.invalidate();
         }
     }
 
     pub fn invalidate(&mut self) {
+        self.loading = false;
         self.pending = None;
         self.document_ready = false;
     }
@@ -48,6 +66,69 @@ impl HistoryNavigation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requested_document_stays_loading_before_start_and_through_redirects() {
+        let mut history = HistoryNavigation::default();
+        history.requested(); // Initial open acknowledged before NavigationStarting.
+        assert!(history.loading());
+        assert!(!history.title_changed());
+        assert!(!history.source_changed(false)); // Initial blank document.
+        assert!(history.loading());
+        assert_eq!(history.completed(0, true), None);
+        assert!(history.loading());
+        history.started(1);
+        history.started(1); // Redirect.
+        assert!(!history.source_changed(true));
+        assert!(history.loading());
+        assert_eq!(history.completed(1, true), Some(true));
+        assert!(!history.loading());
+        assert!(history.title_changed());
+    }
+
+    #[test]
+    fn request_revokes_old_completions_before_the_next_start_event() {
+        let mut history = HistoryNavigation::default();
+        history.started(1);
+        history.requested(); // Navigate/reload/back/forward accepted asynchronously.
+        for success in [true, false] {
+            assert_eq!(history.completed(1, success), None);
+            assert!(history.loading());
+        }
+        history.started(2);
+        assert_eq!(history.completed(2, false), Some(false));
+        assert!(!history.loading());
+        assert!(!history.title_changed());
+    }
+
+    #[test]
+    fn stop_and_dispatch_failure_retire_requests_without_start_events() {
+        let mut history = HistoryNavigation::default();
+        history.requested();
+        history.stop();
+        assert!(!history.loading());
+        assert!(!history.title_changed());
+        history.requested();
+        history.invalidate(); // Synchronous dispatch failure or crash.
+        assert!(!history.loading());
+        assert_eq!(history.completed(1, true), None);
+    }
+
+    #[test]
+    fn same_document_navigation_settles_on_source_change_without_a_start_event() {
+        let mut history = HistoryNavigation::default();
+        history.started(1);
+        history.completed(1, true);
+        history.requested();
+        assert!(history.loading());
+        assert!(!history.title_changed());
+        assert!(history.source_changed(false));
+        assert!(!history.loading());
+        assert!(history.title_changed());
+        history.requested();
+        assert!(!history.source_changed(true)); // A different document cannot settle it.
+        assert!(history.loading());
+    }
 
     #[test]
     fn successful_documents_reload_and_back_forward_count_once_per_navigation() {

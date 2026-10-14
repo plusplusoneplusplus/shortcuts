@@ -297,8 +297,13 @@ Visible embedded views forward Ctrl+T as `open-menu-requested` and Ctrl+L as
 host completes `focus-host` before the SPA opens the owning panel's add-tab menu
 or focuses and selects the active owning browser's editable address.
 
-`history.rs` tracks successful main-document navigation per controller, using
-navigation IDs to reject superseded, stopped and repeated completions.
+`history.rs` owns per-controller loading and successful-document readiness.
+Open, navigate, reload and available back/forward requests mark loading before native
+dispatch and publish state before acknowledgement; asynchronous `NavigationStarting`
+binds the navigation ID. Matching completion clears loading; committed same-document
+source changes settle fragment/history requests. Stop, crash and dispatch failure
+retire readiness. Navigation IDs reject superseded, stopped and repeated completions.
+
 `NavigationCompleted(IsSuccess)` and committed same-document `SourceChanged`
 emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful
 completion. Events read the actual final Source/DocumentTitle, filter HTTP(S),
