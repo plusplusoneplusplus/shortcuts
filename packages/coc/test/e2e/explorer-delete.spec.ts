@@ -111,8 +111,12 @@ test('keeps the destructive menu and confirmation usable in a narrow desktop pan
     await gotoWorkspace(page, serverUrl, WORKSPACE);
     await openExplorerPanel(page);
     await page.getByRole('button', { name: 'Expand panel' }).click();
-    await page.setViewportSize({ width: 820, height: 844 });
-    await page.locator('[data-testid="unified-panel-explorer-mode"]').getByTestId(`tree-node-${name}`).click({ button: 'right' });
+    // Keep a desktop viewport: at tablet widths the dock hides its navigator.
+    await page.setViewportSize({ width: 1100, height: 844 });
+    const tree = page.locator('[data-testid="unified-panel-explorer-mode"]');
+    await expect(tree).toBeVisible();
+    expect(await tree.evaluate(element => element.getBoundingClientRect().width)).toBeLessThan(160);
+    await tree.getByTestId(`tree-node-${name}`).click({ button: 'right' });
     await expect(page.getByTestId('context-menu')).toBeVisible();
     await page.getByRole('menuitem', { name: /Delete$/ }).click();
     const dialog = page.getByRole('dialog');
