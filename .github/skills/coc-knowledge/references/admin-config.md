@@ -89,6 +89,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `scopeSwitcher` | on | One segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
+| `explorerDelete` | off | Live owning-server gate for permanent single-entry Explorer deletion; Appearance setting, runtime `explorerDeleteEnabled`; absent partial-config keys remain off |
 | `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |
 | `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
 | `repoGroupAggregatedChats` | off | A repo group's Workspace chat list also shows every eligible member-repo chat with a muted repo prefix; gates UI only — the read-only `/api/repo-groups/:id/chats` feed ships regardless |

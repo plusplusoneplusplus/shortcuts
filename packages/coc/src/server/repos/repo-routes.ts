@@ -10,6 +10,7 @@
  * POST /api/repos/:repoId/search/replace — rewrite matched spans from a search
  * GET  /api/repos/:repoId/blob           — read file content
  * PUT  /api/repos/:repoId/blob           — write file content
+ * DELETE /api/repos/:repoId/entry        — guarded permanent deletion (default off)
  * GET  /api/repos/:repoId/reveal         — reveal file/folder in OS file manager
  */
 
@@ -23,6 +24,7 @@ import { RepoTreeService, TrackedContentSearchUnavailableError } from './tree-se
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
 import type { NativeRepoReplaceFile } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ExplorerDeleteError } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Helpers
@@ -167,8 +169,50 @@ function globParam(query: Query, name: string): string[] | undefined {
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerRepoRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore): void {
+export function registerRepoRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, isDeleteEnabled: () => boolean = () => false): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
+
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/repos\/([^/]+)\/entry$/,
+        handler: async (req, res, match) => {
+            const fail = (status: number, code: ExplorerDeleteError['code'], error: string, removedEntries = 0) =>
+                sendJson(res, { error, code, partial: removedEntries > 0, removedEntries } satisfies ExplorerDeleteError, status);
+            if (!isDeleteEnabled()) {
+                fail(404, 'EXPLORER_DELETE_DISABLED', 'Explorer deletion is disabled on this server');
+                return;
+            }
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const query = url.parse(req.url ?? '', true).query;
+                if (typeof query.path !== 'string' || query.path.length === 0) {
+                    fail(400, 'INVALID_DELETE_PATH', 'Missing required query parameter: path');
+                    return;
+                }
+                if (!await svc.resolveDeletionRoot(repoId)) {
+                    fail(404, 'ENTRY_NOT_FOUND', 'Unknown or non-physical workspace');
+                    return;
+                }
+                await svc.deleteEntry(repoId, query.path);
+                sendJson(res, { success: true });
+            } catch (err) {
+                const error = err as { code?: string; removedEntries?: number; message?: string };
+                const count = error?.removedEntries;
+                const removed = typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? count : 0;
+                const code = error?.code;
+                const message = error?.message ?? String(err);
+                if (code === 'INVALID_DELETE_PATH' || err instanceof URIError) {
+                    fail(400, 'INVALID_DELETE_PATH', message, removed);
+                } else if (code === 'ENTRY_NOT_FOUND' || message.startsWith('Repo not found:')) {
+                    fail(404, 'ENTRY_NOT_FOUND', message, removed);
+                } else if (code === 'ENTRY_CHANGED' || code === 'Closing') {
+                    fail(409, 'ENTRY_CHANGED', message, removed);
+                } else {
+                    fail(500, 'DELETE_IO_ERROR', message, removed);
+                }
+            }
+        },
+    });
 
     // -- List repos ----------------------------------------------------------
 

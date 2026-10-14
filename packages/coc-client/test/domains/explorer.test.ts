@@ -1,8 +1,41 @@
-import { describe, expect, it } from 'vitest';
-import { ExplorerClient } from '../../src';
+import { describe, expect, it, vi } from 'vitest';
+import { CocClient, ExplorerClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('ExplorerClient', () => {
+  it('deletes the exact relative entry on the selected client without rewriting its path', async () => {
+    const adapter = createMockAdapter({ success: true });
+    const client = new ExplorerClient(adapter);
+    await expect(client.deleteEntry('repo/a %', 'folder/a #%.txt')).resolves.toEqual({ success: true });
+    expect(adapter.calls).toEqual([{
+      path: '/repos/repo%2Fa%20%25/entry',
+      options: { method: 'DELETE', query: { path: 'folder/a #%.txt' } },
+    }]);
+  });
+
+  it('propagates partial/server and offline failures without success or transport fallback', async () => {
+    const failure = Object.assign(new Error('partial deletion'), { code: 'DELETE_IO_ERROR', partial: true, removedEntries: 2 });
+    const request = () => Promise.reject(failure);
+    const client = new ExplorerClient({ request });
+    await expect(client.deleteEntry('repo', 'folder')).rejects.toBe(failure);
+    const offline = new Error('offline');
+    await expect(new ExplorerClient({ request: () => Promise.reject(offline) }).deleteEntry('repo', 'folder')).rejects.toBe(offline);
+  });
+
+  it('retains server partial-error metadata through the HTTP transport', async () => {
+    const body = { error: 'Deletion partially completed; no rollback', code: 'DELETE_IO_ERROR', partial: true, removedEntries: 2 };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body), {
+      status: 500, headers: { 'content-type': 'application/json' },
+    }));
+    const client = new CocClient({ baseUrl: 'https://owner.example', fetch: fetcher });
+    await expect(client.explorer.deleteEntry('repo/a', 'folder/a #%.txt')).rejects.toMatchObject({
+      status: 500, code: body.code, message: body.error, body,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toBe('https://owner.example/api/repos/repo%2Fa/entry?path=folder%2Fa+%23%25.txt');
+    expect(fetcher.mock.calls[0][1]?.method).toBe('DELETE');
+  });
+
   it('calls repo browsing, search, blob, and reveal endpoints with typed query options', async () => {
     const adapter = createMockAdapter({ entries: [], files: [], results: [], truncated: false, success: true });
     const client = new ExplorerClient(adapter);
