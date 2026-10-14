@@ -121,10 +121,10 @@ function HighPriorityBadge({ itemId }: { itemId: string }) {
 function StatusBadge({ status }: { status: SentinelTodoDisplayStatus }) {
     const style = STATUS_STYLES[status];
     return (
-        <span className={cn('inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium', style.badge)}
-            data-testid={`sentinel-todo-status-${status}`}>
-            <span aria-hidden="true">{style.mark}</span>
-            {SENTINEL_TODO_STATUS_LABELS[status]}
+        <span className={cn('inline-flex shrink-0 items-center justify-center rounded px-1 py-0.5 text-[11px] font-medium', style.badge)}
+            title={SENTINEL_TODO_STATUS_LABELS[status]} data-testid={`sentinel-todo-status-${status}`}>
+            <span aria-hidden="true" className="inline-flex h-3 w-3 items-center justify-center leading-none">{style.mark}</span>
+            <span className="sr-only">{SENTINEL_TODO_STATUS_LABELS[status]}</span>
         </span>
     );
 }

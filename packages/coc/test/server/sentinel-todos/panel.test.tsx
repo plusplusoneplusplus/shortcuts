@@ -88,6 +88,16 @@ function ledger(items: SentinelTodoItem[], revision = items.length): SentinelTod
     return { revision, items };
 }
 
+function assertIconOnlyStatus(badge: HTMLElement, label: string, mark: string) {
+    expect(badge.getAttribute('title')).toBe(label);
+    expect(within(badge).getByText(label).className).toBe('sr-only');
+    expect(badge.querySelector('[aria-hidden="true"]')?.textContent).toBe(mark);
+    expect([...badge.childNodes].filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent?.trim()).join('')).toBe('');
+    expect(badge.classList.contains('px-1')).toBe(true);
+    expect(badge.classList.contains('justify-center')).toBe(true);
+}
+
 function deferred<T>() {
     let resolve!: (value: T) => void;
     let reject!: (error: Error) => void;
@@ -597,6 +607,7 @@ describe('UnifiedTodoTab', () => {
         get.mockResolvedValue(ledger([pending], 4));
         render(<UnifiedTodoTab owner={owner} />);
         const badge = await screen.findByTestId('sentinel-todo-status-in_review');
+        assertIconOnlyStatus(badge, 'In review', '◇');
         expect(badge.textContent).toContain('In review');
         expect(badge.querySelector('[aria-hidden="true"]')?.textContent).toBe('◇');
         expect(clientRefs).toContain(owner.ownerRoutingRef);
@@ -604,6 +615,9 @@ describe('UnifiedTodoTab', () => {
         expect(row.textContent).toContain('Review pending (result delivered)');
         fireEvent.click(within(row).getByRole('button', { pressed: false, name: /Fix login/ }));
         row = screen.getByTestId(row.dataset.testid!.replace('sentinel-todo-row-', 'sentinel-todo-detail-'));
+        const detailBadge = within(row).getByTestId('sentinel-todo-status-in_review');
+        assertIconOnlyStatus(detailBadge, 'In review', '◇');
+        expect(detailBadge.className).toBe(badge.className);
         // Derived phases are not stored statuses or new user execution actions.
         const status = within(row).getByRole('group', { name: 'Status' });
         expect(within(status).getByRole('button', { pressed: true }).textContent).toContain('In progress');
@@ -1315,6 +1329,43 @@ describe('UnifiedTodoTab split layout', () => {
         fireEvent.click(screen.getByTestId(`sentinel-todo-row-${id}`).querySelector('[data-todo-select]')!);
     }
     function detail(id = 'i1') { return screen.getByTestId(`sentinel-todo-detail-${id}`); }
+
+    it.each((['normal', 'manual'] as const).flatMap(type => [
+        { type, status: 'todo', label: 'To do', mark: '○', color: 'text-[#616161]' },
+        { type, status: 'in_progress', label: 'In progress', mark: '◐', color: 'text-[#0078d4]' },
+        { type, status: 'needs_attention', label: 'Needs attention', mark: '!', color: 'text-[#b5650f]' },
+        { type, status: 'done', label: 'Done', mark: '✓', color: 'text-[#16825d]' },
+    ] as const))('shows icon-only $status on $type cards and detail headers with accessible names and tooltips', async ({ type, status, label, mark, color }) => {
+        get.mockResolvedValue(ledger([item({ type, status })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        if (status === 'done') {
+            const section = await screen.findByTestId(type === 'manual'
+                ? 'sentinel-todo-manual-done-section' : 'sentinel-todo-done-section');
+            fireEvent.click(within(section).getByRole('button', { name: 'Done (1)' }));
+        }
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const badge = within(row).getByTestId(`sentinel-todo-status-${status}`);
+        assertIconOnlyStatus(badge, label, mark);
+        expect(badge.classList.contains(color)).toBe(true);
+        expect(within(row).getByRole('button', { name: new RegExp(`${label}.*Fix login`) })).toBeTruthy();
+        select();
+        const heading = within(detail()).getByRole('heading', { name: new RegExp(`Fix login.*${label}`) });
+        const detailBadge = within(heading).getByTestId(`sentinel-todo-status-${status}`);
+        assertIconOnlyStatus(detailBadge, label, mark);
+        expect(detailBadge.className).toBe(badge.className);
+        if (status !== 'done') {
+            const controls = within(detail()).getByRole('group', { name: 'Status' });
+            for (const name of ['To do', 'In progress', 'Needs attention', 'Done']) {
+                const control = within(controls).getByRole('button', { name });
+                expect(control.textContent).toContain(name);
+                expect(control.querySelector('.sr-only')).toBeNull();
+            }
+        } else {
+            expect(within(detail()).getByRole('button', { name: 'Reopen' })).toBeTruthy();
+        }
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
 
     it('hosts PR outcome evidence only in the selected normal detail, never hidden editors or list rows', async () => {
         applyRuntimeConfigPatch({ sentinelPrOutcomeWakeEnabled: true });
