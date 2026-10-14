@@ -94,6 +94,7 @@ import { processOperationAdmission } from '../processes/process-operation-admiss
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import { connectorMessagingOrigin, isMessagingJobOrigin } from '../messaging/job-notices';
 import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
+import { guardSentinelPrOutcomeExecution } from '../triggers/sentinel-pr-outcome-execution';
 
 // ============================================================================
 // Constants
@@ -219,6 +220,7 @@ export interface LifecycleRunnerOptions {
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
+    onPrOutcomeDeferred?: (processId: string, taskId: string) => void;
     /** Called after a completed assistant response is persisted (and pending messages drained). */
     onResponseCompleted?: (processId: string) => Promise<void>;
     /**
@@ -524,6 +526,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             // Extract turnSource from payload context for cron/wakeup/trigger-triggered follow-ups
             const ctx = followUpPayload.context as Record<string, unknown> | undefined;
             const turnSource = readAutomationTurnSource(ctx);
+            if (!await guardSentinelPrOutcomeExecution(this.store, task, this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes)) {
+                if (task.payload.sentinelPrOutcomeExecutionDeferred === true) {
+                    opts.onPrOutcomeDeferred?.(followUpPayload.processId!, task.id);
+                }
+                return { success: true, result: 'PR outcome review retained or skipped', durationMs: Date.now() - startTime };
+            }
             // Mark the target process as running BEFORE invoking the follow-up
             // executor. This closes a race where the queue has already broadcast
             // that this task is running while the process row still reads as
@@ -589,6 +597,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     const strictResumeSessionId = typeof followUpPayload.resumeSessionId === 'string'
                         ? followUpPayload.resumeSessionId
                         : undefined;
+                    if (!await guardSentinelPrOutcomeExecution(this.store, task, this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes)) {
+                        if (task.payload.sentinelPrOutcomeExecutionDeferred === true) {
+                            opts.onPrOutcomeDeferred?.(followUpPayload.processId!, task.id);
+                        }
+                        if (ctx?.sentinelPrOutcomeStopped !== true) {
+                            await this.store.updateProcess(followUpPayload.processId!, { status: 'completed' });
+                        }
+                        return { success: true, result: 'PR outcome review retained or skipped', durationMs: Date.now() - startTime };
+                    }
                     await opts.executeFollowUpFn(
                         followUpPayload.processId!,
                         followUpPayload.prompt,

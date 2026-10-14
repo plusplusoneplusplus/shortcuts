@@ -102,11 +102,11 @@ export class SentinelPrOutcomeService {
         if (!initial?.binding?.delegatedPr || initial.workspaceId !== owner.workspaceId
             || initial.processId !== owner.processId || initial.delivery?.deliveryId !== deliveryId) return 'skip';
         let disposition: PrOutcomeReviewDisposition = 'skip';
-        await this.withAdmission(owner, initial.binding.itemId, async () => {
+        // Drain callers hold the process lock; never invert admission's item → process lock order.
+        await (async () => {
             const current = this.deps.triggers.getById(triggerId);
             if (!current?.binding?.delegatedPr || current.delivery?.deliveryId !== deliveryId
                 || current.delivery.state === 'failed' || current.outcome === 'skipped' || current.outcome === 'error') return;
-            if (!this.canDeliver(current)) { disposition = 'defer'; return; }
             let reason: string | undefined;
             let skipped = false;
             try {
@@ -129,7 +129,7 @@ export class SentinelPrOutcomeService {
                 return;
             }
             disposition = this.canDeliver(current) ? 'execute' : 'defer';
-        });
+        })();
         return disposition;
     }
 

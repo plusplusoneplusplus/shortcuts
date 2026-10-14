@@ -5,6 +5,7 @@ import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { processOperationAdmission } from '../processes/process-operation-admission';
+import { guardSentinelPrOutcomeExecution } from '../triggers/sentinel-pr-outcome-execution';
 import { compactProcess } from '../processes/compact-process';
 import { maybeAutoCompactAfterResponse, settleAutoCompaction } from '../processes/auto-compact';
 import { APIError } from '../errors';
@@ -642,6 +643,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     await this.drainPendingMessages(proc.id, task.id);
                 }
             }
+            if (!await guardSentinelPrOutcomeExecution(this.store, task, this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes)) {
+                if (task.payload.sentinelPrOutcomeExecutionDeferred === true) this.recoverDeferredPrReviewAfterSettlement(task);
+                return { success: true, result: 'PR outcome review retained or skipped', durationMs: 0 };
+            }
             const deferred = task.payload.deferredMessage as PendingMessage | undefined;
             if (deferred && task.processId) {
                 const shouldExecute = await processOperationAdmission.runExclusive(task.processId, async () => {
@@ -684,6 +689,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 resolveDefaultProvider: this.resolveDefaultProvider,
                 getEffortTiersForProvider: this.getEffortTiersForProvider,
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
+                onPrOutcomeDeferred: () => this.recoverDeferredPrReviewAfterSettlement(task),
                 onResponseCompleted: (processId) => this.checkAutoCompact(processId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
                 onCronTickComplete: (cronId, success) => {
@@ -1066,17 +1072,65 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         });
     }
 
+    private recoverDeferredPrReviewAfterSettlement(task: QueuedTask): void {
+        if (!this.queueManager) return;
+        const queue = this.queueManager;
+        const settled = (finished: QueuedTask) => {
+            if (finished.id !== task.id) return;
+            queue.off('taskCompleted', settled);
+            queue.off('taskFailed', settled);
+            queue.off('taskCancelled', settled);
+            const workspaceId = task.payload.workspaceId;
+            if (typeof workspaceId === 'string' && task.processId) {
+                void this.recoverPendingMessages(workspaceId, task.processId).catch(error =>
+                    getLogger().warn(LogCategory.AI, `[SentinelPrOutcome] Deferred review recovery failed: ${String(error)}`));
+            }
+        };
+        queue.on('taskCompleted', settled);
+        queue.on('taskFailed', settled);
+        queue.on('taskCancelled', settled);
+    }
+
     private async drainPendingMessageAdmitted(processId: string, outcomeOnly = false): Promise<void> {
         const proc = await this.store.getProcess(processId);
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         if (outcomeOnly && proc.metadata?.mode !== 'sentinel') return;
-        const nextMsg = outcomeOnly
-            ? proc.pendingMessages.find(message => message.context?.source === 'trigger'
-                && message.context.sentinelPrOutcomeReview === true)
-            : proc.pendingMessages[0];
+        let nextMsg: PendingMessage | undefined;
+        for (const message of proc.pendingMessages) {
+            const review = message.context?.source === 'trigger' && message.context.sentinelPrOutcomeReview === true;
+            if (outcomeOnly && !review) continue;
+            if (review) {
+                const context = message.context!;
+                const service = this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes;
+                if (!service) continue;
+                const disposition = await service.reviewExecutionDisposition(
+                    { workspaceId: proc.metadata!.workspaceId!, processId },
+                    String(context.triggerId ?? ''), String(context.deliveryId ?? ''));
+                if (disposition === 'defer') continue;
+                if (disposition === 'skip') { await this.store.removePendingMessage(processId, message.id); continue; }
+            }
+            nextMsg = message;
+            break;
+        }
         if (!nextMsg) return;
         if (outcomeOnly) nextMsg.context = { ...nextMsg.context, sentinelPrOutcomeStopped: true };
+        const deferredTaskId = nextMsg.context?.sentinelPrOutcomeDeferredTaskId;
+        if (typeof deferredTaskId === 'string') {
+            const previous = this.queueManager.getTask(deferredTaskId);
+            if (previous) {
+                if (previous.processId !== processId || previous.payload.workspaceId !== proc.metadata?.workspaceId
+                    || previous.payload.relayRequestId !== nextMsg.relayRequestId) {
+                    throw new Error('Deferred PR outcome receipt conflicts with another queue task');
+                }
+                if (['queued', 'running', 'cancelling'].includes(previous.status)) return;
+                if (previous.payload.sentinelPrOutcomeExecutionDeferred === true) {
+                    if (!this.queueManager.requeueFromHistory(previous.id)) return;
+                }
+                await this.store.removePendingMessage(processId, nextMsg.id);
+                return;
+            }
+        }
         // Server-owned reviews use the receipt as both pending-message and task
         // ID. Reconcile a crash after enqueue but before pending-message removal.
         const receiptId = nextMsg.id === nextMsg.relayRequestId ? nextMsg.id : undefined;
@@ -1090,6 +1144,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             return;
         }
         const deferred = pendingMessageTask(proc, nextMsg);
+        if (typeof deferredTaskId === 'string') deferred.id = deferredTaskId;
         if (this.queueManager.getTask(deferred.id!)) return;
         if (proc.metadata?.compaction?.state === 'queued' || proc.metadata?.compaction?.state === 'running'
             || this.queueManager.getAll?.().some(task => task.processId === processId
@@ -1159,7 +1214,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         };
         try {
             this.queueManager.enqueue({
-                ...(receiptId ? { id: receiptId } : {}),
+                ...(typeof deferredTaskId === 'string' ? { id: deferredTaskId } : receiptId ? { id: receiptId } : {}),
                 processId,
                 type: 'chat',
                 priority: deferred.priority,

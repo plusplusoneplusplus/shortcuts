@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SqliteProcessStore, TaskQueueManager, type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, TaskQueueManager, type CreateTaskInput, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createTriggerInfrastructure, type TriggerInfrastructure } from '../../../src/server/infrastructure/trigger-infrastructure';
+import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
+import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
 const owner = { workspaceId: 'parent-workspace', processId: 'parent-sentinel' };
 const child = { workspaceId: 'child-workspace', processId: 'child-job' };
@@ -20,6 +22,7 @@ describe('native delegated PR outcomes across observation, admission and restart
     let itemId: string;
     let status: 'open' | 'merged' | 'closed';
     let enabled: boolean;
+    let executor: CLITaskExecutor | undefined;
     const fetchPr = vi.fn();
 
     const start = () => createTriggerInfrastructure({
@@ -32,6 +35,7 @@ describe('native delegated PR outcomes across observation, admission and restart
         } as unknown as QueueExecutorBridge,
         resolveWorkspaceId: async () => owner.workspaceId,
         ciChecksFetcher: vi.fn(), prStatusFetcher: fetchPr, getPrOutcomeEnabled: () => enabled,
+        recoverPendingMessages: async (workspaceId, processId) => executor?.recoverPendingMessages(workspaceId, processId),
     });
 
     beforeEach(async () => {
@@ -41,6 +45,7 @@ describe('native delegated PR outcomes across observation, admission and restart
         queue = new TaskQueueManager();
         status = 'open';
         enabled = true;
+        executor = undefined;
         fetchPr.mockImplementation(async () => ({ status, title: 'External PR title', url }));
         for (const workspaceId of [owner.workspaceId, child.workspaceId]) {
             await store.registerWorkspace({ id: workspaceId, name: 'Example', rootPath: dataDir });
@@ -107,5 +112,111 @@ describe('native delegated PR outcomes across observation, admission and restart
         await infra.sentinelPrOutcomes.control(owner, itemId, 'check', { expectedRevision: 2 });
         expect(queue.getAll()).toHaveLength(1);
         expect(infra.triggerStore.getById(registration.triggerId!)?.delivery?.reason).toBe('closed');
+    });
+
+    function executionBridge() {
+        executor = new CLITaskExecutor(store, {
+            aiService: createMockSDKService().service,
+            runtime: { getTriggerInfra: () => ({
+                manager: infra.triggerManager, sentinelPrOutcomes: infra.sentinelPrOutcomes,
+            }) },
+        });
+        executor.setQueueManager(queue);
+        return vi.spyOn(executor, 'executeFollowUp').mockImplementation(async processId => {
+            await store.updateProcess(processId, { status: 'completed' });
+        });
+    }
+
+    async function executeNext() {
+        const queued = queue.getAll().find(task => task.status === 'queued')!;
+        const task = queue.markStarted(queued.id)! as QueuedTask;
+        expect(task).toBeDefined();
+        const result = await executor!.execute(task);
+        expect(result.success).toBe(true);
+        queue.markCompleted(task.id, result.result);
+        return task;
+    }
+
+    it.each(['pause', 'disable'] as const)('retains an admitted queued review after %s and resumes the same receipt exactly once', async action => {
+        const executeReview = executionBridge();
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        status = 'merged';
+        await infra.triggerManager.checkOutcome(registration.triggerId!);
+        const receiptId = infra.triggerStore.getById(registration.triggerId!)!.delivery!.deliveryId;
+        if (action === 'pause') await infra.sentinelPrOutcomes.control(owner, itemId, 'pause', { expectedRevision: 0 });
+        else enabled = false;
+        const original = await executeNext();
+        expect(executeReview).not.toHaveBeenCalled();
+        expect((await store.getProcess(owner.processId))?.pendingMessages).toEqual([
+            expect.objectContaining({ id: receiptId, relayRequestId: receiptId }),
+        ]);
+        expect((await store.getProcess(owner.processId))?.status).toBe('cancelled');
+        if (action === 'pause') await infra.sentinelPrOutcomes.control(owner, itemId, 'resume', { expectedRevision: 1 });
+        else { enabled = true; await infra.sentinelPrOutcomes.restore(); }
+        expect(queue.getTask(original.id)?.status).toBe('queued');
+        const resumed = await executeNext();
+        expect(resumed.id).toBe(original.id);
+        expect(executeReview).toHaveBeenCalledTimes(1);
+        expect(executeReview.mock.calls[0][11]).toMatchObject({ sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true });
+        expect((await store.getProcess(owner.processId))?.status).toBe('cancelled');
+        expect(infra.triggerStore.getById(registration.triggerId!)!.delivery!.deliveryId).toBe(receiptId);
+        await executor!.recoverPendingMessages(owner.workspaceId, owner.processId);
+        expect(queue.getAll().filter(task => task.status === 'queued')).toHaveLength(0);
+    });
+
+    it('keeps busy buffered evidence parked after pause, then drains it only once on resume', async () => {
+        const executeReview = executionBridge();
+        await store.updateProcess(owner.processId, { status: 'running' });
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        status = 'closed';
+        await infra.triggerManager.checkOutcome(registration.triggerId!);
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'pause', { expectedRevision: 0 });
+        await store.updateProcess(owner.processId, { status: 'completed' });
+        await executor!.recoverPendingMessages(owner.workspaceId, owner.processId);
+        expect(queue.getAll()).toHaveLength(0);
+        expect((await store.getProcess(owner.processId))?.pendingMessages).toHaveLength(1);
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'resume', { expectedRevision: 1 });
+        await executeNext();
+        expect(executeReview).toHaveBeenCalledTimes(1);
+        expect((await store.getProcess(owner.processId))?.pendingMessages ?? []).toHaveLength(0);
+    });
+
+    it('rechecks pause immediately before follow-up execution after earlier queue eligibility passed', async () => {
+        const executeReview = executionBridge();
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        status = 'merged';
+        await infra.triggerManager.checkOutcome(registration.triggerId!);
+        const update = store.updateProcess.bind(store);
+        let paused = false;
+        const intercept = vi.spyOn(store, 'updateProcess').mockImplementation(async (processId, changes) => {
+            await update(processId, changes);
+            if (changes.status === 'running' && !paused) {
+                paused = true;
+                await infra.sentinelPrOutcomes.control(owner, itemId, 'pause', { expectedRevision: 0 });
+            }
+        });
+        await executeNext();
+        expect(executeReview).not.toHaveBeenCalled();
+        expect((await store.getProcess(owner.processId))?.pendingMessages).toHaveLength(1);
+        intercept.mockRestore();
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'resume', { expectedRevision: 1 });
+        await executeNext();
+        expect(executeReview).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([{ status: 'done' as const }, { archived: true }])('skips buffered reviews after current item eligibility changes: %j', async change => {
+        const executeReview = executionBridge();
+        await store.updateProcess(owner.processId, { status: 'running' });
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        status = 'merged';
+        await infra.triggerManager.checkOutcome(registration.triggerId!);
+        const todos = new SentinelTodoStore(store.getDatabase());
+        todos.update(owner, itemId, todos.get(owner).items[0].revision, change, 'user');
+        await store.updateProcess(owner.processId, { status: 'completed' });
+        await executor!.recoverPendingMessages(owner.workspaceId, owner.processId);
+        expect(executeReview).not.toHaveBeenCalled();
+        expect(queue.getAll()).toHaveLength(0);
+        expect((await store.getProcess(owner.processId))?.pendingMessages ?? []).toHaveLength(0);
+        expect(infra.triggerStore.getById(registration.triggerId!)).toMatchObject({ outcome: 'skipped' });
     });
 });
