@@ -173,6 +173,9 @@ pub fn search(
     if !options.include.is_empty() || !options.exclude.is_empty() {
         builder.overrides(build_overrides(&scope, options)?);
     }
+    if options.max_results > 0 && candidates.as_ref().is_some_and(|files| files.is_empty()) {
+        return Ok(ContentSearchResult::default());
+    }
 
     let files: Arc<Mutex<FileMatches>> = Arc::new(Mutex::new(Vec::new()));
     // Read by every worker to decide whether more work is worth doing, so it is

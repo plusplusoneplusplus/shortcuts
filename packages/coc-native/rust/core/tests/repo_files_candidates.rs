@@ -153,6 +153,43 @@ fn candidates_are_root_scoped_without_shared_query_results() {
 }
 
 #[test]
+fn staged_additions_edits_and_disk_deletions_are_visible_without_invalidation() {
+    let dir = repo();
+    let options = ContentSearchOptions::default();
+    fs::write(dir.path().join("new.txt"), "fresh-marker\n").unwrap();
+    assert!(candidates(dir.path(), "fresh-marker", &options, false).is_empty());
+    git(dir.path(), &["add", "new.txt"]);
+    assert_eq!(candidates(dir.path(), "fresh-marker", &options, false), ["new.txt"]);
+    fs::write(dir.path().join("new.txt"), "edited-marker\n").unwrap();
+    assert!(candidates(dir.path(), "fresh-marker", &options, false).is_empty());
+    assert_eq!(candidates(dir.path(), "edited-marker", &options, false), ["new.txt"]);
+    fs::remove_file(dir.path().join("new.txt")).unwrap();
+    assert!(candidates(dir.path(), "edited-marker", &options, false).is_empty());
+}
+
+#[test]
+fn simultaneous_candidate_searches_keep_their_query_and_options() {
+    let dir = repo();
+    std::thread::scope(|scope| {
+        let insensitive = scope
+            .spawn(|| candidates(dir.path(), "needle", &ContentSearchOptions::default(), false));
+        let sensitive = scope.spawn(|| {
+            candidates(
+                dir.path(),
+                "needle",
+                &ContentSearchOptions { case_sensitive: true, ..Default::default() },
+                false,
+            )
+        });
+        let absent = scope
+            .spawn(|| candidates(dir.path(), "absent", &ContentSearchOptions::default(), false));
+        assert_eq!(insensitive.join().unwrap(), ["ignored/tracked.txt", "tracked.txt"]);
+        assert!(sensitive.join().unwrap().is_empty());
+        assert!(absent.join().unwrap().is_empty());
+    });
+}
+
+#[test]
 fn wsl_uses_supplied_outputs_and_never_runs_host_git_or_narrows_them() {
     let dir = tempfile::tempdir().unwrap(); // Intentionally not a Git repository.
     let root = dir.path().join("nonexistent-wsl-share");
@@ -229,4 +266,95 @@ fn narrowing_failures_keep_the_ordinary_search_error_contract() {
     .unwrap_err();
     assert!(matches!(error, RepoFilesError::Io(_)));
     assert!(!error.to_string().contains("Git-tracked search is unavailable"));
+}
+
+#[test]
+fn directory_exclusions_prune_git_candidates_without_changing_native_answers() {
+    let dir = repo();
+    for name in [
+        "src/data/a.txt",
+        "src/data/nested/b.txt",
+        "src/database/c.txt",
+        "nested/src/data/d.txt",
+        "src/keep.txt",
+        "build-output/e.txt",
+    ] {
+        let full = dir.path().join(name);
+        fs::create_dir_all(full.parent().unwrap()).unwrap();
+        fs::write(full, "Needle\n").unwrap();
+        git(dir.path(), &["add", "--", name]);
+    }
+    let baseline = candidates(dir.path(), "Needle", &ContentSearchOptions::default(), false);
+    for exclude in [
+        vec!["src/data/**".into()],
+        vec!["/src/data/**".into(), "build-output/**".into()],
+        vec!["ignored/**".into()],
+    ] {
+        for case_sensitive in [false, true] {
+            let options = ContentSearchOptions {
+                exclude: exclude.clone(),
+                case_sensitive,
+                include: vec!["*.txt".into()],
+                ..Default::default()
+            };
+            let narrowed = candidates(dir.path(), "Needle", &options, false);
+            assert!(narrowed.len() < baseline.len());
+            let expected = search(
+                dir.path(),
+                "Needle",
+                &ContentSearchOptions { files: Some(baseline.clone()), ..options.clone() },
+            )
+            .unwrap();
+            let actual = search(
+                dir.path(),
+                "Needle",
+                &ContentSearchOptions { files: Some(narrowed), ..options.clone() },
+            )
+            .unwrap();
+            assert_eq!(actual, expected);
+            assert!(actual.matches.iter().any(|hit| hit.path == "nested/src/data/d.txt"));
+        }
+    }
+}
+
+#[test]
+fn unsupported_and_scoped_exclusions_keep_native_rule_semantics() {
+    let dir = repo();
+    let baseline = candidates(dir.path(), "Needle", &ContentSearchOptions::default(), false);
+    for (exclude, scope) in [
+        (vec!["**/tracked.txt".into()], None),
+        (vec!["ignored/**".into(), "!ignored/tracked.txt".into()], None),
+        (vec!["[".into()], None),
+        (vec!["ignored/**".into()], Some("ignored".into())),
+    ] {
+        let options = ContentSearchOptions { exclude, path: scope, ..Default::default() };
+        assert_eq!(candidates(dir.path(), "Needle", &options, false), baseline);
+    }
+}
+
+#[test]
+fn excluded_oversized_files_do_not_change_truncation_and_symlinks_stay_native_candidates() {
+    let dir = repo();
+    fs::create_dir(dir.path().join("data")).unwrap();
+    fs::write(dir.path().join("data/large.txt"), "Needle\n".repeat(200_000)).unwrap();
+    git(dir.path(), &["add", "data/large.txt"]);
+    let hash = git(dir.path(), &["hash-object", "-w", "tracked.txt"]);
+    git(dir.path(), &["update-index", "--add", "--cacheinfo", "120000", &hash, "data/link.txt"]);
+    let options = ContentSearchOptions { exclude: vec!["data/**".into()], ..Default::default() };
+    let baseline = candidates(dir.path(), "Needle", &ContentSearchOptions::default(), false);
+    let narrowed = candidates(dir.path(), "Needle", &options, false);
+    assert!(!narrowed.contains(&"data/large.txt".into()));
+    assert!(narrowed.contains(&"data/link.txt".into()));
+    let expected = search(
+        dir.path(),
+        "Needle",
+        &ContentSearchOptions { files: Some(baseline), ..options.clone() },
+    )
+    .unwrap();
+    assert!(!expected.truncated);
+    assert_eq!(
+        search(dir.path(), "Needle", &ContentSearchOptions { files: Some(narrowed), ..options })
+            .unwrap(),
+        expected
+    );
 }
