@@ -1184,6 +1184,7 @@ timeout: 300
                 '  teamsBridgeObservability: true',
                 '  teamsMessageReaction: true',
                 '  sentinelDesktopMirror: true',
+                '  sentinelPrOutcomeWake: true',
                 '  sentinelResultCards: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoScrubber: true',
@@ -1251,7 +1252,7 @@ timeout: 300
         });
 
         describe.each([
-            'sentinelTodoDependencies', 'sentinelResultCards',
+            'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake',
             'railManualRefresh', 'railStatusActions',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
@@ -1547,6 +1548,7 @@ timeout: 300
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sentinelDesktopMirror": false,
+                    "sentinelPrOutcomeWake": false,
                     "sentinelResultCards": true,
                     "sentinelTodoDependencies": false,
                     "sentinelTodoScrubber": false,
@@ -1773,6 +1775,7 @@ timeout: 300
                   "features.schedulesInScheduledSlide": "default",
                   "features.scopeSwitcher": "default",
                   "features.sentinelDesktopMirror": "default",
+                  "features.sentinelPrOutcomeWake": "default",
                   "features.sentinelResultCards": "default",
                   "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoScrubber": "default",

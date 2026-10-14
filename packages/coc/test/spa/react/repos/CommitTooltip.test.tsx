@@ -94,7 +94,9 @@ describe('CommitTooltip', () => {
         const panel = screen.getByTestId('split-workspace-left');
         if (collapsed) {
             fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
-            act(() => vi.advanceTimersByTime(450));
+            act(() => vi.advanceTimersByTime(999));
+            expect(panel).toHaveClass('hidden');
+            act(() => vi.advanceTimersByTime(1));
             expect(panel).not.toHaveClass('hidden');
             expect(panel).toHaveClass('overflow-hidden');
             expect(panel.className).toMatch(/translate-x/);
@@ -116,7 +118,7 @@ describe('CommitTooltip', () => {
     it('keeps the peek and tooltip open while hovering and copying, then dismisses outside', async () => {
         renderPanel(true);
         fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
-        act(() => vi.advanceTimersByTime(450));
+        act(() => vi.advanceTimersByTime(1000));
         const row = screen.getByTestId('hover-commit');
         const tooltip = openTooltip();
         const panel = screen.getByTestId('split-workspace-left');
@@ -140,7 +142,7 @@ describe('CommitTooltip', () => {
         expect(panel).toHaveClass('hidden');
 
         fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
-        act(() => vi.advanceTimersByTime(450));
+        act(() => vi.advanceTimersByTime(1000));
         openTooltip();
         fireEvent.mouseDown(screen.getByTestId('outside-panel'));
         expect(panel).toHaveClass('hidden');
@@ -150,7 +152,7 @@ describe('CommitTooltip', () => {
     it('dismisses both the peek and its portaled tooltip on Escape', () => {
         renderPanel(true);
         fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
-        act(() => vi.advanceTimersByTime(450));
+        act(() => vi.advanceTimersByTime(1000));
         openTooltip();
 
         fireEvent.keyDown(document, { key: 'Escape' });
