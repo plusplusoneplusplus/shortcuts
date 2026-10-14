@@ -452,6 +452,14 @@ and concrete route select the existing blob write endpoint. Trusted absolute
 paths keep the `__trusted__:` prefix and rely on `PreviewPane`'s path guard,
 which omits the write route, Save button, and registered save handler.
 
+`PreviewPane` shares owner-qualified dirty-path/save admission with Explorer
+deletion. A pending delete makes affected files read-only across every mounted
+instance in this window; unrelated paths and clones stay writable.
+`closeDeletedExplorerTabs` removes affected clean file descriptors from every
+cached panel/chat scope only after successful deletion. Failed and partially
+completed deletion retains buffers and descriptors. Dirty protection does not
+span independent windows.
+
 Outside-root links, group-probed files, and explicit HTML source views use
 `__workspace_preview__:<absolute path>` with the owning workspace and concrete
 clone route. `PreviewPane` loads them through the authorized workspace preview

@@ -68,6 +68,9 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
     writeRef.current = write;
     // The text on disk as far as this buffer knows: the read, then each successful write.
     const savedContentRef = useRef('');
+    const editRevisionRef = useRef(0);
+    const editedContentRef = useRef('');
+    const savingRef = useRef(false);
     // Encode only when the read blob changes, never on each editor keystroke.
     const textPreview = useMemo(() => {
         if (blob?.encoding !== 'utf-8') return null;
@@ -92,6 +95,8 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         setIsDirty(false);
         setEditedContent('');
         savedContentRef.current = '';
+        editedContentRef.current = '';
+        editRevisionRef.current++;
 
         // No target to read — stay in `loading` without touching the transport.
         if (key === null) {
@@ -105,6 +110,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
                     if (data.encoding === 'utf-8') {
                         setEditedContent(data.content);
                         savedContentRef.current = data.content;
+                        editedContentRef.current = data.content;
                     }
                 }
             })
@@ -129,29 +135,41 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
 
     const onChange = useCallback((value: string) => {
         if (!canWrite) return;
+        editRevisionRef.current++;
+        editedContentRef.current = value;
         setEditedContent(value);
         setIsDirty(true);
     }, [canWrite]);
 
     const save = useCallback(async (): Promise<boolean> => {
         const writeFn = writeRef.current;
-        if (!writeFn || !canWrite) return false;
+        if (!writeFn || !canWrite || savingRef.current) return false;
+        const content = editedContentRef.current;
+        const revision = editRevisionRef.current;
+        const readController = abortRef.current;
+        savingRef.current = true;
         setIsSaving(true);
         try {
-            await writeFn(editedContent);
-            savedContentRef.current = editedContent;
-            setIsDirty(false);
+            await writeFn(content);
+            if (readController !== abortRef.current || readController?.signal.aborted) return false;
+            savedContentRef.current = content;
+            setIsDirty(editRevisionRef.current !== revision);
             return true;
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Save failed');
+            if (readController === abortRef.current && !readController?.signal.aborted) {
+                setError(err instanceof Error ? err.message : 'Save failed');
+            }
             return false;
         } finally {
+            savingRef.current = false;
             setIsSaving(false);
         }
     }, [editedContent, canWrite]);
 
     const discard = useCallback((): string => {
         const saved = savedContentRef.current;
+        editRevisionRef.current++;
+        editedContentRef.current = saved;
         setEditedContent(saved);
         setIsDirty(false);
         return saved;

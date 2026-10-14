@@ -19,6 +19,7 @@ import {
     useUnifiedPanelState,
     closeBrowserPanelView,
     writeUnifiedPanelState,
+    closeDeletedExplorerTabs,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { useUnifiedPanelTabs, type UnifiedPanelTabsApi } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import {
@@ -64,6 +65,34 @@ describe('unifiedPanelStore', () => {
         cleanup();
         localStorage.clear();
         clearUnifiedPanelState();
+    });
+
+    it('closes deleted member files across all chats and cached scopes without crossing owners or path prefixes', () => {
+        for (const scope of ['group-a', 'group-b']) {
+            let state = EMPTY_UNIFIED_PANEL;
+            for (const chatId of ['chat-a', 'chat-b']) {
+                for (const [owner, route, path] of [
+                    ['member', 'remote:server-a:member', 'src/a.ts'],
+                    ['member', 'remote:server-a:member', 'src/deep/b.ts'],
+                    ['member', 'remote:server-a:member', 'src-other/c.ts'],
+                    ['member', 'remote:server-b:member', 'src/a.ts'],
+                    ['other-member', 'remote:server-a:other-member', 'src/a.ts'],
+                ]) {
+                    state = openTab(state, { kind: 'file', ownerWorkspaceId: owner, ownerRoutingRef: route, chatId, resourceId: path, label: path });
+                }
+            }
+            writeUnifiedPanelState(scope, state);
+        }
+        closeDeletedExplorerTabs('remote:server-a:member', 'src');
+        for (const scope of ['group-a', 'group-b']) {
+            const state = readUnifiedPanelState(scope);
+            for (const tabs of Object.values(state.chatTabs)) {
+                expect(tabs).toHaveLength(3);
+                expect(tabs.filter(tab => tab.ownerRoutingRef === 'remote:server-a:member').map(tab => tab.resourceId)).toEqual(['src-other/c.ts']);
+            }
+            expect(Object.values(state.activeByScope).every(id =>
+                Object.values(state.chatTabs).flat().some(tab => tab.id === id))).toBe(true);
+        }
     });
 
     it('closes native browser views across cached inactive workspaces without removing other tabs', () => {
