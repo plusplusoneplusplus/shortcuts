@@ -38,6 +38,96 @@ export const EXPLORER_UNSAVED_SWITCH_MESSAGE =
 const dirtyInstances = new Map<string, Set<string>>();
 const listeners = new Map<string, Set<() => void>>();
 
+const dirtyFiles = new Map<string, Map<string, string>>();
+const savingFiles = new Map<symbol, { owner: string; path: string }>();
+const deletingPaths = new Map<symbol, { owner: string; path: string }>();
+const fileListeners = new Set<() => void>();
+const deletionListeners = new Set<(event: ExplorerDeletionEvent) => void>();
+
+export function isExplorerPathAffected(path: string, target: string): boolean {
+    const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '');
+    const candidate = normalize(path);
+    const root = normalize(target);
+    return candidate === root || candidate.startsWith(`${root}/`);
+}
+
+export function setExplorerFileDirty(owner: string, instance: string, path: string, dirty: boolean): void {
+    let files = dirtyFiles.get(owner);
+    if (dirty) {
+        if (!files) dirtyFiles.set(owner, files = new Map());
+        files.set(instance, path);
+    } else {
+        files?.delete(instance);
+        if (files?.size === 0) dirtyFiles.delete(owner);
+    }
+}
+
+export function getExplorerDeleteBlockers(owner: string, path: string): string[] {
+    const paths = [...(dirtyFiles.get(owner)?.values() ?? [])];
+    for (const saving of savingFiles.values()) if (saving.owner === owner) paths.push(saving.path);
+    return [...new Set(paths.filter(candidate => isExplorerPathAffected(candidate, path)))].sort();
+}
+
+export function isExplorerPathDeleting(owner: string, path: string): boolean {
+    return [...deletingPaths.values()].some(deletion =>
+        deletion.owner === owner && isExplorerPathAffected(path, deletion.path));
+}
+
+export function useIsExplorerPathDeleting(owner: string, path: string): boolean {
+    return useSyncExternalStore(
+        useCallback(listener => {
+            fileListeners.add(listener);
+            return () => { fileListeners.delete(listener); };
+        }, []),
+        () => isExplorerPathDeleting(owner, path),
+        () => false,
+    );
+}
+
+export function beginExplorerFileSave(owner: string, path: string): () => void {
+    if (isExplorerPathDeleting(owner, path)) throw new Error('Cannot save a file while it is being deleted.');
+    const token = Symbol();
+    savingFiles.set(token, { owner, path });
+    return () => { savingFiles.delete(token); };
+}
+
+export class ExplorerDeleteBlockedError extends Error {
+    constructor(readonly paths: readonly string[]) {
+        super('Save or discard affected edits and wait for saves to finish before deleting.');
+    }
+}
+
+export function acquireExplorerDeletion(owner: string, path: string): () => void {
+    const blockers = getExplorerDeleteBlockers(owner, path);
+    if (blockers.length) throw new ExplorerDeleteBlockedError(blockers);
+    if ([...deletingPaths.values()].some(deletion => deletion.owner === owner
+        && (isExplorerPathAffected(path, deletion.path) || isExplorerPathAffected(deletion.path, path)))) {
+        throw new Error('An overlapping deletion is already in progress.');
+    }
+    const token = Symbol();
+    deletingPaths.set(token, { owner, path });
+    fileListeners.forEach(listener => listener());
+    return () => {
+        deletingPaths.delete(token);
+        fileListeners.forEach(listener => listener());
+    };
+}
+
+export interface ExplorerDeletionEvent {
+    owner: string;
+    path: string;
+    success: boolean;
+}
+
+export function subscribeExplorerDeletion(listener: (event: ExplorerDeletionEvent) => void): () => void {
+    deletionListeners.add(listener);
+    return () => { deletionListeners.delete(listener); };
+}
+
+export function publishExplorerDeletion(event: ExplorerDeletionEvent): void {
+    deletionListeners.forEach(listener => listener(event));
+}
+
 function subscribe(workspaceId: string, listener: () => void): () => void {
     let set = listeners.get(workspaceId);
     if (!set) {

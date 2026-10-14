@@ -16,6 +16,41 @@ import type { FileBlob } from '../../../../../src/server/spa/client/react/shared
 const text = (content: string): FileBlob => ({ content, encoding: 'utf-8', mimeType: 'text/plain' });
 
 describe('useFileContent', () => {
+    it('preserves edits made during an in-flight save and rejects duplicate saves', async () => {
+        let finish!: () => void;
+        const write = vi.fn().mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+        const { result } = renderHook(() => useFileContent({ key: 'a', read: vi.fn().mockResolvedValue(text('one')), write }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let save!: Promise<boolean>;
+        act(() => {
+            result.current.onChange('two');
+            save = result.current.save();
+        });
+        expect(write).toHaveBeenCalledWith('two');
+        await act(async () => { expect(await result.current.save()).toBe(false); });
+        act(() => result.current.onChange('three'));
+        await act(async () => { finish(); expect(await save).toBe(true); });
+        expect(result.current.isDirty).toBe(true);
+        expect(result.current.editedContent).toBe('three');
+        act(() => { expect(result.current.discard()).toBe('two'); });
+    });
+
+    it('does not clear another file buffer when an older save completes after a key switch', async () => {
+        let finish!: () => void;
+        const write = vi.fn().mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+        const read = vi.fn().mockResolvedValue(text('initial'));
+        const { result, rerender } = renderHook(({ key }) => useFileContent({ key, read, write }), { initialProps: { key: 'a' } });
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        let save!: Promise<boolean>;
+        act(() => { result.current.onChange('old edit'); save = result.current.save(); });
+        rerender({ key: 'b' });
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        act(() => result.current.onChange('new edit'));
+        await act(async () => { finish(); expect(await save).toBe(false); });
+        expect(result.current.editedContent).toBe('new edit');
+        expect(result.current.isDirty).toBe(true);
+    });
+
     it('loads, exposes the blob, and seeds the edit buffer', async () => {
         const read = vi.fn().mockResolvedValue(text('hello'));
         const { result } = renderHook(() => useFileContent({ key: 'a', read }));

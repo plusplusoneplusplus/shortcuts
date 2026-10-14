@@ -20,6 +20,7 @@ export interface FileViewerProps {
     /** `changes` is Monaco's own change list; hosts that mirror text ignore it. */
     onChange?: (value: string, changes: readonly monacoEditor.IModelContentChange[]) => void;
     onSave?: () => void;
+    readOnly?: boolean;
     /**
      * Diagnostics for the Monaco branch, forwarded verbatim. Only a host that
      * has decided this blob is a live repo document passes them; the markdown,
@@ -63,7 +64,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function FileViewer({
-    selectionContext, blob, fileName, language, onChange, onSave,
+    selectionContext, blob, fileName, language, onChange, onSave, readOnly,
     highlightRange, revealLine, revealColumn, revealNonce, markdown = 'off', codeTestId, markers, onModelMount,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
@@ -101,6 +102,7 @@ export function FileViewer({
                 language={getMonacoLanguage(fileName)}
                 onChange={onChange}
                 onSave={onSave}
+                readOnly={readOnly}
                 highlightRange={highlightRange ?? null}
                 revealLine={revealLine}
                 revealColumn={revealColumn}

@@ -17,7 +17,7 @@
  * one registration per model, disposed with it.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { Spinner, Button } from '../../../ui';
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
@@ -58,6 +58,9 @@ import { explorerApi } from './explorerApi';
 import { WORKSPACE_PREVIEW_PREFIX, readWorkspacePreview, workspacePreviewClient, workspacePreviewUrl } from '../../../shared/file-viewer/workspacePreview';
 import { resolveLineRange, toLines } from '../../../shared/file-viewer/lineRange';
 import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
+import {
+    beginExplorerFileSave, isExplorerPathDeleting, setExplorerFileDirty, useIsExplorerPathDeleting,
+} from './explorerDirtyStore';
 
 export interface PreviewPaneProps {
     repoId: string;
@@ -177,6 +180,9 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const readOnly = isTrusted || isWorkspacePreview;
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length)
         : isWorkspacePreview ? filePath.slice(WORKSPACE_PREVIEW_PREFIX.length) : filePath;
+    const ownerKey = routingRef ?? repoId;
+    const fileInstanceId = useId();
+    const deleting = useIsExplorerPathDeleting(ownerKey, actualPath);
 
     const read = useCallback(async (signal: AbortSignal) => {
         if (!isTrusted && parseRemoteCloneKey(routingRef)) workspacePreviewClient(repoId, routingRef);
@@ -192,14 +198,19 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const write = useMemo(() => (
         readOnly
             ? undefined
-            : (content: string) => {
+            : async (content: string) => {
                 if (parseRemoteCloneKey(routingRef)) workspacePreviewClient(repoId, routingRef);
-                return (routingRef === undefined
+                const finish = beginExplorerFileSave(ownerKey, actualPath);
+                try {
+                    await (routingRef === undefined
                     ? explorerApi.writeBlob(repoId, actualPath, content)
                     : explorerApi.writeBlob(repoId, actualPath, content, routingRef)
-                ).then(() => undefined);
+                    );
+                } finally {
+                    finish();
+                }
             }
-    ), [readOnly, repoId, actualPath, routingRef]);
+    ), [readOnly, repoId, actualPath, routingRef, ownerKey]);
 
     const handleNotFound = useCallback((err: Error) => {
         if ((err as { status?: number }).status === 404) onNotFound?.();
@@ -215,7 +226,14 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         onError: handleNotFound,
     });
 
-    const viewOnly = readOnly || isOversized;
+    const viewOnly = readOnly || isOversized || deleting;
+    const latestEditRef = useRef(editedContent);
+    latestEditRef.current = editedContent;
+    useEffect(() => {
+        setExplorerFileDirty(ownerKey, fileInstanceId, actualPath, !readOnly && isDirty);
+    }, [ownerKey, fileInstanceId, actualPath, readOnly, isDirty]);
+    useEffect(() => () => setExplorerFileDirty(ownerKey, fileInstanceId, actualPath, false),
+        [ownerKey, fileInstanceId, actualPath]);
 
     // What the file holds on disk, as far as this pane knows. It starts as the
     // blob that was read and moves forward only when a write succeeds, because
@@ -458,23 +476,27 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         value: string,
         changes?: readonly monacoEditor.IModelContentChange[],
     ) => {
+        if (readOnly || isOversized || isExplorerPathDeleting(ownerKey, actualPath)) return;
+        latestEditRef.current = value;
+        setExplorerFileDirty(ownerKey, fileInstanceId, actualPath, true);
         recordEdit(value);
         // No change list (a full model reset, or a host that only reports text)
         // means a full-text update, which is what `undefined` asks the store for.
         recordLanguageEdit(value, changes && changes.length > 0 ? toContentChanges(changes) : undefined);
-    }, [recordEdit, recordLanguageEdit]);
+    }, [recordEdit, recordLanguageEdit, readOnly, isOversized, ownerKey, actualPath, fileInstanceId]);
 
     // `didSave` goes out only after the write actually succeeded — a failed
     // save leaves the buffer dirty and the server's copy unchanged.
     const handleSave = useCallback(async (): Promise<boolean> => {
-        const written = editedContent;
+        const written = latestEditRef.current;
         const ok = await writeFile();
         if (ok) {
+            setExplorerFileDirty(ownerKey, fileInstanceId, actualPath, latestEditRef.current !== written);
             setSavedText(written);
             markSaved(written);
         }
         return ok;
-    }, [editedContent, writeFile, markSaved]);
+    }, [editedContent, writeFile, markSaved, ownerKey, fileInstanceId, actualPath]);
     const switchToRendered = useCallback(() => {
         rawViewStateRef.current = navigationControllerRef.current?.capture() ?? null;
         setRawMarkdown(false);
@@ -483,8 +505,9 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     // Monaco applies the restored `value` without firing onChange, so the
     // language document gets the full text here.
     const handleDiscard = useCallback(() => {
+        setExplorerFileDirty(ownerKey, fileInstanceId, actualPath, false);
         recordLanguageEdit(discardEdits(), undefined);
-    }, [discardEdits, recordLanguageEdit]);
+    }, [discardEdits, recordLanguageEdit, ownerKey, fileInstanceId, actualPath]);
 
     // Surface unsaved-edits state to the owner so a workspace switch can prompt
     // before discarding the buffer (AC-03). Report the current value whenever it
@@ -559,7 +582,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
                             onClick={handleSave}
-                            disabled={isSaving}
+                            disabled={isSaving || deleting}
                             data-testid="save-btn"
                         >
                             {isSaving ? 'Saving…' : 'Save'}
@@ -569,7 +592,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                         <button
                             className="text-[10px] px-2 py-0.5 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#3c3c3c] disabled:opacity-50 transition-colors shadow-sm"
                             onClick={handleDiscard}
-                            disabled={isSaving}
+                            disabled={isSaving || deleting}
                             title="Discard unsaved changes"
                             data-testid="discard-btn"
                         >
@@ -631,6 +654,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     blob={displayBlob}
                     fileName={fileName}
                     onChange={handleEditorChange}
+                    readOnly={viewOnly}
                     onSave={viewOnly ? undefined : handleSave}
                     markdown={isWorkspacePreview && !canPreviewMarkdown ? 'toggle' : 'off'}
                     revealLine={revealLine}

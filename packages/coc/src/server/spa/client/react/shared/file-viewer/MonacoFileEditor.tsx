@@ -167,6 +167,7 @@ export interface MonacoFileEditorProps {
      */
     onChange?: (value: string, changes: readonly monacoEditor.IModelContentChange[]) => void;
     onSave?: () => void;
+    readOnly?: boolean;
     /**
      * Diagnostics to publish under `LANGUAGE_MARKER_OWNER`. `undefined` means
      * this host does not manage markers at all, and the editor leaves the
@@ -288,7 +289,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    selectionContext, value, language, onChange, onSave, revealLine, revealColumn, revealNonce, highlightRange, markers, onModelMount,
+    selectionContext, value, language, onChange, onSave, readOnly, revealLine, revealColumn, revealNonce, highlightRange, markers, onModelMount,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
@@ -568,7 +569,7 @@ export function MonacoFileEditor({
                     theme={monacoTheme}
                     onChange={handleChange}
                     onMount={handleMount}
-                    options={EXPLORER_EDITOR_OPTIONS}
+                    options={readOnly === undefined ? EXPLORER_EDITOR_OPTIONS : { ...EXPLORER_EDITOR_OPTIONS, readOnly }}
                 />
             )}
         </div>
