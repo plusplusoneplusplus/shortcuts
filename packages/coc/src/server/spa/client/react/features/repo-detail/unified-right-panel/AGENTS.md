@@ -751,7 +751,7 @@ independently; below that width selection opens details and Back returns focus t
 the selected row. Native pressed buttons expose selection; arrows/Home/End move
 row focus without selecting. Visited editors stay mounted but hidden across
 selection and resizing, retaining item, status-reason and dependency drafts.
-List cards combine status, priority, wrapping title and Attach in a compact header,
+List cards combine status, priority, wrapping title and an ellipsis menu in a compact header,
 with target/Updated/latest-job metadata below. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 references and editing controls live in the detail pane.
@@ -763,9 +763,11 @@ clears are manual; re-suggest confirms replacing them. Classification notices
 remain separate from save errors, status and execution controls. Narrow panels
 wrap tags and use native keyboard-accessible controls.
 With session-context attachments enabled, list cards and the detail pane's Attach
-button are copy-drag sources for their owning Sentinel composer. Detail cards use
+button are copy-drag sources for their owning Sentinel composer. List cards expose
+Attach in the shared overflow menu; detail-pane Attach controls remain inline.
+Menu interactions stay isolated from row selection and dragging. Detail cards use
 `select-text` and keep informational text outside draggable ancestors for native
-mouse and touch selection. Both panes expose the accessible Attach action. Payloads
+mouse and touch selection. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived

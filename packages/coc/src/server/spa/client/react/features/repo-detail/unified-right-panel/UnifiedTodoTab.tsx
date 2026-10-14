@@ -29,6 +29,7 @@ import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
+import { ChatHeaderOverflowMenu } from '../../chat/ChatHeaderOverflowMenu';
 import { ChatStatusPill } from '../../chat/ChatStatusPill';
 import { attachSelectionToChat } from '../../chat/activeChatAttach';
 import { createSentinelTodoContextPayload } from '../../chat/sentinelTodoContext';
@@ -794,6 +795,33 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
+function TodoCardMenu({ owner, onAttach }: { owner: SentinelTodoOwner; onAttach: () => void }) {
+    const root = useRef<HTMLDivElement>(null);
+    const trigger = () => root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+    return <div ref={root} className="ml-auto shrink-0" draggable={false}
+        onPointerDown={event => event.stopPropagation()}
+        onMouseDown={event => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
+        onKeyUp={event => event.stopPropagation()}
+        onKeyDown={event => {
+            event.stopPropagation();
+            // The shared menu's document Escape listener is outside this card boundary.
+            if (event.key === 'Escape' && trigger()?.getAttribute('aria-expanded') === 'true') {
+                event.preventDefault();
+                trigger()?.click();
+                trigger()?.focus();
+            }
+        }}
+        onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
+        <ChatHeaderOverflowMenu wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[{
+            key: 'attach', label: 'Attach', onClick: () => {
+                trigger()?.focus();
+                onAttach();
+            },
+        }]} />
+    </div>;
+}
+
 function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
     selected: boolean; onSelect: () => void;
 }) {
@@ -814,7 +842,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                 <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
             </button>
-            {canAttach && <AttachTodoButton title={item.title} onClick={attach} />}
+            {canAttach && <TodoCardMenu owner={owner} onAttach={attach} />}
         </div>
         {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
         <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1.5 pb-1 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>

@@ -604,8 +604,8 @@ ledger from the owning server through `client.sentinelTodos.get` with `full: tru
 only the descriptor persists. The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
-Compact list headers combine wrapping titles, status, priority and Attach; job
-metadata wraps below. Identical item/job titles use accessible Open job links,
+Compact list headers combine wrapping titles, status, priority and shared overflow
+actions; job metadata wraps below. Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details;
 detail text uses native selection, with attachment dragging scoped to Attach.
 List cards retain whole-card attachment dragging.
