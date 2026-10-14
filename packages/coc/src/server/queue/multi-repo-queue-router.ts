@@ -582,8 +582,15 @@ export class MultiRepoQueueRouter extends EventEmitter {
         const processId = input.processId ?? input.payload.processId;
         if (typeof processId === 'string') {
             const proc = await this.store.getProcess(processId);
+            const context = input.payload.context;
+            const stoppedPrReview = typeof context === 'object' && context !== null
+                && 'sentinelPrOutcomeReview' in context && context.sentinelPrOutcomeReview === true
+                && 'sentinelPrOutcomeStopped' in context && context.sentinelPrOutcomeStopped === true;
             for (const message of proc?.pendingMessages ?? []) {
+                if (stoppedPrReview && (message.context?.source !== 'trigger'
+                    || message.context.sentinelPrOutcomeReview !== true)) continue;
                 const pending = pendingMessageTask(proc!, message);
+                if (stoppedPrReview) pending.payload.context = { ...message.context, sentinelPrOutcomeStopped: true };
                 if (pending.id === input.id) break;
                 if (!queueManager.getTask(pending.id!)) {
                     queueManager.enqueue({ ...pending, repoId: input.repoId });

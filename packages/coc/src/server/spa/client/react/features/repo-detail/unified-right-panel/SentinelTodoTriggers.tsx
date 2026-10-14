@@ -92,7 +92,8 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             if (mounted.current) setBusy(false);
         }
     };
-    const sorted = rules.filter(rule => rule.workspaceId === owner.ownerWorkspaceId && rule.processId === owner.processId)
+    const sorted = rules.filter(rule => rule.workspaceId === owner.ownerWorkspaceId && rule.processId === owner.processId
+        && !rule.binding?.delegatedPr)
         .sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
     const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add trigger</Button>;
     return <div className="sentinel-trigger-root">

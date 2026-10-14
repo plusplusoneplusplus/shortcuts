@@ -211,6 +211,26 @@ describe('create_pull_request tool', () => {
             autoFix: { requested: true, enabled: false, warning: 'Trigger limit reached' } });
     });
 
+    it.each([false, undefined])('registers exact successful outcomes independently of autoFix=%s', async autoFix => {
+        const register = vi.fn(async () => ({ registered: true, triggerId: 'outcome' }));
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: async () => RESULT, getRegisterPrOutcome: () => register });
+        expect(await invoke(tool, { title: 'T', autoFix })).toMatchObject({
+            success: true, prOutcome: { registered: true, triggerId: 'outcome' },
+        });
+        expect(register).toHaveBeenCalledWith(WORKSPACE_ID, PROCESS_ID, RESULT.url);
+    });
+
+    it('never resubmits when outcome registration fails', async () => {
+        const submit = vi.fn(async () => RESULT);
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: submit, getRegisterPrOutcome: () => async () => { throw new Error('Unavailable'); } });
+        expect(await invoke(tool, { title: 'T' })).toMatchObject({
+            success: true, url: RESULT.url, prOutcome: { registered: false, warning: 'Unavailable' },
+        });
+        expect(submit).toHaveBeenCalledTimes(1);
+    });
+
     it('rejects an invalid autoFix value before creating the PR', async () => {
         const service = vi.fn(async () => RESULT);
         const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,

@@ -57,6 +57,10 @@ metadata. Pass the resolved `base` and these options:
   auto-merge default. The general tool's omitted-parameter default remains false.
 - `mergeMethod`: honor `merge`, `squash`, or `rebase` when requested; otherwise
   use `merge`. Surface provider/repository limitations from the result.
+- `autoFix`: pass `autoFix: true` only when the user authorizes both CI and
+  conflict repairs, including an explicit full-auto request. Ordinary submission,
+  auto-merge, and generic monitoring requests grant no repair authority; omit
+  `autoFix` or pass false to preserve existing scope.
 - `commits`: the nonempty exact SHA array, oldest first.
 
 Call `create_pull_request` once. The tool orders selected commits oldest first,
@@ -71,6 +75,11 @@ Do not create branches, push, or open PRs yourself.
   `autoMerge.enabled` plus any `autoMerge.warning`. Requested auto-merge can fail
   while PR creation succeeds. `existing: true` means the tool returned an open
   PR for its branch; report it as existing.
+- For authorized auto-fix, inspect `autoFix.requested`, `autoFix.enabled`,
+  `autoFix.scope`, `autoFix.triggerId`, and `autoFix.warning`. Confirm
+  full-auto repair only when enabled is true, scope is `ci-and-conflicts`, a trigger
+  ID is returned, and the PR is bound to the owner conversation. Report warnings
+  and missing or mismatched fields as limitations, even when PR creation succeeds.
 - `bound: false` with success means the PR exists but its chat binding was not
   written. Report that limitation; never resubmit to repair a binding.
 - `success: false`: report `code`, `error`, and `commit` when present. A
@@ -89,9 +98,29 @@ Do not create branches, push, or open PRs yourself.
   created and accounting for any pushed branch; never blindly rerun or fall back
   to CLI creation. Do not claim an error rolled back remote state.
 
-## Monitor mode
+## Native automation and explicit AI polling
 
-Activate monitoring **only when the user explicitly asks to monitor the PR**.
-Use the `cron` skill with a self-contained prompt naming the owning workspace,
-PR, requested checks/fixes, and a stop condition when the PR is merged or closed.
-Submission and auto-merge alone do not authorize monitoring.
+Treat "full auto", "monitor until merged", and generic PR monitoring as requests
+for native automation, not AI polling. Full auto uses the auto-merge default and
+user-authorized `autoFix: true`; generic monitoring alone does not authorize CI
+or conflict repairs. Preserve the existing owner-bound native automation and its
+scope when repair authority is absent.
+
+**Do not create an AI cron when native auto-fix is active.** Native trigger
+monitoring wakes the PR owner when authorized repair is needed. After confirming
+actual auto-merge/auto-fix enablement, report the PR URL and current pending
+status, then end the submission turn. Do not wait in a polling loop or add a cron
+in the submission chat or its Sentinel parent. Native repair activation does not
+guarantee a final merge notification: the repair evaluator disarms on merged or
+closed PRs without firing a wake.
+
+If native automation is disabled or unavailable, binding fails, or auto-merge or
+auto-fix enablement warns/fails, report the specific limitation and actual PR
+status. Never silently fall back to AI cron or claim full auto is enabled from
+requested options alone. Do not resubmit to repair automation or binding.
+
+Separately explicit user requests for AI polling/cron remain supported. Only for
+that request, use the `cron` skill with a self-contained prompt naming the owning
+workspace, PR, authorized checks/fixes, and a stop condition when merged or
+closed. Keep repair authority within the user's explicit scope; AI polling is
+not an automatic fallback for failed native automation.

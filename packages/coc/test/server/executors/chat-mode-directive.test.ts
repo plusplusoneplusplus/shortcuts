@@ -812,6 +812,52 @@ describe('sentinel dispatcher directive', () => {
         expect(directive).toContain('do not carry over this chat\'s provider, model, or effort');
     });
 
+    it('keeps full-auto PR handoffs native and requires actual owner-bound enablement', () => {
+        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
+        for (const instruction of [
+            'exact commit selection and owning workspace/server',
+            'auto-merge default, conflict-abort and uncertain-outcome rules',
+            '"full auto", "monitor until merged" and generic PR monitoring use native automation, not AI polling',
+            '`autoMerge.enabled` and warnings, `bound`',
+            '`autoFix.requested`, `autoFix.enabled`, `autoFix.scope`, `autoFix.triggerId`, `autoFix.warning`',
+            'owner binding, enabled `ci-and-conflicts` scope and a trigger ID',
+            'Do not create an AI cron when native auto-fix is active, in either the child or this parent chat',
+            'Report the PR URL and pending status, then end the submission turn',
+            'native triggers wake the PR owner for authorized repairs',
+            'merged/closed PRs disarm without a wake',
+        ]) expect(directive).toContain(instruction);
+    });
+
+    it('reports native automation gaps without implicit polling or repair authority', () => {
+        for (const instruction of [
+            'Ordinary submission, auto-merge or generic monitoring grants no CI/conflict repair authority',
+            'Pass `autoFix: true` only with user authorization for both CI and conflict repairs',
+            'native automation is disabled/unavailable, binding fails or enablement warns/fails',
+            'report the specific limitation',
+            'never silently fall back to AI cron or resubmit to repair binding/automation',
+            'Separately explicit user requests for AI polling/cron remain supported via the `cron` skill',
+            'with owning workspace/PR, authorized checks/fixes and a merged/closed stop condition',
+            'polling grants no repair authority',
+        ]) expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain(instruction);
+    });
+
+    it.each([undefined, 'ASK-ONLY'])('refreshes persisted pre-native-automation guidance once (instructions: %s)', modeInstructions => {
+        const current = buildChatModeDirective({ mode: 'sentinel', modeInstructions })!;
+        const previous = current.split('\n').filter(line => ![
+            '- For PR submission handoffs,', '- "full auto",', '- If native automation is disabled/unavailable,',
+        ].some(prefix => line.startsWith(prefix))).join('\n');
+        expect(previous).not.toBe(current);
+        const check: ChatModeInjectionCheck = {
+            mode: 'sentinel', previousMode: 'sentinel', canResumeSession: true,
+            modeInstructions, checkInstructionDrift: true, compaction: undefined,
+            turns: [{ role: 'user', content: 'Submit full auto', timestamp: new Date('2026-01-01T00:00:00.000Z'), chatModeContext: previous }],
+        };
+        expect(shouldInjectChatModeDirective(check)).toBe(true);
+        check.turns![0].chatModeContext = current;
+        expect(parseChatModeMarker(current).instructions).toBe(modeInstructions);
+        expect(shouldInjectChatModeDirective(check)).toBe(false);
+    });
+
     it('is selected only by sentinel mode', () => {
         for (const mode of ['ask', 'autopilot', 'ralph'] as const) {
             expect(buildChatModeDirective({ mode }) ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);

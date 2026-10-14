@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
+import { parsePullRequestUrl } from '../triggers/pr-status-fetcher';
 
 export const DELEGATED_JOBS_FILE = 'delegated-jobs.json';
 export const MAX_RESULT_SUMMARY = 8_000;
@@ -23,6 +25,25 @@ const deliverySchema = z.discriminatedUnion('state', [
     z.object({ state: z.literal('delivered'), receiptId: id }),
     z.object({ state: z.literal('failed'), reason: z.string().min(1).max(2_000) }),
 ]);
+const prIdentitySchema = z.object({
+    provider: z.enum(['github', 'ado']),
+    host: z.string().min(1).max(200),
+    repoPath: z.string().min(1).max(2_000),
+    number: z.number().int().positive().safe(),
+    url: z.string().min(1).max(2_000),
+}).strict().refine(pr => {
+    const canonical = parsePullRequestUrl(pr.url);
+    return canonical !== null && canonical.provider === pr.provider && canonical.host === pr.host
+        && canonical.repoPath === pr.repoPath && canonical.number === pr.number && canonical.url === pr.url;
+}, 'Pull request identity must match its canonical URL');
+const pullRequestSchema = z.object({
+    id,
+    itemId: z.string().min(1).max(200),
+    pr: prIdentitySchema,
+    recordedAt: z.iso.datetime(),
+    outcomeWatchRequestedAt: z.iso.datetime().optional(),
+    outcomeWatchError: z.object({ message: z.string().max(500), permanent: z.boolean() }).optional(),
+}).strict();
 const jobSchema = z.object({
     id,
     parent: parentSchema,
@@ -36,12 +57,18 @@ const jobSchema = z.object({
     terminal: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),
     grilling: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),
     boundary: z.literal('grill').optional(),
+    pullRequests: z.array(pullRequestSchema).optional(),
 });
 
+export type DelegatedJobPullRequest = z.infer<typeof pullRequestSchema>;
 export type DelegatedJob = z.infer<typeof jobSchema>;
 export type DelegatedJobResult = z.infer<typeof resultSchema>;
 export type DelegatedJobDelivery = z.infer<typeof deliverySchema>;
-export type DelegatedJobRegistration = Omit<DelegatedJob, 'createdAt' | 'terminal' | 'grilling' | 'boundary'>;
+export type DelegatedJobRegistration = Omit<DelegatedJob, 'createdAt' | 'terminal' | 'grilling' | 'boundary' | 'pullRequests'>;
+
+function pullRequestKey(pr: DelegatedJobPullRequest['pr']): string {
+    return JSON.stringify([pr.provider, pr.host, pr.repoPath.toLowerCase(), pr.number]);
+}
 
 /**
  * One ledger per originating workspace, written synchronously with atomic rename.
@@ -65,6 +92,17 @@ export class DelegatedJobStore {
             || new Set(rows.map(row => row.id)).size !== rows.length) {
             throw new Error(`Invalid delegated job ownership or duplicate identity in ${workspaceId}`);
         }
+        const receiptIds = new Set<string>();
+        for (const row of rows) {
+            const outputs = row.pullRequests ?? [];
+            if (new Set(outputs.map(output => pullRequestKey(output.pr))).size !== outputs.length) {
+                throw new Error(`Duplicate delegated pull request identity in ${row.id}`);
+            }
+            for (const output of outputs) {
+                if (receiptIds.has(output.id)) throw new Error(`Duplicate delegated pull request receipt in ${workspaceId}`);
+                receiptIds.add(output.id);
+            }
+        }
         return rows;
     }
 
@@ -84,6 +122,54 @@ export class DelegatedJobStore {
         rows.push(job);
         this.save(job.parent.workspaceId, rows);
         return job;
+    }
+
+    /**
+     * Called with the exact successful submission, never URLs inferred from prose.
+     * This records provenance only; item eligibility and monitoring belong to callers.
+     */
+    recordPullRequest(workspaceId: string, jobId: string, itemId: string, prUrl: string, requestOutcomeWatch = false): DelegatedJobPullRequest {
+        const rows = this.list(workspaceId);
+        const job = rows.find(row => row.id === jobId);
+        if (!job) throw new Error(`Delegated job ${jobId} is not registered in ${workspaceId}`);
+        const pr = parsePullRequestUrl(prUrl);
+        if (!pr) throw new Error('A supported GitHub or Azure DevOps pull request URL is required');
+        const candidate = pullRequestSchema.parse({
+            id: `delegated-pr-${randomUUID()}`, itemId, pr, recordedAt: new Date().toISOString(),
+            ...(requestOutcomeWatch ? { outcomeWatchRequestedAt: new Date().toISOString() } : {}),
+        });
+        const existing = job.pullRequests?.find(output => pullRequestKey(output.pr) === pullRequestKey(candidate.pr));
+        if (existing) {
+            if (existing.itemId !== itemId) throw new Error('Delegated pull request already belongs to another to-do item');
+            if (requestOutcomeWatch && !existing.outcomeWatchRequestedAt) {
+                existing.outcomeWatchRequestedAt = new Date().toISOString();
+                this.save(workspaceId, rows);
+            }
+            return existing;
+        }
+        (job.pullRequests ??= []).push(candidate);
+        this.save(workspaceId, rows);
+        return candidate;
+    }
+
+    /** Persist intent before constructing the native monitor; older receipts are not backfilled. */
+    requestPullRequestOutcomeWatch(workspaceId: string, jobId: string, receiptId: string): void {
+        const rows = this.list(workspaceId);
+        const receipt = rows.find(job => job.id === jobId)?.pullRequests?.find(receipt => receipt.id === receiptId);
+        if (!receipt) throw new Error('Exact delegated PR receipt not found');
+        if (receipt.outcomeWatchRequestedAt) return;
+        receipt.outcomeWatchRequestedAt = new Date().toISOString();
+        this.save(workspaceId, rows);
+    }
+
+    recordPullRequestOutcomeWatchError(workspaceId: string, jobId: string, receiptId: string,
+        error?: { message: string; permanent: boolean }): void {
+        const rows = this.list(workspaceId);
+        const receipt = rows.find(job => job.id === jobId)?.pullRequests?.find(receipt => receipt.id === receiptId);
+        if (!receipt?.outcomeWatchRequestedAt) throw new Error('Requested delegated PR receipt not found');
+        if (error) receipt.outcomeWatchError = { ...error, message: error.message.slice(0, 500) };
+        else delete receipt.outcomeWatchError;
+        this.save(workspaceId, rows);
     }
 
     /** First terminal result wins, including duplicate events with different IDs. */

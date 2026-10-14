@@ -28,6 +28,7 @@ import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
+import { ChatStatusPill } from '../../chat/ChatStatusPill';
 import { attachSelectionToChat } from '../../chat/activeChatAttach';
 import { createSentinelTodoContextPayload } from '../../chat/sentinelTodoContext';
 import { writePointerContextDragData } from '../../chat/sessionContextDrag';
@@ -36,6 +37,7 @@ import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
+import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
@@ -876,6 +878,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             </div>
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
+            {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} />}
             {/* Reference-only conversations: navigation links with no execution or review state. */}
             {(item.references?.length ?? 0) > 0 && (
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Referenced conversations for ${item.title}`}>
@@ -994,12 +997,15 @@ function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowL
     return <ul className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', expanded && 'flex-col items-start px-2 pb-1.5')} aria-label={`Jobs for ${item.title}`}>
         {shownJobs.map(job => {
             const review = sentinelTodoReviewLabel(job);
+            const executionLabel = sentinelTodoJobStateLabel(job);
             const jobLink = `${item.id}|job:${job.serverId ?? ''}:${job.processId}`;
             return <li key={`${job.serverId ?? ''}:${job.processId}`} className="flex flex-wrap items-center gap-1">
                 <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
                     job={job} owner={owner} itemTitle={expanded ? undefined : item.title} linkKey={jobLink} onFollowLink={onFollowLink}
                     targetRepo={item.targetRepo} currentWorkspaceId={currentWorkspaceId} />
-                <span className={MUTED}>· {sentinelTodoJobStateLabel(job)}</span>
+                <ChatStatusPill status={job.execution.state} label={executionLabel} showDuration={false}
+                    aria-label={`Job execution: ${executionLabel}`} data-testid="sentinel-todo-job-execution"
+                    className="shrink-0 !h-[18px] !px-1.5" />
                 {review && <span className={MUTED}>· {review}</span>}
             </li>;
         })}

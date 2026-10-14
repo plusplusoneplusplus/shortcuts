@@ -100,7 +100,10 @@ on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;
 `railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the
 owner-scoped reads (repo: git-info + working tree; group: one member git-info
-batch on the group's server). `features.railStatusActions` defaults on, with
+batch on the group's server). The repository preview's branch row embeds the
+shared `BranchPickerModal` with the supplied owner client; requests retain the
+raw workspace id. Unsaved editor buffers block switching, and success refreshes
+the rail while preserving the popup's Git links. Owner changes reset the selector. `features.railStatusActions` defaults on, with
 explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
 rail slot (`layout/railStatusSlot.ts`)
 that the footer's `StatusActions` portals its Admin gear and quota ring into,

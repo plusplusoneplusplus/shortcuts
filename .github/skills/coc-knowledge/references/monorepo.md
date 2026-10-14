@@ -253,8 +253,10 @@ its own attachment on close and retains the debugger emitter for destruction-saf
 listener cleanup. Pending calls reject on destruction, crash, detach
 or a 30-second timeout and retire timers/listeners. WebView2 forwards owner-qualified
 requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rejecting
-on tab/helper close or crash. Correlated native popup events register hosted handles
-in the root tab's owner/workspace; popup state stays independent. Close/crash retires
+on tab/helper close or crash. Native navigation reserves loading before dispatch and
+publishes state before acknowledgement; matching completion or committed
+same-document source changes settle readiness. Correlated native popup events register
+hosted handles in the root tab's owner/workspace; popup state stays independent. Close/crash retires
 popup handles and requests, root close/crash retires descendants, and helper disposal
 removes owner listeners. CDP timeouts retire individual requests. File previews
 omit CDP; the primitive has no renderer IPC surface by itself.

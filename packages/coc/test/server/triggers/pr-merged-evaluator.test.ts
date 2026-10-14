@@ -42,6 +42,28 @@ function evaluatorFor(result: PrStatusSnapshot | Error) {
 }
 
 describe('PrMergedEvaluator', () => {
+    it.each(['merged', 'closed'] as const)('records the first delegated terminal %s observation', async status => {
+        const { evaluator } = evaluatorFor({ status, title: 'Untrusted title', url: 'u' });
+        const trigger = makeTrigger(makeEvent());
+        trigger.binding!.delegatedPr = { jobId: 'job', receiptId: 'receipt' };
+        expect(await evaluator.evaluate(trigger)).toMatchObject({
+            fire: true, event: { terminalObservation: { status, observedAt: new Date(NOW).toISOString() } },
+        });
+    });
+
+    it('preserves a terminal receipt on reopen and refreshes evidence only when explicitly checked', async () => {
+        const { evaluator, fetcher } = evaluatorFor({ status: 'open', title: 'Reopened', url: 'u' });
+        const observation = { status: 'closed' as const, observedAt: new Date(NOW).toISOString() };
+        const trigger = makeTrigger(makeEvent({ lastSeenStatus: 'closed', terminalObservation: observation }));
+        trigger.binding!.delegatedPr = { jobId: 'job', receiptId: 'receipt' };
+        expect(await evaluator.evaluate(trigger)).toMatchObject({ fire: true, event: { terminalObservation: observation } });
+        expect(fetcher).not.toHaveBeenCalled();
+        expect(await evaluator.evaluate(trigger, { refreshOutcome: true })).toMatchObject({
+            fire: false, event: { lastSeenStatus: 'open', terminalObservation: observation },
+        });
+        expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps polling an open PR and records its status/title', async () => {
         const { evaluator, fetcher } = evaluatorFor({ status: 'open', title: 'Add X', url: 'u' });
         const event = makeEvent();

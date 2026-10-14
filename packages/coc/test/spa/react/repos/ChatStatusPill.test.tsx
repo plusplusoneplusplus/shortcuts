@@ -6,6 +6,17 @@ import React from 'react';
 import { ChatStatusPill } from '../../../../src/server/spa/client/react/features/chat/ChatStatusPill';
 
 describe('ChatStatusPill', () => {
+    it('preserves explicit execution labels and accessibility without changing the status palette', () => {
+        render(<ChatStatusPill status="completed" label="Job completed" aria-label="Job execution: Job completed"
+            showDuration={false} durationMs={5_000} data-testid="pill" />);
+        const pill = screen.getByTestId('pill');
+        expect(pill.textContent).toBe('Job completed');
+        expect(pill.getAttribute('title')).toBe('Job completed');
+        expect(pill.getAttribute('aria-label')).toBe('Job execution: Job completed');
+        expect(pill.getAttribute('data-status')).toBe('completed');
+        expect(pill.className).toContain('text-[#16825d]');
+    });
+
     it('renders the dot, label, and duration in expanded mode', () => {
         render(<ChatStatusPill status="completed" durationMs={5_000} data-testid="pill" />);
         const pill = screen.getByTestId('pill');

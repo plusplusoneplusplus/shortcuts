@@ -132,7 +132,7 @@ describe('scoped rail job previews', () => {
         render(panel());
         fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
         hover();
-        tick(450);
+        tick(1000);
         expect(screen.getByTestId('split-workspace-left')).toHaveClass('hidden');
         hover('queued');
         tick(200);
@@ -148,8 +148,10 @@ describe('scoped rail job previews', () => {
         tick(200);
         fireEvent.pointerLeave(screen.getByTestId('split-workspace-left-running'));
         fireEvent.mouseMove(screen.getByTestId('split-workspace-left-expand'));
-        tick(450);
+        tick(999);
         expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByTestId('split-workspace-left')).toHaveClass('hidden');
+        tick(1);
         expect(screen.getByTestId('split-workspace-left')).not.toHaveClass('hidden');
     });
 

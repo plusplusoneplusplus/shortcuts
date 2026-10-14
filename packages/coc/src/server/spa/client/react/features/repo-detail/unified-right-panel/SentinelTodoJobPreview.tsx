@@ -172,7 +172,7 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
             returnRef.current = event.target as HTMLElement;
             if (!suppressed.current) show();
         }} onBlur={blur} onKeyDown={event => {
-            if (event.key === 'ArrowDown' || (event.key === 'Tab' && !event.shiftKey && event.target === triggerRef.current?.querySelector('button') && open)) {
+            if (event.key === 'ArrowDown') {
                 event.preventDefault(); show(true);
             }
         }}>
@@ -189,11 +189,6 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
                     : `${getChatRowModeBadgeClasses(badgeMode === 'autopilot' ? 'auto' : 'ask')} !w-auto !rounded-full !py-0.5 px-1.5 shrink-0 !font-sans !font-medium !normal-case !tracking-normal !text-[11px]`}>
                 {badgeLabel}
             </span>}
-            <button type="button" aria-label={`Preview job: ${title}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-                className={`${LINK} shrink-0 px-1 text-[11px]`} onClick={event => {
-                    returnRef.current = event.currentTarget;
-                    if (open && persistent.current) dismiss(true); else show(true);
-                }}>ⓘ</button>
         </span>
         {open && portal && createPortal(<div ref={panelRef} id={id} role="dialog" aria-modal="false" aria-labelledby={`${id}-title`} data-native-view-overlay
             className="fixed z-50 w-[330px] overflow-auto rounded border border-[#d0d7de] bg-white p-3 text-xs text-[#1e1e1e] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"

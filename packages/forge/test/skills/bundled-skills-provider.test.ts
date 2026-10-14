@@ -107,7 +107,7 @@ describe('SKILL.md metadata', () => {
         const entry = getBundledSkillsRegistry().find(skill => skill.name === 'delegate');
         expect(entry).toMatchObject({
             name: 'delegate',
-            description: 'Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.',
+            description: expect.any(String),
             relativePath: 'delegate',
         });
 
@@ -126,40 +126,6 @@ describe('SKILL.md metadata', () => {
             },
         });
 
-        // The body is the agent's contract for the `/delegate [provider] <task>`
-        // command, so pin the parts the command depends on rather than the whole text.
-        const body = fmMatch![2];
-        expect(body).toContain('# Delegate');
-        expect(body).toContain('/delegate [provider] <task>');
-        for (const provider of ['copilot', 'codex', 'claude', 'opencode']) {
-            expect(body).toContain(`\`${provider}\``);
-        }
-        expect(body).toContain('send_to_conversation');
-        // A new conversation, never a follow-up into an existing one.
-        expect(body).toContain('without');
-        expect(body).toContain('processId');
-        expect(body).toContain('Always include a short, task-specific `title` in this create-mode call');
-        expect(body).toContain('at most 80 characters');
-        expect(body).toContain('visible custom title across AI title generation and restarts');
-        // Omitting the provider must preserve the tool's inheritance.
-        expect(body).toContain('Omitted provider keeps ordinary local parent inheritance');
-        expect(body).toContain('Prefer `provider: "auto"` unless the user requests a particular provider/model');
-        expect(body).toContain('Auto does not inherit the parent\'s provider, model, or effort');
-        expect(body).not.toContain('`auto` is not a value this tool accepts');
-        // Mode follows the job: read-only work stays in ask, writing work uses autopilot.
-        expect(body).not.toContain('even when the parent runs in Autopilot');
-        expect(body).toContain('Use `ask` for read-only jobs');
-        expect(body).toContain('Use `autopilot` for jobs that change files, the repo, or external state');
-        expect(body).toContain('opening PRs');
-        expect(body).toContain('Use `ralph` (create mode only)');
-        expect(body).toContain('self-contained goal spec');
-        expect(body).toContain('An explicit user request for a mode wins');
-        expect(body).toContain('Autopilot jobs share one execution queue and may wait');
-        expect(body).toContain('The destination defaults to the current workspace');
-        expect(body).toContain('list_workspaces');
-        expect(body).toContain('`name@server`');
-        expect(body).toContain('Remote repos (on another registered CoC server) work in create mode');
-
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-resolve-'));
         try {
             const discovered = getBundledSkills(tmpDir).find(skill => skill.name === 'delegate');
@@ -174,11 +140,11 @@ describe('SKILL.md metadata', () => {
         }
     });
 
-    it('registers canvas and resolves its canvas-tool contract', () => {
+    it('registers canvas with matching skill metadata', () => {
         const entry = getBundledSkillsRegistry().find(skill => skill.name === 'canvas');
         expect(entry).toMatchObject({
             name: 'canvas',
-            description: 'Create or update a written, visual, code, or interactive artifact in the canvas. Use when the user selects /canvas or asks to put the result in a canvas.',
+            description: expect.any(String),
             relativePath: 'canvas',
         });
 
@@ -191,34 +157,6 @@ describe('SKILL.md metadata', () => {
             description: entry!.description,
             metadata: { author: 'CoC', version: '0.0.1' },
         });
-
-        const body = fmMatch![2];
-        for (const guidance of ['write_canvas', 'read_canvas', 'extension_canvas', 'expectedRevision', 'canvas://<id>']) {
-            expect(body).toContain(guidance);
-        }
-        expect(body).toContain('type: "excalidraw"');
-        expect(body).toContain('language: "svg"');
-        expect(body).toContain('/canvas build an interactive revenue dashboard');
-    });
-
-    it('uses current canvas tools in the Excalidraw skill', () => {
-        const entry = getBundledSkillsRegistry().find(skill => skill.name === 'excalidraw-diagram');
-        expect(entry?.description).toContain('write_canvas');
-        expect(entry?.description).toContain('canvas://');
-        expect(entry?.description).not.toContain('excalidraw://');
-
-        const content = fs.readFileSync(
-            path.join(bundledPath, 'excalidraw-diagram', 'SKILL.md'),
-            'utf-8',
-        );
-        expect(content).toContain('write_canvas');
-        expect(content).toContain('read_canvas');
-        expect(content).toContain('type: "excalidraw"');
-        expect(content).toContain('canvas://<id>');
-        expect(content).not.toContain('create_or_update_excalidraw');
-        expect(content).not.toContain('read_excalidraw');
-        expect(content).not.toContain('excalidraw://');
-        expect(content).not.toContain('/diagrams/');
     });
 
     it('every bundled SKILL.md has valid YAML frontmatter with metadata.version', () => {

@@ -254,6 +254,9 @@ export interface FollowUpMessageInput {
     provider?: ChatProvider;
     /** Trusted automation attribution, never accepted from an HTTP body. */
     turnSource?: TurnSource;
+    /** Server-only review scope; HTTP callers cannot request a stopped-chat wake. */
+    sentinelPrOutcomeReview?: true;
+    sentinelPrOutcomeStopped?: true;
 }
 
 /** Which delivery branch handled the message. */
@@ -396,7 +399,7 @@ export class ProcessMessageDeliveryService {
         receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
     ): Promise<DeliveryResult> {
-        return this.deliverReceipt(workspaceId, processId, receiptId, input, false);
+        return this.deliverReceipt(workspaceId, processId, receiptId, input, 'review');
     }
 
     /** Caller validates the PR binding and holds its PR-qualified writer receipt. */
@@ -404,16 +407,29 @@ export class ProcessMessageDeliveryService {
         workspaceId: string, processId: string, receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
     ): Promise<DeliveryResult> {
-        return this.deliverReceipt(workspaceId, processId, receiptId, input, true);
+        return this.deliverReceipt(workspaceId, processId, receiptId, input, 'pr-repair');
+    }
+
+    /** A terminal delegated PR permits one read-only review, not normal chat resumption. */
+    async deliverSentinelPrOutcomeOnce(
+        workspaceId: string, processId: string, receiptId: string,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'>,
+    ): Promise<DeliveryResult> {
+        return this.deliverReceipt(workspaceId, processId, receiptId, input, 'pr-outcome');
     }
 
     private async deliverReceipt(
         workspaceId: string, processId: string, receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
-        prRepair: boolean,
+        kind: 'review' | 'pr-repair' | 'pr-outcome',
     ): Promise<DeliveryResult> {
-        if (prRepair && input.turnSource?.source !== 'trigger') {
-            throw new ReviewDeliveryRejectedError('PR repair requires a trigger-owned delivery identity');
+        const prRepair = kind === 'pr-repair';
+        const prOutcome = kind === 'pr-outcome';
+        if (prOutcome && !this.listTasks) {
+            throw new ReviewDeliveryRejectedError('PR outcome reviews require the owner queue snapshot');
+        }
+        if ((prRepair || prOutcome) && input.turnSource?.source !== 'trigger') {
+            throw new ReviewDeliveryRejectedError('PR automation requires a trigger-owned delivery identity');
         }
         if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable review receipt is required');
         if (!this.bridge.enqueue || !this.bridge.getTask) {
@@ -452,14 +468,30 @@ export class ProcessMessageDeliveryService {
                     pasteExternalized: false, events: [],
                 };
             }
-            if (proc.status === 'cancelled' || proc.status === 'cancelling') {
+            if (prOutcome && proc.status === 'cancelling') {
+                throw new Error('Sentinel PR review is waiting for the current stop to finish');
+            }
+            if (!prOutcome && (proc.status === 'cancelled' || proc.status === 'cancelling')) {
                 throw new ReviewDeliveryRejectedError('Review parent has been stopped');
             }
+            const active = this.listTasks?.().find(task => task.processId === processId
+                && (task.status === 'running' || task.status === 'queued'));
+            const activeContext = active?.payload.context;
+            if (prOutcome && proc.status === 'cancelled' && active
+                && !(typeof activeContext === 'object' && activeContext !== null
+                    && 'sentinelPrOutcomeStopped' in activeContext && activeContext.sentinelPrOutcomeStopped === true)) {
+                throw new Error('Sentinel PR review is waiting for the current stop to finish');
+            }
+            const stoppedReview = prOutcome && (proc.status === 'cancelled'
+                || (typeof activeContext === 'object' && activeContext !== null
+                    && 'sentinelPrOutcomeStopped' in activeContext && activeContext.sentinelPrOutcomeStopped === true));
             return this.deliverAdmitted(proc, {
                 ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
                 mode: prRepair ? 'autopilot' : await resolveFollowUpMode(this.store, processId),
+                ...(prOutcome ? { sentinelPrOutcomeReview: true as const } : {}),
+                ...(stoppedReview ? { sentinelPrOutcomeStopped: true as const } : {}),
             }, receiptId, undefined, prRepair ? { queuePriority: 'high', respectQueueBarriers: true }
-                : input.respectQueueBarriers ? { respectQueueBarriers: true } : {});
+                : prOutcome || input.respectQueueBarriers ? { respectQueueBarriers: true } : {});
         });
     }
 
@@ -502,14 +534,18 @@ export class ProcessMessageDeliveryService {
     private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string, mirror?: SentinelMirrorEntry, scheduling: Pick<PendingMessage, 'queuePriority' | 'respectQueueBarriers'> = {}): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
-        const compactionPending = proc.metadata?.compaction?.state === 'queued'
-            || proc.metadata?.compaction?.state === 'running'
-            || !!this.bridge.findCompactionTask?.(id);
+        const compactionPending = !!this.bridge.findCompactionTask?.(id)
+            || (!input.sentinelPrOutcomeStopped && (proc.metadata?.compaction?.state === 'queued'
+                || proc.metadata?.compaction?.state === 'running'));
         const activeBinding = readActiveProviderSession(proc);
         const events: DeliveryEvent[] = [];
         const requestCorrelation = input.relayRequestId !== undefined
             ? { relayRequestId: input.relayRequestId }
             : {};
+        const reviewContext = input.sentinelPrOutcomeReview ? {
+            sentinelPrOutcomeReview: true,
+            ...(input.sentinelPrOutcomeStopped ? { sentinelPrOutcomeStopped: true } : {}),
+        } : {};
 
         // Turn index this message will occupy — the cutoff a reconstructed
         // continuation quotes history strictly before. Captured before the
@@ -550,7 +586,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
-                ...(input.turnSource ? { context: input.turnSource } : {}),
+                ...(input.turnSource ? { context: { ...input.turnSource, ...reviewContext } } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -582,7 +618,7 @@ export class ProcessMessageDeliveryService {
                     }
                 } else if (
                     (parentTask && (parentTask.status === 'running' || parentTask.status === 'queued')) ||
-                    (reviewReceiptId && (proc.pendingAskUser?.length || proc.pendingMessages?.length)) ||
+                    (reviewReceiptId && !input.sentinelPrOutcomeStopped && (proc.pendingAskUser?.length || proc.pendingMessages?.length)) ||
                     (!parentTask && NONTERMINAL_STATUSES.has(priorStatus))
                 ) {
                     // Task running/queued, or task not found but process was non-terminal:
@@ -608,9 +644,10 @@ export class ProcessMessageDeliveryService {
                             ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                             workingDirectory: proc.workingDirectory,
                             ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
-                            readonly: (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
+                            readonly: input.sentinelPrOutcomeReview ? true : (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
                             ...(input.turnSource || input.selectedSkillNames?.length ? { context: {
                                 ...input.turnSource,
+                                ...reviewContext,
                                 ...(input.selectedSkillNames?.length ? { skills: input.selectedSkillNames } : {}),
                             } } : {}),
                             ...(input.mode ? { mode: input.mode } : {}),

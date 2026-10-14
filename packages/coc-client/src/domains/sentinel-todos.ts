@@ -1,5 +1,7 @@
 import type {
   SentinelScrubberResponse,
+  SentinelPrOutcomesResponse,
+  SentinelPrOutcomeControlRequest,
   SentinelScrubberConfig,
   UpdateSentinelScrubberConfigRequest,
   StartSentinelScrubRequest,
@@ -36,6 +38,26 @@ export class SentinelTodosClient {
 
   constructor(private readonly transport: RequestAdapter) {
     this.scrubber = new SentinelScrubberClient(transport);
+  }
+
+  listPrOutcomes(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId), options);
+  }
+
+  pausePrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/pause', { ...options, method: 'POST', body: request });
+  }
+
+  resumePrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/resume', { ...options, method: 'POST', body: request });
+  }
+
+  checkPrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/check', { ...options, method: 'POST', body: request });
+  }
+
+  private prOutcomesPath(workspaceId: string, processId: string, itemId: string): string {
+    return ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/pr-outcomes`);
   }
 
   get(workspaceId: string, processId: string, options?: {

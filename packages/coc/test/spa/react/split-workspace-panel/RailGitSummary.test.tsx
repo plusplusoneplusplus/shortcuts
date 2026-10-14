@@ -7,6 +7,8 @@ import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/sp
 import { GroupRailGit, RepoRailGit } from '../../../../src/server/spa/client/react/features/repo-detail/RailGitSummary';
 import type { RepoGroupMember } from '../../../../src/server/spa/client/react/repos/repoGroupService';
 
+import { clearExplorerDirty, setExplorerInstanceDirty } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
+
 const dispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', async importOriginal => ({
     ...(await importOriginal<object>()),
@@ -33,7 +35,14 @@ function fakeClient(baseUrl?: string) {
     const client = {
         options: { baseUrl },
         workspaces: { gitInfo: vi.fn(async () => info()), gitInfoBatch: vi.fn() },
-        git: { getWorkingTreeChanges: vi.fn(async () => changes) },
+        git: {
+            getWorkingTreeChanges: vi.fn(async () => changes),
+            listBranches: vi.fn(async () => ({ local: { branches: [
+                { name: 'feature/search-panel', isCurrent: true, isRemote: false },
+                { name: 'main', isCurrent: false, isRemote: false },
+            ], hasMore: false } })),
+            switchBranch: vi.fn(async () => ({ success: true })),
+        },
     };
     return client as typeof client & CocClient;
 }
@@ -44,10 +53,12 @@ function panel(railGit: React.ReactNode, workspaceId = 'ws-alpha') {
 }
 
 beforeEach(() => {
+    clearExplorerDirty();
     localStorage.clear();
     localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'), '1');
     localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-beta'), '1');
     localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('group-product'), '1');
+    Element.prototype.scrollIntoView = vi.fn();
     window.matchMedia = vi.fn().mockReturnValue({ matches: true });
     dispatch.mockClear();
 });
@@ -91,6 +102,116 @@ describe('collapsed rail Git summary · repository', () => {
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('0');
         expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey('ws-alpha'))).toBe('0');
         expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+    });
+
+    it.each([undefined, 'http://remote-b'])('switches through the popup owner %s and refreshes without navigation', async baseUrl => {
+        const client = fakeClient(baseUrl);
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef={baseUrl ? 'remote:srv:ws-alpha' : 'ws-alpha'} client={client} scopeLabel="Owner" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveAccessibleName('Branch: feature/search-panel'));
+        act(() => screen.getByTestId('split-workspace-left-git-branch').focus());
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByRole('option', { name: /main/ });
+        expect(screen.getByRole('option', { name: /feature\/search-panel/ })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('button', { name: 'Open working tree' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Open branch overview' })).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('branch-item-feature/search-panel'));
+        expect(client.git.switchBranch).not.toHaveBeenCalled();
+        const reads = client.workspaces.gitInfo.mock.calls.length;
+        client.workspaces.gitInfo.mockResolvedValue(info({ branch: 'main' }));
+        fireEvent.click(screen.getByTestId('branch-item-main'));
+        await waitFor(() => expect(client.git.switchBranch).toHaveBeenCalledWith('ws-alpha', 'main', { force: false }));
+        await waitFor(() => expect(screen.queryByTestId('branch-picker-modal')).toBeNull());
+        await waitFor(() => expect(client.workspaces.gitInfo.mock.calls.length).toBeGreaterThan(reads));
+        expect(screen.getByTestId('rail-git-branch')).toHaveTextContent('main');
+        expect(screen.getByTestId('rail-git-branch')).toHaveFocus();
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
+    });
+
+    it('announces load errors, retries and keeps failed switches open', async () => {
+        const client = fakeClient();
+        client.git.listBranches.mockRejectedValueOnce(new Error('offline'));
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={client} scopeLabel="Local" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('feature/search-panel'));
+        act(() => screen.getByTestId('split-workspace-left-git-branch').focus());
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        expect(screen.getByRole('listbox')).toHaveAttribute('aria-busy', 'true');
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('offline'));
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await screen.findByTestId('branch-item-main');
+        client.git.switchBranch.mockRejectedValue(new Error('Workspace work is active'));
+        fireEvent.click(screen.getByTestId('branch-item-main'));
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Workspace work is active'));
+        expect(screen.getByTestId('branch-picker-modal')).toBeInTheDocument();
+        fireEvent.keyDown(screen.getByTestId('branch-picker-search'), { key: 'Escape' });
+        expect(screen.queryByTestId('branch-picker-modal')).toBeNull();
+        expect(screen.getByTestId('rail-git-branch')).toHaveFocus();
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it.each(['ws-alpha', 'remote:srv:ws-alpha'])('preserves unsaved editor buffers for %s without a switch or discard prompt', async routingRef => {
+        const client = fakeClient(routingRef.startsWith('remote:') ? 'http://remote-b' : undefined);
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef={routingRef} client={client} scopeLabel="Local" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('feature/search-panel'));
+        act(() => screen.getByTestId('split-workspace-left-git-branch').focus());
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByTestId('branch-item-main');
+        setExplorerInstanceDirty(routingRef, 'editor', true);
+        fireEvent.click(screen.getByTestId('branch-item-main'));
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Save your editor changes'));
+        expect(client.git.switchBranch).not.toHaveBeenCalled();
+        expect(screen.getByTestId('branch-picker-modal')).toBeInTheDocument();
+    });
+
+    it('ignores branch lists from a previous owner', async () => {
+        const oldClient = fakeClient();
+        const newClient = fakeClient('http://remote-b');
+        let resolveOld!: (value: any) => void;
+        oldClient.git.listBranches.mockReturnValue(new Promise(resolve => { resolveOld = resolve; }));
+        const view = render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={oldClient} scopeLabel="A" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('feature/search-panel'));
+        act(() => screen.getByTestId('split-workspace-left-git-branch').focus());
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        await waitFor(() => expect(oldClient.git.listBranches).toHaveBeenCalled());
+        view.rerender(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="remote:srv:ws-alpha" client={newClient} scopeLabel="B" />));
+        await act(async () => resolveOld({ local: { branches: [{ name: 'stale-owner', isCurrent: false }], hasMore: false } }));
+        expect(screen.queryByTestId('branch-item-stale-owner')).toBeNull();
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByTestId('branch-item-main');
+        expect(newClient.git.listBranches).toHaveBeenCalledWith('ws-alpha', expect.any(Object));
+    });
+
+    it('handles keyboard selection and prevents duplicate switches while pending', async () => {
+        const client = fakeClient();
+        let resolveSwitch!: (value: any) => void;
+        client.git.switchBranch.mockReturnValue(new Promise(resolve => { resolveSwitch = resolve; }));
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={client} scopeLabel="Local" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('feature/search-panel'));
+        act(() => screen.getByTestId('split-workspace-left-git-branch').focus());
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByTestId('branch-item-main');
+        const input = screen.getByRole('combobox', { name: 'Search branches' });
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
+        expect(input).toHaveAttribute('aria-activedescendant', screen.getByTestId('branch-item-main').id);
+        fireEvent.keyDown(input, { key: 'Enter' });
+        fireEvent.click(screen.getByTestId('branch-item-main'));
+        expect(client.git.switchBranch).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('branch-picker-switching')).toHaveAttribute('role', 'status');
+        await act(async () => resolveSwitch({ success: false, error: 'dirty checkout' }));
+        expect(screen.getByRole('alert')).toHaveTextContent('dirty checkout');
+    });
+
+    it('searches with the raw workspace id on the supplied owner', async () => {
+        const client = fakeClient('http://remote-b');
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="remote:srv:ws-alpha" client={client} scopeLabel="Remote" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('feature/search-panel'));
+        act(() => screen.getByTestId('split-workspace-left-git-branch').focus());
+        fireEvent.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByTestId('branch-item-main');
+        fireEvent.change(screen.getByRole('combobox', { name: 'Search branches' }), { target: { value: 'main' } });
+        fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search branches' }), { key: 'Enter' });
+        expect(client.git.switchBranch).not.toHaveBeenCalled();
+        await waitFor(() => expect(client.git.listBranches).toHaveBeenLastCalledWith('ws-alpha', { type: 'local', limit: 50, offset: 0, search: 'main' }));
     });
 
     it('never claims clean for a failed read and keeps job controls usable', async () => {

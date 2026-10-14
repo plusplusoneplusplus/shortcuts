@@ -4,8 +4,11 @@
  * hover/focus preview. A repo group shows member counts and lists each member's
  * own branch; it never presents a group branch.
  */
-import { useCallback, useContext, useRef, type ReactNode } from 'react';
+import { useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import { BranchPickerModal } from '../git/branches/BranchPickerModal';
+import { isExplorerDirty } from './explorer/explorerDirtyStore';
+import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { cn } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { formatRelativeTime } from '../../utils/format';
@@ -142,17 +145,31 @@ export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: Rep
             dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: workspaceId, workspaceId, commitHash: BRANCH_RANGE_DEEP_LINK, filePath: null });
         },
     };
-    const body = (dismiss: () => void) => <RepoPreviewBody input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} />;
+    const canSwitch = !!input.info.data?.isGitRepo && !(parseRemoteCloneKey(routingRef) && !client.options?.baseUrl);
+    const body = (dismiss: () => void) => (
+        <RepoPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}:${workspaceId}`}
+            routingRef={routingRef} workspaceId={workspaceId} client={client} canSwitch={canSwitch}
+            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} />
+    );
     return <RailHoverPreview controls={buildControls(tiles, false, actions, body)} scopeLabel={scopeLabel} {...rail} />;
 }
 
-function RepoPreviewBody({ input, tiles, actions, dismiss, onRetry }: { input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void }) {
+function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void }) {
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const branchButton = useRef<HTMLButtonElement>(null);
+    const closePicker = () => { setPickerOpen(false); branchButton.current?.focus(); };
     const tree = input.tree.data;
     const sync = syncState(input.info.data);
     const go = (action: () => void) => () => { dismiss(); action(); };
     return <>
         <li className={ROW_CLASS}>
-            <div className="break-all font-mono text-xs font-medium" data-testid="rail-git-branch">{tiles.branch.text}</div>
+            <button ref={branchButton} type="button" className="w-full text-left break-all font-mono text-xs font-medium hover:text-[#1878c8] focus-visible:outline"
+                data-testid="rail-git-branch" aria-label={`Switch branch: ${tiles.branch.text}`} aria-expanded={pickerOpen} aria-haspopup="dialog"
+                disabled={!canSwitch} onClick={() => setPickerOpen(open => !open)}>{tiles.branch.text} ▾</button>
+            {pickerOpen && <BranchPickerModal workspaceId={workspaceId} client={client} currentBranch={input.info.data?.branch ?? ''}
+                inline isOpen onClose={closePicker} onSwitched={onRetry} beforeSwitch={() => {
+                    if (isExplorerDirty(routingRef)) throw new Error('Save your editor changes before switching branches');
+                }} />}
         </li>
         <li className={ROW_CLASS} data-testid="rail-git-changes-detail">
             <div className={cn('font-medium', TONE_CLASS[tiles.changes.tone])}>{tiles.changes.label.replace(/^Working changes: /, '')}</div>

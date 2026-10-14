@@ -127,6 +127,8 @@ export interface PrMergedMonitorEvent {
     mergeCommit?: string;
     lastError?: { message: string; at: string };
     consecutiveErrors: number;
+    /** First terminal observation is immutable, even if the PR is reopened. */
+    terminalObservation?: { status: 'merged' | 'closed'; observedAt: string };
 }
 
 /** Discriminated union of all event variants. */
@@ -176,6 +178,7 @@ export interface SentinelTodoTriggerBinding {
     removedAt?: string;
     /** Owner-scoped authoring receipt for safe create retries. */
     idempotencyKey?: string;
+    delegatedPr?: { jobId: string; receiptId: string };
 }
 
 /**
@@ -193,8 +196,8 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
     deliveryId: string;
     firedAt: string;
-    reason: 'merged' | 'run-now';
-    state: 'pending' | 'delivered';
+    reason: 'merged' | 'closed' | 'run-now';
+    state: 'pending' | 'delivered' | 'failed';
     deliveredAt?: string;
     /** Item revision captured when the fire committed. */
     itemRevision?: number;

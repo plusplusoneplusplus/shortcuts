@@ -94,6 +94,7 @@ import { processOperationAdmission } from '../processes/process-operation-admiss
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import { connectorMessagingOrigin, isMessagingJobOrigin } from '../messaging/job-notices';
 import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
+import { guardSentinelPrOutcomeExecution } from '../triggers/sentinel-pr-outcome-execution';
 
 // ============================================================================
 // Constants
@@ -219,6 +220,7 @@ export interface LifecycleRunnerOptions {
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
+    onPrOutcomeDeferred?: (processId: string, taskId: string) => void;
     /** Called after a completed assistant response is persisted (and pending messages drained). */
     onResponseCompleted?: (processId: string) => Promise<void>;
     /**
@@ -473,8 +475,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 task.processId = payload.processId;
                 try {
                     const current = await this.store.getProcess(payload.processId!);
+                    const context = payload.context as Record<string, unknown> | undefined;
                     if (current?.status !== 'cancelling' && current?.status !== 'cancelled') {
-                        await this.store.updateProcess(payload.processId!, { status: 'completed' });
+                        await this.store.updateProcess(payload.processId!, {
+                            status: context?.sentinelPrOutcomeReview === true && context.sentinelPrOutcomeStopped === true
+                                ? 'cancelled' : 'completed',
+                        });
                     }
                 } catch (err) {
                     logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -520,6 +526,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             // Extract turnSource from payload context for cron/wakeup/trigger-triggered follow-ups
             const ctx = followUpPayload.context as Record<string, unknown> | undefined;
             const turnSource = readAutomationTurnSource(ctx);
+            if (!await guardSentinelPrOutcomeExecution(this.store, task, this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes)) {
+                if (task.payload.sentinelPrOutcomeExecutionDeferred === true) {
+                    opts.onPrOutcomeDeferred?.(followUpPayload.processId!, task.id);
+                }
+                return { success: true, result: 'PR outcome review retained or skipped', durationMs: Date.now() - startTime };
+            }
             // Mark the target process as running BEFORE invoking the follow-up
             // executor. This closes a race where the queue has already broadcast
             // that this task is running while the process row still reads as
@@ -585,6 +597,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     const strictResumeSessionId = typeof followUpPayload.resumeSessionId === 'string'
                         ? followUpPayload.resumeSessionId
                         : undefined;
+                    if (!await guardSentinelPrOutcomeExecution(this.store, task, this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes)) {
+                        if (task.payload.sentinelPrOutcomeExecutionDeferred === true) {
+                            opts.onPrOutcomeDeferred?.(followUpPayload.processId!, task.id);
+                        }
+                        if (ctx?.sentinelPrOutcomeStopped !== true) {
+                            await this.store.updateProcess(followUpPayload.processId!, { status: 'completed' });
+                        }
+                        return { success: true, result: 'PR outcome review retained or skipped', durationMs: Date.now() - startTime };
+                    }
                     await opts.executeFollowUpFn(
                         followUpPayload.processId!,
                         followUpPayload.prompt,
@@ -610,10 +631,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
                                 : {}),
                             ...(followUpPayload.relayRequestId ? { relayRequestId: followUpPayload.relayRequestId } : {}),
+                            ...(ctx?.sentinelPrOutcomeReview === true ? { sentinelPrOutcomeReview: true as const } : {}),
+                            ...(ctx?.sentinelPrOutcomeReview === true && ctx.sentinelPrOutcomeStopped === true
+                                ? { sentinelPrOutcomeStopped: true as const } : {}),
                         },
                     );
                 }
                 const duration = Date.now() - startTime;
+                if (ctx?.sentinelPrOutcomeReview === true && ctx.sentinelPrOutcomeStopped === true) {
+                    await this.store.updateProcess(followUpPayload.processId!, { status: 'cancelled' });
+                }
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
                 // Follow-up execution persists failures without throwing; only a
                 // completed response is eligible for the post-response hook.
@@ -668,6 +695,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 await notifyTriggerActionComplete(opts, ctx, false, logger);
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
+                if (ctx?.sentinelPrOutcomeReview === true && ctx.sentinelPrOutcomeStopped === true) {
+                    await this.store.updateProcess(followUpPayload.processId!, { status: 'cancelled' });
+                }
                 cleanupChatAttachmentTempDir(imageTempDir, followUpPayload.attachments, followUpPayload.images);
             }
         }

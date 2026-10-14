@@ -34,6 +34,9 @@ import { SentinelTodoTriggerFirer } from '../triggers/sentinel-todo-trigger-fire
 import { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
+import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { SentinelPrOutcomeControls } from '../triggers/sentinel-pr-outcome-controls';
+import { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
 
 // ============================================================================
 // Types
@@ -44,6 +47,7 @@ export interface TriggerInfrastructure {
     triggerManager: TriggerManager;
     sentinelTodoFirer: SentinelTodoTriggerFirer;
     sentinelTodoTriggers: SentinelTodoTriggerService;
+    sentinelPrOutcomes: SentinelPrOutcomeService;
     /** Shared creation path for server tools. */
     createTrigger: CreateTriggerFn;
     /** Timer registry for scheduling trigger ticks. */
@@ -86,6 +90,7 @@ export interface TriggerInfrastructureOptions {
     prStatusFetcher?: PrStatusFetcher;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
+    getPrOutcomeEnabled?: () => boolean;
 }
 
 // ============================================================================
@@ -137,12 +142,19 @@ export async function createTriggerInfrastructure(
     });
 
     const todos = new SentinelTodoStore(db);
-    const sentinelTodoFirer = new SentinelTodoTriggerFirer({
+    const owners = new SentinelTodoService({
+        todos, store, jobs: new DelegatedJobStore(dataDir), getTask: id => queueFacade.getTask(id),
+    });
+    const sentinelTodoFirer: SentinelTodoTriggerFirer = new SentinelTodoTriggerFirer({
         triggers: triggerStore, todos, processes: store,
         executor: actionExecutor, emit, now,
         onPendingDelivery: trigger => triggerManager.schedulePendingDelivery(trigger),
+        outcomeCanDeliver: trigger => sentinelPrOutcomes.canDeliver(trigger),
+        validateOutcome: trigger => sentinelPrOutcomes.validate(trigger),
+        withOutcomeAdmission: (trigger, run) => sentinelPrOutcomes.withAdmission(
+            { workspaceId: trigger.workspaceId, processId: trigger.processId }, trigger.binding!.itemId, run),
     });
-    const triggerManager = new TriggerManager({
+    const triggerManager: TriggerManager = new TriggerManager({
         store: triggerStore,
         timerRegistry,
         resolveEvaluator: (event: TriggerEvent) => {
@@ -159,6 +171,15 @@ export async function createTriggerInfrastructure(
         owners: new SentinelTodoService({ todos, store, getTask: id => queueFacade.getTask(id) }),
         manager: triggerManager, firer: sentinelTodoFirer, enabled: true,
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
+    });
+    const sentinelPrOutcomes: SentinelPrOutcomeService = new SentinelPrOutcomeService({
+        jobs: new DelegatedJobStore(dataDir), dataDir, processes: store, owners,
+        triggers: triggerStore, manager: triggerManager, firer: sentinelTodoFirer,
+        controls: new SentinelPrOutcomeControls(db),
+        enabled: options.getPrOutcomeEnabled ?? (() => false),
+        recoverPendingMessages: options.recoverPendingMessages,
+        onRegistrationPending: () => triggerManager.refreshPrOutcomeRegistrationPolling(),
+        emit,
     });
 
     // A completed persisted turn can outlive its in-memory completion callback.
@@ -194,6 +215,8 @@ export async function createTriggerInfrastructure(
     }
 
     // Restore active trigger timers from the persisted nextTickAt values.
+    triggerManager.setPrOutcomeRegistrationPolling(sentinelPrOutcomes.registrationPolling);
+    await sentinelPrOutcomes.restore();
     triggerManager.armAll();
     await triggerManager.reconcilePendingDeliveries();
     for (const trigger of triggerStore.getAll()) {
@@ -238,7 +261,7 @@ export async function createTriggerInfrastructure(
     };
 
     return {
-        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, timerRegistry, emit, dispose,
+        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit, enabled: true,
             resolveWorkspaceId: options.resolveWorkspaceId, now: options.now,

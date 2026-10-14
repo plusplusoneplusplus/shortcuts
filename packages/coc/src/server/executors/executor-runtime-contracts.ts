@@ -46,6 +46,8 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
 import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import type { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
+import type { RegisterSentinelPrOutcome } from '../triggers/sentinel-pr-outcome-service';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
@@ -78,6 +80,7 @@ export interface TriggerInfraDeps {
     manager: TriggerManager;
     createTrigger?: CreateTriggerFn;
     sentinelTodoTriggers?: SentinelTodoTriggerService;
+    sentinelPrOutcomes?: SentinelPrOutcomeService;
 }
 
 // ============================================================================
@@ -111,6 +114,7 @@ export interface InFlightTurn {
 }
 
 export interface ExecutorRuntimeCapabilities {
+    readonly getRegisterPrOutcome?: () => RegisterSentinelPrOutcome | undefined;
     readonly getBrowserControlRuntime?: () => BrowserControlRuntime | undefined;
     readonly getBrowserToolState?: () => BrowserToolStateStore | undefined;
     /** Host-owned Kusto clients and live enablement, shared with the canvas Run route. */
@@ -224,6 +228,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getBrowserToolState'
     | 'getCronInfra'
     | 'getTriggerInfra'
+    | 'getRegisterPrOutcome'
     | 'getEnqueueChat'
     | 'getSendMessage'
     | 'getLaunchRalph'
@@ -241,7 +246,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;

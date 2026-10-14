@@ -31,14 +31,32 @@ describe('dream bundled skill', () => {
     it('analyzer section keeps the dreamCardCategories placeholder', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
         const analyzer = extractSkillSection(content, 'analyzer');
-        expect(analyzer).toContain('You are the CoC Dream analyzer.');
         expect(analyzer).toContain('{{dreamCardCategories}}');
     });
 
-    it('critic section holds the critic system prompt verbatim', () => {
+    it('critic section does not require analyzer category substitution', () => {
         const content = fs.readFileSync(SKILL_FILE, 'utf8');
         const critic = extractSkillSection(content, 'critic');
-        expect(critic).toContain('You are the CoC Dream critic and dedup validator.');
+        expect(critic.trim()).not.toBe('');
         expect(critic).not.toContain('{{dreamCardCategories}}');
+    });
+
+    it('keeps the analyzer output fields consumed by candidate normalization', () => {
+        const analyzer = extractSkillSection(fs.readFileSync(SKILL_FILE, 'utf8'), 'analyzer');
+        for (const field of ['candidates', 'category', 'sourceRanges', 'processId', 'startTurnIndex',
+            'endTurnIndex', 'observedPattern', 'whyItMatters', 'recommendation', 'expectedImpact',
+            'confidence', 'notAlreadyCoveredRationale']) {
+            expect(analyzer).toMatch(new RegExp(`"${field}"\\s*:`));
+        }
+    });
+
+    it('keeps the critic output fields and verdict values consumed by its parser', () => {
+        const critic = extractSkillSection(fs.readFileSync(SKILL_FILE, 'utf8'), 'critic');
+        for (const field of ['decisions', 'candidateIndex', 'verdict', 'rationale', 'dedupRationale', 'duplicateOfCardId']) {
+            expect(critic).toMatch(new RegExp(`"${field}"\\s*:`));
+        }
+        for (const verdict of ['accept', 'reject', 'duplicate']) {
+            expect(critic).toContain(`"${verdict}"`);
+        }
     });
 });

@@ -474,6 +474,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => triggerInfra ? {
             manager: triggerInfra.triggerManager, createTrigger: triggerInfra.createTrigger,
             sentinelTodoTriggers: triggerInfra.sentinelTodoTriggers,
+            sentinelPrOutcomes: triggerInfra.sentinelPrOutcomes,
         } : undefined,
         // Late-bound enqueue capability for the `send_to_conversation` tool;
         // bound at the route layer below, read here once routes register.
@@ -503,6 +504,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => getBrowserRuntime?.(),
         () => browserState,
         () => toolInventoryStore,
+        () => runtimeConfigService.config.features.sentinelPrOutcomeWake
+            ? triggerInfra?.sentinelPrOutcomes.registerSubmission ?? (async () => ({
+                registered: false, warning: 'Native PR outcome monitoring is unavailable because triggers are disabled.',
+            })) : undefined,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -618,6 +623,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     if (triggersEnabled) {
         triggerInfra = await createTriggerInfrastructure({
             dataDir,
+            getPrOutcomeEnabled: () => runtimeConfigService.config.features.sentinelPrOutcomeWake === true,
             queueFacade,
             deliveryBridge: bridge,
             recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
@@ -768,7 +774,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // guarded on notes-dir absence, so re-toggling never re-seeds deleted notes.
     let prevMyWorkEnabled = runtimeConfigService.config.myWork?.enabled ?? false;
     let prevMyLifeEnabled = runtimeConfigService.config.myLife?.enabled ?? false;
+    let prevPrOutcomeEnabled = runtimeConfigService.config.features.sentinelPrOutcomeWake;
     runtimeConfigService.onChange((snapshot) => {
+        const nextPrOutcomeEnabled = snapshot.config.features.sentinelPrOutcomeWake;
+        if (nextPrOutcomeEnabled !== prevPrOutcomeEnabled) {
+            if (nextPrOutcomeEnabled) void triggerInfra?.sentinelPrOutcomes.restore()
+                .then(() => triggerInfra?.triggerManager.armAll())
+                .catch(error => process.stderr.write(`[sentinel-pr-outcome] Native recovery failed: ${String(error)}\n`));
+            else triggerInfra?.triggerManager.armAll();
+        }
+        prevPrOutcomeEnabled = nextPrOutcomeEnabled;
         const nextMyWorkEnabled = snapshot.config.myWork?.enabled ?? false;
         if (nextMyWorkEnabled && !prevMyWorkEnabled) {
             try {
@@ -843,6 +858,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
         sentinelTodoTriggers: triggerInfra?.sentinelTodoTriggers,
+        sentinelPrOutcomes: triggerInfra?.sentinelPrOutcomes,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
         cronEmit: cronInfra?.emit,

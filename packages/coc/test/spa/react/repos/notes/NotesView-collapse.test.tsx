@@ -166,7 +166,11 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
             // Hover the rail → after the open delay the sidebar floats out as an overlay.
             const rail = screen.getByTestId('notes-sidebar-rail');
             act(() => { fireEvent.mouseEnter(rail); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(400); });
+            expect(sidebar.classList.contains('hidden')).toBe(true);
+            act(() => { vi.advanceTimersByTime(599); });
+            expect(sidebar.classList.contains('hidden')).toBe(true);
+            act(() => { vi.advanceTimersByTime(1); });
             expect(sidebar.classList.contains('hidden')).toBe(false);
             expect(sidebar.className).toContain('absolute');
             expect(sidebar.className).toContain('z-30');
@@ -206,7 +210,7 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
         vi.useFakeTimers();
         try {
             act(() => { fireEvent.mouseEnter(rail); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(1000); });
             // Peek is open (overlay floated out)…
             expect(screen.getByTestId('responsive-sidebar').classList.contains('hidden')).toBe(false);
             // …yet the pin button is still mounted and re-labelled for pinning.
@@ -234,7 +238,7 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
         try {
             const rail = screen.getByTestId('notes-sidebar-rail');
             act(() => { fireEvent.mouseEnter(rail); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(1000); });
             expect(sidebar.classList.contains('hidden')).toBe(false);
 
             act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
@@ -266,7 +270,7 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
             vi.useFakeTimers();
             try {
                 act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
-                act(() => { vi.advanceTimersByTime(450); });
+                act(() => { vi.advanceTimersByTime(1000); });
                 // No float-out: the sidebar stays hidden behind the rail.
                 expect(sidebar.classList.contains('hidden')).toBe(true);
             } finally {
@@ -291,7 +295,7 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
         vi.useFakeTimers();
         try {
             act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(1000); });
             // The overlay carries the reduced-motion opt-out; the CSS media query
             // handles suppression at runtime, so the class is always present while
             // peeking (jsdom can't evaluate the media query itself).

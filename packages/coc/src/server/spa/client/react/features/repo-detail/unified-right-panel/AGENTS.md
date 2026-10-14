@@ -664,6 +664,13 @@ as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
 ## Sentinel To-do
 
 Every hosted Sentinel chat has a persistent To-do ledger.
+Default-off `features.sentinelPrOutcomeWake` adds `SentinelTodoPrOutcomes` inside
+the selected normal item's existing detail view, not another panel. It reads exact
+PR outcome/delivery evidence and offers Check outcome and per-item Pause/Resume
+notifications through the owner-routed client. Admission is displayed as queued,
+not completed review. Requests and mutations discard stale owner/item responses;
+unresolved remote owners never fall through to the local client. Automatic outcome
+bindings stay out of the editable delegation-trigger list.
 A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
 and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
 withdraws it with the host. The `todo` descriptor is
@@ -767,8 +774,8 @@ Noninteractive Ask/Autopilot/Ralph pills use the ledger's compact current-mode
 projection, shared chat normalization/palette and Ralph session identity.
 Unknown modes stay omitted; session identity takes precedence. Owner pills truncate
 with full accessible descriptions; titles and pills wrap without extra reads,
-polling or focus targets. Delayed hover/focus and persistent info actions share a
-bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
+polling or focus targets. Job-title hover/focus previews and ArrowDown actions share
+a bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
 departure dismiss. Title and Open job anchors retain excursion navigation and
 modifier clicks.
 

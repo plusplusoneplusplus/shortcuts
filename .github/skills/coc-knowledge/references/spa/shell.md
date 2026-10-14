@@ -396,6 +396,11 @@ Changes count distinct paths with conflicts first; sync compares only against th
 reported `upstream`. Unknown, failed, detached and no-upstream states never render
 clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`
 git-info refreshes; tiles open the expanded Git half (branch overview or member).
+The repository preview's branch row embeds `BranchPickerModal` with its explicit
+owner client and raw workspace id. Search, current-branch indication and paging
+share the Git header picker. Owner changes discard pending reads; unsaved editor
+buffers block switching. Success refreshes the rail without navigation; errors
+remain accessible in the picker and existing Git links remain available.
 
 ### Collapsed-rail Admin and quota
 

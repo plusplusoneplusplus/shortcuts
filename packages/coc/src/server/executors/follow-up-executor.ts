@@ -26,7 +26,7 @@ import type {
     SystemMessageConfig,
     TurnSource,
 } from '@plusplusoneplusplus/forge';
-import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { PermissionHandler, ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
 import { readActiveProviderSession, advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
@@ -91,6 +91,10 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
  * changed since.
  */
 export interface FollowUpTurnOptions {
+    /** Trusted native admission marker; never derived from prompt text or process metadata. */
+    sentinelPrOutcomeReview?: boolean;
+    sentinelPrOutcomeStopped?: boolean;
+    readonly?: boolean;
     /**
      * Concrete provider this message was accepted for. Omitted means "the
      * conversation's current provider", which keeps older clients and every
@@ -116,6 +120,8 @@ export interface FollowUpTurnOptions {
 
 /** Log prefix for every line this executor writes. */
 const FOLLOW_UP_LOG_LABEL = '[FollowUp]';
+const PR_OUTCOME_REVIEW_PERMISSIONS: PermissionHandler = request =>
+    ({ kind: request.kind === 'read' ? 'approve-once' : 'reject' });
 
 /** Map CoC ChatMode to SDK AgentMode for protocol-level enforcement. */
 const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
@@ -460,6 +466,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         let inventoryCapture: Awaited<ReturnType<FollowUpExecutor['beginToolInventoryCapture']>>;
 
         const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
+        const reviewOnly = options?.sentinelPrOutcomeReview === true || options?.readonly === true;
         let imagesAccepted = false;
         try {
             inventoryCapture = await this.beginToolInventoryCapture(
@@ -510,6 +517,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             const cronDeps = this.buildCronToolDeps(processId);
             chatCtx = await buildChatTurnContext({
+                sentinelPrOutcomeReview: reviewOnly,
                 dataDir: this.dataDir,
                 store: this.store,
                 workspaceId: wsId,
@@ -722,7 +730,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     excludedTools: chatCtx.excludedTools,
                     skillDirectories,
                     disabledSkills,
-                    mcpServers: resolvedMcpServers,
+                    mcpServers: reviewOnly ? {} : resolvedMcpServers,
                     approvePermissions: this.approvePermissions,
                     // Ask/sentinel only, and interactive only: a cron/wakeup/trigger
                     // follow-up (`turnSource` set) has nobody to approve, which
@@ -789,6 +797,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         logLabel: FOLLOW_UP_LOG_LABEL,
                     }),
                 }),
+                ...(reviewOnly ? { onPermissionRequest: PR_OUTCOME_REVIEW_PERMISSIONS } : {}),
                 sessionId: sessionIdForSend,
                 ...(continuation.strictResume ? { strictSessionResume: true as const } : {}),
                 attachments,

@@ -48,6 +48,7 @@ function makeSentinelRuntime() {
         getBrowserToolState: vi.fn(() => undefined),
         getCronInfra: vi.fn(() => undefined),
         getTriggerInfra: vi.fn(() => undefined),
+        getRegisterPrOutcome: vi.fn(() => undefined),
         getEnqueueChat: vi.fn(() => undefined),
         getSendMessage: vi.fn(() => undefined),
         getLaunchRalph: vi.fn(() => undefined),

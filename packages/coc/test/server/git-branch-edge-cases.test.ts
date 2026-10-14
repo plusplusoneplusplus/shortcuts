@@ -2,7 +2,7 @@
  * Section 3: Branch Operation Edge Cases
  * - DELETE /branches/:name — current branch, unmerged, force, nonexistent
  * - POST /branches/rename — to existing name, current branch rename
- * - POST /branches/switch — dirty working tree (with/without stash)
+ * - POST /branches/switch — dirty working tree (without automatic stash)
  * - POST /branches — create from nonexistent base, name with slash
  *
  * Section 4: Detached HEAD State
@@ -37,6 +37,7 @@ const mockGetLocalBranchesPaginated = vi.fn();
 const mockGetRemoteBranchesPaginated = vi.fn();
 const mockCreateBranch = vi.fn();
 const mockSwitchBranch = vi.fn();
+const mockGetRepoState = vi.fn();
 const mockDeleteBranch = vi.fn();
 const mockRenameBranch = vi.fn();
 const mockPush = vi.fn();
@@ -69,6 +70,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
             createBranch: mockCreateBranch,
             switchBranch: mockSwitchBranch,
+            getRepoState: mockGetRepoState,
             deleteBranch: mockDeleteBranch,
             renameBranch: mockRenameBranch,
             push: mockPush,
@@ -301,6 +303,10 @@ describe('Git Branch Edge Cases', () => {
     });
 
     describe('POST /api/workspaces/:id/git/branches/switch — dirty working tree', () => {
+        beforeEach(() => {
+            mockGetRepositoryStatus.mockResolvedValue({ dirty: false });
+            mockGetRepoState.mockResolvedValue({ operation: 'none', conflictFiles: [] });
+        });
         it('returns error from service when dirty tree blocks checkout', async () => {
             mockSwitchBranch.mockResolvedValue({
                 success: false,
@@ -318,8 +324,8 @@ describe('Git Branch Edge Cases', () => {
             expect(data.error).toBe('DIRTY_WORKING_TREE');
         });
 
-        it('succeeds when service auto-stashes and switches branch', async () => {
-            // Service handles stashing internally when returning success
+        it('refuses dirty changes without automatic stashing', async () => {
+            mockGetRepositoryStatus.mockResolvedValue({ dirty: true });
             mockSwitchBranch.mockResolvedValue({ success: true });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
@@ -327,8 +333,9 @@ describe('Git Branch Edge Cases', () => {
                 body: JSON.stringify({ name: 'feature', force: false }),
             });
 
-            expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ success: true });
+            expect(res.status).toBe(409);
+            expect(mockSwitchBranch).not.toHaveBeenCalled();
+            expect(mockStashChanges).not.toHaveBeenCalled();
         });
 
         it('returns error when switching to nonexistent branch', async () => {

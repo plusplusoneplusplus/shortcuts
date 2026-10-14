@@ -9,6 +9,7 @@ import { getRalphTaskKind } from '../ralph/task-kind';
 import { buildChatOpenLink } from '../servers/workspace-directory';
 import { isRalphFinalCheckRepairTurn, getRalphContext } from '../tasks/task-types';
 import { RalphGrillingStore, reconcileRalphGoal } from '../ralph/grilling-state';
+import { resolveRalphExecutionOwner } from '../ralph/ralph-execution-owner';
 import { DelegatedJobStore, grillingResultJob, type DelegatedJob } from './delegated-job-store';
 
 function responseText(result: unknown): string | undefined {
@@ -277,12 +278,7 @@ export class DelegatedJobResults {
     }
 
     private async executionOwner(job: DelegatedJob): Promise<{ workspaceId: string; sessionId: string } | undefined> {
-        if (!job.child.sessionId) return;
-        if (this.deps.dataDir) {
-            const state = await new RalphGrillingStore(this.deps.dataDir).read(job.child.workspaceId, job.child.sessionId);
-            if (state?.start?.execution) return state.start.execution.remote ? undefined : state.start.execution;
-        }
-        return { workspaceId: job.child.workspaceId, sessionId: job.child.sessionId };
+        return resolveRalphExecutionOwner(this.deps.dataDir, job.child);
     }
 
     private sessionEventId(job: DelegatedJob): string {

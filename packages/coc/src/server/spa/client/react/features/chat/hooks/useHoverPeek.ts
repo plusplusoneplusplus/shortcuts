@@ -18,7 +18,7 @@ export interface UseHoverPeekOptions {
      * false the peek is force-closed and any pending timers are cleared.
      */
     enabled: boolean;
-    /** Delay before hovering the rail opens the peek. Default: 400ms (AC-01). */
+    /** Delay before hovering the rail opens the peek. Default: 1000ms (AC-01). */
     openDelay?: number;
     /** Grace delay before leaving the panel collapses the peek. Default: 250ms (AC-03). */
     closeDelay?: number;
@@ -50,7 +50,7 @@ export interface UseHoverPeekReturn {
 }
 
 export function useHoverPeek(options: UseHoverPeekOptions): UseHoverPeekReturn {
-    const { enabled, openDelay = 400, closeDelay = 250, panelRef, scopeKey } = options;
+    const { enabled, openDelay = 1000, closeDelay = 250, panelRef, scopeKey } = options;
 
     const [isOpen, setIsOpen] = useState(false);
     const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

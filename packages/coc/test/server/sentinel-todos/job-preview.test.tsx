@@ -82,6 +82,9 @@ describe('To-do job previews', () => {
         const badge = screen.getByTestId('sentinel-todo-job-mode');
         expect(badge.textContent).toBe(mode === 'ask' ? 'Ask' : mode === 'ralph' ? 'Ralph' : 'Autopilot');
         expect(badge.tagName).toBe('SPAN'); expect(badge.getAttribute('tabindex')).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Preview job:/ })).toBeNull();
+        expect(screen.queryByText('ⓘ')).toBeNull();
+        expect(screen.getByRole('link', { name: 'Fix selection' }).getAttribute('href')).toBe('#repos/repo1/chats/job1');
         expect(getProcess).not.toHaveBeenCalled(); expect(getGroup).not.toHaveBeenCalled();
     });
     it.each([undefined, 'future-mode'])('omits unknown local mode %s without defaulting to Autopilot', mode => {
@@ -117,6 +120,20 @@ describe('To-do job previews', () => {
         expect(follow.mock.calls[0][0].ctrlKey).toBe(true);
         expect(follow.mock.calls[0][1]).toBe('job-key');
     });
+    it('keeps touch title navigation native without a separate preview button', () => {
+        mount();
+        const title = screen.getByRole('link', { name: 'Fix selection' });
+        expect(screen.queryByRole('button', { name: /^Preview job:/ })).toBeNull();
+        fireEvent.pointerEnter(title.parentElement!, { pointerType: 'touch' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(fireEvent.click(title, { ctrlKey: true })).toBe(true);
+        expect(follow.mock.calls[0][0].ctrlKey).toBe(true);
+        expect(fireEvent.click(title)).toBe(true);
+        expect(follow).toHaveBeenCalledTimes(2);
+        expect(follow.mock.calls[1][0].defaultPrevented).toBe(false);
+        expect(follow.mock.calls[1][1]).toBe('job-key');
+        expect(title.getAttribute('href')).toBe('#repos/repo1/chats/job1');
+    });
     it('opens after 200ms with a 250ms pointer bridge', async () => {
         vi.useFakeTimers(); mount();
         const anchor = screen.getByRole('link').parentElement!;
@@ -130,16 +147,16 @@ describe('To-do job previews', () => {
         fireEvent.pointerLeave(screen.getByRole('dialog'));
         await act(async () => vi.advanceTimersByTime(250)); expect(screen.queryByRole('dialog')).toBeNull();
     });
-    it('touch info is persistent; Escape/Close restore focus without reopening; outside dismisses', async () => {
+    it('title keyboard preview is persistent; Escape restores focus; outside dismisses', async () => {
         mount();
-        const info = screen.getByRole('button', { name: 'Preview job: Fix selection' });
-        fireEvent.pointerEnter(info.parentElement!, { pointerType: 'touch' }); expect(screen.queryByRole('dialog')).toBeNull();
-        fireEvent.click(info); await screen.findByRole('dialog');
+        const title = screen.getByRole('link', { name: 'Fix selection' });
+        fireEvent.pointerEnter(title.parentElement!, { pointerType: 'touch' }); expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.keyDown(title, { key: 'ArrowDown' }); await screen.findByRole('dialog');
         expect(screen.getByRole('button', { name: 'Close job preview' })).toHaveFocus();
         fireEvent.pointerLeave(screen.getByRole('dialog'));
         fireEvent.keyDown(document, { key: 'Escape' });
-        expect(info).toHaveFocus(); expect(screen.queryByRole('dialog')).toBeNull();
-        fireEvent.click(info); expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(title).toHaveFocus(); expect(screen.queryByRole('dialog')).toBeNull();
+        fireEvent.keyDown(title, { key: 'ArrowDown' }); expect(screen.getByRole('dialog')).toBeTruthy();
         fireEvent.pointerDown(document.body); expect(screen.queryByRole('dialog')).toBeNull();
     });
     it('ArrowDown enters actions, Shift+Tab returns, and focus departure dismisses persistent previews', async () => {
@@ -148,7 +165,7 @@ describe('To-do job previews', () => {
         expect(screen.getByRole('button', { name: 'Close job preview' })).toHaveFocus();
         fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true });
         expect(screen.getByRole('link')).toHaveFocus(); expect(screen.queryByRole('dialog')).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'Preview job: Fix selection' }));
+        fireEvent.keyDown(screen.getByRole('link', { name: 'Fix selection' }), { key: 'ArrowDown' });
         fireEvent.blur(screen.getByRole('button', { name: 'Close job preview' }), { relatedTarget: document.body });
         expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -204,12 +221,12 @@ describe('To-do job previews', () => {
         await act(async () => resolve({ process: { id: 'job1', lastMessagePreview: 'Stale result' } }));
         expect(screen.queryByText('Stale result')).toBeNull(); expect(screen.queryByRole('dialog')).toBeNull();
     });
-    it('keeps one preview open and enters an already-hovered preview through info', async () => {
+    it('keeps one preview open and enters an already-open preview through the title', async () => {
         mount(); focus(); await screen.findByText('Verifying focus after refresh');
-        fireEvent.click(screen.getByRole('button', { name: 'Preview job: Fix selection' }));
+        fireEvent.keyDown(screen.getByRole('link', { name: 'Fix selection' }), { key: 'ArrowDown' });
         expect(screen.getByRole('button', { name: 'Close job preview' })).toHaveFocus();
         render(<SentinelTodoJobPreview job={job({ title: 'Other job' })} owner={owner} linkKey="other" onFollowLink={follow} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Preview job: Other job' }));
+        fireEvent.keyDown(screen.getByRole('link', { name: 'Other job' }), { key: 'ArrowDown' });
         expect(screen.getAllByRole('dialog')).toHaveLength(1);
         expect(within(screen.getByRole('dialog')).getByRole('heading').textContent).toBe('Other job');
     });
@@ -230,7 +247,7 @@ describe('To-do job previews', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Close job preview' }));
         const now = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(now + 16000);
         getProcess.mockRejectedValue(new Error('Offline'));
-        fireEvent.click(screen.getByRole('button', { name: 'Preview job: Fix selection' }));
+        fireEvent.keyDown(screen.getByRole('link', { name: 'Fix selection' }), { key: 'ArrowDown' });
         await screen.findByText(/Preview error: Offline/);
         expect(screen.getByText(/Stale · Latest recorded assistant response/)).toBeTruthy();
         expect(screen.getByText('Verifying focus after refresh')).toBeTruthy(); vi.restoreAllMocks();

@@ -236,6 +236,68 @@ describe('WebView2 owner-scoped native popups', () => {
     });
 });
 
+describe('WebView2 controlled document readiness', () => {
+    it('keeps open pending after native acknowledgement until the redirected document completes', async () => {
+        const host = new WebView2BrowserHost('profile');
+        vi.spyOn(host, 'availability').mockResolvedValue({ engine: 'webview2', available: true });
+        const manager = new BrowserHostManager({
+            history: { recordVisit: async () => true, updateTitle: async () => true, flush: async () => {}, clearEngine: async () => true },
+            hosts: { webview2: host, electron: { ...host, engine: 'electron', create: vi.fn(), dispose: vi.fn() } },
+            fileHost: { create: vi.fn(), dispose: vi.fn() },
+            getDefault: () => 'webview2', saveDefault: () => {}, getPageZoom: () => 100, savePageZoom: () => {}, send: vi.fn(), changed: vi.fn(),
+        });
+        manager.bindControlScope(7, 'workspace', 'workspace');
+        let nativeId = '';
+        let pollObserved!: () => void;
+        const polling = new Promise<void>(resolve => { pollObserved = resolve; });
+        const create = host.create.bind(host);
+        vi.spyOn(host, 'create').mockImplementation(async (...args) => {
+            const view = await create(...args);
+            const snapshot = view.snapshot.bind(view);
+            let controlReadyChecked = false;
+            view.waitForControlReady = async () => { controlReadyChecked = true; };
+            view.snapshot = () => {
+                const state = snapshot();
+                if (controlReadyChecked && state.loading) pollObserved();
+                return state;
+            };
+            return view;
+        });
+        const state = (loading: boolean, url: string, title = '') => mocks.onEvent({
+            event: 'state', viewId: nativeId, state: { url, title, loading, canGoBack: false, canGoForward: false },
+        });
+        mocks.request.mockReset().mockImplementation(async (op, payload) => {
+            if (op === 'open') {
+                nativeId = payload.viewId;
+                // Native acknowledgement precedes NavigationStarting. The initial
+                // blank document must remain loading throughout that interval.
+                state(true, 'about:blank');
+            }
+            if (op === 'cdp') return { result: { value: {
+                title: 'Workflow fixture', url: 'https://fixture.test/destination', elements: [], nextRef: 1,
+            } } };
+        });
+        try {
+            const opened = manager.executeControl(7, {
+                id: 'open', processId: 'conversation', workspaceId: 'workspace',
+                command: { action: 'open', url: 'https://fixture.test/start' },
+            });
+            await polling;
+            expect(mocks.request.mock.calls.some(([op]) => op === 'cdp')).toBe(false);
+            const redirectPolling = new Promise<void>(resolve => { pollObserved = resolve; });
+            state(true, 'https://fixture.test/destination'); // Redirect is still loading.
+            await redirectPolling;
+            expect(mocks.request.mock.calls.some(([op]) => op === 'cdp')).toBe(false);
+            state(false, 'https://fixture.test/destination', 'Workflow fixture');
+            await expect(opened).resolves.toMatchObject({ title: 'Workflow fixture', url: 'https://fixture.test/destination' });
+            expect(mocks.request.mock.calls.filter(([op]) => op === 'cdp')).toHaveLength(1);
+            expect(mocks.request.mock.calls.some(([op]) => op === 'navigate')).toBe(false);
+        } finally {
+            await manager.dispose();
+        }
+    });
+});
+
 describe('WebView2 native focus handoff', () => {
     it('exposes CDP results only for the live owner-qualified native tab', async () => {
         const host = new WebView2BrowserHost('profile');

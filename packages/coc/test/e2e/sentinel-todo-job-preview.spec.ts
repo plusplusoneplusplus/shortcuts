@@ -101,18 +101,25 @@ for (const dark of [false, true]) {
         await earlier.press('ArrowDown'); await expect(panel.getByRole('button', { name: 'Close job preview' })).toBeFocused();
         await page.keyboard.press('Tab'); await expect(panel.getByRole('link', { name: 'Open job ↗' })).toBeFocused();
         await page.keyboard.press('Escape'); await expect(earlier).toBeFocused(); await expect(panel).toBeHidden();
-        await page.getByRole('button', { name: 'Preview job: Earlier job' }).click(); await expect(panel).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Preview job:/ })).toHaveCount(0);
+        await earlier.press('ArrowDown'); await expect(panel).toBeVisible();
+        await expect(panel.getByRole('button', { name: 'Close job preview' })).toBeFocused();
         await page.locator('#outside').focus(); await expect(panel).toBeHidden();
         expect(errors).toEqual([]);
     });
 }
-test('touch info persists and title links preserve native modifier navigation', async ({ browser }) => {
+test('touch title links preserve native and modifier navigation without an info button', async ({ browser }) => {
     const context = await browser.newContext({ hasTouch: true, viewport: { width: 360, height: 500 } });
-    const page = await context.newPage(); await mount(page);
-    await page.getByRole('button', { name: 'Preview job: Ralph job' }).tap();
-    await expect(page.getByRole('dialog')).toBeVisible(); await page.waitForTimeout(300);
-    await expect(page.getByRole('dialog')).toBeVisible(); await page.locator('#outside').tap();
-    await expect(page.getByRole('dialog')).toBeHidden();
-    await page.getByRole('link', { name: 'Ralph job', exact: true }).click({ modifiers: ['Control'] });
-    await expect(page).not.toHaveURL(/chats/); await context.close();
+    try {
+        const page = await context.newPage(); await mount(page);
+        const title = page.getByRole('link', { name: 'Ralph job', exact: true });
+        await expect(page.getByRole('button', { name: /^Preview job:/ })).toHaveCount(0);
+        await expect(title).toHaveAttribute('href', '#repos/repo1/chats/Ralph job');
+        await title.click({ modifiers: ['Control'] });
+        await expect(page).not.toHaveURL(/chats/);
+        await title.tap();
+        await expect(page).toHaveURL(/#repos\/repo1\/chats\/Ralph%20job$/);
+    } finally {
+        await context.close();
+    }
 });

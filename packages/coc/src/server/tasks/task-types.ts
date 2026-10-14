@@ -257,6 +257,9 @@ export function readCommitChatContext(value: unknown): CommitChatContext | undef
 
 /** Contextual information injected into the prompt before sending to AI. */
 export interface ChatContext {
+    /** Native review admission markers, never caller-granted execution authority. */
+    sentinelPrOutcomeReview?: true;
+    sentinelPrOutcomeStopped?: true;
     browserMode?: boolean;
     /** Files/folders to include as context (replaces promptFilePath, planFilePath). */
     files?: string[];

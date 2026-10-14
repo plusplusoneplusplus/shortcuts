@@ -18,6 +18,9 @@ export interface ChatStatusPillProps {
     status: string;
     /** Optional process type — affects the displayed label (e.g. workflow vs chat). */
     type?: string;
+    /** Explicit display label when the caller distinguishes execution from fulfillment. */
+    label?: string;
+    'aria-label'?: string;
     /** Run duration in milliseconds. When provided, rendered after the status label. */
     durationMs?: number | null;
     /** When false, only the dot + label render (no duration suffix). Defaults to true. */
@@ -74,6 +77,8 @@ const FALLBACK: StatusVariant = {
 export function ChatStatusPill({
     status,
     type,
+    label: displayLabel,
+    'aria-label': ariaLabel,
     durationMs,
     showDuration = true,
     iconOnly = false,
@@ -81,13 +86,14 @@ export function ChatStatusPill({
     'data-testid': dataTestId,
 }: ChatStatusPillProps) {
     const variant = VARIANT[status] ?? FALLBACK;
-    const label = statusLabel(status, type);
+    const label = displayLabel ?? statusLabel(status, type);
     const duration = showDuration && durationMs != null ? formatDuration(durationMs) : '';
 
     return (
         <span
             data-testid={dataTestId}
             data-status={status}
+            aria-label={ariaLabel}
             className={cn(
                 'inline-flex items-center gap-1.5 border rounded-full whitespace-nowrap',
                 'text-[11px] leading-none font-medium',

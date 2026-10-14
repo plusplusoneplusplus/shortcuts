@@ -61,7 +61,6 @@ struct View {
     window: HWND,
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
-    loading: Cell<bool>,
     history: RefCell<HistoryNavigation>,
     closed: Cell<bool>,
     requested: RefCell<String>,
@@ -223,6 +222,18 @@ impl View {
         Ok(())
     }
 
+    fn navigate(&self, action: impl FnOnce() -> Result<()>) -> Result<()> {
+        self.history.borrow_mut().requested();
+        let result = action();
+        if result.is_err() {
+            self.history.borrow_mut().invalidate();
+        }
+        // Publish pending navigation before acknowledging the command, even if
+        // NavigationStarting has not arrived yet.
+        self.push();
+        result
+    }
+
     fn snapshot(&self) -> Result<serde_json::Value> {
         let mut url = PWSTR::null();
         let mut title = PWSTR::null();
@@ -241,7 +252,7 @@ impl View {
             "viewId": self.id, "engine": "webview2",
             "url": if error.is_some() || url.is_empty() { self.requested.borrow().clone() } else { url },
             "title": if error.is_some() { String::new() } else { title },
-            "canGoBack": back.as_bool(), "canGoForward": forward.as_bool(), "loading": self.loading.get()
+            "canGoBack": back.as_bool(), "canGoForward": forward.as_bool(), "loading": self.history.borrow().loading()
         });
         if let Some((code, message)) = error.as_ref() {
             state["errorCode"] = json!(code);
@@ -287,7 +298,6 @@ impl View {
         if self.closed.get() {
             return;
         }
-        self.loading.set(false);
         self.history.borrow_mut().invalidate();
         *self.error.borrow_mut() = Some((code.to_string(), message.clone()));
         protocol::emit(json!({ "event": "state", "viewId": self.id, "state": {
@@ -810,7 +820,7 @@ fn dispatch(state: &State, command: Command) {
                 if let Some(url) = command.url.filter(|url| allowed_url(url, false)) {
                     *view.requested.borrow_mut() = url.clone();
                     *view.error.borrow_mut() = None;
-                    view.webview.Navigate(&HSTRING::from(url))
+                    view.navigate(|| view.webview.Navigate(&HSTRING::from(url)))
                 } else {
                     Err(windows::core::Error::from(E_INVALIDARG))
                 }
@@ -820,7 +830,7 @@ fn dispatch(state: &State, command: Command) {
                     let mut available = BOOL(0);
                     view.webview.CanGoBack(&mut available).and_then(|_| {
                         if available.as_bool() {
-                            view.webview.GoBack()
+                            view.navigate(|| view.webview.GoBack())
                         } else {
                             Ok(())
                         }
@@ -830,7 +840,7 @@ fn dispatch(state: &State, command: Command) {
                     let mut available = BOOL(0);
                     view.webview.CanGoForward(&mut available).and_then(|_| {
                         if available.as_bool() {
-                            view.webview.GoForward()
+                            view.navigate(|| view.webview.GoForward())
                         } else {
                             Ok(())
                         }
@@ -838,16 +848,17 @@ fn dispatch(state: &State, command: Command) {
                 }
                 Some("stop") => {
                     view.history.borrow_mut().stop();
-                    view.loading.set(false);
                     let result = view.webview.Stop();
                     view.push();
                     result
                 }
                 Some("reload") => {
                     if view.error.borrow().is_some() {
-                        view.webview.Navigate(&HSTRING::from(view.requested.borrow().as_str()))
+                        view.navigate(|| {
+                            view.webview.Navigate(&HSTRING::from(view.requested.borrow().as_str()))
+                        })
                     } else {
-                        view.webview.Reload()
+                        view.navigate(|| view.webview.Reload())
                     }
                 }
                 _ => Err(windows::core::Error::from(E_INVALIDARG)),
@@ -1081,7 +1092,6 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             window,
                             controller,
                             webview,
-                            loading: Cell::new(is_popup),
                             history: RefCell::new(HistoryNavigation::default()),
                             closed: Cell::new(false),
                             requested: RefCell::new(command.url.clone().unwrap_or_default()),
@@ -1159,6 +1169,8 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             view.close()?;
                             return Err(windows::core::Error::from(E_ABORT));
                         }
+                        // Both root and popup views have an initial document pending.
+                        view.history.borrow_mut().requested();
                         wire_view(&view, &callback_state)?;
                         WINDOWS.with(|windows| {
                             windows.borrow_mut().insert(window.0 as usize, Rc::downgrade(&view))
@@ -1183,11 +1195,12 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             deferral.Complete()?;
                             view.push();
                         } else {
-                            view.webview.Navigate(&HSTRING::from(
-                                command.url.as_deref().unwrap_or_default(),
-                            ))?;
+                            view.navigate(|| {
+                                view.webview.Navigate(&HSTRING::from(
+                                    command.url.as_deref().unwrap_or_default(),
+                                ))
+                            })?;
                             protocol::success(response_id);
-                            view.push();
                         }
                         Ok(())
                     });
@@ -1304,7 +1317,6 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 }
                 *view.requested.borrow_mut() = url;
                 *view.error.borrow_mut() = None;
-                view.loading.set(true);
                 view.push();
                 Ok(())
             })),
@@ -1330,7 +1342,6 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let Some(visit) = visit else {
                     return Ok(());
                 };
-                view.loading.set(false);
                 if !success.as_bool() {
                     let mut status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
                     args.WebErrorStatus(&mut status)?;

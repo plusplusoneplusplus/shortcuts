@@ -173,6 +173,13 @@ active/paused monitors without resetting repair history. Arming requires
 `triggers.enabled`; failures preserve PR success with a warning. Results include
 `autoFix: { requested, enabled, scope?, triggerId?, warning? }`.
 
+With default-off `features.sentinelPrOutcomeWake`, the exact successful submission
+also registers a native outcome watch for its tracked Sentinel-delegated item.
+Registration resolves the original owner across local workspaces and is independent
+of `autoFix`; failures preserve PR creation and surface a warning. Outcomes request
+review only, never repairs, retries, deployment or new jobs. Untracked/history prose
+does not establish ownership. See [server architecture](server-architecture.md#delegated-pr-outcome-reviews).
+
 The same `ci-failure` monitor polls authoritative merge previews and current-head
 checks. Conflict identity includes provider/host/repository/PR and head/base SHAs;
 unknown previews wait, policies remain blockers, and terminal PRs stop. Database
