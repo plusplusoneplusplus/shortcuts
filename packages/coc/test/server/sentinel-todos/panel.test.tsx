@@ -228,6 +228,48 @@ describe('UnifiedTodoTab', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('left-aligns full job history with bounded wrapping rows without changing compact metadata or job semantics', async () => {
+        const tracked = item({ title: 'Fixture tracked work', jobs: [
+            { processId: 'earlier', workspaceId: 'ws-child', kind: 'local', title: 'Fixture earlier job',
+                openLink: '#repos/ws-child/chats/earlier', linkedAt: item().createdAt,
+                execution: { state: 'cancelled', review: { state: 'delivered', assessment: 'not_required' } } },
+            { processId: 'latest', workspaceId: 'ws-child', kind: 'local', title: 'Fixture latest job', mode: 'autopilot',
+                openLink: '#repos/ws-child/chats/latest', linkedAt: item().createdAt,
+                execution: { state: 'running' } },
+        ] });
+        ownerWorkspaces.push({ id: 'ws-child', name: 'Fixture child repo' });
+        get.mockResolvedValue(ledger([tracked]));
+        render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const compact = within(row).getByRole('list', { name: `Jobs for ${tracked.title}` });
+        expect(compact.classList.contains('items-center')).toBe(true);
+        expect(within(compact).getAllByRole('link')).toHaveLength(1);
+        expect(within(compact).getByText('+1 earlier job')).toBeTruthy();
+        fireEvent.click(row.querySelector('[data-todo-select]')!);
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        const jobs = within(detail).getByRole('list', { name: `Jobs for ${tracked.title}` });
+        expect(jobs.classList.contains('items-center')).toBe(false);
+        expect(jobs.classList.contains('items-stretch')).toBe(true);
+        expect(jobs.classList.contains('px-2')).toBe(true);
+        const links = within(jobs).getAllByRole('link');
+        expect(links.map(link => link.getAttribute('href'))).toEqual(tracked.jobs.map(job => job.openLink));
+        for (const link of links) {
+            const jobRow = link.closest('li')!;
+            for (const style of ['min-w-0', 'max-w-full', 'flex-wrap', 'text-left', '[overflow-wrap:anywhere]']) {
+                expect(jobRow.classList.contains(style)).toBe(true);
+            }
+            expect(within(jobRow).getByTestId('sentinel-todo-job-owner').textContent).toBe('Fixture child repo');
+            expect(within(jobRow).getByRole('button', { name: `Preview job: ${link.textContent}` }).getAttribute('aria-haspopup')).toBe('dialog');
+        }
+        expect(within(jobs).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
+        expect(jobs.textContent).toContain('Job cancelled');
+        expect(jobs.textContent).toContain('Notice delivered');
+        expect(jobs.textContent).toContain('Running');
+        expect(detail.classList.contains('select-text')).toBe(true);
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it('keeps hidden older prerequisites in the full dependency chain and reveals their rows on lookup', async () => {
         applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: true });
         const source = item({ id: 'source', title: 'Older source', status: 'done', updatedAt: '2025-01-01T00:00:00Z' });

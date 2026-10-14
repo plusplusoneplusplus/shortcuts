@@ -1026,12 +1026,14 @@ function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowL
     const shownJobs = expanded ? item.jobs : item.jobs.slice(-1);
     const hiddenJobs = item.jobs.length - shownJobs.length;
     if (!shownJobs.length) return null;
-    return <ul className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', expanded && 'flex-col items-start px-2 pb-1.5')} aria-label={`Jobs for ${item.title}`}>
+    return <ul className={cn('flex flex-wrap gap-x-1.5 gap-y-0.5 text-[11px]',
+        expanded ? 'flex-col items-stretch px-2 pb-1.5' : 'items-center')} aria-label={`Jobs for ${item.title}`}>
         {shownJobs.map(job => {
             const review = sentinelTodoReviewLabel(job);
             const executionLabel = sentinelTodoJobStateLabel(job);
             const jobLink = `${item.id}|job:${job.serverId ?? ''}:${job.processId}`;
-            return <li key={`${job.serverId ?? ''}:${job.processId}`} className="flex flex-wrap items-center gap-1">
+            return <li key={`${job.serverId ?? ''}:${job.processId}`} className={cn('flex flex-wrap items-center gap-1',
+                expanded && 'min-w-0 max-w-full text-left [overflow-wrap:anywhere]')}>
                 <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
                     job={job} owner={owner} itemTitle={expanded ? undefined : item.title} linkKey={jobLink} onFollowLink={onFollowLink}
                     targetRepo={item.targetRepo} currentWorkspaceId={currentWorkspaceId} />
