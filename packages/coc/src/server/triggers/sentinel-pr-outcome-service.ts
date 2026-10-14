@@ -58,7 +58,8 @@ export class SentinelPrOutcomeService {
                 if (trigger.event.monitor !== 'pr-merged') throw new Error('Invalid PR outcome monitor');
                 return {
                     id: trigger.id, ...trigger.binding!.delegatedPr!, pr: trigger.event.pr,
-                    status: trigger.event.terminalObservation?.status ?? 'watching',
+                    status: trigger.event.terminalObservation?.status
+                        ?? (trigger.event.lastSeenStatus === 'draft' ? 'draft' : 'watching'),
                     delivery: trigger.outcome === 'skipped' ? 'skipped' : trigger.outcome === 'error'
                         || trigger.delivery?.state === 'failed' ? 'error' : trigger.delivery?.state ?? 'none',
                     ...(trigger.outcomeReason || trigger.event.lastError

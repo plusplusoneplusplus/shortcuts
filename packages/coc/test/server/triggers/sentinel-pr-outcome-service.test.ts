@@ -158,6 +158,18 @@ describe('Sentinel PR outcome tracking', () => {
         await expect(service.list(parent, manual.id)).rejects.toMatchObject({ statusCode: 404 });
     });
 
+    it('projects observed draft state while preserving the first terminal evidence after reopen', async () => {
+        await service.registerSubmission(child.workspaceId, child.processId, url);
+        const trigger = triggers.getAll()[0];
+        if (trigger.event.monitor !== 'pr-merged') throw new Error('Expected PR outcome monitor');
+        trigger.event.lastSeenStatus = 'draft';
+        triggers.update(trigger);
+        expect(await service.list(parent, itemId)).toMatchObject({ outcomes: [{ status: 'draft' }] });
+        trigger.event.terminalObservation = { status: 'closed', observedAt: new Date().toISOString() };
+        triggers.update(trigger);
+        expect(await service.list(parent, itemId)).toMatchObject({ outcomes: [{ status: 'closed' }] });
+    });
+
     it('serializes optimistic controls behind an already admitted review', async () => {
         let release!: () => void;
         const busy = new Promise<void>(resolve => { release = resolve; });

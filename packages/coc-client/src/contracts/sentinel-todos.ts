@@ -271,7 +271,8 @@ export interface SentinelPrOutcome {
   jobId: string;
   receiptId: string;
   pr: { provider: 'github' | 'ado'; host: string; repoPath: string; number: number; url: string };
-  status: 'watching' | 'merged' | 'closed';
+  status: 'watching' | 'draft' | 'merged' | 'closed';
+  /** `delivered` records queue/buffer admission, not review execution or completion. */
   delivery: 'none' | 'pending' | 'delivered' | 'skipped' | 'error';
   error?: string;
   observedAt?: string;
