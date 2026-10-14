@@ -129,6 +129,43 @@ describe('collapsed rail Git summary · repository', () => {
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
     });
 
+    it.each([undefined, 'http://remote-b'])('keeps pointer and keyboard interaction inside the embedded picker on owner %s', async baseUrl => {
+        const user = userEvent.setup();
+        const client = fakeClient(baseUrl);
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef={baseUrl ? 'remote:srv:ws-alpha' : 'ws-alpha'} client={client} scopeLabel="Owner" />));
+        const trigger = screen.getByTestId('split-workspace-left-git-branch');
+        await waitFor(() => expect(trigger).toHaveTextContent('feature/search-panel'));
+        await user.hover(trigger);
+        await screen.findByTestId('rail-git-branch');
+        await user.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByTestId('branch-item-main');
+        const search = screen.getByRole('combobox', { name: 'Search branches' });
+        await waitFor(() => expect(search).toHaveFocus());
+        await user.keyboard('{ArrowDown}');
+        expect(search).toHaveFocus();
+        expect(search).toHaveAttribute('aria-activedescendant', screen.getByTestId('branch-item-main').id);
+        await user.keyboard('{ArrowUp}');
+        expect(search).toHaveFocus();
+        expect(search).toHaveAttribute('aria-activedescendant', screen.getByTestId('branch-item-feature/search-panel').id);
+        await user.keyboard('{Escape}');
+        expect(screen.queryByTestId('branch-picker-modal')).toBeNull();
+        expect(screen.getByTestId('rail-git-branch')).toHaveFocus();
+        await user.click(screen.getByTestId('rail-git-branch'));
+        await screen.findByTestId('branch-item-main');
+        await user.click(screen.getByTestId('branch-item-feature/search-panel'));
+        expect(screen.getByTestId('branch-picker-modal')).toBeInTheDocument();
+        expect(client.git.switchBranch).not.toHaveBeenCalled();
+        await user.click(screen.getByTestId('branch-picker-close'));
+        expect(screen.getByTestId('rail-git-branch')).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'Open working tree' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Open branch overview' })).toBeInTheDocument();
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(trigger).toHaveFocus();
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
+    });
+
     it('announces load errors, retries and keeps failed switches open', async () => {
         const client = fakeClient();
         client.git.listBranches.mockRejectedValueOnce(new Error('offline'));

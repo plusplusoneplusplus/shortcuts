@@ -247,6 +247,8 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                         className="fixed z-50 w-[310px] overflow-auto rounded-md border border-[#d0d7de] bg-white text-[#1e1e1e] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
                         style={{ ...position }}
                         onKeyDown={event => {
+                            // Embedded controls (such as the branch picker) own handled keys.
+                            if (event.defaultPrevented) return;
                             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
                             const actions = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, a'));
                             const index = actions.findIndex(action => action === document.activeElement);
