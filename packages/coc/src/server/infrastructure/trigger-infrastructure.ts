@@ -149,6 +149,10 @@ export async function createTriggerInfrastructure(
         triggers: triggerStore, todos, processes: store,
         executor: actionExecutor, emit, now,
         onPendingDelivery: trigger => triggerManager.schedulePendingDelivery(trigger),
+        outcomeCanDeliver: trigger => sentinelPrOutcomes.canDeliver(trigger),
+        validateOutcome: trigger => sentinelPrOutcomes.validate(trigger),
+        withOutcomeAdmission: (trigger, run) => sentinelPrOutcomes.withAdmission(
+            { workspaceId: trigger.workspaceId, processId: trigger.processId }, trigger.binding!.itemId, run),
     });
     const triggerManager: TriggerManager = new TriggerManager({
         store: triggerStore,

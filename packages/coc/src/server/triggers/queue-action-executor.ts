@@ -24,7 +24,7 @@ import { toTaskId, isQueueProcessId, getLogger, LogCategory } from '@plusplusone
 import type { ActionExecutor } from './trigger-manager';
 import type { Trigger, TriggerAction } from './trigger-types';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
-import { emitDeliveryEvents, type ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
+import { emitDeliveryEvents, ReviewDeliveryRejectedError, type ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 
 // ============================================================================
 // Types
@@ -38,7 +38,7 @@ export interface QueueActionExecutorDeps {
     /** Resolve processId → workspaceId for multi-repo routing. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     /** Shared serialized, durable admission for one-shot Sentinel wakes. */
-    messageDelivery?: Pick<ProcessMessageDeliveryService, 'deliverOnce'> & Partial<Pick<ProcessMessageDeliveryService, 'deliverPrRepairOnce'>>;
+    messageDelivery?: Pick<ProcessMessageDeliveryService, 'deliverOnce'> & Partial<Pick<ProcessMessageDeliveryService, 'deliverPrRepairOnce' | 'deliverSentinelPrOutcomeOnce'>>;
     recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
     validatePrOwner?: (workspaceId: string, processId: string, originId: string, prId: string) => Promise<void>;
 }
@@ -87,7 +87,11 @@ export class QueueActionExecutor implements ActionExecutor {
             if (!this.deps.messageDelivery || !trigger.delivery || processId !== trigger.processId) {
                 throw new Error('Sentinel wake requires durable message admission');
             }
-            const result = await this.deps.messageDelivery.deliverOnce(
+            const deliver = trigger.binding.delegatedPr
+                ? this.deps.messageDelivery.deliverSentinelPrOutcomeOnce
+                : this.deps.messageDelivery.deliverOnce;
+            if (!deliver) throw new ReviewDeliveryRejectedError('Native PR outcome admission is unavailable');
+            const result = await deliver.call(this.deps.messageDelivery,
                 trigger.workspaceId, processId, trigger.delivery.deliveryId, {
                     content: prompt, displayContent: prompt,
                     turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: trigger.delivery.deliveryId },

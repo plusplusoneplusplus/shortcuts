@@ -288,6 +288,26 @@ describe('QueueActionExecutor', () => {
                 expect(queue.enqueue).not.toHaveBeenCalled();
                 expect(store.updateProcess).not.toHaveBeenCalled();
             });
+
+            it('uses only the isolated stopped-Sentinel outcome entry point', async () => {
+                const store = makeProcessStore();
+                const queue = makeQueueManager();
+                const deliverOnce = vi.fn();
+                const deliverSentinelPrOutcomeOnce = vi.fn().mockResolvedValue({ events: [] });
+                const exec = new QueueActionExecutor({
+                    processStore: store as any, queueManager: queue as any,
+                    resolveWorkspaceId: async () => 'foreign',
+                    messageDelivery: { deliverOnce, deliverSentinelPrOutcomeOnce },
+                });
+                const trigger = wakeTrigger();
+                trigger.binding!.delegatedPr = { jobId: 'job', receiptId: 'receipt' };
+                await exec.execute(trigger, trigger.action, 'review');
+                expect(deliverOnce).not.toHaveBeenCalled();
+                expect(deliverSentinelPrOutcomeOnce).toHaveBeenCalledWith('ws_a', PROC, 'delivery-1', {
+                    content: 'review', displayContent: 'review',
+                    turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: 'delivery-1' },
+                });
+            });
         });
     });
 });

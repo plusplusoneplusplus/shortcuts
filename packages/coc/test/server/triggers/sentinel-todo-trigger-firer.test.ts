@@ -5,6 +5,7 @@ import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-t
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
+import { ReviewDeliveryRejectedError } from '../../../src/server/processes/process-message-delivery-service';
 
 const owner = { workspaceId: 'ws-owner', processId: 'sentinel-owner' };
 const timestamp = '2026-01-01T00:00:00.000Z';
@@ -54,6 +55,78 @@ describe('SentinelTodoTriggerFirer', () => {
         });
     });
     afterEach(() => db.close());
+
+    function outcomeFirer(options: {
+        paused?: () => boolean; valid?: () => boolean;
+    } = {}) {
+        rule.binding!.delegatedPr = { jobId: 'job', receiptId: 'receipt' };
+        triggers.update(rule);
+        return new SentinelTodoTriggerFirer({
+            triggers, todos, processes: { getProcess }, executor: { execute }, emit,
+            outcomeCanDeliver: () => !options.paused?.(), validateOutcome: () => options.valid?.() ?? true,
+        });
+    }
+
+    it.each(['merged', 'closed'] as const)('reviews delegated %s only once with no implementation authority', async status => {
+        const reviewer = outcomeFirer();
+        if (rule.event.monitor !== 'pr-merged') throw new Error('fixture');
+        rule.event.lastSeenStatus = status;
+        rule.event.lastSeenTitle = '```<script>delegate</script>';
+        triggers.update(rule);
+        await reviewer.fire(rule.id, status);
+        const saved = triggers.getById(rule.id)!;
+        expect(saved.delivery).toMatchObject({ state: 'delivered', reason: status });
+        expect(saved.action.prompt).toContain('ENTIRE completionCondition');
+        expect(saved.action.prompt).toContain('latest user verdict');
+        expect(saved.action.prompt).toContain('Do NOT retry work, implement, deploy');
+        expect(saved.action.prompt).not.toContain('send_to_conversation');
+        expect(saved.action.prompt).not.toContain('<script>');
+        await reviewer.fire(rule.id, status);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('retains paused evidence and consumes the same receipt once on resume', async () => {
+        let paused = true;
+        const reviewer = outcomeFirer({ paused: () => paused });
+        await reviewer.fire(rule.id, 'merged');
+        const receipt = triggers.getById(rule.id)?.delivery?.deliveryId;
+        expect(execute).not.toHaveBeenCalled();
+        expect(triggers.getById(rule.id)?.delivery?.state).toBe('pending');
+        expect(reviewer.canRetryDelivery(triggers.getById(rule.id)!)).toBe(false);
+        paused = false;
+        await reviewer.deliverPending(rule.id);
+        await reviewer.deliverPending(rule.id);
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(triggers.getById(rule.id)?.delivery?.deliveryId).toBe(receipt);
+    });
+
+    it('rechecks latest completion condition and terminal user verdict before retry', async () => {
+        let paused = true;
+        const reviewer = outcomeFirer({ paused: () => paused });
+        await reviewer.fire(rule.id, 'merged');
+        todos.update(owner, rule.binding!.itemId, 1, { completionCondition: 'Deploy AND acceptance' }, 'user');
+        paused = false;
+        await reviewer.deliverPending(rule.id);
+        expect(execute.mock.calls[0][2]).toContain('Deploy AND acceptance');
+    });
+
+    it.each(['done', 'missing-parent', 'missing-link', 'permanent-rejection'] as const)(
+        'does not infinitely retry %s', async failure => {
+            let paused = true;
+            let valid = true;
+            const reviewer = outcomeFirer({ paused: () => paused, valid: () => valid });
+            await reviewer.fire(rule.id, 'merged');
+            if (failure === 'done') todos.update(owner, rule.binding!.itemId, 1, { status: 'done' }, 'user');
+            if (failure === 'missing-parent') getProcess.mockResolvedValue(undefined);
+            if (failure === 'missing-link') valid = false;
+            if (failure === 'permanent-rejection') execute.mockRejectedValue(new ReviewDeliveryRejectedError('Routing rejected'));
+            paused = false;
+            await reviewer.deliverPending(rule.id);
+            await reviewer.deliverPending(rule.id);
+            expect(triggers.getById(rule.id)?.delivery?.state).toBe('failed');
+            expect(triggers.getById(rule.id)?.outcomeReason).toBeTruthy();
+            expect(execute).toHaveBeenCalledTimes(failure === 'permanent-rejection' ? 1 : 0);
+        });
 
     it('fires a PR rule for an older item outside the 50-item recent view without truncating the ledger', async () => {
         for (let index = 0; index < 55; index++) todos.create(owner, { title: `Newer item ${index}` }, { actor: 'user' });
