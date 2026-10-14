@@ -583,8 +583,11 @@ metadata wraps below. Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details.
 Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Pending reads block duplicate manual admission;
-reloads retain the snapshot, selection, drafts and section visibility, with read
-failures surfaced through the retry notice. Shared `sentinelTodoRecentPage` includes
+reloads retain the snapshot, selection and drafts. Selection or movement between
+tracking type and active/Done/Archived groups reveals its containing sections;
+other refreshes preserve collapse choices. Collapsing a containing group clears
+selection while retaining hidden editor drafts. Read failures surface through the
+retry notice. Shared `sentinelTodoRecentPage` includes
 all unarchived non-Done items, then recently updated Done within a 50-item budget;
 active counts above 50 stay complete and archived history follows Done. Saved
 fulfillment determines selection, not job completion. Older-item expansion and
