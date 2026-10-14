@@ -307,6 +307,10 @@ export function ExplorerPanel({
     const [rootEntries, setRootEntries] = useExplorerRootEntries(ownerKey);
     const [childrenMap, setChildrenMap] = useExplorerChildrenMap(ownerKey);
     const [rootLoaded, setRootLoaded] = useExplorerRootLoaded(ownerKey);
+    // Invalidation makes the cache stale without removing this owner's loaded view.
+    const loadedOwnerRef = useRef<string | null>(null);
+    if (rootLoaded) loadedOwnerRef.current = ownerKey;
+    const hasRootSnapshot = loadedOwnerRef.current === ownerKey;
     // Skip the mount spinner when the root listing is already cached from an
     // earlier visit to this workspace, so a switch-back renders instantly.
     const [loading, setLoading] = useState(!rootLoaded);
@@ -1479,7 +1483,7 @@ export function ExplorerPanel({
         });
     }, [selectedPath]);
 
-    if (loading) {
+    if (loading && !hasRootSnapshot) {
         return (
             <div className="flex items-center justify-center py-8" data-testid="explorer-loading">
                 <Spinner size="lg" />
@@ -1490,7 +1494,7 @@ export function ExplorerPanel({
     // A failed mount fetch has nothing to show but the error. Once the root has
     // loaded, an error (from Refresh) is shown as a banner above the tree instead,
     // so a failed refresh never blanks the hierarchy (AC-03).
-    if (error && !rootLoaded) {
+    if (error && !hasRootSnapshot) {
         return (
             <div className="p-4 text-sm text-[#d32f2f]" data-testid="explorer-error">
                 {error}

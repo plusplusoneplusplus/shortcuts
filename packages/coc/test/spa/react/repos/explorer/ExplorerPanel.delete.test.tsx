@@ -169,6 +169,27 @@ describe('Explorer permanent deletion', () => {
         expect(screen.getByTestId('preview-stub')).toHaveTextContent('a.ts');
         expect(mocks.tree.mock.calls.length).toBeGreaterThan(1);
     });
+    it('retains the remote confirmation and loaded tree when deletion and refresh both fail', async () => {
+        const route = 'remote:server-a:ws-a';
+        const view = await panel('ws-a', route);
+        chooseDelete('a.ts');
+        mocks.deleteEntry.mockRejectedValue(new Error('Remote deletion unavailable'));
+        mocks.tree.mockRejectedValue(new Error('Remote tree unavailable'));
+        confirm();
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveTextContent('Remote deletion unavailable');
+        expect(screen.getByRole('dialog')).toContainElement(alert);
+        expect(screen.getByTestId('tree-node-a.ts')).toBeVisible();
+        expect(mocks.deleteEntry).toHaveBeenCalledWith('ws-a', 'a.ts', route);
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(screen.getByTestId('tree-node-a.ts')).toBeVisible();
+        expect(screen.getByText('Remote tree unavailable')).toBeVisible();
+
+        // A loaded snapshot from this owner must not mask another owner's initial failure.
+        view.rerender(<ExplorerPanel workspaceId="ws-b" routingRef="remote:server-b:ws-b" mode="editor" />);
+        await waitFor(() => expect(screen.getByTestId('explorer-error')).toHaveTextContent('Remote tree unavailable'));
+        expect(screen.queryByTestId('tree-node-a.ts')).toBeNull();
+    });
     it('closes affected clean previews and clears top-level row selection on success', async () => {
         localStorage.setItem(explorerPreviewStorageKey('ws-a'), JSON.stringify({ path: 'a.ts', name: 'a.ts' }));
         await panel();
