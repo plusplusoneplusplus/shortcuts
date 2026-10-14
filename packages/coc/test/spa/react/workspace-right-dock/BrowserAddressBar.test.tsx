@@ -33,11 +33,30 @@ function deferred<T>() {
 }
 
 describe('desktop address history', () => {
-    it('shows recent results on blank focus with accessible, bounded overlay placement', async () => {
+    it.each(['', '   ', '\t '])('keeps blank focus, pointer, keyboard and history updates private for %j', async value => {
+        const { input, history, listeners, props } = setup({ url: value, entries: [entry('https://example.test/', 'Example', 'example.test/')] });
+        await userEvent.click(input);
+        await userEvent.keyboard('{ArrowDown}{ArrowUp}{Home}{End}{ArrowLeft}{ArrowRight}{Escape}{Backspace}{Delete}');
+        act(() => listeners.forEach(fn => fn()));
+        act(() => input.blur());
+        act(() => input.focus());
+        expect(history.suggest).not.toHaveBeenCalled();
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(screen.queryByRole('option')).toBeNull();
+        expect(input.value.trim()).toBe('');
+        expect(input).toHaveAttribute('aria-expanded', 'false');
+        expect(input).not.toHaveAttribute('aria-activedescendant');
+        await userEvent.keyboard('{Enter}');
+        expect(props.onOpen).toHaveBeenCalledWith(input.value);
+        expect(props.onOpen).not.toHaveBeenCalledWith('https://example.test/');
+    });
+
+    it('shows nonblank results with accessible, bounded overlay placement and an eight-item limit', async () => {
         const entries = Array.from({ length: 10 }, (_, i) => entry(`https://page${i}.test/`, `Recent ${i}`));
-        const { input, history } = setup({ entries });
+        const { input, history } = setup({ entries, url: 'page' });
+        act(() => input.focus());
         await screen.findByText('Recent 0');
-        expect(history.suggest).toHaveBeenCalledWith('');
+        expect(history.suggest).toHaveBeenCalledWith('page');
         const list = screen.getByRole('listbox');
         expect(screen.getAllByRole('option')).toHaveLength(8);
         expect(input).toHaveAttribute('role', 'combobox');
@@ -55,10 +74,65 @@ describe('desktop address history', () => {
         expect(Number.parseFloat(list.parentElement!.style.maxHeight)).toBeLessThanOrEqual(window.innerHeight - 78);
     });
 
+    it.each(['', ' \t '])('clears populated suggestions and selection immediately for %j', async value => {
+        const { input, history, props } = setup({ entries: [entry('https://example.test/', 'Example', 'example.test/')] });
+        await userEvent.type(input, 'ex');
+        await waitFor(() => expect(input.value).toBe('example.test/'));
+        await userEvent.keyboard('{ArrowDown}');
+        expect(input).toHaveAttribute('aria-activedescendant');
+        const calls = vi.mocked(history.suggest).mock.calls.length;
+        fireEvent.change(input, { target: { value } });
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(input).toHaveAttribute('aria-expanded', 'false');
+        expect(input).not.toHaveAttribute('aria-activedescendant');
+        await userEvent.keyboard('{ArrowDown}{ArrowUp}{Enter}');
+        expect(props.onOpen).toHaveBeenCalledWith(value);
+        expect(history.suggest).toHaveBeenCalledTimes(calls);
+        expect(input.value).toBe(value);
+    });
+
+    it.each(['', '   '])('rejects an in-flight result after clearing to %j, including refocus and invalidations', async value => {
+        const { input, history, listeners, props, rerender } = setup();
+        const late = deferred<BrowserHistoryResult<BrowserHistorySuggestion>>();
+        vi.mocked(history.suggest).mockReturnValueOnce(late.promise);
+        fireEvent.change(input, { target: { value: 'ex' } });
+        expect(screen.getByRole('listbox')).toHaveAttribute('aria-busy', 'true');
+        fireEvent.change(input, { target: { value } });
+        expect(screen.queryByRole('listbox')).toBeNull();
+        act(() => listeners.forEach(fn => fn()));
+        act(() => input.blur());
+        act(() => input.focus());
+        rerender(<BrowserAddressBar {...props} url="https://updated.test/" />);
+        await act(async () => late.resolve(reply([entry('https://example.test/', 'Example', 'example.test/')])));
+        expect(history.suggest).toHaveBeenCalledExactlyOnceWith('ex');
+        expect(input.value).toBe(value);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(screen.queryByText('Example')).toBeNull();
+        await userEvent.keyboard('{ArrowDown}{ArrowUp}{Enter}');
+        expect(props.onOpen).toHaveBeenCalledWith(value);
+    });
+
+    it('resumes nonblank suggestions after clearing and keeps blank IME completion private', async () => {
+        const { input, history } = setup({ entries: [entry('https://example.test/', 'Example', 'example.test/')] });
+        await userEvent.type(input, 'ex');
+        await screen.findByText('Example');
+        await userEvent.clear(input);
+        const calls = vi.mocked(history.suggest).mock.calls.length;
+        fireEvent.compositionStart(input);
+        fireEvent.change(input, { target: { value: '  ' } });
+        fireEvent.compositionEnd(input);
+        expect(history.suggest).toHaveBeenCalledTimes(calls);
+        expect(screen.queryByRole('listbox')).toBeNull();
+        await userEvent.clear(input);
+        await userEvent.type(input, 'ex');
+        await waitFor(() => expect(input.value).toBe('example.test/'));
+        expect(history.suggest).toHaveBeenLastCalledWith('ex');
+    });
+
     it('selects only the appended suffix and accepts the case-preserving stored URL', async () => {
         const target = entry('https://Example.test/Case?Q=Value#Hash', 'Case page', 'Example.test/Case?Q=Value#Hash');
         const { input, history, props } = setup({ entries: [target] });
-        await screen.findByText('Case page');
+        expect(screen.queryByRole('listbox')).toBeNull();
         await userEvent.type(input, 'exa');
         await waitFor(() => expect(input.value).toBe('example.test/Case?Q=Value#Hash'));
         expect([input.selectionStart, input.selectionEnd]).toEqual([3, input.value.length]);
@@ -90,6 +164,7 @@ describe('desktop address history', () => {
 
     it('opens highlighted and clicked results while retaining input focus', async () => {
         const { input, props } = setup({ entries: [entry('https://first.test/', 'First'), entry('https://second.test/', 'Second')] });
+        await userEvent.type(input, 'f');
         await screen.findByText('First');
         await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
         expect(props.onOpen).toHaveBeenLastCalledWith('https://second.test/');
@@ -124,7 +199,7 @@ describe('desktop address history', () => {
 
     it('keeps paste and mid-string caret editing free of automatic suffix selection', async () => {
         const { input, history } = setup({ entries: [entry('https://example.test/path', 'Example', 'example.test/path')] });
-        await screen.findByText('Example');
+        expect(screen.queryByRole('listbox')).toBeNull();
         await userEvent.paste('ex');
         await waitFor(() => expect(history.suggest).toHaveBeenLastCalledWith('ex'));
         expect(input.value).toBe('ex');
@@ -146,7 +221,7 @@ describe('desktop address history', () => {
 
     it('does not query or navigate during IME composition, then queries without completing', async () => {
         const { input, history, props } = setup({ entries: [entry('https://example.test/', 'Example', 'example.test/')] });
-        await screen.findByText('Example');
+        expect(screen.queryByRole('listbox')).toBeNull();
         const calls = vi.mocked(history.suggest).mock.calls.length;
         fireEvent.compositionStart(input);
         fireEvent.change(input, { target: { value: 'ex' } });
@@ -161,7 +236,7 @@ describe('desktop address history', () => {
 
     it('rejects stale queries, including late tab/owner replies', async () => {
         const { input, history, rerender, props } = setup();
-        await screen.findByText('No history matches.');
+        expect(screen.queryByRole('listbox')).toBeNull();
         const old = deferred<BrowserHistoryResult<BrowserHistorySuggestion>>();
         const newer = deferred<BrowserHistoryResult<BrowserHistorySuggestion>>();
         vi.mocked(history.suggest).mockReturnValueOnce(old.promise).mockReturnValueOnce(newer.promise);
@@ -181,14 +256,15 @@ describe('desktop address history', () => {
         expect(props.onOpen).not.toHaveBeenCalled();
     });
 
-    it.each(['blur', 'hide'] as const)('dismisses on %s and ignores late replies', async action => {
-        const { input, history, props, rerender } = setup();
-        await screen.findByText('No history matches.');
+    it.each(['blur', 'hide', 'unmount'] as const)('dismisses on %s and ignores late replies', async action => {
+        const { input, history, props, rerender, unmount, listeners } = setup();
+        expect(screen.queryByRole('listbox')).toBeNull();
         const late = deferred<BrowserHistoryResult<BrowserHistorySuggestion>>();
         vi.mocked(history.suggest).mockReturnValueOnce(late.promise);
-        await userEvent.type(input, 'ex');
+        fireEvent.change(input, { target: { value: 'ex' } });
         if (action === 'blur') fireEvent.blur(input);
-        else rerender(<BrowserAddressBar {...props} enabled={false} />);
+        else if (action === 'hide') rerender(<BrowserAddressBar {...props} enabled={false} />);
+        else { unmount(); expect(listeners.size).toBe(0); }
         await act(async () => late.resolve(reply([entry('https://example.test/', 'Example', 'example.test/')])));
         expect(screen.queryByRole('listbox')).toBeNull();
         expect(input.value).not.toBe('example.test/');
@@ -207,7 +283,7 @@ describe('desktop address history', () => {
 
     it.each(['failure', 'throw', 'storage'] as const)('shows %s errors while manual entry works', async mode => {
         const { input, history, props } = setup();
-        await screen.findByText('No history matches.');
+        expect(screen.queryByRole('listbox')).toBeNull();
         const suggest = vi.mocked(history.suggest);
         if (mode === 'throw') suggest.mockRejectedValue(new Error('transport'));
         else if (mode === 'failure') suggest.mockResolvedValue({ ok: false, reason: 'storage-failed', message: 'Cannot read history' });
@@ -220,7 +296,7 @@ describe('desktop address history', () => {
 
     it('shows loading and suppresses history UI on older hosts', async () => {
         const { props, rerender, history, input } = setup();
-        await screen.findByText('No history matches.');
+        expect(screen.queryByRole('listbox')).toBeNull();
         vi.mocked(history.suggest).mockReturnValue(new Promise(() => {}));
         fireEvent.change(input, { target: { value: 'pending' } });
         expect(screen.getByText('Loading history…')).toBeTruthy();

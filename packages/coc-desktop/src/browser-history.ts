@@ -35,7 +35,7 @@ export interface BrowserHistoryPage {
 }
 
 export interface BrowserHistorySuggestion extends BrowserHistoryEntry {
-    /** Full URL, or scheme-omitted URL, whose suffix may be selected inline. Null for title/substring matches and empty input. */
+    /** Full URL, or scheme-omitted URL, whose suffix may be selected inline. Null for title/substring matches. */
     completion: string | null;
 }
 
@@ -140,15 +140,19 @@ export class BrowserHistoryStore {
 
     /** Fixed eight-result address suggestions; rank before limiting, across all retained entries. */
     async suggest(search = ''): Promise<BrowserHistorySuggestions> {
+        if (typeof search !== 'string' || search.length > 8192) {
+            throw new TypeError('Invalid history query');
+        }
         await this.pending;
-        const entries = this.matchingEntries(search);
         const needle = search.trim().toLowerCase();
+        if (!needle) {
+            return { entries: [], total: 0, recording: this.data.recording, storageError: this.error };
+        }
+        const entries = this.matchingEntries(search);
         const ranked = entries.map(entry => ({ ...entry, completion: prefixCompletion(entry.url, needle) }))
-            .sort((a, b) => needle
-                ? Number(b.completion !== null) - Number(a.completion !== null)
-                    || b.lastVisited - a.lastVisited || b.visitCount - a.visitCount
-                    || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
-                : recentFirst(a, b));
+            .sort((a, b) => Number(b.completion !== null) - Number(a.completion !== null)
+                || b.lastVisited - a.lastVisited || b.visitCount - a.visitCount
+                || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
         // Whitespace is useful for searching, but must not cause an inline replacement.
         return { entries: ranked.slice(0, 8).map(entry => ({ ...entry,
             completion: search === search.trim() ? entry.completion : null })), total: entries.length,

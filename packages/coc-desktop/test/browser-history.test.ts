@@ -55,7 +55,7 @@ describe('desktop browser history store', () => {
         expect((await store.suggest('no match')).entries).toEqual([]);
     });
 
-    it('limits after ranking the full retained history and shows eight recent pages for empty input', async () => {
+    it('limits after ranking the full retained history and keeps blank suggestions private without changing panel queries', async () => {
         const dir = directory();
         seed(dir, [
             ...Array.from({ length: 120 }, (_, i) => entry(`https://title.test/${i}`, 1000 + i, 'target.test')),
@@ -66,11 +66,15 @@ describe('desktop browser history store', () => {
         expect(result.total).toBe(121);
         expect(result.entries).toHaveLength(8);
         expect(result.entries[0]).toMatchObject({ url: 'https://target.test/Path', completion: 'target.test/Path' });
-        for (const search of ['', '   ']) {
-            const recent = await store.suggest(search);
+        for (const search of ['', '   ', '\t\n']) {
+            expect(await store.suggest(search)).toEqual({ entries: [], total: 0, recording: true, storageError: null });
+            const recent = await store.query(search, 0, 8);
+            expect(recent.total).toBe(121);
             expect(recent.entries.map(item => item.url)).toEqual(Array.from({ length: 8 }, (_, i) => `https://title.test/${119 - i}`));
-            expect(recent.entries.every(item => item.completion === null)).toBe(true);
         }
+        await store.setRecording(false);
+        expect(await store.suggest()).toEqual({ entries: [], total: 0, recording: false, storageError: null });
+        expect((await store.query()).total).toBe(121);
     });
 
     it('suggests committed sanitized entries while paused and reflects deletion, expiry and write failures', async () => {

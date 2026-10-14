@@ -176,9 +176,10 @@ guests and hides native WebView2 surfaces.
 `query` uses recency pagination for the History panel. `suggest` searches the full
 retained URL/title index case-insensitively and returns at most eight entries:
 URL prefixes (including scheme-omitted prefixes), recency, visit count, then
-stable URL order. Empty input returns recent entries. Suggestions include a
+stable URL order. Blank/whitespace-only input returns zero entries without searching
+the index; explicit `query` retains full browsing for blank searches. Suggestions include a
 case-preserving `completion` URL or scheme-omitted URL for prefix matches;
-empty, title/substring and whitespace-padded input has null completion. Both
+title/substring and whitespace-padded input has null completion. Both
 APIs await queued saves, filter expiry and return recording/storage-error state.
 
 ### Browser adapters and lifecycle
@@ -200,9 +201,11 @@ when stock Electron exposes `getWebContentsId`, and rejects foreign/reused guest
 `BrowserToolbarMenu` and `BrowserAddressBar` portal dropdowns above the live
 Electron page. The address combobox consumes optional `browser.history.suggest`:
 main ranks up to eight URL/title matches and supplies case-preserving prefix
-completions. Local typed text survives Escape; deletion, caret moves, paste and
-IME suppress automatic suffix selection. Owner/revision checks reject stale
-queries; history invalidations refresh open results.
+completions. Blank/whitespace-only input makes no suggestion requests and renders
+no dropdown or completion. Clearing discards entries/selection and invalidates
+in-flight replies. Local typed text survives Escape; deletion, caret moves, paste
+and IME suppress automatic suffix selection. Owner/revision checks reject stale
+queries; history invalidations refresh open nonblank results.
 
 The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
