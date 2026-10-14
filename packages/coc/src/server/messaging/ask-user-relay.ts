@@ -154,6 +154,8 @@ export interface AskUserQuestionRelayRequest extends QuestionRelayLocation {
 export interface AskUserQuestionRelay {
     /** Returns true when a connector owns the request and is relaying it. */
     relay(request: AskUserQuestionRelayRequest): boolean;
+    /** Whether a connector started this turn (relay would take its questions). */
+    owns?(request: QuestionRelayLocation): boolean;
     /** The connector route for a turn, including an explicitly captured desktop mirror origin. */
     locateOrigin?(request: QuestionRelayLocation): MessagingJobOrigin | undefined;
 }
@@ -208,6 +210,10 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
         void this.run(transport, target, request).catch(error =>
             console.error(`[ask-user-relay] ${transport.platform} relay failed:`, error));
         return true;
+    }
+
+    owns(request: QuestionRelayLocation): boolean {
+        return this.locate(request) !== undefined;
     }
 
     locateOrigin(request: QuestionRelayLocation): MessagingJobOrigin | undefined {
