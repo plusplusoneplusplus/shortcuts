@@ -325,6 +325,7 @@ export interface CLIConfig {
         sentinelTodoDependencies?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
+        sentinelPrOutcomeWake?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
@@ -733,6 +734,7 @@ export interface ResolvedCLIConfig {
         sentinelTodoDependencies: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
+        sentinelPrOutcomeWake: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
@@ -1058,6 +1060,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsMessageReaction: false,
         sentinelTodoDependencies: false,
         sentinelTodoScrubber: false,
+        sentinelPrOutcomeWake: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,

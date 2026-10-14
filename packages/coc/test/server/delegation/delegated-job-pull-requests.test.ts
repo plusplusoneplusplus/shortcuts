@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import * as os from 'node:os';
+import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -32,13 +32,15 @@ describe('Delegated job pull request receipts', () => {
         store.recordPullRequest(registration.parent.workspaceId, registration.id, itemId, url);
 
     beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegated-pr-receipts-'));
+        dataDir = path.join(process.cwd(), 'test', '.delegated-pr-receipts', randomUUID());
+        fs.mkdirSync(dataDir, { recursive: true });
         store = restart();
         store.register(registration);
     });
     afterEach(() => {
         vi.restoreAllMocks();
         fs.rmSync(dataDir, { recursive: true, force: true });
+        try { fs.rmdirSync(path.dirname(dataDir)); } catch { /* Another test may still own a receipt fixture. */ }
     });
 
     it('persists exact parent, child, job, item and canonical PR identity in the owner workspace', () => {
@@ -78,6 +80,18 @@ describe('Delegated job pull request receipts', () => {
         expect(job().pullRequests).toEqual(receipts);
         expect(new Set(receipts.map(receipt => receipt.id)).size).toBe(urls.length);
         expect(receipts.map(receipt => receipt.pr.url)).toEqual(urls);
+    });
+
+    it('persists native watch intent idempotently without backfilling earlier PRs', () => {
+        const earlier = record();
+        const requested = record(prUrl.replace('/42', '/43'));
+        store.requestPullRequestOutcomeWatch('owner-repo', registration.id, requested.id);
+        const once = job().pullRequests!;
+        expect(once.find(receipt => receipt.id === earlier.id)?.outcomeWatchRequestedAt).toBeUndefined();
+        expect(once.find(receipt => receipt.id === requested.id)?.outcomeWatchRequestedAt).toBeTruthy();
+        restart().requestPullRequestOutcomeWatch('owner-repo', registration.id, requested.id);
+        expect(job().pullRequests).toEqual(once);
+        expect(() => store.requestPullRequestOutcomeWatch('owner-repo', registration.id, 'missing')).toThrow('receipt not found');
     });
 
     it('keeps PR receipts independent of execution and grilling result receipts', () => {

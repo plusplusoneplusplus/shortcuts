@@ -24,10 +24,13 @@ export class PrMergedEvaluator implements EventEvaluator {
         private readonly now: () => number = Date.now,
     ) {}
 
-    async evaluate(trigger: Trigger): Promise<EvaluationOutcome> {
+    async evaluate(trigger: Trigger, options?: { refreshOutcome?: boolean }): Promise<EvaluationOutcome> {
         const event = trigger.event;
         if (event.type !== 'condition-monitor' || event.monitor !== 'pr-merged') {
             throw new Error(`PrMergedEvaluator cannot evaluate monitor ${(event as { monitor?: string }).monitor}`);
+        }
+        if (trigger.binding?.delegatedPr && event.terminalObservation && !options?.refreshOutcome) {
+            return { fire: true, event };
         }
 
         let snapshot;
@@ -52,6 +55,12 @@ export class PrMergedEvaluator implements EventEvaluator {
         };
         const changed = !!event.lastError || event.lastSeenStatus !== next.lastSeenStatus
             || event.lastSeenTitle !== next.lastSeenTitle;
+        if (trigger.binding?.delegatedPr && (snapshot.status === 'merged' || snapshot.status === 'closed')) {
+            next.terminalObservation = event.terminalObservation ?? {
+                status: snapshot.status, observedAt: new Date(this.now()).toISOString(),
+            };
+            return { fire: true, event: next };
+        }
 
         if (snapshot.status === 'merged') return { fire: true, event: next };
         if (snapshot.status === 'closed') {

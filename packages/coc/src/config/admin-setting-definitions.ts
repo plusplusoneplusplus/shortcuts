@@ -636,6 +636,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
+            hint: 'Review exact tracked delegated PR outcomes without granting repair or delegation authority. Requires native triggers. Disabled by default.',
+            testId: 'toggle-sentinel-pr-outcome-wake-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',

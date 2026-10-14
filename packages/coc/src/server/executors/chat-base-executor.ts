@@ -439,6 +439,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         return {
             workspaceId, processId, workingDirectory, store: this.store,
             getCreateTrigger: () => this.runtime.getTriggerInfra?.()?.createTrigger,
+            getRegisterPrOutcome: () => this.runtime.getRegisterPrOutcome?.(),
         };
     }
 

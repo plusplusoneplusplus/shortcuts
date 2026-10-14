@@ -41,6 +41,7 @@ const pullRequestSchema = z.object({
     itemId: z.string().min(1).max(200),
     pr: prIdentitySchema,
     recordedAt: z.iso.datetime(),
+    outcomeWatchRequestedAt: z.iso.datetime().optional(),
 }).strict();
 const jobSchema = z.object({
     id,
@@ -143,6 +144,16 @@ export class DelegatedJobStore {
         (job.pullRequests ??= []).push(candidate);
         this.save(workspaceId, rows);
         return candidate;
+    }
+
+    /** Persist intent before constructing the native monitor; older receipts are not backfilled. */
+    requestPullRequestOutcomeWatch(workspaceId: string, jobId: string, receiptId: string): void {
+        const rows = this.list(workspaceId);
+        const receipt = rows.find(job => job.id === jobId)?.pullRequests?.find(receipt => receipt.id === receiptId);
+        if (!receipt) throw new Error('Exact delegated PR receipt not found');
+        if (receipt.outcomeWatchRequestedAt) return;
+        receipt.outcomeWatchRequestedAt = new Date().toISOString();
+        this.save(workspaceId, rows);
     }
 
     /** First terminal result wins, including duplicate events with different IDs. */

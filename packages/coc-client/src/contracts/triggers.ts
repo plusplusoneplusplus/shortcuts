@@ -56,6 +56,7 @@ export interface PrMergedMonitorEvent {
   mergeCommit?: string;
   lastError?: { message: string; at: string };
   consecutiveErrors: number;
+  terminalObservation?: { status: 'merged' | 'closed'; observedAt: string };
 }
 
 export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent;
@@ -79,6 +80,7 @@ export interface SentinelTodoTriggerBinding {
   armedAt: string;
   removedAt?: string;
   idempotencyKey?: string;
+  delegatedPr?: { jobId: string; receiptId: string };
 }
 
 export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
@@ -86,8 +88,8 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
   deliveryId: string;
   firedAt: string;
-  reason: 'merged' | 'run-now';
-  state: 'pending' | 'delivered';
+  reason: 'merged' | 'closed' | 'run-now';
+  state: 'pending' | 'delivered' | 'failed';
   deliveredAt?: string;
   itemRevision?: number;
   consecutiveErrors?: number;

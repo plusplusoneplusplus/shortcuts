@@ -89,6 +89,30 @@ function fakeActionExecutor(): ActionExecutor & { calls: Array<{ trigger: Trigge
     };
 }
 
+describe('delegated outcome retry scheduling', () => {
+    it('keeps paused pending evidence durable without retry timers or timer storms', async () => {
+        const evaluate = vi.fn();
+        const deliverPending = vi.fn();
+        let allowed = false;
+        const harness = makeManager({ evaluate }, {
+            oneShotFirer: { fire: vi.fn(), deliverPending, canRetryDelivery: () => allowed },
+        });
+        const trigger = makeTrigger({ status: 'disarmed', expiresAt: null,
+            binding: { kind: 'sentinel-todo', itemId: 'item', delegatedPr: { jobId: 'job', receiptId: 'receipt' },
+                armedBy: 'sentinel', armedAt: new Date(BASE).toISOString() } });
+        trigger.delivery = { deliveryId: 'receipt', state: 'pending', reason: 'closed', firedAt: new Date(BASE).toISOString() };
+        harness.store.insert(trigger);
+        harness.manager.armAll();
+        harness.manager.schedulePendingDelivery(trigger);
+        expect(harness.timer._timers.size).toBe(0);
+        expect(harness.store.getById(trigger.id)?.delivery?.state).toBe('pending');
+        allowed = true;
+        harness.manager.schedulePendingDelivery(trigger);
+        expect(harness.timer._timers.size).toBe(1);
+        harness.manager.shutdownAll();
+    });
+});
+
 const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 interface Harness {

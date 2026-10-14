@@ -25,6 +25,7 @@ import {
     type PullRequestMergeMethod,
 } from '../git/create-pull-request-service';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
+import type { RegisterSentinelPrOutcome } from '../triggers/sentinel-pr-outcome-service';
 import { bareTaskIdForProcess, recordPullRequestBinding, type RecordPullRequestBindingResult, type PrBindingWriterStore } from '../processes/record-pull-request-binding';
 
 export const CREATE_PULL_REQUEST_TOOL_NAME = 'create_pull_request';
@@ -40,6 +41,7 @@ export interface CreatePullRequestToolDeps {
     store: PrBindingWriterStore;
     /** Late-bound, absent when triggers are disabled or unavailable. */
     getCreateTrigger?: () => CreateTriggerFn | undefined;
+    getRegisterPrOutcome?: () => RegisterSentinelPrOutcome | undefined;
     /** Injectable service (tests). Defaults to the shared create-PR service. */
     createPullRequest?: (input: CreatePullRequestInput) => Promise<CreatePullRequestResult>;
 }
@@ -173,7 +175,14 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                     autoFix.warning = err instanceof Error ? err.message : String(err);
                 }
             }
-            return { success: true, ...result, bound: binding?.taskId === bareTaskIdForProcess(deps.processId), autoFix };
+            let prOutcome;
+            try {
+                prOutcome = await deps.getRegisterPrOutcome?.()?.(deps.workspaceId, deps.processId, result.url);
+            } catch (error) {
+                prOutcome = { registered: false, warning: error instanceof Error ? error.message : String(error) };
+            }
+            return { success: true, ...result, bound: binding?.taskId === bareTaskIdForProcess(deps.processId), autoFix,
+                ...(prOutcome ? { prOutcome } : {}) };
         },
     });
 

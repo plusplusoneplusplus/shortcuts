@@ -266,3 +266,23 @@ export interface SentinelScrubberChangedEvent {
   runId?: string;
   timestamp?: number;
 }
+export interface SentinelPrOutcome {
+  id: string;
+  jobId: string;
+  receiptId: string;
+  pr: { provider: 'github' | 'ado'; host: string; repoPath: string; number: number; url: string };
+  status: 'watching' | 'merged' | 'closed';
+  delivery: 'none' | 'pending' | 'delivered' | 'skipped' | 'error';
+  error?: string;
+  observedAt?: string;
+}
+
+export interface SentinelPrOutcomesResponse {
+  paused: boolean;
+  revision: number;
+  outcomes: SentinelPrOutcome[];
+}
+
+export interface SentinelPrOutcomeControlRequest {
+  expectedRevision: number;
+}

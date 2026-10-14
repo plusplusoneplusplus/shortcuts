@@ -131,6 +131,7 @@ export interface AdminResolvedConfig {
     teamsAiAnswerRelay?: boolean;
     teamsMessageReaction?: boolean;
     sentinelTodoScrubber?: boolean;
+    sentinelPrOutcomeWake?: boolean;
     sentinelDesktopMirror?: boolean;
     botManagedConversations?: boolean;
     quickAskSidenotes?: boolean;
@@ -229,6 +230,7 @@ export interface AdminConfigUpdate {
   'features.teamsAiAnswerRelay'?: boolean;
   'features.teamsMessageReaction'?: boolean;
   'features.sentinelTodoScrubber'?: boolean;
+  'features.sentinelPrOutcomeWake'?: boolean;
   'features.sentinelDesktopMirror'?: boolean;
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
@@ -296,6 +298,7 @@ export interface RuntimeDashboardConfig {
     teamsMessageReactionEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
+    sentinelPrOutcomeWakeEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;
     botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;

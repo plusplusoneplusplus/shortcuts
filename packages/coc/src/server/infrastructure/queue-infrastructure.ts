@@ -82,6 +82,7 @@ export function createQueueInfrastructure(
     getBrowserControlRuntime?: ExecutorRuntimeCapabilities['getBrowserControlRuntime'],
     getBrowserToolState?: ExecutorRuntimeCapabilities['getBrowserToolState'],
     getToolInventoryStore?: ExecutorRuntimeCapabilities['getToolInventoryStore'],
+    getRegisterPrOutcome?: ExecutorRuntimeCapabilities['getRegisterPrOutcome'],
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -110,6 +111,7 @@ export function createQueueInfrastructure(
         getWsServer,
         getCronInfra,
         getTriggerInfra,
+        getRegisterPrOutcome,
         getEnqueueChat,
         getSendMessage,
         getLaunchRalph,

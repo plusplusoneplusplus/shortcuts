@@ -48,6 +48,7 @@ import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-hand
 import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
+import type { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
 import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
 import { SentinelDependencyActions } from '../sentinel-todos/sentinel-dependency-actions';
 import { createSentinelDependencyTargetValidator } from '../sentinel-todos/sentinel-dependency-target';
@@ -326,6 +327,7 @@ export interface RegisterRoutesOptions {
     setLaunchRalph?: (fn: LaunchRalphFn) => void;
     /** Publish the Sentinel to-do service getter to the executor runtime. */
     setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
+    sentinelPrOutcomes?: SentinelPrOutcomeService;
     setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
     setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
