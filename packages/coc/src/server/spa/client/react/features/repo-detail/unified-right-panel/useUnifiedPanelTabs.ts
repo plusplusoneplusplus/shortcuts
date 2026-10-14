@@ -36,6 +36,7 @@ import {
     closeTab,
     findTab,
     moveTab,
+    moveVisibleTab,
     openPreviewTab,
     openTab,
     previewTab,
@@ -55,7 +56,7 @@ import {
 export interface UnifiedPanelTabsApi {
     /** The whole persisted layout, for callers that need the raw shape. */
     state: UnifiedPanelState;
-    /** Tabs visible for this chat selection: workspace tabs, then the chat's. */
+    /** Tabs visible for this chat selection, in presentation order. */
     tabs: readonly UnifiedPanelTab[];
     /** Id of the tab whose view is showing, or null when the panel is empty. */
     activeId: string | null;
@@ -87,7 +88,7 @@ export interface UnifiedPanelTabsApi {
      * unsaved edits belong to the caller, before this runs (AC-05).
      */
     close(id: string): void;
-    /** Reorder within a section: put `id` where `beforeId` is, or at the end. */
+    /** Reorder the current view, or the tab's section with mixed ordering disabled. */
     move(id: string, beforeId: string | null): void;
     /** Persist the Notes tab's local selection without changing panel focus. */
     updateNotesSelection(id: string, notePath: string | null): void;
@@ -110,7 +111,7 @@ export interface UnifiedPanelTabsApi {
  * (null when no chat is selected). Safe to call from several components at
  * once: they share one persisted session through the store.
  */
-export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null): UnifiedPanelTabsApi {
+export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null, reorderEnabled = false): UnifiedPanelTabsApi {
     const [storedState, setState] = useUnifiedPanelState(workspaceId);
     // Excursion tabs are transient; only the chat's own tabs persist.
     const excursion = useSentinelTodoExcursion();
@@ -154,8 +155,12 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
     }, [setState]);
 
     const move = useCallback((id: string, beforeId: string | null) => {
-        setState(prev => moveTab(prev, id, beforeId));
-    }, [setState]);
+        const pinned = latestPinned.current;
+        if (pinned !== null && (id === pinned || beforeId === pinned)) return;
+        setState(prev => reorderEnabled
+            ? moveVisibleTab(prev, latestChat.current, id, beforeId)
+            : moveTab(prev, id, beforeId));
+    }, [setState, reorderEnabled]);
 
     const updateNotesSelection = useCallback((id: string, notePath: string | null) => {
         setState(prev => updateNotesView(prev, id, notePath));
@@ -172,7 +177,7 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
     const find = useCallback((id: string) => findTab(latest.current, id), []);
     const visibleIds = useCallback(() => visibleTabIds(latest.current, latestChat.current), []);
 
-    const tabs = useMemo(() => visibleTabs(state, chatId), [state, chatId]);
+    const tabs = useMemo(() => visibleTabs(state, chatId, reorderEnabled), [state, chatId, reorderEnabled]);
     const activeId = useMemo(() => activeTabId(state, chatId), [state, chatId]);
     const active = useMemo(() => activeTab(state, chatId), [state, chatId]);
     const preview = useMemo(() => previewTab(state, chatId), [state, chatId]);

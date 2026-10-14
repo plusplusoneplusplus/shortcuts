@@ -106,9 +106,15 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.workItemsWorkflowEnabled).toBe(false);
         expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
         expect(result.features.markdownPanelPreviewEnabled).toBe(false);
+        expect(result.features.panelTabReorderingEnabled).toBe(false);
         expect(result.features.chatHistoryPagingEnabled).toBe(false);
         expect(result.features.railManualRefreshEnabled).toBe(true);
         expect(result.features.railStatusActionsEnabled).toBe(true);
+    });
+
+    it.each([false, true])('exposes explicit panel tab reordering without a restart (%s)', enabled => {
+        const svc = createMockRuntimeConfigService({ features: { panelTabReordering: enabled } });
+        expect(buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.panelTabReorderingEnabled).toBe(enabled);
     });
 
     it.each([false, true])('retains explicit collapsed-sidebar settings in runtime config (%s)', enabled => {

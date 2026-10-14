@@ -55,6 +55,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
     DOCK_MIN_WIDTH,
@@ -219,11 +220,17 @@ export function UnifiedRightPanel({
     repoGroup,
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
+    const [reorderEnabled, setReorderEnabled] = useState(() => isFeatureEnabled('panelTabReorderingEnabled'));
+    useEffect(() => {
+        const update = () => setReorderEnabled(isFeatureEnabled('panelTabReorderingEnabled'));
+        window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
+        return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
+    }, []);
     const {
         state, tabs, activeId, active, pinnedId, open, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
         updateBrowser,
-    } = useUnifiedPanelTabs(workspaceId, chatId);
+    } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
     // reveal the panel themselves, and a user may explicitly keep an empty panel
@@ -1679,6 +1686,9 @@ export function UnifiedRightPanel({
                     onClose={requestClose}
                     onCloseMany={requestBulkClose}
                     onMove={move}
+                    reorderEnabled={reorderEnabled}
+                    reorderScope={JSON.stringify([workspaceId, routingRef, chatId])}
+                    pinnedId={pinnedId}
                     onPromote={promote}
                     fileActionAvailability={tab => unifiedPanelFileActionAvailability(tab, rootPathForTab(tab))}
                     onMenuAction={handleTabMenuAction}

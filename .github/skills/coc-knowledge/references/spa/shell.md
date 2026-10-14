@@ -555,9 +555,13 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-The strip's divider splits tools (workspace tabs plus the chat's canvases, which
-stay chat-owned) from resources (files, diffs, external); tabs never reorder
-across it. It has a searchable `+` menu and one right-edge navigator that switches between
+With default-off `features.panelTabReordering` disabled, the strip divides
+tools from resources and confines moves to a section. Enabled, native drag,
+Alt+Arrow and tab-menu moves share `moveVisibleTab`: per-chat `orderByScope`
+interleaves stable ids without changing ownership, activation or keyed views.
+The panel's owner-qualified storage prunes stale/ephemeral ids and retains
+preview replacement slots; ordering does not broaden tab restoration.
+It has a searchable `+` menu and one right-edge navigator that switches between
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
 dock target. The Search/Explorer pair moves between the file toolbar and tab strip,

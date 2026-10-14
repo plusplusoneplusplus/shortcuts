@@ -515,6 +515,166 @@ describe('UnifiedPanelTabStrip', () => {
         expect(props.onMove).toHaveBeenCalledWith(tabs[2].id, tabs[1].id);
     });
 
+    describe('mixed-type reordering', () => {
+        function drag(node: HTMLElement, type: string, clientX = 0) {
+            fireEvent(node, new MouseEvent(type, { bubbles: true, cancelable: true, clientX }));
+        }
+
+        function rect(node: HTMLElement, left = 100) {
+            vi.spyOn(node, 'getBoundingClientRect').mockReturnValue({
+                left, right: left + 100, top: 0, bottom: 35, x: left, y: 0, width: 100, height: 35,
+                toJSON: () => ({}),
+            });
+        }
+
+        it('moves across kinds with Alt+Arrow without activating or closing and retains focus', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, activeId: tabs[1].id, reorderEnabled: true });
+            const node = tabNode(tabs[1]);
+            node.focus();
+            fireEvent.keyDown(node, { key: 'ArrowLeft', altKey: true });
+            expect(props.onMove).toHaveBeenCalledWith(tabs[1].id, tabs[0].id);
+            expect(props.onActivate).not.toHaveBeenCalled();
+            expect(props.onClose).not.toHaveBeenCalled();
+            expect(document.activeElement).toBe(node);
+            expect(screen.queryByTestId('unified-panel-tab-section-divider')).toBeNull();
+            expect(screen.getByRole('status').textContent).toBe('Tab moved left. Position 1 of 3.');
+        });
+
+        it('offers menu moves, disables boundaries, and leaves other menu commands unchanged', async () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, activeId: tabs[0].id, reorderEnabled: true });
+            fireEvent.keyDown(tabNode(tabs[0]), { key: 'F10', shiftKey: true });
+            expect(screen.getByTestId('unified-panel-tab-menu-move-left')).toBeDisabled();
+            fireEvent.click(screen.getByTestId('unified-panel-tab-menu-move-right'));
+            expect(props.onMove).toHaveBeenCalledWith(tabs[0].id, tabs[2].id);
+            await Promise.resolve();
+            expect(document.activeElement).toBe(tabNode(tabs[0]));
+            fireEvent.contextMenu(tabNode(tabs[2]));
+            expect(screen.getByTestId('unified-panel-tab-menu-move-right')).toBeDisabled();
+            fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close'));
+            expect(props.onMenuAction).toHaveBeenCalledWith('close', tabs[2].id);
+        });
+
+        it('uses target halves for insertion, styles the drag and suppresses trailing click/close', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, activeId: tabs[0].id, reorderEnabled: true });
+            rect(tabNode(tabs[2]));
+            drag(tabNode(tabs[0]), 'dragstart');
+            drag(tabNode(tabs[2]), 'dragover', 175);
+            expect(tabNode(tabs[0]).getAttribute('data-dragging')).toBe('true');
+            expect(screen.getByTestId('unified-panel-tab-drop-indicator').getAttribute('data-position')).toBe('after');
+            drag(tabNode(tabs[2]), 'drop', 175);
+            expect(props.onMove).toHaveBeenCalledWith(tabs[0].id, null);
+            expect(screen.queryByTestId('unified-panel-tab-drop-indicator')).toBeNull();
+            fireEvent.click(tabNode(tabs[0]));
+            fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabs[0].id}`));
+            expect(props.onActivate).not.toHaveBeenCalled();
+            expect(props.onClose).not.toHaveBeenCalled();
+            expect(tabNode(tabs[0]).getAttribute('aria-selected')).toBe('true');
+        });
+
+        it('clears a previous insertion marker over the source tab or a pinned tab', () => {
+            const tabs = sampleTabs();
+            renderStrip({ tabs, reorderEnabled: true, pinnedId: tabs[2].id });
+            rect(tabNode(tabs[1]));
+            drag(tabNode(tabs[0]), 'dragstart');
+            drag(tabNode(tabs[1]), 'dragover', 110);
+            expect(screen.getByTestId('unified-panel-tab-drop-indicator')).toBeTruthy();
+            drag(tabNode(tabs[0]), 'dragover');
+            expect(screen.queryByTestId('unified-panel-tab-drop-indicator')).toBeNull();
+            drag(tabNode(tabs[1]), 'dragover', 110);
+            drag(tabNode(tabs[2]), 'dragover');
+            expect(screen.queryByTestId('unified-panel-tab-drop-indicator')).toBeNull();
+        });
+
+        it('rejects foreign transfers and cancels on Escape or dragend', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, reorderEnabled: true });
+            rect(tabNode(tabs[1]));
+            drag(tabNode(tabs[1]), 'drop', 110);
+            expect(props.onMove).not.toHaveBeenCalled();
+            for (const cancel of ['escape', 'dragend']) {
+                drag(tabNode(tabs[0]), 'dragstart');
+                drag(tabNode(tabs[1]), 'dragover', 110);
+                expect(screen.getByTestId('unified-panel-tab-drop-indicator')).toBeTruthy();
+                if (cancel === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+                else drag(tabNode(tabs[0]), 'dragend');
+                expect(screen.queryByTestId('unified-panel-tab-drop-indicator')).toBeNull();
+                drag(tabNode(tabs[1]), 'drop', 110);
+            }
+            expect(props.onMove).not.toHaveBeenCalled();
+        });
+
+        it('rejects cross-strip drops even when both strips contain the same tab identities', () => {
+            const tabs = sampleTabs();
+            const props = {
+                tabs, activeId: tabs[0].id, onActivate: vi.fn(), onClose: vi.fn(), onCloseMany: vi.fn(),
+                onMove: vi.fn(), reorderEnabled: true,
+            };
+            const source = render(<UnifiedPanelTabStrip {...props} />);
+            const onOtherMove = vi.fn();
+            const target = render(<UnifiedPanelTabStrip {...props} onMove={onOtherMove} />);
+            const transfer = { setData: vi.fn(), getData: () => tabs[0].id, effectAllowed: 'move', dropEffect: 'move' };
+            fireEvent.dragStart(source.container.querySelector('[role="tab"]')!, { dataTransfer: transfer });
+            fireEvent.drop(target.container.querySelectorAll('[role="tab"]')[1], { dataTransfer: transfer });
+            expect(onOtherMove).not.toHaveBeenCalled();
+            expect(props.onMove).not.toHaveBeenCalled();
+        });
+
+        it('cancels when the source closes, scope switches, or the feature is disabled', () => {
+            const tabs = sampleTabs();
+            const props = {
+                tabs, activeId: tabs[0].id, onActivate: vi.fn(), onClose: vi.fn(), onCloseMany: vi.fn(),
+                onMove: vi.fn(), reorderEnabled: true, reorderScope: 'owner-a',
+            };
+            const { rerender } = render(<UnifiedPanelTabStrip {...props} />);
+            drag(tabNode(tabs[0]), 'dragstart');
+            rerender(<UnifiedPanelTabStrip {...props} tabs={tabs.slice(1)} />);
+            drag(tabNode(tabs[1]), 'drop');
+            rerender(<UnifiedPanelTabStrip {...props} />);
+            drag(tabNode(tabs[0]), 'dragstart');
+            rerender(<UnifiedPanelTabStrip {...props} reorderScope="owner-b" />);
+            drag(tabNode(tabs[1]), 'drop');
+            drag(tabNode(tabs[0]), 'dragstart');
+            rerender(<UnifiedPanelTabStrip {...props} reorderEnabled={false} />);
+            drag(tabNode(tabs[1]), 'drop');
+            expect(props.onMove).not.toHaveBeenCalled();
+        });
+
+        it('scrolls overflow near the edge and accepts a drop on the row tail', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, reorderEnabled: true });
+            const list = screen.getByTestId('unified-panel-tab-list');
+            rect(list, 0);
+            drag(tabNode(tabs[0]), 'dragstart');
+            drag(list, 'dragover', 95);
+            expect(list.scrollLeft).toBe(24);
+            expect(screen.getByTestId('unified-panel-tab-drop-indicator').getAttribute('data-position')).toBe('after');
+            drag(list, 'drop', 95);
+            expect(props.onMove).toHaveBeenCalledWith(tabs[0].id, null);
+        });
+
+        it('excludes pinned excursion tabs and prevents dragging a close button', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, reorderEnabled: true, pinnedId: tabs[0].id });
+            expect(tabNode(tabs[0]).getAttribute('draggable')).toBe('false');
+            drag(tabNode(tabs[0]), 'dragstart');
+            drag(tabNode(tabs[1]), 'drop');
+            drag(screen.getByTestId(`unified-panel-tab-close-${tabs[1].id}`), 'dragstart');
+            drag(tabNode(tabs[2]), 'drop');
+            fireEvent.keyDown(tabNode(tabs[0]), { key: 'ArrowRight', altKey: true });
+            expect(props.onMove).not.toHaveBeenCalled();
+        });
+
+        it('keeps middle-click close working when no drag is in progress', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, reorderEnabled: true });
+            fireEvent(tabNode(tabs[1]), new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));
+            expect(props.onClose).toHaveBeenCalledWith(tabs[1].id);
+        });
+    });
+
     it('ignores a drop onto the dragged tab itself', () => {
         const tabs = sampleTabs();
         const props = renderStrip({ tabs, activeId: tabs[1].id });
@@ -587,6 +747,21 @@ describe('UnifiedPanelTabStrip', () => {
         } finally {
             delete (Element.prototype as any).scrollIntoView;
         }
+    });
+
+    it('reveals external activation even when a different reordered tab retains keyboard focus', () => {
+        const tabs = sampleTabs();
+        const props = {
+            tabs, activeId: tabs[0].id, onActivate: vi.fn(), onClose: vi.fn(),
+            onCloseMany: vi.fn(), onMove: vi.fn(), reorderEnabled: true,
+        };
+        const { rerender } = render(<UnifiedPanelTabStrip {...props} />);
+        const scroll = vi.fn();
+        tabNode(tabs[2]).scrollIntoView = scroll;
+        tabNode(tabs[0]).focus();
+        rerender(<UnifiedPanelTabStrip {...props} activeId={tabs[2].id} />);
+        expect(scroll).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+        expect(document.activeElement).toBe(tabNode(tabs[0]));
     });
 
     describe('overlay scrollbar', () => {

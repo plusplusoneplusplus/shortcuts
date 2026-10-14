@@ -790,6 +790,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerEditorTabs': 'appearance',
         'features.explorerDelete': 'appearance',
         'features.markdownPanelPreview': 'appearance',
+        'features.panelTabReordering': 'appearance',
         'features.htmlPageTab': 'appearance',
         'scratchpad.layout': 'appearance',
         // Integrations

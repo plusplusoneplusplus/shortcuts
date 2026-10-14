@@ -126,6 +126,7 @@ interface DashboardConfig {
     explorerEditorTabsEnabled?: boolean;
     /** Whether unified right-panel Markdown file tabs offer a rendered preview. Default false. */
     markdownPanelPreviewEnabled?: boolean;
+    panelTabReorderingEnabled?: boolean;
     /** Desktop: whether local .html/.htm chat links open as a rendered page tab. Default true. */
     htmlPageTabEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */

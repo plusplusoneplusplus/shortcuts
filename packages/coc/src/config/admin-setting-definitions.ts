@@ -1175,6 +1175,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.panelTabReordering', default: false, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Panel tab reordering', badge: 'experimental',
+            hint: 'Reorder mixed resource tabs by dragging, Alt+Left/Right, or the tab menu. Saves order per workspace and chat without moving content between owners. Disabled by default.',
+            testId: 'toggle-panel-tab-reordering-enabled',
+        },
+    }),
+    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 72, label: 'HTML page tabs',
