@@ -46,7 +46,7 @@ import { TaskDefs } from '../../../../../tasks/task-types';
 import { queueJobHash } from '../../queue/queueJobRoute';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { mergeCompactingConversations, isCompactingProcess } from './compacting-conversations';
-import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
+import { parseActivityDeepLink, parseTasksDeepLink, parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDeepLink } from '../../layout/Router';
 
 export interface RepoChatTabProps {
     workspaceId: string;
@@ -249,14 +249,10 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
 
     const { state: appState, dispatch: appDispatch } = useApp();
     const { refreshUnseenCounts } = useRepos();
-    const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
-    // The Router files a URL selection under the route id — a clone key for a
-    // remote workspace or group — while this tab selects under the bare id.
-    // Adopt route changes so reloads, history and job links select here too.
-    const routedTaskId = routeId === workspaceId ? undefined : queueState.selectedTaskIdByRepo[routeId];
-    useEffect(() => {
-        if (routedTaskId !== undefined) queueDispatch({ type: 'SELECT_QUEUE_TASK', id: routedTaskId, repoId: workspaceId });
-    }, [routedTaskId, workspaceId, queueDispatch]);
+    // Route navigation and inline openers share one server-qualified selection.
+    // Mirroring it under the bare workspace id can retain a child when Back
+    // reapplies an unchanged route, and conflates equal ids on different hosts.
+    const selectedTaskId = queueState.selectedTaskIdByRepo[routeId] ?? null;
     const { isMobile, isTablet } = useBreakpoint();
     const activityLeftPanelWidthStorageKey = getActivityLeftPanelWidthStorageKey(workspaceId);
     const activityListCollapsedStorageKey = getActivityListCollapsedStorageKey(workspaceId);
@@ -620,7 +616,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // Tasks from deep-links may not appear in the paginated history list,
     // so we verify via the API before clearing.
     useEffect(() => {
-        if (!selectedTaskId || loading) return;
+        if (!selectedTaskId || loading || unresolvedRemote) return;
         const allTasks = [...running, ...queued, ...history];
         if (findBySelectedId(allTasks, selectedTaskId)) return;
 
@@ -639,7 +635,12 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             })
             .catch(() => {
                 if (cancelled) return;
-                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                // An explicit URL is the requested identity even if the owner
+                // cannot find it. Keep ChatDetail mounted to show its read error.
+                const routePrefix = '#repos/' + encodeURIComponent(routeId) + '/';
+                if (location.hash.startsWith(routePrefix)
+                    && (parseActivityDeepLink(location.hash) ?? parseTasksDeepLink(location.hash)) === selectedTaskId) return;
+                queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
                 const activityBase = '#repos/' + encodeURIComponent(routeId) + '/activity';
@@ -649,7 +650,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             });
         void probeProcess;
         return () => { cancelled = true; };
-    }, [selectedTaskId, running, queued, history, loading, queueDispatch, workspaceId, routeId, cloneClient]);
+    }, [selectedTaskId, running, queued, history, loading, unresolvedRemote, queueDispatch, workspaceId, routeId, cloneClient]);
 
     // Update selectedTask when lists change
     useEffect(() => {
@@ -792,7 +793,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         }
         markSeen(processId);
         markReadByProcessId(processId);
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: routeId });
         setSelectedTask(task || null);
         selectedTaskRef.current = task || null;
         // Commit the mobile detail-pane state BEFORE updating location.hash.
@@ -1074,7 +1075,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const handleSelectRalphSession = useCallback((sessionId: string) => {
         // Selecting a Ralph session clears the chat-task selection.
         if (selectedTaskId) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
             setSelectedTask(null);
             selectedTaskRef.current = null;
         }
@@ -1122,7 +1123,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             const parsed = parseForEachRunDeepLink(location.hash);
             if (parsed && parsed.workspaceId === routeId && isForEachEnabled()) {
                 if (selectedTaskId) {
-                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
                 }
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
@@ -1146,9 +1147,9 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         setSelectedRalphFileName(null);
         setSelectedForEachRunId(null);
         setSelectedMapReduceRunId(null);
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: routeId });
         if (isMobile) setMobileShowDetail(true);
-    }, [queueDispatch, workspaceId, isMobile]);
+    }, [queueDispatch, routeId, isMobile]);
 
     const handleSelectForEachChildProcess = useCallback((processId: string) => {
         setSelectedForEachRunId(null);
@@ -1173,7 +1174,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const handleOpenForEachRun = useCallback((runId: string) => {
         if (!isForEachEnabled()) return;
         if (selectedTaskId) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
             setSelectedTask(null);
             selectedTaskRef.current = null;
         }
@@ -1191,7 +1192,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             const parsed = parseMapReduceRunDeepLink(location.hash);
             if (parsed && parsed.workspaceId === routeId && isMapReduceEnabled()) {
                 if (selectedTaskId) {
-                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
                 }
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
@@ -1212,7 +1213,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const handleOpenMapReduceRun = useCallback((runId: string) => {
         if (!isMapReduceEnabled()) return;
         if (selectedTaskId) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
             setSelectedTask(null);
             selectedTaskRef.current = null;
         }
@@ -1230,7 +1231,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             mobileNewChatRef.current = true;
             setMobileShowDetail(true);
         }
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: routeId });
         setSelectedTask(null);
         selectedTaskRef.current = null;
         setSelectedRalphSessionId(null);

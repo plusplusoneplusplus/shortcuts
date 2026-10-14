@@ -258,9 +258,9 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     const handleSplitNewChat = useCallback(() => {
         memberChat.backToGroupChats();
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: selectionId });
         setSplitLastClicked('chat');
-    }, [memberChat.backToGroupChats, queueDispatch, workspaceId]);
+    }, [memberChat.backToGroupChats, queueDispatch, selectionId]);
     // Group-owned rows select through the tab's native path, so the group's own
     // selection, hash and detail pane behave exactly as in the native list.
     const renderAggregatedList = useCallback((ctx: RepoChatTabListContext) => {
@@ -301,7 +301,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // fallback, so another workspace's chat cannot claim these tabs.
     // `useQueueOptional` because this read is cosmetic to the group view: with
     // no provider (a focused test host) the panel simply has no chat scope.
-    const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[workspaceId] ?? null;
+    const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[selectionId] ?? null;
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
         if (!dockAvailable) {
             return Promise.resolve({

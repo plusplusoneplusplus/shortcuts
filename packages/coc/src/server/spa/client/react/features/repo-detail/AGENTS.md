@@ -49,7 +49,11 @@ visual layer.
 `RepoDetail.tsx` routes the queue seed through `useCocClient(sourceSelectionId)`
 and `api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
 Queue hydration accepts an empty task list only from its recorded server/API
-source; stats-only placeholders still require a seed. Work-items badge and
+source; stats-only placeholders still require a seed. Router, chat openers and
+panel hosts use `selectedTaskIdByRepo[sourceSelectionId]` for one concrete owner;
+remote selections never mirror into bare workspace keys. Explicit chat routes
+retain missing/unavailable process identities for detail errors, and unresolved
+remote owners skip local reachability probes. Work-items badge and
 Resume Queue use `getCocClientForWorkspace(ws.id)`. Work-item commit reviews receive the repo’s concrete selection id
 through `WorkItemsTab` and `WorkItemCommitReviewPane` as
 `attachmentDestinationId`; diff payloads keep the plain workspace id.

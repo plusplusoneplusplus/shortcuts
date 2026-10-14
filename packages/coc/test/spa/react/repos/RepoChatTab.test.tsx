@@ -24,7 +24,15 @@ import { useQueue } from '../../../../src/server/spa/client/react/contexts/Queue
 import { useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
-import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import { useRepoGroupChatSelection } from '../../../../src/server/spa/client/react/repos/useRepoGroupChatSelection';
+import { buildRepoGroupChatHash } from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
+import { Router } from '../../../../src/server/spa/client/react/layout/Router';
+import { SentinelTodoOriginBar } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoOriginBar';
+import { clearSentinelTodoExcursion, startSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
+import { buildRemoteCloneKey, getWorkspaceIdFromSelectionId } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+
+vi.mock('../../../../src/server/spa/client/react/repos', () => ({ ReposView: () => null }));
+vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_WIKI_TAB: false }));
 
 // ── Mock child components ──────────────────────────────────────────────
 
@@ -94,6 +102,10 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/RalphWorkflowPane
             'data-selected-file': props.selectedFileName ?? '',
         },
             `Ralph: ${props.sessionId}`,
+            props.onSelectIteration && React.createElement('button', {
+                'data-testid': 'ralph-child-btn',
+                onClick: () => props.onSelectIteration('queue_child'),
+            }, 'Open iteration'),
             props.onClose && React.createElement('button', {
                 'data-testid': 'ralph-close-btn',
                 onClick: props.onClose,
@@ -214,9 +226,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getCocClientFor: (baseUrl: string) => ({
         options: { baseUrl },
-        queue: { list: (query: any) => mockRemoteQueue(baseUrl, query) },
+        queue: { list: (query: any) => mockRemoteQueue(baseUrl, query), getTask: (id: string) => mockFetchApi(`/queue/${id}`) },
         workspaces: { history: (id: string) => mockRemoteHistory(baseUrl, id), pinned: (id: string) => mockRemotePinned(baseUrl, id) },
-        processes: { listGroupPins: async () => ({ pins: [] }) },
+        processes: { get: (id: string) => mockFetchApi(`/processes/${id}`), listGroupPins: async () => ({ pins: [] }) },
     }),
     getSpaCocClient: () => ({
         workspaces: {
@@ -2857,7 +2869,7 @@ describe('RepoChatTab: collapsed-rail Open job opener', () => {
                     onActivateDetail,
                     railShortcutContainer: makeHost(),
                 }),
-                React.createElement(SelectionProbe, { workspaceId, onSelection: id => { state.selected = id; } }),
+                React.createElement(SelectionProbe, { workspaceId: sourceSelectionId ?? workspaceId, onSelection: id => { state.selected = id; } }),
                 React.createElement(RouteSimulator, { routeRef }),
             ));
         });
@@ -3181,5 +3193,166 @@ describe('RepoChatTab: manual rail refresh', () => {
         act(() => dispatchRef.current!({ running: [makeRunningTask('same-run', { displayName: 'Live' })], queued: [] }));
         await act(async () => finish({ running: [makeRunningTask('same-run', { displayName: 'Stale' })], queued: [] }));
         expect(latestList().running[0].displayName).toBe('Live');
+    });
+});
+
+describe('Back to Sentinel through mounted routing and chat selection', () => {
+    afterEach(() => clearSentinelTodoExcursion());
+
+    function HostedOrigin({ workspaceId }: { workspaceId: string }) {
+        const { state } = useQueue();
+        const chatId = state.selectedTaskIdByRepo[workspaceId];
+        return chatId ? <SentinelTodoOriginBar scopeWorkspaceId={workspaceId} chatId={chatId} title={chatId} /> : null;
+    }
+
+    function RoutedHost() {
+        const { state } = useApp();
+        const selectionId = state.selectedRepoId ?? 'ws-1';
+        const workspaceId = getWorkspaceIdFromSelectionId(selectionId);
+        const member = useRepoGroupChatSelection(selectionId, workspaceId.startsWith('group-'));
+        const memberDetail = member.selection ? <div data-testid="member-detail"
+            data-owner={member.selection.ownerSelectionId} data-process={member.selection.processId}>
+            <SentinelTodoOriginBar scopeWorkspaceId={selectionId} chatId={member.selection.processId} title={member.selection.processId} />
+        </div> : undefined;
+        return <>{memberDetail ?? <RepoChatTab key={selectionId} workspaceId={workspaceId} sourceSelectionId={selectionId} mode="chats"
+            detailOverride={memberDetail} />}{!memberDetail && <HostedOrigin workspaceId={selectionId} />}</>;
+    }
+
+    it.each([
+        { serverId: null, crossWorkspace: false, group: false },
+        { serverId: null, crossWorkspace: true, group: false },
+        { serverId: 'owner-server', crossWorkspace: false, group: false },
+        { serverId: 'owner-server', crossWorkspace: true, group: false },
+        { serverId: 'owner-server', childServerId: 'other-server', crossWorkspace: false, group: false },
+        { serverId: null, crossWorkspace: true, group: true },
+        { serverId: 'owner-server', crossWorkspace: true, group: true },
+    ])('returns and reloads the exact origin: %j', async ({ serverId, childServerId, crossWorkspace, group }) => {
+        const parentWorkspace = 'ws-1';
+        const childWorkspace = crossWorkspace ? 'ws-2' : parentWorkspace;
+        const ownerSelection = serverId ? buildRemoteCloneKey(serverId, parentWorkspace) : parentWorkspace;
+        const childSelection = serverId ? buildRemoteCloneKey(childServerId ?? serverId, childWorkspace) : childWorkspace;
+        const groupSelection = serverId ? buildRemoteCloneKey(serverId, 'group-ai') : 'group-ai';
+        const scope = group ? groupSelection : ownerSelection;
+        if (serverId) {
+            registerCloneBaseUrls([...new Set([ownerSelection, childSelection, groupSelection])].map(cloneKey => ({
+                cloneKey, workspaceId: getWorkspaceIdFromSelectionId(cloneKey), baseUrl: cloneKey.startsWith('remote:other-server:') ? 'https://other-owner.example' : 'https://rail-owner.example',
+            })));
+            mockRemoteQueue.mockImplementation(async () => ({ running: [], queued: [], stats: {} }));
+            mockRemoteHistory.mockImplementation(async () => ({ history: [makeHistoryTask('queue_parent'), makeHistoryTask('queue_child')] }));
+        }
+        setupFetchMock({ history: [makeHistoryTask('queue_parent'), makeHistoryTask('queue_child')] });
+        const parentHref = group ? buildRepoGroupChatHash(groupSelection, parentWorkspace, 'queue_parent')
+            : `#repos/${encodeURIComponent(ownerSelection)}/chats/queue_parent`;
+        const childHref = group ? buildRepoGroupChatHash(groupSelection, childWorkspace, 'queue_child')
+            : `#repos/${encodeURIComponent(childSelection)}/chats/queue_child`;
+        const origin = { owner: { ownerWorkspaceId: parentWorkspace, ownerRoutingRef: serverId ? ownerSelection : null, processId: 'queue_parent' },
+            scopeWorkspaceId: scope, chatId: 'queue_parent', title: 'Origin Sentinel', href: parentHref, linkKey: 'item|job' };
+        window.history.replaceState(null, '', parentHref);
+        const view = renderWithProviders(<><Router /><RoutedHost />
+            <a href={childHref} onClick={() => startSentinelTodoExcursion(origin)}>Open delegated job</a></>);
+        const selected = () => group ? screen.getByTestId('member-detail').getAttribute('data-process')
+            : screen.getByTestId('mock-detail-pane').getAttribute('data-selected');
+        await waitFor(() => expect(selected()).toBe('queue_parent'));
+        fireEvent.click(screen.getByRole('link', { name: 'Open delegated job' }));
+        await waitFor(() => expect(selected()).toBe('queue_child'));
+        expect(location.hash).toBe(childHref);
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        await waitFor(() => expect(location.hash).toBe(parentHref));
+        await waitFor(() => expect(selected()).toBe('queue_parent'));
+        if (group) expect(screen.getByTestId('member-detail').getAttribute('data-owner')).toBe(ownerSelection);
+        // Hydrate the saved route map with stale child history, as on a fresh page.
+        view.unmount();
+        clearSentinelTodoExcursion();
+        localStorage.setItem('coc-repo-route-state', JSON.stringify({ [scope]: childHref.slice(childHref.indexOf('/chats')) }));
+        renderWithProviders(<><Router /><RoutedHost /><a href={childHref}>Open job</a></>);
+        await waitFor(() => expect(selected()).toBe('queue_parent'));
+        expect(location.hash).toBe(parentHref);
+        expect(screen.queryByTestId('sentinel-todo-origin-bar')).toBeNull();
+        // Ordinary Open job continues to select the child without a return bar.
+        fireEvent.click(screen.getByRole('link', { name: 'Open job' }));
+        await waitFor(() => expect(selected()).toBe('queue_child'));
+        expect(location.hash).toBe(childHref);
+        expect(screen.queryByTestId('sentinel-todo-origin-bar')).toBeNull();
+    });
+
+    it('keeps unresolved parent ownership remote without reading the local process', async () => {
+        const selectionId = buildRemoteCloneKey('unavailable-server', 'ws-1');
+        window.history.replaceState(null, '', `#repos/${encodeURIComponent(selectionId)}/chats/queue_parent`);
+        renderWithProviders(<><Router /><RoutedHost /></>);
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_parent'));
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(mockFetchApi.mock.calls.filter(([url]) => typeof url === 'string' && url.startsWith('/processes/'))).toEqual([]);
+        expect(location.hash).toContain(encodeURIComponent(selectionId));
+    });
+
+    it.each([null, 'owner-server'])('keeps a missing parent route for detail error display on %s', async serverId => {
+        const workspaceId = 'ws-1';
+        const selectionId = serverId ? buildRemoteCloneKey(serverId, workspaceId) : workspaceId;
+        if (serverId) configureRemoteRail(selectionId, workspaceId);
+        setupFetchMock({ history: [makeHistoryTask('queue_child')] });
+        const childHref = `#repos/${encodeURIComponent(selectionId)}/chats/queue_child`;
+        window.history.replaceState(null, '', childHref);
+        act(() => startSentinelTodoExcursion({
+            owner: { ownerWorkspaceId: workspaceId, ownerRoutingRef: serverId ? selectionId : null, processId: 'queue_missing' },
+            scopeWorkspaceId: selectionId, chatId: 'queue_missing', title: 'Missing Sentinel', href: childHref, linkKey: 'item|job',
+        }));
+        renderWithProviders(<><Router /><RepoChatTab workspaceId={workspaceId} sourceSelectionId={selectionId} mode="chats" />
+            <HostedOrigin workspaceId={selectionId} /></>);
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_child'));
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        await waitFor(() => expect(mockFetchApi).toHaveBeenCalledWith('/processes/queue_missing'));
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/queue_missing`);
+        expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_missing');
+    });
+
+    it.each([
+        { serverId: null, live: false }, { serverId: 'owner-server', live: false },
+        { serverId: null, live: true }, { serverId: 'owner-server', live: true },
+    ])('reapplies the origin before a child hash event: %j', async ({ serverId, live }) => {
+        const workspaceId = 'ws-1';
+        const selectionId = serverId ? buildRemoteCloneKey(serverId, workspaceId) : workspaceId;
+        if (serverId) configureRemoteRail(selectionId, workspaceId);
+        setupFetchMock(live ? { running: [
+            makeRunningTask('queue_parent', { processId: 'queue_parent', mode: 'sentinel' }),
+            makeRunningTask('queue_child', { processId: 'queue_child', parentProcessId: 'queue_parent' }),
+        ] } : { history: [makeHistoryTask('queue_parent'), makeHistoryTask('queue_child')] });
+        const parentHref = `#repos/${encodeURIComponent(selectionId)}/chats/queue_parent`;
+        window.history.replaceState(null, '', parentHref);
+        renderWithProviders(<><Router /><RepoChatTab workspaceId={workspaceId} sourceSelectionId={selectionId} mode="chats" />
+            <HostedOrigin workspaceId={selectionId} /></>);
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_parent'));
+        act(() => startSentinelTodoExcursion({
+            owner: { ownerWorkspaceId: workspaceId, ownerRoutingRef: serverId ? selectionId : null, processId: 'queue_parent' },
+            scopeWorkspaceId: selectionId, chatId: 'queue_parent', title: 'Origin Sentinel', href: parentHref, linkKey: 'item|job',
+        }));
+        await screen.findByTestId('task-queue_child');
+        fireEvent.click(screen.getByTestId('task-queue_child'));
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        await waitFor(() => expect(location.hash).toBe(parentHref));
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_parent'));
+    });
+
+    it.each([null, 'owner-server'])('returns from a delegated Ralph child on %s', async serverId => {
+        const workspaceId = 'ws-1';
+        const selectionId = serverId ? buildRemoteCloneKey(serverId, workspaceId) : workspaceId;
+        if (serverId) configureRemoteRail(selectionId, workspaceId);
+        setupFetchMock({ history: [makeHistoryTask('queue_parent'), makeHistoryTask('queue_child')] });
+        const parentHref = `#repos/${encodeURIComponent(selectionId)}/chats/queue_parent`;
+        window.history.replaceState(null, '', parentHref);
+        renderWithProviders(<><Router /><RepoChatTab workspaceId={workspaceId} sourceSelectionId={selectionId} mode="chats" />
+            <HostedOrigin workspaceId={selectionId} /></>);
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_parent'));
+        act(() => startSentinelTodoExcursion({
+            owner: { ownerWorkspaceId: workspaceId, ownerRoutingRef: serverId ? selectionId : null, processId: 'queue_parent' },
+            scopeWorkspaceId: selectionId, chatId: 'queue_parent', title: 'Origin Sentinel', href: parentHref, linkKey: 'item|job',
+        }));
+        fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        await waitFor(() => expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('ralph-child-btn'));
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_child'));
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        await waitFor(() => expect(location.hash).toBe(parentHref));
+        await waitFor(() => expect(screen.getByTestId('mock-detail-pane').getAttribute('data-selected')).toBe('queue_parent'));
     });
 });

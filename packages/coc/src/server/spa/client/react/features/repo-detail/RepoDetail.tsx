@@ -168,11 +168,11 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // surface); the split chat list reconciles its empty compose state from the
     // cleared queue selection. Points the shared detail pane at chat.
     const handleSplitNewChat = useCallback(() => {
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: ws.id });
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: sourceSelectionId });
         const segment = 'activity';
-        location.hash = '#repos/' + encodeURIComponent(ws.id) + '/' + segment;
+        location.hash = '#repos/' + encodeURIComponent(sourceSelectionId) + '/' + segment;
         setSplitLastClicked('chat');
-    }, [queueDispatch, ws.id]);
+    }, [queueDispatch, sourceSelectionId]);
     // Portal host inside the split panel's "Git" section header — RepoGitTab
     // portals its compact toolbar here so it shares the 22px header row.
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
@@ -196,7 +196,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // Deliberately the per-repo entry only, never `queueState.selectedTaskId`:
     // that global fallback can still name another workspace's chat, and filing
     // this workspace's tabs under it would leak them across repos.
-    const panelChatId = queueState.selectedTaskIdByRepo?.[ws.id] ?? null;
+    const panelChatId = queueState.selectedTaskIdByRepo?.[sourceSelectionId] ?? null;
     // Desktop split view: git detail lives in the right panel's one Git tab, so
     // the middle pane keeps the chat. `RepoGitTab` portals into the tab body
     // (null until the tab is mounted) and every new git selection opens and
@@ -459,14 +459,14 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const switchSubTab = (tab: RepoSubTab) => {
         if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
-        const selectedTaskId = queueState.selectedTaskIdByRepo[ws.id] ?? queueState.selectedTaskId;
-        location.hash = '#repos/' + encodeURIComponent(ws.id) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
+        const selectedTaskId = queueState.selectedTaskIdByRepo[sourceSelectionId] ?? null;
+        location.hash = '#repos/' + encodeURIComponent(sourceSelectionId) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
     };
 
     const handleNavigateToTask = useCallback((taskId: string) => {
         switchSubTab('tasks');
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: ws.id });
-    }, [ws.id, queueDispatch]);
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: sourceSelectionId });
+    }, [sourceSelectionId, queueDispatch]);
 
     const handleTasksNavStateChange = useCallback((navState: TasksPanelNavState) => {
         dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState });
