@@ -11,7 +11,8 @@
  *  - AC-05: imperative close (used by select-collapses-to-rail) never persists
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { createElement } from 'react';
+import { renderHook, render, act } from '@testing-library/react';
 import { useHoverPeek } from '../../../../../src/server/spa/client/react/features/chat/hooks/useHoverPeek';
 
 describe('useHoverPeek', () => {
@@ -56,11 +57,30 @@ describe('useHoverPeek', () => {
         expect(result.current.isOpen).toBe(false);
     });
 
-    it('uses the default 400ms open delay when none is provided', () => {
+    it('uses the default 1000ms open delay when none is provided', () => {
         const { result } = renderHook(() => useHoverPeek({ enabled: true }));
 
         act(() => { result.current.onRailPointerEnter(); });
-        act(() => { vi.advanceTimersByTime(399); });
+        act(() => { vi.advanceTimersByTime(400); });
+        expect(result.current.isOpen).toBe(false);
+        act(() => { vi.advanceTimersByTime(599); });
+        expect(result.current.isOpen).toBe(false);
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(result.current.isOpen).toBe(true);
+    });
+
+    it('cancels a default open after 400ms and requires a full delay on re-entry', () => {
+        const { result } = renderHook(() => useHoverPeek({ enabled: true }));
+
+        act(() => { result.current.onRailPointerEnter(); });
+        act(() => { vi.advanceTimersByTime(700); });
+        expect(result.current.isOpen).toBe(false);
+        act(() => { result.current.onRailPointerLeave(); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        expect(result.current.isOpen).toBe(false);
+
+        act(() => { result.current.onRailPointerEnter(); });
+        act(() => { vi.advanceTimersByTime(999); });
         expect(result.current.isOpen).toBe(false);
         act(() => { vi.advanceTimersByTime(1); });
         expect(result.current.isOpen).toBe(true);
@@ -70,7 +90,7 @@ describe('useHoverPeek', () => {
 
     function openPeek(result: { current: ReturnType<typeof useHoverPeek> }) {
         act(() => { result.current.onRailPointerEnter(); });
-        act(() => { vi.advanceTimersByTime(400); });
+        act(() => { vi.advanceTimersByTime(1000); });
         expect(result.current.isOpen).toBe(true);
     }
 
@@ -103,6 +123,26 @@ describe('useHoverPeek', () => {
         openPeek(result);
 
         act(() => { result.current.onPanelPointerLeave(); });
+        act(() => { vi.advanceTimersByTime(249); });
+        expect(result.current.isOpen).toBe(true);
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(result.current.isOpen).toBe(false);
+    });
+
+    it('retains the peek while its input is focused and closes 250ms after blur', () => {
+        const { result } = renderHook(() => useHoverPeek({ enabled: true }));
+        openPeek(result);
+        const { getByRole } = render(createElement('div', result.current.panelProps,
+            createElement('input'),
+        ));
+        const input = getByRole('textbox');
+
+        act(() => { input.focus(); });
+        act(() => { result.current.onPanelPointerLeave(); });
+        act(() => { vi.advanceTimersByTime(250); });
+        expect(result.current.isOpen).toBe(true);
+
+        act(() => { input.blur(); });
         act(() => { vi.advanceTimersByTime(249); });
         expect(result.current.isOpen).toBe(true);
         act(() => { vi.advanceTimersByTime(1); });
@@ -235,8 +275,9 @@ describe('useHoverPeek', () => {
             { initialProps: { scopeKey: 'server-a:workspace-a' } },
         );
         act(() => { result.current.onRailPointerEnter(); });
+        act(() => { vi.advanceTimersByTime(700); });
         rerender({ scopeKey: 'server-b:workspace-a' });
-        act(() => { vi.advanceTimersByTime(400); });
+        act(() => { vi.advanceTimersByTime(1000); });
         expect(result.current.isOpen).toBe(false);
         openPeek(result);
         act(() => { result.current.onPanelPointerLeave(); });

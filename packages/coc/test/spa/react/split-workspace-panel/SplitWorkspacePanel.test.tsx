@@ -947,7 +947,11 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
 
             // Hover the rail → after the open delay the body floats out as an overlay.
             act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(400); });
+            expect(body.classList.contains('hidden')).toBe(true);
+            act(() => { vi.advanceTimersByTime(599); });
+            expect(body.classList.contains('hidden')).toBe(true);
+            act(() => { vi.advanceTimersByTime(1); });
             expect(body.classList.contains('hidden')).toBe(false);
             expect(body.className).toContain('absolute');
             expect(body.className).toContain('z-30');
@@ -986,7 +990,7 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
             // Float the peek out, then confirm the pin button is still present and
             // re-labelled, and clicking it pins the column open.
             act(() => { fireEvent.mouseEnter(rail); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(1000); });
             expect(screen.getByTestId('split-workspace-left').classList.contains('hidden')).toBe(false);
             expect(expandBtn.getAttribute('aria-label')).toBe('Keep sidebar open');
 
@@ -1023,7 +1027,7 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
             const body = screen.getByTestId('split-workspace-left');
 
             act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(1000); });
             expect(body.className).toContain('left-9');
             expect(body.className).not.toContain('left-0');
 
@@ -1073,7 +1077,7 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
             const body = screen.getByTestId('split-workspace-left');
             const open = () => {
                 fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
-                act(() => { vi.advanceTimersByTime(450); });
+                act(() => { vi.advanceTimersByTime(1000); });
             };
             open();
             const option = screen.getByTestId('nested-option');
@@ -1175,7 +1179,7 @@ describe('SplitWorkspacePanel collapsed rail — shortcut slot', () => {
             render(<PortaledShortcutHarness onShortcut={onShortcut} />);
             const body = screen.getByTestId('split-workspace-left');
             act(() => { fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail')); });
-            act(() => { vi.advanceTimersByTime(450); });
+            act(() => { vi.advanceTimersByTime(1000); });
             expect(body.classList.contains('hidden')).toBe(false);
 
             act(() => { fireEvent.click(screen.getByTestId('portaled-shortcut')); });

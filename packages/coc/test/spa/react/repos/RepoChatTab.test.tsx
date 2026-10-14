@@ -2153,13 +2153,18 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
         setupFetchMock({ running: [r1] });
         await renderTab();
 
-        await act(async () => {
-            fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed'));
-        });
-
-        await waitFor(() => {
+        vi.useFakeTimers();
+        try {
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('activity-list-collapsed')); });
+            act(() => { vi.advanceTimersByTime(400); });
+            expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+            act(() => { vi.advanceTimersByTime(599); });
+            expect(screen.queryByTestId('activity-list-peek')).toBeNull();
+            act(() => { vi.advanceTimersByTime(1); });
             expect(screen.getByTestId('activity-list-peek')).toBeTruthy();
-        }, { timeout: 2000 });
+        } finally {
+            vi.useRealTimers();
+        }
         // Reuses ChatListPane (the mock), not a duplicate list implementation.
         expect(screen.getByTestId('mock-list-pane')).toBeTruthy();
         expect(screen.getByTestId('task-r1')).toBeTruthy();
@@ -2194,7 +2199,7 @@ describe('RepoChatTab: hover-to-float peek (collapsed rail)', () => {
             fireEvent.mouseLeave(rail);
         });
         // Wait well beyond the hover-open delay — the peek must never appear.
-        await act(async () => { await new Promise(r => setTimeout(r, 600)); });
+        await act(async () => { await new Promise(r => setTimeout(r, 1100)); });
         expect(screen.queryByTestId('activity-list-peek')).toBeNull();
     });
 
