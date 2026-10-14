@@ -5,7 +5,7 @@
  * own branch; it never presents a group branch.
  */
 import { useCallback, useContext, useRef, useState, type ReactNode } from 'react';
-import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, GitCommit } from '@plusplusoneplusplus/coc-client';
 import { BranchPickerModal } from '../git/branches/BranchPickerModal';
 import { isExplorerDirty } from './explorer/explorerDirtyStore';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
@@ -30,6 +30,8 @@ import {
     type RepoRailGitInput,
 } from './railGitModel';
 import { useGroupRailGit, useRepoRailGit } from './useRailGitSummary';
+import { RailOutgoingCommits } from './RailOutgoingCommits';
+import { routingRefForPanelOwner } from './unified-right-panel/unifiedPanelOwnerRouting';
 
 const TONE_CLASS: Record<RailGitTone, string> = {
     clean: 'text-[#16825d] dark:text-[#3fb950]',
@@ -75,7 +77,7 @@ function StaleMark({ stale }: { stale: boolean }) {
     return stale ? <span aria-hidden="true" className="absolute -right-1 -top-1 text-[8px] leading-none text-[#848484]">◷</span> : null;
 }
 
-function buildControls(tiles: Tiles, group: boolean, actions: Actions, body: (dismiss: () => void) => ReactNode): RailPreviewControl[] {
+function buildControls(tiles: Tiles, group: boolean, actions: Actions, body: (dismiss: () => void, syncPreview: boolean) => ReactNode): RailPreviewControl[] {
     const base = {
         count: 1,
         headingCount: false,
@@ -83,11 +85,11 @@ function buildControls(tiles: Tiles, group: boolean, actions: Actions, body: (di
         description: 'Focus to preview; click opens Git.',
         badgeClassName: '',
         icon: null,
-        renderRows: body,
     };
     const tile = (key: string, value: RailGitTile, heading: string, onClick: () => void, text: ReactNode): RailPreviewControl => ({
         ...base,
         key,
+        renderRows: (dismiss) => body(dismiss, key === 'git-sync'),
         label: value.label,
         heading,
         onClick,
@@ -148,15 +150,20 @@ export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: Rep
         },
     };
     const canSwitch = !!input.info.data?.isGitRepo && !(parseRemoteCloneKey(routingRef) && !client.options?.baseUrl);
-    const body = (dismiss: () => void) => (
+    const openCommit = (commit: GitCommit) => {
+        rail.onOpenGit?.('branch');
+        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: workspaceId, workspaceId, commitHash: commit.hash, filePath: null,
+            knownCommit: { sourceSelectionId: routingRef, commit } });
+    };
+    const body = (dismiss: () => void, syncPreview: boolean) => (
         <RepoPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}:${workspaceId}`}
             routingRef={routingRef} workspaceId={workspaceId} client={client} canSwitch={canSwitch}
-            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} />
+            input={input} tiles={tiles} actions={actions} dismiss={dismiss} onRetry={refresh} syncPreview={syncPreview} onOpenCommit={openCommit} />
     );
     return <RailHoverPreview controls={buildControls(tiles, false, actions, body)} scopeLabel={scopeLabel} {...rail} />;
 }
 
-function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void }) {
+function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, tiles, actions, dismiss, onRetry, syncPreview, onOpenCommit }: { workspaceId: string; routingRef: string; client: CocClient; canSwitch: boolean; input: RepoRailGitInput; tiles: Tiles; actions: Actions; dismiss: () => void; onRetry: () => void; syncPreview: boolean; onOpenCommit: (commit: GitCommit) => void }) {
     const [pickerOpen, setPickerOpen] = useState(false);
     const branchButton = useRef<HTMLButtonElement>(null);
     const closePicker = () => { setPickerOpen(false); branchButton.current?.focus(); };
@@ -196,6 +203,9 @@ function RepoPreviewBody({ workspaceId, routingRef, client, canSwitch, input, ti
                     : 'Ahead/behind needs an upstream comparison; none is shown.'}
             </div>
             <button type="button" className={ACTION_CLASS} onClick={go(actions.openSync)}>Open branch overview</button>
+            {syncPreview && <RailOutgoingCommits client={client} routingRef={routingRef} workspaceId={workspaceId}
+                info={input.info.data} readAt={input.info.readAt} loading={input.info.loading} failed={input.info.failed}
+                onOpen={commit => { dismiss(); onOpenCommit(commit); }} onRetry={onRetry} />}
         </li>
         <Freshness readAt={input.tree.readAt ?? input.info.readAt} failed={input.info.failed || input.tree.failed} onRetry={onRetry} />
     </>;
@@ -224,15 +234,18 @@ export function GroupRailGit({ selectionId, routingRef, client, members, scopeLa
     };
     const openGit = () => rail.onOpenGit?.('changes');
     const actions: Actions = { openChanges: openGit, openSync: openGit };
-    const openMember = (memberId: string) => {
+    const openMember = (memberId: string, commit?: GitCommit) => {
         rail.onOpenGit?.('branch');
-        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: null, filePath: null });
+        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: commit?.hash ?? null, filePath: null,
+            ...(commit ? { knownCommit: { sourceSelectionId: routingRefForPanelOwner(routingRef, memberId) ?? memberId, commit } } : {}) });
     };
-    const body = (dismiss: () => void) => <GroupPreviewBody input={input} tiles={tiles} dismiss={dismiss} onOpenMember={openMember} onRetry={refresh} />;
+    const body = (dismiss: () => void, syncPreview: boolean) => <GroupPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}`}
+        input={input} tiles={tiles} dismiss={dismiss} onOpenMember={openMember} onRetry={refresh}
+        client={client} routingRef={routingRef} syncPreview={syncPreview} />;
     return <RailHoverPreview controls={buildControls(tiles, true, actions, body)} scopeLabel={scopeLabel} {...rail} />;
 }
 
-function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry }: { input: GroupRailGitInput; tiles: Tiles; dismiss: () => void; onOpenMember: (id: string) => void; onRetry: () => void }) {
+function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry, client, routingRef, syncPreview }: { input: GroupRailGitInput; tiles: Tiles; dismiss: () => void; onOpenMember: (id: string, commit?: GitCommit) => void; onRetry: () => void; client: CocClient; routingRef: string; syncPreview: boolean }) {
     return <>
         <li className={cn(GROUP_ROW_CLASS, META_CLASS, 'break-words')} title="Counts are repositories; each member keeps its own branch.">
             <div>{tiles.changes.label.replace(/^Repository changes: /, '')}</div>
@@ -248,6 +261,9 @@ function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry }: { in
                             <span className={cn(META_CLASS, 'min-w-0 break-all font-mono')}>{line.branch}</span>
                         </div>
                         <div className={cn(META_CLASS, 'break-all')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                        {syncPreview && <RailOutgoingCommits client={client} routingRef={routingRef} workspaceId={member.id}
+                            info={member.info} readAt={input.read.readAt} loading={input.read.loading} failed={member.stale || input.read.failed}
+                            onOpen={commit => { dismiss(); onOpenMember(member.id, commit); }} onRetry={onRetry} />}
                     </div>
                     {!member.stale && member.info?.isGitRepo && (
                         <button type="button" className={cn(COMPACT_ACTION_CLASS, 'shrink-0')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>

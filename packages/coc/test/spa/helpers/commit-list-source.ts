@@ -26,6 +26,7 @@ export const COMMIT_LIST_MODULES = [
     'useCommitListGestures.ts',
     'useCommitListDragController.ts',
     'CommitRow.tsx',
+    'CommitIdentity.tsx',
     'CommitRowBadges.tsx',
     'CommitGroupSeparator.tsx',
     'CommitExpandedFiles.tsx',

@@ -1167,6 +1167,23 @@ describe('AppContext reducer', () => {
 
     // ── SET_GIT_ROUTE ──────────────────────────────────────────────
     describe('SET_GIT_ROUTE', () => {
+        it('carries only the matching already-read commit and drops it on the next navigation', () => {
+            const commit = { hash: 'abcdef1234567', shortHash: 'abcdef1', subject: 'Example change',
+                author: 'Example', date: '2026-10-01T12:00:00Z', parentHashes: [] };
+            const action: AppAction = {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'remote:owner:group-product', workspaceId: 'repo-a',
+                commitHash: commit.hash, filePath: null,
+                knownCommit: { sourceSelectionId: 'remote:owner:repo-a', commit },
+            };
+            const state = appReducer(makeState(), action);
+            expect(state.gitRouteScope?.knownCommit).toEqual(action.knownCommit);
+            expect(state.repoRouteState).toEqual({});
+            const next = appReducer(state, { ...action, commitHash: 'aaaaaaa', knownCommit: undefined });
+            expect(next.gitRouteScope?.knownCommit).toBeUndefined();
+            const mismatched = appReducer(state, { ...action, commitHash: 'aaaaaaa' });
+            expect(mismatched.gitRouteScope?.knownCommit).toBeUndefined();
+        });
+
         it('publishes the page owner, the data member, the revision and the file at once', () => {
             const result = appReducer(makeState(), {
                 type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',

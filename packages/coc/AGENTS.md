@@ -56,8 +56,11 @@ references before editing. Paths are package-relative.
   project owner-verified current process modes in a transcript-free batch; Ralph
   identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.
   Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
-  owner's git-info/working tree (groups: per-member git-info, never a group branch),
-  and never show unknown, no-upstream or detached state as clean or 0/0.
+  owner's git-info/working tree (groups: per-member git-info, never a group branch).
+  Sync previews lazily page the expanded Git outgoing prefix on that owner;
+  commit routes retain page/member/clone ownership and already-read metadata.
+  Never fetch or mutate Git on hover, or show unknown, no-upstream or detached
+  state as clean or 0/0.
   Rail Admin/quota shortcuts (`features.railStatusActions`) are portals from the
   docked `StatusActions` footer; never give the rail its own quota hook or fetch.
 - Terminal native paste is captured inside the focused `TerminalPanel`, consumes

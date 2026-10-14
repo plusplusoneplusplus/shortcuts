@@ -103,7 +103,14 @@ owner-scoped reads (repo: git-info + working tree; group: one member git-info
 batch on the group's server). The repository preview's branch row embeds the
 shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
-the rail while preserving the popup's Git links. Owner changes reset the selector. `features.railStatusActions` defaults on, with
+the rail while preserving the popup's Git links. Owner changes reset the selector.
+The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
+history paging and outgoing prefix, with shared `CommitIdentity` rows. Owner,
+branch, upstream and status-read changes discard old history. Missing upstream,
+failed reads and inconsistent counts remain explicit; hover never fetches or
+mutates Git. Commit navigation carries a transient owner-qualified known commit
+through `SET_GIT_ROUTE`, including paged rows and server-qualified group/member scope.
+`features.railStatusActions` defaults on, with
 explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
 rail slot (`layout/railStatusSlot.ts`)
 that the footer's `StatusActions` portals its Admin gear and quota ring into,

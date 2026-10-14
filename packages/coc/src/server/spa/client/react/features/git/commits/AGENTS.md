@@ -52,6 +52,7 @@ split so that a change to one interaction mode cannot silently alter another:
 | `useCommitListGestures.ts` | Hover-tooltip timers, touch-start dismissal, long-press context menu, swipe-reveal row state, touch overflow button. |
 | `useCommitListDragController.ts` | The two drag systems, kept explicitly apart. |
 | `CommitRow.tsx` | Row markup + `SwipeableCommitRow`. Presentation only; all behavior arrives as props. |
+| `CommitIdentity.tsx`, `outgoingCommits.ts` | Shared SHA/subject formatting, history page size and outgoing-prefix selection for expanded Git and collapsed-rail Sync previews. |
 | `CommitRowBadges.tsx`, `CommitGroupSeparator.tsx`, `CommitExpandedFiles.tsx`, `CommitMobileSelectionBar.tsx` | Focused presentation pieces. |
 
 ### Invariants

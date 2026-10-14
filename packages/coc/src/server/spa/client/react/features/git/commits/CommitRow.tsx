@@ -14,6 +14,7 @@ import type { GitCommitContextDragPayload } from '../../chat/sessionContextDrag'
 import { isTouchOnly, type GitCommitItem } from './commitListTypes';
 import type { CommitRowViewModel } from './commitRowViewModel';
 import { CommitRowBadges } from './CommitRowBadges';
+import { CommitIdentity } from './CommitIdentity';
 import type { useLongPress } from '../../../hooks/ui/useLongPress';
 
 /** Wrapper component that adds swipe-to-reveal gesture to a commit row. */
@@ -200,10 +201,7 @@ export function CommitRow({
                         </span>
                     )}
                     {/* Commit id leads the row so it stays visible however much the subject truncates. */}
-                    <span className={`font-mono text-[11px] flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`} data-testid={`commit-hash-${commit.shortHash}`}>{commit.shortHash}</span>
-                    <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1 leading-snug">
-                        {isFixup ? fixupEntry!.displaySubject : commit.subject}
-                    </span>
+                    <CommitIdentity commit={{ shortHash: commit.shortHash, subject: isFixup ? fixupEntry!.displaySubject : commit.subject }} unpushed={isUnpushed} />
                     <span
                         className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[8px] font-semibold flex-shrink-0"
                         style={{ background: avatar.palette.bg, color: avatar.palette.fg }}

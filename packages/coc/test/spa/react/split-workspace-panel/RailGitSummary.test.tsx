@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { CocClient, GitInfoResponse, GitWorkingTreeChangesResponse } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, GitCommit, GitInfoResponse, GitWorkingTreeChangesResponse } from '@plusplusoneplusplus/coc-client';
 import { SplitWorkspacePanel, splitWorkspaceGitCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
 import { GroupRailGit, RepoRailGit } from '../../../../src/server/spa/client/react/features/repo-detail/RailGitSummary';
@@ -32,11 +32,18 @@ const changes: GitWorkingTreeChangesResponse = {
     repoState: { operation: 'none', conflictFiles: [] },
 };
 
+const outgoing: GitCommit[] = [3, 2, 1].map(n => ({
+    hash: String(n).repeat(40), shortHash: String(n).repeat(7), subject: `Outgoing change ${n}`,
+    author: 'Example', date: '2026-10-01T12:00:00Z', parentHashes: [],
+}));
+
 function fakeClient(baseUrl?: string) {
     const client = {
         options: { baseUrl },
         workspaces: { gitInfo: vi.fn(async () => info()), gitInfoBatch: vi.fn() },
         git: {
+            listCommits: vi.fn(async (_workspaceId: string) => ({ commits: outgoing, unpushedCount: 3 })),
+            fetch: vi.fn(), pull: vi.fn(), push: vi.fn(),
             getWorkingTreeChanges: vi.fn(async () => changes),
             listBranches: vi.fn(async () => ({ local: { branches: [
                 { name: 'feature/search-panel', isCurrent: true, isRemote: false },
@@ -66,6 +73,76 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('collapsed rail Git summary · repository', () => {
+    it('keeps hovered outgoing rows viewport-bounded without a fetch or mutation', async () => {
+        const client = fakeClient();
+        const width = window.innerWidth;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 196 });
+        try {
+            render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={client} scopeLabel="Owner" />));
+            const sync = screen.getByTestId('split-workspace-left-git-sync');
+            await waitFor(() => expect(sync).toHaveTextContent('↑3↓1'));
+            fireEvent.pointerEnter(sync, { pointerType: 'mouse' });
+            expect(client.git.listCommits).not.toHaveBeenCalled();
+            await screen.findByRole('button', { name: /^Open commit 3333333/ });
+            const popup = screen.getByRole('dialog');
+            expect(Number.parseFloat(popup.style.maxWidth)).toBeLessThanOrEqual(180);
+            expect(screen.getByTestId('rail-outgoing-list')).toHaveClass('max-h-48', 'overflow-y-auto');
+            expect(client.git.fetch).not.toHaveBeenCalled();
+            expect(client.git.pull).not.toHaveBeenCalled();
+            expect(client.git.push).not.toHaveBeenCalled();
+            expect(client.git.switchBranch).not.toHaveBeenCalled();
+            expect(client.git.listBranches).not.toHaveBeenCalled();
+            fireEvent.pointerDown(document.body);
+            expect(screen.queryByRole('dialog')).toBeNull();
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+        }
+    });
+
+    it.each([undefined, 'http://remote-b'])('lazily opens outgoing history and navigates the full SHA on owner %s', async baseUrl => {
+        const client = fakeClient(baseUrl);
+        const routingRef = baseUrl ? 'remote:srv:ws-alpha' : 'ws-alpha';
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef={routingRef} client={client} scopeLabel="Owner" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-sync')).toHaveTextContent('↑3↓1'));
+        expect(client.git.listCommits).not.toHaveBeenCalled();
+        act(() => screen.getByTestId('split-workspace-left-git-changes').focus());
+        expect(client.git.listCommits).not.toHaveBeenCalled();
+        act(() => screen.getByTestId('split-workspace-left-git-sync').focus());
+        const rows = await screen.findAllByRole('button', { name: /^Open commit/ });
+        expect(rows.map(row => row.textContent)).toEqual(outgoing.map(commit => commit.shortHash + commit.subject));
+        expect(client.git.listCommits).toHaveBeenCalledWith('ws-alpha', { limit: 50, skip: undefined, refresh: true });
+        expect(screen.getByRole('button', { name: 'Open branch overview' })).toBeInTheDocument();
+        fireEvent.pointerDown(rows[1]);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        act(() => rows[1].focus());
+        fireEvent.keyDown(rows[1], { key: 'ArrowDown' });
+        expect(rows[2]).toHaveFocus();
+        fireEvent.click(rows[2]);
+        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-alpha', workspaceId: 'ws-alpha', commitHash: outgoing[2].hash, filePath: null,
+            knownCommit: { sourceSelectionId: routingRef, commit: outgoing[2] } });
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('0');
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(client.git.switchBranch).not.toHaveBeenCalled();
+    });
+
+    it('keeps the embedded picker keyboard owner while outgoing rows are present', async () => {
+        const user = userEvent.setup();
+        render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={fakeClient()} scopeLabel="Owner" />));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-sync')).toHaveTextContent('↑3↓1'));
+        act(() => screen.getByTestId('split-workspace-left-git-sync').focus());
+        await screen.findByRole('button', { name: /^Open commit 3333333/ });
+        await user.click(screen.getByTestId('rail-git-branch'));
+        const search = await screen.findByRole('combobox', { name: 'Search branches' });
+        await waitFor(() => expect(search).toHaveFocus());
+        await user.keyboard('{ArrowDown}{Escape}');
+        expect(screen.queryByTestId('branch-picker-modal')).toBeNull();
+        expect(screen.getByTestId('rail-git-branch')).toHaveFocus();
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByTestId('split-workspace-left-git-sync')).toHaveFocus();
+    });
+
     it('shows changes, sync and branch tiles below the existing job controls', async () => {
         const client = fakeClient();
         render(panel(<RepoRailGit workspaceId="ws-alpha" routingRef="ws-alpha" client={client} scopeLabel="Local / Harbor" />));
@@ -385,6 +462,47 @@ describe('collapsed rail Git summary · repo group', () => {
         expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: 'ws-beacon', commitHash: null, filePath: null });
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('group-product'))).toBe('0');
         expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it.each([undefined, 'http://team-host'])('loads member outgoing commits only in Sync and retains group owner %s', async baseUrl => {
+        const client = fakeClient(baseUrl);
+        const selectionId = baseUrl ? 'remote:team:group-product' : 'group-product';
+        client.workspaces.gitInfoBatch.mockResolvedValue({ results: {
+            'ws-harbor': info(), 'ws-beacon': info({ upstream: null }),
+        } });
+        render(panel(<GroupRailGit selectionId={selectionId} routingRef={selectionId} client={client} members={members} scopeLabel="Group" />, 'group-product'));
+        const trigger = screen.getByTestId('split-workspace-left-git-sync');
+        await waitFor(() => expect(trigger).not.toHaveTextContent('…'));
+        expect(client.git.listCommits).not.toHaveBeenCalled();
+        act(() => trigger.focus());
+        const row = await screen.findByRole('button', { name: /^Open commit 3333333/ });
+        expect(client.git.listCommits).toHaveBeenCalledWith('ws-harbor', expect.any(Object));
+        expect(client.git.listCommits).not.toHaveBeenCalledWith('ws-beacon', expect.any(Object));
+        expect(client.git.listCommits).not.toHaveBeenCalledWith('ws-gone', expect.any(Object));
+        expect(client.git.listCommits).not.toHaveBeenCalledWith(selectionId, expect.any(Object));
+        expect(screen.getByText('No upstream; outgoing commits cannot be compared.')).toBeInTheDocument();
+        fireEvent.click(row);
+        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: 'ws-harbor', commitHash: outgoing[0].hash, filePath: null,
+            knownCommit: { sourceSelectionId: baseUrl ? 'remote:team:ws-harbor' : 'ws-harbor', commit: outgoing[0] } });
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('drops pending outgoing history when a member leaves the group', async () => {
+        const client = fakeClient();
+        client.workspaces.gitInfoBatch.mockResolvedValue({ results: { 'ws-harbor': info(), 'ws-beacon': info() } });
+        let resolveHistory!: (value: { commits: GitCommit[]; unpushedCount: number }) => void;
+        client.git.listCommits.mockImplementation(id => id === 'ws-harbor'
+            ? new Promise(resolve => { resolveHistory = resolve; })
+            : Promise.resolve({ commits: [], unpushedCount: 0 }));
+        const body = (live: RepoGroupMember[]) => panel(<GroupRailGit selectionId="group-product" routingRef="group-product" client={client} members={live} scopeLabel="Group" />, 'group-product');
+        const view = render(body(members));
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-sync')).not.toHaveTextContent('…'));
+        act(() => screen.getByTestId('split-workspace-left-git-sync').focus());
+        await waitFor(() => expect(client.git.listCommits).toHaveBeenCalledWith('ws-harbor', expect.any(Object)));
+        view.rerender(body(members.filter(member => member.workspaceId !== 'ws-harbor')));
+        await act(async () => resolveHistory({ commits: outgoing, unpushedCount: 3 }));
+        expect(screen.queryByText('Outgoing change 3')).toBeNull();
+        expect(screen.queryByText('Harbor')).toBeNull();
     });
 
     it('keeps last-known member details and a retry action when the compact popup read fails', async () => {

@@ -15,6 +15,15 @@ conflicts, active Git operations and unreadable repository status. It calls the
 existing branch service with `force: false`, then invalidates mutable caches and
 broadcasts only on success. It never stashes, discards edits or cancels jobs.
 
+The collapsed rail's Sync preview (`features.railGitSummary`, default off) lazily
+pages `git.listCommits` on its supplied owner client. Shared `outgoingCommits`
+selects the server's unpushed prefix in history order; `CommitIdentity` shares
+SHA/subject formatting with expanded Git. Status changes revoke prior reads,
+and missing comparisons or inconsistent history remain explicit. Navigation
+supplies transient `SET_GIT_ROUTE.knownCommit` metadata, consumed only for the
+matching page/member/SHA/clone owner, so paged commits open without enabling SHA
+lookup. Group previews read member repositories, never a group range.
+
 
 `features/git/RepoGitTab.tsx` is a composition shell over `features/git/repoGitTab/`:
 

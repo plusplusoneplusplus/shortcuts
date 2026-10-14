@@ -13,6 +13,7 @@ import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import type { GitCommitItem } from '../commits/CommitList';
+import { outgoingCommits } from '../commits/outgoingCommits';
 import type { BranchRangeInfo } from './BranchChanges';
 import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
@@ -158,7 +159,7 @@ export function BranchRangeOverview({ workspaceId, attachmentDestinationId, rang
                 data-testid="branch-range-overview-upper"
             >
                 <BranchCommitStrip
-                    commits={(rangeCommits ?? []).slice(0, unpushedCount ?? 0)}
+                    commits={outgoingCommits(rangeCommits ?? [], unpushedCount ?? 0)}
                     branchRangeData={range}
                     onAllCommentsClick={onAllCommentsClick}
                     commentCount={branchCommentCount}

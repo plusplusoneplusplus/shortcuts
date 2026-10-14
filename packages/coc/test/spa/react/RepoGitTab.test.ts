@@ -1081,12 +1081,17 @@ describe('RepoGitTab', () => {
             });
 
             it('skips a route it has already consumed (no infinite loop)', () => {
-                expect(effect()).toContain('if (identity === consumedRouteRef.current) return;');
+                expect(effect()).toContain('if (identity === consumedRouteRef.current && !suppliedSelection) return;');
             });
 
             it('reacts to store transitions, not to a store that has not caught up', () => {
-                expect(effect()).toContain('if (identity === storeRouteRef.current) return;');
+                expect(effect()).toContain('if (identity === storeRouteRef.current && !suppliedSelection) return;');
                 expect(effect()).toContain('storeRouteRef.current = identity;');
+            });
+
+            it('treats a fresh owner-verified known commit as an explicit selection request', () => {
+                expect(effect()).toContain('!!knownCommitRef.current && scope?.knownCommit !== consumedKnownCommitRef.current');
+                expect(effect()).toContain('consumedKnownCommitRef.current = scope?.knownCommit;');
             });
 
             it('records the route it consumes', () => {

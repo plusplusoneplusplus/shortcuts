@@ -211,6 +211,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
 
     const rawSelection = useRepoGitSelection({
         workspaceId,
+        sourceSelectionId,
         routeWorkspaceId,
         commits: data.commits,
         loading: data.loading,

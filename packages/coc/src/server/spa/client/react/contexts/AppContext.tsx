@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
+import type { GitCommit } from '@plusplusoneplusplus/coc-client';
 import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
 import { REPO_SUB_TAB_VALUES } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
@@ -179,6 +180,8 @@ function persistLastCloneByRemote(lastCloneByRemote: Record<string, string>): vo
 export interface GitRouteScope {
     routeWorkspaceId: string;
     workspaceId: string | null;
+    /** Owner-qualified commit already read by a navigation surface; never persisted. */
+    knownCommit?: { sourceSelectionId: string; commit: GitCommit };
 }
 
 export interface OnboardingProgress {
@@ -428,6 +431,7 @@ export type AppAction =
         workspaceId: string | null;
         commitHash: string | null;
         filePath: string | null;
+        knownCommit?: GitRouteScope['knownCommit'];
     }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
     | { type: 'SET_GIT_FILE_PATH'; filePath: string }
@@ -728,7 +732,10 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         case 'SET_GIT_ROUTE':
             return {
                 ...state,
-                gitRouteScope: { routeWorkspaceId: action.routeWorkspaceId, workspaceId: action.workspaceId },
+                gitRouteScope: {
+                    routeWorkspaceId: action.routeWorkspaceId, workspaceId: action.workspaceId,
+                    ...(action.knownCommit && action.knownCommit.commit.hash === action.commitHash ? { knownCommit: action.knownCommit } : {}),
+                },
                 selectedGitCommitHash: action.commitHash,
                 selectedGitFilePath: action.filePath,
             };

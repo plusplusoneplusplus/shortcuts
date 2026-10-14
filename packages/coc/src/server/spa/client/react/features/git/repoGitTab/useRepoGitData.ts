@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import type { GitCommitItem } from '../commits/CommitList';
+import { COMMIT_PAGE_SIZE } from '../commits/outgoingCommits';
 import type { BranchRangeInfo } from '../branches/BranchChanges';
 import { clearCacheForHash } from '../hooks/useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from '../hooks/useBranchRangeCache';
@@ -28,7 +29,7 @@ import { reconcileSelectionAfterRefresh, selectedCommitHashOf } from './selectio
 import type { GitRepoStateInfo, RefreshSelectionOptions, RightPanelView } from './types';
 
 /** Commits requested per page; also the "there may be more" threshold. */
-export const COMMIT_PAGE_SIZE = 50;
+export { COMMIT_PAGE_SIZE } from '../commits/outgoingCommits';
 
 /** How `refreshAll` reads and writes the right-panel selection it must reconcile. */
 export interface RepoGitDataSelectionBridge {
