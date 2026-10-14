@@ -645,7 +645,19 @@ jobs:
       # runners. It also primes the apt lists, so the build-essential step below
       # needs no second `apt-get update`.
       - name: Install zstd for cache archive compatibility
-        run: apt-get -o Acquire::Retries=3 update && apt-get install -y --no-install-recommends zstd
+        timeout-minutes: 4
+        run: |
+          for attempt in 1 2 3; do
+            if apt-get -o Acquire::Retries=3 -o APT::Update::Error-Mode=any update &&
+               apt-get -o Acquire::Retries=3 install -y --no-install-recommends zstd; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
+          echo "::error::Unable to install zstd after three attempts."
+          exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
