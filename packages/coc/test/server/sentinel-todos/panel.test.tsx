@@ -25,6 +25,7 @@ const get = vi.fn();
 const create = vi.fn();
 const update = vi.fn();
 const dependencyEvaluate = vi.fn();
+const prOutcomesGet = vi.fn();
 const connect = vi.fn();
 const scrubGet = vi.fn();
 const scrubGetRun = vi.fn();
@@ -51,6 +52,7 @@ const fakeClient = {
         create: (...args: unknown[]) => create(...args),
         update: (...args: unknown[]) => update(...args),
         evaluateDependencies: (...args: unknown[]) => dependencyEvaluate(...args),
+        listPrOutcomes: (...args: unknown[]) => prOutcomesGet(...args),
     },
     events: { connect: (...args: unknown[]) => connect(...args) },
 };
@@ -105,9 +107,10 @@ function conflict(current: SentinelTodoItem) {
 
 beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
     resetCloneRegistryForTests();
     dependencyEvaluate.mockReset();
+    prOutcomesGet.mockReset();
     scrubGet.mockReset();
     scrubGetRun.mockReset();
     scrubAccept.mockReset();
@@ -125,7 +128,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
 });
 
 describe('UnifiedTodoTab', () => {
@@ -1231,6 +1234,24 @@ describe('UnifiedTodoTab split layout', () => {
         fireEvent.click(screen.getByTestId(`sentinel-todo-row-${id}`).querySelector('[data-todo-select]')!);
     }
     function detail(id = 'i1') { return screen.getByTestId(`sentinel-todo-detail-${id}`); }
+
+    it('hosts PR outcome evidence only in the selected normal detail, never hidden editors or list rows', async () => {
+        applyRuntimeConfigPatch({ sentinelPrOutcomeWakeEnabled: true });
+        prOutcomesGet.mockResolvedValue({ revision: 1, paused: false, outcomes: [] });
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second item' }), item({ id: 'manual', type: 'manual' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        expect(prOutcomesGet).not.toHaveBeenCalled();
+        select();
+        await within(detail()).findByRole('button', { name: 'Check outcome' });
+        expect(within(screen.getByTestId('sentinel-todo-row-i1')).queryByRole('button', { name: 'Check outcome' })).toBeNull();
+        select('i2');
+        await within(detail('i2')).findByRole('button', { name: 'Check outcome' });
+        expect(within(detail()).queryByRole('button', { name: 'Check outcome', hidden: true })).toBeNull();
+        select('manual');
+        expect(screen.queryByRole('button', { name: 'Check outcome' })).toBeNull();
+        expect(prOutcomesGet.mock.calls.map(call => call[2])).toEqual(['i1', 'i2']);
+    });
 
     it.each([
         { width: 360, kind: 'edit' }, { width: 800, kind: 'edit' },

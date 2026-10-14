@@ -44,16 +44,16 @@ export class SentinelTodosClient {
     return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId), options);
   }
 
-  pausePrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest): Promise<SentinelPrOutcomesResponse> {
-    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/pause', { method: 'POST', body: request });
+  pausePrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/pause', { ...options, method: 'POST', body: request });
   }
 
-  resumePrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest): Promise<SentinelPrOutcomesResponse> {
-    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/resume', { method: 'POST', body: request });
+  resumePrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/resume', { ...options, method: 'POST', body: request });
   }
 
-  checkPrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest): Promise<SentinelPrOutcomesResponse> {
-    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/check', { method: 'POST', body: request });
+  checkPrOutcomes(workspaceId: string, processId: string, itemId: string, request: SentinelPrOutcomeControlRequest, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {
+    return this.transport.request(this.prOutcomesPath(workspaceId, processId, itemId) + '/check', { ...options, method: 'POST', body: request });
   }
 
   private prOutcomesPath(workspaceId: string, processId: string, itemId: string): string {

@@ -36,6 +36,7 @@ import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
+import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
@@ -876,6 +877,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             </div>
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
+            {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} />}
             {/* Reference-only conversations: navigation links with no execution or review state. */}
             {(item.references?.length ?? 0) > 0 && (
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Referenced conversations for ${item.title}`}>

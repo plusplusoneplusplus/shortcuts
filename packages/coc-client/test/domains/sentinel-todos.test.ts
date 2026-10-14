@@ -3,6 +3,19 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it.each(['pausePrOutcomes', 'resumePrOutcomes', 'checkPrOutcomes'] as const)('preserves cancellation and revisions for %s', async method => {
+    const adapter = createMockAdapter({ paused: false, revision: 3, outcomes: [] });
+    const client = new SentinelTodosClient(adapter);
+    const controller = new AbortController();
+    await client[method]('owner ws', 'parent/a', 'item/a', { expectedRevision: 3 }, { signal: controller.signal });
+    controller.abort();
+    expect(adapter.calls).toEqual([{
+      path: `/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/item%2Fa/pr-outcomes/${method.replace('PrOutcomes', '')}`,
+      options: { method: 'POST', body: { expectedRevision: 3 }, signal: controller.signal },
+    }]);
+    expect(adapter.calls[0].options?.signal?.aborted).toBe(true);
+  });
+
   it('routes PR outcome controls through the exact encoded owner and retains revisions', async () => {
     const adapter = createMockAdapter({ paused: false, revision: 0, outcomes: [] });
     const client = new SentinelTodosClient(adapter);

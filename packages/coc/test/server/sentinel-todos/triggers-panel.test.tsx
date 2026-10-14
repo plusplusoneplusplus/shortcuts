@@ -100,6 +100,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false }); });
 
 describe('Sentinel To-do Triggers', () => {
+    it('never offers delegation-rule controls for automatic delegated PR outcome bindings', async () => {
+        const automatic = rule({ id: 'automatic' });
+        mocks.list.mockResolvedValue([{
+            ...automatic, binding: { ...automatic.binding, delegatedPr: { jobId: 'job-1', receiptId: 'receipt-1' } },
+        }]);
+        mount();
+        await waitFor(() => expect(mocks.list).toHaveBeenCalledOnce());
+        expect(screen.queryByTestId('sentinel-trigger-automatic')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    });
+
     it('hides the section with no rules, but retains a first-add entry point', async () => {
         mount();
         await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
