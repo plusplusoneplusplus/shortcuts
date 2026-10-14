@@ -7,6 +7,7 @@
 
 mod blob;
 mod candidates;
+mod delete;
 mod indexes;
 mod listing;
 mod replace;
@@ -22,6 +23,7 @@ pub use blob::{mime_type, read_blob, write_blob, Blob, MAX_BLOB_SIZE, MAX_TEXT_B
 pub use candidates::{
     prepare_content_candidates, tracked_content_candidates, ContentCandidateCommand,
 };
+pub use delete::{delete_entry, DeleteEntryError};
 pub use indexes::RepoIndexes;
 pub use listing::{
     list_directory, list_files, locale_compare, FileListing, TreeEntry, TreeListing,
