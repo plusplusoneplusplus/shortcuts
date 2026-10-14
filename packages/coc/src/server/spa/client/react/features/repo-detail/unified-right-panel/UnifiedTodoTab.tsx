@@ -766,8 +766,11 @@ function useTodoAttachment(owner: SentinelTodoOwner, item: SentinelTodoItem) {
     };
 }
 
-function AttachTodoButton({ title, onClick }: { title: string; onClick: () => void }) {
+function AttachTodoButton({ title, onClick, onDragStart }: {
+    title: string; onClick: () => void; onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
+}) {
     return <button type="button" onClick={onClick} aria-label={`Attach ${title} as context`}
+        draggable={onDragStart ? true : undefined} onDragStart={onDragStart}
         title="Attach to owning Sentinel as context"
         className="ml-auto rounded px-1 hover:bg-black/[0.04] focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
         Attach
@@ -880,10 +883,8 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const linkKey = (link: string) => `${item.id}|${link}`;
     // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
-        <li hidden={hidden} className="relative rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]"
+        <li hidden={hidden} className="relative select-text rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]"
             data-testid={`sentinel-todo-detail-${item.id}`}
-            draggable={canAttach}
-            onDragStart={drag}
             data-priority={high ? 'high' : 'regular'}>
             {high && (
                 <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
@@ -905,7 +906,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                 )}
                 {item.targetRepo && <span aria-hidden="true">·</span>}
                 <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
-                {canAttach && <AttachTodoButton title={item.title} onClick={attach} />}
+                {canAttach && <AttachTodoButton title={item.title} onClick={attach} onDragStart={drag} />}
             </div>
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />

@@ -587,7 +587,9 @@ at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Compact list headers combine wrapping titles, status, priority and Attach; job
 metadata wraps below. Identical item/job titles use accessible Open job links,
-while distinct job titles remain visible. Full content and controls live in details.
+while distinct job titles remain visible. Full content and controls live in details;
+detail text uses native selection, with attachment dragging scoped to Attach.
+List cards retain whole-card attachment dragging.
 Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Pending reads block duplicate manual admission;
 reloads retain the snapshot, selection and drafts. Selection or movement between

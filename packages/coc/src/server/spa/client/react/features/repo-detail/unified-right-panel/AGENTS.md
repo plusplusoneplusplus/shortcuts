@@ -755,8 +755,10 @@ List cards combine status, priority, wrapping title and Attach in a compact head
 with target/Updated/latest-job metadata below. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 references and editing controls live in the detail pane.
-With session-context attachments enabled, item cards are copy-drag sources
-and expose an accessible Attach action for their owning Sentinel composer. Payloads
+With session-context attachments enabled, list cards and the detail pane's Attach
+button are copy-drag sources for their owning Sentinel composer. Detail cards use
+`select-text` and keep informational text outside draggable ancestors for native
+mouse and touch selection. Both panes expose the accessible Attach action. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
