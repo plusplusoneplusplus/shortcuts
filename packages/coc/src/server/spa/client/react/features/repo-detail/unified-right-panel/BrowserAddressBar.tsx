@@ -34,7 +34,8 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
     currentEnabled.current = enabled;
     const previousScope = useRef({ ownerKey, enabled });
     const [position, setPosition] = useState({ top: 0, left: 0, width: 0, maxHeight: 0 });
-    const shown = open && enabled && Boolean(history) && previousScope.current.ownerKey === ownerKey;
+    const editing = open && enabled && Boolean(history) && previousScope.current.ownerKey === ownerKey;
+    const shown = editing && search.trim().length > 0 && address.trim().length > 0;
 
     const discardCompletion = () => {
         suppress.current = true;
@@ -48,6 +49,8 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
         discardCompletion();
         setOpen(false);
         setEntries([]);
+        setLoading(false);
+        setError(null);
     };
 
     useEffect(() => {
@@ -64,8 +67,11 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
 
     useEffect(() => {
         // Live page updates do not replace an address being edited.
-        if (document.activeElement === inputRef.current && shown) return;
+        if (document.activeElement === inputRef.current && editing) return;
         typed.current = url ?? '';
+        if (!typed.current.trim()) {
+            dismiss();
+        }
         setAddress(typed.current);
         setSearch(typed.current);
     }, [url, inputRef]);
@@ -82,7 +88,8 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
         const request = ++revision.current;
         const owner = ownerKey;
         const isCurrent = () => request === revision.current && currentOwner.current === owner
-            && currentEnabled.current && document.activeElement === inputRef.current;
+            && currentEnabled.current && typed.current.trim().length > 0
+            && document.activeElement === inputRef.current;
         setLoading(true);
         setError(null);
         setEntries([]);
@@ -188,10 +195,13 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
                     if (inputType) suppress.current = inputType !== 'insertText';
                     typed.current = input.value;
                     completion.current = null;
+                    selection.current = null;
                     setAddress(input.value);
                     setSearch(input.value);
                     setEntries([]);
                     setSelected(-1);
+                    setLoading(false);
+                    setError(null);
                     setOpen(!composing.current);
                     setRefresh(value => value + 1);
                     onEdit();

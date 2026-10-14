@@ -178,7 +178,14 @@ describe('desktop history IPC', () => {
         expect(ranked).toMatchObject({ ok: true, total: 11, recording: false });
         expect(ranked.entries).toHaveLength(8);
         expect(ranked.entries[0].title).toBe('Prefix');
-        expect((await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event)).entries).toHaveLength(8);
+        for (const window of [a, b]) {
+            for (const search of ['', ' \t ']) {
+                expect(await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, window.event, search))
+                    .toMatchObject({ ok: true, entries: [], total: 0, recording: false, storageError: null });
+                expect(await query(window.event, search)).toMatchObject({ ok: true, total: 11, recording: false });
+            }
+        }
+        expect(await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event)).toMatchObject({ ok: true, entries: [], total: 0 });
         expect(mocks.sinks).toHaveLength(1);
         await invoke(policy.BROWSER_HISTORY_DELETE_CHANNEL, b.event, result.entries[0].url);
         expect((await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, a.event, 'EXAMPLE.TEST/p')).entries).toEqual([]);
