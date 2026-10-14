@@ -477,6 +477,37 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         });
     };
     const selected = ledger?.items.find(item => item.id === selectedId);
+    const selectedType = selected ? sentinelTodoType(selected) : null;
+    const selectedSection = selected ? selected.archived ? 'archived' : selected.status === 'done' ? 'done' : 'active' : null;
+    // Reveal on selection or section movement, not on every snapshot or item edit.
+    useLayoutEffect(() => {
+        if (selectedType === null || selectedSection === null) {
+            return;
+        }
+        if (selectedType === 'manual') {
+            setShowManual(true);
+            if (selectedSection === 'done') {
+                setShowManualDone(true);
+            }
+            if (selectedSection === 'archived') {
+                setShowManualArchived(true);
+            }
+        } else {
+            if (selectedSection === 'done') {
+                setShowDone(true);
+            }
+            if (selectedSection === 'archived') {
+                setShowArchived(true);
+            }
+        }
+    }, [selectedId, selectedType, selectedSection]);
+    const toggleSection = (open: boolean, setOpen: (open: boolean) => void, containsSelection: boolean) => {
+        setOpen(!open);
+        if (open && containsSelection) {
+            setSelectedId(null);
+            setDetailOpen(false);
+        }
+    };
     useLayoutEffect(() => {
         if (wide || !detailOpen || !selected) return;
         if (scrollRef.current?.contains(document.activeElement)) {
@@ -592,7 +623,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         <div className="flex flex-wrap items-center justify-between gap-1">
                             <h3 className="m-0 min-w-0 text-xs font-semibold">
                                 <button type="button" id={`${manualId}-heading`} aria-expanded={showManual} aria-controls={`${manualId}-body`}
-                                    aria-label={`Manual tracking (${manual.active.length} active)`} onClick={() => setShowManual(v => !v)} data-testid="sentinel-todo-manual-toggle"
+                                    aria-label={`Manual tracking (${manual.active.length} active)`} onClick={() => toggleSection(showManual, setShowManual, selectedType === 'manual')} data-testid="sentinel-todo-manual-toggle"
                                     className="flex items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
                                     <span aria-hidden="true">{showManual ? '▾' : '▸'}</span>
                                     <span>Manual tracking ({manual.active.length})</span>
@@ -619,12 +650,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                                     </span>
                                 )}
                                 {manual.done.length > 0 && (
-                                    <Section label="Done" count={manual.done.length} open={showManualDone} onToggle={() => setShowManualDone(v => !v)} testId="sentinel-todo-manual-done-section">
+                                    <Section label="Done" count={manual.done.length} open={showManualDone} onToggle={() => toggleSection(showManualDone, setShowManualDone, selectedType === 'manual' && selectedSection === 'done')} testId="sentinel-todo-manual-done-section">
                                         {renderList(manual.done)}
                                     </Section>
                                 )}
                                 {manual.archived.length > 0 && (
-                                    <Section label="Archived" count={manual.archived.length} open={showManualArchived} onToggle={() => setShowManualArchived(v => !v)} testId="sentinel-todo-manual-archived-section">
+                                    <Section label="Archived" count={manual.archived.length} open={showManualArchived} onToggle={() => toggleSection(showManualArchived, setShowManualArchived, selectedType === 'manual' && selectedSection === 'archived')} testId="sentinel-todo-manual-archived-section">
                                         {renderList(manual.archived)}
                                     </Section>
                                 )}
@@ -632,12 +663,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         )}
                     </section>
                     {sections.done.length > 0 && (
-                        <Section label="Done" count={sections.done.length} open={showDone} onToggle={() => setShowDone(v => !v)} testId="sentinel-todo-done-section">
+                        <Section label="Done" count={sections.done.length} open={showDone} onToggle={() => toggleSection(showDone, setShowDone, selectedType === 'normal' && selectedSection === 'done')} testId="sentinel-todo-done-section">
                             {renderList(sections.done)}
                         </Section>
                     )}
                     {sections.archived.length > 0 && (
-                        <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => setShowArchived(v => !v)} testId="sentinel-todo-archived-section">
+                        <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => toggleSection(showArchived, setShowArchived, selectedType === 'normal' && selectedSection === 'archived')} testId="sentinel-todo-archived-section">
                             {renderList(sections.archived)}
                         </Section>
                     )}

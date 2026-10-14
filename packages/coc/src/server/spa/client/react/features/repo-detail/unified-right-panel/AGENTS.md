@@ -700,7 +700,7 @@ its own assessment label. New unavailable/unknown follow-ups keep the stored sta
 Done, archived, manual and user-superseded items retain their verdicts; failed delivery
 needs attention. Normal tracking lists active items (Needs attention, In review,
 In progress, To do; oldest first within a display status), then the Manual
-tracking region, then normal collapsed Done and Archived sections. Manual tracking is a labelled region whose
+tracking region, then normal initially collapsed Done and Archived sections. Manual tracking is a labelled region whose
 `aria-expanded` toggle, named `Manual tracking (<active> active)`, starts
 expanded. It stays visible when empty (`No manual items yet.`), has its own
 **Add manual item** form (required Title; optional Notes, Done when and Priority;
@@ -713,7 +713,11 @@ on the newer revision. Creates carry one idempotency key per draft across retrie
 Event invalidation, manual toolbar refresh and post-write reloads share the
 owner-scoped full-snapshot loader. Pending reads disable manual refresh with a
 synchronous admission guard and busy indicator; reloads retain rows, selection,
-drafts, section visibility and older-item expansion. Read failures use the existing
+drafts and older-item expansion. Selection and changes to its tracking type or
+active/Done/Archived membership reveal its containing sections, including restored
+selection after owner remounts. Other refreshes preserve section visibility.
+Collapsing a selected item's section or its Manual tracking parent clears selection
+and closes details while retaining the hidden editor's drafts. Read failures use the existing
 retry notice without clearing the snapshot. Late loads are dropped by a sequence counter.
 Choosing Needs attention from the status group requires a
 reason; choosing Done asks for an optional one (`sentinelTodoStatusReason`) — a blank
