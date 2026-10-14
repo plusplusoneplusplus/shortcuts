@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { cn } from '../../ui';
 import { isMacPlatform } from '../../utils/composerKeyboardShortcuts';
 
@@ -8,8 +8,8 @@ import { isMacPlatform } from '../../utils/composerKeyboardShortcuts';
  * only need the toggle — notably the global TopBar — don't transitively pull in
  * the heavy TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
  *
- * Open and selected mode are backed by cross-tree stores. The single visibility
- * toggle in RepoDetail's chrome header or the remote-first TopBar stays in sync
+ * Open, expansion and selected mode are backed by cross-tree stores. The single
+ * control in RepoDetail's chrome header or the remote-first TopBar stays in sync
  * with the panel body, while the mode controls live inside the panel itself.
  */
 
@@ -95,6 +95,8 @@ function readDockOpen(storageKey: string): boolean {
 }
 
 function writeDockOpen(storageKey: string, open: boolean): void {
+    // Clear synchronously, including when the panel body is unmounted.
+    if (!open) setWorkspaceDockExpanded(storageKey.slice('split-workspace:'.length, -':dock-open'.length), false);
     try {
         localStorage.setItem(storageKey, open ? '1' : '0');
     } catch {
@@ -165,6 +167,7 @@ export function openWorkspaceDock(workspaceId: string): void {
  */
 export function setWorkspaceDockOpen(workspaceId: string, open: boolean): void {
     const storageKey = workspaceDockOpenStorageKey(workspaceId);
+    if (!open) setWorkspaceDockExpanded(workspaceId, false);
     if (readDockOpen(storageKey) === open) return;
     writeDockOpen(storageKey, open);
 }
@@ -188,7 +191,7 @@ export function useDockOpen(storageKey: string): [boolean, () => void] {
 
 /**
  * Cross-tree "expanded" flag per workspace: the open panel fills the whole
- * workspace row, covering the chat and left column. The panel's own button sets
+ * workspace row, covering the chat and left column. The header control sets
  * it, and RepoDetail / RepoGroupView hide their main content while it is on.
  * Session-only on purpose (in memory, never localStorage), so a reload always
  * brings the chat back.
@@ -278,20 +281,47 @@ export function SearchIcon() {
     );
 }
 
-/** Single right-panel visibility control shared by classic and remote desktop headers. */
+/** Cycle the canonical flags; other entry points never advance to expansion. */
+export function cycleWorkspaceDock(workspaceId: string): void {
+    const isOpen = readDockOpen(workspaceDockOpenStorageKey(workspaceId));
+    if (!isOpen) {
+        setWorkspaceDockExpanded(workspaceId, false);
+        openWorkspaceDock(workspaceId);
+    } else if (!expandedDocks.has(workspaceId)) {
+        setWorkspaceDockExpanded(workspaceId, true);
+    } else {
+        setWorkspaceDockOpen(workspaceId, false);
+    }
+}
+
+/** Single right-panel control shared by classic and remote desktop headers. */
 export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
-    const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
-    const label = isOpen ? 'Hide right panel' : 'Show right panel';
+    const [isOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
+    const expanded = useWorkspaceDockExpanded(workspaceId) && isOpen;
+    const label = !isOpen ? 'Show right panel' : expanded ? 'Hide right panel' : 'Expand right panel';
+    useEffect(() => {
+        if (!expanded) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            const target = event.target;
+            if (event.key !== 'Escape' || event.defaultPrevented ||
+                (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], .xterm')) ||
+                document.querySelector('[role="dialog"], [role="menu"]')) return;
+            event.preventDefault();
+            setWorkspaceDockExpanded(workspaceId, false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [expanded, workspaceId]);
     const mac = isMacPlatform();
     return (
         <button
             type="button"
             data-testid="workspace-dock-toggle"
-            onClick={toggleOpen}
+            onClick={() => cycleWorkspaceDock(workspaceId)}
             aria-label={label}
             aria-expanded={isOpen}
             aria-keyshortcuts={mac ? 'Meta+\\' : 'Control+\\'}
-            title={`${label} (${mac ? '⌘' : 'Ctrl+'}\\)`}
+            title={`${label}; ${mac ? '⌘' : 'Ctrl+'}\\ shows/hides right panel`}
             className={cn(
                 'hidden h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da] md:inline-flex',
                 isOpen
@@ -299,7 +329,11 @@ export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
                     : 'border-[#d0d7de] bg-white text-[#656d76] hover:bg-[#f6f8fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999] dark:hover:bg-[#2a2a2a]',
             )}
         >
-            <DockToggleIcon />
+            {!isOpen ? <DockToggleIcon /> : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    {expanded ? <path d="m4 4 8 8M12 4l-8 8" /> : <path d="M9.5 2.5h4v4M6.5 13.5h-4v-4" />}
+                </svg>
+            )}
         </button>
     );
 }

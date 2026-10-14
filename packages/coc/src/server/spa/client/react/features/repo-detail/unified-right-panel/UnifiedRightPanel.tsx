@@ -102,7 +102,6 @@ import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
-import { UnifiedPanelExpandToggle } from './UnifiedPanelExpandToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
@@ -1701,12 +1700,6 @@ export function UnifiedRightPanel({
                         />
                     )}
                     trailing={toolbar === null ? navigatorControls('strip') : undefined}
-                    endControls={(
-                        <UnifiedPanelExpandToggle
-                            expanded={expanded}
-                            onToggle={() => setWorkspaceDockExpanded(workspaceId, !expanded)}
-                        />
-                    )}
                 />
 
                 {menuOpen && (

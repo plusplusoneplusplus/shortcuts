@@ -177,21 +177,24 @@ Persisted values are validated on read. The target
 non-`deprioritized` option, then the first enabled one, then the scope. Only an
 explicit `setTarget` writes; mount and workspace switches never persist.
 
-One icon-only visibility toggle lives outside the panel and shares its cross-tree
-open store. The classic shell renders `WorkspaceDockToggle` in `RepoDetail`'s
-header; the remote-first shell renders the same component in `layout/TopBar.tsx`
-for a concrete clone or a `group-*` selection. Ctrl/Cmd+\ does the same from
-`layout/Router.tsx`'s keydown handler (next to Ctrl/Cmd+B for the left column):
-it calls `toggleWorkspaceDockOpen` for the selected workspace, matches
-`e.code === 'Backslash'` so non-US layouts work, is skipped while typing in an
-input. The button's tooltip names
-the shortcut; its `aria-label` stays plain. My Work / My Life have no panel.
-The panel's strip ends with an expand toggle. `WorkspaceDockToggle.tsx` keeps
-the expanded flag per workspace in memory only (never localStorage, so a reload
-restores the normal layout). While the dock is open and expanded, `RepoDetail`
-and `RepoGroupView` hide their main content with `display:none`, keeping chats
-mounted, and the panel fills the row with no resize handle. Closing the panel
-clears the flag; the persisted width is untouched.
+One icon-only control outside the panel cycles hidden → docked → expanded →
+hidden through the shared open and expanded stores. The classic shell renders
+`WorkspaceDockToggle` in `RepoDetail`'s header; the remote-first shell renders
+it in `layout/TopBar.tsx` for a concrete clone or a `group-*` selection.
+Its icon, tooltip and accessible name identify the next action. My Work / My
+Life have no panel. Ctrl/Cmd+\ in `layout/Router.tsx` toggles visibility through
+`toggleWorkspaceDockOpen`, matching the physical Backslash key and skipping
+inputs; it does not advance the expansion cycle.
+
+`WorkspaceDockToggle.tsx` keeps expansion per workspace in memory only, so
+reload restores docked layout. Expanded, `RepoDetail` and `RepoGroupView` hide
+main content with `display:none`, keeping chats mounted; the panel fills the row
+without a resize handle. The header stays outside that row. Escape restores
+docked size, unless an editor, terminal, dialog or menu owns it. Closing clears
+expansion synchronously, even without a mounted panel; programmatic opens are
+idempotent and retain an already-expanded panel. Mobile layout clears expansion.
+Width, selected tabs and mounted panel drafts survive the header cycle.
+
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.

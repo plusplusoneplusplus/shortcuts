@@ -88,7 +88,6 @@ from same-id clones never merge into one tab.
 | `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. Four or more canvases compress into the active canvas plus a searchable count chip; switching and guarded closing preserve stored order. Grouped ordering draws a tools/resources divider. File tabs share Explorer's `FileNameIcon`; other kinds use fixed icons. The menu model owns per-kind availability, move boundaries, local-only absolute paths and visible-order bulk targets. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
-| `UnifiedPanelExpandToggle.tsx` | The expand/restore button in the strip's `endControls` slot, the strip's last control on every tab state. It drives `setWorkspaceDockExpanded` (see `../AGENTS.md`); expanded, the panel root is `flex-1`, the body drops its fixed width, and the resize handle is not rendered. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
@@ -229,7 +228,8 @@ results, tree expansion, resource tabs, terminal sessions, and unsaved buffers
 across mode switches and navigator collapse. A panel too narrow for both columns
 hides the navigator until it widens without changing the user's open bit.
 
-The workspace header has one visibility toggle for the whole right panel. Search
+The workspace header has one control cycling hidden → docked → expanded → hidden
+through the canonical dock stores (see `../AGENTS.md`). Search
 and Explorer live inside the panel as peer navigator controls, so changing or
 collapsing a navigator mode never closes the resource panel. The selected chat's
 header folder button shares the panel-scope open/mode and tree stores: it opens
@@ -239,7 +239,7 @@ shown. A chat without a matching host uses its source-canvas tree.
 On initial mount and whenever the panel scope's selected chat changes,
 `UnifiedRightPanel` sets the dock open exactly when `visibleTabs` is non-empty.
 Workspace-owned tabs therefore keep the panel visible across chats, while an
-empty destination closes it. This changes only the dock open bit: descriptors,
+empty destination closes it. Closing also resets session-only expansion; descriptors,
 active-tab memory, target, mode, width, ordering, and mounted resource state stay
 untouched. The reconciliation does not rerun when tabs change, so explicitly
 opening an empty panel remains possible until the next chat selection or reload.

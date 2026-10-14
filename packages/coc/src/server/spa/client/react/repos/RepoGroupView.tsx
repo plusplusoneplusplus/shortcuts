@@ -48,7 +48,7 @@ import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
-import { useWorkspaceDockExpanded } from '../features/repo-detail/WorkspaceDockToggle';
+import { setWorkspaceDockExpanded, useWorkspaceDockExpanded } from '../features/repo-detail/WorkspaceDockToggle';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
@@ -245,6 +245,9 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const dock = useWorkspaceDock(workspaceId, dockTargets);
     // An expanded panel covers the whole content row; the content stays mounted.
     const dockExpanded = useWorkspaceDockExpanded(workspaceId) && dock.isOpen && dockAvailable;
+    useEffect(() => {
+        if (!dockAvailable) setWorkspaceDockExpanded(workspaceId, false);
+    }, [dockAvailable, workspaceId]);
     // Slots for the split Workspace panel: mobile's last-clicked detail,
     // the middle chat detail, and the shared Git toolbar. State-backed
     // (not refs) so the portals mount once the nodes exist — same shape as

@@ -17,7 +17,7 @@ import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
 import { useWorkspaceDock } from './useWorkspaceDock';
-import { WorkspaceDockToggle, useWorkspaceDockExpanded } from './WorkspaceDockToggle';
+import { WorkspaceDockToggle, setWorkspaceDockExpanded, useWorkspaceDockExpanded } from './WorkspaceDockToggle';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -184,6 +184,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const dockAvailable = !isMobile;
     // An expanded panel covers the whole content row; the content stays mounted.
     const dockExpanded = useWorkspaceDockExpanded(ws.id) && dock.isOpen && dockAvailable;
+    useEffect(() => {
+        if (!dockAvailable) setWorkspaceDockExpanded(ws.id, false);
+    }, [dockAvailable, ws.id]);
     // The dock slot renders the one resource-tabbed panel — same availability
     // gate, same controller, so the header toggle and the persisted width all
     // hang off `useWorkspaceDock` above.

@@ -485,10 +485,15 @@ features default off.
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
-The desktop workspace header exposes one visibility toggle for the resource-tabbed
-right panel. The classic repository header and remote/virtual TopBar use the same
-persisted panel-scope open store. Search and Explorer are peer controls inside the
-panel; they select or collapse the right-edge navigator without closing the panel.
+The desktop workspace header's single resource-panel control cycles hidden →
+docked → expanded → hidden. Classic repository headers and remote/virtual TopBar
+share the persisted panel-scope open store and session-only expansion store in
+`WorkspaceDockToggle.tsx`. Expansion fills the workspace row while keeping its
+content mounted and the header reachable. Close clears expansion synchronously;
+Escape restores docked size unless another surface owns it. Programmatic opens
+retain an already-expanded panel; the visibility shortcut does not expand.
+Mobile clears expansion, and the cycle preserves docked width and tab drafts.
+Search and Explorer select or collapse the right-edge navigator independently.
 Ctrl/Cmd+T creates and activates a blank browser tab in the visible panel,
 using the selected dock target's workspace and concrete clone route. Its address
 input receives the existing autofocus. Panel and browser address focus own the
