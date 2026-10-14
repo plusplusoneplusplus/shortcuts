@@ -37,6 +37,58 @@ export interface SensitiveInputSinkArgs {
     viewId?: string;
 }
 
+/**
+ * Why a sink did not take the value. A fixed code, never parser text, so a
+ * fragment of the pasted secret cannot ride back to the model.
+ */
+export const SENSITIVE_INPUT_FAILURE_REASONS = ['invalid-input', 'import-failed'] as const;
+export type SensitiveInputFailureReason = typeof SENSITIVE_INPUT_FAILURE_REASONS[number];
+
+/** What the dashboard reports after running the sink. Never carries the value. */
+export type SensitiveInputReceiptInput =
+    | { ok: true; count: number }
+    | { ok: false; reason: SensitiveInputFailureReason };
+
+/** The redacted receipt the model gets back as the question's answer. */
+export type SensitiveInputReceipt =
+    | { ok: true; sink: SensitiveInputSink; domain: string; count: number }
+    | { ok: false; sink: SensitiveInputSink; domain: string; reason: SensitiveInputFailureReason };
+
+/**
+ * Accept only the exact receipt shape: `{ ok: true, count }` or
+ * `{ ok: false, reason }`, with no other keys. Anything else is rejected so a
+ * client cannot smuggle a value (or cookie names) through the receipt.
+ */
+export function parseSensitiveInputReceipt(value: unknown): SensitiveInputReceiptInput | null {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (record.ok === true) {
+        if (keys.length !== 2 || !keys.includes('count')) return null;
+        const count = record.count;
+        if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return null;
+        return { ok: true, count };
+    }
+    if (record.ok === false) {
+        if (keys.length !== 2 || !keys.includes('reason')) return null;
+        const reason = record.reason;
+        if (!(SENSITIVE_INPUT_FAILURE_REASONS as readonly unknown[]).includes(reason)) return null;
+        return { ok: false, reason: reason as SensitiveInputFailureReason };
+    }
+    return null;
+}
+
+/** Build the model-facing receipt from the question's non-secret sink args. */
+export function buildSensitiveInputReceipt(
+    sink: SensitiveInputSink,
+    domain: string,
+    input: SensitiveInputReceiptInput,
+): SensitiveInputReceipt {
+    return input.ok
+        ? { ok: true, sink, domain, count: input.count }
+        : { ok: false, sink, domain, reason: input.reason };
+}
+
 export interface AskUserOption {
     value: string;
     label: string;
@@ -103,7 +155,8 @@ export interface AskUserRalphGrillMetadata {
 
 export interface AskUserResponse {
     questionId: string;
-    answer: AskUserAnswerValue | null;
+    /** A `sensitive-input` question answers with its redacted receipt. */
+    answer: AskUserAnswerValue | SensitiveInputReceipt | null;
     skipped: boolean;
     reason?: AskUserResponseReason;
     deferred?: boolean;
@@ -196,6 +249,8 @@ export interface AskUserAnswerInput {
     deferred?: boolean;
     reason?: 'needs-context';
     note?: string;
+    /** The only accepted answer for a `sensitive-input` question; never with `answer`. */
+    receipt?: SensitiveInputReceiptInput;
 }
 
 /**
@@ -313,6 +368,8 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     const pending = new Map<string, {
         resolve: (response: AskUserResponse) => void;
         type: AskUserQuestionType;
+        /** Set on `sensitive-input` questions; the receipt is built from it. */
+        sensitive?: { sink: SensitiveInputSink; domain: string };
     }>();
     const isSensitiveInputEnabled = () => deps.isSensitiveInputEnabled?.() === true;
     const sensitiveInputInSchema = isSensitiveInputEnabled();
@@ -456,7 +513,13 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                 batchSize: args.questions.length,
             }));
             const responsePromises = payloads.map(payload => new Promise<AskUserResponse>((resolve) => {
-                pending.set(payload.questionId, { resolve, type: payload.type });
+                pending.set(payload.questionId, {
+                    resolve,
+                    type: payload.type,
+                    ...(payload.sink && payload.sinkArgs
+                        ? { sensitive: { sink: payload.sink, domain: payload.sinkArgs.domain } }
+                        : {}),
+                });
             }));
 
             try {
@@ -529,6 +592,9 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     }
 
     function answerQuestion(questionId: string, answer: AskUserAnswerValue): boolean {
+        // A sensitive question only takes a receipt through `answerQuestions`;
+        // a plain answer (e.g. from the messaging relay) would be the secret.
+        if (pending.get(questionId)?.sensitive) return false;
         return settle(questionId, { questionId, answer, skipped: false });
     }
 
@@ -546,13 +612,24 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             if (!pending.has(response.questionId)) return false;
             if (response.skipped === true && isDeferredResponse(response)) return false;
             if (response.note !== undefined && typeof response.note !== 'string') return false;
-            if (response.skipped !== true && !isDeferredResponse(response) && response.answer === undefined) return false;
+            const answered = response.skipped !== true && !isDeferredResponse(response);
+            if (pending.get(response.questionId)!.sensitive) {
+                if (response.answer !== undefined) return false;
+                if (answered ? !parseSensitiveInputReceipt(response.receipt) : response.receipt !== undefined) return false;
+            } else {
+                if (response.receipt !== undefined) return false;
+                if (answered && response.answer === undefined) return false;
+            }
         }
         for (const response of responses) {
             if (response.skipped === true) {
                 settle(response.questionId, { questionId: response.questionId, answer: null, skipped: true, reason: 'user-skipped' });
             } else if (isDeferredResponse(response)) {
                 settle(response.questionId, deferredResponse(response.questionId, response.note));
+            } else if (pending.get(response.questionId)!.sensitive) {
+                const { sink, domain } = pending.get(response.questionId)!.sensitive!;
+                const receipt = buildSensitiveInputReceipt(sink, domain, parseSensitiveInputReceipt(response.receipt)!);
+                settle(response.questionId, { questionId: response.questionId, answer: receipt, skipped: false });
             } else {
                 settle(response.questionId, { questionId: response.questionId, answer: response.answer as AskUserAnswerValue, skipped: false });
             }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createAskUserTool, type AskUserToolDeps, type AskUserSSEPayload, type AskUserEmitControl } from '../../../src/server/llm-tools/ask-user-tool';
+import { createAskUserTool, parseSensitiveInputReceipt, type AskUserToolDeps, type AskUserSSEPayload, type AskUserEmitControl } from '../../../src/server/llm-tools/ask-user-tool';
 
 describe('createAskUserTool', () => {
     let emitQuestions: ReturnType<typeof vi.fn>;
@@ -360,5 +360,91 @@ describe('createAskUserTool sensitive-input', () => {
         const [response] = await pending;
         expect(response).toMatchObject({ questionId: payloads[0].questionId, skipped: true, reason: 'unavailable' });
         expect(response.guidance).toMatch(/CoC desktop/);
+    });
+
+    describe('receipts', () => {
+        async function ask(extra: Partial<AskUserToolDeps> = {}) {
+            const tools = setup(extra);
+            const result = tools.tool.handler({ questions: [cookieQuestion] });
+            const [payloads, control] = tools.emitQuestions.mock.calls[0] as [AskUserSSEPayload[], AskUserEmitControl];
+            return { ...tools, result, questionId: payloads[0].questionId, control };
+        }
+
+        it('answers with { ok, sink, domain, count } built from the question', async () => {
+            const { answerQuestions, result, questionId } = await ask();
+            expect(answerQuestions([{ questionId, receipt: { ok: true, count: 2 } }])).toBe(true);
+            const [response] = await result;
+            expect(response).toEqual({
+                questionId,
+                skipped: false,
+                answer: { ok: true, sink: 'browser.cookies', domain: 'example.com', count: 2 },
+            });
+        });
+
+        it('answers a failed import with a reason code only', async () => {
+            const { answerQuestions, result, questionId } = await ask();
+            expect(answerQuestions([{ questionId, receipt: { ok: false, reason: 'invalid-input' } }])).toBe(true);
+            const [response] = await result;
+            expect(response.answer).toEqual({ ok: false, sink: 'browser.cookies', domain: 'example.com', reason: 'invalid-input' });
+        });
+
+        it.each([
+            ['a plain answer', { answer: 'a=1; b=2' }],
+            ['a receipt plus an answer', { answer: 'a=1', receipt: { ok: true, count: 1 } }],
+            ['no receipt', {}],
+            ['a receipt with extra keys', { receipt: { ok: true, count: 1, names: ['a'] } as any }],
+            ['a negative count', { receipt: { ok: true, count: -1 } }],
+            ['a fractional count', { receipt: { ok: true, count: 1.5 } }],
+            ['a free-text reason', { receipt: { ok: false, reason: 'bad cookie a=1' } as any }],
+            ['a count on a failure', { receipt: { ok: false, reason: 'import-failed', count: 1 } as any }],
+        ])('rejects %s and keeps the question pending', async (_label, input) => {
+            const { answerQuestions, cancelAll, result, questionId, control } = await ask();
+            expect(answerQuestions([{ questionId, ...input }])).toBe(false);
+            expect(control.isPending(questionId)).toBe(true);
+            cancelAll();
+            await result;
+        });
+
+        it('refuses single-answer paths so a relay cannot deliver the secret', async () => {
+            const { answerQuestion, cancelAll, result, questionId, control } = await ask();
+            expect(answerQuestion(questionId, 'a=1')).toBe(false);
+            expect(control.answer(questionId, 'a=1')).toBe(false);
+            expect(control.isPending(questionId)).toBe(true);
+            cancelAll();
+            await result;
+        });
+
+        it('keeps skip and need-more-context working', async () => {
+            const skipped = await ask();
+            expect(skipped.answerQuestions([{ questionId: skipped.questionId, skipped: true }])).toBe(true);
+            expect((await skipped.result)[0]).toMatchObject({ skipped: true, reason: 'user-skipped', answer: null });
+
+            const deferred = await ask();
+            expect(deferred.answerQuestions([{ questionId: deferred.questionId, deferred: true, reason: 'needs-context' }])).toBe(true);
+            expect((await deferred.result)[0]).toMatchObject({ deferred: true, reason: 'needs-context', answer: null });
+        });
+
+        it('rejects a receipt on an ordinary question', async () => {
+            const { tool, emitQuestions, answerQuestions, cancelAll } = setup();
+            const result = tool.handler({ questions: [{ question: 'Name?', type: 'text' }] });
+            const [payload] = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+            expect(answerQuestions([{ questionId: payload.questionId, answer: 'x', receipt: { ok: true, count: 1 } }])).toBe(false);
+            cancelAll();
+            await result;
+        });
+    });
+});
+
+describe('parseSensitiveInputReceipt', () => {
+    it.each([
+        [{ ok: true, count: 0 }, { ok: true, count: 0 }],
+        [{ ok: false, reason: 'import-failed' }, { ok: false, reason: 'import-failed' }],
+        [{ ok: true }, null],
+        [{ ok: 'yes', count: 1 }, null],
+        [[], null],
+        ['{"ok":true,"count":1}', null],
+        [null, null],
+    ])('parses %j as %j', (input, expected) => {
+        expect(parseSensitiveInputReceipt(input)).toEqual(expected);
     });
 });

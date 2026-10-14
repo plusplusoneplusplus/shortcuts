@@ -45,6 +45,7 @@ import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 import { buildMetadataProcess, buildJobPreviewProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import { parseSensitiveInputReceipt } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
 import { readActiveProviderSession } from '../processes/active-provider-session';
@@ -71,6 +72,7 @@ type AskUserRouteAnswer = {
     deferred?: unknown;
     reason?: unknown;
     note?: unknown;
+    receipt?: unknown;
 };
 
 function normalizeAskUserRouteAnswer(answer: AskUserRouteAnswer): AskUserAnswerInput {
@@ -87,6 +89,11 @@ function normalizeAskUserRouteAnswer(answer: AskUserRouteAnswer): AskUserAnswerI
             reason: 'needs-context',
             ...(note ? { note } : {}),
         };
+    }
+    if (answer.receipt !== undefined) {
+        // Rebuilt from the parsed fields so nothing beyond ok/count/reason
+        // travels past the route.
+        return { questionId, skipped: false, receipt: parseSensitiveInputReceipt(answer.receipt)! };
     }
     return {
         questionId,
@@ -1488,7 +1495,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if (answer.reason === 'needs-context' && answer.deferred !== true) {
                     return void handleAPIError(res, badRequest('Need-more-context answers require deferred=true'));
                 }
-                if (answer.skipped !== true && answer.deferred !== true && answer.answer === undefined) {
+                if (answer.receipt !== undefined) {
+                    if (answer.skipped === true || answer.deferred === true || answer.answer !== undefined) {
+                        return void handleAPIError(res, badRequest('answers[].receipt cannot be combined with answer, skipped or deferred'));
+                    }
+                    if (!parseSensitiveInputReceipt(answer.receipt)) {
+                        return void handleAPIError(res, badRequest('answers[].receipt must be { ok: true, count } or { ok: false, reason }'));
+                    }
+                }
+                if (answer.skipped !== true && answer.deferred !== true && answer.answer === undefined && answer.receipt === undefined) {
                     return void handleAPIError(res, missingFields(['answers[].answer']));
                 }
             }
