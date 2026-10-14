@@ -190,6 +190,20 @@ describe('native delegated PR outcomes across observation, admission and restart
         expect((await store.getProcess(owner.processId))?.pendingMessages ?? []).toHaveLength(0);
     });
 
+    it.each([{ status: 'done' as const }, { archived: true }])('observes a newly submitted PR without AI review for a settled item: %j', async verdict => {
+        const todos = new SentinelTodoStore(store.getDatabase());
+        const current = todos.get(owner).items.find(item => item.id === itemId)!;
+        todos.update(owner, itemId, current.revision, verdict, 'user');
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        status = 'closed';
+        await infra.triggerManager.checkOutcome(registration.triggerId!);
+        expect(infra.triggerStore.getById(registration.triggerId!)).toMatchObject({
+            event: { terminalObservation: { status: 'closed' } }, outcome: 'skipped',
+        });
+        expect(queue.getAll()).toEqual([]);
+        expect(todos.get(owner).items.find(item => item.id === itemId)).toMatchObject(verdict);
+    });
+
     it('rechecks pause immediately before follow-up execution after earlier queue eligibility passed', async () => {
         const executeReview = executionBridge();
         const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
