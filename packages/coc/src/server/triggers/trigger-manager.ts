@@ -30,7 +30,7 @@ import type {
     TriggerOutcome,
     TriggerStatus,
 } from './trigger-types';
-import { DEFAULT_CI_POLL_INTERVAL_MS, MAX_CONFLICT_FIX_TOTAL, isTriggerExpired } from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS, DEFAULT_PR_MERGE_POLL_INTERVAL_MS, MAX_CONFLICT_FIX_TOTAL, isTriggerExpired } from './trigger-types';
 import { getPrMergedPollDelay } from './pr-merged-evaluator';
 
 // ============================================================================
@@ -122,6 +122,19 @@ export interface DependencyPolling {
     tick(entry: DependencyPollEntry): Promise<void>;
 }
 
+export interface PrOutcomeRegistrationEntry {
+    id: string;
+    status: string;
+    nextTickAt: string | null;
+    registrationPoll: true;
+}
+
+export interface PrOutcomeRegistrationPolling {
+    entries(): PrOutcomeRegistrationEntry[];
+    persist(entry: PrOutcomeRegistrationEntry): void;
+    tick(entry: PrOutcomeRegistrationEntry): Promise<void>;
+}
+
 export interface TriggerManagerDeps {
     store: TriggerStore;
     timerRegistry: ScheduleTimerRegistry;
@@ -146,20 +159,24 @@ export class TriggerManager {
     private readonly ticking = new Set<string>();
 
     /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
-    private readonly scheduler: PeriodicEntryScheduler<Trigger | DependencyPollEntry>;
+    private readonly scheduler: PeriodicEntryScheduler<Trigger | DependencyPollEntry | PrOutcomeRegistrationEntry>;
     private dependencyPolling?: DependencyPolling;
+    private registrationPolling?: PrOutcomeRegistrationPolling;
 
     constructor(deps: TriggerManagerDeps) {
         this.deps = deps;
         this.now = deps.now ?? Date.now;
-        this.scheduler = new PeriodicEntryScheduler<Trigger | DependencyPollEntry>({
+        this.scheduler = new PeriodicEntryScheduler<Trigger | DependencyPollEntry | PrOutcomeRegistrationEntry>({
             timerRegistry: deps.timerRegistry,
-            getFallbackIntervalMs: trigger => 'dependencyPoll' in trigger ? DEFAULT_CI_POLL_INTERVAL_MS : trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
+            getFallbackIntervalMs: trigger => 'registrationPoll' in trigger ? DEFAULT_PR_MERGE_POLL_INTERVAL_MS
+                : 'dependencyPoll' in trigger ? DEFAULT_CI_POLL_INTERVAL_MS : trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
                 ? getPrMergedPollDelay({ ...trigger.event, consecutiveErrors: trigger.delivery.consecutiveErrors ?? 0 })
                 : getPollInterval(trigger.event),
-            isActive: trigger => 'dependencyPoll' in trigger ? !!this.dependencyPolling && trigger.status === 'active'
+            isActive: trigger => 'registrationPoll' in trigger ? !!this.registrationPolling && trigger.status === 'active'
+                : 'dependencyPoll' in trigger ? !!this.dependencyPolling && trigger.status === 'active'
                 : trigger.status === 'active' || this.canRetryDelivery(trigger) || hasPendingRepair(trigger),
-            persist: trigger => 'dependencyPoll' in trigger ? this.dependencyPolling?.persist(trigger) : this.deps.store.update(trigger),
+            persist: trigger => 'registrationPoll' in trigger ? this.registrationPolling?.persist(trigger)
+                : 'dependencyPoll' in trigger ? this.dependencyPolling?.persist(trigger) : this.deps.store.update(trigger),
             onTick: id => { void this.onTick(id); },
             logLabel: 'TriggerManager',
             now: this.now,
@@ -178,6 +195,7 @@ export class TriggerManager {
         this.scheduler.armAll(this.deps.store.getAll().filter(trigger =>
             trigger.status === 'active' || this.canRetryDelivery(trigger) || hasPendingRepair(trigger)));
         this.refreshDependencyPolling();
+        this.refreshPrOutcomeRegistrationPolling();
     }
 
     /** Dependency evidence/transport shares this manager's one existing scheduler. */
@@ -192,6 +210,15 @@ export class TriggerManager {
 
     refreshDependencyPolling(): void {
         if (!this.stopped) for (const entry of this.dependencyPolling?.entries() ?? []) this.scheduler.arm(entry);
+    }
+
+    setPrOutcomeRegistrationPolling(polling: PrOutcomeRegistrationPolling): void {
+        this.registrationPolling = polling;
+        this.refreshPrOutcomeRegistrationPolling();
+    }
+
+    refreshPrOutcomeRegistrationPolling(): void {
+        if (!this.stopped) for (const entry of this.registrationPolling?.entries() ?? []) this.scheduler.arm(entry);
     }
 
     /** Reconcile durable wake receipts before ordinary queue processing starts. */
@@ -284,6 +311,15 @@ export class TriggerManager {
         if (this.ticking.has(triggerId)) return;
         this.ticking.add(triggerId);
         try {
+            if (triggerId.startsWith('sentinel-pr-registration:')) {
+                const entry = this.registrationPolling?.entries().find(entry => entry.id === triggerId);
+                if (!entry || this.stopped) return;
+                try { await this.registrationPolling!.tick(entry); }
+                catch (error) { getLogger().warn(LogCategory.AI, `[TriggerManager] PR outcome registration recovery failed: ${String(error)}`); }
+                const current = this.registrationPolling?.entries().find(current => current.id === entry.id);
+                if (!this.stopped && current) this.scheduler.reschedule(current);
+                return;
+            }
             if (triggerId.startsWith('sentinel-dependency:')) {
                 const entry = this.dependencyPolling?.entries().find(entry => entry.id === triggerId);
                 if (!entry || this.stopped) return;

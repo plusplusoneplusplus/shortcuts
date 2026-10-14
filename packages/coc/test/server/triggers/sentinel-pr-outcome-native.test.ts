@@ -9,6 +9,7 @@ import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-t
 import { createTriggerInfrastructure, type TriggerInfrastructure } from '../../../src/server/infrastructure/trigger-infrastructure';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { DEFAULT_PR_MERGE_POLL_INTERVAL_MS, MAX_ACTIVE_TRIGGERS } from '../../../src/server/triggers/trigger-types';
 
 const owner = { workspaceId: 'parent-workspace', processId: 'parent-sentinel' };
 const child = { workspaceId: 'child-workspace', processId: 'child-job' };
@@ -63,7 +64,9 @@ describe('native delegated PR outcomes across observation, admission and restart
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         infra?.dispose();
+        vi.useRealTimers();
         store?.close();
         fs.rmSync(dataDir, { recursive: true, force: true });
         try { fs.rmdirSync(path.dirname(dataDir)); } catch { /* Parallel runs may own other fixtures. */ }
@@ -218,5 +221,78 @@ describe('native delegated PR outcomes across observation, admission and restart
         expect(queue.getAll()).toHaveLength(0);
         expect((await store.getProcess(owner.processId))?.pendingMessages ?? []).toHaveLength(0);
         expect(infra.triggerStore.getById(registration.triggerId!)).toMatchObject({ outcome: 'skipped' });
+    });
+
+    it('shows a capacity-blocked exact receipt and Check reconstructs it without bypassing pause', async () => {
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'pause', { expectedRevision: 0 });
+        const capacity = vi.spyOn(infra.triggerStore, 'getActive').mockReturnValue(Array(MAX_ACTIVE_TRIGGERS).fill({}));
+        await expect(infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url)).rejects.toThrow('capacity');
+        const receipt = new DelegatedJobStore(dataDir).list(owner.workspaceId)[0].pullRequests![0];
+        const failed = await infra.sentinelPrOutcomes.list(owner, itemId);
+        expect(failed).toMatchObject({
+            paused: true, outcomes: [{ receiptId: receipt.id, pr: receipt.pr, delivery: 'error', error: expect.stringContaining('capacity') }],
+        });
+        expect(receipt.outcomeWatchRequestedAt).toBeDefined();
+        capacity.mockRestore();
+        status = 'closed';
+        const checked = await infra.sentinelPrOutcomes.control(owner, itemId, 'check', { expectedRevision: 1 });
+        expect(checked).toMatchObject({ paused: true, outcomes: [{ id: failed.outcomes[0].id, receiptId: receipt.id, status: 'closed', delivery: 'pending' }] });
+        expect(queue.getAll()).toHaveLength(0);
+        expect(new DelegatedJobStore(dataDir).list(owner.workspaceId)[0].pullRequests![0].outcomeWatchError).toBeUndefined();
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'resume', { expectedRevision: 1 });
+        expect(queue.getAll()).toHaveLength(1);
+    });
+
+    it('reconstructs only requested exact receipts after a native insert failure and restart', async () => {
+        vi.spyOn(infra.triggerStore, 'insert').mockImplementationOnce(() => { throw new Error('Native insert failed'); });
+        await expect(infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url)).rejects.toThrow('insert failed');
+        const before = await infra.sentinelPrOutcomes.list(owner, itemId);
+        expect(before.outcomes[0]).toMatchObject({ delivery: 'error', error: 'Native insert failed' });
+        new DelegatedJobStore(dataDir).recordPullRequest(owner.workspaceId, child.processId, itemId, url.replace('/42', '/41'));
+        infra.dispose();
+        infra = await start();
+        const after = await infra.sentinelPrOutcomes.list(owner, itemId);
+        expect(after.outcomes).toEqual([expect.objectContaining({
+            id: before.outcomes[0].id, receiptId: before.outcomes[0].receiptId, pr: before.outcomes[0].pr, delivery: 'none',
+        })]);
+        expect(infra.triggerStore.getAll()).toHaveLength(1);
+    });
+
+    it('surfaces and repairs a timer-arm failure after the native watch was persisted', async () => {
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'pause', { expectedRevision: 0 });
+        vi.spyOn(infra.triggerManager, 'arm').mockImplementationOnce(() => { throw new Error('Native arm failed'); });
+        await expect(infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url)).rejects.toThrow('arm failed');
+        expect(infra.triggerStore.getAll()).toHaveLength(1);
+        expect((await infra.sentinelPrOutcomes.list(owner, itemId)).outcomes).toEqual([
+            expect.objectContaining({ delivery: 'error', error: 'Native arm failed' }),
+        ]);
+        expect(infra.sentinelPrOutcomes.registrationPolling.entries()).toHaveLength(1);
+        status = 'merged';
+        const checked = await infra.sentinelPrOutcomes.control(owner, itemId, 'check', { expectedRevision: 1 });
+        expect(checked).toMatchObject({ paused: true, outcomes: [{ status: 'merged', delivery: 'pending' }] });
+        expect(checked.outcomes[0].error).toBeUndefined();
+        expect(queue.getAll()).toHaveLength(0);
+    });
+
+    it('retries an isolated insert failure on the existing native merge-monitor cadence', async () => {
+        vi.useFakeTimers();
+        vi.spyOn(infra.triggerStore, 'insert').mockImplementationOnce(() => { throw new Error('Native insert failed'); });
+        await expect(infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url)).rejects.toThrow('insert failed');
+        expect(infra.sentinelPrOutcomes.registrationPolling.entries()).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(DEFAULT_PR_MERGE_POLL_INTERVAL_MS);
+        expect(infra.triggerStore.getAll()).toHaveLength(1);
+        expect(infra.sentinelPrOutcomes.registrationPolling.entries()).toHaveLength(0);
+        expect((await infra.sentinelPrOutcomes.list(owner, itemId)).outcomes[0]).toMatchObject({ delivery: 'none' });
+    });
+
+    it('persists permanent missing-owner recovery failures without an endless native retry', async () => {
+        vi.spyOn(infra.triggerStore, 'insert').mockImplementationOnce(() => { throw new Error('Native insert failed'); });
+        await expect(infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url)).rejects.toThrow('insert failed');
+        await store.removeProcess(owner.processId);
+        await infra.sentinelPrOutcomes.restore();
+        const receipt = new DelegatedJobStore(dataDir).list(owner.workspaceId)[0].pullRequests![0];
+        expect(receipt.outcomeWatchError).toMatchObject({ permanent: true });
+        expect(infra.sentinelPrOutcomes.registrationPolling.entries()).toHaveLength(0);
+        expect(infra.triggerStore.getAll()).toHaveLength(0);
     });
 });

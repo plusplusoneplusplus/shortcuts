@@ -36,17 +36,26 @@ describe('Sentinel PR outcome tracking', () => {
         itemId = todos.create(parent, { title: 'Release', completionCondition: 'Published and verified' }, { actor: 'user' }).item.id;
         listOwner.mockImplementation(async () => todos.get(parent));
         job = { id: child.processId, parent, child: { ...child }, title: 'Implementation', createdAt: new Date().toISOString() };
-        recordPullRequest.mockImplementation((_workspace, _job, itemId, prUrl) => {
+        recordPullRequest.mockImplementation((_workspace, _job, itemId, prUrl, requestOutcomeWatch = false) => {
             const pr = parsePullRequestUrl(prUrl)!;
             const existing = job.pullRequests?.find(receipt => receipt.pr.url === pr.url);
-            if (existing) return existing;
-            const receipt = { id: `receipt-${pr.number}`, itemId, pr, recordedAt: new Date().toISOString() };
+            if (existing) {
+                if (requestOutcomeWatch) existing.outcomeWatchRequestedAt ??= new Date().toISOString();
+                return existing;
+            }
+            const receipt = { id: `receipt-${pr.number}`, itemId, pr, recordedAt: new Date().toISOString(),
+                ...(requestOutcomeWatch ? { outcomeWatchRequestedAt: new Date().toISOString() } : {}) };
             (job.pullRequests ??= []).push(receipt);
             return receipt;
         });
         controls = new SentinelPrOutcomeControls(db);
         service = new SentinelPrOutcomeService({
             jobs: { list: workspaceId => workspaceId === parent.workspaceId ? [job] : [], recordPullRequest,
+                recordPullRequestOutcomeWatchError: (_workspace: string, _job: string, receiptId: string, error?: {message: string; permanent: boolean}) => {
+                    const receipt = job.pullRequests!.find(receipt => receipt.id === receiptId)!;
+                    if (error) receipt.outcomeWatchError = error;
+                    else delete receipt.outcomeWatchError;
+                },
                 requestPullRequestOutcomeWatch: (_workspace: string, _job: string, receiptId: string) => {
                     job.pullRequests!.find(receipt => receipt.id === receiptId)!.outcomeWatchRequestedAt ??= new Date().toISOString();
                 } } as never,
@@ -80,6 +89,18 @@ describe('Sentinel PR outcome tracking', () => {
         enabled = false;
         expect(await service.registerSubmission(child.workspaceId, child.processId, url)).toEqual({ registered: false });
         expect(recordPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('deduplicates concurrent registration after asynchronous owner validation', async () => {
+        const results = await Promise.all([
+            service.registerSubmission(child.workspaceId, child.processId, url),
+            service.registerSubmission(child.workspaceId, child.processId, url),
+        ]);
+        expect(results[0]).toEqual(results[1]);
+        expect(triggers.getAll()).toHaveLength(1);
+        expect(arm).toHaveBeenCalledTimes(1);
+        expect(job.pullRequests).toHaveLength(1);
+        expect(job.pullRequests![0].outcomeWatchError).toBeUndefined();
     });
 
     it('reconciles durable registration intent after a crash but never backfills older receipts', async () => {

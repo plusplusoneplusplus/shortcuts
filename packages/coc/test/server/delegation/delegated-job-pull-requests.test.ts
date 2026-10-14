@@ -94,6 +94,33 @@ describe('Delegated job pull request receipts', () => {
         expect(() => store.requestPullRequestOutcomeWatch('owner-repo', registration.id, 'missing')).toThrow('receipt not found');
     });
 
+    it('atomically commits an exact submission and its requested watch intent together', () => {
+        vi.mocked(fs.renameSync).mockClear();
+        const receipt = store.recordPullRequest('owner-repo', registration.id, 'todo-1', prUrl, true);
+        expect(fs.renameSync).toHaveBeenCalledTimes(1);
+        expect(receipt.outcomeWatchRequestedAt).toBeTruthy();
+        expect(job().pullRequests).toEqual([receipt]);
+        expect(restart().recordPullRequest('owner-repo', registration.id, 'todo-1', prUrl, true)).toEqual(receipt);
+    });
+
+    it('adds explicit submission intent only to the selected exact existing receipt', () => {
+        const earlier = record(prUrl.replace('/42', '/41'));
+        const selected = record();
+        const requested = store.recordPullRequest('owner-repo', registration.id, 'todo-1', prUrl, true);
+        expect(requested.id).toBe(selected.id);
+        expect(job().pullRequests).toEqual([earlier, requested]);
+        expect(requested.outcomeWatchRequestedAt).toBeTruthy();
+    });
+
+    it('durably bounds registration failures and clears them without changing receipt identity or intent', () => {
+        const receipt = store.recordPullRequest('owner-repo', registration.id, 'todo-1', prUrl, true);
+        store.recordPullRequestOutcomeWatchError('owner-repo', registration.id, receipt.id, { message: 'x'.repeat(600), permanent: true });
+        expect(job().pullRequests![0].outcomeWatchError).toEqual({ message: 'x'.repeat(500), permanent: true });
+        restart().recordPullRequestOutcomeWatchError('owner-repo', registration.id, receipt.id);
+        expect(job().pullRequests).toEqual([receipt]);
+        expect(() => store.recordPullRequestOutcomeWatchError('owner-repo', registration.id, 'missing')).toThrow('receipt not found');
+    });
+
     it('keeps PR receipts independent of execution and grilling result receipts', () => {
         const result = { terminalEventId: 'terminal-1', outcome: 'completed' as const, summary: 'Submitted', links: [] };
         store.recordResult('owner-repo', registration.id, result);

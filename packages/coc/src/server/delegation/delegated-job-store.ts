@@ -42,6 +42,7 @@ const pullRequestSchema = z.object({
     pr: prIdentitySchema,
     recordedAt: z.iso.datetime(),
     outcomeWatchRequestedAt: z.iso.datetime().optional(),
+    outcomeWatchError: z.object({ message: z.string().max(500), permanent: z.boolean() }).optional(),
 }).strict();
 const jobSchema = z.object({
     id,
@@ -127,7 +128,7 @@ export class DelegatedJobStore {
      * Called with the exact successful submission, never URLs inferred from prose.
      * This records provenance only; item eligibility and monitoring belong to callers.
      */
-    recordPullRequest(workspaceId: string, jobId: string, itemId: string, prUrl: string): DelegatedJobPullRequest {
+    recordPullRequest(workspaceId: string, jobId: string, itemId: string, prUrl: string, requestOutcomeWatch = false): DelegatedJobPullRequest {
         const rows = this.list(workspaceId);
         const job = rows.find(row => row.id === jobId);
         if (!job) throw new Error(`Delegated job ${jobId} is not registered in ${workspaceId}`);
@@ -135,10 +136,15 @@ export class DelegatedJobStore {
         if (!pr) throw new Error('A supported GitHub or Azure DevOps pull request URL is required');
         const candidate = pullRequestSchema.parse({
             id: `delegated-pr-${randomUUID()}`, itemId, pr, recordedAt: new Date().toISOString(),
+            ...(requestOutcomeWatch ? { outcomeWatchRequestedAt: new Date().toISOString() } : {}),
         });
         const existing = job.pullRequests?.find(output => pullRequestKey(output.pr) === pullRequestKey(candidate.pr));
         if (existing) {
             if (existing.itemId !== itemId) throw new Error('Delegated pull request already belongs to another to-do item');
+            if (requestOutcomeWatch && !existing.outcomeWatchRequestedAt) {
+                existing.outcomeWatchRequestedAt = new Date().toISOString();
+                this.save(workspaceId, rows);
+            }
             return existing;
         }
         (job.pullRequests ??= []).push(candidate);
@@ -153,6 +159,16 @@ export class DelegatedJobStore {
         if (!receipt) throw new Error('Exact delegated PR receipt not found');
         if (receipt.outcomeWatchRequestedAt) return;
         receipt.outcomeWatchRequestedAt = new Date().toISOString();
+        this.save(workspaceId, rows);
+    }
+
+    recordPullRequestOutcomeWatchError(workspaceId: string, jobId: string, receiptId: string,
+        error?: { message: string; permanent: boolean }): void {
+        const rows = this.list(workspaceId);
+        const receipt = rows.find(job => job.id === jobId)?.pullRequests?.find(receipt => receipt.id === receiptId);
+        if (!receipt?.outcomeWatchRequestedAt) throw new Error('Requested delegated PR receipt not found');
+        if (error) receipt.outcomeWatchError = { ...error, message: error.message.slice(0, 500) };
+        else delete receipt.outcomeWatchError;
         this.save(workspaceId, rows);
     }
 

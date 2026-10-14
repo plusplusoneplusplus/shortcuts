@@ -178,6 +178,7 @@ export async function createTriggerInfrastructure(
         controls: new SentinelPrOutcomeControls(db),
         enabled: options.getPrOutcomeEnabled ?? (() => false),
         recoverPendingMessages: options.recoverPendingMessages,
+        onRegistrationPending: () => triggerManager.refreshPrOutcomeRegistrationPolling(),
         emit,
     });
 
@@ -214,6 +215,7 @@ export async function createTriggerInfrastructure(
     }
 
     // Restore active trigger timers from the persisted nextTickAt values.
+    triggerManager.setPrOutcomeRegistrationPolling(sentinelPrOutcomes.registrationPolling);
     await sentinelPrOutcomes.restore();
     triggerManager.armAll();
     await triggerManager.reconcilePendingDeliveries();
