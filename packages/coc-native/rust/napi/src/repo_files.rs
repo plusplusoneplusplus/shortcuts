@@ -2,17 +2,18 @@
 //! resolved repository root, with every filesystem call on a libuv worker.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use coc_native_core::repo_files::{
-    list_directory, list_files, prepare_content_candidates, read_blob, replace_content,
-    search_content, validate_content_root, write_blob, Blob, ContentCandidateCommand, FileListing,
-    ReplaceFile as RepoReplaceFile, ReplaceOptions, ReplaceSummary, RepoFilesError, RepoIndexes,
-    TreeListing,
+    delete_entry, list_directory, list_files, prepare_content_candidates, read_blob,
+    replace_content, search_content, validate_content_root, write_blob, Blob,
+    ContentCandidateCommand, FileListing, ReplaceFile as RepoReplaceFile, ReplaceOptions,
+    ReplaceSummary, RepoFilesError, RepoIndexes, TreeListing,
 };
 use coc_native_core::repo_index::{FuzzyMatcher, Hit};
-use napi::bindgen_prelude::{AsyncTask, Error, FnArgs, Function, Status};
+use napi::bindgen_prelude::{AsyncTask, Error, FnArgs, Function, JsObjectValue, Status};
+use napi::JsValue;
 use napi_derive::napi;
 
 use crate::task::Blocking;
@@ -194,6 +195,60 @@ impl RepoFiles {
 
 #[napi]
 impl RepoFiles {
+    /// Permanently remove one guarded entry on a worker. Failures retain the
+    /// mutation count; every mutation refreshes both built index variants.
+    #[napi(ts_return_type = "Promise<void>")]
+    pub fn delete_entry(&self, path: String) -> AsyncTask<Blocking<()>> {
+        let indexes = Arc::clone(&self.indexes);
+        let failure = Arc::new(Mutex::new(None));
+        let worker_failure = Arc::clone(&failure);
+        let task = Blocking::new(move || {
+            let root = indexes.root().map_err(to_napi_error)?;
+            match delete_entry(root, &path) {
+                Ok(_) => {
+                    indexes.invalidate();
+                    Ok(())
+                }
+                Err(error) => {
+                    if error.removed_entries > 0 {
+                        indexes.invalidate();
+                    }
+                    let code = match &error.cause {
+                        RepoFilesError::InvalidArg(message)
+                            if message.contains("changed during deletion") =>
+                        {
+                            "ENTRY_CHANGED"
+                        }
+                        RepoFilesError::InvalidArg(_) | RepoFilesError::PathTraversal => {
+                            "INVALID_DELETE_PATH"
+                        }
+                        RepoFilesError::NotFound(_) | RepoFilesError::PathMissing(_) => {
+                            "ENTRY_NOT_FOUND"
+                        }
+                        _ => "DELETE_IO_ERROR",
+                    };
+                    *worker_failure.lock().unwrap() = Some((code, error.removed_entries));
+                    Err(Error::new(Status::GenericFailure, error.to_string()))
+                }
+            }
+        });
+        AsyncTask::new(task.map_error(move |env, error| {
+            let Some((code, removed)) = failure.lock().unwrap().take() else { return error };
+            let value = napi::JsError::from(error).into_unknown(env);
+            let decorated = (|| -> napi::Result<()> {
+                let mut object = value.coerce_to_object()?;
+                object.set_named_property("code", code)?;
+                object.set_named_property("partial", removed > 0)?;
+                object.set_named_property("removedEntries", removed as f64)?;
+                Ok(())
+            })();
+            if let Err(error) = decorated {
+                return error;
+            }
+            Error::from(value)
+        }))
+    }
+
     /// Git argv and limits for Node's WSL execution adapter. Checks disposal;
     /// validates the root on a worker before the adapter executes Git.
     #[napi(ts_return_type = "Promise<ContentCandidateCommand>")]
