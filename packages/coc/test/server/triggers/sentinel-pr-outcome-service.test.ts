@@ -1,11 +1,15 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { DelegatedJob } from '../../../src/server/delegation/delegated-job-store';
-import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
+import { SentinelTodoError, SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { SentinelPrOutcomeControls } from '../../../src/server/triggers/sentinel-pr-outcome-controls';
 import { SentinelPrOutcomeService } from '../../../src/server/triggers/sentinel-pr-outcome-service';
 import { parsePullRequestUrl } from '../../../src/server/triggers/pr-status-fetcher';
+import { RalphGrillingStore } from '../../../src/server/ralph/grilling-state';
 
 const parent = { workspaceId: 'owner-ws', processId: 'sentinel-parent' };
 const child = { workspaceId: 'child-ws', processId: 'child-job' };
@@ -69,6 +73,25 @@ describe('Sentinel PR outcome tracking', () => {
         });
     });
     afterEach(() => db.close());
+
+    it('does not overwrite a newer receipt revision during asynchronous execution validation', async () => {
+        const registration = await service.registerSubmission(child.workspaceId, child.processId, url);
+        const trigger = triggers.getById(registration.triggerId!)!;
+        trigger.status = 'disarmed';
+        trigger.outcome = 'fired';
+        trigger.delivery = { deliveryId: 'review-1', reason: 'merged', state: 'delivered', firedAt: new Date().toISOString() };
+        triggers.update(trigger);
+        listOwner.mockImplementationOnce(async () => {
+            const latest = triggers.getById(trigger.id)!;
+            triggers.update({ ...latest, revision: latest.revision + 1, outcomeReason: 'Concurrent update' });
+            const ledger = todos.get(parent);
+            return { ...ledger, items: ledger.items.map(item => ({ ...item, status: 'done' as const })) };
+        });
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'review-1')).toBe('defer');
+        expect(triggers.getById(trigger.id)).toMatchObject({
+            outcomeReason: 'Concurrent update', delivery: { state: 'delivered' },
+        });
+    });
 
     it('registers every exact cross-workspace submission at the original parent and deduplicates retries', async () => {
         const first = await service.registerSubmission(child.workspaceId, child.processId, url);
@@ -275,8 +298,216 @@ describe('Sentinel PR outcome tracking', () => {
 
     it('exposes a permanent failure when the admitted Sentinel owner disappears', async () => {
         const trigger = await admittedReview();
-        listOwner.mockRejectedValueOnce(new Error('Missing owner'));
+        listOwner.mockRejectedValueOnce(new SentinelTodoError('not_found', 'Missing owner'));
         expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('skip');
         expect(triggers.getById(trigger.id)).toMatchObject({ outcome: 'error', delivery: { state: 'failed' } });
+    });
+    it('surfaces storage failures without turning a valid receipt into a missing-owner failure', async () => {
+        const trigger = await admittedReview();
+        const failure = new Error('Storage unavailable');
+        listOwner.mockRejectedValueOnce(failure);
+        await expect(service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).rejects.toBe(failure);
+        expect(triggers.getById(trigger.id)).toEqual(trigger);
+    });
+});
+
+/**
+ * A tracked Ralph delegation's child `processId` only identifies the first
+ * grill/launch admission; every later iteration, final-check and submit turn
+ * runs under its own fresh processId. `registerSubmission` must find the
+ * original job by the session identity an accepted grill actually executes
+ * under (the saved execution pointer), never by inference over the newest
+ * session or by trusting tool-supplied routing alone.
+ */
+describe('Sentinel PR outcome tracking — Ralph execution-owner provenance', () => {
+    let dataDir: string;
+    let db: NativeDatabase;
+    let todos: SentinelTodoStore;
+    let triggers: TriggerStore;
+    let controls: SentinelPrOutcomeControls;
+    let service: SentinelPrOutcomeService;
+    let jobsByWorkspace: Map<string, DelegatedJob[]>;
+    let processesById: Map<string, { parentProcessId?: string; metadata?: { ralph?: { sessionId?: string } } }>;
+    let itemId: string;
+    const recordPullRequest = vi.fn();
+    const arm = vi.fn();
+    const grillWorkspace = 'grill-ws';
+    const execWorkspace = 'exec-ws';
+    const grillSessionId = 'ralph-session-1';
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-pr-outcome-ralph-'));
+        db = new NativeDatabase(':memory:');
+        todos = new SentinelTodoStore(db);
+        triggers = new TriggerStore(db);
+        controls = new SentinelPrOutcomeControls(db);
+        itemId = todos.create(parent, { title: 'Release', completionCondition: 'Published and verified' }, { actor: 'user' }).item.id;
+        jobsByWorkspace = new Map();
+        processesById = new Map();
+        recordPullRequest.mockImplementation((_workspace: string, jobId: string, recordItemId: string, prUrl: string, requestOutcomeWatch = false) => {
+            const job = [...jobsByWorkspace.values()].flat().find(candidate => candidate.id === jobId)!;
+            const pr = parsePullRequestUrl(prUrl)!;
+            const existing = job.pullRequests?.find(receipt => receipt.pr.url === pr.url);
+            if (existing) {
+                if (requestOutcomeWatch) existing.outcomeWatchRequestedAt ??= new Date().toISOString();
+                return existing;
+            }
+            const receipt = { id: `receipt-${pr.number}`, itemId: recordItemId, pr, recordedAt: new Date().toISOString(),
+                ...(requestOutcomeWatch ? { outcomeWatchRequestedAt: new Date().toISOString() } : {}) };
+            (job.pullRequests ??= []).push(receipt);
+            return receipt;
+        });
+        service = new SentinelPrOutcomeService({
+            jobs: {
+                list: (workspaceId: string) => jobsByWorkspace.get(workspaceId) ?? [],
+                recordPullRequest,
+                recordPullRequestOutcomeWatchError: vi.fn(),
+                requestPullRequestOutcomeWatch: vi.fn(),
+            } as never,
+            dataDir,
+            processes: {
+                getWorkspaces: async () => [{ id: parent.workspaceId }, { id: grillWorkspace }, { id: execWorkspace }] as never,
+                getProcess: async (processId: string) => processesById.get(processId) as never,
+            },
+            owners: { list: async () => todos.get(parent), findLinkedItem: () => todos.get(parent).items.find(item => item.id === itemId) },
+            triggers, controls,
+            manager: { arm, disarm: vi.fn(), schedulePendingDelivery: vi.fn(), checkOutcome: vi.fn() },
+            firer: { fire: vi.fn(), deliverPending: vi.fn() }, enabled: () => true,
+        });
+    });
+
+    afterEach(() => {
+        db.close();
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    function registerJob(job: DelegatedJob): void {
+        const list = jobsByWorkspace.get(job.parent.workspaceId) ?? [];
+        list.push(job);
+        jobsByWorkspace.set(job.parent.workspaceId, list);
+    }
+
+    it('leaves ordinary non-Ralph jobs matched only by their exact child processId', async () => {
+        const job: DelegatedJob = { id: 'job-ordinary', parent, child: { ...child }, title: 'Plain', createdAt: new Date().toISOString() };
+        registerJob(job);
+        const result = await service.registerSubmission(child.workspaceId, child.processId, url);
+        expect(result.registered).toBe(true);
+        expect(recordPullRequest).toHaveBeenCalledWith(parent.workspaceId, job.id, itemId, url, true);
+    });
+
+    it('matches a direct Ralph execution launch by session identity across later iteration/submit processIds', async () => {
+        const job: DelegatedJob = {
+            id: 'job-direct', parent,
+            child: { workspaceId: grillWorkspace, processId: 'grill-task-1', sessionId: grillSessionId },
+            title: 'Ralph', createdAt: new Date().toISOString(),
+        };
+        registerJob(job);
+        processesById.set('submit-task-9', { metadata: { ralph: { sessionId: grillSessionId } } });
+        const result = await service.registerSubmission(grillWorkspace, 'submit-task-9', url);
+        expect(result.registered).toBe(true);
+        expect(recordPullRequest).toHaveBeenCalledWith(parent.workspaceId, job.id, itemId, url, true);
+    });
+
+    it('matches an accepted grill\'s same-server cross-workspace execution via the saved pointer', async () => {
+        const job: DelegatedJob = {
+            id: 'job-pointer', parent,
+            child: { workspaceId: grillWorkspace, processId: 'grill-task-2', sessionId: grillSessionId },
+            title: 'Ralph', createdAt: new Date().toISOString(),
+        };
+        registerJob(job);
+        await new RalphGrillingStore(dataDir).write({
+            workspaceId: grillWorkspace, sessionId: grillSessionId, processId: 'grill-task-2',
+            start: {
+                taskId: 'grill-task-2', goalSpec: 'Ship it', status: 'admitted',
+                execution: { workspaceId: execWorkspace, sessionId: 'exec-session-1', processId: 'exec-task-1', remote: false },
+            },
+        });
+        processesById.set('submit-task-10', { metadata: { ralph: { sessionId: 'exec-session-1' } } });
+        const result = await service.registerSubmission(execWorkspace, 'submit-task-10', url);
+        expect(result.registered).toBe(true);
+        expect(recordPullRequest).toHaveBeenCalledWith(parent.workspaceId, job.id, itemId, url, true);
+    });
+
+    it('skips remote execution with a visible unavailable warning instead of matching it', async () => {
+        const job: DelegatedJob = {
+            id: 'job-remote', parent,
+            child: { workspaceId: grillWorkspace, processId: 'grill-task-3', sessionId: grillSessionId },
+            title: 'Ralph', createdAt: new Date().toISOString(),
+        };
+        registerJob(job);
+        await new RalphGrillingStore(dataDir).write({
+            workspaceId: grillWorkspace, sessionId: grillSessionId, processId: 'grill-task-3',
+            start: {
+                taskId: 'grill-task-3', goalSpec: 'Ship it', status: 'admitted',
+                execution: { workspaceId: execWorkspace, sessionId: 'exec-session-2', processId: 'exec-task-2', remote: true },
+            },
+        });
+        processesById.set('submit-task-11', { parentProcessId: 'parent-proc', metadata: { ralph: { sessionId: 'exec-session-2' } } });
+        const result = await service.registerSubmission(execWorkspace, 'submit-task-11', url);
+        expect(result).toEqual({ registered: false, warning: expect.stringContaining('unavailable') });
+        expect(recordPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('does not match a job whose child origin itself is a remote delegation', async () => {
+        const job: DelegatedJob = {
+            id: 'job-remote-child', parent,
+            child: { workspaceId: grillWorkspace, processId: 'grill-task-7', sessionId: grillSessionId, serverId: 'remote-server' },
+            title: 'Ralph', createdAt: new Date().toISOString(),
+        };
+        registerJob(job);
+        processesById.set('submit-task-13', { metadata: { ralph: { sessionId: grillSessionId } } });
+        const result = await service.registerSubmission(grillWorkspace, 'submit-task-13', url);
+        expect(result).toEqual({ registered: false });
+        expect(recordPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects spoofed or mismatched session metadata instead of matching an unrelated job', async () => {
+        const job: DelegatedJob = {
+            id: 'job-mismatch', parent,
+            child: { workspaceId: grillWorkspace, processId: 'grill-task-4', sessionId: grillSessionId },
+            title: 'Ralph', createdAt: new Date().toISOString(),
+        };
+        registerJob(job);
+        processesById.set('submit-task-12', { metadata: { ralph: { sessionId: 'not-a-tracked-session' } } });
+        const result = await service.registerSubmission(grillWorkspace, 'submit-task-12', url);
+        expect(result).toEqual({ registered: false });
+        expect(recordPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects ambiguity when a direct processId match and a session-based match disagree', async () => {
+        const jobA: DelegatedJob = {
+            id: 'job-5a', parent,
+            child: { workspaceId: grillWorkspace, processId: 'shared-task', sessionId: 'session-a' },
+            title: 'A', createdAt: new Date().toISOString(),
+        };
+        const jobB: DelegatedJob = {
+            id: 'job-5b', parent: { ...parent, processId: 'other-parent' },
+            child: { workspaceId: grillWorkspace, processId: 'other-task', sessionId: 'session-b' },
+            title: 'B', createdAt: new Date().toISOString(),
+        };
+        registerJob(jobA);
+        registerJob(jobB);
+        // The tool call reports jobA's exact processId directly, but that very process's own
+        // authoritative Ralph session metadata resolves to jobB's tracked session instead.
+        processesById.set('shared-task', { metadata: { ralph: { sessionId: 'session-b' } } });
+        await expect(service.registerSubmission(grillWorkspace, 'shared-task', url)).rejects.toThrow('ambiguous');
+        expect(recordPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('dedups repeated submissions of the same PR reported across different iteration/submit processIds', async () => {
+        const job: DelegatedJob = {
+            id: 'job-dedup', parent,
+            child: { workspaceId: grillWorkspace, processId: 'grill-task-6', sessionId: grillSessionId },
+            title: 'Ralph', createdAt: new Date().toISOString(),
+        };
+        registerJob(job);
+        processesById.set('iteration-task', { metadata: { ralph: { sessionId: grillSessionId } } });
+        processesById.set('submit-task', { metadata: { ralph: { sessionId: grillSessionId } } });
+        const first = await service.registerSubmission(grillWorkspace, 'iteration-task', url);
+        const second = await service.registerSubmission(grillWorkspace, 'submit-task', url);
+        expect(second).toEqual(first);
+        expect(triggers.getAll()).toHaveLength(1);
+        expect(arm).toHaveBeenCalledTimes(1);
     });
 });

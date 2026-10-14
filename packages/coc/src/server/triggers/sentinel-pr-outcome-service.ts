@@ -2,6 +2,8 @@ import { getLogger, LogCategory, type ProcessStore } from '@plusplusoneplusplus/
 import type { DelegatedJobStore, DelegatedJob, DelegatedJobPullRequest } from '../delegation/delegated-job-store';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
+import { getRalphContext } from '../tasks/task-types';
+import { resolveRalphExecutionOwner } from '../ralph/ralph-execution-owner';
 import type { TriggerStore } from './trigger-store';
 import type { TriggerManager, OneShotFirer, TriggerEventEmit, PrOutcomeRegistrationPolling } from './trigger-manager';
 import { DEFAULT_PR_MERGE_POLL_INTERVAL_MS, MAX_ACTIVE_TRIGGERS, type Trigger } from './trigger-types';
@@ -18,6 +20,8 @@ export type PrOutcomeReviewDisposition = 'execute' | 'defer' | 'skip';
 
 export interface SentinelPrOutcomeServiceDeps {
     jobs: DelegatedJobStore;
+    /** Root data directory; resolves an accepted grill's actual local execution owner. */
+    dataDir?: string;
     processes: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'>;
     owners: Pick<SentinelTodoService, 'list' | 'findLinkedItem'>;
     triggers: TriggerStore;
@@ -181,9 +185,17 @@ export class SentinelPrOutcomeService {
 
     registerSubmission: RegisterSentinelPrOutcome = async (workspaceId, processId, prUrl) => {
         if (!this.deps.enabled()) return { registered: false };
-        const matches = (await this.deps.processes.getWorkspaces()).flatMap(workspace =>
+        const workspaces = await this.deps.processes.getWorkspaces();
+        const directMatches = workspaces.flatMap(workspace =>
             this.deps.jobs.list(workspace.id).filter(job => job.parent.workspaceId === workspace.id
                 && job.child.workspaceId === workspaceId && job.child.processId === processId));
+        // Later Ralph iteration/final-check/submit turns run under a fresh processId;
+        // only the tracked session identity stays stable across the whole delegation.
+        const child = await this.deps.processes.getProcess(processId, workspaceId);
+        const ralphSessionId = getRalphContext(child)?.sessionId;
+        const ralphMatches = ralphSessionId
+            ? await this.ralphOwnerMatches(workspaces, workspaceId, ralphSessionId) : [];
+        const matches = [...new Map([...directMatches, ...ralphMatches].map(job => [job.id, job] as const)).values()];
         if (matches.length > 1) throw new Error('Delegated PR parent is ambiguous');
         const job = matches[0];
         if (job) {
@@ -195,13 +207,33 @@ export class SentinelPrOutcomeService {
             return this.registerRequestedWatch(job, receipt);
         }
         // Untracked ordinary submissions are not outcome watches.
-        const child = await this.deps.processes.getProcess(processId, workspaceId);
         if (child?.parentProcessId) return {
             registered: false,
             warning: 'No exact local tracked Sentinel job is available. Remote PR outcome transport is unavailable.',
         };
         return { registered: false };
     };
+
+    /**
+     * Resolves jobs whose durable execution owner — following an accepted
+     * grill's same-server cross-workspace pointer, never the newest or any
+     * tool-supplied routing — resolves to this exact (workspaceId, sessionId).
+     * Jobs with a remote child origin are skipped: cross-server pointer
+     * resolution is unsupported and must surface as unavailable, not matched.
+     */
+    private async ralphOwnerMatches(
+        workspaces: { id: string }[], workspaceId: string, sessionId: string,
+    ): Promise<DelegatedJob[]> {
+        const matches: DelegatedJob[] = [];
+        for (const workspace of workspaces) {
+            for (const job of this.deps.jobs.list(workspace.id)) {
+                if (job.parent.workspaceId !== workspace.id || !job.child.sessionId || job.child.serverId) continue;
+                const owner = await resolveRalphExecutionOwner(this.deps.dataDir, job.child);
+                if (owner?.workspaceId === workspaceId && owner.sessionId === sessionId) matches.push(job);
+            }
+        }
+        return matches;
+    }
 
     private async registerRequestedWatch(job: DelegatedJob, receipt: DelegatedJobPullRequest) {
         if (!this.deps.enabled()) return { registered: false };

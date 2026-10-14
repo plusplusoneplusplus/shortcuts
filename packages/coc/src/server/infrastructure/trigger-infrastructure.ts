@@ -173,7 +173,7 @@ export async function createTriggerInfrastructure(
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
     });
     const sentinelPrOutcomes: SentinelPrOutcomeService = new SentinelPrOutcomeService({
-        jobs: new DelegatedJobStore(dataDir), processes: store, owners,
+        jobs: new DelegatedJobStore(dataDir), dataDir, processes: store, owners,
         triggers: triggerStore, manager: triggerManager, firer: sentinelTodoFirer,
         controls: new SentinelPrOutcomeControls(db),
         enabled: options.getPrOutcomeEnabled ?? (() => false),
