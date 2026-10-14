@@ -259,13 +259,21 @@ describe('UnifiedTodoTab', () => {
                 expect(jobRow.classList.contains(style)).toBe(true);
             }
             expect(within(jobRow).getByTestId('sentinel-todo-job-owner').textContent).toBe('Fixture child repo');
-            expect(within(jobRow).getByRole('button', { name: `Preview job: ${link.textContent}` }).getAttribute('aria-haspopup')).toBe('dialog');
+            expect(link.getAttribute('aria-description')).toBe('Focus to preview; ArrowDown enters preview actions.');
+            expect(within(jobRow).queryByRole('button', { name: /^Preview job:/ })).toBeNull();
         }
         expect(within(jobs).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
         expect(jobs.textContent).toContain('Job cancelled');
         expect(jobs.textContent).toContain('Notice delivered');
         expect(jobs.textContent).toContain('Running');
         expect(detail.classList.contains('select-text')).toBe(true);
+        act(() => links[0].focus());
+        const preview = await screen.findByRole('dialog', { name: 'Fixture earlier job' });
+        fireEvent.keyDown(links[0], { key: 'ArrowDown' });
+        expect(within(preview).getByRole('button', { name: 'Close job preview' })).toHaveFocus();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Fixture earlier job' })).toBeNull();
+        expect(links[0]).toHaveFocus();
         expect(create).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
     });

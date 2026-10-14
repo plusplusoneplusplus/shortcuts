@@ -86,7 +86,10 @@ for (const dark of [false, true]) {
         await page.mouse.move(sourceBox.x + 20, sourceBox.y + 15);
         await page.mouse.down();
         await page.mouse.move(sourceBox.x - 20, sourceBox.y + 15, { steps: 3 });
+        await expect(file).toHaveAttribute('data-dragging', 'true');
         await page.mouse.move(targetBox.x + 4, targetBox.y + 15, { steps: 4 });
+        // A second target move delivers dragover after native dragenter.
+        await page.mouse.move(targetBox.x + 4, targetBox.y + 15);
         await expect(page.getByTestId('unified-panel-tab-drop-indicator')).toHaveAttribute('data-position', 'before');
         await expect(page.getByTestId('unified-panel-tab-drop-indicator')).toHaveCSS('width', '2px');
         await expect(page.getByTestId('unified-panel-tab-drop-indicator')).toHaveCSS('background-color', dark ? 'rgb(55, 148, 255)' : 'rgb(0, 120, 212)');

@@ -148,10 +148,11 @@ for (const dark of [false, true]) {
         }
         await expect(links.nth(0)).toHaveAttribute('href', '#repos/child/chats/earlier');
         await expect(links.nth(1)).toHaveAttribute('title', longTitle);
-        await jobs.getByRole('button', { name: 'Preview job: Fixture short job' }).click();
+        await links.nth(0).focus();
+        await links.nth(0).press('ArrowDown');
         await expect(page.getByRole('dialog')).toContainText('Recorded job result');
         await page.keyboard.press('Escape');
-        await expect(jobs.getByRole('button', { name: 'Preview job: Fixture short job' })).toBeFocused();
+        await expect(links.nth(0)).toBeFocused();
         const writes = await page.evaluate(() => (window as Window & { reads: unknown[][] }).reads.filter(read => read[0] === 'update'));
         expect(writes).toEqual([]);
         expect(errors).toEqual([]);
