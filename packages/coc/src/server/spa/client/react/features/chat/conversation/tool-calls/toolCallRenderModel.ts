@@ -277,6 +277,21 @@ export function statusIndicator(status?: string): string {
     }
 }
 
+/** The wire/store exposes strings, not original payload sizes or token counts. */
+export function getResponseSize(result: unknown, availableResponseBytes?: number): ToolCallRenderModel['responseSize'] {
+    const hasRetainedSize = typeof availableResponseBytes === 'number'
+        && Number.isSafeInteger(availableResponseBytes) && availableResponseBytes >= 0;
+    if (!hasRetainedSize && typeof result !== 'string') return null;
+    const bytes = hasRetainedSize ? availableResponseBytes : new TextEncoder().encode(result as string).byteLength;
+    const units = ['B', 'KiB', 'MiB', 'GiB'];
+    const unit = bytes === 0 ? 0 : Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
+    return {
+        bytes,
+        label: unit === 0 ? `${bytes} B` : `${(bytes / 1024 ** unit).toFixed(1)} ${units[unit]}`,
+        explanation: `Available response content: ${formatCount(bytes)} bytes (UTF-8, before display clipping). Includes serialized JSON/base64 when present; excludes unavailable or omitted content. Not a token count or original payload size.`,
+    };
+}
+
 /** Raw tool call shape accepted by the render model. */
 export interface ToolCallModelInput extends ToolLikeForNormalization {
     id?: string;
@@ -318,6 +333,8 @@ export interface ToolCallRenderModel {
     /** The full path backing a path summary (empty string otherwise). */
     summaryFullPath: string;
     duration: string;
+    /** UTF-8 size of the available raw response string, before display clipping. */
+    responseSize: { bytes: number; label: string; explanation: string } | null;
     startTimeLabel: string;
     /** Start time with seconds, for the expanded detail body. '' when unknown. */
     startTimeDetailLabel: string;
@@ -486,6 +503,7 @@ export function buildToolCallRenderModel(
         summaryIsPath,
         summaryFullPath,
         duration: formatDuration(normalized.startTime, normalized.endTime, now),
+        responseSize: getResponseSize(normalized.result, normalized.availableResponseBytes),
         startTimeLabel: formatStartTime(normalized.startTime),
         startTimeDetailLabel: formatStartTimeDetailed(normalized.startTime),
         hasDetails,

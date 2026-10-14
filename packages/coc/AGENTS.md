@@ -493,6 +493,10 @@ references before editing. Paths are package-relative.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
   under `src/server/executors/`; lifecycle owns persistence.
   Mode directives/style belong in user turns, not the system prefix.
+- Tool-call response sizes use the shared render model and already-loaded owner data.
+  Count available raw strings as UTF-8 bytes before display clipping, including empty
+  responses; use B/KiB/MiB/GiB. Never infer tokens or omitted payload sizes or fetch
+  additional responses for this display.
 - Keep tools mode-invariant; gate call-time behavior and unattended `ask_user`.
   Preserve explicit PR-write/final-check/grill exceptions.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.

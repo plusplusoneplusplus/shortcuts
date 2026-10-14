@@ -392,18 +392,25 @@ the synthetic assistant turn the same way.
 
 ### Render model
 
-`buildToolCallRenderModel` (`toolCallRenderModel.ts`) is a pure kernel deriving normalized
-identity, summary, truncation, preview eligibility, and the whisper-row metric. Whisper-row
-and card variants share one `ToolCallDetailSections` body; inside `WhisperCollapsedGroup` a
-call is one flat row. Browser actions always use that compact row, summarizing the action
-and ref, URL or selected tab. `toolResultPresentation.ts` extracts inline raster images
-from provider-neutral `binaryResultsForLlm` or MCP image blocks; `ToolResultThumbnails`
-shares thumbnail/lightbox presentation between details and the tool-result popover,
-without rendering binary payloads as text or reading image files.
-The shared body ends with a muted timing line, `Started <start> ·
-<duration>`, using `startTimeDetailLabel` (`formatStartTimeDetailed`, seconds precision);
-the collapsed card header keeps the minute-precision `startTimeLabel`. Omitted when the
-tool call has no parseable start time.
+`buildToolCallRenderModel` (`toolCallRenderModel.ts`) derives normalized identity, summary,
+truncation, preview eligibility, response size and the whisper-row metric. Whisper-row and
+card variants share `ToolCallDetailSections`; inside `WhisperCollapsedGroup` a call is one
+flat row. Browser actions always use that compact row, summarizing action and target.
+`toolResultPresentation.ts` extracts raster images from provider-neutral
+`binaryResultsForLlm` or MCP image blocks; `ToolResultThumbnails` shares thumbnail/lightbox
+presentation between details and the popover without rendering binary payloads as text
+or reading image files.
+
+Response size uses a validated retained byte count when duplicate inline prose suppresses
+the result; otherwise it measures the available raw string's UTF-8 bytes before display
+clipping, including JSON/base64. Empty strings measure zero; unavailable sizes stay hidden.
+Headers use B/KiB/MiB/GiB with exact bytes and scope in accessible text. Live and persisted
+owner-scoped data need no extra reads. The wire/store has no dedicated reported-size
+metadata; omitted content and tokens are never inferred.
+
+The shared body ends with a muted timing line, `Started <start> · <duration>`, using
+`startTimeDetailLabel` (`formatStartTimeDetailed`, seconds precision); the collapsed card
+header keeps minute-precision `startTimeLabel`. Omitted without a parseable start time.
 
 ### Running calls and tool progress
 

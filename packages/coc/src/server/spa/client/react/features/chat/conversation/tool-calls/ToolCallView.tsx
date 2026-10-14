@@ -26,6 +26,7 @@ interface ToolCallData {
     args?: any;
     parameters?: unknown;
     result?: string;
+    availableResponseBytes?: number;
     error?: string;
     status?: string;
     startTime?: string;
@@ -153,6 +154,21 @@ export function ToolCallView({
         />
     ) : null;
 
+    const responseSize = model.responseSize ? (
+        <span
+            className={cn(
+                'tool-call-response-size shrink-0 whitespace-nowrap font-mono text-[10px] text-[#9aa0a6] dark:text-[#6b7280]',
+                !isWhisperRow && !model.duration && (!model.startTimeLabel || isMobile) && 'ml-auto',
+            )}
+            title={model.responseSize.explanation}
+            role="note"
+            aria-label={model.responseSize.explanation}
+            data-testid="tool-call-response-size"
+        >
+            {model.responseSize.label}
+        </span>
+    ) : null;
+
     if (isWhisperRow) {
         return (
             <div
@@ -249,6 +265,7 @@ export function ToolCallView({
                             {model.duration}
                         </span>
                     )}
+                    {responseSize}
                     {(isMobile || name === 'browser') && hasHoverResult && (
                         <button
                             type="button"
@@ -336,11 +353,12 @@ export function ToolCallView({
                 {model.duration && (
                     <span className={cn('text-[#848484] shrink-0', (!model.startTimeLabel || isMobile) && 'ml-auto')}>{model.duration}</span>
                 )}
+                {responseSize}
                 {isMobile && hasHoverResult && (
                     <button
                         type="button"
                         className={cn('text-[#848484] hover:text-[#0078d4] dark:hover:text-[#3794ff] shrink-0',
-                            !model.duration && 'ml-auto')}
+                            !model.duration && !model.responseSize && 'ml-auto')}
                         aria-label="Preview result"
                         title="Preview result"
                         data-testid="mobile-preview-btn"
@@ -350,7 +368,7 @@ export function ToolCallView({
                     </button>
                 )}
                 {hasDetails && (
-                    <span className={cn('text-[#848484]', !model.duration && !model.startTimeLabel && !isMobile && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
+                    <span className={cn('text-[#848484] shrink-0', !model.duration && !model.responseSize && !model.startTimeLabel && !isMobile && 'ml-auto')}>{expanded ? '▼' : '▶'}</span>
                 )}
             </div>
             {hasDetails && (
