@@ -774,8 +774,8 @@ Noninteractive Ask/Autopilot/Ralph pills use the ledger's compact current-mode
 projection, shared chat normalization/palette and Ralph session identity.
 Unknown modes stay omitted; session identity takes precedence. Owner pills truncate
 with full accessible descriptions; titles and pills wrap without extra reads,
-polling or focus targets. Delayed hover/focus and persistent info actions share a
-bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
+polling or focus targets. Job-title hover/focus previews and ArrowDown actions share
+a bounded pane/viewport portal. Escape/Close restore focus; outside presses and focus
 departure dismiss. Title and Open job anchors retain excursion navigation and
 modifier clicks.
 
