@@ -120,6 +120,20 @@ describe('To-do job previews', () => {
         expect(follow.mock.calls[0][0].ctrlKey).toBe(true);
         expect(follow.mock.calls[0][1]).toBe('job-key');
     });
+    it('keeps touch title navigation native without a separate preview button', () => {
+        mount();
+        const title = screen.getByRole('link', { name: 'Fix selection' });
+        expect(screen.queryByRole('button', { name: /^Preview job:/ })).toBeNull();
+        fireEvent.pointerEnter(title.parentElement!, { pointerType: 'touch' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(fireEvent.click(title, { ctrlKey: true })).toBe(true);
+        expect(follow.mock.calls[0][0].ctrlKey).toBe(true);
+        expect(fireEvent.click(title)).toBe(true);
+        expect(follow).toHaveBeenCalledTimes(2);
+        expect(follow.mock.calls[1][0].defaultPrevented).toBe(false);
+        expect(follow.mock.calls[1][1]).toBe('job-key');
+        expect(title.getAttribute('href')).toBe('#repos/repo1/chats/job1');
+    });
     it('opens after 200ms with a 250ms pointer bridge', async () => {
         vi.useFakeTimers(); mount();
         const anchor = screen.getByRole('link').parentElement!;
