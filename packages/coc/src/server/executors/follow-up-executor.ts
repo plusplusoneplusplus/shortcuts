@@ -93,6 +93,7 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 export interface FollowUpTurnOptions {
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;
+    sentinelPrOutcomeStopped?: boolean;
     readonly?: boolean;
     /**
      * Concrete provider this message was accepted for. Omitted means "the

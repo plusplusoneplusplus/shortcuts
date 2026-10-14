@@ -247,7 +247,11 @@ describe('FollowUpExecutor', () => {
     // Happy path
     // -------------------------------------------------------------------------
 
-    it.each([{ sentinelPrOutcomeReview: true }, { readonly: true }])(
+    it.each([
+        { sentinelPrOutcomeReview: true },
+        { sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true },
+        { readonly: true },
+    ])(
         'applies the trusted review policy for exactly one turn without changing Sentinel mode: %j', async options => {
             await store.addProcess(makeProcess({
                 metadata: { type: 'chat', workspaceId: 'owner', mode: 'sentinel', provider: 'copilot' },
