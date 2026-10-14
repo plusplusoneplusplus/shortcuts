@@ -208,6 +208,12 @@ references before editing. Paths are package-relative.
   pausing retains existing suggestions. Keep desktop settings out of server config.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
+- Explorer permanent deletion uses the owning server's default-off
+  `features.explorerDelete` gate. File panes register owner-qualified dirty paths
+  and saves in the window-local Explorer store; affected edits/saves block
+  admission, and an admitted deletion makes affected panes read-only. Close
+  affected clean file tabs only after success; failures retain buffers and refresh
+  disk state. See `spa/client/react/features/repo-detail/AGENTS.md`.
 - `browserControl.enabled` is a live, default-off tool/relay/UI gate. Publish
   `getBrowserControlRuntime` and the composition-owned `getBrowserToolState`
   through the shared executor runtime. Route registration precedes WebSocket

@@ -212,6 +212,23 @@ the tree becomes a rail-toggled overlay and the note chat starts collapsed.
 
 ## Explorer lazy-load state
 
+### Permanent deletion
+
+Default-off `features.explorerDelete` adds a separated destructive context-menu
+action through `ExplorerDeleteDialog`, with Cancel initial focus and explicit
+permanent/folder-content warnings. `useExplorerDeleteEnabled` probes remote
+capabilities on the exact owner; `explorerApi.deleteEntry` rejects unresolved
+remote routes before dispatch. The tree's workspace is physical, including
+repo-group members. Virtual roots and Git metadata are protected.
+
+`PreviewPane` registers dirty paths and active saves in `explorerDirtyStore`
+synchronously; deletion admission rechecks every affected file instance in this
+window and holds an owner/path lock through cleanup. Locked panes are read-only
+and cannot save. The dialog discloses the cross-window limitation. Failures retain
+buffers/tabs and refresh disk state without rollback. Success closes affected
+Explorer and cached unified file tabs, selects the parent (root-level: no row)
+and focuses the tree. Owner generations reject late tree reads and confirmations.
+
 `explorer/FileTypeIcon.tsx` owns Explorer file and folder icons. It maps common
 language, config, data, media, archive, and tool-specific filenames to compact
 colored badges, uses open/closed SVG folder states, and falls back to a neutral
@@ -228,6 +245,9 @@ settles a tracked flag; deriving it also keeps the two mounted Explorer panels
 (RepoDetail's Explorer sub-tab + the right panel's tree column) in agreement. A failed listing sets `loadError` and
 renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
+
+Tree cache generations invalidate pre-deletion root, lazy-directory, reveal and
+search-ancestor reads while retaining the visible snapshot during refresh.
 
 `explorer/FileTree.tsx` filters both root entries and `TreeNode` children through
 `filterEntries`. `ExplorerPanel` supplies `hideUnfetchedDirs` only for a current,
@@ -567,6 +587,9 @@ toggle-re-runs-immediately rule, and the stale-response-discard guard.
 `ExplorerPanel.contentsearch.test.tsx` covers the view switch and click-to-open-
 at-line. `ExplorerPanel.persist.test.ts` is a source-mirror test over
 `ExplorerPanel.tsx` imports — update it alongside edits to that import block.
+`ExplorerPanel.delete.test.tsx` covers confirmation, cancellation, owner capture,
+protection, dirty/save races and failure cleanup. `explorer-delete.spec.ts` uses
+isolated server/filesystem fixtures for Chromium deletion and real Monaco edits.
 
 `test/spa/react/repos/RepoTabStrip*.test.tsx` cover the component (tabs, overflow,
 agent highlight, queue indicators). `repoTabModel.test.ts`,

@@ -14,9 +14,16 @@ import type {
     ExplorerTreeResponse,
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../../../api/cocClient';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { getCocClientForWorkspace, resolveCloneRoute } from '../../../repos/cloneRegistry';
 
 export const explorerApi = {
+    deleteEntry(workspaceId: string, path: string, routingRef?: string | null): Promise<{ success: true }> {
+        const ref = routingRef === undefined ? workspaceId : routingRef;
+        if (resolveCloneRoute(ref).kind === 'unresolved-remote') {
+            return Promise.reject(new Error('The owning server is unavailable. Deletion was not sent.'));
+        }
+        return getCocClientForWorkspace(ref).explorer.deleteEntry(workspaceId, path);
+    },
     tree(workspaceId: string, options?: ExplorerTreeOptions, routingRef?: string | null): Promise<ExplorerTreeResponse> {
         return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
             .explorer.tree(workspaceId, options);

@@ -11,6 +11,7 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { FileTree } from './FileTree';
 import { PreviewPane, type PreviewStatus } from './PreviewPane';
 import { ExplorerCloseTabsDialog } from './ExplorerCloseTabsDialog';
+import { ExplorerDeleteDialog } from './ExplorerDeleteDialog';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
@@ -22,6 +23,7 @@ import { ExplorerTabStrip } from './ExplorerTabStrip';
 import { useExplorerTabs } from './useExplorerTabs';
 import { cycleTabsWithin, findTab, searchTabId, tabIdsToRight } from './explorerTabsModel';
 import { useExplorerEditorTabsEnabled } from '../../../hooks/feature-flags/useExplorerEditorTabsEnabled';
+import { useExplorerDeleteEnabled } from '../../../hooks/feature-flags/useExplorerDeleteEnabled';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
@@ -33,9 +35,17 @@ import {
     useExplorerSearchBuffers,
     useExplorerSelectedPath,
     useExplorerView,
+    removeDeletedExplorerEntry,
 } from './explorerStateStore';
-import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
-import { setExplorerInstanceDirty } from './explorerDirtyStore';
+import {
+    useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded,
+    getExplorerTreeGeneration, invalidateExplorerTreeCache,
+} from './explorerTreeCache';
+import {
+    acquireExplorerDeletion, ExplorerDeleteBlockedError, getExplorerDeleteBlockers,
+    publishExplorerDeletion, setExplorerInstanceDirty, subscribeExplorerDeletion,
+} from './explorerDirtyStore';
+import { closeDeletedExplorerTabs } from '../unified-right-panel/unifiedPanelStore';
 import { quickOpenShortcut, registerExplorerQuickOpen } from '../unified-right-panel/quickOpenRouting';
 import type { PaletteMode } from './paletteQuery';
 import type { WorkspaceSymbolResult } from '../../language-servers/workspaceSymbols';
@@ -145,6 +155,8 @@ export async function mergeServerResultsIntoChildrenMap(
     routingRef?: string | null,
     onLoadError?: (error: unknown) => void,
 ): Promise<string[]> {
+    const owner = routingRef ?? workspaceId;
+    const generation = getExplorerTreeGeneration(owner);
     const allAncestors = new Set<string>();
     for (const p of paths) {
         for (const a of getAncestorPaths(p)) {
@@ -167,7 +179,7 @@ export async function mergeServerResultsIntoChildrenMap(
         for (const r of results) {
             if (r) updates.push([r.dir, r.entries]);
         }
-        if (updates.length > 0) {
+        if (updates.length > 0 && generation === getExplorerTreeGeneration(owner)) {
             setChildrenMap(prev => new Map([...prev, ...updates]));
         }
     }
@@ -236,6 +248,14 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
 /** Stable empty tab-id set — a fresh `Set` per render would loop consumers. */
 const NO_TAB_IDS: ReadonlySet<string> = new Set<string>();
 
+export function explorerDeleteProtection(path: string): string | undefined {
+    if (!path || /^[./\\]*$/.test(path)) return 'The workspace root cannot be deleted.';
+    if (path.split(/[/\\]/).some(component => component.toLowerCase() === '.git')) {
+        return 'Git metadata cannot be deleted.';
+    }
+    return undefined;
+}
+
 /**
  * Below this measured panel width the Search view switches to its narrow layout.
  * The header toolbar shares the row with the Files / Search tabs, so its usable
@@ -258,6 +278,7 @@ export function ExplorerPanel({
     revealRequest,
 }: ExplorerPanelProps) {
     const ownerKey = routingRef ?? workspaceId;
+    const deleteFeature = useExplorerDeleteEnabled(workspaceId, routingRef);
     // Navigator mode: the host owns the editor, so this panel is only a tree.
     // `sidebar` is navigator plus "the host owns the breadcrumbs too".
     const navigatorMode = panelMode !== 'editor';
@@ -486,6 +507,76 @@ export function ExplorerPanel({
         position: { x: number; y: number };
         entry: TreeEntry;
     } | null>(null);
+    const [deleteRequest, setDeleteRequest] = useState<{
+        entry: TreeEntry; workspaceId: string; routingRef?: string | null; owner: string;
+        blockedPaths: readonly string[]; error: string | null;
+    } | null>(null);
+    const [deleting, setDeleting] = useState(false);
+    const deletionBusyRef = useRef(false);
+    const deletionGenerationRef = useRef(0);
+    useEffect(() => {
+        setDeleteRequest(null);
+        setContextMenu(null);
+        setDeleting(false);
+        return () => { deletionGenerationRef.current++; refreshRunIdRef.current++; };
+    }, [ownerKey]);
+
+    const requestDelete = useCallback((entry: TreeEntry) => {
+        if (explorerDeleteProtection(entry.path) || deletionBusyRef.current) return;
+        setDeleteRequest({
+            entry: { ...entry }, workspaceId, routingRef, owner: ownerKey,
+            blockedPaths: getExplorerDeleteBlockers(ownerKey, entry.path), error: null,
+        });
+    }, [workspaceId, routingRef, ownerKey]);
+
+    const confirmDelete = async () => {
+        if (!deleteRequest || deletionBusyRef.current || !deleteFeature.enabled) return;
+        let release: () => void;
+        try {
+            release = acquireExplorerDeletion(deleteRequest.owner, deleteRequest.entry.path);
+        } catch (error) {
+            setDeleteRequest({
+                ...deleteRequest,
+                blockedPaths: error instanceof ExplorerDeleteBlockedError ? error.paths : [],
+                error: error instanceof Error ? error.message : String(error),
+            });
+            return;
+        }
+        deletionBusyRef.current = true;
+        setDeleting(true);
+        const generation = deletionGenerationRef.current;
+        const request = deleteRequest;
+        let removed = false;
+        try {
+            await explorerApi.deleteEntry(request.workspaceId, request.entry.path, request.routingRef);
+            removed = true;
+            removeDeletedExplorerEntry(request.owner, request.entry.path);
+            closeDeletedExplorerTabs(request.owner, request.entry.path);
+            invalidateExplorerTreeCache(request.owner);
+            publishExplorerDeletion({ owner: request.owner, path: request.entry.path, success: true });
+            if (generation === deletionGenerationRef.current) {
+                setDeleteRequest(null);
+                const parent = request.entry.path.includes('/') ? request.entry.path.slice(0, request.entry.path.lastIndexOf('/')) : '';
+                const explorerRoute = `#repos/${encodeURIComponent(request.owner)}/explorer`;
+                const ownsHash = location.hash === explorerRoute || location.hash.startsWith(`${explorerRoute}/`);
+                if (deepLink) {
+                    if (ownsHash) location.hash = `${explorerRoute}${parent ? `/${encodeURIComponent(parent)}` : ''}`;
+                }
+            }
+        } catch (error) {
+            invalidateExplorerTreeCache(request.owner);
+            publishExplorerDeletion({ owner: request.owner, path: request.entry.path, success: false });
+            if (generation === deletionGenerationRef.current) {
+                const message = error instanceof Error ? error.message : String(error);
+                setDeleteRequest({ ...request, error: removed ? `Entry was deleted, but editor cleanup failed: ${message}` : message });
+            }
+            return;
+        } finally {
+            release();
+            deletionBusyRef.current = false;
+            if (generation === deletionGenerationRef.current) setDeleting(false);
+        }
+    };
 
     // Quick Open state (Ctrl+P)
     const [quickOpenVisible, setQuickOpenVisible] = useState(false);
@@ -510,11 +601,12 @@ export function ExplorerPanel({
             return;
         }
         let cancelled = false;
+        const generation = getExplorerTreeGeneration(ownerKey);
         setLoading(true);
         setError(null);
         explorerApi.tree(workspaceId, { path: '/', depth: 2 }, routingRef)
             .then((data: { entries: TreeEntry[] }) => {
-                if (!cancelled) {
+                if (!cancelled && generation === getExplorerTreeGeneration(ownerKey)) {
                     setRootEntries(data.entries);
                     const seedMap = new Map<string, TreeEntry[]>();
                     seedFromEntries(data.entries, seedMap);
@@ -931,8 +1023,19 @@ export function ExplorerPanel({
             },
         });
 
+        if (deleteFeature.enabled) {
+            const reason = explorerDeleteProtection(entry.path);
+            items.push({ label: '', separator: true, onClick: () => {} });
+            items.push({
+                label: 'Delete', icon: '🗑️', destructive: true,
+                disabled: !!reason || deleting,
+                title: reason,
+                onClick: () => requestDelete(entry),
+            });
+        }
+
         return items;
-    }, [expandedPaths, handleToggle, handleFindInFolder, openFileInEditor]);
+    }, [expandedPaths, handleToggle, handleFindInFolder, openFileInEditor, workspaceId, routingRef, deleteFeature.enabled, deleting, requestDelete]);
 
     /** Collapse All — clears expansion only; selection, preview and filter stay put. */
     const handleCollapseAll = useCallback(() => {
@@ -953,6 +1056,7 @@ export function ExplorerPanel({
         // A trusted absolute path is outside the repo tree — it has no row to reveal.
         if (!target || target.startsWith(TRUSTED_PATH_PREFIX)) return;
         const silent = options?.silent === true;
+        const generation = getExplorerTreeGeneration(ownerKey);
 
         if (!silent) setError(null);
         const ancestors = getAncestorPaths(target);
@@ -967,6 +1071,7 @@ export function ExplorerPanel({
             if (!known.has(dir)) {
                 try {
                     const data = await explorerApi.tree(workspaceId, { path: dir }, routingRef);
+                    if (generation !== getExplorerTreeGeneration(ownerKey)) return;
                     handleChildrenLoaded(dir, data.entries);
                     known.add(dir);
                 } catch (err) {
@@ -1063,6 +1168,7 @@ export function ExplorerPanel({
      */
     const handleRefresh = useCallback(() => {
         const runId = ++refreshRunIdRef.current;
+        const generation = getExplorerTreeGeneration(ownerKey);
         setRefreshing(true);
         setError(null);
         const targets = [...expandedPaths];
@@ -1071,7 +1177,7 @@ export function ExplorerPanel({
             ...targets.map(dir => explorerApi.tree(workspaceId, { path: dir }, routingRef)),
         ]).then(results => {
             // A newer refresh started while this one was in flight — its results win.
-            if (runId !== refreshRunIdRef.current) return;
+            if (runId !== refreshRunIdRef.current || generation !== getExplorerTreeGeneration(ownerKey)) return;
 
             const [rootResult, ...childResults] = results;
             if (rootResult.status === 'rejected') {
@@ -1104,6 +1210,7 @@ export function ExplorerPanel({
 
             setRootEntries(rootResult.value.entries);
             setChildrenMap(nextMap);
+            setRootLoaded(true);
             if (vanished.length > 0) {
                 setExpandedPaths(prev => prunePaths(prev, vanished));
                 // Keep the pre-filter snapshot in sync so clearing an active filter
@@ -1116,6 +1223,24 @@ export function ExplorerPanel({
             if (runId === refreshRunIdRef.current) setRefreshing(false);
         });
     }, [workspaceId, routingRef, expandedPaths]);
+
+    useEffect(() => subscribeExplorerDeletion(event => {
+        if (event.owner !== ownerKey) return;
+        handleRefresh();
+        if (event.success) {
+            setTrustedSearch(null);
+            setSearchInput('');
+            setSearchQuery('');
+            setMobileTreeVisible(true);
+            const generation = deletionGenerationRef.current;
+            requestAnimationFrame(() => {
+                if (generation !== deletionGenerationRef.current) return;
+                const parent = event.path.includes('/') ? event.path.slice(0, event.path.lastIndexOf('/')) : null;
+                setSelectedPath(parent);
+                treeScrollRef.current?.focus();
+            });
+        }
+    }), [ownerKey, handleRefresh]);
 
     // Search handlers
     const onSearchChange = useCallback((value: string) => {
@@ -1172,6 +1297,7 @@ export function ExplorerPanel({
     useEffect(() => {
         if (serverSearchTimerRef.current) clearTimeout(serverSearchTimerRef.current);
         let cancelled = false;
+        const generation = getExplorerTreeGeneration(ownerKey);
         setTrustedSearch(null);
         if (!searchQuery) {
             setServerSearchLoading(false);
@@ -1181,7 +1307,7 @@ export function ExplorerPanel({
             setServerSearchLoading(true);
             explorerApi.searchFiles(workspaceId, searchQuery, { limit: 100 }, routingRef)
                 .then(async (data: { results: { path: string; score: number }[] }) => {
-                    if (cancelled) return;
+                    if (cancelled || generation !== getExplorerTreeGeneration(ownerKey)) return;
                     const paths = data.results.map(r => r.path);
                     let ancestorsComplete = true;
                     const ancestors = await mergeServerResultsIntoChildrenMap(
@@ -1190,7 +1316,7 @@ export function ExplorerPanel({
                             console.error('Explorer file search ancestor load failed', error);
                         },
                     );
-                    if (cancelled) return;
+                    if (cancelled || generation !== getExplorerTreeGeneration(ownerKey)) return;
                     if (ancestors.length > 0) {
                         setExpandedPaths(prev => {
                             const next = new Set(prev);
@@ -1475,6 +1601,7 @@ export function ExplorerPanel({
                         {error}
                     </div>
                 )}
+                {deleteFeature.error && <p role="status" className="px-3 py-1 text-xs text-[#d32f2f] dark:text-[#f48771]">{deleteFeature.error}</p>}
                 {view === 'search' ? (
                     <ContentSearchPanel
                         workspaceId={workspaceId}
@@ -1725,6 +1852,17 @@ export function ExplorerPanel({
             </>)}
 
             {/* Explorer context menu */}
+            {deleteRequest && (
+                <ExplorerDeleteDialog
+                    entry={deleteRequest.entry}
+                    workspaceId={deleteRequest.owner}
+                    pending={deleting}
+                    blockedPaths={deleteRequest.blockedPaths}
+                    error={deleteRequest.error}
+                    onConfirm={() => { void confirmDelete(); }}
+                    onCancel={() => { if (!deletionBusyRef.current) setDeleteRequest(null); }}
+                />
+            )}
             {contextMenu && (
                 <ContextMenu
                     position={contextMenu.position}

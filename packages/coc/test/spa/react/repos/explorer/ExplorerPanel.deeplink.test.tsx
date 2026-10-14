@@ -109,7 +109,7 @@ describe('ExplorerPanel deep-link ownership', () => {
             'utf-8',
         );
         const writes = source.split('\n').filter(line => line.includes('location.hash = '));
-        expect(writes).toHaveLength(2);
+        expect(writes).toHaveLength(3);
         for (const write of writes) {
             const idx = source.indexOf(write);
             expect(source.slice(0, idx)).toMatch(/if \(deepLink\) \{\s*$/);

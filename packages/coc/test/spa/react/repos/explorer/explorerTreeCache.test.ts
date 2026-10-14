@@ -17,6 +17,8 @@ import {
     useExplorerChildrenMap,
     useExplorerRootLoaded,
     clearExplorerTreeCache,
+    getExplorerTreeGeneration,
+    invalidateExplorerTreeCache,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerTreeCache';
 
 const SRC: TreeEntry = { name: 'src', type: 'dir', path: 'src' };
@@ -28,6 +30,18 @@ beforeEach(() => {
 });
 
 describe('useExplorerRootEntries', () => {
+    it('invalidates owner-scoped reads without dropping the visible snapshot', () => {
+        const root = renderHook(() => useExplorerRootEntries('ws-a'));
+        const loaded = renderHook(() => useExplorerRootLoaded('ws-a'));
+        act(() => { root.result.current[1]([SRC]); loaded.result.current[1](true); });
+        const generation = getExplorerTreeGeneration('ws-a');
+        const sibling = getExplorerTreeGeneration('ws-b');
+        act(() => invalidateExplorerTreeCache('ws-a'));
+        expect(root.result.current[0]).toEqual([SRC]);
+        expect(loaded.result.current[0]).toBe(false);
+        expect(getExplorerTreeGeneration('ws-a')).toBe(generation + 1);
+        expect(getExplorerTreeGeneration('ws-b')).toBe(sibling);
+    });
     it('starts as an empty array', () => {
         const { result } = renderHook(() => useExplorerRootEntries('ws-1'));
         expect(result.current[0]).toEqual([]);

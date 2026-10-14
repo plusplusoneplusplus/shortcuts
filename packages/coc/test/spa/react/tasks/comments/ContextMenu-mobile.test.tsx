@@ -49,6 +49,19 @@ describe('ContextMenu mobile rendering', () => {
         expect(document.querySelector('[data-testid="bottomsheet-backdrop"]')).toBeNull();
     });
 
+    it('keeps a separated destructive Delete action accessible at narrow widths', () => {
+        viewportCleanup = mockViewport(375);
+        render(<ContextMenu position={{ x: 350, y: 100 }} onClose={vi.fn()} items={[
+            { label: 'Copy', onClick: vi.fn() },
+            { label: '', separator: true, onClick: vi.fn() },
+            { label: 'Delete', destructive: true, onClick: vi.fn() },
+        ]} />);
+        expect(screen.getByRole('separator')).toBeInTheDocument();
+        const remove = screen.getByRole('menuitem', { name: 'Delete' });
+        expect(remove.className).toContain('text-[#d32f2f]');
+        expect(remove.className).toContain('min-h-[44px]');
+    });
+
     it('flattens submenus in BottomSheet mode', () => {
         viewportCleanup = mockViewport(375);
         const itemsWithChildren = [
