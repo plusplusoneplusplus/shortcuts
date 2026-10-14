@@ -24,6 +24,7 @@ describe('Sentinel PR outcome tracking', () => {
     const recordPullRequest = vi.fn();
     const deliverPending = vi.fn();
     const checkOutcome = vi.fn();
+    const recoverPendingMessages = vi.fn();
     let controls: SentinelPrOutcomeControls;
 
     beforeEach(() => {
@@ -55,6 +56,7 @@ describe('Sentinel PR outcome tracking', () => {
             triggers, controls,
             manager: { arm, disarm: vi.fn(), schedulePendingDelivery: vi.fn(), checkOutcome },
             firer: { fire: vi.fn(), deliverPending }, enabled: () => enabled,
+            recoverPendingMessages,
         });
     });
     afterEach(() => db.close());
@@ -166,5 +168,82 @@ describe('Sentinel PR outcome tracking', () => {
         release();
         await admission;
         expect(await pause).toMatchObject({ paused: true, revision: 1 });
+    });
+
+    async function admittedReview() {
+        await service.registerSubmission(child.workspaceId, child.processId, url);
+        const trigger = triggers.getAll()[0];
+        trigger.status = 'disarmed';
+        trigger.delivery = { deliveryId: 'admitted', reason: 'merged', state: 'delivered', firedAt: new Date().toISOString() };
+        triggers.update(trigger);
+        return trigger;
+    }
+
+    it('defers an already admitted review after pause and recovers its original receipt on resume', async () => {
+        const trigger = await admittedReview();
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('execute');
+        await service.control(parent, itemId, 'pause', { expectedRevision: 0 });
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('defer');
+        expect(recoverPendingMessages).not.toHaveBeenCalled();
+        await service.control(parent, itemId, 'check', { expectedRevision: 1 });
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('defer');
+        await service.control(parent, itemId, 'resume', { expectedRevision: 1 });
+        expect(recoverPendingMessages).toHaveBeenCalledWith(parent.workspaceId, parent.processId);
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('execute');
+        expect(triggers.getById(trigger.id)?.delivery?.deliveryId).toBe('admitted');
+        expect(deliverPending).not.toHaveBeenCalled();
+    });
+
+    it('defers execution while the live feature is disabled', async () => {
+        const trigger = await admittedReview();
+        enabled = false;
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('defer');
+        enabled = true;
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('execute');
+    });
+
+    it('recovers already admitted reviews on enablement but retains paused buffers', async () => {
+        await admittedReview();
+        enabled = false;
+        await service.restore();
+        expect(recoverPendingMessages).not.toHaveBeenCalled();
+        enabled = true;
+        await service.restore();
+        expect(recoverPendingMessages).toHaveBeenCalledExactlyOnceWith(parent.workspaceId, parent.processId);
+        recoverPendingMessages.mockClear();
+        await service.control(parent, itemId, 'pause', { expectedRevision: 0 });
+        await service.restore();
+        expect(recoverPendingMessages).not.toHaveBeenCalled();
+    });
+
+    it('rejects foreign owners and receipts without modifying their trigger', async () => {
+        const trigger = await admittedReview();
+        expect(await service.reviewExecutionDisposition({ ...parent, workspaceId: child.workspaceId }, trigger.id, 'admitted')).toBe('skip');
+        expect(await service.reviewExecutionDisposition({ ...parent, processId: 'foreign' }, trigger.id, 'admitted')).toBe('skip');
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'foreign-receipt')).toBe('skip');
+        expect(triggers.getById(trigger.id)).toEqual(trigger);
+    });
+
+    it.each([{ status: 'done' as const }, { archived: true }])('skips an admitted review after the latest item verdict changes: %j', async change => {
+        const trigger = await admittedReview();
+        todos.update(parent, itemId, 1, change, 'user');
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('skip');
+        expect(triggers.getById(trigger.id)).toMatchObject({ outcome: 'skipped', delivery: { state: 'failed' } });
+    });
+
+    it('exposes a permanent failure when the admitted exact job link disappears', async () => {
+        const trigger = await admittedReview();
+        job.pullRequests = [];
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('skip');
+        expect(await service.list(parent, itemId)).toMatchObject({
+            outcomes: [{ delivery: 'error', error: 'Exact delegated PR owner or job link is unavailable' }],
+        });
+    });
+
+    it('exposes a permanent failure when the admitted Sentinel owner disappears', async () => {
+        const trigger = await admittedReview();
+        listOwner.mockRejectedValueOnce(new Error('Missing owner'));
+        expect(await service.reviewExecutionDisposition(parent, trigger.id, 'admitted')).toBe('skip');
+        expect(triggers.getById(trigger.id)).toMatchObject({ outcome: 'error', delivery: { state: 'failed' } });
     });
 });

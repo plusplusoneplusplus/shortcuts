@@ -15,6 +15,8 @@ const controlInput = z.object({ expectedRevision: z.number().int().nonnegative()
 export type RegisterSentinelPrOutcome = (workspaceId: string, processId: string, prUrl: string) =>
     Promise<{ registered: boolean; triggerId?: string; warning?: string }>;
 
+export type PrOutcomeReviewDisposition = 'execute' | 'defer' | 'skip';
+
 export interface SentinelPrOutcomeServiceDeps {
     jobs: DelegatedJobStore;
     processes: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'>;
@@ -25,6 +27,7 @@ export interface SentinelPrOutcomeServiceDeps {
     controls: SentinelPrOutcomeControls;
     enabled: () => boolean;
     emit?: TriggerEventEmit;
+    recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
 }
 
 export class SentinelPrOutcomeError extends Error {
@@ -88,7 +91,45 @@ export class SentinelPrOutcomeService {
             }
             if (action === 'check') await this.deps.manager.checkOutcome(trigger.id);
         }
+        if (action === 'resume') await this.deps.recoverPendingMessages?.(owner.workspaceId, owner.processId);
         return this.list(owner, itemId);
+    }
+
+    /** Queued admission is not execution: deferred messages retain their original receipt. */
+    async reviewExecutionDisposition(owner: SentinelTodoOwner, triggerId: string, deliveryId: string): Promise<PrOutcomeReviewDisposition> {
+        const initial = this.deps.triggers.getById(triggerId);
+        if (!initial?.binding?.delegatedPr || initial.workspaceId !== owner.workspaceId
+            || initial.processId !== owner.processId || initial.delivery?.deliveryId !== deliveryId) return 'skip';
+        let disposition: PrOutcomeReviewDisposition = 'skip';
+        await this.withAdmission(owner, initial.binding.itemId, async () => {
+            const current = this.deps.triggers.getById(triggerId);
+            if (!current?.binding?.delegatedPr || current.delivery?.deliveryId !== deliveryId
+                || current.delivery.state === 'failed' || current.outcome === 'skipped' || current.outcome === 'error') return;
+            if (!this.canDeliver(current)) { disposition = 'defer'; return; }
+            let reason: string | undefined;
+            let skipped = false;
+            try {
+                const ledger = await this.deps.owners.list(owner);
+                const item = ledger.items.find(item => item.id === current.binding!.itemId);
+                skipped = !item || item.type !== 'normal' || !!item.archived || item.status === 'done';
+                if (skipped) reason = 'Current item is missing, manual, done or archived';
+                else if (!this.validate(current)) reason = 'Exact delegated PR owner or job link is unavailable';
+            } catch {
+                reason = 'Sentinel PR outcome owner is unavailable';
+            }
+            if (reason) {
+                const next: Trigger = {
+                    ...current, revision: current.revision + 1, nextTickAt: null,
+                    outcome: skipped ? 'skipped' : 'error', outcomeReason: reason,
+                    delivery: { ...current.delivery, state: 'failed' },
+                };
+                this.deps.triggers.update(next);
+                this.deps.emit?.({ type: 'trigger-updated', trigger: next });
+                return;
+            }
+            disposition = this.canDeliver(current) ? 'execute' : 'defer';
+        });
+        return disposition;
     }
 
     private rules(owner: SentinelTodoOwner, itemId: string): Trigger[] {
@@ -164,6 +205,16 @@ export class SentinelPrOutcomeService {
                     }
                 }
             }
+        }
+        const owners = new Map<string, SentinelTodoOwner>();
+        for (const trigger of this.deps.triggers.getAll()) {
+            if (!trigger.binding?.delegatedPr || trigger.delivery?.state !== 'delivered'
+                || !this.canDeliver(trigger)) continue;
+            const owner = { workspaceId: trigger.workspaceId, processId: trigger.processId };
+            owners.set(JSON.stringify(owner), owner);
+        }
+        for (const owner of owners.values()) {
+            await this.deps.recoverPendingMessages?.(owner.workspaceId, owner.processId);
         }
     }
 

@@ -177,6 +177,7 @@ export async function createTriggerInfrastructure(
         triggers: triggerStore, manager: triggerManager, firer: sentinelTodoFirer,
         controls: new SentinelPrOutcomeControls(db),
         enabled: options.getPrOutcomeEnabled ?? (() => false),
+        recoverPendingMessages: options.recoverPendingMessages,
         emit,
     });
 

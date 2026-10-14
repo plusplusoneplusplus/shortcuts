@@ -246,7 +246,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;
