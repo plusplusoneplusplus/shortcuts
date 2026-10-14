@@ -40,6 +40,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 | Work items | `coc.workItems` | origin-scoped list/grouped/tree, plan/version history, sync/import/convert, AI authoring, create, get, update, delete, and workspace-root-dependent execution actions |
 | Pull requests | `coc.pullRequests` | origin-scoped provider PR list/detail/subresources, recent-opened, Team roster, chat bindings, classifications, review progress, suggestions |
 | Workspaces/repos | `coc.workspaces`, `coc.repos` | list, register, discover, update, delete, git info, history deletion |
+| Explorer | `coc.explorer` | tree, file/content search, blobs, replace and guarded permanent entry deletion |
 | Servers | `coc.servers` | remote server CRUD, health, reconnect, patch-transfer cherry-pick orchestration |
 | Preferences | `coc.preferences` | global and per-repo preferences, skill usage |
 | Memory | `coc.memory`, `coc.memoryV2` | bounded memory, explore cache, Memory V2 facts, review queue, episodes, export, wipe |
@@ -47,6 +48,16 @@ const { items } = await coc.workItems.listForOrigin(originId);
 | Realtime | `coc.events` | process WebSocket connection helper |
 
 ## Examples
+
+### Explorer deletion
+
+Call `coc.explorer.deleteEntry(workspaceId, relativePath)` on the client for the
+workspace's owning server, using a physical member ID for group views. The server
+requires its live `features.explorerDelete` setting (default off), exposed as
+`explorerDeleteEnabled` in runtime configuration. Success returns `{ success: true }`.
+`CocApiError.body` retains `{ error, code, partial, removedEntries }`; partial failure
+has no rollback and requires refreshing the tree without discarding editor buffers.
+The client never retries on another server.
 
 ### Work items
 

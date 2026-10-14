@@ -26,8 +26,79 @@ tags:
     description: Pin and archive management for processes
   - name: stats
     description: Token usage statistics
+  - name: explorer
+    description: Workspace file browsing and guarded mutations
 
 paths:
+  /api/repos/{repoId}/entry:
+    delete:
+      operationId: deleteExplorerEntry
+      tags: [explorer]
+      summary: Permanently delete one workspace file or folder
+      description: >-
+        Requires the owning server's live features.explorerDelete flag (default false)
+        and a registered physical workspace. Deletes symlinks themselves, never targets.
+        Root, Git metadata, traversal and symlinked ancestors are rejected.
+        Partial deletion has no rollback and returns an error with removedEntries.
+        Filesystem race revalidation is best effort, not atomic.
+      parameters:
+        - name: repoId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          description: Strict workspace-relative path of one entry
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Entry deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    const: true
+        '400':
+          description: Invalid or protected target (INVALID_DELETE_PATH)
+          content:
+            application/json:
+              schema: &ExplorerDeleteError
+                type: object
+                required: [error, code, partial, removedEntries]
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum: [EXPLORER_DELETE_DISABLED, INVALID_DELETE_PATH, ENTRY_NOT_FOUND, ENTRY_CHANGED, DELETE_IO_ERROR]
+                  partial:
+                    type: boolean
+                  removedEntries:
+                    type: integer
+                    minimum: 0
+        '404':
+          description: Disabled (EXPLORER_DELETE_DISABLED), unknown/virtual workspace or missing entry (ENTRY_NOT_FOUND)
+          content:
+            application/json:
+              schema: *ExplorerDeleteError
+        '409':
+          description: Target or ancestry changed during deletion (ENTRY_CHANGED)
+          content:
+            application/json:
+              schema: *ExplorerDeleteError
+        '500':
+          description: Permission, offline root or filesystem failure (DELETE_IO_ERROR), possibly partial
+          content:
+            application/json:
+              schema: *ExplorerDeleteError
+
   /api/health:
     get:
       operationId: getHealth

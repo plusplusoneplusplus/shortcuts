@@ -63,6 +63,17 @@ export interface ExplorerBlobResponse {
   mimeType: string;
 }
 
+export interface ExplorerDeleteResponse {
+  success: true;
+}
+
+export interface ExplorerDeleteError {
+  error: string;
+  code: 'EXPLORER_DELETE_DISABLED' | 'INVALID_DELETE_PATH' | 'ENTRY_NOT_FOUND' | 'ENTRY_CHANGED' | 'DELETE_IO_ERROR';
+  partial: boolean;
+  removedEntries: number;
+}
+
 export interface ExplorerTreeOptions {
   path?: string;
   depth?: number;

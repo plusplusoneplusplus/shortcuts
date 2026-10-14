@@ -1,5 +1,6 @@
 import type {
   ExplorerBlobResponse,
+  ExplorerDeleteResponse,
   ExplorerContentReplaceFile,
   ExplorerContentReplaceOptions,
   ExplorerContentReplaceResponse,
@@ -191,6 +192,14 @@ export class ExplorerClient {
       method: 'PUT',
       query: { path },
       body: { content },
+    });
+  }
+
+  /** Call on the owning server's client with a physical member workspace ID. */
+  deleteEntry(repoId: string, path: string): Promise<ExplorerDeleteResponse> {
+    return this.transport.request<ExplorerDeleteResponse>(repoPath(repoId, '/entry'), {
+      method: 'DELETE',
+      query: { path },
     });
   }
 

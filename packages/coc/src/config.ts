@@ -359,6 +359,8 @@ export interface CLIConfig {
         canvasHostApis?: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
         explorerEditorTabs?: boolean;
+        /** Confirmed permanent Explorer deletion. Disabled by default. */
+        explorerDelete?: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
@@ -767,6 +769,8 @@ export interface ResolvedCLIConfig {
         canvasHostApis: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
         explorerEditorTabs: boolean;
+        /** Confirmed permanent Explorer deletion. Disabled by default. */
+        explorerDelete: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
@@ -1079,6 +1083,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitWorktreeExecution: false,
         canvasHostApis: false,
         explorerEditorTabs: false,
+        explorerDelete: false,
         markdownPanelPreview: false,
         htmlPageTab: true,
         chatStyleSelector: true,

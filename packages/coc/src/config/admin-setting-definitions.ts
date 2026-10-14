@@ -1159,6 +1159,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.explorerDelete', default: false, runtime: 'live', runtimeFlag: 'explorerDeleteEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 70.5, label: 'Explorer deletion', badge: 'experimental',
+            hint: 'Allow confirmed permanent file and folder deletion in the owning workspace. Disabled by default.',
+            testId: 'toggle-explorer-delete-enabled',
+        },
+    }),
+    bool({
         key: 'features.markdownPanelPreview', default: false, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 71, label: 'Markdown panel preview', badge: 'experimental',

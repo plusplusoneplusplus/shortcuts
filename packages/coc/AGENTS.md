@@ -151,6 +151,10 @@ references before editing. Paths are package-relative.
   Health `nativeFileIndex`/`nativeContentSearch` both report the full `RepoFiles` capability.
   `src/server/repos/types.ts` aliases native tree/search result types and coc-client
   contracts for metadata, HTTP options and the file-search envelope.
+  Permanent Explorer deletion uses native `RepoFiles.deleteEntry` on a worker and
+  requires a physical workspace plus the owning server's live, default-off
+  `features.explorerDelete` flag. Preserve partial-error counts and refresh indexes
+  after any mutation; never substitute a Node walker or success on failure.
 - Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
   Test Git narrowing/native walks.
   Repo-group file/content search shares controls and ordered dispatch in
