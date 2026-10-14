@@ -8,16 +8,18 @@ tools per invocation; conversation-level tool data is explicitly owner-qualified
 ## Tool Registry
 
 `llm-tool-registry.ts` owns `LLM_TOOL_REGISTRY`, the list of user-toggleable tools. Each entry
-has `name`, `label`, `description`, and `enabledByDefault`. Exports:
-`DEFAULT_DISABLED_LLM_TOOLS`, `getEffectiveDefaultDisabledTools()`, `filterDisabledLlmTools()`.
+has `name`, `label`, `description`, `enabledByDefault`, and optional `scriptable` (default true;
+false for `ask_user`, `suggest_follow_ups`, `create_pull_request`, `send_to_conversation`,
+`browser`). Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `getEffectiveDefaultDisabledTools()`,
+`filterDisabledLlmTools()`, `isScriptableLlmTool()` (unregistered tools are never scriptable).
 The folder has no barrel `index.ts`; import each tool module directly.
 
 ### Gating
 
-`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled, browserControlEnabled })`
+`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled, browserControlEnabled, toolScriptingEnabled })`
 filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_query`
-(`KUSTO_LLM_TOOL_NAMES`), and `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`) out of the settings
-list when their flags are off. `browser` is filtered when `browserControlEnabled` is off.
+(`KUSTO_LLM_TOOL_NAMES`), `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`), and `run_tool_script`
+(`TOOL_SCRIPTING_LLM_TOOL_NAMES`) out of the settings list when their flags are off. `browser` is filtered when `browserControlEnabled` is off.
 
 `getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`, and
 `recall_memory` by default, independently of UI layout mode.
@@ -519,6 +521,35 @@ process. Offered to all chat providers (ask, autopilot, Ralph, follow-ups) by
 `buildSystemOneToolsAddon`, gated live by the `LLMToolSystemOne.enabled` admin flag
 (default off); on by default per repo once the flag is on.
 
+### run_tool_script
+
+The model writes the body of an async JavaScript function that calls CoC tools as
+`await tools.<name>(args)`; only `{ result, logs, calls, callCount }` returns to context (a
+throw returns `isError` with `{ error: { name, message, code? }, logs, calls, callCount }`).
+`run-tool-script-tool.ts` adapts the provider-neutral engine `runToolScript()` in
+`coc-agent-sdk/src/llm-tools/tool-script-runner.ts`: the script runs in a `worker_threads`
+worker (eval'd source string, fresh `vm` context with `tools`, `console`, `ToolCallError`, no
+`require`/`process`/`fetch`/timers, 256 MB heap cap). Each call is proxied to the parent, which
+enforces 50 calls per script, 4 in flight (FIFO), and nesting depth 3 (`tools.run_tool_script`
+starts a child runner with its own budget, counting 1 against the parent), then runs the call
+through `CocToolRuntime.callTool` with the inner `toolCallId` and the run's abort signal.
+Results are JSON-parsed when valid, otherwise strings; images are counted in `calls[].images`,
+not passed in. Errors throw `ToolCallError` with `code` `TOOL_ERROR`, `UNKNOWN_TOOL`,
+`CALL_LIMIT`, `DEPTH_LIMIT` or `ABORTED`; an unserializable return is `UNSERIALIZABLE_RESULT`.
+There is no timeout or output cap: a run ends on return/throw or when the invocation signal or
+the turn signal aborts, which terminates the worker, aborts in-flight inner calls and child
+runners, and reports open inner calls as `tool-failed` `aborted`. The worker is always terminated.
+
+Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
+`onNestedToolEvent`, bound to `BaseExecutor.buildNestedToolEventHandler(processId)`. That sink
+feeds the normal tool-event handler; when the parent id is not on the timeline (Claude/Codex
+bridge ids) it maps to the newest running `run_tool_script` row, once per script.
+`ToolCallLedger` skips nested calls, so `system_one` refs see only the script call. The SPA
+card shows `code` as a Script block and pretty-prints the JSON result. Gated live by
+`features.toolScripting` (default off), enabled by default per repo once on, and left out for
+Codex chats (`includeToolScripting: false`; Codex code mode already has `functions.exec`),
+browser-only bundles, scrubber turns and PR-outcome-review turns.
+
 ## Supporting Modules
 
 | File | Description |
@@ -530,8 +561,12 @@ process. Offered to all chat providers (ask, autopilot, Ralph, follow-ups) by
 ## Chat Tool Assembly
 
 `chat-tool-builder.ts` assembles the common chat tool bundle: collect the factories applicable
-to the current mode, apply `applyLlmToolPreferences()` from `prompt-builder.ts`, then filter by
-the effective disabled-tools list.
+to the current mode, apply `applyLlmToolPreferences()` from `prompt-builder.ts` (effective
+disabled list plus context exclusions), then `applyLlmToolApprovalGate()`. `run_tool_script` is
+built last over that final list filtered by `isScriptableLlmTool`, so scripts reach only tools
+the turn already offers and gated tools still ask; the script tool is itself gateable. Its
+callable list excludes mode-specific tools such as `create_pull_request`, keeping the tool block
+identical across ask, autopilot and follow-ups.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts` (currently `<web_search_tool>` and the Memory V2 `<memory_tool>` block),

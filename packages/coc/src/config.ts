@@ -326,6 +326,8 @@ export interface CLIConfig {
         sentinelTodoTags?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
+        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
+        toolScripting?: boolean;
         sentinelPrOutcomeWake?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
@@ -741,6 +743,8 @@ export interface ResolvedCLIConfig {
         sentinelTodoTags: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
+        /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
+        toolScripting: boolean;
         sentinelPrOutcomeWake: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
@@ -1073,6 +1077,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
         sentinelTodoScrubber: false,
+        toolScripting: false,
         sentinelPrOutcomeWake: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,

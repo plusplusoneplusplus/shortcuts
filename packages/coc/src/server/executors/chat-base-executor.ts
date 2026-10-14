@@ -999,6 +999,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // conversation's prefix cache. An autopilot chat open in the
             // dashboard is attended, so the question is answerable.
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
+            includeToolScripting: (payload.provider ?? this.provider) !== 'codex',
+            onNestedToolEvent: this.buildNestedToolEventHandler(processId),
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
                 ...(scrubContext ? { isInteractive: () => false } : {}),

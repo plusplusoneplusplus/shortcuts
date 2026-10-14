@@ -780,6 +780,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.toolScripting', default: false, runtime: 'live', runtimeFlag: 'toolScriptingEnabled',
+        ui: {
+            group: 'review', order: 64.5, label: 'Tool scripting', badge: 'experimental',
+            hint: 'Chat AI can call `run_tool_script` to run a short JavaScript script that calls other enabled CoC tools in loops or in parallel, returning only the script result. Approval-gated tools still ask. Disabled by default.',
+            testId: 'toggle-tool-scripting-enabled',
+        },
+    }),
+    bool({
         key: 'mcpOauth.enabled', default: false, runtime: 'restartRequired', runtimeFlag: 'mcpOauthEnabled',
         ui: {
             tab: 'integrations', group: 'infrastructure', order: 20, label: 'MCP OAuth', badge: 'restart',

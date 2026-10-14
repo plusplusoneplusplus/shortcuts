@@ -298,6 +298,12 @@ export {
     resolveInputSchema,
     normalizeToolResult,
     errorResult,
+    runToolScript,
+    toModelPayload,
+    RUN_TOOL_SCRIPT_TOOL_NAME,
+    MAX_SCRIPT_DEPTH,
+    MAX_CALLS_PER_SCRIPT,
+    MAX_IN_FLIGHT_PER_SCRIPT,
 } from './llm-tools';
 
 export type {
@@ -305,6 +311,10 @@ export type {
     RuntimeToolResult,
     RuntimeToolResultContent,
     CocToolRuntimeContext,
+    CocToolCallOptions,
+    ToolScriptRunOptions,
+    ToolScriptRunResult,
+    ToolScriptCallRecord,
 } from './llm-tools';
 
 export {

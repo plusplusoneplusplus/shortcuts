@@ -460,6 +460,37 @@ export abstract class BaseExecutor {
     }
 
     /**
+     * Builds the sink for `run_tool_script` inner-call events, which the tool
+     * emits itself rather than the provider stream.
+     *
+     * Copilot hands the script the provider's tool-call id, so its rows nest
+     * directly. Claude and Codex reach the script through the MCP bridge, which
+     * mints its own id; an unknown parent id therefore falls back to the newest
+     * running `run_tool_script` row, fixed per script so its calls stay together.
+     */
+    protected buildNestedToolEventHandler(processId: string): (event: ToolEvent) => void {
+        // The turn index only matters for `suggest_follow_ups`, which scripts cannot call.
+        const handler = this.buildToolEventHandler(processId, () => 0);
+        const parentIds = new Map<string, string>();
+        return (event: ToolEvent) => {
+            const parentId = event.parentToolCallId;
+            if (!parentId) return handler(event);
+            let resolved = parentIds.get(parentId);
+            if (!resolved) {
+                const buffer = this.getTimelineBuffer(processId) ?? [];
+                resolved = buffer.some(item => item.toolCall?.id === parentId)
+                    ? parentId
+                    : findLatestToolCall(buffer, tc =>
+                        tc.status === 'running'
+                        && isSameToolName(tc.name, 'run_tool_script')
+                        && !buffer.some(item => item.toolCall?.id === tc.id && item.toolCall.status !== 'running'))?.id ?? parentId;
+                parentIds.set(parentId, resolved);
+            }
+            handler({ ...event, parentToolCallId: resolved });
+        };
+    }
+
+    /**
      * Records how the approval gate settled a gated LLM tool call. The outcome
      * is stamped onto the call's running row now and onto its terminal row
      * when the call finishes, so the timeline can show the badge.

@@ -18,7 +18,23 @@ export type {
     RuntimeToolResult,
     RuntimeToolResultContent,
     CocToolRuntimeContext,
+    CocToolCallOptions,
 } from './coc-tool-runtime';
+
+export {
+    runToolScript,
+    toModelPayload,
+    RUN_TOOL_SCRIPT_TOOL_NAME,
+    MAX_SCRIPT_DEPTH,
+    MAX_CALLS_PER_SCRIPT,
+    MAX_IN_FLIGHT_PER_SCRIPT,
+} from './tool-script-runner';
+
+export type {
+    ToolScriptRunOptions,
+    ToolScriptRunResult,
+    ToolScriptCallRecord,
+} from './tool-script-runner';
 
 export {
     CocToolBridgeServer,

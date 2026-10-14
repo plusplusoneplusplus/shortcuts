@@ -355,6 +355,8 @@ export interface ToolCallRenderModel {
     sqlDescription: string;
     sqlQuery: string;
     sqlOptionsText: string;
+    /** `run_tool_script` source, shown as a code block instead of raw args JSON. */
+    scriptCode: string;
     /** Markdown source rendered for a task_complete card. */
     taskCompleteSummary: string;
     /** True when hovering the header should show a result popover. */
@@ -380,6 +382,15 @@ export interface ToolCallRenderModel {
     progressText: string;
     /** Accessible status for the running indicator ('' when not running). */
     runningStatusLabel: string;
+}
+
+/** Pretty-print JSON text; anything else is returned unchanged. */
+function prettyJson(text: string): string {
+    try {
+        return JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+        return text;
+    }
 }
 
 /** Pull the JSON-stringifiable extra options out of a shell/sql args object. */
@@ -411,6 +422,8 @@ export function buildToolCallRenderModel(
     const isTaskComplete = name === 'task_complete';
     const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
     const isSql = name === 'sql';
+    // Bridged providers report the MCP-qualified name (`mcp__coc_llm_tools__run_tool_script`).
+    const isToolScript = name === 'run_tool_script' || name.endsWith('__run_tool_script');
 
     const applyPatchText = name === 'apply_patch' ? getApplyPatchText(normalized.args) : '';
     const codexFileChanges = name === 'apply_patch' ? getCodexFileChanges(normalized.args) : [];
@@ -439,7 +452,8 @@ export function buildToolCallRenderModel(
 
     const presentation = getToolResultPresentation(normalized.result);
     const hasStructuredImages = presentation.images.length > 0 && !isImageDataUrl(normalized.result ?? '');
-    const resultText = isImageDataUrl(normalized.result ?? '') ? normalized.result ?? '' : presentation.text;
+    const resultText = isImageDataUrl(normalized.result ?? '') ? normalized.result ?? ''
+        : isToolScript ? prettyJson(presentation.text) : presentation.text;
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated
         ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated — showing ${formatCount(TRUNCATED_RESULT_LENGTH)} of ${formatCount(resultText.length)} chars)`
@@ -456,6 +470,7 @@ export function buildToolCallRenderModel(
     const sqlDescription = isSql && argsObj?.description ? String(argsObj.description) : '';
     const sqlQuery = isSql && argsObj?.query ? String(argsObj.query) : '';
     const sqlOptionsText = isSql ? extractOptionsText(argsObj, ['description', 'query']) : '';
+    const scriptCode = isToolScript && typeof argsObj?.code === 'string' ? argsObj.code : '';
 
     const taskCompleteSummary = isTaskComplete
         ? (resultText || (argsObj && typeof argsObj.summary === 'string' ? argsObj.summary : ''))
@@ -520,6 +535,7 @@ export function buildToolCallRenderModel(
         sqlDescription,
         sqlQuery,
         sqlOptionsText,
+        scriptCode,
         taskCompleteSummary,
         hasHoverResult,
         kindInfo,

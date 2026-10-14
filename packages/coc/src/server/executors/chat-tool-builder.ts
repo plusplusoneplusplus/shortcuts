@@ -1,5 +1,7 @@
+import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
+import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
@@ -9,7 +11,8 @@ import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import { createBrowserTool, type BrowserToolStateStore } from '../llm-tools/browser-tools';
-import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
+import { DEFAULT_DISABLED_LLM_TOOLS, filterDisabledLlmTools, isScriptableLlmTool } from '../llm-tools/llm-tool-registry';
+import { createRunToolScriptTool } from '../llm-tools/run-tool-script-tool';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -77,6 +80,7 @@ export interface ChatToolBundleOptions {
     kustoRuntime?: KustoToolsRuntime;
     browserRuntime?: BrowserControlRuntime;
     browserState?: BrowserToolStateStore;
+    /** Turn abort signal, shared by `browser` and `run_tool_script`. */
     browserSignal?: AbortSignal;
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
@@ -102,6 +106,12 @@ export interface ChatToolBundleOptions {
     excludeTools?: string[];
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
     onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
+    /** False leaves out `run_tool_script` (browser-only bundles, Codex code mode). */
+    includeToolScripting?: boolean;
+    /** Overrides the `features.toolScripting` config flag (used by tests). */
+    toolScriptingEnabled?: boolean;
+    /** Receives `run_tool_script` inner-call events so the timeline nests them under the script. */
+    onNestedToolEvent?: (event: ToolEvent) => void;
 }
 
 export interface ChatToolBundle {
@@ -248,8 +258,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ? readApprovalRequiredLlmTools(options.dataDir, options.workspaceId)
         : [];
     const askUserDeps = options.askUser?.deps;
-    const tools = applyLlmToolApprovalGate(options.sentinelPrOutcomeReview
-        ? enabledTools.filter(tool => reviewTools.has(tool.name)) : enabledTools, {
+    const approvalGate = {
         processId: options.processId,
         approvalRequired,
         // Same signal ask_user uses: unset means a person is watching.
@@ -257,9 +266,32 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         // No ask-user wiring (workflows, unattended paths) → nobody to ask.
         getAskApproval: () => (askUserDeps ? askUser?.askApproval : undefined),
         onDecision: options.onLlmToolApprovalDecision,
-    });
+    };
+    const tools = applyLlmToolApprovalGate(options.sentinelPrOutcomeReview
+        ? enabledTools.filter(tool => reviewTools.has(tool.name)) : enabledTools, approvalGate);
+
+    // Built last, over the filtered and gated list: a script reaches only the
+    // tools this turn already offers, and gated tools still ask the user.
+    if (options.includeToolScripting !== false && !options.sentinelPrOutcomeReview
+        && isToolScriptingEnabled(options)
+        && filterDisabledLlmTools([{ name: 'run_tool_script' }], disabledWithContextExclusions).length > 0) {
+        const { tool } = createRunToolScriptTool({
+            tools: tools.filter(t => isScriptableLlmTool(t.name)),
+            workspaceId: options.workspaceId,
+            processId: options.processId,
+            signal: options.browserSignal,
+            onNestedToolEvent: options.onNestedToolEvent,
+        });
+        tools.push(...applyLlmToolApprovalGate([tool], approvalGate));
+    }
 
     return { tools, toolGuidance, askUser };
+}
+
+function isToolScriptingEnabled(options: ChatToolBundleOptions): boolean {
+    if (options.toolScriptingEnabled !== undefined) return options.toolScriptingEnabled;
+    return !!options.dataDir
+        && resolveConfig(path.join(options.dataDir, CONFIG_FILE_NAME)).features.toolScripting === true;
 }
 
 function mergeDisabledTools(

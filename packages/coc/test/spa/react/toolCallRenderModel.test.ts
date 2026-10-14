@@ -470,3 +470,26 @@ describe('running tool progress', () => {
         }, 'whisper-row', new Date(START).getTime() + 99_000).duration).toBe('2.0s');
     });
 });
+
+describe('run_tool_script render model', () => {
+    const call = (toolName: string) => buildToolCallRenderModel({
+        toolName,
+        args: { code: 'return await tools.read_canvas({ canvasId: "c1" });' },
+        status: 'completed',
+        result: '{"result":{"ok":true},"logs":[],"calls":[{"name":"read_canvas","ok":true}],"callCount":1}',
+    }, 'card');
+
+    it.each(['run_tool_script', 'mcp__coc_llm_tools__run_tool_script'])('extracts the script and pretty-prints the JSON result for %s', (name) => {
+        const model = call(name);
+        expect(model.scriptCode).toBe('return await tools.read_canvas({ canvasId: "c1" });');
+        expect(model.resultText).toBe(JSON.stringify(JSON.parse(model.resultText), null, 2));
+        expect(model.resultText).toContain('\n  "callCount": 1');
+    });
+
+    it('leaves other tools and non-JSON script results alone', () => {
+        expect(buildToolCallRenderModel({ toolName: 'view', args: { code: 'x' }, result: '{"a":1}' }, 'card'))
+            .toMatchObject({ scriptCode: '', resultText: '{"a":1}' });
+        expect(buildToolCallRenderModel({ toolName: 'run_tool_script', args: { code: 'x' }, result: 'not json' }, 'card').resultText)
+            .toBe('not json');
+    });
+});
