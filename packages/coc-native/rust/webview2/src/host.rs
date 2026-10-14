@@ -288,7 +288,9 @@ impl View {
         }
         let title = CoTaskMemPWSTR::from(title).to_string();
         // Popups report their own document through the owning tab, never its snapshot.
-        if let Some(message) = protocol::history_message(&self.root_id, &url, &title, visit) {
+        if let Some(message) =
+            protocol::history_message(&self.root_id, &self.id, &url, &title, visit)
+        {
             protocol::emit(message);
         }
         Ok(())

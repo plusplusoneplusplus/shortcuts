@@ -20,6 +20,10 @@ export interface FileViewRequest {
 
 export interface BrowserEventSink {
     state(state: BrowserViewState): void;
+    /** A new main document invalidates the previous document's copy identity. */
+    navigationStarted?(): void;
+    documentCommitted?(url: string, title: string): void;
+    documentTitleUpdated?(url: string, title: string): void;
     /** Successful main-document load or committed same-document navigation, never state replay. */
     visited?(url: string, title: string): void;
     /** Changes metadata only; cannot create a visit. */

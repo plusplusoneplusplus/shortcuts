@@ -168,11 +168,17 @@ pub fn allowed_view_id(value: &str) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-pub fn history_message(view_id: &str, url: &str, title: &str, visit: bool) -> Option<Value> {
+pub fn history_message(
+    view_id: &str,
+    source_view_id: &str,
+    url: &str,
+    title: &str,
+    visit: bool,
+) -> Option<Value> {
     allowed_url(url, false).then(|| {
         serde_json::json!({
             "event": if visit { "visited" } else { "title-updated" },
-            "viewId": view_id, "url": url, "title": title.chars().take(4096).collect::<String>()
+            "viewId": view_id, "sourceViewId": source_view_id, "url": url, "title": title.chars().take(4096).collect::<String>()
         })
     })
 }
@@ -244,7 +250,9 @@ mod tests {
     #[test]
     fn page_owned_history_titles_cannot_exceed_native_framing_limits() {
         let title = "\u{1f600}".repeat(300_000);
-        let event = history_message("owned-view", "https://fixture.test/", &title, true).unwrap();
+        let event =
+            history_message("owned-view", "owned-view", "https://fixture.test/", &title, true)
+                .unwrap();
         assert_eq!(event["title"].as_str().unwrap().chars().count(), 4096);
         assert!(event.to_string().len() < 20_000);
     }
@@ -381,19 +389,21 @@ mod tests {
     #[test]
     fn history_uses_the_final_document_and_routes_popups_through_their_owner() {
         let url = "http://127.0.0.1:4000/Final?Case=Keep#fragment";
-        let message = history_message("7:tab:1", url, "Popup title", true).unwrap();
+        let message =
+            history_message("7:tab:1", "7:tab:1:popup:1", url, "Popup title", true).unwrap();
         assert_eq!(
             message,
             serde_json::json!({
-                "event": "visited", "viewId": "7:tab:1", "url": url, "title": "Popup title"
+                "event": "visited", "viewId": "7:tab:1", "sourceViewId": "7:tab:1:popup:1", "url": url, "title": "Popup title"
             })
         );
-        let message = history_message("7:tab:1", url, "Changed title", false).unwrap();
+        let message = history_message("7:tab:1", "7:tab:1", url, "Changed title", false).unwrap();
         assert_eq!(message["event"], "title-updated");
         assert_eq!(message["title"], "Changed title");
+        assert_eq!(message["sourceViewId"], "7:tab:1");
         for url in ["about:blank", "", "file:///tmp/preview.html", "edge-error://error"] {
-            assert!(history_message("7:tab:1", url, "Ignored", true).is_none());
-            assert!(history_message("7:tab:1", url, "Ignored", false).is_none());
+            assert!(history_message("7:tab:1", "7:tab:1", url, "Ignored", true).is_none());
+            assert!(history_message("7:tab:1", "7:tab:1", url, "Ignored", false).is_none());
         }
     }
 }

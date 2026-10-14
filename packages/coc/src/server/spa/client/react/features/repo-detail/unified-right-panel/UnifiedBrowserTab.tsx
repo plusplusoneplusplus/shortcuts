@@ -56,7 +56,9 @@ export function UnifiedBrowserTab({
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const [error, setError] = useState<string | null>(null);
-    const [page, setPage] = useState<BrowserViewState | null>(null);
+    const [pageSnapshot, setPage] = useState<{ owner: string; state: BrowserViewState } | null>(null);
+    const pageOwner = JSON.stringify([sessionKey, viewId, tabId]);
+    const page = pageSnapshot?.owner === pageOwner ? pageSnapshot.state : null;
     const [notice, setNotice] = useState<string | null>(null);
     const [opened, setOpened] = useState(false);
     const [engine, setEngine] = useState<BrowserEngine | undefined>();
@@ -94,7 +96,7 @@ export function UnifiedBrowserTab({
         let disposed = false;
         const offState = bridge.onState(state => {
             if (state.viewId !== viewId || disposed) return;
-            setPage(state);
+            setPage({ owner: pageOwner, state });
             setEngine(state.engine);
             if (state.url) onPageStateRef.current(tabId, { url: state.url, title: state.title });
         });
@@ -142,6 +144,7 @@ export function UnifiedBrowserTab({
         }
         setError(null);
         setNotice(null);
+        setPage(null);
         onNavigate(tabId, result.url);
         if (bridge && opened) {
             void bridge.navigate(viewId, result.url).then(reply => {
@@ -191,12 +194,17 @@ export function UnifiedBrowserTab({
             <BrowserAddressBar
                 inputRef={addressRef}
                 url={url}
+                committedPage={bridge && page?.sourceKind === 'url' && !page.loading && !page.error
+                    && page.committedPage?.url === page.url ? page.committedPage : undefined}
                 history={bridge?.history}
                 enabled={active && visible}
-                ownerKey={JSON.stringify([sessionKey, viewId, tabId])}
+                ownerKey={pageOwner}
                 invalid={error !== null}
                 onEdit={() => setError(null)}
                 onOpen={navigateAddress}
+                onCopyError={() => setNotice('Rich link copy unavailable. Using standard selection copy.')}
+                showAddressMenu={bridge?.showAddressMenu}
+                onMenuError={() => setNotice('Address menu unavailable. Use the keyboard to copy or edit.')}
             />
             <BrowserToolbarMenu
                 key={`${sessionKey}:${viewId}`}

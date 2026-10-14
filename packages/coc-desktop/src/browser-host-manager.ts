@@ -27,6 +27,8 @@ interface Entry {
     ready: Promise<BrowserHostedView>;
     view?: BrowserHostedView;
     startupFailed?: boolean;
+    committedPage?: BrowserViewState['committedPage'];
+    commitRevision?: number;
     control?: BrowserControlQueue;
     popout?: boolean;
     activity?: BrowserControlActivityEvent & { routingOwnerId: number };
@@ -375,7 +377,9 @@ export class BrowserHostManager {
     }
 
     private state(entry: Entry, state: BrowserViewState): BrowserViewState {
-        return { ...state, engine: entry.engine, viewId: entry.viewId, sourceKind: entry.sourceKind };
+        const committedPage = entry.sourceKind === 'url' && !state.loading && !state.error
+            && entry.committedPage?.url === state.url ? entry.committedPage : undefined;
+        return { ...state, committedPage, engine: entry.engine, viewId: entry.viewId, sourceKind: entry.sourceKind };
     }
 
     private async createUrl(entry: Entry, url: string): Promise<BrowserHostedView> {
@@ -394,11 +398,28 @@ export class BrowserHostManager {
         const view = await create({
             state: state => {
                 if (entry.closed) return;
+                if (state.error) entry.committedPage = undefined;
                 if (state.errorCode === 'runtime-crashed') {
                     this.clearControlEntry(entry, false);
                     entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
                 }
                 this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state));
+            },
+            navigationStarted: () => {
+                if (entry.closed) return;
+                entry.committedPage = undefined;
+                if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
+            },
+            documentCommitted: (url, title) => {
+                if (entry.closed || entry.sourceKind !== 'url') return;
+                entry.commitRevision = (entry.commitRevision ?? 0) + 1;
+                entry.committedPage = validateBrowserUrl(url).ok ? { url, title, revision: entry.commitRevision } : undefined;
+                if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
+            },
+            documentTitleUpdated: (url, title) => {
+                if (entry.closed || entry.sourceKind !== 'url' || entry.committedPage?.url !== url) return;
+                entry.committedPage = { ...entry.committedPage, title };
+                if (entry.view) this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, entry.view.snapshot()));
             },
             visited: (url, title) => {
                 if (!entry.closed && entry.sourceKind === 'url') {

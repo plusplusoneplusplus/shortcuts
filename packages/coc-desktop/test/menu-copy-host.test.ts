@@ -47,4 +47,16 @@ describe('desktop Copy routing', () => {
         expect(mocks.isSpa).not.toHaveBeenCalled();
         expect(vi.getTimerCount()).toBe(0);
     });
+
+    it('uses native copy for ordinary address inputs in the captured SPA, not a newly focused window', () => {
+        const first = { id: 7, send: vi.fn(), copy: vi.fn(), isDestroyed: () => false };
+        const other = { id: 9, send: vi.fn(), copy: vi.fn(), isDestroyed: () => false };
+        mocks.focused.mockReturnValue(first);
+        mocks.isSpa.mockReturnValue(true);
+        createDesktopMenuCopyDelegate().requestCopy();
+        mocks.focused.mockReturnValue(other);
+        vi.advanceTimersByTime(MENU_COPY_FALLBACK_DELAY_MS);
+        expect(first.copy).toHaveBeenCalledOnce();
+        expect(other.copy).not.toHaveBeenCalled();
+    });
 });

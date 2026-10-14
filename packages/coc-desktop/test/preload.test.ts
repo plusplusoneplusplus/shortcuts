@@ -55,6 +55,7 @@ import {
     toHtmlPageOpenResult,
 } from '../src/html-page-policy';
 import {
+    BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_VIEW_OPEN_CHANNEL,
@@ -130,6 +131,12 @@ describe('preload bridge', () => {
         expect(exposeInMainWorld).toHaveBeenCalledWith('cocDesktop', expect.anything());
         return exposeInMainWorld.mock.calls[0][1];
     }
+
+    it('exposes the owner-scoped native address editing menu without clipboard access', async () => {
+        invoke.mockResolvedValueOnce({ ok: true });
+        expect(await exposedApi().browser.showAddressMenu(true)).toEqual({ ok: true });
+        expect(invoke).toHaveBeenLastCalledWith(BROWSER_ADDRESS_MENU_CHANNEL, true);
+    });
 
     it('exposes structured browser-control IPC and reveal/cancellation, never a raw debugger sender', async () => {
         const { control } = exposedApi().browser;

@@ -275,6 +275,8 @@ export interface BrowserViewState {
     sourceKind?: BrowserSourceKind;
     url: string;
     title: string;
+    /** URL/title pair from a successful document, independent of history recording. */
+    committedPage?: { url: string; title: string; revision: number };
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;
@@ -282,6 +284,8 @@ export interface BrowserViewState {
     error?: string;
     errorCode?: BrowserFailureReason;
 }
+
+export const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 
 /** A page asked to open `url` in a new tab; the SPA opens it with the opener's owner. */
 export interface BrowserNewTabRequest {

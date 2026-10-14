@@ -312,6 +312,8 @@ retire readiness. Navigation IDs reject superseded, stopped and repeated complet
 emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful
 completion. Events read the actual final Source/DocumentTitle, filter HTTP(S),
 and route popup documents through their root tab without replacing its state.
+`sourceViewId` retains the emitting controller identity, so desktop committed-page
+copy metadata accepts only the root document while history includes popups.
 Generic snapshots, history-stack notifications and layout never record visits.
 
 `src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the

@@ -47,6 +47,20 @@ afterEach(async () => {
 });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it('qualifies address-copy page identity through redirects, title updates, popups and stopped loads', async () => {
+        const directory = profileRoot('address-copy-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--address-copy-state-check');
+        const result = steps.get('address-copy-state')!;
+        expect(result.committed.committedPage).toMatchObject({ url: result.committed.url, title: 'Home' });
+        expect(result.afterPopup.committedPage).toEqual(result.committed.committedPage);
+        expect(result.redirected.committedPage).toMatchObject({ url: result.redirected.url, title: 'Second' });
+        expect(result.updated.committedPage).toMatchObject({ url: result.redirected.url, title: 'Updated page',
+            revision: result.redirected.committedPage.revision });
+        expect(result.loading.committedPage).toBeUndefined();
+        expect(result.stopped.committedPage).toBeUndefined();
+    }, 90_000);
+
     it('shares page zoom across active and hidden guests, windows, navigation and new/restored tabs without zooming the shell', async () => {
         const directory = profileRoot('browser-zoom-');
         temporary.push(directory);

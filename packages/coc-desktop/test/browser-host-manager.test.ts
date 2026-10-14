@@ -258,6 +258,57 @@ describe('trusted controlling-turn visibility', () => {
 });
 
 describe('browser manager history integration', () => {
+    it.each(['electron', 'webview2'] as const)('publishes atomic committed-page pairs for %s, independent of recording and other owners', async engine => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        await h.manager.open(2, 'view', 'https://other.test/', 'workspace-b');
+        const { sink, view } = h.created[0];
+        let state = view.snapshot();
+        view.snapshot = () => state;
+        const published = () => h.send.mock.calls.filter(call => call[0] === 1 && call[1] === BROWSER_VIEW_STATE_CHANNEL).at(-1)![2];
+        expect(published().committedPage).toBeUndefined();
+        sink.documentCommitted!('https://fixture.test/', 'Document A');
+        expect(published().committedPage).toEqual({ url: state.url, title: 'Document A', revision: 1 });
+        sink.documentTitleUpdated!('https://other.test/', 'Wrong owner');
+        expect(published().committedPage.title).toBe('Document A');
+        sink.visited!(state.url, 'Popup at the same URL');
+        sink.titleUpdated!(state.url, 'Popup title');
+        expect(published().committedPage.title).toBe('Document A');
+        sink.documentTitleUpdated!(state.url, 'Updated A');
+        expect(published().committedPage.title).toBe('Updated A');
+        // Subframe loading does not replace the successfully committed main document.
+        sink.state({ ...state, loading: true });
+        sink.state(state);
+        expect(published().committedPage.title).toBe('Updated A');
+        sink.navigationStarted!();
+        state = { ...state, loading: true };
+        sink.state(state);
+        expect(published().committedPage).toBeUndefined();
+        state = { ...state, url: 'https://redirect.test/', title: 'Stale A', loading: false };
+        sink.state(state);
+        expect(published().committedPage).toBeUndefined();
+        sink.documentCommitted!(state.url, 'Document B');
+        expect(published().committedPage).toEqual({ url: state.url, title: 'Document B', revision: 2 });
+        await h.manager.open(1, 'view', state.url, 'workspace-a');
+        expect(published().committedPage.title).toBe('Document B');
+        sink.navigationStarted!();
+        state = { ...state, loading: true };
+        sink.state(state);
+        state = { ...state, loading: false };
+        sink.state(state);
+        sink.documentTitleUpdated!(state.url, 'Aborted navigation title');
+        expect(published().committedPage).toBeUndefined();
+        sink.documentCommitted!(state.url, '');
+        expect(published().committedPage.title).toBe('');
+        sink.state({ ...state, error: 'Fixture failed' });
+        expect(published().committedPage).toBeUndefined();
+        await h.manager.closeOwner(1);
+        const count = h.send.mock.calls.length;
+        sink.documentCommitted!('https://late.test/', 'Late');
+        expect(h.send.mock.calls).toHaveLength(count);
+        expect(h.send.mock.calls.filter(call => call[0] === 2 && call[1] === BROWSER_VIEW_STATE_CHANNEL).at(-1)![2].committedPage).toBeUndefined();
+        await h.manager.dispose();
+    });
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-manager-history-'));
     afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
