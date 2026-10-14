@@ -5,6 +5,17 @@ classification, composer PR chips, and the Pull Requests tab.
 
 ## Git tab
 
+### Branch switching
+
+`BranchPickerModal` shares local-branch search and paging across the Git header
+and the collapsed-rail repository preview. The preview embeds it and supplies
+its owner client explicitly. The switch endpoint rejects force requests,
+queued/running/cancelling workspace processes, running Git jobs, dirty trees,
+conflicts, active Git operations and unreadable repository status. It calls the
+existing branch service with `force: false`, then invalidates mutable caches and
+broadcasts only on success. It never stashes, discards edits or cancels jobs.
+
+
 `features/git/RepoGitTab.tsx` is a composition shell over `features/git/repoGitTab/`:
 
 | Controller | Owns |

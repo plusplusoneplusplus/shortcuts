@@ -15,7 +15,7 @@
 
 import { BranchService } from '@plusplusoneplusplus/forge';
 import { sendJSON, execGitArgsAsync } from '../core/api-handler';
-import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
+import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { GitOperationRunner } from '../git/git-operation-runner';
 import { GitPatchTransferService } from '../git/git-patch-transfer-service';
 import { GitRebaseReorderService } from '../git/git-rebase-reorder-service';
@@ -110,8 +110,27 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
             const name = requireString(body, 'name');
-            const result = await branchService.switchBranch(ws.rootPath, name, { force: body.force ?? false });
-            runner.broadcast(ws.id, 'branch-switch');
+            if (body.force) throw badRequest('Force switching is not supported');
+            const running = await gitOpsStore.getRunning(ws.id);
+            const processes = await store.getAllProcesses({
+                workspaceId: ws.id, status: ['queued', 'running', 'cancelling'],
+                exclude: ['conversation', 'toolCalls'], limit: 1,
+            });
+            if (running.length || processes.length) {
+                throw conflict('Cannot switch branches while workspace work is active');
+            }
+            const state = await branchService.getRepoState(ws.rootPath);
+            if (state.operation !== 'none' || state.conflictFiles.length) {
+                throw conflict('Resolve the current Git operation or conflicts before switching branches');
+            }
+            const status = await branchService.getRepositoryStatus(ws.rootPath);
+            if (!status) throw conflict('Cannot read repository status; branch was not switched');
+            if (status.dirty) throw conflict('Commit or stash your changes before switching branches');
+            const result = await branchService.switchBranch(ws.rootPath, name, { force: false });
+            if (result.success) {
+                runner.invalidateCache(ws.id);
+                runner.broadcast(ws.id, 'branch-switch');
+            }
             return result;
         },
     }));

@@ -24,6 +24,7 @@ import * as http from 'http';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { GitOpsStore } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
@@ -440,6 +441,10 @@ describe('Git Branches API endpoints', () => {
     // -----------------------------------------------------------------------
 
     describe('POST /api/workspaces/:id/git/branches/switch', () => {
+        beforeEach(() => {
+            mockGetRepositoryStatus.mockResolvedValue({ dirty: false });
+            mockGetRepoState.mockResolvedValue({ operation: 'none', conflictFiles: [] });
+        });
         it('should switch to a branch', async () => {
             mockSwitchBranch.mockResolvedValue({ success: true });
 
@@ -451,6 +456,7 @@ describe('Git Branches API endpoints', () => {
             expect(res.status).toBe(200);
             expect(res.json()).toEqual({ success: true });
             expect(mockSwitchBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'main', { force: false });
+            expect(store.getAllProcesses).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: WORKSPACE_ID, status: ['queued', 'running', 'cancelling'] }));
         });
 
         it('should return 400 when name is missing', async () => {
@@ -462,15 +468,44 @@ describe('Git Branches API endpoints', () => {
             expect(res.status).toBe(400);
         });
 
-        it('should pass force=true when specified', async () => {
+        it('rejects force switching', async () => {
             mockSwitchBranch.mockResolvedValue({ success: true });
 
-            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
                 method: 'POST',
                 body: JSON.stringify({ name: 'main', force: true }),
             });
 
-            expect(mockSwitchBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, 'main', { force: true });
+            expect(res.status).toBe(400);
+            expect(mockSwitchBranch).not.toHaveBeenCalled();
+        });
+
+        it('refuses active Git jobs in the selected workspace', async () => {
+            const getRunning = vi.spyOn(GitOpsStore.prototype, 'getRunning').mockResolvedValueOnce([{ status: 'running' }] as any);
+            try {
+                const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+                    method: 'POST', body: JSON.stringify({ name: 'main' }),
+                });
+                expect(res.status).toBe(409);
+                expect(getRunning).toHaveBeenCalledWith(WORKSPACE_ID);
+                expect(mockSwitchBranch).not.toHaveBeenCalled();
+            } finally {
+                getRunning.mockRestore();
+            }
+        });
+
+        it.each(['dirty', 'conflict', 'operation', 'unreadable', 'active'])('refuses %s workspace without switching', async reason => {
+            if (reason === 'dirty') mockGetRepositoryStatus.mockResolvedValue({ dirty: true });
+            if (reason === 'unreadable') mockGetRepositoryStatus.mockResolvedValue(null);
+            if (reason === 'conflict') mockGetRepoState.mockResolvedValue({ operation: 'none', conflictFiles: ['a.ts'] });
+            if (reason === 'operation') mockGetRepoState.mockResolvedValue({ operation: 'rebase', conflictFiles: [] });
+            if (reason === 'active') vi.mocked(store.getAllProcesses).mockResolvedValueOnce([{ status: 'running' }] as any);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branches/switch`, {
+                method: 'POST', body: JSON.stringify({ name: 'main' }),
+            });
+            expect(res.status).toBe(409);
+            expect(mockSwitchBranch).not.toHaveBeenCalled();
+            expect(mockStashChanges).not.toHaveBeenCalled();
         });
 
         it('should return git failure result on error', async () => {

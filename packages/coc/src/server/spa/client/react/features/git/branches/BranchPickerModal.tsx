@@ -11,7 +11,8 @@
  * last-commit subject per row) instead of a centered modal.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 
 const PAGE_SIZE = 50;
@@ -32,9 +33,14 @@ interface GitBranch {
 
 interface BranchPickerModalProps {
     workspaceId: string;
+    /** Explicit owner for callers outside the clone registry. */
+    client?: CocClient;
+    /** Embed inside an existing popup. */
+    inline?: boolean;
     currentBranch: string;
     isOpen: boolean;
     onClose: () => void;
+    beforeSwitch?: () => void;
     onSwitched?: (newBranch: string) => void;
     onSelected?: (branchName: string) => void | Promise<void>;
     title?: string;
@@ -46,9 +52,12 @@ interface BranchPickerModalProps {
 
 export function BranchPickerModal({
     workspaceId,
+    client,
+    inline = false,
     currentBranch,
     isOpen,
     onClose,
+    beforeSwitch,
     onSwitched,
     onSelected,
     title,
@@ -60,12 +69,15 @@ export function BranchPickerModal({
     const [branches, setBranches] = useState<GitBranch[]>([]);
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [isSwitching, setIsSwitching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [focusedIndex, setFocusedIndex] = useState(0);
 
+    const listId = useId();
+    const requestGeneration = useRef(0);
+    const switchingRef = useRef(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const listRef = useRef<HTMLUListElement>(null);
@@ -76,19 +88,23 @@ export function BranchPickerModal({
 
     const fetchBranches = useCallback(
         async (search: string, newOffset: number, append = false) => {
+            const generation = ++requestGeneration.current;
             if (!append) {
+                setBranches([]);
+                setHasMore(false);
                 setIsLoading(true);
             } else {
                 setIsLoadingMore(true);
             }
             setError(null);
             try {
-                const data = await getCocClientForWorkspace(workspaceId).git.listBranches(workspaceId, {
+                const data = await (client ?? getCocClientForWorkspace(workspaceId)).git.listBranches(workspaceId, {
                     type: 'local',
                     limit: PAGE_SIZE,
                     offset: newOffset,
                     search: search || undefined,
                 });
+                if (generation !== requestGeneration.current) return;
                 const fetched: GitBranch[] = data.local?.branches ?? [];
                 const more: boolean = data.local?.hasMore ?? false;
                 if (append) {
@@ -100,26 +116,33 @@ export function BranchPickerModal({
                 setHasMore(more);
                 setOffset(newOffset + fetched.length);
             } catch (err: any) {
-                setError(err.message || 'Failed to load branches');
+                if (generation === requestGeneration.current) setError(err.message || 'Failed to load branches');
             } finally {
-                setIsLoading(false);
-                setIsLoadingMore(false);
+                if (generation === requestGeneration.current) {
+                    setIsLoading(false);
+                    setIsLoadingMore(false);
+                }
             }
         },
-        [workspaceId]
+        [workspaceId, client]
     );
 
-    // On open: focus input, fetch initial list
+    // Reset the owner-scoped view and focus input on open.
     useEffect(() => {
         if (!isOpen) return;
         setQuery('');
+        setIsLoading(true);
+        setIsSwitching(false);
         setBranches([]);
         setOffset(0);
         setHasMore(false);
         setError(null);
         setFocusedIndex(0);
-        fetchBranches('', 0, false);
-        setTimeout(() => searchInputRef.current?.focus(), 50);
+        const focusTimer = setTimeout(() => searchInputRef.current?.focus(), 50);
+        return () => {
+            clearTimeout(focusTimer);
+            requestGeneration.current++;
+        };
     }, [isOpen, fetchBranches]);
 
     // Debounced search on query change
@@ -145,39 +168,46 @@ export function BranchPickerModal({
 
     const handleSwitch = useCallback(
         async (branchName: string) => {
-            if (isSwitching) return;
-            if (!isSelectionMode && branchName === currentBranch) return;
+            if (switchingRef.current || isLoading || isLoadingMore) return;
+            if (!isSelectionMode && (branchName === currentBranch || branches.find(branch => branch.name === branchName)?.isCurrent)) return;
+            switchingRef.current = true;
+            const generation = requestGeneration.current;
             setIsSwitching(true);
             setError(null);
             try {
                 if (onSelected) {
                     await onSelected(branchName);
                 } else {
-                    const result = await getCocClientForWorkspace(workspaceId).git.switchBranch(workspaceId, branchName, { force: false });
+                    beforeSwitch?.();
+                    const result = await (client ?? getCocClientForWorkspace(workspaceId)).git.switchBranch(workspaceId, branchName, { force: false });
                     if (result.success === false) {
                         throw new Error(result.error || 'Switch failed');
                     }
+                    if (generation !== requestGeneration.current) return;
                     onSwitched?.(branchName);
                 }
-                onClose();
+                if (generation === requestGeneration.current) onClose();
             } catch (err: any) {
-                setError(err.message || actionErrorLabel);
+                if (generation === requestGeneration.current) setError(err.message || actionErrorLabel);
             } finally {
-                setIsSwitching(false);
+                switchingRef.current = false;
+                if (generation === requestGeneration.current) setIsSwitching(false);
             }
         },
-        [actionErrorLabel, currentBranch, isSelectionMode, isSwitching, onClose, onSelected, onSwitched, workspaceId]
+        [actionErrorLabel, beforeSwitch, branches, client, currentBranch, isSelectionMode, isLoading, isLoadingMore, onClose, onSelected, onSwitched, workspaceId]
     );
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent) => {
             if (e.key === 'Escape') {
+                e.stopPropagation();
                 onClose();
                 return;
             }
+            if (e.target !== searchInputRef.current) return;
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                setFocusedIndex(i => Math.min(i + 1, branches.length - 1));
+                setFocusedIndex(i => Math.max(0, Math.min(i + 1, branches.length - 1)));
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 setFocusedIndex(i => Math.max(i - 1, 0));
@@ -200,7 +230,7 @@ export function BranchPickerModal({
 
     if (!isOpen) return null;
 
-    const anchored = !!anchorRect;
+    const anchored = inline || !!anchorRect;
     const dropdownStyle = anchorRect
         ? {
             top: anchorRect.bottom + 4,
@@ -211,7 +241,7 @@ export function BranchPickerModal({
 
     return (
         <div
-            className={anchored ? 'fixed inset-0 z-[10020]' : 'fixed inset-0 z-[10020] flex items-start justify-center pt-[10vh]'}
+            className={inline ? 'relative mt-2' : anchored ? 'fixed inset-0 z-[10020]' : 'fixed inset-0 z-[10020] flex items-start justify-center pt-[10vh]'}
             data-testid="branch-picker-overlay"
             data-anchored={anchored ? 'true' : undefined}
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -222,7 +252,7 @@ export function BranchPickerModal({
             {/* Dialog */}
             <div
                 className={anchored
-                    ? 'absolute bg-white dark:bg-[#252526] rounded-md shadow-xl border border-[#d0d0d0] dark:border-[#454545] flex flex-col max-h-[min(60vh,420px)] text-xs'
+                    ? `${inline ? 'relative' : 'absolute'} bg-white dark:bg-[#252526] rounded-md shadow-xl border border-[#d0d0d0] dark:border-[#454545] flex flex-col max-h-[min(60vh,420px)] text-xs`
                     : 'relative z-10 w-full max-w-lg bg-white dark:bg-[#252526] rounded-lg shadow-2xl border border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col max-h-[70vh]'}
                 style={dropdownStyle}
                 data-testid="branch-picker-modal"
@@ -238,10 +268,16 @@ export function BranchPickerModal({
                     <input
                         ref={searchInputRef}
                         type="text"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-expanded="true"
+                        aria-controls={listId}
+                        aria-activedescendant={!isLoading && branches[focusedIndex] ? `${listId}-${focusedIndex}` : undefined}
                         className={`flex-1 bg-transparent text-[#1e1e1e] dark:text-[#ccc] placeholder-[#999] outline-none ${anchored ? 'text-xs' : 'text-sm'}`}
                         placeholder="Search branches…"
                         value={query}
-                        onChange={e => setQuery(e.target.value)}
+                        onChange={e => { requestGeneration.current++; setIsLoading(true); setQuery(e.target.value); }}
+                        disabled={isSwitching}
                         data-testid="branch-picker-search"
                         aria-label="Search branches"
                     />
@@ -261,38 +297,44 @@ export function BranchPickerModal({
                 {error && (
                     <div
                         className="px-4 py-2 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        role="alert"
                         data-testid="branch-picker-error"
                     >
                         {error}
+                        <button type="button" className="ml-2 underline" disabled={isSwitching} onClick={() => fetchBranches(query, 0)}>Retry</button>
                     </div>
                 )}
 
                 {/* Branch list */}
                 <ul
                     ref={listRef}
+                    id={listId}
                     className="overflow-y-auto flex-1"
                     data-testid="branch-picker-list"
                     role="listbox"
                     aria-label="Branches"
+                    aria-busy={isLoading || isLoadingMore || isSwitching}
                 >
                     {isLoading && (
-                        <li className="px-4 py-3 text-sm text-[#999]" data-testid="branch-picker-loading">
+                        <li className="px-4 py-3 text-sm text-[#999]" role="status" data-testid="branch-picker-loading">
                             Loading branches…
                         </li>
                     )}
                     {!isLoading && branches.length === 0 && !error && (
-                        <li className="px-4 py-3 text-sm text-[#999]" data-testid="branch-picker-empty">
+                        <li className="px-4 py-3 text-sm text-[#999]" role="status" data-testid="branch-picker-empty">
                             No branches found
                         </li>
                     )}
                     {branches.map((branch, idx) => {
-                        const isCurrent = branch.name === currentBranch;
+                        const isCurrent = branch.isCurrent || branch.name === currentBranch;
                         const isFocused = idx === focusedIndex;
                         return (
                             <li
                                 key={branch.name}
+                                id={`${listId}-${idx}`}
                                 role="option"
                                 aria-selected={isCurrent}
+                                aria-disabled={(!isSelectionMode && isCurrent) || isSwitching || isLoading || isLoadingMore}
                                 className={`flex items-center gap-2 cursor-pointer select-none ${anchored ? 'px-2.5 py-1 text-xs' : 'px-4 py-2 text-sm'} ${
                                     isFocused
                                         ? 'bg-[#e8f0fe] dark:bg-[#2a3a5c]'
@@ -335,7 +377,7 @@ export function BranchPickerModal({
                         <button
                             className="w-full text-xs text-[#0078d4] hover:underline py-1 disabled:opacity-50"
                             onClick={handleLoadMore}
-                            disabled={isLoadingMore}
+                            disabled={isLoadingMore || isSwitching}
                             data-testid="branch-picker-load-more"
                         >
                             {isLoadingMore ? 'Loading…' : 'Load more'}
@@ -345,7 +387,7 @@ export function BranchPickerModal({
 
                 {/* Switching spinner */}
                 {isSwitching && (
-                    <div className="px-4 py-2 text-xs text-[#999] border-t border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="branch-picker-switching">
+                    <div className="px-4 py-2 text-xs text-[#999] border-t border-[#e0e0e0] dark:border-[#3c3c3c]" role="status" data-testid="branch-picker-switching">
                         {actionBusyLabel}
                     </div>
                 )}
