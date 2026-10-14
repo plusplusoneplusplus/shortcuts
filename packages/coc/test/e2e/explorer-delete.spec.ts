@@ -102,6 +102,8 @@ test('blocks real unsaved Monaco edits and preserves the buffer after an API fai
 });
 
 test('keeps the destructive menu and confirmation usable in a narrow desktop panel', async ({ page, serverUrl, dataDir }, info) => {
+    // Set the viewport before mounting the dock's debounced width controller.
+    await page.setViewportSize({ width: 1100, height: 844 });
     const root = path.join(dataDir, 'delete-fixture');
     fs.mkdirSync(root);
     const name = 'a-long-workspace-relative-filename-for-confirmation.txt';
@@ -111,11 +113,10 @@ test('keeps the destructive menu and confirmation usable in a narrow desktop pan
     await gotoWorkspace(page, serverUrl, WORKSPACE);
     await openExplorerPanel(page);
     await page.getByRole('button', { name: 'Expand panel' }).click();
-    // Keep a desktop viewport: at tablet widths the dock hides its navigator.
-    await page.setViewportSize({ width: 1100, height: 844 });
     const tree = page.locator('[data-testid="unified-panel-explorer-mode"]');
     await expect(tree).toBeVisible();
     const resize = page.getByRole('separator', { name: 'Resize file tree' });
+    await resize.hover();
     const minimum = Number(await resize.getAttribute('aria-valuemin'));
     const current = Number(await resize.getAttribute('aria-valuenow'));
     const handle = (await resize.boundingBox())!;
@@ -123,6 +124,7 @@ test('keeps the destructive menu and confirmation usable in a narrow desktop pan
     const y = handle.y + handle.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
+    await expect(page.locator('[data-resize-overlay]')).toBeVisible();
     await page.mouse.move(x + current - minimum + 20, y, { steps: 4 });
     await page.mouse.up();
     await expect(resize).toHaveAttribute('aria-valuenow', String(minimum));

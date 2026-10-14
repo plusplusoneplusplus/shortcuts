@@ -76,6 +76,7 @@ import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/
 import {
     UNIFIED_PANEL_VIEW_MIN_WIDTH,
     UNIFIED_TREE_MIN_PANEL_WIDTH,
+    UNIFIED_TREE_MIN_WIDTH,
     clearUnifiedTreeState,
     readUnifiedTreeState,
     writeUnifiedTreeState,
@@ -267,6 +268,28 @@ describe('unified panel file-tree column', () => {
 
         expect(treeWidth()).toBe(270);
         expect(readUnifiedTreeState(WS).width).toBe(270);
+    });
+
+    it('shrinks to the minimum after the panel width clamps the resize range', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 200 });
+        const { rerender } = renderPanel();
+        rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ width: UNIFIED_TREE_MIN_PANEL_WIDTH + 4 })} />);
+
+        const handle = screen.getByRole('separator', { name: 'Resize file tree' });
+        const current = Number(handle.getAttribute('aria-valuenow'));
+        expect(current).toBe(UNIFIED_TREE_MIN_WIDTH + 4);
+        expect(handle.getAttribute('aria-valuemax')).toBe(String(current));
+        fireEvent.mouseDown(handle, { clientX: 600 });
+        expect(document.querySelector('[data-resize-overlay]')).not.toBeNull();
+        act(() => {
+            fireEvent.mouseMove(document, { clientX: 600 + current - UNIFIED_TREE_MIN_WIDTH + 20 });
+        });
+        act(() => { fireEvent.mouseUp(document); });
+
+        expect(handle.getAttribute('aria-valuenow')).toBe(String(UNIFIED_TREE_MIN_WIDTH));
+        expect(treeWidth()).toBe(UNIFIED_TREE_MIN_WIDTH);
+        expect(readUnifiedTreeState(WS).width).toBe(UNIFIED_TREE_MIN_WIDTH);
+        expect(document.querySelector('[data-resize-overlay]')).toBeNull();
     });
 
     it('reacts to a tree state written from outside the panel', () => {
