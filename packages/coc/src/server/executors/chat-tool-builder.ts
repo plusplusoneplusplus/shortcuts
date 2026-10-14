@@ -242,7 +242,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
     const disabledWithContextExclusions = mergeDisabledTools(disabledLlmTools, options.excludeTools);
     const { tools: enabledTools, toolGuidance } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
     const reviewTools = new Set(['sentinel_todos', 'search_conversations', 'get_conversation',
-        'web_search', 'ask_user', 'system_one', 'suggest_follow_ups']);
+        'tavily_web_search', 'ask_user', 'system_one', 'suggest_follow_ups']);
 
     const approvalRequired = options.dataDir && options.workspaceId
         ? readApprovalRequiredLlmTools(options.dataDir, options.workspaceId)

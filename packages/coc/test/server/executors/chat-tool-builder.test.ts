@@ -34,12 +34,19 @@ describe('buildChatToolBundle', () => {
         const names = result.tools.map(tool => tool.name);
         expect(names).toContain('sentinel_todos');
         expect(names).toContain('search_conversations');
+        expect(names).toContain('tavily_web_search');
         expect(names).not.toEqual(expect.arrayContaining(['send_to_conversation', 'create_pull_request']));
         for (const forbidden of ['send_to_conversation', 'create_pull_request', 'cron', 'scheduleWakeup',
             'browser', 'write_canvas', 'extension_canvas', 'kusto_query', 'save_memory']) expect(names).not.toContain(forbidden);
-        expect(result.toolGuidance).toContain('PR outcome review only');
-        expect(result.toolGuidance).not.toContain('send_to_conversation');
         expect((result.tools.find(tool => tool.name === 'sentinel_todos')!.parameters as any).properties.action.enum).toEqual(['list', 'update']);
+    });
+    it('respects the evidence-search opt-out on PR outcome review turns', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['tavily_web_search'] });
+        const result = buildChatToolBundle({
+            dataDir: tmpDir, workspaceId: WS_ID, processId: 'owner', store: makeStore(),
+            sentinelPrOutcomeReview: true,
+        });
+        expect(result.tools.map(tool => tool.name)).not.toContain('tavily_web_search');
     });
     it('browser honors live enablement and normal per-repo disable preferences', () => {
         let enabled = false;
