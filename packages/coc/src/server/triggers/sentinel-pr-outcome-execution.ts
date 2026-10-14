@@ -53,7 +53,7 @@ export async function guardSentinelPrOutcomeExecution(
         await store.updateProcess(processId, {
             pendingMessages,
             ...(context.sentinelPrOutcomeStopped === true ? { status: 'cancelled' as const }
-                : process.status === 'queued' ? { status: 'completed' as const } : {}),
+                : process.status === 'queued' || process.status === 'running' ? { status: 'completed' as const } : {}),
         });
     });
     return false;

@@ -153,8 +153,9 @@ export class SentinelPrOutcomeService {
                 skipped = !item || item.type !== 'normal' || !!item.archived || item.status === 'done';
                 if (skipped) reason = 'Current item is missing, manual, done or archived';
                 else if (!this.validate(current)) reason = 'Exact delegated PR owner or job link is unavailable';
-            } catch {
-                reason = 'Sentinel PR outcome owner is unavailable';
+            } catch (error) {
+                if (!(error instanceof SentinelTodoError) || error.code !== 'not_found') throw error;
+                reason = error.message;
             }
             if (reason) {
                 const next: Trigger = {
@@ -162,7 +163,10 @@ export class SentinelPrOutcomeService {
                     outcome: skipped ? 'skipped' : 'error', outcomeReason: reason,
                     delivery: { ...current.delivery, state: 'failed' },
                 };
-                this.deps.triggers.update(next);
+                if (!this.deps.triggers.updateIfRevision(next, current.revision)) {
+                    disposition = 'defer';
+                    return;
+                }
                 this.deps.emit?.({ type: 'trigger-updated', trigger: next });
                 return;
             }

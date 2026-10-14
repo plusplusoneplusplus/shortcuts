@@ -14,6 +14,11 @@ const workspaceId = 'ws-parent';
 const processId = 'queue_parent';
 const receiptId = 'delegated-result:ws-child:child:terminal';
 const review = { content: 'Review delegated job result', displayContent: 'Job result' };
+// Eligibility is exercised by native lifecycle tests; this suite isolates admission and drain.
+const reviewRuntime = { getTriggerInfra: () => ({
+    manager: { onActionComplete() {} },
+    sentinelPrOutcomes: { async reviewExecutionDisposition() { return 'execute' as const; } },
+} as never) };
 
 describe('durable review admission', () => {
     let directory: string;
@@ -242,14 +247,14 @@ describe('durable review admission', () => {
     });
 
     function drain() {
-        const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
+        const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service, runtime: reviewRuntime });
         executor.setQueueManager(queue);
         return (executor as unknown as { drainPendingMessages(id: string, taskId: string): Promise<void> })
             .drainPendingMessages(processId, 'prior-turn');
     }
 
     async function recover(owner = workspaceId) {
-        const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
+        const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service, runtime: reviewRuntime });
         executor.setQueueManager(queue);
         await executor.recoverPendingMessages(owner, processId);
     }
@@ -401,7 +406,7 @@ describe('durable review admission', () => {
         const delivery = deliver();
         await appending;
         const followUp = vi.fn().mockResolvedValue(undefined);
-        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, undefined, reviewRuntime);
         const execution = runner.run(queue.getTask(receiptId)!, {
             cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
             executeByTypeFn: vi.fn(), executeFollowUpFn: followUp,
@@ -452,7 +457,7 @@ describe('durable review admission', () => {
         const followUp = vi.fn<LifecycleRunnerOptions['executeFollowUpFn']>(async () => {
             await store.updateProcess(processId, { status: 'completed' });
         });
-        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, undefined, reviewRuntime);
         const onResponseCompleted = vi.fn();
         expect(await runner.run(queue.getTask('pr-outcome-1')!, {
             cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
@@ -473,7 +478,7 @@ describe('durable review admission', () => {
     it('restores the stopped state when a PR review fails instead of enabling normal notifications', async () => {
         await store.updateProcess(processId, { status: 'cancelled' });
         await prOutcome();
-        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, undefined, reviewRuntime);
         expect(await runner.run(queue.getTask('pr-outcome-1')!, {
             cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
             executeByTypeFn: vi.fn(), executeFollowUpFn: vi.fn().mockRejectedValue(new Error('provider unavailable')),
@@ -485,7 +490,7 @@ describe('durable review admission', () => {
     it('preserves stop when a queued outcome review is cancelled before starting', async () => {
         await store.updateProcess(processId, { status: 'cancelled' });
         await prOutcome();
-        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, undefined, reviewRuntime);
         const executeFollowUpFn = vi.fn();
         expect(await runner.run(queue.getTask('pr-outcome-1')!, {
             cancelledTasks: new Set(['pr-outcome-1']), getWorkingDirectoryFn: () => undefined,
@@ -555,7 +560,7 @@ describe('durable review admission', () => {
         expect((await store.getProcess(processId))?.pendingMessages?.[1].context).toMatchObject({
             sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true,
         });
-        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined, undefined, reviewRuntime);
         expect(await runner.run(queue.getTask('pr-outcome-1')!, {
             cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
             executeByTypeFn: vi.fn(), executeFollowUpFn: vi.fn(async () => {

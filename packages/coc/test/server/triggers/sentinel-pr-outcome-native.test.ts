@@ -140,8 +140,12 @@ describe('native delegated PR outcomes across observation, admission and restart
         return task;
     }
 
-    it.each(['pause', 'disable'] as const)('retains an admitted queued review after %s and resumes the same receipt exactly once', async action => {
+    it.each([
+        ['pause', 'cancelled'], ['disable', 'cancelled'],
+        ['pause', 'completed'], ['disable', 'completed'],
+    ] as const)('retains an admitted queued review after %s for a %s parent and resumes once', async (action, parentStatus) => {
         const executeReview = executionBridge();
+        await store.updateProcess(owner.processId, { status: parentStatus });
         const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
         status = 'merged';
         await infra.triggerManager.checkOutcome(registration.triggerId!);
@@ -153,15 +157,17 @@ describe('native delegated PR outcomes across observation, admission and restart
         expect((await store.getProcess(owner.processId))?.pendingMessages).toEqual([
             expect.objectContaining({ id: receiptId, relayRequestId: receiptId }),
         ]);
-        expect((await store.getProcess(owner.processId))?.status).toBe('cancelled');
+        expect((await store.getProcess(owner.processId))?.status).toBe(parentStatus);
         if (action === 'pause') await infra.sentinelPrOutcomes.control(owner, itemId, 'resume', { expectedRevision: 1 });
         else { enabled = true; await infra.sentinelPrOutcomes.restore(); }
         expect(queue.getTask(original.id)?.status).toBe('queued');
         const resumed = await executeNext();
         expect(resumed.id).toBe(original.id);
         expect(executeReview).toHaveBeenCalledTimes(1);
-        expect(executeReview.mock.calls[0][11]).toMatchObject({ sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true });
-        expect((await store.getProcess(owner.processId))?.status).toBe('cancelled');
+        expect(executeReview.mock.calls[0][11]).toMatchObject({ sentinelPrOutcomeReview: true });
+        if (parentStatus === 'cancelled') expect(executeReview.mock.calls[0][11]).toMatchObject({ sentinelPrOutcomeStopped: true });
+        else expect(executeReview.mock.calls[0][11]).not.toHaveProperty('sentinelPrOutcomeStopped');
+        expect((await store.getProcess(owner.processId))?.status).toBe(parentStatus);
         expect(infra.triggerStore.getById(registration.triggerId!)!.delivery!.deliveryId).toBe(receiptId);
         await executor!.recoverPendingMessages(owner.workspaceId, owner.processId);
         expect(queue.getAll().filter(task => task.status === 'queued')).toHaveLength(0);
