@@ -109,7 +109,7 @@ describe('compact Sentinel PR outcome evidence', () => {
         expect(screen.queryByRole('button', { name: 'Resume notifications' })).toBeNull();
     });
     it('renders each exact PR outcome and independent delivery state including failures', async () => {
-        const outcomes = ['merged', 'closed', 'watching'] as const;
+        const outcomes = ['merged', 'closed', 'watching', 'draft'] as const;
         const deliveries = ['none', 'pending', 'delivered', 'skipped', 'error'] as const;
         mocks.get.mockResolvedValue(snapshot({ outcomes: deliveries.map((state, index) => ({
             ...snapshot().outcomes[0], id: `watch-${index}`, pr: { ...snapshot().outcomes[0].pr, number: index + 1,
