@@ -112,6 +112,10 @@ references before editing. Paths are package-relative.
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
+- `DelegatedJobStore.recordPullRequest` stores each exact submitted PR's canonical
+  provider identity and item receipt in the originating workspace's existing job ledger.
+  Replays preserve the receipt; callers verify item eligibility. These provenance
+  records neither arm monitoring nor grant repair or review authority.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial

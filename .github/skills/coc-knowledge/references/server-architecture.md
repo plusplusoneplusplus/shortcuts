@@ -121,6 +121,13 @@ Sentinel request, including existing/native-resumed, provider-switched and post-
 turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
 review recipients receive the same contract inline. Cancellation remains display-only.
 
+`delegation/delegated-job-store.ts` retains produced-PR receipts in the existing
+owner-workspace `delegated-jobs.json`. `recordPullRequest` requires a registered job
+and records exact canonical provider/host/repository/number identity with an item ID
+and immutable receipt. Repeated submissions reuse that receipt; each distinct PR
+remains separate. These records are provenance only, independent of execution-result
+delivery and repair permission; caller services own eligibility and monitor registration.
+
 ### Sentinel To-do trigger firing
 
 `triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
