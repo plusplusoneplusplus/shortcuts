@@ -188,6 +188,14 @@ process is absent. Remote ordinary/unknown modes stay omitted; Ralph session
 identity stays Ralph. Mode-change invalidations target exact local linked owners
 without advancing ledger/item revisions.
 
+Default-off `features.sentinelTodoTags` uses `sentinel_todo_tag_libraries` and
+`sentinel_todo_tag_assignments` under the same workspace/parent keys. Independent
+assignment/library revisions leave content revisions and dependency authority
+unchanged. Manual selections/clears survive content edits. The shared decision
+backend matches existing definitions without a worker; asynchronous results
+recheck owner, content, assignment and library snapshots. Failed/unavailable
+attempts preserve edits. Tags remain machine-local and share ledger wipe.
+
 The internal `setDependencies` command replaces ordered evidence selectors under
 the item revision. A writer-reserved transaction validates same-ledger references,
 self/duplicate edges, archival and reachability before committing edges and

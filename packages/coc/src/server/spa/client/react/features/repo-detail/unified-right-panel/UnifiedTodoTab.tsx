@@ -18,6 +18,7 @@ import type {
     SentinelTodoPriority,
     SentinelTodoStatus,
     SentinelTodoType,
+    SentinelTodoTagLibrary,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
@@ -38,6 +39,7 @@ import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats'
 import { SentinelTodoTriggers } from './SentinelTodoTriggers';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
 import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
+import { SentinelTodoTagChips, SentinelTodoTagPicker, SentinelTodoTagToolbar, sentinelTodoMatchesTag, useSentinelTodoTagsEnabled } from './SentinelTodoTags';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
@@ -256,6 +258,11 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const wide = width >= SENTINEL_TODO_SPLIT_MIN_WIDTH;
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [visibleLimit, setVisibleLimit] = useState(SENTINEL_TODO_RECENT_LIMIT);
+    const tagsEnabled = useSentinelTodoTagsEnabled();
+    const [tagFilter, setTagFilter] = useState('');
+    const [matchMultiple, setMatchMultiple] = useState(false);
+    const tagLibrary = tagsEnabled ? ledger?.tagLibrary : undefined;
+    const effectiveTagFilter = tagLibrary && (tagFilter === 'untagged' || tagLibrary.tags.some(tag => tag.id === tagFilter)) ? tagFilter : '';
     const [loadError, setLoadError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const pendingLoads = useRef(0);
@@ -320,7 +327,9 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
 
     const orderedItems = useMemo(() => sentinelTodoRecentPage(ledger?.items ?? [], ledger?.items.length).items, [ledger]);
-    const recentItems = useMemo(() => sentinelTodoRecentPage(ledger?.items ?? [], visibleLimit).items, [ledger, visibleLimit]);
+    const filteredItems = useMemo(() => (ledger?.items ?? []).filter(item => sentinelTodoMatchesTag(item, effectiveTagFilter, tagLibrary)), [ledger, effectiveTagFilter, tagLibrary]);
+    const recentItems = useMemo(() => effectiveTagFilter ? sentinelTodoRecentPage(filteredItems, filteredItems.length).items
+        : sentinelTodoRecentPage(filteredItems, visibleLimit).items, [filteredItems, visibleLimit, effectiveTagFilter]);
     const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
     const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
     useEffect(() => {
@@ -344,10 +353,11 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             priority: draft.priority,
             ...(type === 'manual' ? { type } : {}),
             idempotencyKey,
+            ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         });
         await load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, load]);
+    }, [client, ownerKey, load, tagLibrary, matchMultiple]);
     const addForm = useAddItemForm((draft, key) => createItem('normal', draft, key));
     const manualForm = useAddItemForm((draft, key) => createItem('manual', draft, key));
     const openAddForm = () => { setDetailOpen(false); addForm.open(); };
@@ -383,6 +393,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         if (currentView.current.ownerKey !== ownerKey) return;
         const item = ledger?.items.find(candidate => candidate.id === itemId);
         if (!item) return;
+        setTagFilter('');
         setVisibleLimit(limit => Math.max(limit, orderedItems.indexOf(item) + 1));
         const isManual = sentinelTodoType(item) === 'manual';
         if (isManual) setShowManual(true);
@@ -525,6 +536,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
         }),
         onSave: saveItem, onFollowLink: followLink,
+        tagLibrary, tagClient: client, matchMultiple,
     });
     const renderList = (items: readonly SentinelTodoItem[]) => (
         <ul className="flex flex-col gap-1" role="list">
@@ -575,6 +587,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     )}
                 </div>
             </div>}>
+            {tagsEnabled && ledger !== null && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
+                filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
                     Could not load the to-do list: {loadError}
@@ -609,7 +623,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     {normalCount === 0 ? (
                         !addForm.adding && (
                             <div className={cn('flex flex-col items-start gap-2 p-2', MUTED)} data-testid="sentinel-todo-empty">
-                                <span>{ledger.items.some(item => sentinelTodoType(item) === 'normal')
+                                <span>{effectiveTagFilter ? 'No normal items match this tag filter.' : ledger.items.some(item => sentinelTodoType(item) === 'normal')
                                     ? 'No normal items in this recent view. Show older items to see more.'
                                     : 'Nothing is tracked yet. Sentinel records concrete work requests, agreed next actions, and the jobs it delegates for them here; you can add items too.'}</span>
                                 <Button size="sm" onClick={openAddForm}>Add item</Button>
@@ -672,7 +686,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             {renderList(sections.archived)}
                         </Section>
                     )}
-                    {ledger.items.length > recentItems.length && (
+                    {!effectiveTagFilter && ledger.items.length > recentItems.length && (
                         <Button size="sm" variant="secondary"
                             onClick={() => setVisibleLimit(recentItems.length + SENTINEL_TODO_RECENT_LIMIT)}
                             data-testid="sentinel-todo-show-older">
@@ -735,6 +749,9 @@ type TodoDetailProps = {
     currentWorkspaceId?: string;
     hidden?: boolean;
     headingId?: string;
+    tagLibrary?: SentinelTodoTagLibrary;
+    tagClient: CocClient;
+    matchMultiple: boolean;
 };
 
 function useTodoAttachment(owner: SentinelTodoOwner, item: SentinelTodoItem) {
@@ -777,7 +794,7 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, selected, onSelect }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
     selected: boolean; onSelect: () => void;
 }) {
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
@@ -799,6 +816,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, selecte
             </button>
             {canAttach && <AttachTodoButton title={item.title} onClick={attach} />}
         </div>
+        {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
         <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1.5 pb-1 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
             {item.targetRepo && <span className="min-w-0 max-w-full break-words" title={item.targetRepo.workspaceId}
                 data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
@@ -813,7 +831,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, selecte
     </li>;
 }
 
-function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId }: TodoDetailProps) {
+function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple }: TodoDetailProps) {
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(restoredDraft?.statusDraft ?? null);
@@ -855,6 +873,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             completionCondition: draft.completionCondition.trim(),
             notes: draft.notes,
             priority: draft.priority,
+            ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         }, draft.baseRevision), () => setEditing(null),
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
@@ -897,6 +916,8 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                 {high && <HighPriorityBadge itemId={item.id} />}
                 {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
             </h2>
+            {tagLibrary && <SentinelTodoTagPicker item={item} owner={owner} client={tagClient} library={tagLibrary}
+                multiple={matchMultiple} onLedgerChange={onLedgerChange} />}
             <SentinelTodoScrubFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (

@@ -323,6 +323,7 @@ export interface CLIConfig {
         teamsMessageReaction?: boolean;
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
+        sentinelTodoTags?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
         sentinelPrOutcomeWake?: boolean;
@@ -737,6 +738,7 @@ export interface ResolvedCLIConfig {
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
         sentinelTodoDependencies: boolean;
+        sentinelTodoTags: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
         sentinelPrOutcomeWake: boolean;
@@ -1069,6 +1071,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
         sentinelTodoDependencies: false,
+        sentinelTodoTags: false,
         sentinelTodoScrubber: false,
         sentinelPrOutcomeWake: false,
         sentinelDesktopMirror: false,

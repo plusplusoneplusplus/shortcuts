@@ -23,7 +23,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { Trigger } from '../triggers/trigger-types';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
@@ -47,7 +47,8 @@ export interface SentinelTodosToolDeps {
     /** Native PR reviews may record verdicts, never author work or executable rules. */
     reviewOnly?: boolean;
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
-        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'>>;
+        & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'
+            | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
@@ -58,6 +59,7 @@ interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string
 
 export interface SentinelTodosArgs {
     action: 'list' | 'create' | 'update' | 'attach_reference' | 'set_dependencies'
+        | 'list_tags' | 'create_tag' | 'update_tag' | 'delete_tag' | 'suggest_tags'
         | 'bind_pr_output' | 'accept_artifact' | 'evaluate_dependencies'
         | 'list_triggers' | 'create_trigger' | 'edit_trigger' | 'pause_trigger' | 'resume_trigger'
         | 'remove_trigger' | 'run_trigger_now';
@@ -89,10 +91,18 @@ export interface SentinelTodosArgs {
     phase?: string;
     reference?: string;
     version?: string;
+    tagIds?: string[];
+    tagId?: string;
+    tagName?: string;
+    tagColor?: SentinelTodoTag['color'];
+    tagDescription?: string;
+    matchMultiple?: boolean;
+    expectedTagRevision?: number;
 }
 
 export type SentinelTodosResult =
-    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null }
+    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null; tagLibrary?: SentinelTodoTagLibrary }
+    | { tagLibrary: SentinelTodoTagLibrary }
     | { item: SentinelTodoItem; created?: boolean; attached?: boolean }
     | { trigger: Trigger; removed?: boolean }
     | { triggers: Trigger[] }
@@ -135,6 +145,18 @@ const DESCRIPTION =
 
 const TRIGGER_ACTIONS = ['list_triggers', 'create_trigger', 'edit_trigger', 'pause_trigger',
     'resume_trigger', 'remove_trigger', 'run_trigger_now'] as const;
+const TAG_ACTIONS = ['list_tags', 'create_tag', 'update_tag', 'delete_tag', 'suggest_tags'] as const;
+const TAG_GUIDANCE =
+    ' Tags are parent-ledger organization metadata only, shared across target workspaces, never status, readiness or execution authority. ' +
+    'list_tags reads this parent\'s existing library; never invent tags during classification. ' +
+    'create_tag needs tagName, tagColor, optional tagDescription and library expectedRevision; only create user-requested definitions. ' +
+    'update_tag needs tagId, tagName, tagColor, optional tagDescription and library expectedRevision; read list_tags first and preserve fields not requested, including the matching description. Confirm the requested rename with the user. ' +
+    'delete_tag additionally requires confirmed:true after explaining removal from every item in this parent. ' +
+    'create/update accept tagIds for explicit assignments (including []); updates require expectedTagRevision from the item\'s tagRevision (default 0). Preserve manual assignments and removals. ' +
+    'Automatic matching uses existing names/descriptions on create or meaningful title/details edits, one match by default; ' +
+    'matchMultiple:true allows multiple sensible matches. No match stays Untagged. ' +
+    'suggest_tags needs itemId, item expectedRevision and expectedTagRevision; never override a manual choice without explicit user action in the picker. ' +
+    'Report tagMatch unavailable/failed honestly: saved item edits remain saved, not classified successfully.';
 const TRIGGER_GUIDANCE =
     ' PR-merge rules: list_triggers reads this chat\'s rules. create_trigger needs itemId, prUrl and optional instruction; ' +
     'it arms immediately, never expires, and needs no approval step. Pass a stable idempotencyKey for safe create retries. ' +
@@ -202,13 +224,16 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
 export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     const { service, owner } = deps;
     const dependenciesEnabled = service.dependenciesEnabled?.() === true;
+    const tagsEnabled = !deps.reviewOnly && service.tagsEnabled?.() === true;
     const tool = defineTool<SentinelTodosArgs>(SENTINEL_TODOS_TOOL_NAME, {
         description: deps.reviewOnly ? SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE : DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
+            + (tagsEnabled ? TAG_GUIDANCE : '')
             + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. bind_pr_output explicitly selects one exact produced PR for outputSlot with tracked_job or owner_selection provenance and reason; never choose the newest implicitly. accept_artifact records acceptance of the exact phase/reference/sha256 content version without marking Done or authorizing work. evaluate_dependencies reads fresh conjunctive readiness only; it never launches or wakes. Keep fulfillment and authorization separate.' : ''),
         parameters: {
             type: 'object',
             properties: {
                 action: { type: 'string', enum: deps.reviewOnly ? ['list', 'update'] : ['list', 'create', 'update', 'attach_reference',
+                    ...(tagsEnabled ? TAG_ACTIONS : []),
                     ...(dependenciesEnabled ? ['set_dependencies', 'bind_pr_output', 'accept_artifact', 'evaluate_dependencies'] : []), ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
@@ -253,6 +278,16 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     },
                 },
                 idempotencyKey: { type: 'string', description: 'create/create_trigger: stable key that makes retries safe.' },
+                ...(tagsEnabled ? {
+                    tagIds: { type: 'array', items: { type: 'string' }, description: 'create/update: explicit existing tag IDs; [] clears. Never overwrite user-manual choices.' },
+                    tagId: { type: 'string', description: 'update_tag/delete_tag: existing definition in this parent ledger.' },
+                    tagName: { type: 'string', description: 'create_tag/update_tag: user-defined readable name.' },
+                    tagColor: { type: 'string', enum: ['gray', 'blue', 'violet', 'teal', 'amber'] },
+                    tagDescription: { type: 'string', description: 'create_tag/update_tag: optional matching description.' },
+                    matchMultiple: { type: 'boolean', description: 'create/update/suggest_tags: allow multiple existing matches; default false.' },
+                    expectedTagRevision: { type: 'integer', minimum: 0, description: 'update with tagIds/suggest_tags: captured item tagRevision, default 0; independent of item content revision.' },
+                    confirmed: { type: 'boolean', description: 'delete_tag: true only after explicit user confirmation of removal from all parent items.' },
+                } : {}),
                 ...(dependenciesEnabled ? {
                     outputSlot: { type: 'string', description: 'bind_pr_output: named future PR slot.' },
                     prUrl: { type: 'string', description: 'bind_pr_output: explicitly selected produced PR URL; not proof of merge.' },
@@ -287,7 +322,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     triggerId: { type: 'string', description: 'Trigger lifecycle actions: rule identity from list_triggers.' },
                     prUrl: { type: 'string', description: 'create_trigger/edit_trigger: supported GitHub/ADO PR URL.' },
                     instruction: { type: 'string', description: 'create_trigger/edit_trigger: optional When it fires guidance.' },
-                    confirmed: { type: 'boolean', description: 'run_trigger_now: true confirms posting the start message now and using up the rule.' },
+                    confirmed: { type: 'boolean', description: 'run_trigger_now/delete_tag: explicit user confirmation of the action and its effects.' },
                 } : {}),
             },
             required: ['action'],
@@ -316,6 +351,37 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 }
                 if (args?.action === 'update' && args.type !== undefined) {
                     return { error: 'Item type is immutable; conversion and handoff are not supported.', code: 'invalid' };
+                }
+                if ((args.tagIds !== undefined || args.matchMultiple !== undefined || args.expectedTagRevision !== undefined) && !service.tagsEnabled?.()) {
+                    return { error: 'Sentinel tags are disabled.', code: 'disabled' };
+                }
+                if (TAG_ACTIONS.some(action => action === args?.action)) {
+                    if (!service.tagsEnabled?.()) return { error: 'Sentinel tags are disabled.', code: 'disabled' };
+                    if (args.action === 'list_tags' && service.getTags) return { tagLibrary: await service.getTags(owner) };
+                    if (args.action === 'create_tag' && service.createTag) {
+                        return { tagLibrary: await service.createTag(owner, {
+                            expectedRevision: args.expectedRevision, name: args.tagName, color: args.tagColor, description: args.tagDescription,
+                        }) };
+                    }
+                    if (args.action === 'suggest_tags' && service.suggestTags) {
+                        if (!args.itemId) return { error: 'suggest_tags requires itemId.', code: 'invalid' };
+                        const { item } = await service.suggestTags(owner, args.itemId, {
+                            expectedRevision: args.expectedRevision, expectedTagRevision: args.expectedTagRevision, multiple: args.matchMultiple,
+                        }, 'sentinel');
+                        return { item };
+                    }
+                    if (!args.tagId) return { error: 'Tag edits require tagId.', code: 'invalid' };
+                    if (args.action === 'update_tag' && service.updateTag) return {
+                        tagLibrary: await service.updateTag(owner, args.tagId, {
+                            expectedRevision: args.expectedRevision, name: args.tagName, color: args.tagColor, description: args.tagDescription,
+                        }),
+                    };
+                    if (args.action === 'delete_tag' && service.deleteTag) return {
+                        tagLibrary: await service.deleteTag(owner, args.tagId, {
+                            expectedRevision: args.expectedRevision, confirmed: args.confirmed,
+                        }),
+                    };
+                    return { error: 'Tag service unavailable.', code: 'disabled' };
                 }
                 if (TRIGGER_ACTIONS.some(action => action === args?.action)) {
                     if (!deps.triggers) return { error: 'Triggers are disabled (triggers.enabled is off).', code: 'disabled' };
@@ -384,6 +450,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             ledgerRevision: ledger.revision,
                             archivedCount: ledger.items.filter(item => item.archived).length,
                             total: page.total, hasMore: page.hasMore, nextOffset: page.nextOffset,
+                            ...(ledger.tagLibrary ? { tagLibrary: ledger.tagLibrary } : {}),
                         };
                     }
                     case 'create': {
@@ -404,6 +471,8 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             status,
                             ...(reason ? { statusReason: reason } : {}),
                             ...(args.priority !== undefined ? { priority: args.priority } : {}),
+                            ...(args.tagIds !== undefined ? { tagIds: args.tagIds } : {}),
+                            ...(args.matchMultiple !== undefined ? { matchMultiple: args.matchMultiple } : {}),
                         }, { actor: 'sentinel', idempotencyKey: args.idempotencyKey });
                         return { item, created };
                     }
@@ -426,7 +495,10 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         const outcome = args.outcome?.trim() || (args.status === 'done' ? reason : undefined);
                         if (outcome) patch.outcome = outcome;
                         if (args.reviewedJobs !== undefined) patch.reviewedJobs = args.reviewedJobs;
-                        if (Object.keys(patch).length === 0) {
+                        if (args.tagIds !== undefined) patch.tagIds = args.tagIds;
+                        if (args.matchMultiple !== undefined) patch.matchMultiple = args.matchMultiple;
+                        if (args.expectedTagRevision !== undefined) patch.expectedTagRevision = args.expectedTagRevision;
+                        if (!Object.keys(patch).some(key => key !== 'matchMultiple' && key !== 'expectedTagRevision')) {
                             return { error: 'update needs at least one field to change.', code: 'invalid' };
                         }
                         const { item } = await service.update(owner, args.itemId, args.expectedRevision, patch, 'sentinel');
@@ -442,7 +514,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         return { item, attached };
                     }
                     default:
-                        return { error: 'action must be list, create, update, or attach_reference.', code: 'invalid' };
+                        return { error: 'Unsupported Sentinel bookkeeping action.', code: 'invalid' };
                 }
             } catch (err) {
                 if (err instanceof SentinelTodoTriggerError) {

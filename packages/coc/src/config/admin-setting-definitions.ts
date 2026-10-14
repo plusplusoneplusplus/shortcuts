@@ -636,6 +636,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoTags', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoTagsEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.56, label: 'Sentinel To-do tags', badge: 'experimental',
+            hint: 'Parent-scoped user-defined tracking tags with best-effort matching. Tags never grant execution authority. Disabled by default.',
+            testId: 'toggle-sentinel-todo-tags-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',

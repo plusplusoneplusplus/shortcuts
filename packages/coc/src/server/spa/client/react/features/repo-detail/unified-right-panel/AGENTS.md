@@ -755,6 +755,13 @@ List cards combine status, priority, wrapping title and Attach in a compact head
 with target/Updated/latest-job metadata below. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 references and editing controls live in the detail pane.
+Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
+including Untagged, and a detail picker with Manage tags. Filtering uses the full
+owner snapshot independently of the recent history budget. Library edits keep
+parent identity; deletion confirms removal from all items. Explicit picks and
+clears are manual; re-suggest confirms replacing them. Classification notices
+remain separate from save errors, status and execution controls. Narrow panels
+wrap tags and use native keyboard-accessible controls.
 With session-context attachments enabled, list cards and the detail pane's Attach
 button are copy-drag sources for their owning Sentinel composer. Detail cards use
 `select-text` and keep informational text outside draggable ancestors for native

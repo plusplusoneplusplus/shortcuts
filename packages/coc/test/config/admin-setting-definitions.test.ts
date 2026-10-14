@@ -764,6 +764,7 @@ describe('feature toggle settings-tab placement', () => {
         'mapReduce.enabled': 'ai',
         'sentinel.enabled': 'ai',
         'features.sentinelTodoDependencies': 'ai',
+        'features.sentinelTodoTags': 'ai',
         'features.sentinelTodoScrubber': 'ai',
         'features.sentinelPrOutcomeWake': 'ai',
         'dangerousCommandGuard.enabled': 'ai',

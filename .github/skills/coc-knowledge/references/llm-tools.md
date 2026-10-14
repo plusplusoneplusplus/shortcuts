@@ -120,6 +120,15 @@ gate. Creation uses a stable `idempotencyKey` across retries; rule mutations use
 its `expectedRevision`. Merge wakes the Sentinel once,
 never launches or changes item status; manual-copy/conversion bypasses remain prohibited.
 
+With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
+`tagLibrary`; `list_tags`, `create_tag`, `update_tag`, confirmed `delete_tag` and
+`suggest_tags` share REST commands. Library writes compare `expectedRevision`;
+assignment updates/re-suggest additionally compare `expectedTagRevision`.
+Create/update accept `tagIds` and `matchMultiple`. Definitions are user-requested,
+never invented by matching. Manual choices/clears stay authoritative; the assistant
+cannot re-suggest over them. `tagMatch` exposes failures without discarding edits.
+Native PR reviews cannot edit tags.
+
 The addon's `<sentinel_todo_ledger>` guidance tracks concrete intended outcomes
 with final-deliverable completion conditions, reuses one item across grilling/implementation/review,
 and records phase milestones/spec links in notes. Successful intermediate phases remain pending

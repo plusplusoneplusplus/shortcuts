@@ -316,6 +316,12 @@ references before editing. Paths are package-relative.
   Sentinel Mode and To-do Scrubber are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability.
+  Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
+  and metadata through the same service, REST client and tool. Target workspaces
+  share their parent's library, never another parent's tags. Matching uses the
+  existing decision backend, selects only existing definitions and surfaces failed
+  or unavailable classification without losing edits. Manual assignments and clears
+  survive content updates; tag writes never grant authority or change readiness.
   Sentinel `send_to_conversation` create mode requires an unarchived normal
   `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local
