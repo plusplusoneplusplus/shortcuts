@@ -48,7 +48,7 @@ export class SentinelTodoTriggerService {
     async list(owner: SentinelTodoOwner): Promise<Trigger[]> {
         await this.assertOwner(owner);
         return this.deps.triggers.getByWorkspace(owner.workspaceId).filter(trigger =>
-            trigger.processId === owner.processId && trigger.binding && !trigger.binding.removedAt);
+            trigger.processId === owner.processId && trigger.binding && !trigger.binding.delegatedPr && !trigger.binding.removedAt);
     }
 
     async preview(owner: SentinelTodoOwner, input: unknown): Promise<{ pr: PrIdentity; snapshot: PrStatusSnapshot }> {
@@ -253,7 +253,7 @@ export class SentinelTodoTriggerService {
 
     private requireRule(owner: SentinelTodoOwner, triggerId: string, revision: number): Trigger {
         const current = this.deps.triggers.getById(triggerId);
-        if (!current?.binding || current.binding.removedAt
+        if (!current?.binding || current.binding.delegatedPr || current.binding.removedAt
             || current.workspaceId !== owner.workspaceId || current.processId !== owner.processId) {
             throw new SentinelTodoTriggerError(404, 'Trigger not found');
         }

@@ -3,6 +3,22 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('routes PR outcome controls through the exact encoded owner and retains revisions', async () => {
+    const adapter = createMockAdapter({ paused: false, revision: 0, outcomes: [] });
+    const client = new SentinelTodosClient(adapter);
+    const signal = new AbortController().signal;
+    await client.listPrOutcomes('owner ws', 'parent/a', 'item/a', { signal });
+    await client.pausePrOutcomes('owner ws', 'parent/a', 'item/a', { expectedRevision: 0 });
+    await client.resumePrOutcomes('owner ws', 'parent/a', 'item/a', { expectedRevision: 1 });
+    await client.checkPrOutcomes('owner ws', 'parent/a', 'item/a', { expectedRevision: 2 });
+    const path = '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/item%2Fa/pr-outcomes';
+    expect(adapter.calls).toEqual([
+      { path, options: { signal } },
+      { path: path + '/pause', options: { method: 'POST', body: { expectedRevision: 0 } } },
+      { path: path + '/resume', options: { method: 'POST', body: { expectedRevision: 1 } } },
+      { path: path + '/check', options: { method: 'POST', body: { expectedRevision: 2 } } },
+    ]);
+  });
   it('routes older pages, exact item lookup and explicit full snapshots while preserving cancellation', async () => {
     const adapter = createMockAdapter({ revision: 0, items: [], total: 0, hasMore: false, nextOffset: null });
     const client = new SentinelTodosClient(adapter);

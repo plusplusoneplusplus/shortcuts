@@ -49,6 +49,7 @@ import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-si
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
+import { registerSentinelPrOutcomeRoutes } from '../triggers/sentinel-pr-outcome-routes';
 import { SentinelDependencyStore } from '../sentinel-todos/sentinel-dependency-store';
 import { SentinelDependencyActions } from '../sentinel-todos/sentinel-dependency-actions';
 import { createSentinelDependencyTargetValidator } from '../sentinel-todos/sentinel-dependency-target';
@@ -630,6 +631,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         tick: entry => dependencyActions.poll(entry.owner),
     });
     registerSentinelTodoRoutes({ routes, service: sentinelTodos });
+    registerSentinelPrOutcomeRoutes(routes, opts.sentinelPrOutcomes,
+        () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelPrOutcomeWake === true);
     opts.setSentinelTodos?.(() => sentinelTodos);
     const getScrubberEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
     const scrubber = new ScrubberStore(todoDb);

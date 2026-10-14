@@ -1,0 +1,111 @@
+import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProcessStore, TaskQueueManager, type CreateTaskInput } from '@plusplusoneplusplus/forge';
+import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
+import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
+import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
+import { createTriggerInfrastructure, type TriggerInfrastructure } from '../../../src/server/infrastructure/trigger-infrastructure';
+
+const owner = { workspaceId: 'parent-workspace', processId: 'parent-sentinel' };
+const child = { workspaceId: 'child-workspace', processId: 'child-job' };
+const url = 'https://github.com/example/repo/pull/42';
+
+describe('native delegated PR outcomes across observation, admission and restart', () => {
+    let store: SqliteProcessStore;
+    let queue: TaskQueueManager;
+    let dataDir: string;
+    let infra: TriggerInfrastructure;
+    let itemId: string;
+    let status: 'open' | 'merged' | 'closed';
+    let enabled: boolean;
+    const fetchPr = vi.fn();
+
+    const start = () => createTriggerInfrastructure({
+        dataDir, store, queueFacade: queue, emit: vi.fn(),
+        deliveryBridge: {
+            enqueue: async (input: CreateTaskInput) => queue.enqueue(input),
+            getTask: id => queue.getTask(id),
+            findTaskByProcessId: id => queue.getAll().find(task => task.processId === id),
+            executeFollowUp: vi.fn(),
+        } as unknown as QueueExecutorBridge,
+        resolveWorkspaceId: async () => owner.workspaceId,
+        ciChecksFetcher: vi.fn(), prStatusFetcher: fetchPr, getPrOutcomeEnabled: () => enabled,
+    });
+
+    beforeEach(async () => {
+        dataDir = path.join(process.cwd(), 'test', '.native-pr-outcomes', randomUUID());
+        fs.mkdirSync(dataDir, { recursive: true });
+        store = new SqliteProcessStore({ dbPath: ':memory:' });
+        queue = new TaskQueueManager();
+        status = 'open';
+        enabled = true;
+        fetchPr.mockImplementation(async () => ({ status, title: 'External PR title', url }));
+        for (const workspaceId of [owner.workspaceId, child.workspaceId]) {
+            await store.registerWorkspace({ id: workspaceId, name: 'Example', rootPath: dataDir });
+        }
+        await store.addProcess({
+            id: owner.processId, type: 'chat', status: 'cancelled', promptPreview: '',
+            startTime: new Date(), metadata: { workspaceId: owner.workspaceId, mode: 'sentinel' },
+        });
+        const todos = new SentinelTodoStore(store.getDatabase());
+        itemId = todos.create(owner, { title: 'Ship', completionCondition: 'Merged AND deployed AND accepted' }, { actor: 'user' }).item.id;
+        const jobs = new DelegatedJobStore(dataDir);
+        jobs.register({ id: child.processId, parent: owner, child, title: 'Implementation' });
+        todos.linkJob(owner, itemId, { ...child, kind: 'local', openLink: '/chat/child' });
+        infra = await start();
+    });
+
+    afterEach(() => {
+        infra?.dispose();
+        store?.close();
+        fs.rmSync(dataDir, { recursive: true, force: true });
+        try { fs.rmdirSync(path.dirname(dataDir)); } catch { /* Parallel runs may own other fixtures. */ }
+    });
+
+    it.each(['merged', 'closed'] as const)('observes %s natively and admits only one review to the stopped parent', async outcome => {
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        expect(registration.registered).toBe(true);
+        status = outcome;
+        await infra.triggerManager.checkOutcome(registration.triggerId!);
+        const trigger = infra.triggerStore.getById(registration.triggerId!)!;
+        expect(trigger).toMatchObject({
+            ...owner, status: 'disarmed',
+            event: { terminalObservation: { status: outcome } },
+            delivery: { reason: outcome, state: 'delivered' },
+        });
+        expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getAll()[0]).toMatchObject({
+            processId: owner.processId,
+            payload: { workspaceId: owner.workspaceId,
+                context: { source: 'trigger', sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true } },
+        });
+        expect(new SentinelTodoStore(store.getDatabase()).get(owner).items[0].status).toBe('in_progress');
+        infra.dispose();
+        infra = await start();
+        await infra.triggerManager.checkOutcome(trigger.id);
+        expect(queue.getAll()).toHaveLength(1);
+    });
+
+    it('retains paused first-terminal evidence across restart, refresh and reopen then delivers once on resume', async () => {
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'pause', { expectedRevision: 0 });
+        const registration = await infra.sentinelPrOutcomes.registerSubmission(child.workspaceId, child.processId, url);
+        status = 'closed';
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'check', { expectedRevision: 1 });
+        expect(queue.getAll()).toHaveLength(0);
+        expect(infra.triggerStore.getById(registration.triggerId!)?.delivery?.state).toBe('pending');
+        infra.dispose();
+        infra = await start();
+        status = 'open';
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'check', { expectedRevision: 1 });
+        expect(queue.getAll()).toHaveLength(0);
+        expect(await infra.sentinelPrOutcomes.list(owner, itemId)).toMatchObject({
+            paused: true, outcomes: [{ status: 'closed', delivery: 'pending' }],
+        });
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'resume', { expectedRevision: 1 });
+        await infra.sentinelPrOutcomes.control(owner, itemId, 'check', { expectedRevision: 2 });
+        expect(queue.getAll()).toHaveLength(1);
+        expect(infra.triggerStore.getById(registration.triggerId!)?.delivery?.reason).toBe('closed');
+    });
+});
