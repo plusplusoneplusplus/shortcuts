@@ -38,8 +38,10 @@ const TONE_CLASS: Record<RailGitTone, string> = {
     muted: 'text-[#656d76] dark:text-[#aaa]',
 };
 const TILE_CLASS = 'border-[#e5e5e5] bg-transparent hover:bg-[#e8e8e8] dark:border-[#3c3c3c] dark:hover:bg-[#2d2d2d]';
-const ACTION_CLASS = 'mt-1.5 mr-1 rounded border border-[#d0d7de] px-1.5 py-0.5 text-[10px] text-[#1878c8] hover:bg-[#eaf4ff] focus-visible:outline focus-visible:outline-[#007acc] dark:border-[#3c3c3c] dark:text-[#3794ff] dark:hover:bg-[#19384f]';
+const COMPACT_ACTION_CLASS = 'rounded border border-[#d0d7de] px-1.5 py-0.5 text-[10px] text-[#1878c8] hover:bg-[#eaf4ff] focus-visible:outline focus-visible:outline-[#007acc] dark:border-[#3c3c3c] dark:text-[#3794ff] dark:hover:bg-[#19384f]';
+const ACTION_CLASS = cn(COMPACT_ACTION_CLASS, 'mt-1.5 mr-1');
 const ROW_CLASS = 'border-b border-[#e5e5e5] px-3 py-2 text-[11px] last:border-0 dark:border-[#3c3c3c]';
+const GROUP_ROW_CLASS = 'border-b border-[#e5e5e5] px-2 py-1 text-[11px] last:border-0 dark:border-[#3c3c3c]';
 const META_CLASS = 'text-[10px] text-[#656d76] dark:text-[#aaa]';
 /** Re-read on preview at most this often; hover alone can retrigger it. */
 const PREVIEW_REFRESH_MS = 5000;
@@ -232,20 +234,23 @@ export function GroupRailGit({ selectionId, routingRef, client, members, scopeLa
 
 function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry }: { input: GroupRailGitInput; tiles: Tiles; dismiss: () => void; onOpenMember: (id: string) => void; onRetry: () => void }) {
     return <>
-        <li className={ROW_CLASS}>
+        <li className={cn(GROUP_ROW_CLASS, META_CLASS, 'break-words')} title="Counts are repositories; each member keeps its own branch.">
             <div>{tiles.changes.label.replace(/^Repository changes: /, '')}</div>
             <div>{tiles.sync.label.replace(/^Repository sync: /, '')}</div>
-            <div className={cn(META_CLASS, 'mt-0.5')}>Counts are repositories; each member keeps its own branch.</div>
         </li>
         {(input.members ?? []).map(member => {
             const line = describeGroupMember(member);
             return (
-                <li key={member.id} className={ROW_CLASS} data-testid="rail-git-member" data-member={member.id}>
-                    <div className="font-medium">{member.name}</div>
-                    <div className="break-all font-mono text-[10px]">{line.branch}</div>
-                    <div className={META_CLASS}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                <li key={member.id} className={cn(GROUP_ROW_CLASS, 'flex items-start gap-2')} data-testid="rail-git-member" data-member={member.id}>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-1.5">
+                            <span className="min-w-0 break-all font-medium">{member.name}</span>
+                            <span className={cn(META_CLASS, 'min-w-0 break-all font-mono')}>{line.branch}</span>
+                        </div>
+                        <div className={cn(META_CLASS, 'break-all')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                    </div>
                     {!member.stale && member.info?.isGitRepo && (
-                        <button type="button" className={ACTION_CLASS} aria-label={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Open repository Git</button>
+                        <button type="button" className={cn(COMPACT_ACTION_CLASS, 'shrink-0')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>
                     )}
                 </li>
             );
