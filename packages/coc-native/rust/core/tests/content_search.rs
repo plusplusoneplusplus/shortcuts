@@ -362,6 +362,27 @@ fn exact_file_candidates_compose_with_scope_and_globs() {
     assert_eq!(locations(&result), ["src/a.ts:1"]);
 }
 
+#[test]
+fn empty_candidates_still_validate_regex_scope_and_globs() {
+    let dir = repo(&[("large.txt", &"needle".repeat(100))]);
+    let options =
+        ContentSearchOptions { files: Some(vec![]), max_file_size_bytes: 1, ..Default::default() };
+    assert_eq!(run(dir.path(), "needle", options.clone()), ContentSearchResult::default());
+    let zero =
+        run(dir.path(), "needle", ContentSearchOptions { max_results: 0, ..options.clone() });
+    assert!(zero.matches.is_empty());
+    assert!(zero.truncated);
+    for (query, options) in [
+        ("[", ContentSearchOptions { regex: true, ..options.clone() }),
+        ("needle", ContentSearchOptions { path: Some("../outside".into()), ..options.clone() }),
+        ("needle", ContentSearchOptions { path: Some("missing".into()), ..options.clone() }),
+        ("needle", ContentSearchOptions { include: vec!["[".into()], ..options.clone() }),
+        ("needle", ContentSearchOptions { exclude: vec!["[".into()], ..options }),
+    ] {
+        assert!(search(dir.path(), query, &options).is_err());
+    }
+}
+
 #[cfg(windows)]
 #[test]
 fn exact_file_candidates_use_windows_case_insensitive_path_identity() {
