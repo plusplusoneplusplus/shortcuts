@@ -295,20 +295,11 @@ test.describe('Queue Task Conversation – Basic Rendering', () => {
 test.describe('Queue Task Conversation – Streaming', () => {
     test('displays streaming indicator during active stream', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'stream-1');
+        const { implementation, gate } = mockAI.createGatedStreamingResponse(['Hello ', 'world'], {
+            finalResponse: 'Hello world', sessionId: 'sess-stream',
+        });
         try {
-            // Mock: delay first chunk to allow SSE to connect, then hold for indicator
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                // Wait for page to load and SSE to connect
-                await new Promise((r) => setTimeout(r, 3000));
-                if (opts && opts.onStreamingChunk) {
-                    opts.onStreamingChunk('Hello ');
-                    await new Promise((r) => setTimeout(r, 500));
-                    opts.onStreamingChunk('world');
-                }
-                // Hold to keep streaming indicator visible
-                await new Promise((r) => setTimeout(r, 5000));
-                return { success: true, response: 'Hello world', sessionId: 'sess-stream' };
-            });
+            mockAI.mockSendMessage.mockImplementationOnce(implementation);
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
@@ -316,11 +307,19 @@ test.describe('Queue Task Conversation – Streaming', () => {
             });
             const taskId = task.id as string;
 
+            await instrumentSseHeartbeat(page);
             await gotoQueueTask(page, serverUrl, wsId, taskId);
+            await waitForSseSubscribed(page);
 
-            // Streaming indicator should appear
+            // The second chunk keeps the response active regardless of page-load time.
+            await gate.releaseNext();
+            await expect(page.locator('.chat-message.assistant').last()).toContainText('Hello');
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 5000 });
+            await gate.releaseNext();
+            await waitForTaskStatus(serverUrl, taskId, ['completed']);
+            await waitForStreamingToComplete(page);
         } finally {
+            gate.releaseAll();
             cleanup();
         }
     });

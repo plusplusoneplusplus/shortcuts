@@ -116,20 +116,24 @@ test.describe('Queue — freeze a task for a preset number of hours', () => {
         test.setTimeout(90_000);
 
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'timedfreeze');
+        let releaseBlocker!: (v: unknown) => void;
+        let releaseB!: (v: unknown) => void;
+        let releaseA!: (v: unknown) => void;
+        // A task can be marked running before its SDK call begins.
+        const pendingBlocker = new Promise((resolve) => { releaseBlocker = resolve; });
+        const pendingB = new Promise((resolve) => { releaseB = resolve; });
+        const pendingA = new Promise((resolve) => { releaseA = resolve; });
         try {
             // A blocker task hangs until we resolve it, so A and B stay queued
             // while the browser drives the menu.
-            let releaseBlocker!: (v: unknown) => void;
-            let releaseB!: (v: unknown) => void;
-            let releaseA!: (v: unknown) => void;
             mockAI.mockSendMessage.mockImplementationOnce(
-                () => new Promise((r) => { releaseBlocker = r; }),
+                () => pendingBlocker,
             );
             mockAI.mockSendMessage.mockImplementationOnce(
-                () => new Promise((r) => { releaseB = r; }),
+                () => pendingB,
             );
             mockAI.mockSendMessage.mockImplementationOnce(
-                () => new Promise((r) => { releaseA = r; }),
+                () => pendingA,
             );
 
             const blocker = await seedExclusiveTask(serverUrl, wsId, 'Blocker task');
@@ -206,6 +210,9 @@ test.describe('Queue — freeze a task for a preset number of hours', () => {
             releaseA({ success: true, response: 'A done', sessionId: 'sess-a' });
             await waitForTaskStatus(serverUrl, idA, ['completed']);
         } finally {
+            releaseBlocker({ success: true, response: 'blocker done', sessionId: 'sess-blocker' });
+            releaseB({ success: true, response: 'B done', sessionId: 'sess-b' });
+            releaseA({ success: true, response: 'A done', sessionId: 'sess-a' });
             cleanup();
         }
     });

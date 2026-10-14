@@ -114,6 +114,45 @@ describe('MockAI streaming and tool-event helpers', () => {
         });
     });
 
+    describe('createGatedStreamingResponse', () => {
+        it('holds the response active between chunks until the final release', async () => {
+            const chunks: string[] = [];
+            const { implementation, gate } = mockAI.createGatedStreamingResponse(['Hello ', 'world'], {
+                finalResponse: 'Hello world', sessionId: 'sess-gated',
+            });
+            let completed = false;
+            const response = implementation({ onStreamingChunk: (chunk: string) => chunks.push(chunk) })
+                .then(result => { completed = true; return result; });
+
+            await Promise.resolve();
+            expect(chunks).toEqual([]);
+            expect(completed).toBe(false);
+            await gate.releaseNext();
+            expect(chunks).toEqual(['Hello ']);
+            expect(gate.released).toBe(1);
+            expect(completed).toBe(false);
+            await gate.releaseNext();
+            await expect(response).resolves.toEqual({ success: true, response: 'Hello world', sessionId: 'sess-gated' });
+            expect(chunks).toEqual(['Hello ', 'world']);
+        });
+
+        it('accepts releases before a delayed SDK invocation', async () => {
+            const chunks: string[] = [];
+            const { implementation, gate } = mockAI.createGatedStreamingResponse(['released early']);
+            gate.releaseAll();
+            await expect(implementation({ onStreamingChunk: (chunk: string) => chunks.push(chunk) }))
+                .resolves.toMatchObject({ success: true, response: 'released early' });
+            expect(chunks).toEqual(['released early']);
+        });
+
+        it('releases a pending response when the fixture resets', async () => {
+            const { implementation } = mockAI.createGatedStreamingResponse(['pending']);
+            const response = implementation({});
+            mockAI.resetAll();
+            await expect(response).resolves.toMatchObject({ success: true, response: 'pending' });
+        });
+    });
+
     // -----------------------------------------------------------------------
     // createToolCallResponse
     // -----------------------------------------------------------------------
