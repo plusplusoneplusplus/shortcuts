@@ -169,6 +169,7 @@ revision conflicts. Remote evidence is inspected in its owning chat; routing/own
 
 The `submit-commits-as-pr` skill calls this tool with a nonempty exact commit SHA
 array, oldest first, and explicit `autoMerge: true` unless the user disables it.
+PR-body guidance lives in the skill and tool's `body` schema.
 Invoking the skill authorizes that default; general tool calls still default to
 false. Commit-mode submission uses an isolated worktree and aborts conflicts
 without moving the active branch/HEAD. A successful result with `bound: false`

@@ -52,6 +52,31 @@ describe('create_pull_request tool', () => {
         store = { getDatabase: () => db, getWorkspaces: async () => [workspace()] };
     });
 
+    it('guides review-focused PR bodies while retaining exact submission evidence', () => {
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID, store });
+        const body = tool.parameters?.properties?.body;
+        expect(body?.type).toBe('string');
+        expect(body?.description).toMatch(/what changed.*why.*material validation\/limitations/);
+        expect(body?.description).toMatch(/omit SHA manifests and internal automation bookkeeping unless requested/);
+        expect(body?.description).toMatch(/keep exact SHAs in tool arguments\/job evidence/);
+        expect(tool.parameters?.required).not.toContain('body');
+    });
+
+    it.each([
+        'Fix duplicate submissions; preserve exact selection. Focused contracts pass; live submission not exercised.',
+        'Requested manifest: 0123456789abcdef0123456789abcdef01234567; automation: autoMerge enabled.',
+    ])('forwards supplied body and exact SHAs unchanged: %s', async body => {
+        const commits = ['0123456789abcdef0123456789abcdef01234567', '89abcdef0123456789abcdef0123456789abcdef'];
+        const service = vi.fn(async (_input: CreatePullRequestInput) => RESULT);
+        const { tool } = createCreatePullRequestTool({
+            workspaceId: WORKSPACE_ID, processId: PROCESS_ID, store, createPullRequest: service,
+        });
+
+        await invoke(tool, { title: 'Submit exact commits', body, commits });
+
+        expect(service).toHaveBeenCalledWith({ repoRoot: '/repos/shortcuts', title: 'Submit exact commits', body, commits });
+    });
+
     it('creates the PR through the service and binds it to the calling process', async () => {
         const service = vi.fn(async (_input: CreatePullRequestInput) => RESULT);
         const { tool } = createCreatePullRequestTool({

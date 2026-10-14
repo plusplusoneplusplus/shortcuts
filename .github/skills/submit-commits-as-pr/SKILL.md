@@ -46,9 +46,10 @@ Otherwise report the blocker. Never substitute scripts, `gh pr create`,
 
 ## Prepare and submit
 
-Provide a reviewable `title` and Markdown `body` describing the concrete change,
-why it matters, relevant validation, and material limitations. Respect supplied
-metadata. Pass the resolved `base` and these options:
+Provide a reviewable `title` and Markdown `body` explaining what changed, why, and
+material validation/limitations; omit SHA manifests and internal automation
+bookkeeping unless requested (keep exact SHAs in tool arguments/job evidence).
+Respect supplied metadata. Pass the resolved `base` and these options:
 
 - `draft`: true for an explicit draft/WIP request; otherwise false.
 - `autoMerge`: **always pass `autoMerge: true` by default**, or
