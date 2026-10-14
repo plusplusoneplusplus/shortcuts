@@ -8,7 +8,7 @@ import type { QueueExecutorBridge } from '../../src/server/core/api-handler';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
-import { ProcessLifecycleRunner } from '../../src/server/executors/process-lifecycle-runner';
+import { ProcessLifecycleRunner, type LifecycleRunnerOptions } from '../../src/server/executors/process-lifecycle-runner';
 
 const workspaceId = 'ws-parent';
 const processId = 'queue_parent';
@@ -40,7 +40,7 @@ describe('durable review admission', () => {
             },
             steerProcess: vi.fn(), executeFollowUp: vi.fn(),
         } as unknown as QueueExecutorBridge;
-        service = new ProcessMessageDeliveryService({ store, bridge });
+        service = new ProcessMessageDeliveryService({ store, bridge, listTasks: () => queue.getAll() });
     });
 
     afterEach(() => { store.close(); fs.rmSync(directory, { recursive: true, force: true }); });
@@ -49,13 +49,18 @@ describe('durable review admission', () => {
         store.close();
         store = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
         if (clearQueue) queue = new TaskQueueManager();
-        service = new ProcessMessageDeliveryService({ store, bridge });
+        service = new ProcessMessageDeliveryService({ store, bridge, listTasks: () => queue.getAll() });
     }
 
     function deliver(id = receiptId) { return service.deliverOnce(workspaceId, processId, id, review); }
     const wakeSource = { source: 'trigger' as const, triggerId: 'rule-1', deliveryId: 'wake-1' };
     function wake() {
         return service.deliverOnce(workspaceId, processId, wakeSource.deliveryId, { ...review, turnSource: wakeSource });
+    }
+    function prOutcome(id = 'pr-outcome-1') {
+        return service.deliverSentinelPrOutcomeOnce(workspaceId, processId, id, {
+            ...review, turnSource: { source: 'trigger', triggerId: 'pr-watch', deliveryId: id },
+        });
     }
 
     it('serializes PR repair receipts with human delivery in an ordinary owner chat', async () => {
@@ -429,6 +434,189 @@ describe('durable review admission', () => {
         await store.updateProcess(processId, { status });
         await expect(deliver()).rejects.toThrow('stopped');
         expect(bridge.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('admits exactly one read-only PR outcome review into a stopped Sentinel without resuming parked work', async () => {
+        await store.updateProcess(processId, { status: 'cancelled' });
+        await store.appendPendingMessage(processId, { id: 'parked-human', content: 'Old implementation request', createdAt: new Date().toISOString() });
+        await expect(wake()).rejects.toThrow('stopped');
+        await expect(repair()).rejects.toThrow('stopped');
+        await Promise.all([prOutcome(), prOutcome(), prOutcome()]);
+        expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getTask('pr-outcome-1')).toMatchObject({
+            priority: 'normal', config: { respectQueueBarriers: true },
+            payload: { workspaceId, processId, readonly: true, mode: 'sentinel',
+                context: { sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true } },
+        });
+        expect((await store.getProcess(processId))?.pendingMessages?.map(message => message.id)).toEqual(['parked-human']);
+        const followUp = vi.fn<LifecycleRunnerOptions['executeFollowUpFn']>(async () => {
+            await store.updateProcess(processId, { status: 'completed' });
+        });
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const onResponseCompleted = vi.fn();
+        expect(await runner.run(queue.getTask('pr-outcome-1')!, {
+            cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
+            executeByTypeFn: vi.fn(), executeFollowUpFn: followUp, onResponseCompleted,
+            onDrainPendingMessages: () => drain(),
+        })).toMatchObject({ success: true });
+        expect(followUp.mock.calls[0]?.[11]).toMatchObject({
+            sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true,
+        });
+        expect((await store.getProcess(processId))?.status).toBe('cancelled');
+        expect((await store.getProcess(processId))?.pendingMessages?.map(message => message.id)).toEqual(['parked-human']);
+        expect(onResponseCompleted).not.toHaveBeenCalled();
+        restart(true);
+        expect(await prOutcome()).toMatchObject({ reused: true, events: [] });
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it('restores the stopped state when a PR review fails instead of enabling normal notifications', async () => {
+        await store.updateProcess(processId, { status: 'cancelled' });
+        await prOutcome();
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        expect(await runner.run(queue.getTask('pr-outcome-1')!, {
+            cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
+            executeByTypeFn: vi.fn(), executeFollowUpFn: vi.fn().mockRejectedValue(new Error('provider unavailable')),
+        })).toMatchObject({ success: false });
+        expect((await store.getProcess(processId))?.status).toBe('cancelled');
+        await expect(deliver()).rejects.toThrow('stopped');
+    });
+
+    it('preserves stop when a queued outcome review is cancelled before starting', async () => {
+        await store.updateProcess(processId, { status: 'cancelled' });
+        await prOutcome();
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        const executeFollowUpFn = vi.fn();
+        expect(await runner.run(queue.getTask('pr-outcome-1')!, {
+            cancelledTasks: new Set(['pr-outcome-1']), getWorkingDirectoryFn: () => undefined,
+            executeByTypeFn: vi.fn(), executeFollowUpFn,
+        })).toMatchObject({ success: false });
+        expect(executeFollowUpFn).not.toHaveBeenCalled();
+        expect((await store.getProcess(processId))?.status).toBe('cancelled');
+    });
+
+    it('does not promote parked human messages through the real owner-routed queue', async () => {
+        const registry = new RepoQueueRegistry();
+        const router = new MultiRepoQueueRouter(registry, store, { autoStart: false, aiService: createMockSDKService().service });
+        const root = path.join(directory, 'parent');
+        router.registerRepoId(workspaceId, root);
+        try {
+            service = new ProcessMessageDeliveryService({ store, bridge: router,
+                listTasks: () => Array.from(registry.getAllQueues().values()).flatMap(ownerQueue => ownerQueue.getAll()),
+            });
+            await store.updateProcess(processId, { status: 'cancelled' });
+            await store.appendPendingMessage(processId, { id: 'parked-human', content: 'Old implementation', createdAt: new Date().toISOString() });
+            await prOutcome();
+            const ownerQueue = registry.getQueueForRepo(root)!;
+            expect(ownerQueue.getAll()).toHaveLength(1);
+            expect(ownerQueue.getTask('pr-outcome-1')).toMatchObject({
+                repoId: workspaceId, payload: { readonly: true, context: { sentinelPrOutcomeStopped: true } },
+            });
+            expect((await store.getProcess(processId))?.pendingMessages?.map(message => message.id)).toEqual(['parked-human']);
+        } finally { router.dispose(); }
+    });
+
+    it('defers PR outcome reviews behind busy turns and preserves the review scope through drain', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        expect(await prOutcome()).toMatchObject({ path: 'buffered' });
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect((await store.getProcess(processId))?.pendingMessages?.[0].context).toMatchObject({
+            sentinelPrOutcomeReview: true,
+        });
+        await store.updateProcess(processId, { status: 'completed' });
+        await recover();
+        expect(queue.getTask('pr-outcome-1')?.payload).toMatchObject({ readonly: true,
+            context: { sentinelPrOutcomeReview: true } });
+        expect(queue.getTask('pr-outcome-1')?.payload.context).not.toHaveProperty('sentinelPrOutcomeStopped');
+    });
+
+    it('recovers only PR outcome reviews after a stop and restart, leaving earlier normal buffers parked', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await store.appendPendingMessage(processId, { id: 'parked-human', content: 'User work', createdAt: new Date().toISOString() });
+        await deliver();
+        await prOutcome();
+        await store.updateProcess(processId, { status: 'cancelled' });
+        restart(true);
+        await recover();
+        expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getTask('pr-outcome-1')?.payload).toMatchObject({
+            readonly: true, context: { sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true },
+        });
+        expect((await store.getProcess(processId))?.pendingMessages?.map(message => message.id)).toEqual(['parked-human', receiptId]);
+    });
+
+    it('delivers a second outcome after a stopped review without draining parked ordinary messages', async () => {
+        await store.updateProcess(processId, { status: 'cancelled' });
+        await prOutcome();
+        queue.markStarted('pr-outcome-1');
+        await store.appendPendingMessage(processId, { id: 'parked-human', content: 'Old work', createdAt: new Date().toISOString() });
+        expect(await prOutcome('pr-outcome-2')).toMatchObject({ path: 'buffered' });
+        expect((await store.getProcess(processId))?.pendingMessages?.[1].context).toMatchObject({
+            sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true,
+        });
+        const runner = new ProcessLifecycleRunner(store, undefined, () => undefined);
+        expect(await runner.run(queue.getTask('pr-outcome-1')!, {
+            cancelledTasks: new Set(), getWorkingDirectoryFn: () => undefined,
+            executeByTypeFn: vi.fn(), executeFollowUpFn: vi.fn(async () => {
+                await store.updateProcess(processId, { status: 'completed' });
+            }), onDrainPendingMessages: () => drain(),
+        })).toMatchObject({ success: true });
+        expect(queue.getTask('pr-outcome-2')?.payload).toMatchObject({
+            readonly: true, context: { sentinelPrOutcomeStopped: true },
+        });
+        expect((await store.getProcess(processId))?.pendingMessages?.map(message => message.id)).toEqual(['parked-human']);
+    });
+
+    it('waits for cancellation to finish without treating it as permanent routing failure', async () => {
+        await store.updateProcess(processId, { status: 'cancelling' });
+        await expect(prOutcome()).rejects.toThrow('stop to finish');
+        expect(queue.getAll()).toEqual([]);
+        await store.updateProcess(processId, { status: 'cancelled' });
+        expect(await prOutcome()).toMatchObject({ path: 'enqueued' });
+    });
+
+    it('does not overlap a cancelled process whose earlier queue task is still unwinding', async () => {
+        normal('old-turn', processId);
+        queue.markStarted('old-turn');
+        await store.updateProcess(processId, { status: 'cancelled' });
+        await expect(prOutcome()).rejects.toThrow('stop to finish');
+        expect(queue.getTask('pr-outcome-1')).toBeUndefined();
+        queue.markCompleted('old-turn', {});
+        expect(await prOutcome()).toMatchObject({ path: 'enqueued' });
+    });
+
+    it('recovers only PR review after stop despite an unanswered question from the stopped turn', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await prOutcome();
+        await store.updateProcess(processId, { status: 'cancelled',
+            pendingAskUser: [{ toolCallId: 'old-question', questions: [] }],
+        });
+        await recover();
+        expect(queue.getTask('pr-outcome-1')?.payload).toMatchObject({
+            readonly: true, context: { sentinelPrOutcomeReview: true, sentinelPrOutcomeStopped: true },
+        });
+        expect((await store.getProcess(processId))?.pendingAskUser).toHaveLength(1);
+    });
+
+    it('does not revive stale compaction metadata when admitting a stopped review', async () => {
+        await store.updateProcess(processId, { status: 'cancelled', metadata: {
+            workspaceId, mode: 'sentinel', compaction: { state: 'queued', requestId: 'old-compaction' },
+        } });
+        expect(await prOutcome()).toMatchObject({ path: 'enqueued' });
+        expect(queue.getTask('pr-outcome-1')?.payload).toMatchObject({ readonly: true });
+        expect((await store.getProcess(processId))?.metadata?.compaction).toMatchObject({ state: 'queued' });
+    });
+
+    it('requires exact Sentinel ownership and trusted trigger attribution for stopped review admission', async () => {
+        await expect(service.deliverSentinelPrOutcomeOnce(workspaceId, processId, 'review-1', review))
+            .rejects.toThrow('trigger-owned');
+        await expect(service.deliverSentinelPrOutcomeOnce('foreign', processId, 'review-1', {
+            ...review, turnSource: { source: 'trigger', triggerId: 'watch', deliveryId: 'review-1' },
+        })).rejects.toThrow('originating workspace');
+        await store.updateProcess(processId, { status: 'cancelled', metadata: { workspaceId, mode: 'ask' } });
+        await expect(prOutcome()).rejects.toThrow('owning chat');
+        expect(queue.getAll()).toEqual([]);
     });
 
     it('rejects missing and wrongly scoped parents without redirecting', async () => {

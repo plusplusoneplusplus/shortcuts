@@ -473,8 +473,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 task.processId = payload.processId;
                 try {
                     const current = await this.store.getProcess(payload.processId!);
+                    const context = payload.context as Record<string, unknown> | undefined;
                     if (current?.status !== 'cancelling' && current?.status !== 'cancelled') {
-                        await this.store.updateProcess(payload.processId!, { status: 'completed' });
+                        await this.store.updateProcess(payload.processId!, {
+                            status: context?.sentinelPrOutcomeReview === true && context.sentinelPrOutcomeStopped === true
+                                ? 'cancelled' : 'completed',
+                        });
                     }
                 } catch (err) {
                     logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -610,10 +614,16 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
                                 : {}),
                             ...(followUpPayload.relayRequestId ? { relayRequestId: followUpPayload.relayRequestId } : {}),
+                            ...(ctx?.sentinelPrOutcomeReview === true ? { sentinelPrOutcomeReview: true as const } : {}),
+                            ...(ctx?.sentinelPrOutcomeReview === true && ctx.sentinelPrOutcomeStopped === true
+                                ? { sentinelPrOutcomeStopped: true as const } : {}),
                         },
                     );
                 }
                 const duration = Date.now() - startTime;
+                if (ctx?.sentinelPrOutcomeReview === true && ctx.sentinelPrOutcomeStopped === true) {
+                    await this.store.updateProcess(followUpPayload.processId!, { status: 'cancelled' });
+                }
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);
                 // Follow-up execution persists failures without throwing; only a
                 // completed response is eligible for the post-response hook.
@@ -668,6 +678,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 await notifyTriggerActionComplete(opts, ctx, false, logger);
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
+                if (ctx?.sentinelPrOutcomeReview === true && ctx.sentinelPrOutcomeStopped === true) {
+                    await this.store.updateProcess(followUpPayload.processId!, { status: 'cancelled' });
+                }
                 cleanupChatAttachmentTempDir(imageTempDir, followUpPayload.attachments, followUpPayload.images);
             }
         }

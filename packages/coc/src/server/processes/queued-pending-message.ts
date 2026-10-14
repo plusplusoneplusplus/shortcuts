@@ -11,6 +11,7 @@ export function pendingMessageTask(proc: AIProcess, message: PendingMessage): Cr
             kind: 'chat', processId: proc.id, prompt: message.content,
             workingDirectory: proc.workingDirectory, workspaceId: proc.metadata?.workspaceId,
             deferredMessage: message,
+            ...(message.context?.sentinelPrOutcomeReview === true ? { readonly: true } : {}),
             ...(message.resumeSessionId ? { resumeSessionId: message.resumeSessionId } : {}),
             ...(message.relayRequestId ? { relayRequestId: message.relayRequestId } : {}),
             ...(message.provider ? { provider: message.provider } : {}),

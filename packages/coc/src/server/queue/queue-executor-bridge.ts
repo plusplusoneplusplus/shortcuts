@@ -1004,8 +1004,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         await processOperationAdmission.runExclusive(processId, async () => {
             const proc = await this.store.getProcess(processId);
             if (!proc || proc.metadata?.workspaceId !== workspaceId || !this.queueManager
-                || !['completed', 'failed'].includes(proc.status)
-                || proc.pendingAskUser?.length || proc.pendingAskUserAnswer) return;
+                || !['completed', 'failed', 'cancelled'].includes(proc.status)) return;
+            const outcomeOnly = proc.status === 'cancelled';
+            if (outcomeOnly && proc.metadata?.mode !== 'sentinel') return;
+            if (!outcomeOnly && (proc.pendingAskUser?.length || proc.pendingAskUserAnswer)) return;
             // Queue state wins over a stale terminal process snapshot. Recovery
             // admits only the head; subsequent turns use the normal lifecycle drain.
             if (this.queueManager.getAll().some(task => task.processId === processId
@@ -1013,7 +1015,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             // Terminal receipts may remain buffered after a failed removal.
             // Reconcile those first, stopping as soon as one live task exists.
             for (let remaining = proc.pendingMessages?.length ?? 0; remaining > 0; remaining--) {
-                await this.drainPendingMessageAdmitted(processId);
+                await this.drainPendingMessageAdmitted(processId, outcomeOnly);
                 if (this.queueManager.getAll().some(task => task.processId === processId
                     && ['queued', 'running', 'cancelling'].includes(task.status))) break;
             }
@@ -1052,15 +1054,29 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    private async drainPendingMessages(processId: string, _taskId: string): Promise<void> {
-        await processOperationAdmission.runExclusive(processId, () => this.drainPendingMessageAdmitted(processId));
+    private async drainPendingMessages(processId: string, taskId: string): Promise<void> {
+        await processOperationAdmission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId);
+            const task = this.queueManager?.getTask(taskId);
+            const context = task?.payload.context;
+            const stoppedReview = typeof context === 'object' && context !== null
+                && 'sentinelPrOutcomeReview' in context && context.sentinelPrOutcomeReview === true
+                && 'sentinelPrOutcomeStopped' in context && context.sentinelPrOutcomeStopped === true;
+            await this.drainPendingMessageAdmitted(processId, proc?.status === 'cancelled' || stoppedReview);
+        });
     }
 
-    private async drainPendingMessageAdmitted(processId: string): Promise<void> {
+    private async drainPendingMessageAdmitted(processId: string, outcomeOnly = false): Promise<void> {
         const proc = await this.store.getProcess(processId);
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
-        const nextMsg = proc.pendingMessages[0];
+        if (outcomeOnly && proc.metadata?.mode !== 'sentinel') return;
+        const nextMsg = outcomeOnly
+            ? proc.pendingMessages.find(message => message.context?.source === 'trigger'
+                && message.context.sentinelPrOutcomeReview === true)
+            : proc.pendingMessages[0];
+        if (!nextMsg) return;
+        if (outcomeOnly) nextMsg.context = { ...nextMsg.context, sentinelPrOutcomeStopped: true };
         // Server-owned reviews use the receipt as both pending-message and task
         // ID. Reconcile a crash after enqueue but before pending-message removal.
         const receiptId = nextMsg.id === nextMsg.relayRequestId ? nextMsg.id : undefined;
@@ -1153,6 +1169,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     ...(proc.metadata?.workspaceId ? { workspaceId: proc.metadata.workspaceId } : {}),
                     prompt: nextMsg.content,
                     relayRequestId: requestId,
+                    ...(nextMsg.context?.sentinelPrOutcomeReview === true ? { readonly: true } : {}),
                     ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                     ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                     ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
