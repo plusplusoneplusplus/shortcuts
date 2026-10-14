@@ -81,6 +81,7 @@ export function buildPendingAskUserAnswerRecord(
         const skipped = answer.skipped === true;
         const deferred = isDeferred(answer);
         if (skipped && deferred) return null;
+        if (answer.reason === 'unavailable' && !skipped) return null;
         let durableAnswer: string | string[] | null = null;
         if (question.type === 'sensitive-input') {
             // Same rule as the live path: only a redacted receipt, never a value.
@@ -94,7 +95,7 @@ export function buildPendingAskUserAnswerRecord(
                 durableAnswer = JSON.stringify(buildSensitiveInputReceipt(sink, question.sinkArgs.domain, receipt));
             }
         } else {
-            if (answer.receipt !== undefined) return null;
+            if (answer.receipt !== undefined || answer.reason === 'unavailable') return null;
             if (!skipped && !deferred && answer.answer === undefined) return null;
             if (!skipped && !deferred) durableAnswer = coerceDurableAnswer(answer.answer);
         }

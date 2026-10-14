@@ -43,9 +43,12 @@ export interface AskUserQuestion {
     batchId: string;
     questionId: string;
     question: string;
-    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
+    /** Set on `sensitive-input`: where the dashboard sends the pasted secret. */
+    sink?: 'browser.cookies';
+    sinkArgs?: { domain: string; viewId?: string };
     turnIndex: number;
     index: number;
     batchSize: number;

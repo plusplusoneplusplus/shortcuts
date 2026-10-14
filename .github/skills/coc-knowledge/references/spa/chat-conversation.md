@@ -500,6 +500,13 @@ Unsubmitted live-batch drafts are saved in `localStorage` scoped by process id a
 id, restored after navigation or refresh for the same batch, and cleared on accepted
 submission, skip-all, process cancellation, or replacement by a newer batch id.
 
+`sensitive-input` questions render a masked password field whose value lives in
+component state only (never drafts) and is cleared once submit runs. On submit the
+dashboard calls the desktop `importCookies` bridge directly (`sensitiveInputSink.ts`) and
+posts only the receipt (`{ ok: true, count }` or `{ ok: false, reason }`). Without the
+desktop bridge the field is replaced by an "Open CoC desktop" notice and submit answers
+`{ skipped: true, reason: 'unavailable' }`; another open dashboard is never pre-empted.
+
 For Ralph multi-agent grilling, optional per-question metadata renders a "Question
 planning" summary, role-group headers, provenance chips (`UX Agent · provider/model`),
 consolidation chips, and coverage warnings — all one batch submission.

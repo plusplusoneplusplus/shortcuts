@@ -12,6 +12,8 @@ export interface BrowserPreferences {
     pageZoom?: { percent: number; min: number; max: number; step: number };
 }
 export type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
+/** Cookie import also reports how many cookies it set, never their names or values. */
+export type BrowserCookieImportResult = { ok: true; count: number } | { ok: false; reason: string; message?: string };
 export interface BrowserHistoryEntry {
     url: string;
     title: string;
@@ -82,7 +84,7 @@ export interface DesktopBrowserBridge {
     history?: DesktopBrowserHistory;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
-    importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserOperationResult>;
+    importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult>;
     open(viewId: string, source: string | BrowserSource, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
     adopt?(viewId: string, guestId: number): Promise<BrowserOperationResult>;
     navigate(viewId: string, url: string): Promise<BrowserOpenResult>;

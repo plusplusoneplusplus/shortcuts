@@ -2,7 +2,7 @@ import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type B
 import {
     BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
     BROWSER_PAGE_ZOOM, isBrowserPageZoom, isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
-    type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
+    type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserCookieImportResult, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
 import { parseBrowserCookies } from './browser-cookie-import';
@@ -59,7 +59,7 @@ export class BrowserHostManager {
     private readonly owners = new Map<number, Map<string, Entry>>();
     private readonly clearing = new Set<BrowserEngine>();
     private disposed = false;
-    private readonly imports = new Map<BrowserEngine, Set<Promise<BrowserOperationResult>>>();
+    private readonly imports = new Map<BrowserEngine, Set<Promise<BrowserCookieImportResult>>>();
     private zoomUpdate: Promise<unknown> = Promise.resolve();
 
     constructor(private readonly options: BrowserManagerOptions) {}
@@ -498,7 +498,7 @@ export class BrowserHostManager {
         } catch (error) { return this.failure(error, 'not-found'); }
     }
 
-    async importCookies(ownerId: number, viewId: unknown, domain: unknown, input: unknown, relatedEngine?: unknown): Promise<BrowserOperationResult> {
+    async importCookies(ownerId: number, viewId: unknown, domain: unknown, input: unknown, relatedEngine?: unknown): Promise<BrowserCookieImportResult> {
         const entry = this.entry(ownerId, viewId);
         // Null explicitly requests the profile without a page. Unknown view ids never fall back.
         if (viewId !== null && (!entry || entry.closed)) return { ok: false, reason: 'not-found' };
@@ -511,7 +511,7 @@ export class BrowserHostManager {
         let cookies;
         try { cookies = parseBrowserCookies(domain, input); }
         catch (error) { return this.failure(error, 'invalid'); }
-        const operation = (async (): Promise<BrowserOperationResult> => {
+        const operation = (async (): Promise<BrowserCookieImportResult> => {
             try {
                 if (entry) {
                     const view = await entry.ready;
@@ -526,13 +526,13 @@ export class BrowserHostManager {
                     if (!host.importCookies) return { ok: false, reason: 'unsupported' };
                     await host.importCookies(cookies);
                 }
-                return { ok: true };
+                return { ok: true, count: cookies.length };
             } catch {
                 // Engine errors can contain cookie values. Never return them to the renderer or logs.
                 return { ok: false, reason: 'invalid', message: 'Cookie import failed. Some cookies may have been added. Check the fields and retry.' };
             }
         })();
-        const pending = this.imports.get(engine) ?? new Set<Promise<BrowserOperationResult>>();
+        const pending = this.imports.get(engine) ?? new Set<Promise<BrowserCookieImportResult>>();
         this.imports.set(engine, pending);
         pending.add(operation);
         try { return await operation; } finally { pending.delete(operation); }

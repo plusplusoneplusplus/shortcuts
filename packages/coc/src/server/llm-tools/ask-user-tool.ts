@@ -247,7 +247,12 @@ export interface AskUserAnswerInput {
     answer?: AskUserAnswerValue;
     skipped?: boolean;
     deferred?: boolean;
-    reason?: 'needs-context';
+    /**
+     * `needs-context` marks a deferred answer. `unavailable` (with
+     * `skipped: true`) is only for `sensitive-input`: the dashboard has no
+     * desktop bridge to run the sink.
+     */
+    reason?: 'needs-context' | 'unavailable';
     note?: string;
     /** The only accepted answer for a `sensitive-input` question; never with `answer`. */
     receipt?: SensitiveInputReceiptInput;
@@ -613,6 +618,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             if (response.skipped === true && isDeferredResponse(response)) return false;
             if (response.note !== undefined && typeof response.note !== 'string') return false;
             const answered = response.skipped !== true && !isDeferredResponse(response);
+            if (response.reason === 'unavailable' && (response.skipped !== true || !pending.get(response.questionId)!.sensitive)) return false;
             if (pending.get(response.questionId)!.sensitive) {
                 if (response.answer !== undefined) return false;
                 if (answered ? !parseSensitiveInputReceipt(response.receipt) : response.receipt !== undefined) return false;
@@ -622,7 +628,9 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             }
         }
         for (const response of responses) {
-            if (response.skipped === true) {
+            if (response.reason === 'unavailable') {
+                settle(response.questionId, unavailableResponse(response.questionId, 'sensitive-input'));
+            } else if (response.skipped === true) {
                 settle(response.questionId, { questionId: response.questionId, answer: null, skipped: true, reason: 'user-skipped' });
             } else if (isDeferredResponse(response)) {
                 settle(response.questionId, deferredResponse(response.questionId, response.note));

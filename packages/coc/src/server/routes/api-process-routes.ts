@@ -78,7 +78,7 @@ type AskUserRouteAnswer = {
 function normalizeAskUserRouteAnswer(answer: AskUserRouteAnswer): AskUserAnswerInput {
     const questionId = answer.questionId as string;
     if (answer.skipped === true) {
-        return { questionId, skipped: true };
+        return { questionId, skipped: true, ...(answer.reason === 'unavailable' ? { reason: 'unavailable' as const } : {}) };
     }
     if (answer.deferred === true) {
         const note = typeof answer.note === 'string' ? answer.note.trim() : '';
@@ -1480,8 +1480,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if (answer.deferred !== undefined && typeof answer.deferred !== 'boolean') {
                     return void handleAPIError(res, badRequest('answers[].deferred must be boolean'));
                 }
-                if (answer.reason !== undefined && answer.reason !== 'needs-context') {
-                    return void handleAPIError(res, badRequest('answers[].reason must be "needs-context" when provided'));
+                if (answer.reason !== undefined && answer.reason !== 'needs-context' && answer.reason !== 'unavailable') {
+                    return void handleAPIError(res, badRequest('answers[].reason must be "needs-context" or "unavailable" when provided'));
+                }
+                if (answer.reason === 'unavailable' && answer.skipped !== true) {
+                    return void handleAPIError(res, badRequest('Unavailable answers require skipped=true'));
                 }
                 if (answer.note !== undefined && typeof answer.note !== 'string') {
                     return void handleAPIError(res, badRequest('answers[].note must be a string'));

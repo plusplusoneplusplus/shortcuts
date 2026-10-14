@@ -164,6 +164,14 @@ describe('buildPendingAskUserAnswerRecord sensitive-input', () => {
         )).toBeNull();
     });
 
+    it('accepts an unavailable skip only on a sensitive question', () => {
+        const record = buildPendingAskUserAnswerRecord([sensitive], 'batch-1', [{ questionId: 'q1', skipped: true, reason: 'unavailable' }], 'now');
+        expect(record!.answers[0]).toMatchObject({ skipped: true, answer: null });
+        expect(buildPendingAskUserAnswerRecord(
+            [question({ questionId: 'q1' })], 'batch-1', [{ questionId: 'q1', skipped: true, reason: 'unavailable' }], 'now',
+        )).toBeNull();
+    });
+
     it('still accepts a skip', () => {
         const record = buildPendingAskUserAnswerRecord([sensitive], 'batch-1', [{ questionId: 'q1', skipped: true }], 'now');
         expect(record!.answers[0]).toMatchObject({ skipped: true, answer: null });

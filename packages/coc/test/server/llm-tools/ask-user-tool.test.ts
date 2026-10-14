@@ -424,6 +424,29 @@ describe('createAskUserTool sensitive-input', () => {
             expect((await deferred.result)[0]).toMatchObject({ deferred: true, reason: 'needs-context', answer: null });
         });
 
+        it('answers unavailable with desktop guidance when the dashboard has no bridge', async () => {
+            const { answerQuestions, result, questionId } = await ask();
+            expect(answerQuestions([{ questionId, skipped: true, reason: 'unavailable' }])).toBe(true);
+            const [response] = await result;
+            expect(response).toMatchObject({ skipped: true, reason: 'unavailable', answer: null });
+            expect(response.guidance).toContain('CoC desktop');
+        });
+
+        it('rejects unavailable without skipped or on an ordinary question', async () => {
+            const sensitive = await ask();
+            expect(sensitive.answerQuestions([{ questionId: sensitive.questionId, reason: 'unavailable' }])).toBe(false);
+            expect(sensitive.control.isPending(sensitive.questionId)).toBe(true);
+            sensitive.cancelAll();
+            await sensitive.result;
+
+            const { tool, emitQuestions, answerQuestions, cancelAll } = setup();
+            const result = tool.handler({ questions: [{ question: 'Name?', type: 'text' }] });
+            const [payload] = emitQuestions.mock.calls[0][0] as AskUserSSEPayload[];
+            expect(answerQuestions([{ questionId: payload.questionId, skipped: true, reason: 'unavailable' }])).toBe(false);
+            cancelAll();
+            await result;
+        });
+
         it('rejects a receipt on an ordinary question', async () => {
             const { tool, emitQuestions, answerQuestions, cancelAll } = setup();
             const result = tool.handler({ questions: [{ question: 'Name?', type: 'text' }] });
