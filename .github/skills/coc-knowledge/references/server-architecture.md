@@ -125,8 +125,14 @@ review recipients receive the same contract inline. Cancellation remains display
 owner-workspace `delegated-jobs.json`. `recordPullRequest` requires a registered job
 and records exact canonical provider/host/repository/number identity with an item ID
 and immutable receipt. Repeated submissions reuse that receipt; each distinct PR
-remains separate. These records are provenance only, independent of execution-result
-delivery and repair permission; caller services own eligibility and monitor registration.
+remains separate. `triggers/sentinel-pr-outcome-service.ts` verifies the original
+Sentinel/item/job relationship and registers native one-shot watches under default-off
+`features.sentinelPrOutcomeWake`, independently of execution-result delivery and repair
+permission. New submission results are authoritative; prose and historical URLs do
+not establish ownership. Ralph submissions resolve the original tracked session
+through `ralph/ralph-execution-owner.ts`, including accepted grilling execution
+pointers and later iteration/submit processes; a first-task process ID is not
+the identity of the entire delegated session.
 
 ### Sentinel To-do trigger firing
 
@@ -153,6 +159,35 @@ Trigger infrastructure reconciles pending deliveries after `armAll()`; retry/bac
 uses the same trigger manager and timer registry, independently of PR watching.
 Accepted busy-parent buffers recover through the existing owner-routed drain.
 Trigger firing never writes item status, calls delegation admission or selects a remote target.
+
+### Delegated PR outcome reviews
+
+Outcome watches reuse the trigger store, manager, cadence and provider reader.
+Their delegated-PR binding distinguishes them from ordinary merge rules: both merged
+and closed-unmerged evidence settle once, with a durable delivery identity and immutable
+review prompt. The Sentinel assesses the complete condition and latest user verdict;
+the notification authorizes no job, retry, implementation or deployment. Missing,
+manual, Done and archived items never receive automatic review.
+
+`ProcessMessageDeliveryService.deliverSentinelPrOutcomeOnce` is the isolated
+stopped-Sentinel exception. It queues a read-only, receipt-qualified review and buffers
+busy turns. Stopped reviews restore cancelled status; owner-routed promotion, recovery
+and drain select only PR review buffers, leaving ordinary stopped work parked. Ordinary
+machine reviews and merge-rule wakes retain their stopped-parent rejection.
+
+`sentinel-pr-outcome-controls.ts` persists owner/item notification preferences in the
+shared native database. Pause suppresses delivery, not terminal evidence; Check outcome
+refreshes evidence without bypassing pause, and Resume reconciles retained receipts.
+The existing To-do detail surface reads owner-scoped outcome/delivery state through
+`client.sentinelTodos`; native errors remain visible, without replacement chats or an
+AI polling cron.
+
+Requested receipts retain bounded registration errors when native insertion, arming
+or capacity fails. Check and startup reconstruct only those exact intents; live
+recovery shares the trigger manager's timer kernel and cadence. Dispatch/drain
+rechecks live Pause, enablement and item eligibility before AI execution. Deferred
+queue claims retain the original receipt for Resume, and validation writes use
+revision checks rather than overwriting concurrent delivery state.
 
 ### Temporary chat image lifetime
 

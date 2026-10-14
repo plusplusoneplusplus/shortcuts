@@ -664,6 +664,13 @@ as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
 ## Sentinel To-do
 
 Every hosted Sentinel chat has a persistent To-do ledger.
+Default-off `features.sentinelPrOutcomeWake` adds `SentinelTodoPrOutcomes` inside
+the selected normal item's existing detail view, not another panel. It reads exact
+PR outcome/delivery evidence and offers Check outcome and per-item Pause/Resume
+notifications through the owner-routed client. Admission is displayed as queued,
+not completed review. Requests and mutations discard stale owner/item responses;
+unresolved remote owners never fall through to the local client. Automatic outcome
+bindings stay out of the editable delegation-trigger list.
 A hosted Sentinel `ChatDetail` publishes its ledger owner — the chat's workspace
 and process id — into `sentinelTodoChats` keyed by `(panel scope, chat id)` and
 withdraws it with the host. The `todo` descriptor is

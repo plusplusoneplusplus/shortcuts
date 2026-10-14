@@ -114,8 +114,11 @@ references before editing. Paths are package-relative.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
 - `DelegatedJobStore.recordPullRequest` stores each exact submitted PR's canonical
   provider identity and item receipt in the originating workspace's existing job ledger.
-  Replays preserve the receipt; callers verify item eligibility. These provenance
-  records neither arm monitoring nor grant repair or review authority.
+  Replays preserve the receipt. `SentinelPrOutcomeService` verifies tracked ownership
+  and item eligibility before native monitoring under default-off
+  `features.sentinelPrOutcomeWake`, independently of CI/conflict repair permission.
+  Outcome reviews use dedicated read-only admission; stopped Sentinel reviews restore
+  stop and never promote ordinary buffered work. Per-item pause retains terminal evidence.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial
