@@ -19,6 +19,7 @@ import {
     useUnifiedPanelState,
     closeBrowserPanelView,
     writeUnifiedPanelState,
+    closeDeletedExplorerTabs,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { useUnifiedPanelTabs, type UnifiedPanelTabsApi } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import {
@@ -31,13 +32,14 @@ import {
 const WS = 'ws-1';
 
 /** Probe that exposes one consumer's view of the session to the test. */
-function Probe({ workspaceId, chatId, name, onApi }: {
+function Probe({ workspaceId, chatId, name, onApi, reorderEnabled }: {
     workspaceId: string;
     chatId: string | null;
     name: string;
     onApi?: (api: UnifiedPanelTabsApi) => void;
+    reorderEnabled?: boolean;
 }) {
-    const api = useUnifiedPanelTabs(workspaceId, chatId);
+    const api = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled);
     onApi?.(api);
     return (
         <div>
@@ -64,6 +66,34 @@ describe('unifiedPanelStore', () => {
         cleanup();
         localStorage.clear();
         clearUnifiedPanelState();
+    });
+
+    it('closes deleted member files across all chats and cached scopes without crossing owners or path prefixes', () => {
+        for (const scope of ['group-a', 'group-b']) {
+            let state = EMPTY_UNIFIED_PANEL;
+            for (const chatId of ['chat-a', 'chat-b']) {
+                for (const [owner, route, path] of [
+                    ['member', 'remote:server-a:member', 'src/a.ts'],
+                    ['member', 'remote:server-a:member', 'src/deep/b.ts'],
+                    ['member', 'remote:server-a:member', 'src-other/c.ts'],
+                    ['member', 'remote:server-b:member', 'src/a.ts'],
+                    ['other-member', 'remote:server-a:other-member', 'src/a.ts'],
+                ]) {
+                    state = openTab(state, { kind: 'file', ownerWorkspaceId: owner, ownerRoutingRef: route, chatId, resourceId: path, label: path });
+                }
+            }
+            writeUnifiedPanelState(scope, state);
+        }
+        closeDeletedExplorerTabs('remote:server-a:member', 'src');
+        for (const scope of ['group-a', 'group-b']) {
+            const state = readUnifiedPanelState(scope);
+            for (const tabs of Object.values(state.chatTabs)) {
+                expect(tabs).toHaveLength(3);
+                expect(tabs.filter(tab => tab.ownerRoutingRef === 'remote:server-a:member').map(tab => tab.resourceId)).toEqual(['src-other/c.ts']);
+            }
+            expect(Object.values(state.activeByScope).every(id =>
+                Object.values(state.chatTabs).flat().some(tab => tab.id === id))).toBe(true);
+        }
     });
 
     it('closes native browser views across cached inactive workspaces without removing other tabs', () => {
@@ -106,6 +136,41 @@ describe('unifiedPanelStore', () => {
         expect(stored).toContain('sess-1');
         // Descriptors only — a persisted tab is a pointer, never a copy.
         expect(stored).not.toContain('output');
+    });
+
+    it('persists mixed order across remount/reload and isolates same-id remote panel scopes', () => {
+        let api!: UnifiedPanelTabsApi;
+        const ownerA = 'remote:host-a:workspace';
+        const ownerB = 'remote:host-b:workspace';
+        const props = { workspaceId: ownerA, chatId: 'chat-a', name: 'a', reorderEnabled: true, onApi: (next: UnifiedPanelTabsApi) => { api = next; } };
+        const mounted = render(<Probe {...props} />);
+        act(() => {
+            api.open({ kind: 'terminal', ownerWorkspaceId: 'workspace', ownerRoutingRef: ownerA, chatId: 'chat-a', resourceId: 'terminal', label: 'Terminal' });
+            api.open({ kind: 'file', ownerWorkspaceId: 'workspace', ownerRoutingRef: ownerA, chatId: 'chat-a', resourceId: 'sample.md', label: 'File' });
+        });
+        act(() => {
+            api.move(api.tabs.find(tab => tab.kind === 'file')!.id, api.tabs.find(tab => tab.kind === 'terminal')!.id);
+        });
+        expect(labels('a')).toBe('File,Terminal');
+        const selected = api.activeId;
+        const raw = localStorage.getItem(unifiedPanelStorageKey(ownerA))!;
+        mounted.unmount();
+        render(<Probe {...props} />);
+        expect(labels('a')).toBe('File,Terminal');
+        expect(api.activeId).toBe(selected);
+        cleanup();
+        clearUnifiedPanelState(ownerA);
+        localStorage.setItem(unifiedPanelStorageKey(ownerA), raw);
+        render(<Probe {...props} />);
+        expect(labels('a')).toBe('File,Terminal');
+        const restored = readUnifiedPanelState(ownerA);
+        writeUnifiedPanelState(ownerB, { ...restored, orderByScope: undefined });
+        render(<Probe {...props} workspaceId={ownerB} name="b" onApi={undefined} />);
+        expect(labels('b')).toBe('Terminal,File');
+        act(() => api.move(api.tabs[0].id, null));
+        expect(labels('a')).toBe('Terminal,File');
+        expect(labels('b')).toBe('Terminal,File');
+        expect(readUnifiedPanelState(ownerB).orderByScope).toBeUndefined();
     });
 
     it('shares one session across consumers mounted in separate subtrees', () => {

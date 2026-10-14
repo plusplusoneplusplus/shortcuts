@@ -142,6 +142,7 @@ import {
     writeUnifiedTreeState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-1';
 const CHAT = 'chat-1';
@@ -213,9 +214,57 @@ afterEach(() => {
     clearUnifiedTreeState();
     clearUnifiedDiffSources();
     clearUnifiedCanvasEvents();
+    applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
 });
 
 describe('UnifiedRightPanel — file tabs (AC-04)', () => {
+    it('keeps the feature off by default and toggles mixed ordering live without remounting views', async () => {
+        const fileId = openFile({ path: 'sample.md' });
+        const terminalId = openUnifiedPanelTab(WS, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+        });
+        renderPanel();
+        const terminal = await screen.findByTestId('mock-terminal');
+        const file = screen.getByTestId(`unified-panel-tab-${fileId}`);
+        fireEvent.keyDown(file, { key: 'ArrowLeft', altKey: true });
+        expect(screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'))).toEqual([terminalId, fileId]);
+        act(() => applyRuntimeConfigPatch({ panelTabReorderingEnabled: true }));
+        fireEvent.keyDown(file, { key: 'ArrowLeft', altKey: true });
+        expect(screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'))).toEqual([fileId, terminalId]);
+        act(() => applyRuntimeConfigPatch({ panelTabReorderingEnabled: false }));
+        expect(screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'))).toEqual([terminalId, fileId]);
+        expect(screen.getByTestId('mock-terminal')).toBe(terminal);
+        act(() => applyRuntimeConfigPatch({ panelTabReorderingEnabled: true }));
+        expect(screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'))).toEqual([fileId, terminalId]);
+    });
+
+    it('reorders a dirty file across a mounted terminal without remounting or changing activation', async () => {
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: true });
+        const fileId = openFile({ path: 'sample.md' });
+        const terminalId = openUnifiedPanelTab(WS, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+        });
+        renderPanel();
+        const terminal = await screen.findByTestId('mock-terminal');
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${fileId}`));
+        const editor = await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.change(editor, { target: { value: 'unsaved edit' } });
+        await screen.findByTestId(`unified-panel-tab-dirty-${fileId}`);
+        const fileView = screen.getByTestId(`unified-panel-view-${fileId}`);
+        const tab = screen.getByTestId(`unified-panel-tab-${fileId}`);
+        tab.focus();
+        fireEvent.keyDown(tab, { key: 'ArrowLeft', altKey: true });
+        expect(screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'))).toEqual([fileId, terminalId]);
+        expect(screen.getByTestId('mock-monaco-textarea')).toBe(editor);
+        expect(editor).toHaveValue('unsaved edit');
+        expect(screen.getByTestId('mock-terminal')).toBe(terminal);
+        expect(screen.getByTestId(`unified-panel-view-${fileId}`)).toBe(fileView);
+        expect(fileView.getAttribute('data-active')).toBe('true');
+        expect(document.activeElement).toBe(tab);
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+    });
+
     it('reads and writes through the tab\'s owning clone, not the panel workspace', async () => {
         openFile({ owner: MEMBER, path: 'src/a.ts' });
         renderPanel();

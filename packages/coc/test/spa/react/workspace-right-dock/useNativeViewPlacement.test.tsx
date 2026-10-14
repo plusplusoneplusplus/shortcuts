@@ -61,18 +61,30 @@ afterEach(() => {
 });
 
 describe('useNativeViewPlacement', () => {
-    it('hides WebView2 for the actual address dropdown and restores bounds after Escape', async () => {
+    it.each(['', '   '])('keeps WebView2 visible for blank address %j, hides for suggestions and restores after Escape', async url => {
+        const user = userEvent.setup();
+        const suggest = vi.fn(async () => ({ ok: true, entries: [{ url: 'https://recent.test/', title: 'Recent',
+            lastVisited: 1, visitCount: 1, completion: null }], total: 1, recording: true, storageError: null }));
         mount();
-        render(<BrowserAddressBar inputRef={createRef()} enabled ownerKey="workspace:view" invalid={false}
+        render(<BrowserAddressBar inputRef={createRef()} url={url} enabled ownerKey="workspace:view" invalid={false}
             onEdit={vi.fn()} onOpen={vi.fn()} history={{
-                suggest: vi.fn(async () => ({ ok: true, entries: [{ url: 'https://recent.test/', title: 'Recent',
-                    lastVisited: 1, visitCount: 1, completion: null }], total: 1, recording: true, storageError: null })),
+                suggest,
                 query: vi.fn(), delete: vi.fn(), clear: vi.fn(), setRecording: vi.fn(), onChanged: vi.fn(() => vi.fn()),
             }} />);
+        const input = screen.getByRole('combobox', { name: 'Address' });
+        await user.click(input);
+        expect(suggest).not.toHaveBeenCalled();
+        expect(screen.queryByRole('listbox')).toBeNull();
+        expect(placement.hide).not.toHaveBeenCalled();
+        expect(placement.setBounds).toHaveBeenLastCalledWith({ x: 500, y: 100, width: 400, height: 400 });
+        await user.clear(input);
+        await user.type(input, 'recent');
         await screen.findByRole('listbox');
+        expect(suggest).toHaveBeenLastCalledWith('recent');
         await waitFor(() => expect(placement.hide).toHaveBeenCalled());
         placement.setBounds.mockClear();
-        await userEvent.keyboard('{Escape}');
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('listbox')).toBeNull();
         await waitFor(() => expect(placement.setBounds).toHaveBeenCalledWith({ x: 500, y: 100, width: 400, height: 400 }));
     });
 

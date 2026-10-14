@@ -24,6 +24,7 @@ import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction }
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
     EMPTY_EXPLORER_TABS,
+    closeTabs,
     parseExplorerTabs,
     serializeExplorerTabs,
     type ExplorerTabsState,
@@ -41,6 +42,7 @@ import {
     type ContentSearchStatus,
     type ExplorerView,
 } from './types';
+import { isExplorerPathAffected } from './explorerDirtyStore';
 
 export interface ExplorerPreviewFile {
     path: string;
@@ -321,10 +323,27 @@ function writeValue<T>(storageKey: string, codec: Codec<T>, next: T): void {
     } catch {
         /* ignore quota / disabled storage */
     }
+
     // Prime the cache with the exact reference we just wrote so the next
     // getSnapshot returns `next` without a reparse.
     snapshotCache.set(storageKey, { raw, value: next });
     notify(storageKey);
+}
+
+export function removeDeletedExplorerEntry(owner: string, path: string): void {
+    const tabsKey = explorerTabsStorageKey(owner);
+    const tabs = readValue(tabsKey, TABS_CODEC);
+    const ids = tabs.tabs.filter(tab => tab.kind === 'file' && isExplorerPathAffected(tab.path, path)).map(tab => tab.id);
+    if (ids.length) writeValue(tabsKey, TABS_CODEC, closeTabs(tabs, ids));
+    const previewKey = explorerPreviewStorageKey(owner);
+    const preview = readValue(previewKey, PREVIEW_CODEC);
+    if (preview && isExplorerPathAffected(preview.path, path)) writeValue(previewKey, PREVIEW_CODEC, null);
+    const normalized = path.replace(/\\/g, '/');
+    const parent = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : null;
+    writeValue(explorerSelectedStorageKey(owner), SELECTED_CODEC, parent);
+    const expandedKey = explorerExpandedStorageKey(owner);
+    const expanded = readValue(expandedKey, EXPANDED_CODEC);
+    writeValue(expandedKey, EXPANDED_CODEC, new Set([...expanded].filter(candidate => !isExplorerPathAffected(candidate, path))));
 }
 
 /**

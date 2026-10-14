@@ -9,6 +9,8 @@ export type UnifiedPanelBulkCloseAction =
     | 'close-all';
 
 export type UnifiedPanelTabMenuAction =
+    | 'move-left'
+    | 'move-right'
     | 'keep-open'
     | 'close'
     | UnifiedPanelBulkCloseAction
@@ -19,7 +21,7 @@ export type UnifiedPanelTabMenuAction =
 export interface UnifiedPanelTabMenuItem {
     action: UnifiedPanelTabMenuAction;
     label: string;
-    group: 'keep-open' | 'close' | 'file';
+    group: 'keep-open' | 'close' | 'file' | 'move';
     disabled: boolean;
 }
 
@@ -58,8 +60,16 @@ export function unifiedPanelTabMenuItems(
         copyRelativePath: false,
         revealInExplorer: false,
     },
+    movableIds?: readonly string[],
 ): UnifiedPanelTabMenuItem[] {
     const items: UnifiedPanelTabMenuItem[] = [];
+    if (movableIds) {
+        const index = movableIds.indexOf(tab.id);
+        items.push(
+            { action: 'move-left', label: 'Move left', group: 'move', disabled: index <= 0 },
+            { action: 'move-right', label: 'Move right', group: 'move', disabled: index < 0 || index >= movableIds.length - 1 },
+        );
+    }
     if (tab.preview) {
         items.push({ action: 'keep-open', label: 'Keep Open', group: 'keep-open', disabled: false });
     }

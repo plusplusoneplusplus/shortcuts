@@ -108,6 +108,16 @@ describe('MonacoFileEditor — layout ownership', () => {
         expect(stub.options).not.toHaveProperty('readOnly');
     });
 
+    it('applies and releases an explicit temporary deletion lock without changing the default options', async () => {
+        const view = render(<MonacoFileEditor value="a" language="typescript" readOnly />);
+        await flushMount();
+        expect(stub.options?.readOnly).toBe(true);
+        expect(stub.options?.automaticLayout).toBe(false);
+        view.rerender(<MonacoFileEditor value="a" language="typescript" readOnly={false} />);
+        expect(stub.options?.readOnly).toBe(false);
+        expect(EXPLORER_EDITOR_OPTIONS).not.toHaveProperty('readOnly');
+    });
+
     it('lays the editor out from its own measurement once mounted', async () => {
         render(<MonacoFileEditor value="a" language="typescript" />);
         await flushMount();

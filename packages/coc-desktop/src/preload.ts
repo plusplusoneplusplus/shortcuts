@@ -20,6 +20,7 @@ import type { BrowserControlActivityEvent } from './browser-control-command';
 // They must match the exported constants in find-in-page.ts / devtunnel-modal.ts;
 // preload.test.ts asserts they stay in sync.
 const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
+const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
@@ -172,6 +173,7 @@ interface BrowserViewState {
     sourceKind?: BrowserSourceKind;
     url: string;
     title: string;
+    committedPage?: { url: string; title: string; revision: number };
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;
@@ -235,6 +237,8 @@ type BrowserHistoryQueryResult = { ok: true; entries: BrowserHistoryEntry[]; tot
 type BrowserHistorySuggestResult = { ok: true; entries: (BrowserHistoryEntry & { completion: string | null })[]; total: number; recording: boolean; storageError: string | null } | BrowserHistoryFailure;
 
 const browser = {
+    showAddressMenu: (hasSelection: boolean): Promise<BrowserOperationResult> =>
+        ipcRenderer.invoke(BROWSER_ADDRESS_MENU_CHANNEL, hasSelection),
     control: {
         bindScope: (workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number }> =>
             ipcRenderer.invoke(BROWSER_CONTROL_SCOPE_CHANNEL, workspaceId, sessionKey),

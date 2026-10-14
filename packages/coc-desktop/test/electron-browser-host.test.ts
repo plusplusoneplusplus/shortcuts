@@ -105,7 +105,8 @@ async function view() {
     const sink: BrowserEventSink = {
         state: vi.fn(), newTab: vi.fn(), download: vi.fn(),
         closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(),
-        visited: vi.fn(), titleUpdated: vi.fn(),
+        visited: vi.fn(), titleUpdated: vi.fn(), navigationStarted: vi.fn(),
+        documentCommitted: vi.fn(), documentTitleUpdated: vi.fn(),
     };
     const hosted = await new ElectronBrowserHost('profile').create({
         ownerId: 7, viewId: 'browser', sessionKey: 'remote:workspace', url: 'https://example.test/',
@@ -122,6 +123,15 @@ async function view() {
 }
 
 describe('Electron browser CDP capability', () => {
+    it('invalidates the copy identity only for a new main document, not subframes or same-document navigation', async () => {
+        const { sink, hosted } = await view();
+        emit('did-start-navigation', 'https://frame.test/', false, false);
+        emit('did-start-navigation', 'https://example.test/#part', true, true);
+        expect(sink.navigationStarted).not.toHaveBeenCalled();
+        emit('did-start-navigation', 'https://example.test/', false, true);
+        expect(sink.navigationStarted).toHaveBeenCalledOnce();
+        await hosted.close();
+    });
     it('uses only the adopted guest and detaches before closing it', async () => {
         const { hosted } = await view();
         await expect(hosted.cdp!('Runtime.evaluate', { expression: 'document.title' })).resolves.toEqual({ value: 'fixture' });
@@ -286,6 +296,7 @@ describe('Electron successful history events', () => {
         expect(sink.visited).not.toHaveBeenCalled();
         emit('did-frame-finish-load', true);
         expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://example.test/final', 'Fixture');
+        expect(sink.documentCommitted).toHaveBeenCalledExactlyOnceWith('https://example.test/final', 'Fixture');
         expect(sink.titleUpdated).not.toHaveBeenCalled();
         emit('did-frame-finish-load', true);
         emit('did-stop-loading');
@@ -379,6 +390,7 @@ describe('Electron successful history events', () => {
         };
         mocks.handlers.get('did-create-window')![0]({ webContents: popup, once: vi.fn(), on: vi.fn(), isDestroyed: () => true });
         vi.mocked(sink.state).mockClear();
+        handlers.get('did-start-navigation')!({}, 'https://popup.test/final', false, true);
         handlers.get('did-navigate')!({}, 'https://popup.test/final', 200);
         handlers.get('did-frame-finish-load')!({}, false);
         handlers.get('did-frame-finish-load')!({}, true);
@@ -386,6 +398,9 @@ describe('Electron successful history events', () => {
         expect(sink.visited).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup');
         expect(sink.titleUpdated).toHaveBeenCalledExactlyOnceWith('https://popup.test/final', 'Popup title');
         expect(sink.state).not.toHaveBeenCalled();
+        expect(sink.documentCommitted).not.toHaveBeenCalled();
+        expect(sink.documentTitleUpdated).not.toHaveBeenCalled();
+        expect(sink.navigationStarted).not.toHaveBeenCalled();
         await hosted.close();
     });
 });

@@ -33,6 +33,7 @@ test.beforeAll(async () => {
                 item('manual', { title: 'Manual reminder', type: 'manual' }),
                 item('done', { title: 'Reviewed work', status: 'done' }),
                 item('archived', { title: 'Archived work', archived: true })];
+            window.todoFixtureItems = items;
             window.ownerWorkspaces = [{ id: 'parent', name: 'Parent repo' }, { id: 'child', name: 'Child repo' }];
             window.reads = [];
             window.todoReadCount = 0;
@@ -42,7 +43,10 @@ test.beforeAll(async () => {
                     update: async (workspace, process, id, patch) => {
                         window.reads.push(['update', workspace, process, id, patch]);
                         const found = items.find(item => item.id === id);
-                        Object.assign(found, patch, { revision: found.revision + 1 });
+                        Object.assign(found, patch, { revision: found.revision + 1, updatedBy: 'user',
+                            ...(typeof patch.outcome === 'string' ? {
+                                outcome: { summary: patch.outcome, recordedAt: at, recordedBy: 'user' }
+                            } : {}) });
                         return { item: found, ledgerRevision: 2 };
                     }
                 },
@@ -68,6 +72,7 @@ test.beforeAll(async () => {
 
 async function mount(page: Page, dark: boolean) {
     await page.route('http://layout.test/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
+    await page.routeWebSocket('ws://layout.test/**', () => {});
     await page.goto('http://layout.test/');
     await page.setContent(`<html class="${dark ? 'dark' : ''}"><body style="margin:0;background:${dark ? '#1e1e1e' : 'white'}">
         <div id="fixture" style="position:absolute;left:16px;top:16px;width:800px;height:560px"></div></body></html>`);
@@ -81,6 +86,141 @@ async function width(page: Page, pixels: number) {
 }
 
 for (const dark of [false, true]) {
+    test(`linked job history starts at the detail content edge and wraps in ${dark ? 'dark' : 'light'} theme`, async ({ page }) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await mount(page, dark);
+        const longTitle = `Fixture investigation ${'LongTitleSegment'.repeat(12)}`;
+        const longReason = `Fixture delivery detail ${'LongStatusSegment'.repeat(12)}`;
+        await page.evaluate(({ longTitle, longReason }) => {
+            const items = (window as Window & { todoFixtureItems: { id: string; jobs: unknown[] }[] }).todoFixtureItems;
+            const at = '2026-10-12T00:00:00.000Z';
+            const job = (processId: string, title: string, extra = {}) => ({
+                processId, title, workspaceId: 'child', kind: 'local', linkedAt: at,
+                openLink: `#repos/child/chats/${processId}`, execution: { state: 'running' }, ...extra,
+            });
+            items.find(item => item.id === 'first')!.jobs = [
+                job('earlier', 'Fixture short job', { execution: { state: 'cancelled',
+                    review: { state: 'delivered', assessment: 'not_required' } } }),
+                job('latest', longTitle, { mode: 'autopilot', execution: { state: 'failed',
+                    review: { state: 'failed', reason: longReason } } }),
+                job('session-job', 'Fixture session job', { kind: 'ralph', sessionId: 'fixture-session' }),
+            ];
+        }, { longTitle, longReason });
+        await page.getByRole('button', { name: 'Refresh to-do list' }).click();
+        await page.getByTestId('sentinel-todo-row-first').locator('[data-todo-select]').click();
+        const detail = page.getByTestId('sentinel-todo-detail-first');
+        const jobs = detail.getByRole('list', { name: 'Jobs for Keep selected work and its draft' });
+        const links = jobs.locator(':scope > li > span > a');
+        await expect(links).toHaveText(['Fixture short job', longTitle, 'Fixture session job']);
+        await expect(jobs.getByTestId('sentinel-todo-job-mode')).toHaveText(['Autopilot', 'Ralph']);
+        await expect(jobs).toContainText('Notice delivered');
+        await expect(jobs).toContainText(`Review failed: ${longReason}`);
+        for (const pixels of [1200, 800, 660, 659, 360, 220]) {
+            await width(page, pixels);
+            const edge = (await detail.locator('h2 > span').first().boundingBox())!.x;
+            for (const link of await links.all()) {
+                const box = (await link.boundingBox())!;
+                expect(Math.abs(box.x - edge)).toBeLessThan(1);
+            }
+            const layout = await jobs.evaluate(element => ({
+                alignment: getComputedStyle(element).alignItems,
+                fits: element.scrollWidth <= element.clientWidth,
+                rowsFit: [...element.children].every(row => row.scrollWidth <= row.clientWidth),
+            }));
+            expect(layout).toEqual({ alignment: 'stretch', fits: true, rowsFit: true });
+            expect(await detail.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+            const rows = jobs.locator(':scope > li');
+            for (const row of await rows.all()) {
+                const rowBox = (await row.boundingBox())!;
+                for (const control of await row.locator('a, button, [data-testid="sentinel-todo-job-owner"], [data-testid="sentinel-todo-job-mode"]').all()) {
+                    await expect(control).toBeVisible();
+                    const box = (await control.boundingBox())!;
+                    expect(box.x).toBeGreaterThanOrEqual(rowBox.x - 1);
+                    expect(box.x + box.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+                }
+            }
+            expect(await links.nth(1).evaluate(element => element.getBoundingClientRect().height > parseFloat(getComputedStyle(element).lineHeight))).toBe(true);
+            expect(await jobs.getByText(`· Review failed: ${longReason}`, { exact: true }).evaluate(element =>
+                element.getBoundingClientRect().height > parseFloat(getComputedStyle(element).lineHeight))).toBe(true);
+        }
+        await expect(links.nth(0)).toHaveAttribute('href', '#repos/child/chats/earlier');
+        await expect(links.nth(1)).toHaveAttribute('title', longTitle);
+        await links.nth(0).focus();
+        await links.nth(0).press('ArrowDown');
+        await expect(page.getByRole('dialog')).toContainText('Recorded job result');
+        await page.keyboard.press('Escape');
+        await expect(links.nth(0)).toBeFocused();
+        const writes = await page.evaluate(() => (window as Window & { reads: unknown[][] }).reads.filter(read => read[0] === 'update'));
+        expect(writes).toEqual([]);
+        expect(errors).toEqual([]);
+    });
+
+    for (const type of ['normal', 'manual'] as const) {
+        test(`selected ${type} completion stays navigable in ${dark ? 'dark' : 'light'} theme`, async ({ page }, info) => {
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+            await page.setViewportSize({ width: 1280, height: 720 });
+            await mount(page, dark);
+            const id = type === 'manual' ? 'manual' : 'first';
+            await page.evaluate(selectedId => {
+                const items = (window as Window & { todoFixtureItems: { id: string }[] }).todoFixtureItems;
+                const retained = items.filter(item => item.id === selectedId || item.id === 'done');
+                items.splice(0, items.length, ...retained);
+            }, id);
+            await page.getByRole('button', { name: 'Refresh to-do list' }).click();
+            const row = page.getByTestId(`sentinel-todo-row-${id}`);
+            const details = page.getByTestId('sentinel-todo-details');
+            await row.locator('[data-todo-select]').click();
+            await details.getByRole('button', { name: 'Done', exact: true }).click();
+            await details.getByLabel('Reason for Done (optional)').fill('Fixture verified');
+            await details.getByRole('button', { name: 'Set status' }).click();
+            await expect(details.getByRole('button', { name: 'Reopen' })).toBeVisible();
+            await expect(details.getByTestId(`sentinel-todo-outcome-${id}`)).toHaveText('Fixture verified (you)');
+            const done = page.getByTestId(`sentinel-todo-${type === 'manual' ? 'manual-' : ''}done-section`);
+            await expect(done.getByRole('button', { name: /^Done \(/ })).toHaveAttribute('aria-expanded', 'true');
+            await expect(row.locator('[data-todo-select]')).toHaveAttribute('aria-pressed', 'true');
+            await expect(row).toBeVisible();
+            await expect(page.getByTestId(type === 'manual' ? 'sentinel-todo-manual-empty' : 'sentinel-todo-no-active')).toBeVisible();
+            await page.screenshot({ path: info.outputPath('completed-selection.png') });
+            await width(page, 360);
+            await expect(row).toBeHidden();
+            await page.getByRole('button', { name: 'Back to list' }).click();
+            await expect(row).toBeVisible();
+            await expect(row.locator('[data-todo-select]')).toBeFocused();
+            expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+            await page.screenshot({ path: info.outputPath('narrow-completed-selection.png') });
+            await width(page, 800);
+            await done.getByRole('button', { name: /^Done \(/ }).click();
+            await expect(row).toHaveCount(0);
+            await expect(details.getByText('Select an item to view its details.')).toBeVisible();
+            await page.getByRole('button', { name: 'Refresh to-do list' }).click();
+            await expect(page.getByRole('button', { name: 'Refresh to-do list' })).toBeEnabled();
+            await expect(done.getByRole('button', { name: /^Done \(/ })).toHaveAttribute('aria-expanded', 'false');
+            await done.getByRole('button', { name: /^Done \(/ }).click();
+            await row.locator('[data-todo-select]').click();
+            await details.getByRole('button', { name: 'Reopen' }).click();
+            await expect(details.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+            await expect(row.locator('[data-todo-select]')).toHaveAttribute('aria-pressed', 'true');
+            await details.getByRole('button', { name: 'Archive' }).click();
+            const archived = page.getByTestId(`sentinel-todo-${type === 'manual' ? 'manual-' : ''}archived-section`);
+            await expect(archived.getByRole('button', { name: /^Archived \(/ })).toHaveAttribute('aria-expanded', 'true');
+            await expect(row).toBeVisible();
+            await details.getByRole('button', { name: 'Restore' }).click();
+            await expect(details.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+            await expect(row.locator('[data-todo-select]')).toHaveAttribute('aria-pressed', 'true');
+            const writes = await page.evaluate(() => (window as Window & { reads: unknown[][] }).reads.filter(read => read[0] === 'update'));
+            expect(writes).toHaveLength(4);
+            expect(writes[0]).toEqual(['update', 'parent', 'sentinel', id, {
+                expectedRevision: 1, status: 'done', statusReason: 'Fixture verified', outcome: 'Fixture verified',
+            }]);
+            expect(errors).toEqual([]);
+        });
+    }
+
     test(`refresh stays beside Add item in narrow and wide layouts in ${dark ? 'dark' : 'light'} theme`, async ({ page }) => {
         await page.setViewportSize({ width: 1280, height: 720 });
         await mount(page, dark);

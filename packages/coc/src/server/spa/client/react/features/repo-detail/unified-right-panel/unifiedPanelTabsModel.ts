@@ -9,7 +9,7 @@
  * Keeping it apart from the UI means the ownership and identity rules — the
  * fiddly part — are testable without a DOM.
  *
- * Four invariants hold for every value this module returns:
+ * Invariants for every value this module returns:
  *  1. **Ownership follows the kind.** Terminal and Notes tabs belong
  *     to the workspace and stay visible across chat switches; file, canvas,
  *     diff, and Git tabs belong to the chat that opened them (or to the workspace when
@@ -18,15 +18,16 @@
  *     owning clone + canonical resource id, so opening the same file twice
  *     focuses one tab, while the same relative path in two repo-group members —
  *     or in two different chats — stays two distinct tabs.
- *  3. **Strip order is workspace tabs, then the selected chat's tabs.** Reorder
- *     moves a tab within its own section; dragging never changes ownership.
+ *  3. **Presentation order is independent of ownership.** The default groups
+ *     tools before resources; optional per-view orders interleave their ids.
  *  4. **`activeByScope` holds at most one id per scope**, and it is always
  *     either null or a tab visible in that scope — so switching chats and back
  *     restores what was selected there, including a workspace tab.
- *  5. **At most one preview tab per scope section, and it sits last.** The file
+ *  5. **At most one preview tab per scope section.** The file
  *     tree's single click opens into that one replaceable slot (`openPreviewTab`)
  *     and every other entry point opens a permanent tab; promotion
  *     (`promoteTab`) is one-way and frees the slot for the next single click.
+ *     Grouped ordering keeps the preview last; mixed ordering preserves its slot.
  *
  * Operations return the *same* state reference when they change nothing, which
  * is load-bearing: the state is served through `useSyncExternalStore`, which
@@ -240,6 +241,8 @@ export interface UnifiedPanelState {
      * in that chat.
      */
     activeByScope: Readonly<Record<string, string | null>>;
+    /** Presentation order per chat view; descriptors retain their original ownership. */
+    orderByScope?: Readonly<Record<string, readonly string[]>>;
 }
 
 /** The state of a panel that has never opened anything. */
@@ -287,17 +290,33 @@ function escapePart(part: string): string {
 /**
  * The tabs visible for a chat selection, in strip order: workspace tabs first,
  * then that chat's canvases, then the chat's other tabs. Passing null (no chat
- * selected) shows the workspace tabs plus anything opened while no chat was
- * selected. Stored order is kept inside each group.
+ * selected) shows workspace tabs plus draft tabs. A saved per-view id order
+ * interleaves groups without changing descriptors; missing ids are discarded
+ * and newly opened tabs are inserted before the preview or appended.
  */
-export function visibleTabs(state: UnifiedPanelState, chatId: string | null): readonly UnifiedPanelTab[] {
+export function visibleTabs(state: UnifiedPanelState, chatId: string | null, applyOrder = true): readonly UnifiedPanelTab[] {
     const chatOwned = state.chatTabs[chatId ?? WORKSPACE_SCOPE_KEY] ?? [];
-    if (chatOwned.length === 0) return state.workspaceTabs;
-    return [
+    const defaults = chatOwned.length === 0 ? state.workspaceTabs : [
         ...state.workspaceTabs,
         ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'tools'),
         ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'resources'),
     ];
+    const order = applyOrder ? state.orderByScope?.[chatId ?? WORKSPACE_SCOPE_KEY] : undefined;
+    if (!order) return defaults;
+    const remaining = new Map(defaults.map(tab => [tab.id, tab]));
+    const ordered: UnifiedPanelTab[] = [];
+    for (const id of order) {
+        const tab = remaining.get(id);
+        if (!tab) continue;
+        ordered.push(tab);
+        remaining.delete(id);
+    }
+    for (const tab of remaining.values()) {
+        const previewIndex = tab.preview ? -1 : ordered.findIndex(entry => entry.preview);
+        if (previewIndex < 0) ordered.push(tab);
+        else ordered.splice(previewIndex, 0, tab);
+    }
+    return ordered;
 }
 
 /**
@@ -479,7 +498,12 @@ export function inheritDraftTabs(state: UnifiedPanelState, chatId: string): Unif
         : copiedIds.get(sourceActive)
             ?? (state.workspaceTabs.some(tab => tab.id === sourceActive) ? sourceActive : null);
 
-    return withActive(withList(state, chatId, 'chat', copies), chatId, inheritedActive);
+    const next = withActive(withList(state, chatId, 'chat', copies), chatId, inheritedActive);
+    const order = state.orderByScope?.[WORKSPACE_SCOPE_KEY];
+    return order ? {
+        ...next,
+        orderByScope: { ...next.orderByScope, [chatId]: order.map(id => copiedIds.get(id) ?? id) },
+    } : next;
 }
 
 // ---------------------------------------------------------------------------
@@ -748,6 +772,7 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
     // The replaced tab is gone; a scope still pointing at it would resurrect a
     // dangling id the way a close does, so clear those selections first.
     if (outgoingId !== null) {
+        next = replaceOrderedTab(next, outgoingId, id);
         for (const [key, activeId] of Object.entries(next.activeByScope)) {
             if (activeId === outgoingId) next = withActive(next, key, null);
         }
@@ -842,7 +867,7 @@ export function closeTab(state: UnifiedPanelState, id: string): UnifiedPanelStat
     for (const [key, activeId] of Object.entries(next.activeByScope)) {
         if (activeId === id) next = withActive(next, key, null);
     }
-    return next;
+    return replaceOrderedTab(next, id, null);
 }
 
 /** Every visible tab id for a chat — the "close all" target set. */
@@ -853,6 +878,36 @@ export function visibleTabIds(state: UnifiedPanelState, chatId: string | null): 
 // ---------------------------------------------------------------------------
 // Reordering
 // ---------------------------------------------------------------------------
+
+function replaceOrderedTab(state: UnifiedPanelState, id: string, replacement: string | null): UnifiedPanelState {
+    if (!state.orderByScope) return state;
+    const orderByScope = { ...state.orderByScope };
+    let changed = false;
+    for (const [key, order] of Object.entries(orderByScope)) {
+        if (!order.includes(id)) continue;
+        changed = true;
+        orderByScope[key] = order.flatMap(entry => entry !== id ? [entry] : replacement === null ? [] : [replacement]);
+    }
+    return changed ? { ...state, orderByScope } : state;
+}
+
+/** Reorder one visible strip without changing tab identity, ownership, or selection. */
+export function moveVisibleTab(
+    state: UnifiedPanelState,
+    chatId: string | null,
+    id: string,
+    beforeId: string | null,
+): UnifiedPanelState {
+    const tabs = visibleTabs(state, chatId);
+    if (!tabs.some(tab => tab.id === id) || id === beforeId
+        || (beforeId !== null && !tabs.some(tab => tab.id === beforeId))) return state;
+    const order = tabs.filter(tab => tab.id !== id).map(tab => tab.id);
+    const index = beforeId === null ? order.length : order.indexOf(beforeId);
+    order.splice(index, 0, id);
+    if (order.every((entry, position) => entry === tabs[position].id)) return state;
+    const next = promoteTab(state, id);
+    return { ...next, orderByScope: { ...next.orderByScope, [chatId ?? WORKSPACE_SCOPE_KEY]: order } };
+}
 
 /**
  * Move `id` so it sits where `beforeId` currently is, within its own scope
@@ -906,7 +961,7 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
  * The current payload stores the concrete owner routing ref, the `preview` bit,
  * and the Notes tab's local selection, and has no `explorer` kind.
  */
-export const UNIFIED_PANEL_STATE_VERSION = 4;
+export const UNIFIED_PANEL_STATE_VERSION = 5;
 
 /**
  * Versions this build can still read. A v1 payload restores field-for-field —
@@ -915,7 +970,7 @@ export const UNIFIED_PANEL_STATE_VERSION = 4;
  * other unknown descriptor. `restoreUnifiedPanelState` reports that drop so the
  * caller can open the tree column instead, which is where the Explorer went.
  */
-const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1, 2, 3];
+const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1, 2, 3, 4];
 
 /** The `kind` a pre-v2 payload used for the Explorer tab this build dropped. */
 const LEGACY_EXPLORER_KIND = 'explorer';
@@ -930,6 +985,7 @@ interface SerializedUnifiedPanelState {
     workspaceTabs: UnifiedPanelTab[];
     chatTabs: Record<string, UnifiedPanelTab[]>;
     activeByScope: Record<string, string>;
+    orderByScope?: Record<string, readonly string[]>;
 }
 
 /** Serialize descriptors only — never document bodies, output, or credentials. */
@@ -959,6 +1015,11 @@ export function serializeUnifiedPanelState(state: UnifiedPanelState): string {
         workspaceTabs,
         chatTabs,
         activeByScope,
+        ...(state.orderByScope ? {
+            orderByScope: Object.fromEntries(Object.entries(state.orderByScope).map(([key]) => [
+                key, visibleTabs(state, key).filter(tab => written.has(tab.id)).map(tab => tab.id),
+            ])),
+        } : {}),
     };
     return JSON.stringify(payload);
 }
@@ -1200,8 +1261,19 @@ export function restoreUnifiedPanelState(raw: string | null): UnifiedPanelRestor
         }
     }
 
+    const state: UnifiedPanelState = { workspaceTabs, chatTabs, activeByScope };
+    const rawOrder = payload.orderByScope;
+    if (rawOrder !== null && typeof rawOrder === 'object' && !Array.isArray(rawOrder)) {
+        const orderByScope: Record<string, readonly string[]> = {};
+        for (const [key, order] of Object.entries(rawOrder)) {
+            if (!Array.isArray(order)) continue;
+            const visible = new Set(visibleTabIds(state, key));
+            orderByScope[key] = [...new Set(order.filter((id): id is string => typeof id === 'string' && visible.has(id)))];
+        }
+        if (Object.keys(orderByScope).length) state.orderByScope = orderByScope;
+    }
     return {
-        state: { workspaceTabs, chatTabs, activeByScope },
+        state,
         migrated,
         openTree: migrated && hasLegacyExplorerTab(payload),
     };

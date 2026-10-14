@@ -710,6 +710,19 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
     });
 
+    it('keeps permanent Explorer deletion off for defaults and partial configs', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.explorerDelete')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('explorerDeleteEnabled');
+        expect(DEFAULT_CONFIG.features.explorerDelete).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).explorerDeleteEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).explorerDeleteEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: {} }).explorerDeleteEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { explorerDelete: true } }).explorerDeleteEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { explorerDelete: false } }).explorerDeleteEnabled).toBe(false);
+    });
+
     // Repo-group aggregated chats: a default-off live toggle that gates the
     // group's combined chat list; the read-only feed route ships regardless.
     it('exposes repo-group aggregated chats as a default-off experimental feature', () => {
@@ -775,7 +788,9 @@ describe('feature toggle settings-tab placement', () => {
         'features.railStatusActions': 'appearance',
         'features.schedulerDelayHint': 'appearance',
         'features.explorerEditorTabs': 'appearance',
+        'features.explorerDelete': 'appearance',
         'features.markdownPanelPreview': 'appearance',
+        'features.panelTabReordering': 'appearance',
         'features.htmlPageTab': 'appearance',
         'scratchpad.layout': 'appearance',
         // Integrations

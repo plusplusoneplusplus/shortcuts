@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron';
+import { BrowserWindow, Menu, dialog, ipcMain, shell, type WebContents } from 'electron';
 import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
@@ -10,6 +10,7 @@ import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
+    BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
@@ -107,6 +108,26 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     // Every history operation requires the exact registered SPA main document.
     const historyWindow = (event: Electron.IpcMainInvokeEvent) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
+    ipcMain.handle(BROWSER_ADDRESS_MENU_CHANNEL, (event, hasSelection: unknown) => {
+        const window = historyWindow(event);
+        if (!window) return { ok: false, reason: 'no-window' };
+        if (typeof hasSelection !== 'boolean') return { ok: false, reason: 'invalid' };
+        const edit = (action: 'cut' | 'copy' | 'paste' | 'selectAll') => () => {
+            if (!window.isDestroyed() && !event.sender.isDestroyed() && isBrowserEmbedder(event.sender)) event.sender[action]();
+        };
+        try {
+            Menu.buildFromTemplate([
+                { label: 'Cut', enabled: hasSelection, click: edit('cut') },
+                { label: 'Copy', enabled: hasSelection, click: edit('copy') },
+                { label: 'Paste', click: edit('paste') },
+                { type: 'separator' },
+                { label: 'Select All', click: edit('selectAll') },
+            ]).popup({ window });
+            return { ok: true };
+        } catch {
+            return { ok: false, reason: 'unavailable', message: 'Address menu unavailable. Use the keyboard to copy or edit.' };
+        }
+    });
     ipcMain.handle(BROWSER_CONTROL_SCOPE_CHANNEL, (event, workspaceId: unknown, sessionKey: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         cancelControl(event.sender.id, false);

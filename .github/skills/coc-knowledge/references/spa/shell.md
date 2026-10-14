@@ -176,9 +176,10 @@ guests and hides native WebView2 surfaces.
 `query` uses recency pagination for the History panel. `suggest` searches the full
 retained URL/title index case-insensitively and returns at most eight entries:
 URL prefixes (including scheme-omitted prefixes), recency, visit count, then
-stable URL order. Empty input returns recent entries. Suggestions include a
+stable URL order. Blank/whitespace-only input returns zero entries without searching
+the index; explicit `query` retains full browsing for blank searches. Suggestions include a
 case-preserving `completion` URL or scheme-omitted URL for prefix matches;
-empty, title/substring and whitespace-padded input has null completion. Both
+title/substring and whitespace-padded input has null completion. Both
 APIs await queued saves, filter expiry and return recording/storage-error state.
 
 ### Browser adapters and lifecycle
@@ -200,11 +201,27 @@ when stock Electron exposes `getWebContentsId`, and rejects foreign/reused guest
 `BrowserToolbarMenu` and `BrowserAddressBar` portal dropdowns above the live
 Electron page. The address combobox consumes optional `browser.history.suggest`:
 main ranks up to eight URL/title matches and supplies case-preserving prefix
-completions. Local typed text survives Escape; deletion, caret moves, paste and
-IME suppress automatic suffix selection. Owner/revision checks reject stale
-queries; history invalidations refresh open results.
+completions. Blank/whitespace-only input makes no suggestion requests and renders
+no dropdown or completion. Clearing discards entries/selection and invalidates
+in-flight replies. Local typed text survives Escape; deletion, caret moves, paste
+and IME suppress automatic suffix selection. Owner/revision checks reject stale
+queries; history invalidations refresh open nonblank results.
 
-The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+Standard address Copy writes an escaped HTTP(S) title anchor as `text/html` and
+the exact URL as `text/plain` only for a fully selected, unedited current page.
+Blank titles use the URL label. Main publishes owner-scoped `committedPage`
+URL/title/revision pairs from source-qualified successful-document events,
+independent of history recording; popup history cannot alter the pair.
+Main-document navigation and failures revoke it. Title updates retain
+the revision. Edited submissions become eligible only when their document commits.
+Partial selections, drafts, blank addresses, cut, file previews and older hosts
+retain native editing. Clipboard failures leave default copy enabled and visible.
+
+Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All through
+registered-main-frame IPC; actions target the requesting SPA's web contents.
+Native Copy and the Edit menu dispatch the input's ordinary copy event. The
+page title belongs in the tab label. The toolbar's Import cookies action opens
+`BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
 ### Desktop browser control
 
@@ -552,9 +569,13 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-The strip's divider splits tools (workspace tabs plus the chat's canvases, which
-stay chat-owned) from resources (files, diffs, external); tabs never reorder
-across it. It has a searchable `+` menu and one right-edge navigator that switches between
+With default-off `features.panelTabReordering` disabled, the strip divides
+tools from resources and confines moves to a section. Enabled, native drag,
+Alt+Arrow and tab-menu moves share `moveVisibleTab`: per-chat `orderByScope`
+interleaves stable ids without changing ownership, activation or keyed views.
+The panel's owner-qualified storage prunes stale/ephemeral ids and retains
+preview replacement slots; ordering does not broaden tab restoration.
+It has a searchable `+` menu and one right-edge navigator that switches between
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
 dock target. The Search/Explorer pair moves between the file toolbar and tab strip,
@@ -580,11 +601,16 @@ at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Compact list headers combine wrapping titles, status, priority and Attach; job
 metadata wraps below. Identical item/job titles use accessible Open job links,
-while distinct job titles remain visible. Full content and controls live in details.
+while distinct job titles remain visible. Full content and controls live in details;
+detail text uses native selection, with attachment dragging scoped to Attach.
+List cards retain whole-card attachment dragging.
 Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Pending reads block duplicate manual admission;
-reloads retain the snapshot, selection, drafts and section visibility, with read
-failures surfaced through the retry notice. Shared `sentinelTodoRecentPage` includes
+reloads retain the snapshot, selection and drafts. Selection or movement between
+tracking type and active/Done/Archived groups reveals its containing sections;
+other refreshes preserve collapse choices. Collapsing a containing group clears
+selection while retaining hidden editor drafts. Read failures surface through the
+retry notice. Shared `sentinelTodoRecentPage` includes
 all unarchived non-Done items, then recently updated Done within a 50-item budget;
 active counts above 50 stay complete and archived history follows Done. Saved
 fulfillment determines selection, not job completion. Older-item expansion and

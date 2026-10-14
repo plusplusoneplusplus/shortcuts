@@ -217,6 +217,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 this.viewFailure(entry, new Error('WebView2 returned invalid navigation state.'));
                 return;
             }
+            if (!entry.root && state.loading && !entry.state.loading) entry.sink.navigationStarted?.();
             entry.state = {
                 viewId: entry.request.viewId, engine: 'webview2',
                 url: state.url, title: state.title, canGoBack: state.canGoBack, canGoForward: state.canGoForward, loading: state.loading,
@@ -232,6 +233,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             }
         } else if (message.event === 'visited' || message.event === 'title-updated') {
             if (typeof message.url !== 'string' || typeof message.title !== 'string' || !validateBrowserUrl(message.url).ok) { return; }
+            if (!entry.root && message.sourceViewId === entry.nativeId) {
+                if (message.event === 'visited') entry.sink.documentCommitted?.(message.url, message.title);
+                else entry.sink.documentTitleUpdated?.(message.url, message.title);
+            }
             if (message.event === 'visited') { entry.sink.visited?.(message.url, message.title); }
             else { entry.sink.titleUpdated?.(message.url, message.title); }
         } else if (message.event === 'new-tab' && typeof message.url === 'string') {

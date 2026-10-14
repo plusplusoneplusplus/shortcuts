@@ -3,6 +3,9 @@ import { render, screen, waitFor, act, fireEvent, within } from '@testing-librar
 import { MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import {
+    acquireExplorerDeletion, getExplorerDeleteBlockers, isExplorerPathDeleting,
+} from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
+import {
     registerCloneBaseUrls, resetCloneRegistryForTests,
 } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 
@@ -66,6 +69,40 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 }));
 
 describe('PreviewPane', () => {
+    it('registers affected edits across editor instances and removes only the closed instance', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({ content: 'initial', encoding: 'utf-8', mimeType: 'text/plain' });
+        const view = render(<>
+            <PreviewPane repoId="dirty-owner" filePath="src/a.ts" fileName="a.ts" />
+            <PreviewPane repoId="dirty-owner" filePath="src/a.ts" fileName="a.ts" />
+        </>);
+        await waitFor(() => expect(screen.getAllByTestId('mock-monaco-textarea')).toHaveLength(2));
+        for (const editor of screen.getAllByTestId('mock-monaco-textarea')) {
+            fireEvent.change(editor, { target: { value: 'unsaved' } });
+        }
+        expect(getExplorerDeleteBlockers('dirty-owner', 'src')).toEqual(['src/a.ts']);
+        expect(() => acquireExplorerDeletion('dirty-owner', 'src')).toThrow(/affected edits/);
+        view.unmount();
+        expect(getExplorerDeleteBlockers('dirty-owner', 'src')).toEqual([]);
+    });
+
+    it('prevents editing and stale saves while a deletion is in flight', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({ content: 'initial', encoding: 'utf-8', mimeType: 'text/plain' });
+        const view = render(<PreviewPane repoId="locked-owner" filePath="a.ts" fileName="a.ts" />);
+        await screen.findByTestId('mock-monaco-textarea');
+        const save = mockMonaco.onSave!;
+        let release!: () => void;
+        act(() => { release = acquireExplorerDeletion('locked-owner', 'a.ts'); });
+        expect(isExplorerPathDeleting('locked-owner', 'a.ts')).toBe(true);
+        fireEvent.change(screen.getByTestId('mock-monaco-textarea'), { target: { value: 'late edit' } });
+        expect(getExplorerDeleteBlockers('locked-owner', 'a.ts')).toEqual([]);
+        expect(screen.getByTestId('mock-monaco-editor')).toHaveAttribute('data-value', 'initial');
+        await act(async () => { save(); });
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+        expect(screen.getByTestId('preview-error')).toHaveTextContent('being deleted');
+        act(release);
+        view.unmount();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         resetCloneRegistryForTests();

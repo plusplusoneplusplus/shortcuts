@@ -331,8 +331,12 @@ export interface RuntimeDashboardConfig {
     sentinelResultCardsEnabled: boolean;
     /** VS Code-style multiple editor tabs in the File Explorer (`features.explorerEditorTabs`). */
     explorerEditorTabsEnabled: boolean;
+    /** Confirmed permanent Explorer deletion on this owning server; defaults off. */
+    explorerDeleteEnabled: boolean;
     /** Rendered Markdown preview in unified right-panel file tabs (`features.markdownPanelPreview`). */
     markdownPanelPreviewEnabled: boolean;
+    /** Mixed-type resource tab ordering; defaults off. */
+    panelTabReorderingEnabled: boolean;
     /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
     htmlPageTabEnabled: boolean;
     /**

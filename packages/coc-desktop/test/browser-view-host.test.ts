@@ -10,8 +10,10 @@ import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER
 const mocks = vi.hoisted(() => ({
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
     sinks: [] as any[], clearData: vi.fn(async () => {}), dialog: vi.fn(async () => ({ response: 0 })),
+    menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })),
 }));
 vi.mock('electron', () => ({
+    Menu: { buildFromTemplate: (...args: any[]) => mocks.menu(...args) },
     app: { on: vi.fn() }, webContents: { getAllWebContents: () => [] },
     BrowserWindow: { fromWebContents: (sender: unknown) => mocks.windows.get(sender) },
     ipcMain: { handle: (channel: string, handler: any) => mocks.handlers.set(channel, handler), on: (channel: string, handler: any) => mocks.events.set(channel, handler) },
@@ -41,6 +43,7 @@ let dir: string;
 function owner(id: number, url = 'http://localhost:4000/') {
     const contents = Object.assign(new EventEmitter(), {
         id, mainFrame: {}, getURL: () => url, isDestroyed: () => false, send: vi.fn(),
+        copy: vi.fn(), cut: vi.fn(), paste: vi.fn(), selectAll: vi.fn(),
     });
     const window = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: () => false, show: vi.fn(), focus: vi.fn() });
     mocks.windows.set(contents, window);
@@ -66,6 +69,24 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    it('wires address-menu Copy to native copy in the requesting SPA, preserving cut and editing', () => {
+        const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
+        expect(invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, spa.event, true)).toEqual({ ok: true });
+        expect(spa.contents.copy).not.toHaveBeenCalled();
+        const template = mocks.menu.mock.calls.at(-1)![0];
+        for (const [index, method] of [[0, 'cut'], [1, 'copy'], [2, 'paste'], [4, 'selectAll']] as const) {
+            template[index].click();
+            expect(spa.contents[method]).toHaveBeenCalledOnce();
+            expect(other.contents[method]).not.toHaveBeenCalled();
+        }
+        invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, spa.event, false);
+        expect(mocks.menu.mock.calls.at(-1)![0][1].enabled).toBe(false);
+        for (const event of [foreign.event, { ...spa.event, senderFrame: {} }])
+            expect(invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, event, true)).toEqual({ ok: false, reason: 'no-window' });
+        expect(invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, spa.event, 'invalid')).toEqual({ ok: false, reason: 'invalid' });
+        mocks.menu.mockImplementationOnce(() => { throw new Error('Fixture menu unavailable'); });
+        expect(invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, spa.event, true)).toMatchObject({ ok: false, reason: 'unavailable' });
+    });
     it('delivers cross-owner activity and accepts lifecycle clears only from exact registered SPA main frames', async () => {
         const routing = owner(1), target = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
         invoke(BROWSER_CONTROL_SCOPE_CHANNEL, routing.event, 'w', 'w');
@@ -178,7 +199,14 @@ describe('desktop history IPC', () => {
         expect(ranked).toMatchObject({ ok: true, total: 11, recording: false });
         expect(ranked.entries).toHaveLength(8);
         expect(ranked.entries[0].title).toBe('Prefix');
-        expect((await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event)).entries).toHaveLength(8);
+        for (const window of [a, b]) {
+            for (const search of ['', ' \t ']) {
+                expect(await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, window.event, search))
+                    .toMatchObject({ ok: true, entries: [], total: 0, recording: false, storageError: null });
+                expect(await query(window.event, search)).toMatchObject({ ok: true, total: 11, recording: false });
+            }
+        }
+        expect(await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, b.event)).toMatchObject({ ok: true, entries: [], total: 0 });
         expect(mocks.sinks).toHaveLength(1);
         await invoke(policy.BROWSER_HISTORY_DELETE_CHANNEL, b.event, result.entries[0].url);
         expect((await invoke(policy.BROWSER_HISTORY_SUGGEST_CHANNEL, a.event, 'EXAMPLE.TEST/p')).entries).toEqual([]);

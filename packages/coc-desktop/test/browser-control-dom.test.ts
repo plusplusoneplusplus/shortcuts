@@ -229,6 +229,28 @@ describe('shared injected DOM snapshot', () => {
 });
 
 describe('ref resolution before trusted input', () => {
+    it.each(['linux', 'darwin', 'win32'] as const)('focuses the editable target before inserting text when a %s click leaves focus unchanged', async platform => {
+        document.body.innerHTML = '<button>Other focus</button><label>Message<input></label>';
+        layout();
+        const input = document.querySelector('input')!;
+        const button = document.querySelector('button')!;
+        button.focus();
+        const ref = snapshot().elements.find(element => element.name === 'Message')!.ref;
+        const page = new BrowserControlPage(async (method, params) => {
+            if (method === 'Runtime.evaluate') return { result: { value: window.eval(String(params?.expression)) } };
+            // A native activation click can leave DOM focus unchanged. Insertion
+            // must still address the requested field, never the previous control.
+            if (method === 'Input.insertText') {
+                expect(document.activeElement).toBe(input);
+                input.value = String(params?.text);
+            }
+            return {};
+        }, platform);
+        await page.type(ref, 'isolated relay works');
+        expect(input.value).toBe('isolated relay works');
+        expect(document.activeElement).toBe(input);
+    });
+
     it('scrolls and translates target bounds through nested, scaled frame content borders', () => {
         document.body.innerHTML = '<iframe></iframe>';
         const outer = document.querySelector('iframe')!;

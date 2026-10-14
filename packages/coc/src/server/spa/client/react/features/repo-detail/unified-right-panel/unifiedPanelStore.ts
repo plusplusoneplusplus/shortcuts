@@ -36,6 +36,7 @@ import { clearUnifiedPanelNavigationHistory } from './unifiedPanelNavigationStor
 import { clearPasteSnapshots, prunePasteSnapshots } from './unifiedPasteTabs';
 import { removeBrowserWebview } from './browserWebviewLayerStore';
 import { HTML_PAGE_VIEW_PREFIX } from '../../../shared/file-path/html-page-bridge';
+import { isExplorerPathAffected } from '../explorer/explorerDirtyStore';
 
 const listeners = new Map<string, Set<() => void>>();
 
@@ -119,6 +120,20 @@ export function closeBrowserPanelView(viewId: string): void {
             ? tab.resourceId === viewId
             : tab.kind === 'html-page' && tab.htmlPageId && HTML_PAGE_VIEW_PREFIX + tab.htmlPageId === viewId);
         if (tab) writeState(storageKey, closeTab(snapshot.value, tab.id));
+    }
+
+}
+
+export function closeDeletedExplorerTabs(owner: string, path: string): void {
+    for (const scope of new Set(panelScopes.values())) {
+        let state = readUnifiedPanelState(scope);
+        const affected = [...state.workspaceTabs, ...Object.values(state.chatTabs).flat()]
+            .filter(tab => tab.kind === 'file'
+                && (tab.ownerRoutingRef ?? tab.ownerWorkspaceId) === owner
+                && isExplorerPathAffected(tab.resourceId, path));
+        if (!affected.length) continue;
+        for (const tab of affected) state = closeTab(state, tab.id);
+        writeUnifiedPanelState(scope, state);
     }
 }
 

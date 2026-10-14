@@ -228,6 +228,56 @@ describe('UnifiedTodoTab', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('left-aligns full job history with bounded wrapping rows without changing compact metadata or job semantics', async () => {
+        const tracked = item({ title: 'Fixture tracked work', jobs: [
+            { processId: 'earlier', workspaceId: 'ws-child', kind: 'local', title: 'Fixture earlier job',
+                openLink: '#repos/ws-child/chats/earlier', linkedAt: item().createdAt,
+                execution: { state: 'cancelled', review: { state: 'delivered', assessment: 'not_required' } } },
+            { processId: 'latest', workspaceId: 'ws-child', kind: 'local', title: 'Fixture latest job', mode: 'autopilot',
+                openLink: '#repos/ws-child/chats/latest', linkedAt: item().createdAt,
+                execution: { state: 'running' } },
+        ] });
+        ownerWorkspaces.push({ id: 'ws-child', name: 'Fixture child repo' });
+        get.mockResolvedValue(ledger([tracked]));
+        render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const compact = within(row).getByRole('list', { name: `Jobs for ${tracked.title}` });
+        expect(compact.classList.contains('items-center')).toBe(true);
+        expect(within(compact).getAllByRole('link')).toHaveLength(1);
+        expect(within(compact).getByText('+1 earlier job')).toBeTruthy();
+        fireEvent.click(row.querySelector('[data-todo-select]')!);
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        const jobs = within(detail).getByRole('list', { name: `Jobs for ${tracked.title}` });
+        expect(jobs.classList.contains('items-center')).toBe(false);
+        expect(jobs.classList.contains('items-stretch')).toBe(true);
+        expect(jobs.classList.contains('px-2')).toBe(true);
+        const links = within(jobs).getAllByRole('link');
+        expect(links.map(link => link.getAttribute('href'))).toEqual(tracked.jobs.map(job => job.openLink));
+        for (const link of links) {
+            const jobRow = link.closest('li')!;
+            for (const style of ['min-w-0', 'max-w-full', 'flex-wrap', 'text-left', '[overflow-wrap:anywhere]']) {
+                expect(jobRow.classList.contains(style)).toBe(true);
+            }
+            expect(within(jobRow).getByTestId('sentinel-todo-job-owner').textContent).toBe('Fixture child repo');
+            expect(link.getAttribute('aria-description')).toBe('Focus to preview; ArrowDown enters preview actions.');
+            expect(within(jobRow).queryByRole('button', { name: /^Preview job:/ })).toBeNull();
+        }
+        expect(within(jobs).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
+        expect(jobs.textContent).toContain('Job cancelled');
+        expect(jobs.textContent).toContain('Notice delivered');
+        expect(jobs.textContent).toContain('Running');
+        expect(detail.classList.contains('select-text')).toBe(true);
+        act(() => links[0].focus());
+        const preview = await screen.findByRole('dialog', { name: 'Fixture earlier job' });
+        fireEvent.keyDown(links[0], { key: 'ArrowDown' });
+        expect(within(preview).getByRole('button', { name: 'Close job preview' })).toHaveFocus();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Fixture earlier job' })).toBeNull();
+        expect(links[0]).toHaveFocus();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it('keeps hidden older prerequisites in the full dependency chain and reveals their rows on lookup', async () => {
         applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: true });
         const source = item({ id: 'source', title: 'Older source', status: 'done', updatedAt: '2025-01-01T00:00:00Z' });
@@ -1285,6 +1335,106 @@ describe('UnifiedTodoTab split layout', () => {
     });
 
     it.each([
+        { width: 360, type: 'normal' as const }, { width: 800, type: 'normal' as const },
+        { width: 360, type: 'manual' as const }, { width: 800, type: 'manual' as const },
+    ])('reveals the selected last-active $type item after Done in a $width px panel', async ({ width, type }) => {
+        panelWidth = width;
+        const active = item({ type, status: 'in_progress', revision: 4 });
+        const outcome = { summary: 'User verified', recordedAt: active.updatedAt, recordedBy: 'user' as const };
+        const completed = { ...active, status: 'done' as const, statusReason: outcome.summary, outcome, revision: 5, updatedBy: 'user' as const };
+        get.mockResolvedValueOnce(ledger([active], 4)).mockResolvedValue(ledger([completed], 5));
+        update.mockResolvedValue({ item: completed, ledgerRevision: 5 });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        chooseStatus(detail(), 'Done');
+        fireEvent.change(within(detail()).getByLabelText('Reason for Done (optional)'), { target: { value: outcome.summary } });
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Set status' }));
+        await within(detail()).findByRole('button', { name: 'Reopen' });
+        const section = screen.getByTestId(`sentinel-todo-${type === 'manual' ? 'manual-' : ''}done-section`);
+        expect(within(section).getByRole('button', { name: 'Done (1)', hidden: true }).getAttribute('aria-expanded')).toBe('true');
+        expect(detail().hidden).toBe(false);
+        expect(within(detail()).getByTestId('sentinel-todo-outcome-i1').textContent).toBe(`${outcome.summary} (you)`);
+        if (width < 660) {
+            fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+            await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('sentinel-todo-row-i1').querySelector('[data-todo-select]')));
+        }
+        expect(within(section).getByRole('button', { pressed: true, name: /Fix login/ })).toBeTruthy();
+        expect(screen.getByTestId(type === 'manual' ? 'sentinel-todo-manual-empty' : 'sentinel-todo-no-active')).toBeTruthy();
+        expect(update).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 4, status: 'done', statusReason: outcome.summary, outcome: outcome.summary,
+        });
+    });
+
+    it.each(['normal', 'manual'] as const)('keeps live $type selection visible through Done, archive, restore and reopen without writes', async type => {
+        let current = item({ type });
+        get.mockImplementation(async () => ledger([current], current.revision));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        const { onMessage } = connect.mock.calls[0][0] as { onMessage: (message: unknown) => void };
+        for (const patch of [{ status: 'done' as const }, { archived: true }, { archived: false }, { status: 'todo' as const }]) {
+            current = { ...current, ...patch, revision: current.revision + 1 };
+            act(() => onMessage({ type: 'sentinel-todos-changed', workspaceId: OWNER.ownerWorkspaceId,
+                processId: OWNER.processId, ledgerRevision: current.revision }));
+            await waitFor(() => {
+                const row = screen.getByTestId('sentinel-todo-row-i1');
+                expect(row.closest('[data-testid$="-section"]')?.getAttribute('data-testid')).toBe(
+                    current.archived ? `sentinel-todo-${type === 'manual' ? 'manual-' : ''}archived-section`
+                        : current.status === 'done' ? `sentinel-todo-${type === 'manual' ? 'manual-' : ''}done-section`
+                            : type === 'manual' ? 'sentinel-todo-manual-section' : undefined,
+                );
+                expect(within(row).getByRole('button', { pressed: true })).toBeTruthy();
+            });
+            expect(detail().hidden).toBe(false);
+        }
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { type: 'normal' as const, status: 'done' as const, archived: false, section: 'done' },
+        { type: 'normal' as const, status: 'todo' as const, archived: true, section: 'archived' },
+        { type: 'manual' as const, status: 'done' as const, archived: false, section: 'manual-done' },
+        { type: 'manual' as const, status: 'todo' as const, archived: true, section: 'manual-archived' },
+        { type: 'manual' as const, status: 'todo' as const, archived: false, section: 'manual' },
+        { type: 'manual' as const, status: 'done' as const, archived: false, section: 'manual' },
+    ])('clears selection when its $section section is collapsed and keeps it closed on refresh ($status)', async ({ type, status, archived, section }) => {
+        const tracked = item({ type, status, archived });
+        get.mockResolvedValue(ledger([tracked]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-manual-section');
+        if (status === 'done' || archived) {
+            fireEvent.click(within(screen.getByTestId(`sentinel-todo-${type === 'manual' ? 'manual-' : ''}${archived ? 'archived' : 'done'}-section`))
+                .getByRole('button', { expanded: false }));
+        }
+        select();
+        if (!archived) {
+            fireEvent.click(within(detail()).getByRole('button', { name: 'Edit' }));
+            fireEvent.change(within(detail()).getByLabelText('Title'), { target: { value: 'Retained draft' } });
+        }
+        const toggle = within(screen.getByTestId(`sentinel-todo-${section}-section`)).getByRole('button', {
+            name: section === 'manual' ? /Manual tracking/ : /^(Done|Archived) \(/, expanded: true,
+        });
+        fireEvent.click(toggle);
+        expect(screen.getByText('Select an item to view its details.')).toBeTruthy();
+        expect(detail().hidden).toBe(true);
+        expect(screen.queryByTestId('sentinel-todo-row-i1')).toBeNull();
+        const { onMessage } = connect.mock.calls[0][0] as { onMessage: (message: unknown) => void };
+        act(() => onMessage({ type: 'sentinel-todos-changed', workspaceId: OWNER.ownerWorkspaceId,
+            processId: OWNER.processId, ledgerRevision: 2 }));
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('sentinel-todo-row-i1')).toBeNull();
+        fireEvent.click(toggle);
+        expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false })).toBeTruthy();
+        select();
+        if (!archived) expect((within(detail()).getByLabelText('Title') as HTMLInputElement).value).toBe('Retained draft');
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each([
         { width: 360, kind: 'edit' }, { width: 800, kind: 'edit' },
         { width: 360, kind: 'status' }, { width: 800, kind: 'status' },
     ])('retains selection and the same $kind draft DOM when refreshing a $width px panel', async ({ width, kind }) => {
@@ -1306,6 +1456,50 @@ describe('UnifiedTodoTab split layout', () => {
         expect(screen.getByRole('region', { name: /Fresh item/ })).toBeTruthy();
         if (width < 660) fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
         expect(screen.getByRole('button', { pressed: true, name: /Fresh item/ })).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each(['normal', 'manual'] as const)('reveals restored $type selection completed while its workspace/chat was away, including older history', async type => {
+        let tracked = item({ type });
+        const history = Array.from({ length: 55 }, (_, index) => item({ id: `history-${index}`, status: 'done',
+            updatedAt: '2026-10-12T00:00:00.000Z' }));
+        get.mockImplementation(async (workspaceId: string, processId: string) => ledger(
+            workspaceId === OWNER.ownerWorkspaceId && processId === OWNER.processId
+                ? [tracked, ...history] : [item({ title: 'Other owner' })],
+        ));
+        const mounted = render(<UnifiedTodoTab owner={OWNER} chatId={OWNER.processId} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER, processId: 'other-chat' }} chatId="other-chat" />);
+        await screen.findByRole('button', { name: /Other owner/ });
+        expect(screen.getByText('Select an item to view its details.')).toBeTruthy();
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER, ownerWorkspaceId: 'other-workspace' }} />);
+        await screen.findByRole('button', { name: /Other owner/ });
+        tracked = { ...tracked, status: 'done', revision: 2 };
+        mounted.rerender(<UnifiedTodoTab owner={OWNER} chatId={OWNER.processId} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(within(row).getByRole('button', { pressed: true })).toBeTruthy();
+        expect(row.closest('[data-testid$="-section"]')?.getAttribute('data-testid')).toBe(
+            `sentinel-todo-${type === 'manual' ? 'manual-' : ''}done-section`,
+        );
+        expect(within(detail()).getByRole('button', { name: 'Reopen' })).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('keeps an unrelated collapsed section closed through item edits and active status changes', async () => {
+        let tracked = item();
+        get.mockImplementation(async () => ledger([tracked, item({ id: 'done', status: 'done' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        const toggle = within(screen.getByTestId('sentinel-todo-done-section')).getByRole('button', { expanded: false });
+        for (const patch of [{ title: 'New title' }, { status: 'in_progress' as const }, { status: 'needs_attention' as const }]) {
+            tracked = { ...tracked, ...patch };
+            fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+            await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+            expect(toggle.getAttribute('aria-expanded')).toBe('false');
+            expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: true })).toBeTruthy();
+        }
         expect(update).not.toHaveBeenCalled();
     });
 
@@ -1837,7 +2031,7 @@ describe('UnifiedTodoTab Manual tracking', () => {
             .mockResolvedValue(ledger([manualItem({ status: 'todo', revision: 7 })]));
         render(<UnifiedTodoTab owner={OWNER} />);
         const done = await screen.findByTestId('sentinel-todo-manual-done-section');
-        fireEvent.click(within(done).getByRole('button', { name: 'Done (1)' }));
+        expect(within(done).getByRole('button', { name: 'Done (1)' }).getAttribute('aria-expanded')).toBe('true');
         // The remount restores the item selected from the owner's remembered view.
         expect(within(screen.getByTestId('sentinel-todo-row-m1')).getByRole('button', { pressed: true })).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Reopen' }));
@@ -1848,7 +2042,7 @@ describe('UnifiedTodoTab Manual tracking', () => {
         await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'm1', { expectedRevision: 5, archived: true }));
         const archived = await screen.findByTestId('sentinel-todo-manual-archived-section');
         expect(within(manualSection()).getByRole('button', { name: 'Manual tracking (0 active)' })).toBeTruthy();
-        fireEvent.click(within(archived).getByRole('button', { name: 'Archived (1)' }));
+        expect(within(archived).getByRole('button', { name: 'Archived (1)' }).getAttribute('aria-expanded')).toBe('true');
         const archivedRow = screen.getByTestId('sentinel-todo-detail-m1');
         // The detail stays selected across groups because selection is keyed by item id.
         fireEvent.click(within(archivedRow).getByRole('button', { name: 'Restore' }));

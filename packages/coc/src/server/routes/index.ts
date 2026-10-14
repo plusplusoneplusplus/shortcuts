@@ -814,7 +814,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker, getSentinelMirror, opts.toolInventoryStore);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     repoTreeService.trackWorkspaces(store);
-    registerRepoRoutes(routes, dataDir, repoTreeService);
+    registerRepoRoutes(routes, dataDir, repoTreeService, undefined, () =>
+        (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.explorerDelete === true);
     const isPullRequestTeamAutoClassificationEnabled = (): boolean => {
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
         return config?.pullRequests?.enabled === true

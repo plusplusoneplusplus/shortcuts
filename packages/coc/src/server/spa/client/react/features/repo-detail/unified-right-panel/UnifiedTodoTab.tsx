@@ -477,6 +477,37 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         });
     };
     const selected = ledger?.items.find(item => item.id === selectedId);
+    const selectedType = selected ? sentinelTodoType(selected) : null;
+    const selectedSection = selected ? selected.archived ? 'archived' : selected.status === 'done' ? 'done' : 'active' : null;
+    // Reveal on selection or section movement, not on every snapshot or item edit.
+    useLayoutEffect(() => {
+        if (selectedType === null || selectedSection === null) {
+            return;
+        }
+        if (selectedType === 'manual') {
+            setShowManual(true);
+            if (selectedSection === 'done') {
+                setShowManualDone(true);
+            }
+            if (selectedSection === 'archived') {
+                setShowManualArchived(true);
+            }
+        } else {
+            if (selectedSection === 'done') {
+                setShowDone(true);
+            }
+            if (selectedSection === 'archived') {
+                setShowArchived(true);
+            }
+        }
+    }, [selectedId, selectedType, selectedSection]);
+    const toggleSection = (open: boolean, setOpen: (open: boolean) => void, containsSelection: boolean) => {
+        setOpen(!open);
+        if (open && containsSelection) {
+            setSelectedId(null);
+            setDetailOpen(false);
+        }
+    };
     useLayoutEffect(() => {
         if (wide || !detailOpen || !selected) return;
         if (scrollRef.current?.contains(document.activeElement)) {
@@ -592,7 +623,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         <div className="flex flex-wrap items-center justify-between gap-1">
                             <h3 className="m-0 min-w-0 text-xs font-semibold">
                                 <button type="button" id={`${manualId}-heading`} aria-expanded={showManual} aria-controls={`${manualId}-body`}
-                                    aria-label={`Manual tracking (${manual.active.length} active)`} onClick={() => setShowManual(v => !v)} data-testid="sentinel-todo-manual-toggle"
+                                    aria-label={`Manual tracking (${manual.active.length} active)`} onClick={() => toggleSection(showManual, setShowManual, selectedType === 'manual')} data-testid="sentinel-todo-manual-toggle"
                                     className="flex items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
                                     <span aria-hidden="true">{showManual ? '▾' : '▸'}</span>
                                     <span>Manual tracking ({manual.active.length})</span>
@@ -619,12 +650,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                                     </span>
                                 )}
                                 {manual.done.length > 0 && (
-                                    <Section label="Done" count={manual.done.length} open={showManualDone} onToggle={() => setShowManualDone(v => !v)} testId="sentinel-todo-manual-done-section">
+                                    <Section label="Done" count={manual.done.length} open={showManualDone} onToggle={() => toggleSection(showManualDone, setShowManualDone, selectedType === 'manual' && selectedSection === 'done')} testId="sentinel-todo-manual-done-section">
                                         {renderList(manual.done)}
                                     </Section>
                                 )}
                                 {manual.archived.length > 0 && (
-                                    <Section label="Archived" count={manual.archived.length} open={showManualArchived} onToggle={() => setShowManualArchived(v => !v)} testId="sentinel-todo-manual-archived-section">
+                                    <Section label="Archived" count={manual.archived.length} open={showManualArchived} onToggle={() => toggleSection(showManualArchived, setShowManualArchived, selectedType === 'manual' && selectedSection === 'archived')} testId="sentinel-todo-manual-archived-section">
                                         {renderList(manual.archived)}
                                     </Section>
                                 )}
@@ -632,12 +663,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         )}
                     </section>
                     {sections.done.length > 0 && (
-                        <Section label="Done" count={sections.done.length} open={showDone} onToggle={() => setShowDone(v => !v)} testId="sentinel-todo-done-section">
+                        <Section label="Done" count={sections.done.length} open={showDone} onToggle={() => toggleSection(showDone, setShowDone, selectedType === 'normal' && selectedSection === 'done')} testId="sentinel-todo-done-section">
                             {renderList(sections.done)}
                         </Section>
                     )}
                     {sections.archived.length > 0 && (
-                        <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => setShowArchived(v => !v)} testId="sentinel-todo-archived-section">
+                        <Section label="Archived" count={sections.archived.length} open={showArchived} onToggle={() => toggleSection(showArchived, setShowArchived, selectedType === 'normal' && selectedSection === 'archived')} testId="sentinel-todo-archived-section">
                             {renderList(sections.archived)}
                         </Section>
                     )}
@@ -735,8 +766,11 @@ function useTodoAttachment(owner: SentinelTodoOwner, item: SentinelTodoItem) {
     };
 }
 
-function AttachTodoButton({ title, onClick }: { title: string; onClick: () => void }) {
+function AttachTodoButton({ title, onClick, onDragStart }: {
+    title: string; onClick: () => void; onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
+}) {
     return <button type="button" onClick={onClick} aria-label={`Attach ${title} as context`}
+        draggable={onDragStart ? true : undefined} onDragStart={onDragStart}
         title="Attach to owning Sentinel as context"
         className="ml-auto rounded px-1 hover:bg-black/[0.04] focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
         Attach
@@ -849,10 +883,8 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const linkKey = (link: string) => `${item.id}|${link}`;
     // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
-        <li hidden={hidden} className="relative rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]"
+        <li hidden={hidden} className="relative select-text rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]"
             data-testid={`sentinel-todo-detail-${item.id}`}
-            draggable={canAttach}
-            onDragStart={drag}
             data-priority={high ? 'high' : 'regular'}>
             {high && (
                 <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
@@ -874,7 +906,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                 )}
                 {item.targetRepo && <span aria-hidden="true">·</span>}
                 <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
-                {canAttach && <AttachTodoButton title={item.title} onClick={attach} />}
+                {canAttach && <AttachTodoButton title={item.title} onClick={attach} onDragStart={drag} />}
             </div>
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
@@ -994,12 +1026,14 @@ function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowL
     const shownJobs = expanded ? item.jobs : item.jobs.slice(-1);
     const hiddenJobs = item.jobs.length - shownJobs.length;
     if (!shownJobs.length) return null;
-    return <ul className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', expanded && 'flex-col items-start px-2 pb-1.5')} aria-label={`Jobs for ${item.title}`}>
+    return <ul className={cn('flex flex-wrap gap-x-1.5 gap-y-0.5 text-[11px]',
+        expanded ? 'flex-col items-stretch px-2 pb-1.5' : 'items-center')} aria-label={`Jobs for ${item.title}`}>
         {shownJobs.map(job => {
             const review = sentinelTodoReviewLabel(job);
             const executionLabel = sentinelTodoJobStateLabel(job);
             const jobLink = `${item.id}|job:${job.serverId ?? ''}:${job.processId}`;
-            return <li key={`${job.serverId ?? ''}:${job.processId}`} className="flex flex-wrap items-center gap-1">
+            return <li key={`${job.serverId ?? ''}:${job.processId}`} className={cn('flex flex-wrap items-center gap-1',
+                expanded && 'min-w-0 max-w-full text-left [overflow-wrap:anywhere]')}>
                 <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
                     job={job} owner={owner} itemTitle={expanded ? undefined : item.title} linkKey={jobLink} onFollowLink={onFollowLink}
                     targetRepo={item.targetRepo} currentWorkspaceId={currentWorkspaceId} />

@@ -175,6 +175,12 @@ export class RepoTreeService {
         return workspaces.find(w => w.id === repoId)?.rootPath;
     }
 
+    /** Destructive requests require a registered physical workspace, never a virtual group. */
+    async resolveDeletionRoot(repoId: string): Promise<string | undefined> {
+        const workspaces = await this.readWorkspaces();
+        return workspaces.find(w => w.id === repoId && !w.virtual)?.rootPath;
+    }
+
 
     /**
      * List the contents of `relativePath` inside the repo identified by `repoId`:
@@ -234,8 +240,8 @@ export class RepoTreeService {
      * Every request re-reads the registry, so a removed or re-rooted workspace
      * never reaches its old handle even if an eviction hook was missed.
      */
-    private async repoHandle(repoId: string): Promise<{ root: string; files: NativeRepoFiles }> {
-        const repoRoot = await this.resolveRepoRoot(repoId);
+    private async repoHandle(repoId: string, physicalOnly = false): Promise<{ root: string; files: NativeRepoFiles }> {
+        const repoRoot = await (physicalOnly ? this.resolveDeletionRoot(repoId) : this.resolveRepoRoot(repoId));
         const existing = this.handles.get(repoId);
         if (existing && existing.root === repoRoot) return existing;
         this.evictWorkspace(repoId);
@@ -268,6 +274,11 @@ export class RepoTreeService {
     async writeBlob(repoId: string, relativePath: string, content: string): Promise<void> {
         // The handle re-walks its indexes after the write before resolving.
         await (await this.repoFiles(repoId)).writeBlob(relativePath, content);
+    }
+
+    async deleteEntry(repoId: string, relativePath: string): Promise<void> {
+        const { files } = await this.repoHandle(repoId, true);
+        await files.deleteEntry(relativePath);
     }
 
     /**

@@ -1159,11 +1159,27 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.explorerDelete', default: false, runtime: 'live', runtimeFlag: 'explorerDeleteEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 70.5, label: 'Explorer deletion', badge: 'experimental',
+            hint: 'Allow confirmed permanent file and folder deletion in the owning workspace. Disabled by default.',
+            testId: 'toggle-explorer-delete-enabled',
+        },
+    }),
+    bool({
         key: 'features.markdownPanelPreview', default: false, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 71, label: 'Markdown panel preview', badge: 'experimental',
             hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
+        },
+    }),
+    bool({
+        key: 'features.panelTabReordering', default: false, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
+        ui: {
+            tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Panel tab reordering', badge: 'experimental',
+            hint: 'Reorder mixed resource tabs by dragging, Alt+Left/Right, or the tab menu. Saves order per workspace and chat without moving content between owners. Disabled by default.',
+            testId: 'toggle-panel-tab-reordering-enabled',
         },
     }),
     bool({

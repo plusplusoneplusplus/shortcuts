@@ -16,6 +16,7 @@ export interface ContextMenuItem {
     label: string;
     icon?: string;
     disabled?: boolean;
+    destructive?: boolean;
     /** Hover tooltip. Rendered on a wrapper so it still shows for disabled items. */
     title?: string;
     separator?: boolean;
@@ -397,7 +398,10 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
         const flatItems: { item: ContextMenuItem; sectionHeader?: string }[] = [];
         const flattenItems = (menuItems: ContextMenuItem[], parentLabel?: string) => {
             for (const item of menuItems) {
-                if (item.separator) continue;
+                if (item.separator) {
+                    flatItems.push({ item });
+                    continue;
+                }
                 if (item.children && item.children.length > 0) {
                     const header = parentLabel ? `${parentLabel} › ${item.label}` : item.label;
                     flatItems.push({ item, sectionHeader: header });
@@ -414,15 +418,18 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                 <div className="flex flex-col" role="menu" data-testid="context-menu-mobile">
                     {flatItems.map((entry, i) => (
                         <div key={i}>
+                            {entry.item.separator && <div role="separator" className="my-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]" />}
                             {entry.sectionHeader && (
                                 <div className="px-4 pt-3 pb-1 text-xs font-semibold text-[#848484]">{entry.sectionHeader}</div>
                             )}
-                            {!entry.sectionHeader && (
+                            {!entry.sectionHeader && !entry.item.separator && (
                                 <button
                                     className={`w-full text-left px-4 py-3 min-h-[44px] text-sm transition-colors flex items-center gap-2 ${
                                         entry.item.disabled
                                             ? 'text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default'
-                                            : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
+                                            : entry.item.destructive
+                                                ? 'text-[#d32f2f] dark:text-[#f48771] hover:bg-red-500/10 cursor-pointer'
+                                                : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
                                     }`}
                                     onClick={() => {
                                         if (!entry.item.disabled) {
@@ -432,6 +439,7 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                                     }}
                                     disabled={entry.item.disabled}
                                     role="menuitem"
+                                    title={entry.item.title}
                                 >
                                     {entry.item.icon && <span>{entry.item.icon}</span>}
                                     {entry.item.label}
@@ -483,7 +491,9 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                         className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
                             item.disabled
                                 ? 'text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default'
-                                : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
+                                : item.destructive
+                                    ? 'text-[#d32f2f] dark:text-[#f48771] hover:bg-red-500/10 cursor-pointer'
+                                    : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer'
                         }`}
                         onClick={(e) => {
                             e.stopPropagation();

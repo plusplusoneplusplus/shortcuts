@@ -128,6 +128,11 @@ export declare class NotesIndex {
  */
 export declare class RepoFiles {
   /**
+   * Permanently remove one guarded entry on a worker. Failures retain the
+   * mutation count; every mutation refreshes both built index variants.
+   */
+  deleteEntry(path: string): Promise<void>
+  /**
    * Git argv and limits for Node's WSL execution adapter. Checks disposal;
    * validates the root on a worker before the adapter executes Git.
    */
