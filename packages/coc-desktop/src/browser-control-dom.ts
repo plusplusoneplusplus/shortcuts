@@ -308,8 +308,9 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         width *= scaleX;
         height *= scaleY;
     }
-    if (command.option !== undefined) {
+    if (command.editable || command.option !== undefined) {
         if (command.resetTypeAhead) (element as HTMLElement).blur();
+        // The first native click may activate a guest without focusing its field.
         (element as HTMLElement).focus();
     }
     return { x, y, width, height, ...(optionSteps === undefined ? {} : { optionSteps }), ...(optionSearch ? { optionSearch } : {}) };
