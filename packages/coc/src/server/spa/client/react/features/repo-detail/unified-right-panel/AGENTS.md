@@ -2,8 +2,8 @@
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
 holding Terminal, Notes, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
-Search/Explorer navigator at its right edge. There is no second right panel and
-no flag.
+Search/Explorer navigator at its right edge. The panel is unconditional within
+the desktop dock gate.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 `dockAvailable` gate (desktop) and wrap their subtree in
@@ -36,11 +36,18 @@ Chat-owned tabs opened while no chat is selected belong to the draft
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
-`canvas`, `git`, and `todo` with the workspace kinds as `tools` and `file | diff | external | paste` in
-`resources`. `visibleTabs` shows workspace tabs, then the chat's canvases, then
-its resources, keeping stored order inside each group; the strip draws its
-divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
-it.
+`canvas`, `git`, and `todo` with workspace kinds as `tools` and
+`file | diff | external | paste` in `resources`. With default-off
+`features.panelTabReordering` disabled, the strip groups workspace tools, chat
+tools and resources, and confines moves to a section. Enabled, `moveVisibleTab`
+stores a mixed id order in `orderByScope` for the selected chat/draft within the
+owner-qualified panel storage scope. Drag target halves, Alt+Left/Right and
+Move left/right menu actions share that order; the divider is omitted. Ordering
+never changes descriptors, ownership, selection or keyed live views. The strip
+accepts only its own native HTML drag session, auto-scrolls overflow near its
+edges and cancels on Escape, drag end, source close or scope/flag changes.
+Transient excursion tabs are excluded. Native HTML dragging does not add touch
+gestures; keyboard and menu actions remain available.
 `external` is a read-only definition source outside every workspace; its
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `html-page` carries an absolute
@@ -68,7 +75,7 @@ from same-id clones never merge into one tab.
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`inheritDraftTabs`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 4`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. The Notes descriptor's `notesView` contains only its panel-local selected path; `updateNotesView` changes it without activating the tab. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. An open that names a `line` also mints a fresh `revealNonce` on the tab — that is what makes a repeat jump to a position the tab already stores re-centre the editor instead of being swallowed as a no-op. An open naming no line keeps the stored position *and* its nonce, so re-focusing a tab never scrolls it. The nonce is never persisted. |
+| `unifiedPanelTabsModel.ts` | Pure state: reading, opening, preview replacement, draft inheritance, promotion, activation, closing, section moves and mixed visible-order moves, plus the versioned localStorage codec. Every no-op retains the state reference for `useSyncExternalStore`. `orderByScope` holds id-only presentation order without moving descriptors between lists. Notes descriptors hold only panel-local selection. External tabs and their selections are ephemeral. Line-targeted opens mint a non-persisted `revealNonce`; ordinary refocusing retains position without scrolling. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
@@ -78,7 +85,7 @@ from same-id clones never merge into one tab.
 | `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. Four or more canvas tabs compress into the readable active tab plus a searchable count chip (shown in the active canvas's header beside its title, or in the strip when no canvas is active); the chip switches, closes, and bulk-closes through the same guarded tab callbacks without changing stored order. A dedicated divider separates tools (Terminal, Notes, notes, Git, and canvases) from resources (files, diffs, external). File tabs use Explorer's shared `FileNameIcon`; other kinds use fixed icons. The pure menu model owns per-kind action availability, local-only absolute-path resolution, and visible-order bulk targets. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. Four or more canvases compress into the active canvas plus a searchable count chip; switching and guarded closing preserve stored order. Grouped ordering draws a tools/resources divider. File tabs share Explorer's `FileNameIcon`; other kinds use fixed icons. The menu model owns per-kind availability, move boundaries, local-only absolute paths and visible-order bulk targets. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelExpandToggle.tsx` | The expand/restore button in the strip's `endControls` slot, the strip's last control on every tab state. It drives `setWorkspaceDockExpanded` (see `../AGENTS.md`); expanded, the panel root is `flex-1`, the body drops its fixed width, and the resize handle is not rendered. |
@@ -375,15 +382,15 @@ search.
 
 ## The preview slot
 
-Each scope section has at most **one preview tab**, and it is always the
-section's last tab. The file tree's single click opens into it
+Each scope section has at most **one preview tab**. Grouped ordering keeps it
+last; mixed ordering preserves its presentation slot. The file tree's single click opens into it
 (`openPreviewTab`); the next single click replaces the descriptor *at that same
 index*, so the strip shows one italic tab that changed resource rather than a
 tab closing and another appearing. Every other entry point — `+`, a chat source
 link, a note link, a canvas embed, a diff action, the tree's own double click —
 goes through `openTab` and is permanent, which is also why `openTab` inserts a
-new tab *before* the preview and `moveTab`'s "to the end" stops one place short
-of it.
+new tab *before* the preview. Section moves stop before the preview; a mixed
+move can land anywhere in the visible strip and promotes the moved preview.
 
 The tracked-content overlay is also a preview entry point. It preflights the
 owner and file before calling `openUnifiedPanelPreviewTab`, the imperative seam
@@ -416,7 +423,7 @@ Four gestures reach it, all meaning "I am keeping this file":
 | Double click the tree row (or Ctrl/Cmd+Enter, or the row menu's **Open**) | `ExplorerPanel` sends `preview: false`; `openTreeFile` routes it to `openTab`, whose merge drops the bit in place |
 | Double click the tab, or Enter on a focused preview tab | `UnifiedPanelTabStrip`'s `onPromote` |
 | First edit | `handleDirtyChange` promotes on the `false → true` transition |
-| Drag or Alt+Arrow the tab | `moveTab` promotes what it moves, so both reorder paths agree |
+| Drag, Alt+Arrow or a move menu action | Section and mixed-order moves promote a preview when its position changes |
 
 The tree's double click arrives as click, click, dblclick. The two clicks are the
 same preview open, which the model answers with the identical state reference, so
@@ -424,16 +431,19 @@ nothing remounts before the promotion lands. `ExplorerPanel` needs `onFilePin`
 wherever a permanent tab has somewhere to live — its own strip *or* a host that
 takes the opens — not only when its own `explorerEditorTabs` flag is on.
 
-## Persistence and migration (codec v4)
+## Persistence and migration
 
-The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION = 4`). It persists
-concrete owner routes, preview bits, panel-local Notes selection, and each
+The versioned tab codec persists concrete owner routes, preview bits,
+panel-local Notes selection, per-chat id-only presentation orders, and each
 `html-page` tab's `htmlPageId` (a restored descriptor without one is dropped).
 Native `browser`, `paste`, and external capability tabs stay in memory only; their active
 selection is omitted from storage too. Older supported payloads retain their
 stable bare-workspace ids when a concrete route is absent. An old `explorer`
 descriptor opens the tree column during `migrateUnifiedPanelState` rather than
-restoring a resource tab. Unknown versions are discarded.
+restoring a resource tab. Unknown versions are discarded. Order parsing drops
+duplicate, stale and wrong-chat ids; unopened ids never restore content.
+Closing prunes ordered ids, preview replacement retains its slot, and draft
+inheritance translates copied ids. Ephemeral ids are omitted with their tabs.
 
 The parse repairs as well as validates. A section with two preview bits keeps
 the **last** one and returns the rest permanent — nothing is dropped, because a
