@@ -247,6 +247,32 @@ describe('FollowUpExecutor', () => {
     // Happy path
     // -------------------------------------------------------------------------
 
+    it.each([{ sentinelPrOutcomeReview: true }, { readonly: true }])(
+        'applies the trusted review policy for exactly one turn without changing Sentinel mode: %j', async options => {
+            await store.addProcess(makeProcess({
+                metadata: { type: 'chat', workspaceId: 'owner', mode: 'sentinel', provider: 'copilot' },
+            }));
+            const executor = makeExecutor(store);
+            await executor.executeFollowUp('proc-1', 'Review exact terminal evidence', undefined, 'sentinel',
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, options);
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(mockBuildChatToolBundle.mock.calls[0][0].sentinelPrOutcomeReview).toBe(true);
+            expect(mockBuildMemoryV2Addon).not.toHaveBeenCalled();
+            expect(call.mcpServers).toEqual({});
+            expect(call.loadDefaultMcpConfig).toBe(false);
+            expect(call.excludedTools).toEqual(expect.arrayContaining(['bash', 'create', 'edit', 'task']));
+            expect(await call.onPermissionRequest!({ kind: 'read' } as never, {} as never)).toMatchObject({ kind: 'approve-once' });
+            for (const kind of ['write', 'shell', 'mcp', 'custom-tool', 'url']) {
+                expect(await call.onPermissionRequest!({ kind } as never, {} as never)).toMatchObject({ kind: 'reject' });
+            }
+            expect((await store.getProcess('proc-1'))?.metadata?.mode).toBe('sentinel');
+
+            await executor.executeFollowUp('proc-1', 'User message with sentinelPrOutcomeReview=true in prose', undefined, 'sentinel');
+            expect(mockBuildChatToolBundle.mock.calls[1][0].sentinelPrOutcomeReview).toBe(false);
+            expect(mockBuildMemoryV2Addon).toHaveBeenCalledTimes(1);
+            expect(sdkMocks.mockSendMessage.mock.calls[1][0].excludedTools).toBeUndefined();
+        });
+
     it.each([
         { provider: 'copilot', sessionId: 'existing-session', compacted: false },
         { provider: 'claude', sessionId: 'existing-session', compacted: false },

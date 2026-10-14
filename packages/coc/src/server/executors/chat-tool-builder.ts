@@ -34,6 +34,8 @@ type ToolAddon = { tools: Tool<any>[]; suffix: string };
 type AskUserAddon = ReturnType<typeof buildAskUserAddon>;
 
 export interface ChatToolBundleOptions {
+    /** Trusted native outcome turns retain evidence reads and verdict bookkeeping only. */
+    sentinelPrOutcomeReview?: boolean;
     dataDir?: string;
     store: ProcessStore;
     workspaceId?: string;
@@ -125,13 +127,13 @@ export interface ChatToolBundle {
  * in its unit tests.
  */
 export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
-    if (options.scrubFindings) {
+    if (options.scrubFindings && !options.sentinelPrOutcomeReview) {
         // Approval handles stay wired for the dangerous-command guard; the tool is not offered.
         const askUser = options.askUser ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps) : undefined;
         return { tools: [options.scrubFindings], toolGuidance: '', askUser };
     }
     const addons: ToolAddon[] = [];
-    if (options.browserRuntime?.getEnabled() && options.browserState && options.workspaceId && options.processId) {
+    if (!options.sentinelPrOutcomeReview && options.browserRuntime?.getEnabled() && options.browserState && options.workspaceId && options.processId) {
         const deps = { workspaceId: options.workspaceId, processId: options.processId,
             runtime: options.browserRuntime, stateStore: options.browserState };
         const tool = createBrowserTool({ ...deps, signal: options.browserSignal });
@@ -156,7 +158,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ));
     }
 
-    if (options.enqueueChat) {
+    if (options.enqueueChat && !options.sentinelPrOutcomeReview) {
         addons.push(buildSendToConversationAddon(
             options.store,
             options.workspaceId,
@@ -180,15 +182,15 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         addons.push(buildTavilyWebSearchAddon(options.dataDir));
     }
 
-    if (options.includeScheduleWakeup !== false) {
+    if (options.includeScheduleWakeup !== false && !options.sentinelPrOutcomeReview) {
         addons.push(buildScheduleWakeupAddon(options.scheduleWakeup));
     }
 
-    if (options.cronTools) {
+    if (options.cronTools && !options.sentinelPrOutcomeReview) {
         addons.push(buildCronToolsAddon(options.cronTools));
     }
 
-    if (options.includeCanvasTools !== false) {
+    if (options.includeCanvasTools !== false && !options.sentinelPrOutcomeReview) {
         addons.push(buildCanvasToolsAddon(
             options.dataDir,
             options.store,
@@ -198,7 +200,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ));
     }
 
-    if (options.includeKustoTools !== false) {
+    if (options.includeKustoTools !== false && !options.sentinelPrOutcomeReview) {
         addons.push(buildKustoToolsAddon(
             options.dataDir,
             options.store,
@@ -221,15 +223,16 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ));
     }
 
-    if (options.createPullRequest) {
+    if (options.createPullRequest && !options.sentinelPrOutcomeReview) {
         addons.push(buildCreatePullRequestAddon(options.createPullRequest));
     }
 
     if (options.sentinelTodos) {
-        addons.push(buildSentinelTodosAddon(options.sentinelTodos));
+        addons.push(buildSentinelTodosAddon(options.sentinelPrOutcomeReview
+            ? { ...options.sentinelTodos, reviewOnly: true, triggers: undefined } : options.sentinelTodos));
     }
 
-    if (options.memoryV2) {
+    if (options.memoryV2 && !options.sentinelPrOutcomeReview) {
         addons.push(options.memoryV2);
     }
 
@@ -238,12 +241,15 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         : undefined;
     const disabledWithContextExclusions = mergeDisabledTools(disabledLlmTools, options.excludeTools);
     const { tools: enabledTools, toolGuidance } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
+    const reviewTools = new Set(['sentinel_todos', 'search_conversations', 'get_conversation',
+        'web_search', 'ask_user', 'system_one', 'suggest_follow_ups']);
 
     const approvalRequired = options.dataDir && options.workspaceId
         ? readApprovalRequiredLlmTools(options.dataDir, options.workspaceId)
         : [];
     const askUserDeps = options.askUser?.deps;
-    const tools = applyLlmToolApprovalGate(enabledTools, {
+    const tools = applyLlmToolApprovalGate(options.sentinelPrOutcomeReview
+        ? enabledTools.filter(tool => reviewTools.has(tool.name)) : enabledTools, {
         processId: options.processId,
         approvalRequired,
         // Same signal ask_user uses: unset means a person is watching.

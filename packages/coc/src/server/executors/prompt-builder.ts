@@ -31,7 +31,7 @@ import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
-import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
@@ -776,7 +776,8 @@ export function buildSentinelTodosAddon(
         return { tools: [], suffix: '' };
     }
     const { tool } = createSentinelTodosTool(deps);
-    const suffix = tagGuidanceSuffix('sentinel_todo_ledger', SENTINEL_TODO_LEDGER_GUIDANCE);
+    const suffix = tagGuidanceSuffix('sentinel_todo_ledger',
+        deps.reviewOnly ? SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE : SENTINEL_TODO_LEDGER_GUIDANCE);
     return { tools: [tool], suffix };
 }
 

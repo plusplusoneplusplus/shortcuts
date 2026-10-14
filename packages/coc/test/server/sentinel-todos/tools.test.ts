@@ -51,6 +51,36 @@ describe('sentinel_todos tool', () => {
     });
     afterEach(() => { database.dispose(); });
 
+    it('permits native review verdict bookkeeping but rejects authoring and trigger actions even with forged arguments', async () => {
+        const item = await createItem();
+        const { tool } = createSentinelTodosTool({ service, owner, reviewOnly: true, triggers: {} as never });
+        const review = (args: Record<string, unknown>) => (tool as any).handler(args, {});
+        expect((tool.parameters as any).properties.action.enum).toEqual(['list', 'update']);
+        for (const action of ['create', 'attach_reference', 'set_dependencies', 'create_trigger', 'run_trigger_now']) {
+            expect(await review({ action, itemId: item.id })).toMatchObject({ code: 'invalid' });
+        }
+        for (const patch of [{ title: 'Different work' }, { notes: 'Implement next' }, { completionCondition: 'PR merged' }, { status: 'in_progress' }]) {
+            expect(await review({ action: 'update', itemId: item.id, expectedRevision: 1, ...patch })).toMatchObject({ code: 'invalid' });
+        }
+        expect(await review({ action: 'list', itemId: item.id })).toMatchObject({ items: [{ id: item.id }] });
+        expect(await review({ action: 'update', itemId: item.id, expectedRevision: 1,
+            status: 'needs_attention', reason: 'Closed without delivering the requested outcome' }))
+            .toMatchObject({ item: { status: 'needs_attention', completionCondition: item.completionCondition } });
+        const addon = buildSentinelTodosAddon({ service, owner, reviewOnly: true });
+        expect(addon.suffix).toContain('PR outcome review only');
+        expect(addon.suffix).not.toContain('send_to_conversation');
+    });
+
+    it.each(['done', 'archived', 'manual'])('native review cannot override a current %s item verdict', async state => {
+        const item = await createItem(state === 'manual' ? { type: 'manual' } : {});
+        if (state === 'done') todos.update(owner, item.id, 1, { status: 'done' }, 'user');
+        if (state === 'archived') todos.update(owner, item.id, 1, { archived: true }, 'user');
+        const current = todos.get(owner).items.find(current => current.id === item.id)!;
+        const { tool } = createSentinelTodosTool({ service, owner, reviewOnly: true });
+        expect(await (tool as any).handler({ action: 'update', itemId: item.id, expectedRevision: current.revision,
+            status: 'needs_attention', reason: 'PR closed' }, {})).toMatchObject({ code: 'invalid' });
+        expect(todos.get(owner).items.find(current => current.id === item.id)).toEqual(current);
+    });
     it('is named sentinel_todos and offers no archive or job-control parameters', () => {
         const { tool } = createSentinelTodosTool({ service, owner });
         expect(tool.name).toBe(SENTINEL_TODOS_TOOL_NAME);

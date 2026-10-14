@@ -85,6 +85,17 @@ describe('buildChatTurnContext', () => {
         mockBuildChatToolBundle.mockReturnValue(makeBundleResult());
     });
 
+    it('treats native PR outcome review as a per-turn hard tool restriction without memory writes', async () => {
+        const ctx = await buildChatTurnContext({
+            store: makeStore(), workspaceId: 'owner', processId: 'sentinel',
+            sentinelPrOutcomeReview: true,
+        });
+        expect(mockBuildMemoryV2Addon).not.toHaveBeenCalled();
+        expect(mockBuildChatToolBundle.mock.calls[0][0].sentinelPrOutcomeReview).toBe(true);
+        expect(ctx.excludedTools).toEqual(expect.arrayContaining(['bash', 'powershell', 'create', 'edit', 'apply_patch', 'task']));
+        expect(ctx.memoryV2.tools).toEqual([]);
+    });
+
     it('forwards the host Kusto runtime unchanged to the tool bundle', async () => {
         const kustoRuntime = {
             getEnabled: () => true,

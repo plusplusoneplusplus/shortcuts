@@ -16,6 +16,31 @@ function makeStore(searchEnabled = true) {
 }
 
 describe('buildChatToolBundle', () => {
+    it('retains review reads and ledger verdicts but excludes every supplied execution capability', () => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+        const result = buildChatToolBundle({
+            dataDir: tmpDir, workspaceId: WS_ID, processId: 'owner', store: makeStore(),
+            sentinelPrOutcomeReview: true,
+            enqueueChat: vi.fn(), sendMessage: vi.fn(), launchRalph: vi.fn(),
+            createPullRequest: {} as never, cronTools: {} as never, scheduleWakeup: {} as never,
+            browserRuntime: { getEnabled: () => true, execute: vi.fn() },
+            browserState: new BrowserToolStateStore(), canvasToolsEnabled: true, kustoToolsEnabled: true,
+            sentinelTodos: { owner: { workspaceId: WS_ID, processId: 'owner' }, service: {
+                list: vi.fn(async () => ({ items: [] })), create: vi.fn(), update: vi.fn(), linkJob: vi.fn(), attachReference: vi.fn(),
+            } as never, triggers: {} as never },
+            memoryV2: { tools: [{ name: 'save_memory' }] as never, suffix: 'mutating memory',
+                excludedBuiltinTools: [], dispose: vi.fn() },
+        });
+        const names = result.tools.map(tool => tool.name);
+        expect(names).toContain('sentinel_todos');
+        expect(names).toContain('search_conversations');
+        expect(names).not.toEqual(expect.arrayContaining(['send_to_conversation', 'create_pull_request']));
+        for (const forbidden of ['send_to_conversation', 'create_pull_request', 'cron', 'scheduleWakeup',
+            'browser', 'write_canvas', 'extension_canvas', 'kusto_query', 'save_memory']) expect(names).not.toContain(forbidden);
+        expect(result.toolGuidance).toContain('PR outcome review only');
+        expect(result.toolGuidance).not.toContain('send_to_conversation');
+        expect((result.tools.find(tool => tool.name === 'sentinel_todos')!.parameters as any).properties.action.enum).toEqual(['list', 'update']);
+    });
     it('browser honors live enablement and normal per-repo disable preferences', () => {
         let enabled = false;
         const options = {

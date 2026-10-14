@@ -29,6 +29,11 @@ import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
+export const SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE =
+    'PR outcome review only: list the current ledger and record an evidence-backed done or needs_attention verdict ' +
+    'using update with the current expectedRevision, reason and optional outcome/reviewedJobs. Respect the ENTIRE ' +
+    'completionCondition and latest user verdict. Skip manual, Done or archived items. Never create items, rewrite ' +
+    'completion conditions, arm triggers, delegate, retry, implement or deploy work.';
 
 export const MANUAL_TRACKING_GUIDANCE =
     'Manual items (`type: manual`) are tracking only: never execute or delegate them, link jobs, or automatically ' +
@@ -39,6 +44,8 @@ export const MANUAL_TRACKING_GUIDANCE =
     'Archive/restore remain user-only.';
 
 export interface SentinelTodosToolDeps {
+    /** Native PR reviews may record verdicts, never author work or executable rules. */
+    reviewOnly?: boolean;
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
         & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
@@ -196,12 +203,12 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     const { service, owner } = deps;
     const dependenciesEnabled = service.dependenciesEnabled?.() === true;
     const tool = defineTool<SentinelTodosArgs>(SENTINEL_TODOS_TOOL_NAME, {
-        description: DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
+        description: deps.reviewOnly ? SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE : DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
             + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. bind_pr_output explicitly selects one exact produced PR for outputSlot with tracked_job or owner_selection provenance and reason; never choose the newest implicitly. accept_artifact records acceptance of the exact phase/reference/sha256 content version without marking Done or authorizing work. evaluate_dependencies reads fresh conjunctive readiness only; it never launches or wakes. Keep fulfillment and authorization separate.' : ''),
         parameters: {
             type: 'object',
             properties: {
-                action: { type: 'string', enum: ['list', 'create', 'update', 'attach_reference',
+                action: { type: 'string', enum: deps.reviewOnly ? ['list', 'update'] : ['list', 'create', 'update', 'attach_reference',
                     ...(dependenciesEnabled ? ['set_dependencies', 'bind_pr_output', 'accept_artifact', 'evaluate_dependencies'] : []), ...(deps.triggers ? TRIGGER_ACTIONS : [])] },
                 type: { type: 'string', enum: ['normal', 'manual'], description: 'create only: immutable item type (default normal); manual items never authorize execution.' },
                 includeArchived: { type: 'boolean', description: 'list: include archived items.' },
@@ -287,6 +294,23 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
         },
         handler: async (args: SentinelTodosArgs): Promise<SentinelTodosResult> => {
             try {
+                if (deps.reviewOnly) {
+                    const allowed = args?.action === 'list'
+                        ? ['action', 'includeArchived', 'limit', 'offset', 'itemId']
+                        : ['action', 'itemId', 'expectedRevision', 'status', 'reason', 'outcome', 'reviewedJobs'];
+                    if (!['list', 'update'].includes(args?.action)
+                        || Object.keys(args ?? {}).some(key => !allowed.includes(key))
+                        || (args.status !== undefined && !['done', 'needs_attention'].includes(args.status))) {
+                        return { error: 'Native PR reviews allow evidence reads and verdict bookkeeping only.', code: 'invalid' };
+                    }
+                    if (args.action === 'update') {
+                        const ledger = await service.list(owner);
+                        const current = ledger.items.find(item => item.id === args.itemId);
+                        if (!current || current.type !== 'normal' || current.archived || current.status === 'done') {
+                            return { error: 'Review item is missing, manual, Done or archived.', code: 'invalid' };
+                        }
+                    }
+                }
                 if (args && 'archived' in args) {
                     return { error: 'Archive/restore remain user-only.', code: 'invalid' };
                 }

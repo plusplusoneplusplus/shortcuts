@@ -35,6 +35,7 @@ import { processOperationAdmission } from '../processes/process-operation-admiss
 // ============================================================================
 
 export interface ChatTurnContextInput {
+    sentinelPrOutcomeReview?: boolean;
     dataDir?: string;
     store: ProcessStore;
     workspaceId?: string;
@@ -177,13 +178,15 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  * ```
  */
 export async function buildChatTurnContext(input: ChatTurnContextInput): Promise<ChatTurnContext> {
-    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.scrubFindings && !input.browserOnly;
+    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.scrubFindings && !input.browserOnly
+        && !input.sentinelPrOutcomeReview;
 
     const memoryV2: MemoryV2Addon = includeMemoryV2
         ? await buildMemoryV2Addon(input.dataDir, input.workspaceId, input.query, input.processId)
         : EMPTY_MEM_V2;
 
     const toolBundle = buildChatToolBundle({
+        sentinelPrOutcomeReview: input.sentinelPrOutcomeReview,
         dataDir: input.dataDir,
         store: input.store,
         workspaceId: input.workspaceId,
@@ -235,7 +238,14 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         tools: toolBundle.tools,
         toolGuidance: toolBundle.toolGuidance,
         memoryV2,
-        excludedTools: memoryV2.excludedBuiltinTools,
+        excludedTools: input.sentinelPrOutcomeReview ? [...new Set([
+            ...memoryV2.excludedBuiltinTools,
+            'bash', 'powershell', 'create', 'edit', 'write', 'apply_patch', 'task',
+            'Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent',
+            'run_in_terminal', 'terminal', 'execute', 'run_subagent',
+            'create_pull_request', 'send_to_conversation', 'cron', 'scheduleWakeup',
+            'store_memory', 'vote_memory', 'save_memory', 'skill',
+        ])] : memoryV2.excludedBuiltinTools,
         askUser: toolBundle.askUser,
         dispose: () => {
             memoryV2.dispose();
