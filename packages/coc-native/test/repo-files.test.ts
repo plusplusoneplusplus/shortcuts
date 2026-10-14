@@ -37,7 +37,7 @@ afterEach(() => {
 
 /** A stand-in exposing the whole capability; `drop` omits one method. */
 function stubSource(drop?: string): string {
-    const methods = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
+    const methods = ['readBlob', 'writeBlob', 'deleteEntry', 'listDirectory', 'listFiles', 'replaceContent',
         'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose']
         .filter(m => m !== drop)
         .map(m => `${m}() { return 7; }`)
@@ -100,7 +100,7 @@ describe('when the capability is missing', () => {
         expect(nativeRepoFilesStatus().loaded).toBe(false);
     });
 
-    it.each(['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
+    it.each(['readBlob', 'writeBlob', 'deleteEntry', 'listDirectory', 'listFiles', 'replaceContent',
         'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose'])('rejects a binary missing %s', (method) => {
         useAddon(stubSource(method));
         expect(() => loadNativeRepoFiles()).toThrow('does not export repo files');
