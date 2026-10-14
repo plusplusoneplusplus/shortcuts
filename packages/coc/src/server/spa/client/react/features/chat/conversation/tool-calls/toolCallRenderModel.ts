@@ -277,6 +277,21 @@ export function statusIndicator(status?: string): string {
     }
 }
 
+/** The wire/store exposes strings, not original payload sizes or token counts. */
+export function getResponseSize(result: unknown, availableResponseBytes?: number): ToolCallRenderModel['responseSize'] {
+    const hasRetainedSize = typeof availableResponseBytes === 'number'
+        && Number.isSafeInteger(availableResponseBytes) && availableResponseBytes >= 0;
+    if (!hasRetainedSize && typeof result !== 'string') return null;
+    const bytes = hasRetainedSize ? availableResponseBytes : new TextEncoder().encode(result as string).byteLength;
+    const units = ['B', 'KiB', 'MiB', 'GiB'];
+    const unit = bytes === 0 ? 0 : Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
+    return {
+        bytes,
+        label: unit === 0 ? `${bytes} B` : `${(bytes / 1024 ** unit).toFixed(1)} ${units[unit]}`,
+        explanation: `Available response content: ${formatCount(bytes)} bytes (UTF-8, before display clipping). Includes serialized JSON/base64 when present; excludes unavailable or omitted content. Not a token count or original payload size.`,
+    };
+}
+
 /** Raw tool call shape accepted by the render model. */
 export interface ToolCallModelInput extends ToolLikeForNormalization {
     id?: string;
@@ -318,6 +333,8 @@ export interface ToolCallRenderModel {
     /** The full path backing a path summary (empty string otherwise). */
     summaryFullPath: string;
     duration: string;
+    /** UTF-8 size of the available raw response string, before display clipping. */
+    responseSize: { bytes: number; label: string; explanation: string } | null;
     startTimeLabel: string;
     /** Start time with seconds, for the expanded detail body. '' when unknown. */
     startTimeDetailLabel: string;
@@ -338,6 +355,8 @@ export interface ToolCallRenderModel {
     sqlDescription: string;
     sqlQuery: string;
     sqlOptionsText: string;
+    /** `run_tool_script` source, shown as a code block instead of raw args JSON. */
+    scriptCode: string;
     /** Markdown source rendered for a task_complete card. */
     taskCompleteSummary: string;
     /** True when hovering the header should show a result popover. */
@@ -363,6 +382,15 @@ export interface ToolCallRenderModel {
     progressText: string;
     /** Accessible status for the running indicator ('' when not running). */
     runningStatusLabel: string;
+}
+
+/** Pretty-print JSON text; anything else is returned unchanged. */
+function prettyJson(text: string): string {
+    try {
+        return JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+        return text;
+    }
 }
 
 /** Pull the JSON-stringifiable extra options out of a shell/sql args object. */
@@ -394,6 +422,8 @@ export function buildToolCallRenderModel(
     const isTaskComplete = name === 'task_complete';
     const isShellLike = name === 'bash' || name === 'shell' || name === 'powershell';
     const isSql = name === 'sql';
+    // Bridged providers report the MCP-qualified name (`mcp__coc_llm_tools__run_tool_script`).
+    const isToolScript = name === 'run_tool_script' || name.endsWith('__run_tool_script');
 
     const applyPatchText = name === 'apply_patch' ? getApplyPatchText(normalized.args) : '';
     const codexFileChanges = name === 'apply_patch' ? getCodexFileChanges(normalized.args) : [];
@@ -422,7 +452,8 @@ export function buildToolCallRenderModel(
 
     const presentation = getToolResultPresentation(normalized.result);
     const hasStructuredImages = presentation.images.length > 0 && !isImageDataUrl(normalized.result ?? '');
-    const resultText = isImageDataUrl(normalized.result ?? '') ? normalized.result ?? '' : presentation.text;
+    const resultText = isImageDataUrl(normalized.result ?? '') ? normalized.result ?? ''
+        : isToolScript ? prettyJson(presentation.text) : presentation.text;
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated
         ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated — showing ${formatCount(TRUNCATED_RESULT_LENGTH)} of ${formatCount(resultText.length)} chars)`
@@ -439,6 +470,7 @@ export function buildToolCallRenderModel(
     const sqlDescription = isSql && argsObj?.description ? String(argsObj.description) : '';
     const sqlQuery = isSql && argsObj?.query ? String(argsObj.query) : '';
     const sqlOptionsText = isSql ? extractOptionsText(argsObj, ['description', 'query']) : '';
+    const scriptCode = isToolScript && typeof argsObj?.code === 'string' ? argsObj.code : '';
 
     const taskCompleteSummary = isTaskComplete
         ? (resultText || (argsObj && typeof argsObj.summary === 'string' ? argsObj.summary : ''))
@@ -486,6 +518,7 @@ export function buildToolCallRenderModel(
         summaryIsPath,
         summaryFullPath,
         duration: formatDuration(normalized.startTime, normalized.endTime, now),
+        responseSize: getResponseSize(normalized.result, normalized.availableResponseBytes),
         startTimeLabel: formatStartTime(normalized.startTime),
         startTimeDetailLabel: formatStartTimeDetailed(normalized.startTime),
         hasDetails,
@@ -502,6 +535,7 @@ export function buildToolCallRenderModel(
         sqlDescription,
         sqlQuery,
         sqlOptionsText,
+        scriptCode,
         taskCompleteSummary,
         hasHoverResult,
         kindInfo,

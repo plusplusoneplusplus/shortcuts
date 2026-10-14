@@ -12,7 +12,7 @@
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
@@ -89,6 +89,10 @@ export interface ChatTurnContextInput {
     excludeTools?: string[];
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
     onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
+    /** False leaves out `run_tool_script` (Codex code-mode models already have `functions.exec`). */
+    includeToolScripting?: boolean;
+    /** Receives `run_tool_script` inner-call events so the timeline nests them under the script. */
+    onNestedToolEvent?: (event: ToolEvent) => void;
     /**
      * Whether to include Memory V2 tools and context in this turn.
      * Defaults to true. No chat path opts out today — autopilot used to, which
@@ -210,10 +214,13 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         scrubFindings: input.scrubFindings,
         excludeTools: input.excludeTools,
         onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,
+        includeToolScripting: input.includeToolScripting,
+        onNestedToolEvent: input.onNestedToolEvent,
         ...(input.browserOnly ? {
             includeFollowUpSuggestions: false, includeSearchConversations: false,
             includeTavilyWebSearch: false, includeScheduleWakeup: false,
             includeCanvasTools: false, includeKustoTools: false, includeSystemOneTool: false,
+            includeToolScripting: false,
         } : {}),
     });
 

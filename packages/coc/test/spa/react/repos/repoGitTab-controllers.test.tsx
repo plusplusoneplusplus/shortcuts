@@ -581,6 +581,76 @@ describe('useRepoGitSelection — hosted by a repo group', () => {
 describe('useRepoGitSelection — routed navigation', () => {
     const a = commit('aaaaaaaaaaaa');
 
+    it.each([
+        ['ws-alpha', WS],
+        ['remote:owner:ws-alpha', WS],
+        ['remote:owner:ws-alpha', 'remote:owner:group-product'],
+    ])('opens an already-read outgoing commit outside the history page on %s / %s with lookup off', (sourceSelectionId, page) => {
+        lookupEnabled = false;
+        const outgoing = commit('ffffffffffff');
+        const { result, rerender } = renderHook(() => useRepoGitSelection({
+            workspaceId: WS, routeWorkspaceId: page, sourceSelectionId, commits: [a], loading: false,
+        }));
+        act(() => result.current.hydrateFromInitialLoad([a]));
+        appState = {
+            ...appState, selectedGitCommitHash: outgoing.hash,
+            gitRouteScope: { routeWorkspaceId: page, workspaceId: WS, knownCommit: { sourceSelectionId, commit: outgoing } },
+        };
+        act(() => rerender());
+        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+        expect(result.current.selectedCommit).toEqual(outgoing);
+    });
+
+    it('hydrates an already-read outgoing commit on initial expansion without lookup', () => {
+        lookupEnabled = false;
+        const outgoing = commit('ffffffffffff');
+        appState = {
+            ...appState, selectedGitCommitHash: outgoing.hash,
+            gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS, knownCommit: { sourceSelectionId: WS, commit: outgoing } },
+        };
+        const { result } = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [a], loading: true }));
+        act(() => result.current.hydrateFromInitialLoad([a]));
+        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+    });
+
+    it('reopens the same explicit outgoing selection after its detail was closed', () => {
+        lookupEnabled = false;
+        const outgoing = commit('ffffffffffff');
+        const { result, rerender } = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [], loading: false }));
+        act(() => result.current.hydrateFromInitialLoad([]));
+        const select = () => {
+            appState = { ...appState, selectedGitCommitHash: outgoing.hash,
+                gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS, knownCommit: { sourceSelectionId: WS, commit: outgoing } } };
+            act(() => rerender());
+        };
+        select();
+        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+        act(() => result.current.clearSelection());
+        expect(result.current.view).toBeNull();
+        select();
+        expect(result.current.view).toEqual({ type: 'commit', commit: outgoing });
+        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+    });
+
+    it.each(['owner', 'member', 'page', 'hash'])('rejects a supplied outgoing commit with a mismatched %s', mismatch => {
+        lookupEnabled = false;
+        const outgoing = commit('ffffffffffff');
+        appState = {
+            ...appState, selectedGitCommitHash: mismatch === 'hash' ? a.hash : outgoing.hash,
+            gitRouteScope: {
+                routeWorkspaceId: mismatch === 'page' ? 'group-other' : WS,
+                workspaceId: mismatch === 'member' ? OTHER_WS : WS,
+                knownCommit: { sourceSelectionId: mismatch === 'owner' ? 'remote:other:ws-alpha' : WS, commit: outgoing },
+            },
+        };
+        const { result } = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [], loading: false }));
+        act(() => result.current.hydrateFromInitialLoad([]));
+        expect(result.current.view).toBeNull();
+        expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
+    });
+
     function setupRouted(initial: Record<string, unknown>) {
         appState = { ...appState, gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS }, ...initial };
         const view = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [a], loading: false }));

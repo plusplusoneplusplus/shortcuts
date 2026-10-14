@@ -80,6 +80,14 @@ export interface CocToolRuntimeContext {
     processId?: string;
 }
 
+/** Per-call options for {@link CocToolRuntime.callTool}. */
+export interface CocToolCallOptions {
+    /** Passed to the handler as `ToolInvocation.signal`, together with runtime disposal. */
+    signal?: AbortSignal;
+    /** Caller-chosen `ToolInvocation.toolCallId`, so events and handlers share one id. */
+    toolCallId?: string;
+}
+
 // ============================================================================
 // CocToolRuntime
 // ============================================================================
@@ -98,6 +106,8 @@ export interface CocToolRuntimeContext {
 export class CocToolRuntime {
     private readonly toolsByName = new Map<string, Tool<any>>();
     private readonly context: CocToolRuntimeContext;
+    /** Aborted on dispose, so calls still running when the turn ends are cancelled. */
+    private readonly disposeAbort = new AbortController();
     private disposed = false;
 
     constructor(tools: ReadonlyArray<Tool<any>>, context: CocToolRuntimeContext = {}) {
@@ -142,7 +152,7 @@ export class CocToolRuntime {
      * runs the original in-process closure, the handler's Promise resolves when
      * the SPA submits an answer, exactly as on the native Copilot path.
      */
-    public async callTool(name: string, args: unknown): Promise<RuntimeToolResult> {
+    public async callTool(name: string, args: unknown, options: CocToolCallOptions = {}): Promise<RuntimeToolResult> {
         if (this.disposed) {
             return errorResult(`CocToolRuntime has been disposed; cannot call tool "${name}"`);
         }
@@ -159,9 +169,12 @@ export class CocToolRuntime {
 
         const invocation: ToolInvocation = {
             sessionId: this.context.sessionId ?? '',
-            toolCallId: crypto.randomUUID(),
+            toolCallId: options.toolCallId ?? crypto.randomUUID(),
             toolName: name,
             arguments: args,
+            signal: options.signal
+                ? AbortSignal.any([options.signal, this.disposeAbort.signal])
+                : this.disposeAbort.signal,
         };
 
         try {
@@ -181,6 +194,7 @@ export class CocToolRuntime {
         if (this.disposed) return;
         this.disposed = true;
         this.toolsByName.clear();
+        this.disposeAbort.abort();
     }
 }
 

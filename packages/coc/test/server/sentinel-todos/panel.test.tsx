@@ -7,6 +7,7 @@
  *
  * @vitest-environment jsdom
  */
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, configure, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import type { SentinelTodoItem, SentinelTodoLedgerResponse } from '@plusplusoneplusplus/coc-client';
@@ -86,6 +87,16 @@ function item(overrides: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
 
 function ledger(items: SentinelTodoItem[], revision = items.length): SentinelTodoLedgerResponse {
     return { revision, items };
+}
+
+function assertIconOnlyStatus(badge: HTMLElement, label: string, mark: string) {
+    expect(badge.getAttribute('title')).toBe(label);
+    expect(within(badge).getByText(label).className).toBe('sr-only');
+    expect(badge.querySelector('[aria-hidden="true"]')?.textContent).toBe(mark);
+    expect([...badge.childNodes].filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent?.trim()).join('')).toBe('');
+    expect(badge.classList.contains('px-1')).toBe(true);
+    expect(badge.classList.contains('justify-center')).toBe(true);
 }
 
 function deferred<T>() {
@@ -442,10 +453,112 @@ describe('UnifiedTodoTab', () => {
         expect(payload).not.toHaveProperty('jobs');
         const receive = vi.fn();
         subscribeActiveChatAttach('ws-1', receive);
-        fireEvent.click(screen.getByRole('button', { name: 'Attach Fix login as context' }));
+        fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Attach' }));
         expect(receive).toHaveBeenCalledWith(payload);
         expect(create).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each(['normal', 'manual'] as const)('isolates the %s card menu and supports keyboard dismissal and attachment', async type => {
+        const user = userEvent.setup();
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item({ type })]));
+        const bubbled = vi.fn();
+        render(<div onPointerDown={bubbled} onMouseDown={bubbled} onClick={bubbled}
+            onKeyDown={bubbled} onKeyUp={bubbled} onDragStart={bubbled}>
+            <UnifiedTodoTab owner={OWNER} />
+        </div>);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const trigger = within(row).getByRole('button', { name: 'More actions' });
+        const selection = within(row).getByRole('button', { pressed: false });
+        const receive = vi.fn();
+        subscribeActiveChatAttach('ws-1', receive);
+        expect(within(row).queryByRole('button', { name: /Attach/ })).toBeNull();
+        expect(screen.queryByRole('menu')).toBeNull();
+        trigger.focus();
+        await user.keyboard('{ArrowDown}');
+        expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+        expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Attach' }));
+        await user.keyboard('{End}{Home}{ArrowUp}{Escape}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+        await user.keyboard('{ArrowUp}{Tab}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+        await user.click(trigger);
+        expect(fireEvent.dragStart(trigger, { dataTransfer: { setData: vi.fn() } })).toBe(false);
+        await user.click(screen.getByRole('menuitem', { name: 'Attach' }));
+        expect(receive).toHaveBeenCalledTimes(1);
+        expect(document.activeElement).toBe(trigger);
+        expect(selection.getAttribute('aria-pressed')).toBe('false');
+        expect(bubbled).not.toHaveBeenCalled();
+        await user.keyboard('{Enter}');
+        await user.keyboard(' ');
+        expect(receive).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+        await user.click(trigger);
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('keeps the card popup inside the viewport near its lower right corner', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const trigger = within(row).getByRole('button', { name: 'More actions' });
+        const measure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            return this.getAttribute('role') === 'menu'
+                ? { width: 248, height: 40 } as DOMRect
+                : { right: window.innerWidth - 2, top: window.innerHeight - 26, bottom: window.innerHeight - 2 } as DOMRect;
+        });
+        try {
+            fireEvent.click(trigger);
+            const menu = screen.getByRole('menu');
+            expect(parseFloat(menu.style.left)).toBeGreaterThanOrEqual(8);
+            expect(parseFloat(menu.style.left) + 248).toBeLessThanOrEqual(window.innerWidth - 8);
+            expect(parseFloat(menu.style.top) + 40).toBeLessThanOrEqual(window.innerHeight - 8);
+        } finally {
+            measure.mockRestore();
+        }
+    });
+
+    it('hides card actions and disables dragging when context attachments are disabled', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: false });
+        get.mockResolvedValue(ledger([item(), item({ id: 'manual', type: 'manual' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        for (const id of ['i1', 'manual']) {
+            const row = await screen.findByTestId(`sentinel-todo-row-${id}`);
+            expect(row.draggable).toBe(false);
+            expect(within(row).queryByRole('button', { name: 'More actions' })).toBeNull();
+        }
+        expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('routes menu attachments only to the concrete owning clone', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'srv-2', baseUrl: 'https://owner.example' }]);
+        const owner = { ...OWNER, ownerRoutingRef: 'remote:srv-2:ws-1' };
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={owner} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const local = vi.fn();
+        const remote = vi.fn();
+        subscribeActiveChatAttach('ws-1', local);
+        subscribeActiveChatAttach(owner.ownerRoutingRef, remote);
+        fireEvent.click(within(row).getByRole('button', { name: 'More actions' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Attach' }));
+        expect(remote).toHaveBeenCalledWith(expect.objectContaining({
+            sourceWorkspaceId: 'ws-1', sourceProcessId: OWNER.processId,
+            sourceRoutingRef: owner.ownerRoutingRef, todoItemId: 'i1',
+        }));
+        expect(local).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
     });
 
     it('shows collapsed-row feedback when the owning Sentinel composer is unavailable', async () => {
@@ -453,7 +566,8 @@ describe('UnifiedTodoTab', () => {
         get.mockResolvedValue(ledger([item()]));
         render(<UnifiedTodoTab owner={OWNER} />);
         await screen.findByText('Fix login');
-        fireEvent.click(screen.getByRole('button', { name: 'Attach Fix login as context' }));
+        fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Attach' }));
         expect(screen.getByTestId('sentinel-todo-attach-error-i1').textContent).toContain('Open the owning Sentinel');
         expect(update).not.toHaveBeenCalled();
     });
@@ -597,6 +711,7 @@ describe('UnifiedTodoTab', () => {
         get.mockResolvedValue(ledger([pending], 4));
         render(<UnifiedTodoTab owner={owner} />);
         const badge = await screen.findByTestId('sentinel-todo-status-in_review');
+        assertIconOnlyStatus(badge, 'In review', '◇');
         expect(badge.textContent).toContain('In review');
         expect(badge.querySelector('[aria-hidden="true"]')?.textContent).toBe('◇');
         expect(clientRefs).toContain(owner.ownerRoutingRef);
@@ -604,6 +719,9 @@ describe('UnifiedTodoTab', () => {
         expect(row.textContent).toContain('Review pending (result delivered)');
         fireEvent.click(within(row).getByRole('button', { pressed: false, name: /Fix login/ }));
         row = screen.getByTestId(row.dataset.testid!.replace('sentinel-todo-row-', 'sentinel-todo-detail-'));
+        const detailBadge = within(row).getByTestId('sentinel-todo-status-in_review');
+        assertIconOnlyStatus(detailBadge, 'In review', '◇');
+        expect(detailBadge.className).toBe(badge.className);
         // Derived phases are not stored statuses or new user execution actions.
         const status = within(row).getByRole('group', { name: 'Status' });
         expect(within(status).getByRole('button', { pressed: true }).textContent).toContain('In progress');
@@ -1316,6 +1434,43 @@ describe('UnifiedTodoTab split layout', () => {
     }
     function detail(id = 'i1') { return screen.getByTestId(`sentinel-todo-detail-${id}`); }
 
+    it.each((['normal', 'manual'] as const).flatMap(type => [
+        { type, status: 'todo', label: 'To do', mark: '○', color: 'text-[#616161]' },
+        { type, status: 'in_progress', label: 'In progress', mark: '◐', color: 'text-[#0078d4]' },
+        { type, status: 'needs_attention', label: 'Needs attention', mark: '!', color: 'text-[#b5650f]' },
+        { type, status: 'done', label: 'Done', mark: '✓', color: 'text-[#16825d]' },
+    ] as const))('shows icon-only $status on $type cards and detail headers with accessible names and tooltips', async ({ type, status, label, mark, color }) => {
+        get.mockResolvedValue(ledger([item({ type, status })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        if (status === 'done') {
+            const section = await screen.findByTestId(type === 'manual'
+                ? 'sentinel-todo-manual-done-section' : 'sentinel-todo-done-section');
+            fireEvent.click(within(section).getByRole('button', { name: 'Done (1)' }));
+        }
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const badge = within(row).getByTestId(`sentinel-todo-status-${status}`);
+        assertIconOnlyStatus(badge, label, mark);
+        expect(badge.classList.contains(color)).toBe(true);
+        expect(within(row).getByRole('button', { name: new RegExp(`${label}.*Fix login`) })).toBeTruthy();
+        select();
+        const heading = within(detail()).getByRole('heading', { name: new RegExp(`Fix login.*${label}`) });
+        const detailBadge = within(heading).getByTestId(`sentinel-todo-status-${status}`);
+        assertIconOnlyStatus(detailBadge, label, mark);
+        expect(detailBadge.className).toBe(badge.className);
+        if (status !== 'done') {
+            const controls = within(detail()).getByRole('group', { name: 'Status' });
+            for (const name of ['To do', 'In progress', 'Needs attention', 'Done']) {
+                const control = within(controls).getByRole('button', { name });
+                expect(control.textContent).toContain(name);
+                expect(control.querySelector('.sr-only')).toBeNull();
+            }
+        } else {
+            expect(within(detail()).getByRole('button', { name: 'Reopen' })).toBeTruthy();
+        }
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
+
     it('hosts PR outcome evidence only in the selected normal detail, never hidden editors or list rows', async () => {
         applyRuntimeConfigPatch({ sentinelPrOutcomeWakeEnabled: true });
         prOutcomesGet.mockResolvedValue({ revision: 1, paused: false, outcomes: [] });
@@ -1633,7 +1788,8 @@ describe('UnifiedTodoTab split layout', () => {
         const payload = JSON.parse(setData.mock.calls.find(call => call[0] === POINTER_CONTEXT_DRAG_MIME)![1]);
         const receive = vi.fn();
         subscribeActiveChatAttach('ws-1', receive);
-        fireEvent.click(within(row).getByRole('button', { name: 'Attach Fix login as context' }));
+        fireEvent.click(within(row).getByRole('button', { name: 'More actions' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Attach' }));
         expect(receive).toHaveBeenCalledWith(payload);
         expect(payload).toMatchObject({ todoItemId: 'i1', sourceProcessId: OWNER.processId, sourceRoutingRef: null });
         expect(payload).not.toHaveProperty('notes');

@@ -189,9 +189,12 @@ export interface ProcessOutputEvent {
     askUser?: {
         questionId: string;
         question: string;
-        type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+        type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
         options?: Array<{ value: string; label: string; description?: string }>;
         defaultValue?: string | string[];
+        /** `sensitive-input` only; see `PendingAskUserQuestion`. */
+        sink?: string;
+        sinkArgs?: { domain: string; viewId?: string };
         turnIndex: number;
     };
 }

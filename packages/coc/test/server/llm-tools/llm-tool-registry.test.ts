@@ -9,7 +9,37 @@ import {
     getEffectiveDefaultDisabledTools,
     filterDisabledLlmTools,
     filterRemovedLlmToolNames,
+    getEffectiveLlmToolRegistry,
+    isScriptableLlmTool,
 } from '../../../src/server/llm-tools/llm-tool-registry';
+
+describe('isScriptableLlmTool', () => {
+    it('allows registered tools by default, including nested run_tool_script', () => {
+        for (const name of ['search_conversations', 'get_conversation', 'read_canvas', 'system_one', 'run_tool_script']) {
+            expect(isScriptableLlmTool(name)).toBe(true);
+        }
+    });
+
+    it('excludes interactive, side-channel and outward-facing tools', () => {
+        for (const name of ['ask_user', 'suggest_follow_ups', 'create_pull_request', 'send_to_conversation', 'browser']) {
+            expect(isScriptableLlmTool(name)).toBe(false);
+        }
+    });
+
+    it('excludes tools outside the registry', () => {
+        for (const name of ['submit_scrub_findings', 'add_diff_comment', 'resolve_comment', 'sentinel_todos', 'cron']) {
+            expect(isScriptableLlmTool(name)).toBe(false);
+        }
+    });
+});
+
+describe('run_tool_script registry gating', () => {
+    it('is advertised only when the tool scripting flag is on', () => {
+        expect(getEffectiveLlmToolRegistry().map(t => t.name)).not.toContain('run_tool_script');
+        expect(getEffectiveLlmToolRegistry({ toolScriptingEnabled: true }).find(t => t.name === 'run_tool_script'))
+            .toMatchObject({ enabledByDefault: true });
+    });
+});
 
 describe('LLM_TOOL_REGISTRY', () => {
     it('contains all expected tools', () => {
@@ -190,7 +220,7 @@ describe('getEffectiveLlmToolRegistry', () => {
         const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true, toolScriptingEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
     it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
@@ -202,8 +232,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // Wakeup, three canvas tools, Kusto, System One and browser are feature-gated.
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 7);
+        // Wakeup, three canvas tools, Kusto, System One, browser and run_tool_script are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 8);
     });
 
     it('hides browser by default and includes it only when its live flag is enabled', async () => {

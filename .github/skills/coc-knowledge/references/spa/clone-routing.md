@@ -242,10 +242,13 @@ keeps the previous list, leaving the Folders section silently empty.
 
 ### Chat selection keys and rail job openers
 
-The Router files a URL selection under the route id (a clone key for a remote workspace
-or group), while `RepoChatTab` selects under the bare `workspaceId`. When the two differ,
-the tab adopts each change to `selectedTaskIdByRepo[routeId]`, so reloads, history and
-job links select on the owning clone; other clone keys are never read.
+Router, `RepoChatTab`, repo/group panel hosts and inline openers share
+`selectedTaskIdByRepo[routeId]`, where the route id is the concrete clone key for
+a remote owner and the workspace id for a local owner. Selection never mirrors
+into a remote owner's bare workspace key. Explicit chat routes retain their
+requested process through failed reachability probes so ChatDetail can display
+the owning read error; unresolved remote owners skip local probes. Reloads,
+history and Sentinel returns use this same identity.
 
 Rail Open job links select through the tab's `selectTask`: pinned and Sentinel shortcuts
 are portaled from the tab, and Running/Queued rows (`RailJobStatuses`, rendered by

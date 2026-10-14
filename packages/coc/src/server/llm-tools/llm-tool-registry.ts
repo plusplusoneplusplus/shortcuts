@@ -48,6 +48,11 @@ export interface LlmToolMeta {
      * settings. Set by the settings route; absent on the static registry.
      */
     approvalGateable?: boolean;
+    /**
+     * Whether `run_tool_script` scripts may call this tool. Defaults to true;
+     * tools outside the registry are never scriptable.
+     */
+    scriptable?: boolean;
 }
 
 /**
@@ -57,13 +62,15 @@ export interface LlmToolMeta {
 export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
         name: 'browser', label: 'Browser', description: 'Control the CoC desktop browser.',
-        enabledByDefault: true,
+        // Stateful UI control with binary screenshots.
+        enabledByDefault: true, scriptable: false,
     },
     {
         name: 'suggest_follow_ups',
         label: 'Follow-Up Suggestions',
         description: 'Suggests follow-up actions after the AI responds.',
-        enabledByDefault: true,
+        // UI side channel intercepted by the executor's tool-event handler.
+        enabledByDefault: true, scriptable: false,
     },
     {
         name: 'search_conversations',
@@ -81,7 +88,8 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         name: 'send_to_conversation',
         label: 'Send to Conversation',
         description: 'Posts into an existing conversation, starts a new one, or explicitly cancels local work with action: cancel and processId.',
-        enabledByDefault: true,
+        // Starts jobs; fan-out from a loop is easy to misuse.
+        enabledByDefault: true, scriptable: false,
     },
     {
         name: 'list_workspaces',
@@ -93,7 +101,8 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         name: 'ask_user',
         label: 'Ask User',
         description: 'Poses interactive questions to the user during execution.',
-        enabledByDefault: true,
+        // Questions are asked in the open, not from a loop.
+        enabledByDefault: true, scriptable: false,
     },
     {
         name: 'save_memory',
@@ -147,13 +156,20 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         name: 'create_pull_request',
         label: 'Create Pull Request',
         description: 'Opens a GitHub or Azure DevOps pull request for this chat\'s repo and links it to the chat. Autopilot only; used only when you ask for a PR.',
-        enabledByDefault: true,
+        // Outward-facing side effect; keep it a visible single call.
+        enabledByDefault: true, scriptable: false,
     },
     {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',
         enabledByDefault: false,
+    },
+    {
+        name: 'run_tool_script',
+        label: 'Tool Scripting',
+        description: 'Runs a short JavaScript script that calls other CoC tools in loops or in parallel and returns only the script result.',
+        enabledByDefault: true,
     },
 ] as const;
 
@@ -166,6 +182,16 @@ export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
 /** Tool names belonging to the System One feature (gated by `LLMToolSystemOne.enabled`). */
 export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;
 
+/** Tool names belonging to the tool-scripting feature (gated by `features.toolScripting`). */
+export const TOOL_SCRIPTING_LLM_TOOL_NAMES = ['run_tool_script'] as const;
+
+const SCRIPTABLE_LLM_TOOL_NAMES = new Set(LLM_TOOL_REGISTRY.filter(t => t.scriptable !== false).map(t => t.name));
+
+/** Whether `run_tool_script` scripts may call this tool. Unregistered tools are not scriptable. */
+export function isScriptableLlmTool(toolName: string): boolean {
+    return SCRIPTABLE_LLM_TOOL_NAMES.has(toolName);
+}
+
 /**
  * Returns the effective LLM tool registry given runtime feature flags.
  *
@@ -173,7 +199,7 @@ export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
     if (!opts.cronEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
@@ -189,6 +215,9 @@ export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canva
     }
     if (!opts.llmToolSystemOneEnabled) {
         registry = registry.filter(t => !(SYSTEM_ONE_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
+    }
+    if (!opts.toolScriptingEnabled) {
+        registry = registry.filter(t => !(TOOL_SCRIPTING_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
     }
     return registry;
 }

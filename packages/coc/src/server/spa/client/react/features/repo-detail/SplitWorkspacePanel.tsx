@@ -409,6 +409,22 @@ export function SplitWorkspacePanel({
         return () => clearWorkspaceLeftWidth(workspaceId);
     }, [workspaceId, publishedLeftWidth, isMobile]);
 
+    const railControls = useMemo<RailControls>(() => ({
+        hoverEnabled: hasFinePointer,
+        onExpand: toggleLeftCollapsed,
+        onPreview: hoverPeek.close,
+        onFocusRail: () => expandButtonRef.current?.focus(),
+        onOpenGit: target => {
+            if (leftCollapsed) toggleLeftCollapsed();
+            if (gitCollapsed) toggleGit();
+            if (target !== 'changes') return;
+            requestAnimationFrame(() => {
+                leftColRef.current?.querySelector('[data-testid="working-tree"]')?.scrollIntoView?.({ block: 'nearest' });
+            });
+        },
+    }), [hasFinePointer, toggleLeftCollapsed, hoverPeek.close, leftCollapsed, gitCollapsed, toggleGit]);
+    const [jobOpener, setJobOpener] = useState<RailJobOpener | null>(null);
+
     // Narrow / mobile: one pane at a time. The segmented control picks the list
     // (chat or git); selecting an item inside it pushes the shared detail
     // full-screen over the list, with a back control that pops it. No pane is
@@ -517,22 +533,7 @@ export function SplitWorkspacePanel({
     // Portaled rail shortcuts (e.g. the chat list's pinned-jobs control) share
     // the status controls' hover, expansion and peek behavior.
     // Rail Git tiles expand the column with its Git half open.
-    const railControls = useMemo<RailControls>(() => ({
-        hoverEnabled: hasFinePointer,
-        onExpand: toggleLeftCollapsed,
-        onPreview: hoverPeek.close,
-        onFocusRail: () => expandButtonRef.current?.focus(),
-        onOpenGit: target => {
-            if (leftCollapsed) toggleLeftCollapsed();
-            if (gitCollapsed) toggleGit();
-            if (target !== 'changes') return;
-            requestAnimationFrame(() => {
-                leftColRef.current?.querySelector('[data-testid="working-tree"]')?.scrollIntoView?.({ block: 'nearest' });
-            });
-        },
-    }), [hasFinePointer, toggleLeftCollapsed, hoverPeek.close, leftCollapsed, gitCollapsed, toggleGit]);
     const peeking = leftCollapsed && hoverPeek.isOpen;
-    const [jobOpener, setJobOpener] = useState<RailJobOpener | null>(null);
 
     return (
         <RailControlsContext.Provider value={railControls}>

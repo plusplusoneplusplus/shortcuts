@@ -583,9 +583,15 @@ export interface PendingAskUserQuestion {
     batchId: string;
     questionId: string;
     question: string;
-    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
+    /**
+     * `sensitive-input` only: where the dashboard sends the secret, and its
+     * non-secret parameters. The secret itself is never stored.
+     */
+    sink?: string;
+    sinkArgs?: { domain: string; viewId?: string };
     turnIndex: number;
     index: number;
     batchSize: number;

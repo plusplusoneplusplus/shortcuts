@@ -56,8 +56,11 @@ references before editing. Paths are package-relative.
   project owner-verified current process modes in a transcript-free batch; Ralph
   identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.
   Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
-  owner's git-info/working tree (groups: per-member git-info, never a group branch),
-  and never show unknown, no-upstream or detached state as clean or 0/0.
+  owner's git-info/working tree (groups: per-member git-info, never a group branch).
+  Sync previews lazily page the expanded Git outgoing prefix on that owner;
+  commit routes retain page/member/clone ownership and already-read metadata.
+  Never fetch or mutate Git on hover, or show unknown, no-upstream or detached
+  state as clean or 0/0.
   Rail Admin/quota shortcuts (`features.railStatusActions`) are portals from the
   docked `StatusActions` footer; never give the rail its own quota hook or fetch.
 - Terminal native paste is captured inside the focused `TerminalPanel`, consumes
@@ -316,6 +319,12 @@ references before editing. Paths are package-relative.
   Sentinel Mode and To-do Scrubber are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability.
+  Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
+  and metadata through the same service, REST client and tool. Target workspaces
+  share their parent's library, never another parent's tags. Matching uses the
+  existing decision backend, selects only existing definitions and surfaces failed
+  or unavailable classification without losing edits. Manual assignments and clears
+  survive content updates; tag writes never grant authority or change readiness.
   Sentinel `send_to_conversation` create mode requires an unarchived normal
   `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local
@@ -493,6 +502,10 @@ references before editing. Paths are package-relative.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
   under `src/server/executors/`; lifecycle owns persistence.
   Mode directives/style belong in user turns, not the system prefix.
+- Tool-call response sizes use the shared render model and already-loaded owner data.
+  Count available raw strings as UTF-8 bytes before display clipping, including empty
+  responses; use B/KiB/MiB/GiB. Never infer tokens or omitted payload sizes or fetch
+  additional responses for this display.
 - Keep tools mode-invariant; gate call-time behavior and unattended `ask_user`.
   Preserve explicit PR-write/final-check/grill exceptions.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.

@@ -4,6 +4,8 @@ export interface ToolLikeForNormalization {
     args?: unknown;
     parameters?: unknown;
     result?: string;
+    /** Trusted UTF-8 byte count retained when duplicate response display is suppressed. */
+    availableResponseBytes?: number;
     error?: string;
     status?: string;
     /** Latest provider progress message (running calls only). */
@@ -102,4 +104,3 @@ export function summarizeCodexFileChanges(args: unknown): string {
     if (changes.length === 1) return changes[0].path;
     return `${changes.length} files`;
 }
-

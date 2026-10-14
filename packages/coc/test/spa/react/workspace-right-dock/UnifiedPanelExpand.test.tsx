@@ -1,5 +1,5 @@
 /**
- * The expand toggle at the far right of the unified panel's tab strip.
+ * The merged header control drives the existing panel expansion.
  *
  * Expanded, the panel fills the workspace row (the hosts hide their main
  * content — see RepoGroupView.dock.test.tsx), drops its fixed width and its
@@ -30,7 +30,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
     ExplorerPanel: () => <div data-testid="mock-explorer" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
-    NotesView: () => <div data-testid="mock-notes" />,
+    NotesView: () => <textarea aria-label="Note draft" defaultValue="Draft" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [] } }),
@@ -43,8 +43,12 @@ import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/featu
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
-import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import { useWorkspaceDock } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 import {
+    WorkspaceDockToggle,
+    setWorkspaceDockOpen,
+    openWorkspaceDock,
+    workspaceDockWidthStorageKey,
     setWorkspaceDockExpanded,
     useWorkspaceDockExpanded,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
@@ -52,35 +56,20 @@ import {
 const WS = 'ws-expand';
 const OTHER_WS = 'ws-expand-other';
 
-function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDockController {
-    return {
-        isOpen: true,
-        toggleOpen: vi.fn(),
-        mode: 'explorer',
-        selectMode: vi.fn(),
-        target: WS,
-        setTarget: vi.fn(),
-        targets: [],
-        width: 420,
-        maxWidth: 900,
-        isDragging: false,
-        handleMouseDown: vi.fn(),
-        handleTouchStart: vi.fn(),
-        ...overrides,
-    };
+function Host() {
+    const dock = useWorkspaceDock(WS);
+    return <><WorkspaceDockToggle workspaceId={WS} /><UnifiedRightPanel workspaceId={WS} dock={dock} /></>;
 }
 
-function renderPanel(dock = dockStub()) {
-    const view = render(<UnifiedRightPanel workspaceId={WS} dock={dock} />);
-    // A workspace tab keeps the mount-time reconciliation from treating the
-    // panel as empty; the stub's `isOpen` is what the panel renders against.
+function renderPanel() {
+    const view = render(<Host />);
     act(() => {
-        openUnifiedPanelTab(WS, { kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal' });
+        openUnifiedPanelTab(WS, { kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes', label: 'Notes' });
     });
     return view;
 }
 
-const toggle = () => screen.getByTestId('unified-panel-expand-toggle');
+const toggle = () => screen.getByTestId('workspace-dock-toggle');
 const panel = () => screen.getByTestId('unified-right-panel');
 const body = () => screen.getByTestId('unified-panel-body');
 
@@ -96,65 +85,68 @@ afterEach(() => {
     setWorkspaceDockExpanded(OTHER_WS, false);
 });
 
-describe('Unified panel expand toggle', () => {
-    it('renders at the far right of the tab strip, collapsed by default', () => {
+describe('Unified panel header cycle', () => {
+    it('has one reachable header control and no inner expand button', () => {
         renderPanel();
-        const strip = screen.getByTestId('unified-panel-tab-strip');
-        const buttons = strip.querySelectorAll('button');
-        expect(buttons[buttons.length - 1]).toBe(toggle());
-        expect(toggle().getAttribute('aria-label')).toBe('Expand panel');
-        expect(toggle().getAttribute('aria-pressed')).toBe('false');
-        expect(panel().dataset.expanded).toBe('false');
+        expect(screen.queryByTestId('unified-panel-expand-toggle')).toBeNull();
+        expect(screen.getAllByTestId('workspace-dock-toggle')).toHaveLength(1);
+        expect(screen.getByTestId('unified-panel-tab-strip').contains(toggle())).toBe(false);
+        expect(toggle().getAttribute('aria-label')).toBe('Expand right panel');
+        fireEvent.click(toggle());
+        expect(toggle().getAttribute('aria-label')).toBe('Hide right panel');
+        expect(toggle().closest('[data-testid="unified-right-panel"]')).toBeNull();
     });
 
-    it('fills the row without its fixed width or resize handle, then restores both', () => {
+    it('fills the row, hides, and reopens docked with the same tab and draft', () => {
         renderPanel();
-        expect(body().style.width).toBe('420px');
-        expect(screen.getByTestId('unified-panel-resize-handle')).toBeTruthy();
-
-        act(() => { fireEvent.click(toggle()); });
-
+        const draft = screen.getByRole('textbox', { name: 'Note draft' });
+        fireEvent.change(draft, { target: { value: 'Unsaved work' } });
+        const width = body().style.width;
+        const storedWidth = localStorage.getItem(workspaceDockWidthStorageKey(WS));
+        const selectedTab = screen.getByRole('tab', { selected: true });
+        fireEvent.click(toggle());
         expect(panel().dataset.expanded).toBe('true');
-        expect(panel().className).toContain('flex-1');
-        expect(panel().className).not.toContain('flex-shrink-0');
         expect(body().style.width).toBe('');
         expect(screen.queryByTestId('unified-panel-resize-handle')).toBeNull();
-        expect(toggle().getAttribute('aria-label')).toBe('Restore panel size');
-        expect(toggle().getAttribute('aria-pressed')).toBe('true');
-
-        act(() => { fireEvent.click(toggle()); });
-
+        fireEvent.click(toggle());
+        expect(panel().dataset.open).toBe('false');
         expect(panel().dataset.expanded).toBe('false');
-        expect(panel().className).toContain('flex-shrink-0');
-        expect(body().style.width).toBe('420px');
+        fireEvent.click(toggle());
+        expect(panel().dataset.open).toBe('true');
+        expect(panel().dataset.expanded).toBe('false');
+        expect(body().style.width).toBe(width);
+        expect(localStorage.getItem(workspaceDockWidthStorageKey(WS))).toBe(storedWidth);
+        expect(screen.getByRole('tab', { selected: true })).toBe(selectedTab);
+        expect(screen.getByRole('textbox', { name: 'Note draft' })).toBe(draft);
+        expect((draft as HTMLTextAreaElement).value).toBe('Unsaved work');
         expect(screen.getByTestId('unified-panel-resize-handle')).toBeTruthy();
     });
 
-    it('stays on the strip when a file tab brings its own toolbar row', () => {
+    it('Escape restores docked width while leaving editor Escape alone', () => {
         renderPanel();
-        act(() => {
-            openUnifiedPanelTab(WS, { kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts', label: 'a.ts' });
-        });
-        expect(screen.getByTestId('unified-panel-tab-strip').contains(toggle())).toBe(true);
-    });
-
-    it('drops the flag when the panel closes, so reopening starts at its own width', () => {
-        const view = renderPanel();
-        act(() => { fireEvent.click(toggle()); });
+        fireEvent.click(toggle());
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
         expect(panel().dataset.expanded).toBe('true');
-
-        view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
+        fireEvent.keyDown(document, { key: 'Escape' });
         expect(panel().dataset.expanded).toBe('false');
-
-        view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
-        expect(panel().dataset.expanded).toBe('false');
-        expect(body().style.width).toBe('420px');
+        expect(panel().dataset.open).toBe('true');
     });
 
-    it('never writes the flag to localStorage', () => {
+    it('programmatic opens preserve expansion until a close resets it', () => {
+        renderPanel();
+        fireEvent.click(toggle());
+        act(() => openWorkspaceDock(WS));
+        expect(panel().dataset.expanded).toBe('true');
+        act(() => setWorkspaceDockOpen(WS, false));
+        act(() => openWorkspaceDock(WS));
+        expect(panel().dataset.expanded).toBe('false');
+        expect(body().style.width).not.toBe('');
+    });
+
+    it('persists visibility without persisting expansion', () => {
         renderPanel();
         const before = { ...localStorage };
-        act(() => { fireEvent.click(toggle()); });
+        fireEvent.click(toggle());
         expect({ ...localStorage }).toEqual(before);
     });
 });

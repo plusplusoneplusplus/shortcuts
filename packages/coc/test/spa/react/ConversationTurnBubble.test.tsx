@@ -2004,6 +2004,9 @@ describe('ConversationTurnBubble — task result deduplication', () => {
 
         const grepCard = container.querySelector('[data-tool-id="grep-1"]') as HTMLElement;
         expect(grepCard).toBeTruthy();
+        // Duplicate prose remains hidden, but its available response size survives.
+        expect(grepCard.querySelector('[data-testid="tool-call-response-size"]')?.textContent)
+            .toBe(`${Buffer.byteLength(text, 'utf8')} B`);
 
         // Expand the grep card
         const header = grepCard.querySelector('.tool-call-header') as HTMLElement;

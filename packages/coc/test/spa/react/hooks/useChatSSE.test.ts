@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useChatSSE } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { UseChatSSEOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
+import { buildToolCallRenderModel } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolCallRenderModel';
 import { RALPH_GRILL_MAX_ROUNDS } from '../../../../src/server/ralph/grill-planning';
 import { clearBrowserControlActivities, getBrowserControlActivity, startBrowserControlActivity } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 
@@ -257,6 +258,45 @@ describe('useChatSSE', () => {
         expect(turns[0]).toMatchObject({ provider: 'copilot', turnIndex: 3, content: 'partial more' });
         expect(turns[0].timeline?.at(-1)?.toolCall?.status).toBe('completed');
         expect(turns[1]).toBe(steering);
+    });
+
+    it('derives response sizes from live and persisted owner streams without additional reads', () => {
+        const fetch = vi.spyOn(globalThis, 'fetch');
+        const states: ClientConversationTurn[][] = [[], []];
+        const streams: MockEventSource[] = [];
+        const options = ['workspace-a', 'workspace-b'].map((workspaceId, index) => makeOptions({
+            workspaceId,
+            sourceBaseUrl: `http://owner-${index}.example`,
+            setTurnsAndRef: next => { states[index] = typeof next === 'function' ? next(states[index]) : next; },
+        }));
+        for (const opts of options) {
+            renderHook(() => useChatSSE(opts));
+            streams.push(MockEventSource.last);
+        }
+        expect(streams[0].url).toContain('owner-0.example');
+        expect(streams[1].url).toContain('owner-1.example');
+        const size = (index: number) => buildToolCallRenderModel(states[index][0].timeline!.at(-1)!.toolCall!, 'whisper-row').responseSize;
+        act(() => {
+            for (const stream of streams) stream._emit('tool-start', { toolCallId: 'same-tool', toolName: 'browser' });
+        });
+        expect(size(0)).toBeNull();
+        expect(size(1)).toBeNull();
+        act(() => streams[0]._emit('tool-complete', { toolCallId: 'same-tool', toolName: 'browser', result: 'é中😀' }));
+        expect(size(0)?.bytes).toBe(9);
+        expect(size(1)).toBeNull();
+        act(() => streams[1]._emit('tool-complete', { toolCallId: 'same-tool', toolName: 'browser', result: '' }));
+        expect(size(1)?.bytes).toBe(0);
+        // Rehydration uses the same raw result, including empty strings. JSON
+        // round-trip represents the saved wire snapshot rather than a local row cache.
+        for (let index = 0; index < streams.length; index++) {
+            const turns = JSON.parse(JSON.stringify(states[index]));
+            act(() => streams[index]._emit('conversation-snapshot', { turns }));
+            expect(size(index)?.bytes).toBe(index === 0 ? 9 : 0);
+        }
+        expect(options[0].refreshConversation).not.toHaveBeenCalled();
+        expect(options[1].refreshConversation).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
+        fetch.mockRestore();
     });
 
     it('opens EventSource at correct URL when processId is provided', () => {

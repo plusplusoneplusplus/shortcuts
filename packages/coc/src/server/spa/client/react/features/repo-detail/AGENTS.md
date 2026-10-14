@@ -49,7 +49,11 @@ visual layer.
 `RepoDetail.tsx` routes the queue seed through `useCocClient(sourceSelectionId)`
 and `api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
 Queue hydration accepts an empty task list only from its recorded server/API
-source; stats-only placeholders still require a seed. Work-items badge and
+source; stats-only placeholders still require a seed. Router, chat openers and
+panel hosts use `selectedTaskIdByRepo[sourceSelectionId]` for one concrete owner;
+remote selections never mirror into bare workspace keys. Explicit chat routes
+retain missing/unavailable process identities for detail errors, and unresolved
+remote owners skip local reachability probes. Work-items badge and
 Resume Queue use `getCocClientForWorkspace(ws.id)`. Work-item commit reviews receive the repo’s concrete selection id
 through `WorkItemsTab` and `WorkItemCommitReviewPane` as
 `attachmentDestinationId`; diff payloads keep the plain workspace id.
@@ -103,7 +107,14 @@ owner-scoped reads (repo: git-info + working tree; group: one member git-info
 batch on the group's server). The repository preview's branch row embeds the
 shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
-the rail while preserving the popup's Git links. Owner changes reset the selector. `features.railStatusActions` defaults on, with
+the rail while preserving the popup's Git links. Owner changes reset the selector.
+The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
+history paging and outgoing prefix, with shared `CommitIdentity` rows. Owner,
+branch, upstream and status-read changes discard old history. Missing upstream,
+failed reads and inconsistent counts remain explicit; hover never fetches or
+mutates Git. Commit navigation carries a transient owner-qualified known commit
+through `SET_GIT_ROUTE`, including paged rows and server-qualified group/member scope.
+`features.railStatusActions` defaults on, with
 explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
 rail slot (`layout/railStatusSlot.ts`)
 that the footer's `StatusActions` portals its Admin gear and quota ring into,
@@ -170,21 +181,24 @@ Persisted values are validated on read. The target
 non-`deprioritized` option, then the first enabled one, then the scope. Only an
 explicit `setTarget` writes; mount and workspace switches never persist.
 
-One icon-only visibility toggle lives outside the panel and shares its cross-tree
-open store. The classic shell renders `WorkspaceDockToggle` in `RepoDetail`'s
-header; the remote-first shell renders the same component in `layout/TopBar.tsx`
-for a concrete clone or a `group-*` selection. Ctrl/Cmd+\ does the same from
-`layout/Router.tsx`'s keydown handler (next to Ctrl/Cmd+B for the left column):
-it calls `toggleWorkspaceDockOpen` for the selected workspace, matches
-`e.code === 'Backslash'` so non-US layouts work, is skipped while typing in an
-input. The button's tooltip names
-the shortcut; its `aria-label` stays plain. My Work / My Life have no panel.
-The panel's strip ends with an expand toggle. `WorkspaceDockToggle.tsx` keeps
-the expanded flag per workspace in memory only (never localStorage, so a reload
-restores the normal layout). While the dock is open and expanded, `RepoDetail`
-and `RepoGroupView` hide their main content with `display:none`, keeping chats
-mounted, and the panel fills the row with no resize handle. Closing the panel
-clears the flag; the persisted width is untouched.
+One icon-only control outside the panel cycles hidden → docked → expanded →
+hidden through the shared open and expanded stores. The classic shell renders
+`WorkspaceDockToggle` in `RepoDetail`'s header; the remote-first shell renders
+it in `layout/TopBar.tsx` for a concrete clone or a `group-*` selection.
+Its icon, tooltip and accessible name identify the next action. My Work / My
+Life have no panel. Ctrl/Cmd+\ in `layout/Router.tsx` toggles visibility through
+`toggleWorkspaceDockOpen`, matching the physical Backslash key and skipping
+inputs; it does not advance the expansion cycle.
+
+`WorkspaceDockToggle.tsx` keeps expansion per workspace in memory only, so
+reload restores docked layout. Expanded, `RepoDetail` and `RepoGroupView` hide
+main content with `display:none`, keeping chats mounted; the panel fills the row
+without a resize handle. The header stays outside that row. Escape restores
+docked size, unless an editor, terminal, dialog or menu owns it. Closing clears
+expansion synchronously, even without a mounted panel; programmatic opens are
+idempotent and retain an already-expanded panel. Mobile layout clears expansion.
+Width, selected tabs and mounted panel drafts survive the header cycle.
+
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.

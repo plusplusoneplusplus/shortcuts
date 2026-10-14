@@ -157,6 +157,7 @@ type BrowserEngine = 'electron' | 'webview2';
 type BrowserSourceKind = typeof BROWSER_SOURCE_KINDS[number];
 type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
 type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
+type BrowserCookieImportResult = { ok: true; count: number } | { ok: false; reason: string; message?: string };
 /** What `browser.open` loads (mirrors `BrowserSource`); a bare string is a `url` source. */
 type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
 interface BrowserPreferences {
@@ -270,7 +271,7 @@ const browser = {
         onChanged: (callback: () => void) => subscribe(BROWSER_HISTORY_CHANGED_CHANNEL, callback),
     },
     sources: BROWSER_SOURCE_KINDS,
-    importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserOperationResult> =>
+    importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult> =>
         ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies, engine),
     open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),

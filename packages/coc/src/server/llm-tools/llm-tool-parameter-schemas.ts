@@ -238,6 +238,13 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['query'],
     },
+    run_tool_script: {
+        type: 'object',
+        properties: {
+            code: { type: 'string' },
+        },
+        required: ['code'],
+    },
 };
 
 /**

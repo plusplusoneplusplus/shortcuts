@@ -198,8 +198,6 @@ export interface UnifiedPanelTabStripProps {
      * repo scope does not come and go with the breadcrumb toolbar.
      */
     leadingControls?: ReactNode;
-    /** Controls pinned to the strip's far right on every tab state (the expand toggle). */
-    endControls?: ReactNode;
     className?: string;
 }
 
@@ -221,7 +219,6 @@ export function UnifiedPanelTabStrip({
     onOpenMenu,
     trailing,
     leadingControls,
-    endControls,
     className,
 }: UnifiedPanelTabStripProps) {
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
@@ -630,7 +627,6 @@ export function UnifiedPanelTabStrip({
             )}
 
             {trailing}
-            {endControls}
             <span role="status" aria-live="polite" className="sr-only">{liveMessage}</span>
             {contextMenu && (() => {
                 const tab = tabs.find(candidate => candidate.id === contextMenu.tabId);

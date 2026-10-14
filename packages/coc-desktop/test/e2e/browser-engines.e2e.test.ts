@@ -86,7 +86,7 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         const directory = profileRoot('blank-import-');
         temporary.push(directory);
         const steps = await scenario(engine, directory, '--blank-cookie-import-check');
-        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true }, remaining: { ok: true }, states: [] });
+        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true, count: 2 }, remaining: { ok: true, count: 2 }, states: [] });
         expect(steps.get('blank-authenticated')?.url).toContain('localhost');
         expect(steps.get('blank-authenticated')?.report.authenticated).toBe(true);
         expect(steps.get('blank-authenticated')?.report.cookie).toBe('');
@@ -99,7 +99,7 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         const directory = profileRoot('blank-import-clear-');
         temporary.push(directory);
         const steps = await scenario(engine, directory, '--blank-cookie-import-clear-check');
-        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true }, remaining: { ok: true }, states: [] });
+        expect(steps.get('blank-import')).toMatchObject({ imported: { ok: true, count: 2 }, remaining: { ok: true, count: 2 }, states: [] });
         expect(steps.get('blank-clear')?.result).toEqual({ ok: true });
         expect(steps.get('blank-authenticated')?.report.authenticated).toBe(false);
         expect(steps.get('blank-authenticated')?.receivedCookies).toEqual([]);
@@ -110,7 +110,7 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         temporary.push(directory);
         const steps = await scenario(engine, directory, '--cookie-import-check');
         const result = steps.get('cookie-import');
-        expect(result?.imported).toEqual({ ok: true });
+        expect(result?.imported).toEqual({ ok: true, count: 4 });
         expect(result?.redirected).toContain('127.0.0.1');
         expect(result?.afterImport).toBe(result?.redirected);
         expect(result?.authenticated).toContain('localhost');

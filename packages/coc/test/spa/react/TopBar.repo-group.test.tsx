@@ -172,8 +172,12 @@ describe('TopBar — repo-group dock toggle', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Show right panel' }));
         });
         expect(localStorage.getItem(openKey)).toBe('1');
-        expect(screen.getByRole('button', { name: 'Hide right panel' }).getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByRole('button', { name: 'Expand right panel' }).getAttribute('aria-expanded')).toBe('true');
 
+        act(() => {
+            fireEvent.click(screen.getByRole('button', { name: 'Expand right panel' }));
+        });
+        expect(screen.getByRole('button', { name: 'Hide right panel' })).toBeTruthy();
         act(() => {
             fireEvent.click(screen.getByRole('button', { name: 'Hide right panel' }));
         });

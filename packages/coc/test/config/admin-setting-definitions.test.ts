@@ -406,6 +406,18 @@ describe('Features card UI metadata', () => {
         })).sentinelTodoScrubberEnabled).toBe(true);
     });
 
+    it('exposes tool scripting as a live, default-off toggle', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.toolScripting')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.ui).toMatchObject({ group: 'review', testId: 'toggle-tool-scripting-enabled' });
+        expect(DEFAULT_CONFIG.features.toolScripting).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).toolScriptingEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { toolScripting: true },
+        })).toolScriptingEnabled).toBe(true);
+    });
+
     it('exposes Teams message reaction as an independent live, default-off toggle', () => {
         const reaction = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsMessageReaction')!;
         expect(reaction.value).toEqual({ kind: 'boolean' });
@@ -764,6 +776,7 @@ describe('feature toggle settings-tab placement', () => {
         'mapReduce.enabled': 'ai',
         'sentinel.enabled': 'ai',
         'features.sentinelTodoDependencies': 'ai',
+        'features.sentinelTodoTags': 'ai',
         'features.sentinelTodoScrubber': 'ai',
         'features.sentinelPrOutcomeWake': 'ai',
         'dangerousCommandGuard.enabled': 'ai',
@@ -826,7 +839,9 @@ describe('feature toggle settings-tab placement', () => {
         'browserControl.enabled': 'features',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
+        'features.toolScripting': 'features',
         'features.canvasHostApis': 'features',
+        'features.sensitiveInput': 'features',
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
         'features.diffFilePicker': 'features',

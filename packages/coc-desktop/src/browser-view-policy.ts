@@ -256,6 +256,9 @@ export type BrowserOperationResult = { ok: true } | {
     message?: string;
 };
 
+/** Cookie import also reports how many cookies it set, never their names or values. */
+export type BrowserCookieImportResult = { ok: true; count: number } | Extract<BrowserOperationResult, { ok: false }>;
+
 /** History / load control actions. */
 export type BrowserNavAction = 'back' | 'forward' | 'reload' | 'stop';
 

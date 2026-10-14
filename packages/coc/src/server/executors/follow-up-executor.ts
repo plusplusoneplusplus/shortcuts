@@ -546,6 +546,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 // turn (cron / wakeup / trigger) can ask its phone origin when
                 // handed off; other unattended turns short-circuit at call time.
                 onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
+                includeToolScripting: sessionProvider !== 'codex',
+                onNestedToolEvent: this.buildNestedToolEventHandler(processId),
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
                     isInteractive: () => turnSource === undefined || isMessagingJobOrigin(process.metadata?.messagingOrigin),

@@ -13,6 +13,38 @@ export type SentinelTodoType = 'normal' | 'manual';
 export type SentinelTodoPriority = 'high' | 'regular';
 export type SentinelTodoActor = 'user' | 'sentinel' | 'system';
 
+export interface SentinelTodoTag {
+  id: string;
+  name: string;
+  color: 'gray' | 'blue' | 'violet' | 'teal' | 'amber';
+  description?: string;
+}
+export interface SentinelTodoTagLibrary {
+  revision: number;
+  tags: SentinelTodoTag[];
+}
+export interface WriteSentinelTodoTagRequest {
+  expectedRevision: number;
+  name: string;
+  color: SentinelTodoTag['color'];
+  description?: string;
+}
+export interface DeleteSentinelTodoTagRequest {
+  expectedRevision: number;
+  confirmed: true;
+}
+export interface SuggestSentinelTodoTagsRequest {
+  expectedRevision: number;
+  /** Required for suggestions; guards concurrent manual and automatic tag writes. */
+  expectedTagRevision?: number;
+  multiple?: boolean;
+  confirmed?: boolean;
+}
+export interface SentinelTodoTagMatch {
+  state: 'matched' | 'no_match' | 'unavailable' | 'failed';
+  message?: string;
+}
+
 export interface SentinelTodoTargetRepo {
   workspaceId: string;
   serverId?: string;
@@ -165,6 +197,11 @@ export interface SentinelTodoTrackedAdmission {
 }
 
 export interface SentinelTodoItem {
+  /** Independent metadata CAS; absent means zero. Does not affect dependency snapshots. */
+  tagRevision?: number;
+  tagIds?: string[];
+  tagOrigin?: 'manual' | 'suggested';
+  tagMatch?: SentinelTodoTagMatch;
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
   type: SentinelTodoType;
@@ -193,6 +230,7 @@ export interface SentinelTodoItem {
 }
 
 export interface SentinelTodoLedgerResponse {
+  tagLibrary?: SentinelTodoTagLibrary;
   revision: number;
   items: SentinelTodoItem[];
   /** Recent-list pagination; full snapshots omit these fields. */
@@ -202,6 +240,8 @@ export interface SentinelTodoLedgerResponse {
 }
 
 export interface CreateSentinelTodoRequest {
+  tagIds?: string[];
+  matchMultiple?: boolean;
   /** Defaults to `normal`; updates cannot change it. */
   type?: SentinelTodoType;
   title: string;
@@ -218,6 +258,10 @@ export interface CreateSentinelTodoRequest {
 
 /** `null` clears an optional field; omitted fields stay unchanged. */
 export interface UpdateSentinelTodoRequest {
+  /** Required when tagIds is supplied, including an explicit empty selection. */
+  expectedTagRevision?: number;
+  tagIds?: string[];
+  matchMultiple?: boolean;
   expectedRevision: number;
   title?: string;
   completionCondition?: string;
@@ -255,6 +299,8 @@ export interface SentinelTodosChangedEvent {
   processId: string;
   ledgerRevision: number;
   itemId?: string;
+  /** Metadata invalidation; authority revisions are unchanged. */
+  tagOnly?: boolean;
   timestamp?: number;
 }
 

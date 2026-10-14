@@ -591,8 +591,14 @@ export interface AskUserResponseRequest {
     answer?: string | string[] | boolean;
     skipped?: boolean;
     deferred?: boolean;
-    reason?: 'needs-context';
+    /** `unavailable` (with `skipped: true`) only answers a `sensitive-input` question. */
+    reason?: 'needs-context' | 'unavailable';
     note?: string;
+    /**
+     * The only answer a `sensitive-input` question takes. The dashboard runs
+     * the sink itself and reports the outcome; the secret never reaches the server.
+     */
+    receipt?: { ok: true; count: number } | { ok: false; reason: 'invalid-input' | 'import-failed' };
   }>;
 }
 

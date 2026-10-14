@@ -221,7 +221,7 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         // Order: [+ New][right-panel toggle][…status cluster]
         expect(kids[0]).toBe('header-new-btn');
         expect(kids[1]).toBe('workspace-dock-toggle');
-        expect(screen.getByRole('button', { name: 'Show right panel' }).getAttribute('title')).toBe('Show right panel (Ctrl+\\)');
+        expect(screen.getByRole('button', { name: 'Show right panel' }).getAttribute('title')).toBe('Show right panel; Ctrl+\\ shows/hides right panel');
         expect(screen.queryByRole('button', { name: 'Show Search' })).toBeNull();
     });
 
@@ -229,9 +229,10 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         render(<TopBar />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Show right panel' }));
-        expect(screen.getByRole('button', { name: 'Hide right panel' }).getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByRole('button', { name: 'Expand right panel' }).getAttribute('aria-expanded')).toBe('true');
         expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('1');
 
+        fireEvent.click(screen.getByRole('button', { name: 'Expand right panel' }));
         fireEvent.click(screen.getByRole('button', { name: 'Hide right panel' }));
         expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('0');
     });

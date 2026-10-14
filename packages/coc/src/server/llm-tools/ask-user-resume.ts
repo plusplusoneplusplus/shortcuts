@@ -16,6 +16,7 @@ import type {
     PendingAskUserQuestion,
 } from '@plusplusoneplusplus/forge';
 import type { AskUserAnswerInput } from './ask-user-tool';
+import { buildSensitiveInputReceipt, parseSensitiveInputReceipt, SENSITIVE_INPUT_SINKS } from './ask-user-tool';
 
 /**
  * User-visible error recorded on the process when a post-restart resume can't
@@ -80,13 +81,30 @@ export function buildPendingAskUserAnswerRecord(
         const skipped = answer.skipped === true;
         const deferred = isDeferred(answer);
         if (skipped && deferred) return null;
-        if (!skipped && !deferred && answer.answer === undefined) return null;
+        if (answer.reason === 'unavailable' && !skipped) return null;
+        let durableAnswer: string | string[] | null = null;
+        if (question.type === 'sensitive-input') {
+            // Same rule as the live path: only a redacted receipt, never a value.
+            if (answer.answer !== undefined) return null;
+            if (skipped || deferred) {
+                if (answer.receipt !== undefined) return null;
+            } else {
+                const receipt = parseSensitiveInputReceipt(answer.receipt);
+                const sink = SENSITIVE_INPUT_SINKS.find(candidate => candidate === question.sink);
+                if (!receipt || !sink || !question.sinkArgs?.domain) return null;
+                durableAnswer = JSON.stringify(buildSensitiveInputReceipt(sink, question.sinkArgs.domain, receipt));
+            }
+        } else {
+            if (answer.receipt !== undefined || answer.reason === 'unavailable') return null;
+            if (!skipped && !deferred && answer.answer === undefined) return null;
+            if (!skipped && !deferred) durableAnswer = coerceDurableAnswer(answer.answer);
+        }
 
         const note = typeof answer.note === 'string' ? answer.note.trim() : '';
         entries.push({
             questionId: answer.questionId,
             question: question.question,
-            answer: skipped || deferred ? null : coerceDurableAnswer(answer.answer),
+            answer: durableAnswer,
             skipped,
             deferred,
             ...(deferred ? { reason: 'needs-context' as const } : {}),

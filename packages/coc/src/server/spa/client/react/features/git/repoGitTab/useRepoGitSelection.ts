@@ -86,6 +86,8 @@ export function gitRouteIdentity(
 export interface UseRepoGitSelectionOptions {
     /** The workspace whose git data this panel shows. */
     workspaceId: string;
+    /** Concrete clone owner of supplied, already-read route commits. */
+    sourceSelectionId?: string;
     /**
      * The workspace that owns the PAGE — a `group-<slug>` id when a repo group
      * hosts this panel. Defaults to `workspaceId` (an ordinary repo is its own
@@ -145,7 +147,7 @@ export interface UseRepoGitSelectionReturn {
 }
 
 export function useRepoGitSelection({
-    workspaceId, routeWorkspaceId, commits, loading,
+    workspaceId, sourceSelectionId, routeWorkspaceId, commits, loading,
 }: UseRepoGitSelectionOptions): UseRepoGitSelectionReturn {
     // AC-07: direct commit lookup targets the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
@@ -162,6 +164,11 @@ export function useRepoGitSelection({
         || (scope.routeWorkspaceId === pageWorkspaceId && scope.workspaceId === workspaceId);
     const routeCommitHash = routeIsOurs ? state.selectedGitCommitHash : null;
     const routeFilePath = routeIsOurs ? state.selectedGitFilePath : null;
+    const knownCommitRef = useRef<GitCommitItem | null>(null);
+    knownCommitRef.current = routeIsOurs
+        && scope?.knownCommit?.sourceSelectionId === (sourceSelectionId ?? workspaceId)
+        && scope.knownCommit.commit.hash === routeCommitHash
+        ? scope.knownCommit.commit : null;
 
     const [view, setView] = useState<RightPanelView | null>(null);
     const [hunkTarget, setHunkTarget] = useState<HunkTarget>();
@@ -178,6 +185,7 @@ export function useRepoGitSelection({
     // reacts to store TRANSITIONS, not to divergence: a locally published route
     // the store has not caught up with yet is not "the user navigated away".
     const storeRouteRef = useRef(consumedRouteRef.current);
+    const consumedKnownCommitRef = useRef(scope?.knownCommit);
     // The current route, readable from callbacks without re-memoizing them.
     const routeRef = useRef({ commitHash: routeCommitHash, filePath: routeFilePath });
     routeRef.current = { commitHash: routeCommitHash, filePath: routeFilePath };
@@ -361,7 +369,8 @@ export function useRepoGitSelection({
             setView(filePath ? { type: 'branch-file', filePath } : { type: 'branch-range' });
             return;
         }
-        const target = loaded.find(c => c.hash.startsWith(commitHash));
+        const target = loaded.find(c => c.hash.startsWith(commitHash))
+            ?? (knownCommitRef.current?.hash === commitHash ? knownCommitRef.current : null);
         if (target) {
             setView(filePath
                 ? { type: 'commit-file', hash: target.hash, filePath }
@@ -427,12 +436,13 @@ export function useRepoGitSelection({
         const identity = gitRouteIdentity(pageWorkspaceId, workspaceId, commitHash, filePath);
         consumedRouteRef.current = identity;
         storeRouteRef.current = identity;
+        consumedKnownCommitRef.current = scope?.knownCommit;
         if (!commitHash && restore) {
             restorePersistedView(restore, loaded);
             return;
         }
         applyRoute(commitHash, filePath, loaded);
-    }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId]);
+    }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId, scope?.knownCommit]);
 
     const switchViewScope = useCallback((restore: PersistedGitView | null) => {
         // A lookup still in flight belongs to the scope being left.
@@ -456,11 +466,15 @@ export function useRepoGitSelection({
     useEffect(() => {
         if (loading || !routeIsOurs) return;
         const identity = gitRouteIdentity(pageWorkspaceId, workspaceId, routeCommitHash, routeFilePath);
-        if (identity === storeRouteRef.current) return;
+        // A fresh owner-verified supplied commit is an explicit selection, even
+        // when the same route's detail has since been closed.
+        const suppliedSelection = !!knownCommitRef.current && scope?.knownCommit !== consumedKnownCommitRef.current;
+        consumedKnownCommitRef.current = scope?.knownCommit;
+        if (identity === storeRouteRef.current && !suppliedSelection) return;
         storeRouteRef.current = identity;
         // Our own selection echoing back through the router: already applied,
         // and re-applying it would reset the hunk it is scrolling to.
-        if (identity === consumedRouteRef.current) return;
+        if (identity === consumedRouteRef.current && !suppliedSelection) return;
         consumedRouteRef.current = identity;
         setHunkTarget(undefined);
         // The loaded page is read through a ref: a fresh `commits` array must
@@ -470,6 +484,7 @@ export function useRepoGitSelection({
     }, [
         routeIsOurs, routeCommitHash, routeFilePath, pageWorkspaceId, workspaceId,
         loading, applyRoute,
+        scope?.knownCommit,
     ]);
 
     // ── Derived ───────────────────────────────────────────────────────────────
