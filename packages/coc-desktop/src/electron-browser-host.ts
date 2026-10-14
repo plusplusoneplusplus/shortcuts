@@ -225,6 +225,7 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
         if (isMainFrame && !isInPlace) {
             pendingUrl = undefined;
             successfulUrl = undefined;
+            if (wc === entry.contents) entry.sink.navigationStarted?.();
         }
     });
     wc.on('did-navigate', (_event, url, responseCode) => {
@@ -244,6 +245,7 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
         if (!live() || !isMainFrame || !pendingUrl) { return; }
         successfulUrl = pendingUrl;
         pendingUrl = undefined;
+        if (wc === entry.contents) entry.sink.documentCommitted?.(successfulUrl, wc.getTitle());
         entry.sink.visited?.(successfulUrl, wc.getTitle());
     });
     wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
@@ -252,10 +254,14 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
         if (pendingUrl) { pendingUrl = url; return; }
         if (!successfulUrl) { return; }
         successfulUrl = url;
+        if (wc === entry.contents) entry.sink.documentCommitted?.(url, wc.getTitle());
         entry.sink.visited?.(url, wc.getTitle());
     });
     wc.on('page-title-updated', (_event, title) => {
-        if (live() && successfulUrl) { entry.sink.titleUpdated?.(successfulUrl, title); }
+        if (live() && successfulUrl) {
+            if (wc === entry.contents) entry.sink.documentTitleUpdated?.(successfulUrl, title);
+            entry.sink.titleUpdated?.(successfulUrl, title);
+        }
     });
 }
 

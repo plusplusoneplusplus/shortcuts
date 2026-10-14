@@ -1,17 +1,23 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { BrowserHistorySuggestion, DesktopBrowserHistory } from '../../../shared/file-path/browser-bridge';
+import type { BrowserHistorySuggestion, BrowserViewState, DesktopBrowserBridge, DesktopBrowserHistory } from '../../../shared/file-path/browser-bridge';
+import { escapeHtml } from '../../../utils/format';
+import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** Editing stays local; matching, ranking and persistence belong to main. */
-export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, invalid, onEdit, onOpen }: {
+export function BrowserAddressBar({ inputRef, url, committedPage, history, enabled, ownerKey, invalid, onEdit, onOpen, onCopyError, showAddressMenu, onMenuError }: {
     inputRef: RefObject<HTMLInputElement>;
     url?: string;
+    committedPage?: BrowserViewState['committedPage'];
     history?: DesktopBrowserHistory;
     enabled: boolean;
     ownerKey: string;
     invalid: boolean;
     onEdit(): void;
     onOpen(url: string): string | void;
+    onCopyError?(): void;
+    showAddressMenu?: DesktopBrowserBridge['showAddressMenu'];
+    onMenuError?(): void;
 }) {
     const id = useId();
     const [address, setAddress] = useState(url ?? '');
@@ -27,6 +33,8 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
     const selection = useRef<number | null>(null);
     const suppress = useRef(true);
     const composing = useRef(false);
+    const edited = useRef(false);
+    const submitted = useRef<{ url: string; page: typeof committedPage }>();
     const revision = useRef(0);
     const currentOwner = useRef(ownerKey);
     currentOwner.current = ownerKey;
@@ -60,6 +68,8 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
         dismiss();
         // Scope changes must not retain the previous tab's draft.
         if (!ownerChanged) return;
+        edited.current = false;
+        submitted.current = undefined;
         typed.current = url ?? '';
         setAddress(typed.current);
         setSearch(typed.current);
@@ -68,6 +78,7 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
     useEffect(() => {
         // Live page updates do not replace an address being edited.
         if (document.activeElement === inputRef.current && editing) return;
+        edited.current = false;
         typed.current = url ?? '';
         if (!typed.current.trim()) {
             dismiss();
@@ -75,6 +86,14 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
         setAddress(typed.current);
         setSearch(typed.current);
     }, [url, inputRef]);
+
+    useEffect(() => {
+        if (!submitted.current || !committedPage || submitted.current.page?.revision === committedPage.revision
+            || submitted.current.url !== committedPage.url || address !== committedPage.url
+            || url !== committedPage.url) return;
+        edited.current = false;
+        submitted.current = undefined;
+    }, [committedPage, address, url]);
 
     useEffect(() => history?.onChanged(() => {
         revision.current++;
@@ -157,11 +176,13 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
     const activate = (value: string) => {
         if (!currentEnabled.current || currentOwner.current !== ownerKey || composing.current) return;
         dismiss();
+        edited.current = true;
         typed.current = value;
         setAddress(value);
         setSearch(value);
         const normalized = onOpen(value);
         if (typeof normalized === 'string') {
+            submitted.current = { url: normalized, page: committedPage };
             typed.current = normalized;
             setAddress(normalized);
             setSearch(normalized);
@@ -188,7 +209,34 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
                     setRefresh(value => value + 1);
                 }}
                 onBlur={dismiss}
+                onCopy={event => {
+                    const input = event.currentTarget;
+                    if (!enabled || invalid || edited.current || composing.current || completion.current || selected >= 0
+                        || previousScope.current.ownerKey !== ownerKey || !committedPage
+                        || input.value !== url || input.value !== committedPage.url || !input.value.trim()
+                        || input.selectionStart !== 0 || input.selectionEnd !== input.value.length
+                        || !/^https?:\/\//i.test(committedPage.url) || !normalizeBrowserUrl(committedPage.url).ok
+                        || !event.clipboardData?.setData) return;
+                    try {
+                        event.clipboardData.setData('text/plain', committedPage.url);
+                        event.clipboardData.setData('text/html', `<a href="${escapeHtml(committedPage.url)}">${escapeHtml(committedPage.title.trim() ? committedPage.title : committedPage.url)}</a>`);
+                        event.preventDefault();
+                    } catch {
+                        onCopyError?.();
+                    }
+                }}
+                onContextMenu={event => {
+                    if (!enabled || !showAddressMenu) return;
+                    event.preventDefault();
+                    const input = event.currentTarget;
+                    input.focus();
+                    void showAddressMenu(input.selectionStart !== input.selectionEnd).then(result => {
+                        if (!result.ok && currentOwner.current === ownerKey) onMenuError?.();
+                    }).catch(() => { if (currentOwner.current === ownerKey) onMenuError?.(); });
+                }}
                 onChange={event => {
+                    edited.current = true;
+                    submitted.current = undefined;
                     revision.current++;
                     const input = event.target;
                     const inputType = (event.nativeEvent as InputEvent).inputType;
@@ -211,7 +259,7 @@ export function BrowserAddressBar({ inputRef, url, history, enabled, ownerKey, i
                     if (inputType) suppress.current = inputType !== 'insertText';
                 }}
                 onPaste={() => { suppress.current = true; completion.current = null; revision.current++; }}
-                onCompositionStart={() => { composing.current = true; dismiss(); }}
+                onCompositionStart={() => { edited.current = true; submitted.current = undefined; composing.current = true; dismiss(); }}
                 onCompositionEnd={event => {
                     composing.current = false;
                     suppress.current = true;

@@ -33,6 +33,38 @@ function tab(overrides: Partial<React.ComponentProps<typeof UnifiedBrowserTab>> 
 }
 
 describe('browser tab engine-neutral controls', () => {
+    it.each(['electron', 'webview2'] as const)('uses only committed %s URL/title pairs, rejecting loading, file and previous-tab state', async engine => {
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const state = { viewId: 'view', engine, sourceKind: 'url' as const, url: 'https://example.test/', title: 'Untrusted snapshot title',
+            committedPage: { url: 'https://example.test/', title: 'Committed fixture title', revision: 1 },
+            loading: false, canGoBack: false, canGoForward: false };
+        const emit = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
+        const input = screen.getByLabelText('Address') as HTMLInputElement;
+        const copy = () => {
+            input.select();
+            const event = new Event('copy', { bubbles: true, cancelable: true });
+            const setData = vi.fn();
+            Object.defineProperty(event, 'clipboardData', { value: { setData } });
+            fireEvent(input, event);
+            return setData;
+        };
+        expect(copy()).not.toHaveBeenCalled();
+        act(() => emit({ ...state, viewId: 'foreign' }));
+        expect(copy()).not.toHaveBeenCalled();
+        act(() => emit(state));
+        expect(copy()).toHaveBeenCalledWith('text/html', '<a href="https://example.test/">Committed fixture title</a>');
+        for (const patch of [{ loading: true }, { sourceKind: 'file' as const }, { error: 'Fixture failure' },
+            { url: 'https://next.test/' }, { committedPage: undefined }]) {
+            act(() => emit({ ...state, ...patch }));
+            expect(copy()).not.toHaveBeenCalled();
+        }
+        act(() => emit(state));
+        fireEvent.change(input, { target: { value: 'https://example.test/' + 'draft' } });
+        fireEvent.submit(input.form!);
+        expect(copy()).not.toHaveBeenCalled();
+    });
+
     it.each(['electron', 'webview2'] as const)('keeps blank %s addresses private while explicit History remains available', async engine => {
         open.mockResolvedValue({ ok: true, engine });
         const target = 'https://example.test/Case';

@@ -315,6 +315,21 @@ app.whenReady().then(async () => {
                 ...(otherAvailable ? { preserved: await call(main, 'navigate', 'preserved', base + '/?tab=preserved') } : {}),
             });
         }
+    } else if (process.argv.includes('--address-copy-state-check')) {
+        const committed = await settled(main, 'main', s => s.committedPage?.url === s.url);
+        command('main', 'popup');
+        await waitFor(() => reports.get('main')?.popupMessage === 'authenticated', 'popup authentication');
+        const afterPopup = await state(main, 'main');
+        await call(main, 'navigate', 'main', base + '/redirect');
+        const redirected = await settled(main, 'main', s => s.committedPage?.title === 'Second');
+        command('main', 'title');
+        const updated = await settled(main, 'main', s => s.committedPage?.title === 'Updated page');
+        await call(main, 'navigate', 'main', base + '/slow');
+        await waitFor(async () => (await state(main, 'main'))?.loading, 'copy identity revoked during load');
+        const loading = await state(main, 'main');
+        await call(main, 'nav', 'main', 'stop');
+        const stopped = await settled(main, 'main', s => !s.loading);
+        emit('address-copy-state', { committed, afterPopup, redirected, updated, loading, stopped });
     } else {
         emit('open', { result: opened, home, report: reports.get('main') });
         main.focus();

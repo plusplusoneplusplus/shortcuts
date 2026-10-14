@@ -517,6 +517,35 @@ it.each([false, true])('preserves quoted session values and auth-cookie parts th
 describe('WebView2 explicit history events', () => {
     const historySink: BrowserEventSink = { ...sink, state: vi.fn(), visited: vi.fn(), titleUpdated: vi.fn() };
     const state = { url: 'https://tab.test/', title: 'Tab', canGoBack: false, canGoForward: false, loading: false };
+    it('qualifies committed document events by native source, excluding same-URL popups and missing source metadata', async () => {
+        const documentCommitted = vi.fn(), documentTitleUpdated = vi.fn();
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url },
+            { ...historySink, documentCommitted, documentTitleUpdated });
+        for (const event of ['visited', 'title-updated']) {
+            mocks.onEvent({ event, viewId: '7:tab:1', sourceViewId: '7:tab:1:popup:1', url: state.url, title: 'Popup' });
+            mocks.onEvent({ event, viewId: '7:tab:1', url: state.url, title: 'Unqualified' });
+        }
+        expect(documentCommitted).not.toHaveBeenCalled();
+        expect(documentTitleUpdated).not.toHaveBeenCalled();
+        mocks.onEvent({ event: 'visited', viewId: '7:tab:1', sourceViewId: '7:tab:1', url: state.url, title: 'Document' });
+        mocks.onEvent({ event: 'title-updated', viewId: '7:tab:1', sourceViewId: '7:tab:1', url: state.url, title: 'Updated' });
+        expect(documentCommitted).toHaveBeenCalledExactlyOnceWith(state.url, 'Document');
+        expect(documentTitleUpdated).toHaveBeenCalledExactlyOnceWith(state.url, 'Updated');
+        await view.close();
+    });
+    it('invalidates the committed copy identity at the start of a new native navigation', async () => {
+        const navigationStarted = vi.fn();
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url }, { ...historySink, navigationStarted });
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+        expect(navigationStarted).toHaveBeenCalledOnce();
+        await view.close();
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, loading: true } });
+        expect(navigationStarted).toHaveBeenCalledOnce();
+    });
 
     beforeEach(() => {
         mocks.request.mockReset().mockResolvedValue(undefined);

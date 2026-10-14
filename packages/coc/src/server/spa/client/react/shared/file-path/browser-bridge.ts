@@ -40,6 +40,8 @@ export interface BrowserViewState {
     sourceKind?: BrowserSource['kind'];
     url: string;
     title: string;
+    /** Successful document identity; absent while navigating or on older hosts. */
+    committedPage?: { url: string; title: string; revision: number };
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;
@@ -64,6 +66,7 @@ export interface BrowserDownloadEvent {
 
 /** The desktop preload's browser tab API (see coc-desktop browser-view-host.ts). */
 export interface DesktopBrowserBridge {
+    showAddressMenu?(hasSelection: boolean): Promise<BrowserOperationResult>;
     control?: {
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
         execute(request: BrowserCommandRequest): Promise<BrowserCommandResult>;

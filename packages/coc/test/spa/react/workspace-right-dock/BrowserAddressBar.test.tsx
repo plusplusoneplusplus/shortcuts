@@ -51,6 +51,162 @@ describe('desktop address history', () => {
         expect(props.onOpen).not.toHaveBeenCalledWith('https://example.test/');
     });
 
+    describe('current-page address copy', () => {
+        const url = 'https://example.test/Case?one=1&two="quoted"#Part';
+        function copy(input: HTMLInputElement, setData = vi.fn()) {
+            const event = new Event('copy', { bubbles: true, cancelable: true });
+            Object.defineProperty(event, 'clipboardData', { value: { setData } });
+            fireEvent(input, event);
+            return { event, setData };
+        }
+        function current(title = 'Fixture <Page> & "Title"') {
+            const view = setup({ url });
+            const props = { ...view.props, committedPage: { url, title, revision: 1 }, onCopyError: vi.fn(), onMenuError: vi.fn() };
+            view.rerender(<BrowserAddressBar {...props} />);
+            act(() => view.input.focus());
+            view.input.select();
+            return { ...view, props };
+        }
+
+        it('writes both MIME types only on explicit copy, escaping the title and href', () => {
+            const { input } = current();
+            const { event, setData } = copy(input);
+            expect(event.defaultPrevented).toBe(true);
+            expect(setData.mock.calls).toEqual([
+                ['text/plain', url],
+                ['text/html', '<a href="https://example.test/Case?one=1&amp;two=&quot;quoted&quot;#Part">Fixture &lt;Page&gt; &amp; &quot;Title&quot;</a>'],
+            ]);
+        });
+
+        it.each(['', ' \t\n '])('uses the URL label for a blank title %j', title => {
+            const { input } = current(title);
+            const { setData } = copy(input);
+            expect(setData).toHaveBeenCalledWith('text/html', `<a href="https://example.test/Case?one=1&amp;two=&quot;quoted&quot;#Part">https://example.test/Case?one=1&amp;two=&quot;quoted&quot;#Part</a>`);
+        });
+
+        it.each(['partial', 'caret', 'edited', 'edited-back', 'blank', 'stale', 'missing', 'disabled', 'invalid', 'composition', 'owner', 'file', 'protocol'] as const)(
+            'leaves %s copy to the native default', mode => {
+                const { input, props, rerender } = current();
+                if (mode === 'partial') input.setSelectionRange(1, input.value.length);
+                else if (mode === 'caret') input.setSelectionRange(0, 0);
+                else if (mode === 'edited' || mode === 'edited-back' || mode === 'blank') {
+                    fireEvent.change(input, { target: { value: mode === 'blank' ? '' : 'https://draft.test/' } });
+                    if (mode === 'edited-back') fireEvent.change(input, { target: { value: url } });
+                    input.select();
+                } else if (mode === 'stale') rerender(<BrowserAddressBar {...props} committedPage={{ url: 'https://other.test/', title: 'Other', revision: 1 }} />);
+                else if (mode === 'missing') rerender(<BrowserAddressBar {...props} committedPage={undefined} />);
+                else if (mode === 'disabled') rerender(<BrowserAddressBar {...props} enabled={false} />);
+                else if (mode === 'invalid') rerender(<BrowserAddressBar {...props} invalid />);
+                else if (mode === 'composition') fireEvent.compositionStart(input);
+                else if (mode === 'owner') rerender(<BrowserAddressBar {...props} ownerKey="workspace-b:view-b" url="https://other.test/" committedPage={undefined} />);
+                else if (mode === 'file' || mode === 'protocol') {
+                    const unsafe = mode === 'file' ? 'file:///fixture.html' : 'javascript:alert(1)';
+                    rerender(<BrowserAddressBar {...props} ownerKey="workspace-b:view-b" url={unsafe} committedPage={{ url: unsafe, title: 'Unsafe', revision: 1 }} />);
+                    input.select();
+                }
+                const { event, setData } = copy(input);
+                expect(event.defaultPrevented).toBe(false);
+                expect(setData).not.toHaveBeenCalled();
+            },
+        );
+
+        it('never intercepts cut or a copy event without writable clipboard data', () => {
+            const { input } = current();
+            const cut = new Event('cut', { bubbles: true, cancelable: true });
+            const plainCopy = new Event('copy', { bubbles: true, cancelable: true });
+            fireEvent(input, cut);
+            fireEvent(input, plainCopy);
+            expect(cut.defaultPrevented).toBe(false);
+            expect(plainCopy.defaultPrevented).toBe(false);
+        });
+
+        it('retains ordinary selection copy and cut through the browser editing default', async () => {
+            const user = userEvent.setup();
+            const { input } = current();
+            input.setSelectionRange(8, 15);
+            const copied = await user.copy();
+            expect(copied?.getData('text/plain')).toBe(url.slice(8, 15));
+            expect(copied?.getData('text/html')).toBe('');
+            const cut = await user.cut();
+            expect(cut?.getData('text/plain')).toBe(url.slice(8, 15));
+            expect(input.value).toBe(url.slice(0, 8) + url.slice(15));
+            input.select();
+            const draft = await user.copy();
+            expect(draft?.getData('text/plain')).toBe(input.value);
+            expect(draft?.getData('text/html')).toBe('');
+        });
+
+        it('copies both formats through the keyboard copy default with an isolated clipboard stub', async () => {
+            const user = userEvent.setup();
+            const { input } = current('Fixture');
+            input.select();
+            const copied = await user.copy();
+            expect(copied?.getData('text/plain')).toBe(url);
+            expect(copied?.getData('text/html')).toContain('>Fixture</a>');
+        });
+
+        it('reports clipboard failure without canceling the default selection copy', () => {
+            const { input, props } = current();
+            const { event } = copy(input, vi.fn(() => { throw new Error('Fixture unsupported format'); }));
+            expect(event.defaultPrevented).toBe(false);
+            expect(props.onCopyError).toHaveBeenCalledOnce();
+        });
+
+        it('does not turn a highlighted uncommitted history result into a page link, even at the current URL', async () => {
+            const view = setup({ url, entries: [entry(url)] });
+            view.rerender(<BrowserAddressBar {...view.props} committedPage={{ url, title: 'Fixture', revision: 1 }} />);
+            act(() => view.input.focus());
+            await screen.findByText('Page');
+            view.input.select();
+            fireEvent.keyDown(view.input, { key: 'ArrowDown' });
+            view.input.select();
+            expect(copy(view.input).event.defaultPrevented).toBe(false);
+        });
+
+        it('copies only the new owner pair after a tab/workspace switch and live title update', () => {
+            const { input, props, rerender } = current();
+            const next = { url: 'https://second.test/', title: 'Second page', revision: 1 };
+            rerender(<BrowserAddressBar {...props} ownerKey="workspace-b:view-b" url={next.url} committedPage={next} />);
+            input.select();
+            expect(copy(input).setData.mock.calls).toEqual([
+                ['text/plain', next.url], ['text/html', '<a href="https://second.test/">Second page</a>'],
+            ]);
+            rerender(<BrowserAddressBar {...props} ownerKey="workspace-b:view-b" url={next.url} committedPage={{ ...next, title: 'Updated' }} />);
+            expect(copy(input).setData).toHaveBeenCalledWith('text/html', '<a href="https://second.test/">Updated</a>');
+        });
+
+        it('keeps a same-URL submission plain until the new document commits, then restores rich copy', () => {
+            const { input, props, rerender } = current();
+            props.onOpen.mockReturnValue(url);
+            fireEvent.change(input, { target: { value: 'https://draft.test/' } });
+            fireEvent.change(input, { target: { value: url } });
+            fireEvent.submit(input.form!);
+            input.select();
+            expect(copy(input).event.defaultPrevented).toBe(false);
+            rerender(<BrowserAddressBar {...props} committedPage={{ url, title: 'Updated old title', revision: 1 }} />);
+            expect(copy(input).event.defaultPrevented).toBe(false);
+            rerender(<BrowserAddressBar {...props} committedPage={{ url, title: 'New document', revision: 2 }} />);
+            expect(copy(input).setData).toHaveBeenCalledWith('text/html', expect.stringContaining('>New document</a>'));
+        });
+
+        it('routes native context menu without writing clipboard or changing the selection', async () => {
+            const { input, props, rerender } = current();
+            const showAddressMenu = vi.fn(async () => ({ ok: true as const }));
+            rerender(<BrowserAddressBar {...props} showAddressMenu={showAddressMenu} />);
+            expect(fireEvent.contextMenu(input)).toBe(false);
+            expect(showAddressMenu).toHaveBeenCalledWith(true);
+            expect([input.selectionStart, input.selectionEnd]).toEqual([0, url.length]);
+            input.setSelectionRange(2, 2);
+            fireEvent.contextMenu(input);
+            expect(showAddressMenu).toHaveBeenLastCalledWith(false);
+            showAddressMenu.mockRejectedValueOnce(new Error('Fixture menu unavailable'));
+            fireEvent.contextMenu(input);
+            await waitFor(() => expect(props.onMenuError).toHaveBeenCalledOnce());
+            rerender(<BrowserAddressBar {...props} />);
+            expect(fireEvent.contextMenu(input)).toBe(true);
+        });
+    });
+
     it('shows nonblank results with accessible, bounded overlay placement and an eight-item limit', async () => {
         const entries = Array.from({ length: 10 }, (_, i) => entry(`https://page${i}.test/`, `Recent ${i}`));
         const { input, history } = setup({ entries, url: 'page' });

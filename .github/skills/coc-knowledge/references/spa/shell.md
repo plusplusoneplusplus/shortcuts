@@ -207,7 +207,21 @@ in-flight replies. Local typed text survives Escape; deletion, caret moves, past
 and IME suppress automatic suffix selection. Owner/revision checks reject stale
 queries; history invalidations refresh open nonblank results.
 
-The page title belongs in the tab label. The toolbar’s Import cookies action opens `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+Standard address Copy writes an escaped HTTP(S) title anchor as `text/html` and
+the exact URL as `text/plain` only for a fully selected, unedited current page.
+Blank titles use the URL label. Main publishes owner-scoped `committedPage`
+URL/title/revision pairs from source-qualified successful-document events,
+independent of history recording; popup history cannot alter the pair.
+Main-document navigation and failures revoke it. Title updates retain
+the revision. Edited submissions become eligible only when their document commits.
+Partial selections, drafts, blank addresses, cut, file previews and older hosts
+retain native editing. Clipboard failures leave default copy enabled and visible.
+
+Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All through
+registered-main-frame IPC; actions target the requesting SPA's web contents.
+Native Copy and the Edit menu dispatch the input's ordinary copy event. The
+page title belongs in the tab label. The toolbar's Import cookies action opens
+`BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
 ### Desktop browser control
 
