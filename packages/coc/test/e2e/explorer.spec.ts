@@ -743,15 +743,29 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 
-            // Collapsing the dock hides the whole panel but does not discard
-            // the host tab session. Reopening it restores the same tabs and active
-            // selection.
+            // Expanding, collapsing and reopening the dock preserve the host
+            // tab session and active selection.
+            const panel = page.locator(UNIFIED_PANEL);
             const dockToggle = page.locator('[data-testid="workspace-dock-toggle"]').first();
             await expect(dockToggle).toBeVisible({ timeout: 10_000 });
+            await expect(panel).toHaveAttribute('data-open', 'true');
+            await expect(panel).toHaveAttribute('data-expanded', 'false');
+            await expect(dockToggle).toHaveAccessibleName('Expand right panel');
+
             await dockToggle.click();
-            await expect(page.locator(UNIFIED_PANEL)).toHaveAttribute('data-open', 'false');
+            await expect(panel).toHaveAttribute('data-open', 'true');
+            await expect(panel).toHaveAttribute('data-expanded', 'true');
+            await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
+            await expect(editorTab(page, 'file:src/utils.ts')).toHaveAttribute('aria-selected', 'true');
+            await expect(dockToggle).toHaveAccessibleName('Hide right panel');
+
+            await dockToggle.click();
+            await expect(panel).toHaveAttribute('data-open', 'false');
+            await expect(panel).toHaveAttribute('data-expanded', 'false');
 
             await openExplorerPanel(page);
+            await expect(panel).toHaveAttribute('data-open', 'true');
+            await expect(panel).toHaveAttribute('data-expanded', 'false');
             await expect(explorerPanel(page)).toBeVisible({ timeout: 10_000 });
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
             await expect(editorTab(page, 'file:src/utils.ts')).toHaveAttribute('aria-selected', 'true');
