@@ -56,6 +56,11 @@ export interface QueueDangerousCommandGuardConfig {
     readonly enabled: boolean;
 }
 
+/** `features.sensitiveInput`: whether `ask_user` takes `sensitive-input` questions. */
+export interface QueueSensitiveInputConfig {
+    readonly enabled: boolean;
+}
+
 /** Ralph final-check loop policy. */
 export interface QueueRalphFinalCheckPolicy {
     readonly maxGapFixLoops: number;
@@ -82,6 +87,8 @@ export interface QueueRuntimeConfig {
     getRalphFinalCheckPolicy(): QueueRalphFinalCheckPolicy;
     /** Dangerous-command guard policy for the next turn built. */
     getDangerousCommandGuard(): QueueDangerousCommandGuardConfig;
+    /** `ask_user` sensitive-input policy for the next turn built and each call. */
+    getSensitiveInput(): QueueSensitiveInputConfig;
 }
 
 // ============================================================================
@@ -120,6 +127,7 @@ function readFromSnapshot(config: ResolvedCLIConfig): {
     skillFolders: QueueSkillFoldersConfig;
     ralphFinalCheck: QueueRalphFinalCheckPolicy;
     dangerousCommandGuard: QueueDangerousCommandGuardConfig;
+    sensitiveInput: QueueSensitiveInputConfig;
 } {
     return {
         timeoutMs: resolveDefaultTimeoutMs(config.timeout),
@@ -134,6 +142,7 @@ function readFromSnapshot(config: ResolvedCLIConfig): {
             maxGapFixLoops: config.ralph.finalCheck.maxGapFixLoops,
         },
         dangerousCommandGuard: config.dangerousCommandGuard,
+        sensitiveInput: { enabled: config.features.sensitiveInput === true },
     };
 }
 
@@ -166,6 +175,7 @@ export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntim
         getSkillFolders: () => readFromSnapshot(source.config).skillFolders,
         getRalphFinalCheckPolicy: () => readFromSnapshot(source.config).ralphFinalCheck,
         getDangerousCommandGuard: () => readFromSnapshot(source.config).dangerousCommandGuard,
+        getSensitiveInput: () => readFromSnapshot(source.config).sensitiveInput,
     });
 }
 
@@ -188,6 +198,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
     skillFolders?: QueueSkillFoldersConfig;
     ralphFinalCheck?: QueueRalphFinalCheckPolicy;
     dangerousCommandGuard?: QueueDangerousCommandGuardConfig;
+    sensitiveInput?: QueueSensitiveInputConfig;
 } = {}): QueueRuntimeConfig {
     const file = overrides.config;
 
@@ -217,6 +228,10 @@ export function createFixedQueueRuntimeConfig(overrides: {
         enabled: file?.dangerousCommandGuard?.enabled ?? DEFAULT_CONFIG.dangerousCommandGuard.enabled,
     };
 
+    const sensitiveInput: QueueSensitiveInputConfig = overrides.sensitiveInput ?? {
+        enabled: file?.features?.sensitiveInput ?? DEFAULT_CONFIG.features.sensitiveInput,
+    };
+
     return Object.freeze({
         getDefaultTimeoutMs: () => timeoutMs,
         getDefaultIdleTimeoutMs: () => idleTimeoutMs,
@@ -225,6 +240,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
         getSkillFolders: () => skillFolders,
         getRalphFinalCheckPolicy: () => ralphFinalCheck,
         getDangerousCommandGuard: () => dangerousCommandGuard,
+        getSensitiveInput: () => sensitiveInput,
     });
 }
 

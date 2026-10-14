@@ -804,6 +804,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 },
                 computeTurnIndex: opts.computeTurnIndex,
                 ...(opts.isInteractive ? { isInteractive: opts.isInteractive } : {}),
+                isSensitiveInputEnabled: () => this.queueConfig.getSensitiveInput().enabled,
                 onUnavailable: (questionCount) => {
                     getLogger().debug(
                         LogCategory.AI,

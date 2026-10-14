@@ -827,6 +827,7 @@ describe('feature toggle settings-tab placement', () => {
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.canvasHostApis': 'features',
+        'features.sensitiveInput': 'features',
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
         'features.diffFilePicker': 'features',

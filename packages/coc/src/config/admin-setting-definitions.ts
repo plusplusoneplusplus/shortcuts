@@ -1199,6 +1199,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-canvas-host-apis-enabled',
         },
     }),
+    bool({
+        key: 'features.sensitiveInput', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 66, label: 'Sensitive input for ask_user', badge: 'experimental',
+            hint: 'Lets the AI ask for a secret (browser login cookies) with an ask_user sensitive-input question. You paste it in the CoC desktop dashboard and it goes straight to the desktop browser; the AI and server only get a count. Disabled by default.',
+            testId: 'toggle-sensitive-input-enabled',
+        },
+    }),
 ];
 
 // ── derived views ─────────────────────────────────────────────────────────────
