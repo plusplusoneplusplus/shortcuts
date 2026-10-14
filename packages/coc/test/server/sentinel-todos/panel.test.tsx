@@ -417,7 +417,7 @@ describe('UnifiedTodoTab', () => {
         { state: 'cancelled', label: 'Job cancelled' },
         { state: 'capped', label: 'Job capped' },
         { state: 'unavailable', label: 'Status unavailable' },
-    ] as const)('keeps the Ralph badge alongside $state status and links after reload', async ({ state, label }) => {
+    ] as const)('keeps an accessible $state execution pill separate from Ralph, review and To-do status after reload', async ({ state, label }) => {
         const remote = state === 'unavailable';
         const linked = item({ status: 'in_progress', jobs: [{
             processId: 'queue_child', workspaceId: 'ws-child', kind: remote ? 'remote' : 'ralph',
@@ -430,20 +430,41 @@ describe('UnifiedTodoTab', () => {
         get.mockResolvedValue(ledger([linked]));
         const { unmount } = render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
         async function assertJob() {
-            const badge = await screen.findByText('Ralph', { exact: true });
+            const card = await screen.findByTestId('sentinel-todo-row-i1');
+            const badge = within(card).getByText('Ralph', { exact: true });
             expect(badge.getAttribute('title')).toBe('Ralph session');
             expect(badge.getAttribute('aria-hidden')).toBeNull();
             expect(badge.className).toContain('shrink-0');
-            const jobs = screen.getByRole('list', { name: 'Jobs for Fix login' });
+            const jobs = within(card).getByRole('list', { name: 'Jobs for Fix login' });
             expect(jobs.textContent).toContain(label);
+            const execution = within(jobs).getByTestId('sentinel-todo-job-execution');
+            expect(execution.textContent).toBe(label);
+            expect(execution.getAttribute('aria-label')).toBe(`Job execution: ${label}`);
+            expect(execution.getAttribute('title')).toBe(label);
+            expect(execution.getAttribute('data-status')).toBe(state);
+            expect(execution.className).toContain('rounded-full');
+            expect(execution.className).toContain('shrink-0');
+            expect(execution.className).toContain('whitespace-nowrap');
+            expect(execution.querySelector('[aria-hidden="true"]')).toBeTruthy();
+            expect(jobs.className).toContain('flex-wrap');
             expect(badge.closest('li')?.className).toContain('flex-wrap');
             const link = within(jobs).getByRole('link', { name: 'Exclusive writer' });
             expect(link.getAttribute('href')).toBe(linked.jobs[0].openLink);
             expect(link.getAttribute('target')).toBe(remote ? '_blank' : null);
-            expect(screen.getByTestId(`sentinel-todo-status-${state === 'completed' ? 'in_review' : 'in_progress'}`)).toBeTruthy();
+            expect(within(card).getByTestId(`sentinel-todo-status-${state === 'completed' ? 'in_review' : 'in_progress'}`)).toBeTruthy();
             if (state === 'completed') expect(jobs.textContent).toContain('Review pending (result delivered)');
         }
         await assertJob();
+        const row = screen.getByTestId('sentinel-todo-row-i1');
+        fireEvent.click(within(row).getByRole('button', { pressed: false, name: /Fix login/ }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        const detailExecution = within(detail).getByTestId('sentinel-todo-job-execution');
+        expect(detailExecution.textContent).toBe(label);
+        expect(detailExecution.closest('li')?.className).toContain('flex-wrap');
+        if (state === 'completed') {
+            expect(detailExecution.textContent).not.toContain('Review');
+            expect(within(detail).getByText('· Review pending (result delivered)')).toBeTruthy();
+        }
         unmount();
         render(<UnifiedTodoTab owner={OWNER} />);
         await assertJob();
