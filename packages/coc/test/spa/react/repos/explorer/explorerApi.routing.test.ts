@@ -10,10 +10,13 @@ const mocks = vi.hoisted(() => ({
     readBlob: vi.fn(),
     writeBlob: vi.fn(),
     reveal: vi.fn(),
+    deleteEntry: vi.fn(),
+    resolve: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: mocks.getClient,
+    resolveCloneRoute: mocks.resolve,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -28,6 +31,7 @@ const ROUTING_REF = 'remote:server-b:ws-shared';
 describe('explorerApi clone routing', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.resolve.mockReturnValue({ kind: 'remote', baseUrl: 'https://owner.invalid' });
         mocks.getClient.mockReturnValue({
             explorer: {
                 tree: mocks.tree,
@@ -38,6 +42,7 @@ describe('explorerApi clone routing', () => {
                 readBlob: mocks.readBlob,
                 writeBlob: mocks.writeBlob,
                 reveal: mocks.reveal,
+                deleteEntry: mocks.deleteEntry,
             },
         });
     });
@@ -51,9 +56,24 @@ describe('explorerApi clone routing', () => {
         await explorerApi.readBlob(WORKSPACE_ID, 'src/app.ts', {}, ROUTING_REF);
         await explorerApi.writeBlob(WORKSPACE_ID, 'src/app.ts', 'content', ROUTING_REF);
         await explorerApi.reveal(WORKSPACE_ID, 'src/app.ts', ROUTING_REF);
+        await explorerApi.deleteEntry(WORKSPACE_ID, 'src/app.ts', ROUTING_REF);
 
-        expect(mocks.getClient).toHaveBeenCalledTimes(8);
+        expect(mocks.getClient).toHaveBeenCalledTimes(9);
         expect(mocks.getClient.mock.calls.every(([ref]) => ref === ROUTING_REF)).toBe(true);
+    });
+
+    it('never dispatches deletion locally when a concrete remote owner is unresolved', async () => {
+        mocks.resolve.mockReturnValue({ kind: 'unresolved-remote' });
+        await expect(explorerApi.deleteEntry(WORKSPACE_ID, 'src/app.ts', ROUTING_REF)).rejects.toThrow(/owning server/);
+        expect(mocks.getClient).not.toHaveBeenCalled();
+        expect(mocks.deleteEntry).not.toHaveBeenCalled();
+    });
+
+    it('pins explicit local deletion to the page-origin owner rather than a same-id remote', async () => {
+        mocks.resolve.mockReturnValue({ kind: 'local' });
+        await explorerApi.deleteEntry(WORKSPACE_ID, 'src/app.ts', null);
+        expect(mocks.getClient).toHaveBeenCalledWith(null);
+        expect(mocks.deleteEntry).toHaveBeenCalledWith(WORKSPACE_ID, 'src/app.ts');
     });
 
     it('keeps local calls on their workspace route when no concrete owner is supplied', async () => {

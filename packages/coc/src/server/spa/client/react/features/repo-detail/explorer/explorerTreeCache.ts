@@ -30,6 +30,7 @@ import type { TreeEntry } from './types';
 
 /** The mutable, in-memory tree cache for a single workspace. */
 interface WorkspaceTreeCache {
+    generation: number;
     /** Root-level entries as returned by the depth-2 mount fetch. */
     rootEntries: TreeEntry[];
     /** Lazily-loaded children keyed by directory path. */
@@ -51,7 +52,7 @@ const listeners = new Map<string, Set<() => void>>();
 function getCache(workspaceId: string): WorkspaceTreeCache {
     let cache = caches.get(workspaceId);
     if (!cache) {
-        cache = { rootEntries: [], childrenMap: new Map(), rootLoaded: false };
+        cache = { generation: 0, rootEntries: [], childrenMap: new Map(), rootLoaded: false };
         caches.set(workspaceId, cache);
     }
     return cache;
@@ -145,9 +146,21 @@ export function useExplorerRootLoaded(
 export function clearExplorerTreeCache(workspaceId?: string): void {
     const targets = workspaceId === undefined ? [...caches.keys()] : [workspaceId];
     for (const ws of targets) {
-        caches.set(ws, { rootEntries: [], childrenMap: new Map(), rootLoaded: false });
+        caches.set(ws, { generation: getCache(ws).generation + 1, rootEntries: [], childrenMap: new Map(), rootLoaded: false });
         notify(channelKey(ws, 'rootEntries'));
         notify(channelKey(ws, 'childrenMap'));
         notify(channelKey(ws, 'rootLoaded'));
     }
+
+}
+
+export function getExplorerTreeGeneration(owner: string): number {
+    return getCache(owner).generation;
+}
+
+export function invalidateExplorerTreeCache(owner: string): void {
+    const cache = getCache(owner);
+    cache.generation++;
+    cache.rootLoaded = false;
+    notify(channelKey(owner, 'rootLoaded'));
 }

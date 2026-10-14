@@ -29,6 +29,7 @@ import { TreeNode } from '../../../../../src/server/spa/client/react/features/re
 import {
     useExplorerChildrenMap,
     clearExplorerTreeCache,
+    invalidateExplorerTreeCache,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerTreeCache';
 import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
@@ -75,6 +76,15 @@ beforeEach(() => {
 });
 
 describe('TreeNode — lazy-loading a directory', () => {
+    it('does not replay a pre-deletion listing after the tree cache is invalidated', async () => {
+        let finish!: (data: { entries: TreeEntry[] }) => void;
+        treeSpy.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        render(<Harness />);
+        await waitFor(() => expect(treeSpy).toHaveBeenCalledTimes(1));
+        invalidateExplorerTreeCache(WS);
+        finish({ entries: CHILDREN });
+        await waitFor(() => expect(screen.queryByTestId('tree-node-.git/refs/HEAD')).toBeNull());
+    });
     it('clears the spinner once children load and renders them', async () => {
         treeSpy.mockResolvedValue({ entries: CHILDREN });
 

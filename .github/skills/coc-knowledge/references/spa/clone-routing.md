@@ -129,6 +129,12 @@ their existing bare-workspace keys.
 Tree loading, file and content search, content replacement, Quick Open, Exact
 Open, and OS reveal also receive the concrete route while sending the plain
 workspace id to the owning host.
+Permanent deletion additionally checks `resolveCloneRoute` before dispatch;
+unresolved remote owners never reach the page-origin client.
+`useExplorerDeleteEnabled` reads the default-off capability from the owning
+server and drops superseded probes. Dirty/save admission and deletion cleanup
+use the same owner-qualified keys, including physical repo-group members;
+the window-local protection contract is in `features/repo-detail/AGENTS.md`.
 The tracked-content overlay derives a member-specific route from the group
 owner's route, refreshes group membership, and preflights the file before it
 creates a preview tab. An unresolved remote route is reported inline and never

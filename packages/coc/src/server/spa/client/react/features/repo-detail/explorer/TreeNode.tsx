@@ -11,6 +11,7 @@ import { filterEntries } from './FileTree';
 import { FileTypeIcon } from './FileTypeIcon';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
+import { getExplorerTreeGeneration } from './explorerTreeCache';
 import { getTreeNodePaddingLeft } from './treeIndent';
 import { createFilePathDragPayload, writeFilePathDragData } from '../../chat/sessionContextDrag';
 
@@ -79,9 +80,11 @@ export function TreeNode({
     useEffect(() => {
         if (!isDir || !isExpanded || children !== undefined || loadError) return;
         let cancelled = false;
+        const owner = routingRef ?? workspaceId;
+        const generation = getExplorerTreeGeneration(owner);
         explorerApi.tree(workspaceId, { path: entry.path }, routingRef)
             .then((data: { entries: TreeEntry[] }) => {
-                if (!cancelled) onChildrenLoaded(entry.path, data.entries);
+                if (!cancelled && generation === getExplorerTreeGeneration(owner)) onChildrenLoaded(entry.path, data.entries);
             })
             .catch((err: unknown) => {
                 if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
