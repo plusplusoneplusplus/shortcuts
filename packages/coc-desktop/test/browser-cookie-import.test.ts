@@ -1,12 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseBrowserCookies } from '../src/browser-cookie-import';
 
 describe('desktop cookie input', () => {
+    const now = 1_800_000_000_123;
+    const pairExpiry = now / 1000 + 2_592_000;
+    beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(now); });
+    afterEach(() => { vi.restoreAllMocks(); });
+
     it('parses header pairs without losing equals signs or empty values', () => {
         expect(parseBrowserCookies('App.Example.com', 'Cookie: session=abc==; empty=')).toEqual([
-            { url: 'https://app.example.com/', name: 'session', value: 'abc==', path: '/', secure: true, httpOnly: false, sameSite: 'lax' },
-            { url: 'https://app.example.com/', name: 'empty', value: '', path: '/', secure: true, httpOnly: false, sameSite: 'lax' },
+            { url: 'https://app.example.com/', name: 'session', value: 'abc==', path: '/', secure: true, httpOnly: false, sameSite: 'lax', expirationDate: pairExpiry },
+            { url: 'https://app.example.com/', name: 'empty', value: '', path: '/', secure: true, httpOnly: false, sameSite: 'lax', expirationDate: pairExpiry },
         ]);
+    });
+    it.each(['a=1; b=2', ' Cookie: a=1; b=2 '])('gives the entire pair batch exactly 30 days from each import: %s', input => {
+        expect(parseBrowserCookies('example.com', input).map(c => c.expirationDate)).toEqual([pairExpiry, pairExpiry]);
+        vi.mocked(Date.now).mockReturnValue(now + 86_400_000);
+        expect(parseBrowserCookies('example.com', input).map(c => c.expirationDate)).toEqual([pairExpiry + 86_400, pairExpiry + 86_400]);
+    });
+    it.each([
+        [{}, undefined],
+        [{ session: false }, undefined],
+        [{ expirationDate: -1 }, undefined],
+        [{ expires: -1 }, undefined],
+        [{ session: true, expirationDate: pairExpiry }, undefined],
+        [{ session: true, expires: 1 }, undefined],
+        [{ expirationDate: pairExpiry + 3600 }, pairExpiry + 3600],
+        [{ expires: pairExpiry - 3600 }, pairExpiry - 3600],
+        [{ session: false, expirationDate: pairExpiry + 0.5 }, pairExpiry + 0.5],
+        [{ expirationDate: pairExpiry + 3600, expires: pairExpiry }, pairExpiry + 3600],
+    ])('preserves JSON expiry/session semantics for %j', (attributes, expiry) => {
+        const cookie = parseBrowserCookies('example.com', JSON.stringify([{ name: 'a', value: 'b', ...attributes }]))[0];
+        if (expiry === undefined) expect(cookie).not.toHaveProperty('expirationDate');
+        else expect(cookie.expirationDate).toBe(expiry);
+    });
+    it.each([0, 1, now / 1000, now / 1000 - 1, '1800000001'])('rejects invalid JSON expiry %j without replacing it with pair expiry', expirationDate => {
+        expect(() => parseBrowserCookies('example.com', JSON.stringify([{ name: 'a', value: 'b', expirationDate }]))).toThrow('invalid or expired expiry');
     });
     it('preserves literal quotes and backslashes from exported session-cookie JSON', () => {
         const input = String.raw`[
@@ -25,7 +54,8 @@ describe('desktop cookie input', () => {
         const json = parseBrowserCookies('app.example.com', JSON.stringify([{ name: 'session', value }]));
         const pairs = parseBrowserCookies('app.example.com', `Cookie: session=${value}`);
         expect(json[0].value).toBe(value);
-        expect(pairs).toEqual(json);
+        expect(json[0]).not.toHaveProperty('expirationDate');
+        expect(pairs).toEqual([{ ...json[0], expirationDate: pairExpiry }]);
     });
     it('preserves quoted header values alongside both auth-cookie parts', () => {
         const cookies = parseBrowserCookies('app.example.com', String.raw`Cookie: fixture_session="fixture\segment"; fixture_auth_0=fixture-part-0==%2F+/; fixture_auth_1=fixture-part-1==`);

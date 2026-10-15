@@ -285,6 +285,28 @@ it.each([false, true])('preserves quoted session values and auth-cookie parts in
     expect(mocks.contents.loadURL).not.toHaveBeenCalled();
 });
 
+it.each([false, true])('writes pair and JSON expiry in Unix seconds to Electron, retaining JSON sessions (with page: %s)', async withPage => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_123);
+    try {
+        const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+        const host = withPage ? (await view()).hosted : new ElectronBrowserHost('profile');
+        mocks.contents.loadURL.mockClear();
+        await host.importCookies!(parseBrowserCookies('original.example.com', 'fixture_pair=token'));
+        await host.importCookies!(parseBrowserCookies('original.example.com', JSON.stringify([
+            { name: 'fixture_persistent', value: 'token', expires: 1_800_003_600.5 },
+            { name: 'fixture_session', value: 'token', session: true, expirationDate: 1_800_003_600 },
+        ])));
+        const written = mocks.profile.cookies.set.mock.calls.map(([cookie]) => cookie);
+        expect(written).toHaveLength(3);
+        expect(written[0]).toMatchObject({ name: 'fixture_pair', expirationDate: 1_802_592_000.123 });
+        expect(written[1]).toMatchObject({ name: 'fixture_persistent', expirationDate: 1_800_003_600.5 });
+        expect(written[2]).toMatchObject({ name: 'fixture_session' });
+        expect(written[2]).not.toHaveProperty('expirationDate');
+        expect(mocks.profile.cookies.flushStore).toHaveBeenCalledTimes(2);
+        expect(mocks.contents.loadURL).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); }
+});
+
 describe('Electron successful history events', () => {
     it('records the final redirect URL once after main-frame completion, without snapshot replay', async () => {
         const { hosted, sink } = await view();

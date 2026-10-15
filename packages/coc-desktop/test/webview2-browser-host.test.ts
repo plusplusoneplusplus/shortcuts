@@ -514,6 +514,29 @@ it.each([false, true])('preserves quoted session values and auth-cookie parts th
         { ...(withPage ? { viewId: '7:import:1' } : {}), cookies });
 });
 
+it.each([false, true])('sends pair and JSON expiry in Unix seconds to WebView2, retaining JSON sessions (with page: %s)', async withPage => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_123);
+    try {
+        const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+        const host = new WebView2BrowserHost('profile');
+        const target = withPage ? await host.create({ ownerId: 7, viewId: 'import', sessionKey: 'workspace', url: 'https://login.example.com' }, sink) : host;
+        mocks.request.mockClear();
+        const pairs = parseBrowserCookies('original.example.com', 'fixture_pair=token');
+        const json = parseBrowserCookies('original.example.com', JSON.stringify([
+            { name: 'fixture_persistent', value: 'token', expires: 1_800_003_600.5 },
+            { name: 'fixture_session', value: 'token', session: true, expirationDate: 1_800_003_600 },
+        ]));
+        await target.importCookies!(pairs);
+        await target.importCookies!(json);
+        expect(pairs[0].expirationDate).toBe(1_802_592_000.123);
+        expect(json[0].expirationDate).toBe(1_800_003_600.5);
+        expect(json[1]).not.toHaveProperty('expirationDate');
+        const op = withPage ? 'import-cookies' : 'import-profile-cookies';
+        const routing = withPage ? { viewId: '7:import:1' } : {};
+        expect(mocks.request.mock.calls).toEqual([[op, { ...routing, cookies: pairs }], [op, { ...routing, cookies: json }]]);
+    } finally { clock.mockRestore(); }
+});
+
 describe('WebView2 explicit history events', () => {
     const historySink: BrowserEventSink = { ...sink, state: vi.fn(), visited: vi.fn(), titleUpdated: vi.fn() };
     const state = { url: 'https://tab.test/', title: 'Tab', canGoBack: false, canGoForward: false, loading: false };

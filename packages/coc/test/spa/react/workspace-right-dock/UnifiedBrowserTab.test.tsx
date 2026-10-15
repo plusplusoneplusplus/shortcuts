@@ -549,6 +549,7 @@ describe('browser cookie import', () => {
         await userEvent.click(screen.getByRole('menuitem', { name: 'Import cookies…' }));
         expect(screen.getByLabelText('Domain')).toHaveValue('login.example.com');
         expect(screen.getByLabelText('Domain')).toHaveFocus();
+        expect(screen.getByText(/Name=value pairs persist for 30 days across CoC restarts; JSON controls expiry, including session cookies\./)).toBeInTheDocument();
         fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'app.example.com' } });
         fireEvent.change(screen.getByLabelText('Cookies'), { target: { value: 'session=token' } });
         await userEvent.click(screen.getByRole('button', { name: 'Import', exact: true }));
