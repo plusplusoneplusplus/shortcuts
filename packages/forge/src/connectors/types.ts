@@ -29,6 +29,8 @@ export interface SshRemoteServer extends BaseRemoteServer {
 export type RemoteServer = UrlRemoteServer | DevTunnelRemoteServer | SshRemoteServer;
 
 export interface RemoteServerRuntime {
+    /** Durable destination identity from health; separate from the connection alias. */
+    serverIdentity?: string;
     serverId: string;
     kind: RemoteServerKind;
     effectiveUrl?: string;
@@ -53,6 +55,8 @@ export type RemoteServerUpdateInput =
     | { label?: string; kind?: 'ssh'; host?: string; localPort?: number };
 
 export interface RemoteServerHealth {
+    /** Durable destination identity from health; separate from the connection alias. */
+    serverIdentity?: string;
     serverId: string;
     status: 'checking' | 'online' | 'offline';
     kind: RemoteServerKind;

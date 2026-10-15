@@ -21,7 +21,7 @@ export interface RemoteServerRuntimeServiceOptions {
     requestTimeoutMs?: number;
 }
 
-type UrlHealthCache = Map<string, RemoteServerHealth>;
+type HealthCache = Map<string, RemoteServerHealth>;
 
 export type RemoteServerDisconnectResult =
     | (RemoteServerRuntime & { kind: 'devtunnel'; tunnelId: string })
@@ -50,15 +50,16 @@ function urlRuntimeStatus(health: RemoteServerHealth | undefined): RemoteServerR
 }
 
 export class RemoteServerRuntimeService {
-    private readonly urlHealthCache: UrlHealthCache = new Map();
-    private readonly urlHealthInFlight = new Set<string>();
+    private readonly healthCache: HealthCache = new Map();
+    private readonly healthProbes = new Map<string, symbol>();
+    private readonly healthInFlight = new Set<string>();
 
     constructor(private readonly options: RemoteServerRuntimeServiceOptions) {}
 
     list(): RemoteServerWithRuntime[] {
         const servers = this.options.store.list();
         const decorated = servers.map(server => this.decorate(server));
-        this.refreshUrlHealth(servers);
+        this.refreshHealth(servers);
         return decorated;
     }
 
@@ -222,6 +223,8 @@ export class RemoteServerRuntimeService {
     }
 
     async healthForServer(server: RemoteServer): Promise<RemoteServerHealth> {
+        const probe = Symbol();
+        this.healthProbes.set(server.id, probe);
         await this.connectManaged(server);
         const runtime = this.toRuntime(server);
         const baseUrl = server.kind === 'url' ? server.url : runtime.effectiveUrl;
@@ -234,18 +237,21 @@ export class RemoteServerRuntimeService {
             publicUrl: runtime.publicUrl,
             lastError: runtime.lastError,
         });
-        if (server.kind === 'url') {
-            this.urlHealthCache.set(server.id, health);
+        // Updates/removals and newer probes revoke delayed results.
+        if (this.healthProbes.get(server.id) === probe) {
+            this.healthCache.set(server.id, health);
+            this.healthProbes.delete(server.id);
         }
         return health;
     }
 
     toRuntime(server: RemoteServer): RemoteServerRuntime {
         if (server.kind === 'url') {
-            const health = this.urlHealthCache.get(server.id);
+            const health = this.healthCache.get(server.id);
             return {
                 serverId: server.id,
                 kind: 'url',
+                serverIdentity: health?.effectiveUrl === server.url ? health.serverIdentity : undefined,
                 effectiveUrl: server.url,
                 status: urlRuntimeStatus(health),
                 lastChecked: health?.lastChecked,
@@ -257,6 +263,7 @@ export class RemoteServerRuntimeService {
             return {
                 serverId: server.id,
                 kind: 'ssh',
+                serverIdentity: this.identityAtEndpoint(server.id, state?.effectiveUrl),
                 effectiveUrl: state?.effectiveUrl,
                 status: state?.status ?? 'idle',
                 localPort: server.localPort,
@@ -268,6 +275,7 @@ export class RemoteServerRuntimeService {
         return {
             serverId: server.id,
             kind: 'devtunnel',
+            serverIdentity: this.identityAtEndpoint(server.id, state.effectiveUrl),
             effectiveUrl: state.effectiveUrl,
             status: state.status,
             tunnelId: server.tunnelId,
@@ -282,6 +290,7 @@ export class RemoteServerRuntimeService {
         const runtime = this.toRuntime(server);
         return {
             ...server,
+            serverIdentity: runtime.serverIdentity,
             effectiveUrl: runtime.effectiveUrl,
             status: runtime.status,
             tunnelId: server.kind === 'devtunnel' ? server.tunnelId : runtime.tunnelId,
@@ -290,6 +299,11 @@ export class RemoteServerRuntimeService {
             lastChecked: runtime.lastChecked,
             lastError: runtime.lastError,
         } as RemoteServerWithRuntime;
+    }
+
+    private identityAtEndpoint(serverId: string, endpoint: string | undefined): string | undefined {
+        const health = this.healthCache.get(serverId);
+        return endpoint && health?.effectiveUrl === endpoint ? health.serverIdentity : undefined;
     }
 
     private async connectManaged(server: RemoteServer): Promise<void> {
@@ -310,23 +324,26 @@ export class RemoteServerRuntimeService {
         }
     }
 
-    private refreshUrlHealth(servers: RemoteServer[]): void {
+    private refreshHealth(servers: RemoteServer[]): void {
         for (const server of servers) {
-            if (server.kind !== 'url' || this.urlHealthInFlight.has(server.id)) {
+            if (this.healthInFlight.has(server.id)
+                || (server.kind !== 'url' && this.toRuntime(server).status !== 'online')) {
                 continue;
             }
-            this.urlHealthInFlight.add(server.id);
+            this.healthInFlight.add(server.id);
             void this.healthForServer(server)
                 .catch(() => {
                     // checkRemoteServerHealth never rejects; this is defensive only.
                 })
                 .finally(() => {
-                    this.urlHealthInFlight.delete(server.id);
+                    this.healthInFlight.delete(server.id);
                 });
         }
     }
 
     private cleanupChangedRuntime(before: RemoteServer, updated: RemoteServer): void {
+        this.healthProbes.delete(before.id);
+        this.healthCache.delete(before.id);
         if (before.kind === 'devtunnel' && (updated.kind !== 'devtunnel' || updated.tunnelId !== before.tunnelId)) {
             this.disconnectIfUnusedTunnel(before.tunnelId);
         }
@@ -337,20 +354,16 @@ export class RemoteServerRuntimeService {
         )) {
             this.options.sshConnector?.disconnect(before.id);
         }
-        if (before.kind === 'url' && updated.kind !== 'url') {
-            this.urlHealthCache.delete(before.id);
-        }
     }
 
     private cleanupRemovedRuntime(removed: RemoteServer): void {
+        this.healthProbes.delete(removed.id);
+        this.healthCache.delete(removed.id);
         if (removed.kind === 'devtunnel') {
             this.disconnectIfUnusedTunnel(removed.tunnelId);
         }
         if (removed.kind === 'ssh') {
             this.options.sshConnector?.disconnect(removed.id);
-        }
-        if (removed.kind === 'url') {
-            this.urlHealthCache.delete(removed.id);
         }
     }
 

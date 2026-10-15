@@ -96,6 +96,12 @@ across restarts, SSH/DevTunnel connections and forwarded-port changes. Atomic
 create-only publication makes concurrent startups agree. Corrupt or unreadable
 files fail startup. The optional client contract supports older servers with
 identity unavailable. Registry IDs and tunnel IDs identify connections separately.
+Remote health, runtime and server-list contracts expose the destination identity.
+The runtime caches probes by connection alias, publishes identity only for the
+probed endpoint, and revokes delayed results on registry edits/removals or newer
+probes. A successful response without identity clears the cached value. Dashboard
+server-list reads refresh direct URLs and online managed connections in the
+background; idle/offline managed connections are not connected by listing.
 
 ### Connection state
 

@@ -101,6 +101,9 @@ references before editing. Paths are package-relative.
   exposes `serverIdentity` through `/api/health`. It identifies the installation
   across workspaces, transports and port changes. Preserve it on restart; invalid
   or unreadable identity files fail startup rather than silently replacing identity.
+  Remote health/runtime/list contracts carry this identity separately from registry
+  aliases. Managed entries refresh identity while online; endpoint changes require a
+  new probe. Registry edits/removals and newer probes revoke delayed health results.
 
 - Admitted chat image files stay at their existing per-turn paths after success,
   error or cancellation so local delegated children can read them. This temporary

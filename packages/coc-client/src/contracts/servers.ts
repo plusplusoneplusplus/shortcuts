@@ -9,6 +9,8 @@ export type RemoteServerKind = 'url' | 'devtunnel' | 'ssh';
 export type RemoteServerRuntimeStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'failed';
 
 export interface BaseRemoteServer {
+  /** Durable destination identity from health; separate from the connection alias. */
+  serverIdentity?: string;
   id: string;
   label: string;
   kind: RemoteServerKind;
@@ -51,6 +53,8 @@ export type RemoteServerPatch =
   | { label?: string; kind?: 'ssh'; host?: string; localPort?: number };
 
 export interface RemoteServerHealth {
+  /** Durable destination identity from health; separate from the connection alias. */
+  serverIdentity?: string;
   serverId: string;
   status: 'checking' | 'online' | 'offline';
   kind: RemoteServerKind;
@@ -68,6 +72,8 @@ export interface RemoteServerHealth {
 }
 
 export interface RemoteServerRuntime {
+  /** Durable destination identity from health; separate from the connection alias. */
+  serverIdentity?: string;
   serverId: string;
   kind: RemoteServerKind;
   effectiveUrl?: string;

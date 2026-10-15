@@ -53,11 +53,11 @@ async function eventually(assertion: () => void): Promise<void> {
     throw lastError;
 }
 
-async function startRemoteCoc(): Promise<StartedServer> {
+async function startRemoteCoc(serverIdentity?: unknown): Promise<StartedServer> {
     const server = http.createServer((req, res) => {
         if (req.url === '/api/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'ok', uptime: 12, processCount: 3 }));
+            res.end(JSON.stringify({ status: 'ok', uptime: 12, processCount: 3, serverIdentity }));
             return;
         }
         if (req.url === '/api/admin/version') {
@@ -104,6 +104,18 @@ describe('RemoteServerRuntimeService', () => {
         });
         return { store, service, connector };
     }
+
+    it.each(['stable-server-uuid', undefined, '', '   ', 42])('reads optional destination identity %j from health', async identity => {
+        const remote = await startRemoteCoc(identity);
+        remoteServer = remote.server;
+        const { service } = createService();
+        const server = await service.create({ kind: 'url', label: 'Remote', url: remote.baseUrl });
+        const expected = identity === 'stable-server-uuid' ? identity : undefined;
+        expect(server.serverIdentity).toBe(expected);
+        expect((await service.healthById(server.id))?.serverIdentity).toBe(expected);
+        expect(service.runtimeById(server.id)?.serverIdentity).toBe(expected);
+        expect(server.id).not.toBe(identity);
+    });
 
     it('serves stale direct-URL runtime state and refreshes reachability in the background', async () => {
         const remote = await startRemoteCoc();
