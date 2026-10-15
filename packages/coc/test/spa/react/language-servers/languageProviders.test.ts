@@ -193,9 +193,9 @@ describe('registerLanguageProviders', () => {
         expect(monaco.registered.every((entry) => entry.languageId === 'typescript')).toBe(true);
     });
 
-    it('registers only the features the server advertises', () => {
+    it('keeps completion fallback registered without a server capability', () => {
         open('src/a.ts', { textDocumentSync: 1, hoverProvider: true, definitionProvider: true });
-        expect(monaco.live()).toEqual(['hover', 'definition']);
+        expect(monaco.live()).toEqual(['hover', 'definition', 'completion']);
     });
 
     it.each([
@@ -391,6 +391,100 @@ describe('registerLanguageProviders', () => {
         });
     });
 
+    it.each([
+        ['empty array', []],
+        ['empty list', { isIncomplete: false, items: [] }],
+        ['null', null],
+        ['malformed items', { items: [{ detail: 'missing label' }] }],
+        ['error', new Error('Server disconnected')],
+        ['timeout', new Error('Request timed out')],
+    ])('uses current-document words on %s completion responses', async (_name, response) => {
+        const { attachment, target } = open();
+        target.getValue = () => 'console constant ConsoleWidget console\ncons';
+        attachment.respond('textDocument/completion', () => {
+            if (response instanceof Error) throw response;
+            return response;
+        });
+
+        const list = await monaco.provider('completion').provideCompletionItems(target, POSITION, {}, token());
+
+        expect(list.suggestions.map(item => item.label)).toEqual(['console', 'constant', 'ConsoleWidget']);
+        expect(list.suggestions[0]).toMatchObject({
+            kind: 18, insertText: 'console',
+            range: { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 5 },
+        });
+    });
+
+    it.each(['missing capability', 'starting', 'failed', 'detached'])(
+        'offers words without sending a request when the server is %s',
+        async condition => {
+            const { attachment, target, view } = open('src/a.ts', condition === 'missing capability'
+                ? { textDocumentSync: 1 } : FULL_CAPABILITIES);
+            view.update('console\ncons');
+            if (condition === 'detached') attachment.detach();
+            if (condition === 'starting' || condition === 'failed') {
+                attachment.status({ ...readyState(FULL_CAPABILITIES), status: condition });
+            }
+
+            const list = await monaco.provider('completion').provideCompletionItems(target, POSITION, {}, token());
+
+            expect(list.suggestions.map(item => item.label)).toEqual(['console']);
+            expect(attachment.requests).toHaveLength(0);
+        },
+    );
+
+    it('does not mix document words into a nonempty server list', async () => {
+        const { attachment, target } = open();
+        target.getValue = () => 'console constant\ncons';
+        attachment.respond('textDocument/completion', () => [{ label: 'constructor' }]);
+        const list = await monaco.provider('completion').provideCompletionItems(target, POSITION, {}, token());
+        expect(list.suggestions.map(item => item.label)).toEqual(['constructor']);
+    });
+
+    it('matches words case-insensitively, preserves Unicode, and excludes the typed word', async () => {
+        const { target } = open();
+        target.getValue = () => 'CAFETERIA café caf 1234\ncaf';
+        const position = { lineNumber: 2, column: 4 };
+        const list = await monaco.provider('completion').provideCompletionItems(target, position, {}, token());
+        expect(list.suggestions.map(item => item.label)).toEqual(['CAFETERIA', 'café']);
+    });
+
+    it('bounds fallback results and marks capped lists for retriggering', async () => {
+        const { target } = open();
+        target.getValue = () => `${Array.from({ length: 250 }, (_, i) => `console${i}`).join(' ')}\ncons`;
+        const list = await monaco.provider('completion').provideCompletionItems(target, POSITION, {}, token());
+        expect(list.suggestions).toHaveLength(200);
+        expect(list.incomplete).toBe(true);
+    });
+
+    it('uses current buffer words rather than another open document', async () => {
+        const { target, view } = open();
+        store.open({ path: 'src/other.ts', text: 'constructor' });
+        view.update('console\ncons');
+        let list = await monaco.provider('completion').provideCompletionItems(target, POSITION, {}, token());
+        expect(list.suggestions.map(item => item.label)).toEqual(['console']);
+        view.update('constant\ncons');
+        list = await monaco.provider('completion').provideCompletionItems(target, POSITION, {}, token());
+        expect(list.suggestions.map(item => item.label)).toEqual(['constant']);
+    });
+
+    it('does not publish server items or fallback after cancellation or disposal', async () => {
+        const { attachment, target, registration } = open();
+        target.getValue = () => 'console\ncons';
+        const cancellation = cancellable();
+        let finish!: (value: unknown) => void;
+        attachment.respond('textDocument/completion', () => new Promise(resolve => { finish = resolve; }));
+        const provider = monaco.provider('completion');
+        const pending = provider.provideCompletionItems(target, POSITION, {}, cancellation.token);
+        cancellation.cancel();
+        finish([{ label: 'constructor' }]);
+        expect(await pending).toBeNull();
+        expect(cancellation.disposals).toBe(1);
+        expect(await provider.provideCompletionItems(target, POSITION, {}, cancellation.token)).toBeNull();
+        registration.dispose();
+        expect(await provider.provideCompletionItems(target, POSITION, {}, token())).toBeNull();
+    });
+
     it('returns signature help with a release hook', async () => {
         const { attachment, target } = open();
         attachment.respond('textDocument/signatureHelp', () => ({
@@ -413,8 +507,9 @@ describe('registerLanguageProviders', () => {
         });
     });
 
-    it('answers empty instead of throwing when the request fails', async () => {
+    it('answers empty when the request fails and the document has no words', async () => {
         const { attachment, target } = open();
+        target.getValue = () => '';
         attachment.respond('textDocument/hover', () => {
             throw new Error('language server closed');
         });
@@ -465,7 +560,7 @@ describe('registerLanguageProviders', () => {
 
         attachment.status(readyState({ textDocumentSync: 1, hoverProvider: true }));
 
-        expect(monaco.live()).toEqual(['hover']);
+        expect(monaco.live()).toEqual(['hover', 'completion']);
         expect(monaco.registered.filter((entry) => entry.kind === 'hover')).toHaveLength(2);
     });
 
@@ -509,7 +604,7 @@ describe('registerLanguageProviders', () => {
 
         client.get('src/late.ts').attach({ state: readyState({ textDocumentSync: 1, hoverProvider: true }) });
 
-        expect(monaco.live()).toEqual(['hover']);
+        expect(monaco.live()).toEqual(['hover', 'completion']);
     });
 
     it('honours an injected URI policy', async () => {
