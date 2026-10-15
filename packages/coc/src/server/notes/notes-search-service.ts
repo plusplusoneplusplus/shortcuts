@@ -2,11 +2,10 @@
  * Workspace/root-scoped lifecycle for the native Notes content index.
  *
  * Root authorization stays in the Notes route layer. This service receives an
- * already-resolved root, owns exactly one native handle and watcher for that
- * scope, and never shares state by physical path alone.
+ * already-resolved root and owns a native index per scope plus a subscription
+ * to the shared watch service. Index state is never shared by physical path alone.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import type {
     NativeNotesIndex,
@@ -14,6 +13,7 @@ import type {
     NativeNotesSearchResponse,
 } from '@plusplusoneplusplus/coc-native';
 import { getServerLogger } from '../logging/server-logger';
+import { getNativeWatchService, type NativeWatchServiceLike, type WatchBatch } from '../shared/native-watch-service';
 import { DEFAULT_ROOT_ID } from './notes-root-resolver';
 
 const DEFAULT_DEBOUNCE_MS = 300;
@@ -27,27 +27,15 @@ export interface NotesSearchScope {
     isTaskDerived?: boolean;
 }
 
-export interface NotesSearchWatchHandle {
-    close(): void;
-}
-
-export type NotesSearchWatchEvent = (eventType: string, filename: string | Buffer | null) => void;
-export type NotesSearchWatchError = (error: Error) => void;
-export type NotesSearchWatchFactory = (
-    watchPath: string,
-    onEvent: NotesSearchWatchEvent,
-    onError: NotesSearchWatchError,
-) => NotesSearchWatchHandle;
-
 interface NotesSearchLogger {
     error(bindings: Record<string, unknown>, message: string): void;
     warn(bindings: Record<string, unknown>, message: string): void;
 }
 
 export interface NotesSearchServiceOptions {
-    nativeAddon: NativeNotesIndexAddon;
+    nativeAddon: Pick<NativeNotesIndexAddon, 'buildNotesIndex'>;
     debounceMs?: number;
-    watchFactory?: NotesSearchWatchFactory;
+    watchService?: NativeWatchServiceLike;
     logger?: NotesSearchLogger;
 }
 
@@ -60,31 +48,11 @@ interface IndexEntry {
     index?: NativeNotesIndex;
     buildPromise?: Promise<NativeNotesIndex>;
     refreshPromise?: Promise<void>;
-    watcher?: NotesSearchWatchHandle;
-    watchPath?: string;
-    timer?: ReturnType<typeof setTimeout>;
+    subscriptionId?: number;
     pendingPaths: Set<string>;
     recoveryRequested: boolean;
     changeVersion: number;
     disposed: boolean;
-}
-
-function createDefaultWatchFactory(): NotesSearchWatchFactory {
-    return (watchPath, onEvent, onError) => {
-        let watcher: fs.FSWatcher;
-        try {
-            watcher = fs.watch(watchPath, { recursive: true }, onEvent);
-        } catch {
-            // Node 24 supports recursive watching on the shipped Linux, macOS,
-            // and Windows targets. Keep a conservative fallback for unusual
-            // filesystems that reject the recursive option.
-            watcher = fs.watch(watchPath, onEvent);
-        }
-        watcher.on('error', error => {
-            onError(error instanceof Error ? error : new Error(String(error)));
-        });
-        return watcher;
-    };
 }
 
 function comparisonPath(filePath: string): string {
@@ -98,8 +66,7 @@ function isSameOrWithin(candidate: string, root: string): boolean {
         || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
-function normalizeWatcherFilename(filename: string | Buffer): string | undefined {
-    const raw = Buffer.isBuffer(filename) ? filename.toString('utf8') : filename;
+function normalizeWatcherFilename(raw: string): string | undefined {
     if (!raw || raw.includes('\0')) return undefined;
 
     const slashPath = raw.replace(/\\/g, '/');
@@ -113,20 +80,6 @@ function normalizeWatcherFilename(filename: string | Buffer): string | undefined
     return normalized || undefined;
 }
 
-function nearestExistingDirectory(rootPath: string): string | undefined {
-    let current = path.resolve(rootPath);
-    while (true) {
-        try {
-            if (fs.statSync(current).isDirectory()) return current;
-        } catch {
-            // Walk upward so a missing root can still observe its creation.
-        }
-        const parent = path.dirname(current);
-        if (parent === current) return undefined;
-        current = parent;
-    }
-}
-
 function pathsEqual(left: string, right: string): boolean {
     return comparisonPath(left) === comparisonPath(right);
 }
@@ -135,9 +88,9 @@ function pathsEqual(left: string, right: string): boolean {
  * Long-lived owner of native Notes indexes and their refresh watchers.
  */
 export class NotesSearchService {
-    private readonly nativeAddon: NativeNotesIndexAddon;
+    private readonly nativeAddon: Pick<NativeNotesIndexAddon, 'buildNotesIndex'>;
     private readonly debounceMs: number;
-    private readonly watchFactory: NotesSearchWatchFactory;
+    private readonly watchService: NativeWatchServiceLike;
     private readonly logger: NotesSearchLogger;
     private readonly entries = new Map<string, Map<string, IndexEntry>>();
     private readonly evictedWorkspaces = new Set<string>();
@@ -147,7 +100,7 @@ export class NotesSearchService {
     constructor(options: NotesSearchServiceOptions) {
         this.nativeAddon = options.nativeAddon;
         this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-        this.watchFactory = options.watchFactory ?? createDefaultWatchFactory();
+        this.watchService = options.watchService ?? getNativeWatchService();
         this.logger = options.logger ?? getServerLogger();
     }
 
@@ -276,7 +229,10 @@ export class NotesSearchService {
         ) {
             return existing;
         }
-        if (existing) this.disposeEntry(existing);
+        if (existing) {
+            this.disposeEntry(existing);
+            workspaceEntries.delete(scope.rootId);
+        }
 
         const entry: IndexEntry = {
             workspaceId: scope.workspaceId,
@@ -289,8 +245,18 @@ export class NotesSearchService {
             changeVersion: 0,
             disposed: false,
         };
+        // Subscription failures must remain visible, and must not cache an
+        // unwatched entry that a later search would silently reuse.
+        entry.subscriptionId = this.watchService.subscribe({
+            workspaceId: entry.workspaceId,
+            root: entry.absolutePath,
+            recursive: true,
+            ignoreDirs: [],
+            extensions: [],
+            respectGitignore: false,
+            debounceMs: this.debounceMs,
+        }, batch => this.handleWatchBatch(entry, batch));
         workspaceEntries.set(scope.rootId, entry);
-        this.attachWatcher(entry, true);
         return entry;
     }
 
@@ -310,135 +276,30 @@ export class NotesSearchService {
         return buildPromise;
     }
 
-    private attachWatcher(entry: IndexEntry, recoverOnFailure: boolean): void {
-        if (entry.disposed || entry.watcher) return;
-        const watchPath = nearestExistingDirectory(entry.absolutePath);
-        if (!watchPath) {
-            if (recoverOnFailure) this.queueRecovery(entry);
-            return;
-        }
-
-        try {
-            const watcher = this.watchFactory(
-                watchPath,
-                (eventType, filename) => this.handleWatchEvent(entry, eventType, filename),
-                error => this.handleWatchError(entry, error),
-            );
-            if (entry.disposed) {
-                try { watcher.close(); } catch { /* best effort */ }
-                return;
-            }
-            entry.watchPath = watchPath;
-            entry.watcher = watcher;
-        } catch (error) {
-            this.logger.warn({
-                err: error,
-                workspaceId: entry.workspaceId,
-                rootId: entry.rootId,
-                notesRoot: entry.absolutePath,
-            }, 'Notes search index watcher failed to start');
-            if (recoverOnFailure) this.queueRecovery(entry);
-        }
-    }
-
-    private handleWatchEvent(
-        entry: IndexEntry,
-        eventType: string,
-        filename: string | Buffer | null,
-    ): void {
+    private handleWatchBatch(entry: IndexEntry, batch: WatchBatch): void {
         if (entry.disposed) return;
-        if (!filename || !entry.watchPath) {
-            this.queueRecovery(entry);
-            return;
-        }
-
-        const normalizedFilename = normalizeWatcherFilename(filename);
-        if (!normalizedFilename) {
-            this.queueRecovery(entry);
-            return;
-        }
-
-        const changedAbsolutePath = path.resolve(entry.watchPath, normalizedFilename);
-        if (!isSameOrWithin(changedAbsolutePath, entry.absolutePath)) {
-            // A watcher on a missing root's ancestor may report the directory
-            // that contains the root as it is created or renamed.
-            if (isSameOrWithin(entry.absolutePath, changedAbsolutePath)) {
-                this.queueRecovery(entry);
-            }
-            return;
-        }
-
-        const relativePath = path.relative(entry.absolutePath, changedAbsolutePath);
-        if (!relativePath || eventType !== 'change') {
-            this.queueRecovery(entry);
-            return;
-        }
-
-        const normalizedRelativePath = relativePath.split(path.sep).join('/');
-        if (!normalizedRelativePath.endsWith('.md')) {
-            try {
-                if (fs.lstatSync(changedAbsolutePath).isDirectory()) {
-                    this.queueRecovery(entry);
-                }
-            } catch {
-                // A missing non-Markdown path may have been a directory. A full
-                // rebuild is the safe recovery path for that ambiguity.
-                this.queueRecovery(entry);
-            }
-            return;
-        }
-
-        try {
-            const stat = fs.lstatSync(changedAbsolutePath);
-            if (stat.isDirectory() || stat.isSymbolicLink()) {
-                this.queueRecovery(entry);
-                return;
-            }
-        } catch {
-            // Missing Markdown files are valid incremental removals.
-        }
-        this.queueIncremental(entry, normalizedRelativePath);
-    }
-
-    private handleWatchError(entry: IndexEntry, error: Error): void {
-        if (entry.disposed) return;
-        this.closeWatcher(entry);
-        this.logger.warn({
-            err: error,
-            workspaceId: entry.workspaceId,
-            rootId: entry.rootId,
-            notesRoot: entry.absolutePath,
-        }, 'Notes search index watcher error');
-        this.queueRecovery(entry);
-    }
-
-    private queueIncremental(entry: IndexEntry, changedPath: string): void {
+        if (!batch.rescan && batch.paths.length === 0) return;
         entry.changeVersion++;
+        if (batch.rescan) entry.recoveryRequested = true;
         if (!entry.recoveryRequested) {
-            entry.pendingPaths.add(changedPath);
-            if (entry.pendingPaths.size > MAX_INCREMENTAL_PATHS) {
-                entry.pendingPaths.clear();
-                entry.recoveryRequested = true;
+            for (const filename of batch.paths) {
+                const normalized = normalizeWatcherFilename(filename);
+                if (!normalized
+                    || !isSameOrWithin(path.resolve(entry.absolutePath, normalized), entry.absolutePath)
+                    || !normalized.endsWith('.md')) {
+                    // Untyped paths may identify renamed/deleted directories.
+                    entry.recoveryRequested = true;
+                    break;
+                }
+                entry.pendingPaths.add(normalized.split(path.sep).join('/'));
+                if (entry.pendingPaths.size > MAX_INCREMENTAL_PATHS) {
+                    entry.recoveryRequested = true;
+                    break;
+                }
             }
         }
-        this.scheduleDrain(entry);
-    }
-
-    private queueRecovery(entry: IndexEntry): void {
-        if (entry.disposed) return;
-        entry.changeVersion++;
-        entry.pendingPaths.clear();
-        entry.recoveryRequested = true;
-        this.scheduleDrain(entry);
-    }
-
-    private scheduleDrain(entry: IndexEntry, delayMs = this.debounceMs): void {
-        if (entry.disposed) return;
-        if (entry.timer) clearTimeout(entry.timer);
-        entry.timer = setTimeout(() => {
-            entry.timer = undefined;
-            this.startDrain(entry);
-        }, delayMs);
+        if (entry.recoveryRequested) entry.pendingPaths.clear();
+        this.startDrain(entry);
     }
 
     private startDrain(entry: IndexEntry): void {
@@ -461,7 +322,6 @@ export class NotesSearchService {
                 } else {
                     await index.refreshChanged(changedPaths);
                 }
-                if (!entry.disposed) this.reattachWatcherIfNeeded(entry);
             } catch (error) {
                 if (entry.disposed) return;
                 failed = true;
@@ -482,37 +342,19 @@ export class NotesSearchService {
             const changedDuringRefresh = entry.changeVersion > versionAtStart;
             const hasPendingWork = entry.recoveryRequested || entry.pendingPaths.size > 0;
             if (hasPendingWork && (!failed || changedDuringRefresh)) {
-                this.scheduleDrain(entry, 0);
+                this.startDrain(entry);
             }
         });
         entry.refreshPromise = refreshPromise;
     }
 
-    private reattachWatcherIfNeeded(entry: IndexEntry): void {
-        const nextWatchPath = nearestExistingDirectory(entry.absolutePath);
-        if (!nextWatchPath || (entry.watchPath && pathsEqual(entry.watchPath, nextWatchPath))) return;
-        this.closeWatcher(entry);
-        // A failed reattach is logged, but does not create an unbounded
-        // refresh/retry loop on filesystems that cannot be watched.
-        this.attachWatcher(entry, false);
-    }
-
-    private closeWatcher(entry: IndexEntry): void {
-        if (entry.watcher) {
-            try { entry.watcher.close(); } catch { /* best effort */ }
-        }
-        entry.watcher = undefined;
-        entry.watchPath = undefined;
-    }
-
     private disposeEntry(entry: IndexEntry): void {
         if (entry.disposed) return;
         entry.disposed = true;
-        if (entry.timer) clearTimeout(entry.timer);
-        entry.timer = undefined;
         entry.pendingPaths.clear();
         entry.recoveryRequested = false;
-        this.closeWatcher(entry);
+        if (entry.subscriptionId !== undefined) this.watchService.unsubscribe(entry.subscriptionId);
+        entry.subscriptionId = undefined;
         entry.index = undefined;
     }
 }

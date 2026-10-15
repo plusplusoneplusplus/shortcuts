@@ -7,11 +7,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { WikiData } from './wiki-data';
 import { ContextBuilder } from './context-builder';
 import { ConversationSessionManager } from './conversation-session-manager';
 import { FileWatcher } from './file-watcher';
 import type { AskAIFunction } from './types';
+import type { NativeWatchServiceLike } from '../shared/native-watch-service';
+import { getServerLogger } from '../logging/server-logger';
 
 // ============================================================================
 // Types
@@ -20,6 +23,8 @@ import type { AskAIFunction } from './types';
 export interface WikiRegistration {
     /** Unique identifier for this wiki */
     wikiId: string;
+    /** Owning workspace; required when repository watching is enabled */
+    workspaceId?: string;
     /** Resolved path to the .wiki output directory */
     wikiDir: string;
     /** Original repo path (for FileWatcher + AI workingDirectory) */
@@ -47,6 +52,7 @@ export interface WikiRuntime {
 }
 
 export interface WikiManagerOptions {
+    watchService?: NativeWatchServiceLike;
     /** AI send function shared across wikis */
     aiSendMessage?: AskAIFunction;
     /** Callback fired before wiki data reload starts (rebuild in progress) */
@@ -67,12 +73,14 @@ export class WikiManager {
     private onWikiRebuilding: ((wikiId: string, affectedComponentIds: string[]) => void) | null;
     private onWikiReloaded: ((wikiId: string, affectedComponentIds: string[]) => void) | null;
     private onWikiError: ((wikiId: string, error: Error) => void) | null;
+    private watchService?: NativeWatchServiceLike;
 
     constructor(options?: WikiManagerOptions) {
         this.aiSendMessage = options?.aiSendMessage ?? null;
         this.onWikiRebuilding = options?.onWikiRebuilding ?? null;
         this.onWikiReloaded = options?.onWikiReloaded ?? null;
         this.onWikiError = options?.onWikiError ?? null;
+        this.watchService = options?.watchService;
     }
 
     /**
@@ -80,6 +88,9 @@ export class WikiManager {
      * Throws if the wikiDir is invalid.
      */
     register(registration: WikiRegistration): void {
+        if (registration.watch && registration.repoPath && !registration.workspaceId) {
+            throw new Error('workspaceId is required for wiki repository watching');
+        }
         const resolvedDir = path.resolve(registration.wikiDir);
 
         if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) {
@@ -118,6 +129,8 @@ export class WikiManager {
         if (registration.watch && registration.repoPath) {
             try {
                 fileWatcher = new FileWatcher({
+                    workspaceId: registration.workspaceId!,
+                    watchService: this.watchService,
                     repoPath: registration.repoPath,
                     wikiDir: resolvedDir,
                     componentGraph: wikiData.graph,
@@ -131,15 +144,22 @@ export class WikiManager {
                             this.onWikiReloaded(registration.wikiId, affectedIds);
                         }
                     },
-                    onError: (err) => {
-                        if (this.onWikiError) {
-                            this.onWikiError(registration.wikiId, err);
-                        }
-                    },
                 });
                 fileWatcher.start();
-            } catch {
-                // FileWatcher start failures are non-fatal
+            } catch (error) {
+                if (error instanceof NativeAddonLoadError) {
+                    sessionManager?.destroyAll();
+                    throw error;
+                }
+                getServerLogger().warn({
+                    err: error,
+                    wikiId: registration.wikiId,
+                    workspaceId: registration.workspaceId,
+                }, 'Wiki repository watcher failed to start');
+                this.onWikiError?.(
+                    registration.wikiId,
+                    error instanceof Error ? error : new Error(String(error)),
+                );
                 fileWatcher = null;
             }
         }

@@ -103,15 +103,20 @@ in one context window.
 
 ## File Watching & Live Reload
 
-`fs.watch(repoPath, { recursive: true })` with a 2-second debounce. On change,
-`findAffectedComponents` matches changed paths against `ComponentInfo.path` (prefix) and
-`ComponentInfo.keyFiles` (exact or suffix), normalizing to forward slashes for cross-platform
-correctness, then fires `onChange(affectedComponentIds)`.
+`FileWatcher` subscribes to the shared native watch service under its owning
+`workspaceId`, with recursive repository watching, Git ignore rules and a
+configurable 2-second debounce. Native root-relative paths map to
+`ComponentInfo.path` (prefix) and `ComponentInfo.keyFiles` (exact or suffix).
+A rescan batch invalidates every component; ordinary batches invalidate matching
+components only. Backend sharing and recovery belong to the
+[native watch service](../../../../packages/coc-native/AGENTS.md#filesystem-watch-batching).
 
 `WikiManager` responds by invoking `onWikiRebuilding`, calling `WikiData.reload()`, setting
 `contextBuilder = null`, then invoking `onWikiReloaded`.
 
-Creation failures leave `fileWatcher` as `null` without aborting `register`.
+Watching requires an explicit workspace owner. Missing or stale native addons
+abort registration; ordinary subscription failures are logged and reported
+through `onWikiError`, leaving `fileWatcher` null.
 
 ## Wiki Registration & Persistence
 
@@ -127,5 +132,5 @@ ignores entries whose `component-graph.json` no longer exists on disk.
 ## Usage
 
 `registerWikiRoutes(routes, { aiEnabled, aiSendMessage, store, onWikiError })` returns the
-`WikiManager`; `manager.register({ wikiId, wikiDir, repoPath, aiEnabled, watch })` adds a wiki,
+`WikiManager`; `manager.register({ wikiId, workspaceId, wikiDir, repoPath, aiEnabled, watch })` adds a wiki,
 and `manager.ensureContextBuilder(wikiId).retrieve(question)` queries the index directly.

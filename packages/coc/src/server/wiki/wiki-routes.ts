@@ -23,6 +23,7 @@ import {
 } from './generate-handler';
 import { WikiGenerationRegistry } from './generation';
 import type { WikiProvider } from './wiki-backend';
+import type { NativeWatchServiceLike } from '../shared/native-watch-service';
 
 // ============================================================================
 // Types
@@ -37,6 +38,7 @@ export interface WikiRouteHelpers {
 }
 
 export interface WikiRouteOptions {
+    watchService?: NativeWatchServiceLike;
     /** Initial wiki registrations (wikiId → { wikiDir, repoPath? }). */
     wikis?: Record<string, { wikiDir: string; repoPath?: string }>;
     /** Enable AI features for wikis. */
@@ -79,6 +81,7 @@ export function registerWikiRoutes(
     };
 
     const wikiManager = new WikiManager({
+        watchService: options.watchService,
         aiSendMessage: options.aiSendMessage,
         onWikiRebuilding: options.onWikiRebuilding,
         onWikiReloaded: options.onWikiReloaded,

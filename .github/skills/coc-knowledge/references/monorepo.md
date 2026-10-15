@@ -89,9 +89,11 @@ manifest.
 
 ### Native build boundary
 
-Core `watch` provides subscription-local debounce and bounded, deduplicated
-`WatchBatch` events with a `rescan` flag. Its clock-driven tests require neither
-filesystem events nor sleeps; backend ownership and Node delivery are separate.
+Core `watch` owns shared canonical-root watchers, workspace subscriptions,
+filtering, native recovery and bounded, deduplicated `WatchBatch` events with a
+`rescan` flag. The N-API wrapper delivers batches through a bounded, unreferenced
+wakeup; TypeScript owns folder layout. Core watch tests receive batches on
+channels, while consumer tests inject delivery without filesystem timing.
 See the [native batching contract](../../../../packages/coc-native/AGENTS.md#filesystem-watch-batching).
 
 Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revisions key resolved object IDs; working-tree snapshots fingerprint fresh Git batches. Host admission binds execution options to ticket cancellation; host and supplied reads share snapshot finalization with per-read truncation and final generation checks. Single-use requests capture generations before I/O/dispatch. Individual cancellation and refresh/disposal stop direct host Git children; live waiters retry cancelled owners' failed computation. Forge `LocalPatchOptions.signal` cancels one request and its WSL transport, preserving the caller's abort reason. Unsent WSL validity polling observes revocation; tickets, listeners and timers retire on every outcome.

@@ -12,6 +12,7 @@ import * as os from 'os';
 import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
 import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
 import { RepoScheduleOverrideStore } from '../../src/server/schedule/repo-schedule-overrides';
+import { FakeNativeWatchService } from '../helpers/fake-native-watch-service';
 
 function makeTmpDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'sm-repo-test-'));
@@ -37,7 +38,7 @@ describe('ScheduleManager — repo schedules', () => {
 
         const persistence = new ScheduleYamlPersistence(dataDir);
         const overrideStore = new RepoScheduleOverrideStore(dataDir);
-        manager = new ScheduleManager(persistence, null, overrideStore);
+        manager = new ScheduleManager(persistence, null, overrideStore, undefined, new FakeNativeWatchService());
     });
 
     afterEach(() => {

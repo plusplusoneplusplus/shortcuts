@@ -148,8 +148,13 @@ references before editing. Paths are package-relative.
   gaps and use `Dialog`'s focus trap with the surviving metadata trigger for focus return.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
-  Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
-  complete snapshots and shutdown disposes watchers. One `RepoFiles` handle per
+  Notes indexes key by `(workspaceId, rootId)`; failed refreshes retain complete
+  snapshots. Filesystem consumers use the shared `NativeWatchService`: workspace-owned
+  subscriptions share one native OS watch per real root. Rust owns debounce, filtering
+  and recovery; full-rescan batches invalidate consumers. Tests inject batches, not
+  filesystem events. Server scopes isolate workspace removal/shutdown, including
+  equal workspace IDs in different local servers; the final scope releases an idle
+  native owner. One `RepoFiles` handle per
   workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
   Health `nativeFileIndex`/`nativeContentSearch` both report the full `RepoFiles` capability.
   `src/server/repos/types.ts` aliases native tree/search result types and coc-client

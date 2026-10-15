@@ -1,23 +1,20 @@
 /**
  * Watches a repository directory for changes and triggers incremental
- * rebuilds. Uses fs.watch (recursive) with debouncing to avoid
- * excessive rebuilds during rapid file saves.
- *
- * When changes are detected:
- * 1. Debounce for 2 seconds
- * 2. Determine which components are affected
- * 3. Notify callback with affected component IDs
+ * rebuilds from native, debounced path batches.
  */
 
 import * as path from 'path';
 import type { ComponentGraph } from './types';
-import { DebouncedWatcherRegistry } from '../shared/debounced-watcher-registry';
+import { getNativeWatchService, type NativeWatchServiceLike } from '../shared/native-watch-service';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface FileWatcherOptions {
+    /** Workspace that owns this subscription */
+    workspaceId: string;
+    watchService?: NativeWatchServiceLike;
     /** Path to the repository to watch */
     repoPath: string;
     /** Wiki output directory (to reload data after rebuild) */
@@ -28,8 +25,6 @@ export interface FileWatcherOptions {
     debounceMs?: number;
     /** Callback when changes are detected */
     onChange: (affectedComponentIds: string[]) => void;
-    /** Optional callback for errors */
-    onError?: (error: Error) => void;
 }
 
 /** Default debounce interval in milliseconds */
@@ -39,56 +34,56 @@ const DEFAULT_DEBOUNCE_MS = 2000;
 // FileWatcher
 // ============================================================================
 
-/** Fixed key used by FileWatcher for its single-directory watcher. */
-const WATCHER_KEY = 'default';
-
 export class FileWatcher {
-    private registry: DebouncedWatcherRegistry<typeof WATCHER_KEY>;
+    private watchService: NativeWatchServiceLike;
+    private subscriptionId?: number;
+    private generation = 0;
     private options: FileWatcherOptions;
 
     constructor(options: FileWatcherOptions) {
         this.options = options;
-        this.registry = new DebouncedWatcherRegistry(options.debounceMs ?? DEFAULT_DEBOUNCE_MS);
+        this.watchService = options.watchService ?? getNativeWatchService();
     }
 
     /**
      * Start watching the repository for changes.
      */
     start(): void {
-        if (this.registry.isWatching(WATCHER_KEY)) return;
-
-        const { repoPath } = this.options;
-
-        this.registry.watch(
-            WATCHER_KEY,
-            repoPath,
-            (_key, changedFiles) => {
-                const affectedIds = this.findAffectedComponents(changedFiles);
-                if (affectedIds.length > 0) {
-                    this.options.onChange(affectedIds);
-                }
-            },
-            {
-                shouldIgnore,
-                onError: (_key, err) => {
-                    this.options.onError?.(err);
-                },
-            },
-        );
+        if (this.isWatching) return;
+        const generation = ++this.generation;
+        this.subscriptionId = this.watchService.subscribe({
+            workspaceId: this.options.workspaceId,
+            root: path.resolve(this.options.repoPath),
+            recursive: true,
+            ignoreDirs: IGNORE_PATTERNS,
+            extensions: [],
+            respectGitignore: true,
+            debounceMs: this.options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
+        }, batch => {
+            if (generation !== this.generation) return;
+            const affectedIds = batch.rescan
+                ? this.options.componentGraph.components.map(component => component.id)
+                : this.findAffectedComponents(batch.paths.filter(filename => !shouldIgnore(filename)));
+            if (batch.rescan || affectedIds.length > 0) {
+                this.options.onChange(affectedIds);
+            }
+        });
     }
 
     /**
      * Stop watching.
      */
     stop(): void {
-        this.registry.unwatch(WATCHER_KEY);
+        this.generation++;
+        if (this.subscriptionId !== undefined) this.watchService.unsubscribe(this.subscriptionId);
+        this.subscriptionId = undefined;
     }
 
     /**
      * Whether the watcher is currently active.
      */
     get isWatching(): boolean {
-        return this.registry.isWatching(WATCHER_KEY);
+        return this.subscriptionId !== undefined;
     }
 
     // ========================================================================

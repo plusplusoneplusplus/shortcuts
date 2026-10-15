@@ -14,6 +14,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import { slugifyName, ScheduleManager } from '../../src/server/schedule/schedule-manager';
 import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
+import { FakeNativeWatchService } from '../helpers/fake-native-watch-service';
 
 // ============================================================================
 // Helpers
@@ -94,7 +95,7 @@ describe('ScheduleManager.moveSchedule', () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-move-mgr-'));
         workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-move-ws-'));
         const persistence = new ScheduleYamlPersistence(dataDir);
-        manager = new ScheduleManager(persistence);
+        manager = new ScheduleManager(persistence, null, null, undefined, new FakeNativeWatchService());
     });
 
     afterEach(() => {
