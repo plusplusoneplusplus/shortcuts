@@ -104,6 +104,18 @@ the other's refresh token becomes invalid — logging the user out. The caller
 must coordinate externally (e.g. `CredentialLock`) and persist the new
 refresh token before using the new access token.
 
+`claude::persist_credentials(fields, target)` writes refreshed credentials
+back to the credential store using a read-modify-write pattern. The existing
+JSON is read, only the `claudeAiOauth` section is updated (preserving sibling
+keys like `mcpOAuth`), and the result is written back. `PersistFields` can be
+constructed from a `&ClaudeRefreshResponse` via the `From` impl.
+
+On macOS, the Keychain is tried first; file is the fallback. On Linux/Windows,
+credentials are written to `~/.claude/.credentials.json` with `0o600` permissions
+via atomic temp-file rename. `PersistResult` reports success and an optional
+warning (e.g. when plaintext fallback is used). `PersistTarget` controls the
+home directory and `skip_keychain` flag.
+
 ## Source selection
 
 Rust `ProviderOptions` requires `MicrosoftTokenSource` and `Refresh`.
