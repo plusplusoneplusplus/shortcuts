@@ -660,6 +660,88 @@ async function peekIndexedDefinition(
     return peek;
 }
 
+test.describe('Explorer deterministic LSP completion', () => {
+    async function openCompletionEditor(page: Page, serverUrl: string, tmpDir: string, extension: string): Promise<void> {
+        const repoDir = path.join(tmpDir, 'completion-repo');
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', `app.${extension}`), 'documentFallbackWord\n\n');
+        await seedWorkspace(serverUrl, WORKSPACE_ID, 'completion-repo', repoDir);
+        await enableExplorerEditorTabs(serverUrl);
+        const languages: Record<string, string> = {
+            ts: 'typescript', js: 'javascript', py: 'python', rs: 'rust', c: 'c', cpp: 'cpp',
+        };
+        const configUrl = `${serverUrl}/api/workspaces/${WORKSPACE_ID}/language-servers`;
+        const config = await request(configUrl);
+        expect(config.status, config.body).toBe(200);
+        const { effective } = JSON.parse(config.body) as { effective: Array<Record<string, unknown>> };
+        const response = await request(configUrl, {
+            method: 'PUT',
+            body: JSON.stringify({
+                enabled: true,
+                definitions: [...effective.map(definition => ({ ...definition, enabled: false })), {
+                    id: 'completion-fixture',
+                    displayName: 'Completion fixture',
+                    enabled: true,
+                    languageIds: [languages[extension]],
+                    filePatterns: [`**/*.${extension}`],
+                    extensionLanguageIds: { [`.${extension}`]: languages[extension] },
+                    command: process.execPath,
+                    args: [path.join(__dirname, 'fixtures', 'completion-lsp.cjs')],
+                    rootMarkers: [],
+                    priority: 1000,
+                }],
+            }),
+        });
+        expect(response.status, response.body).toBe(200);
+        await gotoExplorer(page, serverUrl);
+        await openSourceFile(page, `app.${extension}`);
+        await waitForLanguageServer(page);
+        await focusMonacoBuffer(page);
+        await page.keyboard.press('ControlOrMeta+End');
+    }
+
+    for (const extension of ['ts', 'js', 'py', 'rs', 'c', 'cpp']) {
+        test(`typing and trigger characters show server completions in ${extension}`, async ({ page, serverUrl }) => {
+            const tmpDir = makeTmpDir();
+            try {
+                await openCompletionEditor(page, serverUrl, tmpDir, extension);
+                const widget = page.locator(`${APP_PANEL} .suggest-widget`);
+                await page.keyboard.type('srv');
+                await expect(widget).toBeVisible();
+                await expect(widget.getByText('srvWidget', { exact: true })).toBeVisible();
+                await expect(widget.getByText('documentFallbackWord', { exact: true })).toHaveCount(0);
+                await page.keyboard.press('Tab');
+                await expect.poll(() => caretLineText(page, APP_PANEL)).toBe('srvWidget');
+                await page.keyboard.type('.');
+                await expect(widget).toBeVisible();
+                await expect(widget.getByText('srvWidget', { exact: true })).toBeVisible();
+                await page.keyboard.press('Tab');
+                await expect.poll(() => caretLineText(page, APP_PANEL)).toBe('srvWidget.srvWidget');
+            } finally {
+                safeRmSync(tmpDir);
+            }
+        });
+    }
+
+    test('Ctrl/Cmd+Space invokes the server and acceptance replaces the prefix', async ({ page, serverUrl }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            await openCompletionEditor(page, serverUrl, tmpDir, 'ts');
+            const widget = page.locator(`${APP_PANEL} .suggest-widget`);
+            await page.keyboard.insertText('srv');
+            await page.keyboard.press('Escape');
+            await expect(widget).toBeHidden();
+            await page.keyboard.press('ControlOrMeta+Space');
+            await expect(widget).toBeVisible();
+            await expect(widget.getByText('srvWidget', { exact: true })).toBeVisible();
+            await page.keyboard.press('Tab');
+            await expect.poll(() => caretLineText(page, APP_PANEL)).toBe('srvWidget');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
 // ---------------------------------------------------------------------------
 // 1. Status
 // ---------------------------------------------------------------------------
