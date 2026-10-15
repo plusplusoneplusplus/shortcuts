@@ -39,6 +39,33 @@ fn receive(receiver: &Receiver<WatchBatch>, predicate: impl Fn(&WatchBatch) -> b
     }
 }
 
+/// FSEvents can report setup changes made just before a stream started, which
+/// correctly widens the first window into a rescan. Before asserting exact
+/// deliveries, wait until a probe arrives as an ordinary path batch for every
+/// subscription; any earlier backend event has been delivered by then.
+fn settle(receiver: &Receiver<WatchBatch>, root: &Path, extension: &str, ids: &[u32]) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    for attempt in 0.. {
+        let probe = format!("settle-{attempt}.{extension}");
+        std::fs::write(root.join(&probe), "probe").unwrap();
+        let mut outcomes = std::collections::HashMap::new();
+        while outcomes.len() < ids.len() {
+            let batch = receiver
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("native watcher did not settle");
+            if ids.contains(&batch.subscription_id)
+                && !outcomes.contains_key(&batch.subscription_id)
+                && (batch.rescan || batch.paths.contains(&probe))
+            {
+                outcomes.insert(batch.subscription_id, batch.rescan);
+            }
+        }
+        if outcomes.values().all(|rescan| !rescan) {
+            return;
+        }
+    }
+}
+
 #[test]
 fn shares_canonical_roots_and_removes_only_the_requested_workspace() {
     let root = directory();
@@ -46,6 +73,7 @@ fn shares_canonical_roots_and_removes_only_the_requested_workspace() {
     let first = service.subscribe(options(root.path(), "first")).unwrap();
     let second = service.subscribe(options(&root.path().join("."), "second")).unwrap();
     assert_eq!(service.root_count().unwrap(), 1);
+    settle(&receiver, root.path(), "md", &[first, second]);
     std::fs::write(root.path().join("initial.md"), "initial").unwrap();
     let mut ids = std::collections::BTreeSet::new();
     while ids.len() < 2 {
@@ -88,6 +116,7 @@ fn workflows_templates_and_wiki_subscriptions_share_one_root_and_preserve_path_c
     };
     let wiki_id = service.subscribe(wiki).unwrap();
     assert_eq!(service.root_count().unwrap(), 1);
+    settle(&receiver, root.path(), "md", &[workflows_id, templates_id, wiki_id]);
     std::fs::write(root.path().join(".vscode/workflows/task.yaml"), "name: task").unwrap();
     std::fs::write(root.path().join("MixedCase.md"), "wiki").unwrap();
     let mut delivered = std::collections::BTreeSet::new();
@@ -122,7 +151,8 @@ fn filters_extensions_ignored_directories_and_nested_gitignore_rules() {
         extensions: vec![".md".into()],
         respect_gitignore: true,
     };
-    service.subscribe(subscription).unwrap();
+    let id = service.subscribe(subscription).unwrap();
+    settle(&receiver, root.path(), "md", &[id]);
     for path in [
         "build/out.md",
         "src/cache/out.md",
@@ -148,7 +178,8 @@ fn gitignore_changes_emit_rescan_and_refresh_nested_rules() {
     let (service, receiver) = service();
     let mut subscription = options(root.path(), "rules");
     subscription.filter.respect_gitignore = true;
-    service.subscribe(subscription).unwrap();
+    let id = service.subscribe(subscription).unwrap();
+    settle(&receiver, root.path(), "md", &[id]);
     std::fs::write(root.path().join("src/kept.md"), "prime cached rules").unwrap();
     receive(&receiver, |batch| batch.paths.contains(&"src/kept.md".into()));
     std::fs::write(root.path().join("src/.gitignore"), "").unwrap();
@@ -168,6 +199,7 @@ fn workspace_removal_releases_exclusive_roots_but_retains_shared_roots() {
     assert_eq!(service.root_count().unwrap(), 2);
     service.unwatch_workspace("removed").unwrap();
     assert_eq!(service.root_count().unwrap(), 1);
+    settle(&receiver, first.path(), "md", &[retained]);
     std::fs::write(first.path().join("retained.md"), "retained").unwrap();
     let batch = receive(&receiver, |batch| batch.paths.contains(&"retained.md".into()));
     assert_eq!(batch.subscription_id, retained);
@@ -187,7 +219,9 @@ fn nested_negations_override_file_rules_but_not_ignored_parent_directories() {
     let (service, receiver) = service();
     let mut subscription = options(root.path(), "negations");
     subscription.filter.respect_gitignore = true;
-    service.subscribe(subscription).unwrap();
+    let id = service.subscribe(subscription).unwrap();
+    // The root ignores every Markdown file.
+    settle(&receiver, root.path(), "txt", &[id]);
     std::fs::write(root.path().join("ignored/blocked.md"), "ignored parent").unwrap();
     std::fs::write(root.path().join("src/deeper/kept.md"), "nested override").unwrap();
     let batch = receive(&receiver, |batch| batch.paths.contains(&"src/deeper/kept.md".into()));
@@ -204,7 +238,8 @@ fn shallow_gitignore_subscribers_refresh_excludes_and_root_rules_take_precedence
     let mut subscription = options(root.path(), "shallow-excludes");
     subscription.recursive = false;
     subscription.filter.respect_gitignore = true;
-    service.subscribe(subscription).unwrap();
+    let id = service.subscribe(subscription).unwrap();
+    settle(&receiver, root.path(), "md", &[id]);
     std::fs::write(root.path().join("blocked.md"), "ignored").unwrap();
     std::fs::write(root.path().join("kept.md"), "root rule wins").unwrap();
     let batch = receive(&receiver, |batch| batch.paths.contains(&"kept.md".into()));
@@ -239,6 +274,7 @@ fn recursive_upgrade_keeps_nonrecursive_delivery_shallow() {
     let recursive_id = service.subscribe(options(root.path(), "deep")).unwrap();
     assert_eq!(service.root_count().unwrap(), 1);
     receive(&receiver, |batch| batch.subscription_id == shallow_id && batch.rescan);
+    settle(&receiver, root.path(), "md", &[shallow_id, recursive_id]);
     std::fs::write(root.path().join("nested/deep.md"), "deep").unwrap();
     std::fs::write(root.path().join("top.md"), "top").unwrap();
     let mut ids = std::collections::BTreeSet::new();
