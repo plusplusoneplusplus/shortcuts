@@ -9,6 +9,8 @@ import { blendRemoteCloneStatus, cloneStatusColor } from '../features/remote-she
 import { Card, cn } from '../ui';
 import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
 import type { RemoteWorkspaceMarker } from './remoteWorkspaceAggregation';
+import { useCocClient } from './cloneRouting';
+import { getRepoSelectionId } from './cloneIdentity';
 
 interface RepoCardProps {
     repo: RepoData;
@@ -26,7 +28,8 @@ export function RepoCard({ repo, isSelected, inGroup, onClick }: RepoCardProps) 
     const stats = repo.stats || { success: 0, failed: 0, running: 0 };
     const truncPath = truncatePath(ws.rootPath || '', 24);
     const taskCount = repo.taskCount || 0;
-    const queueStats = useRepoQueueStats(ws.id);
+    const queueClient = useCocClient(ws);
+    const queueStats = useRepoQueueStats(ws.id, queueClient, getRepoSelectionId(repo));
 
     // Remote-workspace distinction (AC-03): aggregated remote checkouts carry a
     // `remote` marker (server label + connection/queue, set by AC-01). Surface a

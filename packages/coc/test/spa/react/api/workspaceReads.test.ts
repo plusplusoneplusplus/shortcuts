@@ -26,6 +26,21 @@ describe.each([
     });
 
     describe('refresh supersession', () => {
+        it('invalidates sharing without cancelling current consumers and replaces their result on a fresh read', async () => {
+            const { client, fetch } = makeClient();
+            let finish!: (value: Response) => void;
+            fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+            const abandoned = read(client, 'ws-one');
+            read.invalidate(client, 'ws-one');
+            const fresh = read(client, 'ws-one');
+            expect(fresh).not.toBe(abandoned);
+            expect(fetch).toHaveBeenCalledTimes(2);
+            const value = await fresh;
+            finish(new Response(JSON.stringify({ queued: [{ id: 'stale' }], running: [] }),
+                { headers: { 'content-type': 'application/json' } }));
+            expect(await abandoned).toEqual(value);
+        });
+
         it('an unresolved seed follows refreshes after earlier replacements have settled', async () => {
             const { client, fetch } = makeClient();
             let resolveSeed!: (response: Response) => void;

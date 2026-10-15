@@ -6,6 +6,7 @@
 import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
 import type { QueueRepoGate } from '@plusplusoneplusplus/coc-client';
 import type { SessionContextAttachmentDragPayload } from '../features/chat/sessionContextDrag';
+import { workspaceReadCacheKey } from '../api/workspaceReads';
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ export interface QueueContextState {
     running: any[];
     history: any[];
     stats: QueueStats;
-    repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats; taskDataLoaded?: boolean; taskDataSource?: string }>;
+    repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats; taskDataLoaded?: boolean; taskDataSource?: string; taskRevision?: number }>;
     /**
      * Per-workspace history cache so revisiting a repo can render the sidebar
      * instantly from the last known snapshot while the freshness fetch runs in
@@ -156,8 +157,8 @@ const initialState: QueueContextState = {
 
 export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; stats: any } }
-    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any }; source?: string }
-    | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
+    | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any }; source?: string; expectedRevision?: number }
+    | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats>; source?: string }
     | { type: 'REPO_HISTORY_UPDATED'; repoId: string; items: any[]; hasMore: boolean; source?: string }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
@@ -197,7 +198,9 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             };
         }
         case 'REPO_QUEUE_UPDATED': {
-            const existingRepo = state.repoQueueMap[action.repoId];
+            const key = workspaceReadCacheKey(action.repoId, action.source);
+            const existingRepo = state.repoQueueMap[key];
+            if (action.expectedRevision !== undefined && (existingRepo?.taskRevision ?? 0) !== action.expectedRevision) return state;
             const hasTaskData = action.queue.queued !== undefined && action.queue.running !== undefined;
             const repoData = {
                 queued: action.queue.queued ?? existingRepo?.queued ?? [],
@@ -206,32 +209,36 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
                 taskDataLoaded: existingRepo?.taskDataLoaded
                     || hasTaskData,
                 taskDataSource: hasTaskData ? action.source : existingRepo?.taskDataSource,
+                taskRevision: (existingRepo?.taskRevision ?? 0) + (hasTaskData ? 1 : 0),
             };
             return {
                 ...state,
-                repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData },
+                repoQueueMap: { ...state.repoQueueMap, [key]: repoData },
             };
         }
         case 'REPO_QUEUE_STATS_UPDATED': {
-            const existingRepo = state.repoQueueMap[action.repoId];
+            const key = workspaceReadCacheKey(action.repoId, action.source);
+            const existingRepo = state.repoQueueMap[key];
             const repoData = {
                 queued: existingRepo?.queued ?? [],
                 running: existingRepo?.running ?? [],
                 stats: mergeQueueStats(action.stats, existingRepo?.stats),
                 taskDataLoaded: existingRepo?.taskDataLoaded,
                 taskDataSource: existingRepo?.taskDataSource,
+                taskRevision: existingRepo?.taskRevision,
             };
             return {
                 ...state,
-                repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData },
+                repoQueueMap: { ...state.repoQueueMap, [key]: repoData },
             };
         }
         case 'REPO_HISTORY_UPDATED': {
+            const key = workspaceReadCacheKey(action.repoId, action.source);
             return {
                 ...state,
                 repoHistoryMap: {
                     ...state.repoHistoryMap,
-                    [action.repoId]: {
+                    [key]: {
                         items: action.items,
                         source: action.source,
                         hasMore: action.hasMore,

@@ -11,7 +11,7 @@ import { render, act, waitFor, screen } from '@testing-library/react';
 
 // ── Captured hook callbacks ──────────────────────────────────────
 
-let capturedOnMessage: ((msg: any) => void) | null = null;
+let capturedOnMessage: ((msg: any, baseUrl?: string) => void) | null = null;
 let capturedOnConnect: (() => void) | null = null;
 let mockWsStatus: 'open' | 'closed' | 'connecting' = 'open';
 const mockWsConnect = vi.fn();
@@ -43,6 +43,7 @@ const mockModelsList = vi.fn();
 const mockAgentProviderModelsList = vi.fn();
 const mockReportActiveWorkspace = vi.fn();
 vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
+    getCocClientFor: (baseUrl?: string) => ({ options: { baseUrl: baseUrl ?? '' } }),
     getSpaCocClient: () => ({
         agentProviders: {
             listModels: mockAgentProviderModelsList,
@@ -442,7 +443,30 @@ describe('App WebSocket events dispatch to correct context slice', () => {
             type: 'REPO_QUEUE_UPDATED',
             repoId: 'ws-abc',
             queue,
+            source: '["",""]',
         });
+    });
+
+    it('retains remote queue provenance without replacing the page-origin aggregate or process index', () => {
+        const onMessage = renderAndCapture();
+        const baseUrl = 'https://owner.example';
+        const queue = { repoId: 'same-id', queued: [], running: [{ id: 'remote-job' }] };
+        act(() => {
+            onMessage({ type: 'queue-updated', queue }, baseUrl);
+            onMessage({ type: 'queue-updated', queue: { queued: [], running: [] } }, baseUrl);
+            onMessage({ type: 'process-added', process: { id: 'same-process', workspaceId: 'same-id' } }, baseUrl);
+            onMessage({ type: 'process-updated', process: { id: 'same-process', workspaceId: 'same-id', status: 'running' } }, baseUrl);
+            onMessage({ type: 'process-removed', processId: 'same-process' }, baseUrl);
+            onMessage({ type: 'processes-cleared' }, baseUrl);
+        });
+        expect(mockQueueDispatch).toHaveBeenCalledTimes(1);
+        expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'REPO_QUEUE_UPDATED', repoId: 'same-id', queue, source: JSON.stringify([baseUrl, '']),
+        });
+        expect(mockAppDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'PROCESS_ADDED' }));
+        expect(mockAppDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'PROCESS_UPDATED' }));
+        expect(mockAppDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'PROCESS_REMOVED' }));
+        expect(mockAppDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'PROCESSES_CLEARED' }));
     });
 
     it('queue-updated without repoId dispatches QUEUE_UPDATED to QueueContext', () => {

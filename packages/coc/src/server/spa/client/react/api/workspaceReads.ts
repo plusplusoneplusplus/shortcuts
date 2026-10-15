@@ -4,10 +4,17 @@ export function workspaceReadSource(client: CocClient): string {
     return JSON.stringify([client.options?.baseUrl ?? '', client.options?.apiBasePath ?? '']);
 }
 
+export function workspaceReadCacheKey(workspaceId: string, source?: string): string {
+    // Page-origin snapshots retain the local key; remote and container owners
+    // have independent entries even when their wire workspace ids collide.
+    if (!source || source === '["",""]' || source === '["","/api"]') return workspaceId;
+    return JSON.stringify([source, workspaceId]);
+}
+
 function shareWorkspaceRead<T>(read: (client: CocClient, workspaceId: string) => Promise<T>) {
     type ReadGroup = { pending?: Promise<T>; latest?: Promise<T>; active: number };
     const pendingByClient = new WeakMap<CocClient, Map<string, ReadGroup>>();
-    return (client: CocClient, workspaceId: string, refresh = false): Promise<T> => {
+    const sharedRead = (client: CocClient, workspaceId: string, refresh = false): Promise<T> => {
         let pending = pendingByClient.get(client);
         if (!pending) {
             pending = new Map();
@@ -36,6 +43,12 @@ function shareWorkspaceRead<T>(read: (client: CocClient, workspaceId: string) =>
         current.pending = promise;
         return promise;
     };
+    return Object.assign(sharedRead, {
+        invalidate(client: CocClient, workspaceId: string): void {
+            const group = pendingByClient.get(client)?.get(workspaceId);
+            if (group) group.pending = undefined;
+        },
+    });
 }
 
 // Refreshes supersede pending snapshots, including results awaited by older readers.

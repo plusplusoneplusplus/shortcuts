@@ -198,6 +198,17 @@ describe('createWebSocketInfrastructure', () => {
     });
 
     describe('queue change wiring', () => {
+        it.each(['queued', 'running'] as const)('preserves a resumed conversation identity in %s snapshots', status => {
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+            const task = { id: 'follow-up-job', repoId: 'r1', type: 'chat', status,
+                processId: 'queue_existing-chat', payload: { processId: 'queue_existing-chat' } };
+            registry._mockManager[status === 'queued' ? 'getQueued' : 'getRunning'].mockReturnValue([task]);
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'updated' });
+            const message = broadcast.mock.calls[0][0] as any;
+            expect(message.queue[status][0].processId).toBe('queue_existing-chat');
+        });
+
         it('broadcasts queue-updated when bridge emits queueChange', () => {
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
             const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');

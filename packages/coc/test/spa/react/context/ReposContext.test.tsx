@@ -64,7 +64,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregatio
 
 import { ReposProvider, useRepos } from '../../../../src/server/spa/client/react/contexts/ReposContext';
 import { AppProvider, useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
-import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 import { tagRemoteWorkspaces, type AggregatedRemoteWorkspaces } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 import {
     _resetRemoteSelectionForTests,
@@ -227,6 +227,22 @@ describe('ReposContext', () => {
         _resetRemoteSelectionForTests();
         _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
+    });
+
+    it('seeds page-origin queue stats without matching a remote repository by its mirrored root path', async () => {
+        const baseUrl = 'https://owner.example';
+        const aggregate = remoteAggregate('owner', baseUrl, 'remote-id');
+        aggregateRemoteWorkspacesMock.mockResolvedValue(aggregate);
+        vi.spyOn(getCocClientFor(baseUrl).workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
+        repositoryServiceMocks.listQueueRepos.mockResolvedValue({ repos: [{
+            repoId: 'local-only', rootPath: aggregate.workspaces[0].rootPath,
+            runningCount: 1, queuedCount: 0, isPaused: true,
+        }] });
+        let queue: ReturnType<typeof useQueue>;
+        function Probe() { queue = useQueue(); return null; }
+        render(<Wrapper><ReposProvider><Probe /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(queue.state.repoQueueMap['local-only']?.stats.running).toBe(1));
+        expect(queue.state.repoQueueMap['remote-id']).toBeUndefined();
     });
 
     it('publishes eligible group unread across concrete servers and refreshes member read/membership changes without a group view', async () => {

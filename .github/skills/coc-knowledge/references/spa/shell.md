@@ -301,7 +301,7 @@ with no API or app-state dependencies, so the URL needs no query parameters.
 |---------|---------|
 | `AppContext` | Global app state, workspace selection |
 | `QueueContext` | Queue state, enqueue/cancel actions |
-| `TaskContext` | Active task tracking |
+| `TaskContext` | Task-file selection and task-change signals |
 | `ToastContext` | Toast notification queue |
 | `FloatingChatsContext` | Floating chat window management |
 
@@ -380,10 +380,15 @@ LLM-tools key after a successful `updateLlmToolsConfig`.
 `api/workspaceReads.ts` shares concurrent Git-info and queue reads by routed
 client and workspace, releasing requests on success or failure. It retains no
 settled snapshots. Explicit queue refreshes supersede pending snapshots; older
-readers receive the replacement result. `RepoDetail` seeds queue task data only when it is absent;
-`QueueContext.repoQueueMap.taskDataLoaded` distinguishes loaded empty queues
-from stats-only placeholders, and `taskDataSource` records the server/API owner.
-`RepoChatTab` refreshes queue data on each mount.
+readers receive the replacement result. Scope cleanup invalidates sharing of
+pending queue reads so remounts revalidate without cancelling other consumers.
+Queue/history caches use
+`workspaceReadCacheKey(workspaceId, source)` to isolate remote and container owners.
+`taskDataLoaded` distinguishes loaded empty queues from stats-only placeholders;
+`taskRevision` changes only with task snapshots and guards delayed REST writes in
+the reducer. `RepoDetail`'s `useWorkspaceQueueSeed` and `RepoChatTab` reconcile on
+mount and the owning socket's reconnect, including pending requests. Failed reads
+retain confirmed rows and report errors; reconciliation adds no polling.
 
 `queue/hooks/useRepoQueueStats.ts` shares eligible rows through `useRepoQueueJobs`;
 the selected group's queue stays independent of its members. Owner-aware readers

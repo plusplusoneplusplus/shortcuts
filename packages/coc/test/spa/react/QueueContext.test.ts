@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { queueReducer, type QueueContextState, type QueueAction } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { workspaceReadCacheKey } from '../../../src/server/spa/client/react/api/workspaceReads';
 
 function makeState(overrides: Partial<QueueContextState> = {}): QueueContextState {
     return {
@@ -124,32 +125,36 @@ describe('QueueContext reducer', () => {
         });
 
         it('preserves a loaded empty queue across stats and partial updates', () => {
+            const key = workspaceReadCacheKey('ws-one', 'server-one');
             let state = queueReducer(makeState(), {
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: 'ws-one',
                 source: 'server-one',
                 queue: { queued: [], running: [] },
             });
-            expect(state.repoQueueMap['ws-one'].taskDataLoaded).toBe(true);
-            expect(state.repoQueueMap['ws-one'].taskDataSource).toBe('server-one');
+            expect(state.repoQueueMap[key].taskDataLoaded).toBe(true);
+            expect(state.repoQueueMap[key].taskDataSource).toBe('server-one');
             state = queueReducer(state, {
                 type: 'REPO_QUEUE_STATS_UPDATED',
                 repoId: 'ws-one',
+                source: 'server-one',
                 stats: { isPaused: true },
             });
             state = queueReducer(state, {
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: 'ws-one',
+                source: 'server-one',
                 queue: { stats: { isPaused: false } },
             });
-            expect(state.repoQueueMap['ws-one'].taskDataLoaded).toBe(true);
-            expect(state.repoQueueMap['ws-one'].taskDataSource).toBe('server-one');
+            expect(state.repoQueueMap[key].taskDataLoaded).toBe(true);
+            expect(state.repoQueueMap[key].taskDataSource).toBe('server-one');
             state = queueReducer(state, {
                 type: 'REPO_QUEUE_UPDATED',
                 repoId: 'ws-one',
                 queue: { queued: [], running: [] },
             });
             expect(state.repoQueueMap['ws-one'].taskDataSource).toBeUndefined();
+            expect(state.repoQueueMap[key].taskDataSource).toBe('server-one');
         });
 
         it('updates only stats for an existing repo queue entry', () => {

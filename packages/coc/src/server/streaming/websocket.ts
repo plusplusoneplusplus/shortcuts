@@ -92,6 +92,7 @@ export interface QueueTaskSummary {
     botControl?: BotControlPresentation;
     id: string;
     type: string;
+    processId?: string;
     priority: string;
     status: string;
     displayName?: string;

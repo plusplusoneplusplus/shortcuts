@@ -35,7 +35,8 @@ import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { TasksPanel } from '../../tasks/TasksPanel';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
-import { readWorkspaceQueue, workspaceReadSource } from '../../api/workspaceReads';
+import { workspaceReadCacheKey, workspaceReadSource } from '../../api/workspaceReads';
+import { useWorkspaceQueueSeed } from '../../queue/hooks/useWorkspaceQueueSeed';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useRepoQueueJobs } from '../../queue/hooks/useRepoQueueStats';
@@ -274,9 +275,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const wikiGeneratingCount = repoWikis.filter((w: any) => w.status === 'generating').length;
     const wikiWarningCount = repoWikis.filter((w: any) => w.status === 'error' || w.status === 'pending').length;
 
-    const isRepoPaused = useMemo(() => {
-        return !!queueState.repoQueueMap[ws.id]?.stats?.isPaused;
-    }, [queueState.repoQueueMap[ws.id]?.stats?.isPaused]);
+    const queueCacheKey = workspaceReadCacheKey(ws.id, workspaceReadSource(queueClient));
+    const isRepoPaused = !!queueState.repoQueueMap[queueCacheKey]?.stats?.isPaused;
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
     const [isLaunchingCli, setIsLaunchingCli] = useState(false);
     const tabStripRef = useRef<HTMLDivElement>(null);
@@ -435,26 +435,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         }
     }
 
-    // Seed repo queue map on first render if not yet populated with task-level data.
-    // Routed to the workspace's own server: /queue?repoId= answers 200 with an EMPTY
-    // queue for an id the LOCAL server doesn't know, so a remote clone looked idle.
-    // Known limitation (same as RepoChatTab): the shared QueueContext is also fed by
-    // the LOCAL server's websocket (App.tsx REPO_QUEUE_UPDATED), so a later local WS
-    // message can overwrite these remote-sourced rows for the same repoId. Fixing that
-    // needs per-clone queue WebSocket fan-in.
-    useEffect(() => {
-        const existing = queueState.repoQueueMap[ws.id];
-        const source = workspaceReadSource(queueClient);
-        if (existing?.taskDataLoaded && existing.taskDataSource === source) return;
-        if (existing && !existing.taskDataLoaded && (existing.running.length > 0 || existing.queued.length > 0)) return;
-        let cancelled = false;
-        readWorkspaceQueue(queueClient, ws.id)
-            .then(data => {
-                if (!cancelled && data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data, source });
-            })
-            .catch(() => {});
-        return () => { cancelled = true; };
-    }, [ws.id, queueClient]);
+    useWorkspaceQueueSeed(ws.id, queueClient, sourceSelectionId);
 
     const switchSubTab = (tab: RepoSubTab) => {
         if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });

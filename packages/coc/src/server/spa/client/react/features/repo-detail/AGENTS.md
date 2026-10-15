@@ -46,10 +46,13 @@ visual layer.
 
 ## Clone routing
 
-`RepoDetail.tsx` routes the queue seed through `useCocClient(sourceSelectionId)`
-and `api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
-Queue hydration accepts an empty task list only from its recorded server/API
-source; stats-only placeholders still require a seed. Router, chat openers and
+`RepoDetail.tsx` routes queue reconciliation through
+`useWorkspaceQueueSeed`, `useCocClient(sourceSelectionId)` and
+`api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
+Mount and owning-socket reconnect revalidate cached rows; reconnect reads
+supersede pending requests. Queue/history cache keys isolate server/API owners.
+Reducer task revisions reject pre-snapshot REST writes, while stats-only
+placeholders still admit task hydration. Router, chat openers and
 panel hosts use `selectedTaskIdByRepo[sourceSelectionId]` for one concrete owner;
 remote selections never mirror into bare workspace keys. Explicit chat routes
 retain missing/unavailable process identities for detail errors, and unresolved
@@ -58,9 +61,9 @@ Resume Queue use `getCocClientForWorkspace(ws.id)`. Work-item commit reviews rec
 through `WorkItemsTab` and `WorkItemCommitReviewPane` as
 `attachmentDestinationId`; diff payloads keep the plain workspace id.
 `/chat/launch-terminal` deliberately stays on the local-origin
-`fetchApi` — it spawns a terminal on whichever machine runs the server. The queue
-store is still fed by the LOCAL websocket only, so remote-sourced rows can be
-overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
+`fetchApi` — it spawns a terminal on whichever machine runs the server. Local and
+remote queue WebSocket snapshots retain their owning source; remote aggregates
+and process events cannot replace page-origin queue or process-index state.
 
 ## Workspace right panel
 

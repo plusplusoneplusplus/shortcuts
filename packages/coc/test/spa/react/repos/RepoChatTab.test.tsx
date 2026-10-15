@@ -30,6 +30,7 @@ import { Router } from '../../../../src/server/spa/client/react/layout/Router';
 import { SentinelTodoOriginBar } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoOriginBar';
 import { clearSentinelTodoExcursion, startSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 import { buildRemoteCloneKey, getWorkspaceIdFromSelectionId } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import { workspaceReadCacheKey } from '../../../../src/server/spa/client/react/api/workspaceReads';
 
 vi.mock('../../../../src/server/spa/client/react/repos', () => ({ ReposView: () => null }));
 vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_WIKI_TAB: false }));
@@ -3015,6 +3016,58 @@ describe('RepoChatTab: collapsed-rail pinned jobs', () => {
     });
 });
 
+describe('RepoChatTab: automatic queue reconciliation', () => {
+    it('accepts initial task rows when stats-only hydration races the read', async () => {
+        let finish!: (value: any) => void;
+        const normalRead = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation((url: string, init?: any) => url.includes('/queue?')
+            ? new Promise(resolve => { finish = resolve; }) : normalRead(url, init));
+        let dispatch: ReturnType<typeof useQueue>['dispatch'];
+        function Probe() { dispatch = useQueue().dispatch; return null; }
+        await act(async () => renderWithProviders(React.createElement(React.Fragment, null,
+            React.createElement(RepoChatTab, { workspaceId: 'ws-1' }), React.createElement(Probe))));
+        act(() => dispatch({ type: 'REPO_QUEUE_STATS_UPDATED', repoId: 'ws-1', stats: { running: 1 } }));
+        await act(async () => finish({ running: [makeRunningTask('initial-running')], queued: [] }));
+        expect(screen.getByTestId('task-initial-running')).toBeInTheDocument();
+    });
+
+    it.each(['ws-1', 'group-local'])('reconciles %s on reconnect while its initial queue read is pending', async workspaceId => {
+        let finishInitial!: (value: any) => void;
+        let reads = 0;
+        const normalRead = mockFetchApi.getMockImplementation()!;
+        mockFetchApi.mockImplementation((url: string, init?: any) => {
+            if (!url.includes('/queue?')) return normalRead(url, init);
+            if (++reads === 1) return new Promise(resolve => { finishInitial = resolve; });
+            return Promise.resolve({ running: [makeRunningTask('missed-running')], queued: [makeQueuedTask('missed-queued')] });
+        });
+        await act(async () => renderWithProviders(React.createElement(RepoChatTab, { workspaceId })));
+        await waitFor(() => expect(finishInitial).toBeTypeOf('function'));
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-local-ws-connect', { detail: {} })));
+        expect(reads).toBe(2);
+        await waitFor(() => expect(screen.getByTestId('task-missed-running')).toBeInTheDocument());
+        await act(async () => finishInitial({ running: [], queued: [] }));
+        expect(screen.getByTestId('task-missed-running')).toBeInTheDocument();
+        expect(screen.getByTestId('task-missed-queued')).toBeInTheDocument();
+    });
+
+    it.each(['ws-remote', 'group-remote'])('reconciles %s only on the owning remote reconnect', async workspaceId => {
+        const selectionId = buildRemoteCloneKey('owner', workspaceId);
+        registerCloneBaseUrls([{ workspaceId, cloneKey: selectionId, baseUrl: 'https://owner.example' }]);
+        mockRemoteQueue.mockResolvedValue({ running: [], queued: [] });
+        await renderTab(workspaceId, undefined, { sourceSelectionId: selectionId });
+        mockRemoteQueue.mockClear();
+        mockRemoteQueue.mockResolvedValue({ running: [makeRunningTask('remote-missed')], queued: [] });
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('coc-local-ws-connect', { detail: {} }));
+            window.dispatchEvent(new CustomEvent('coc-remote-ws-connect', { detail: { baseUrl: 'https://other.example' } }));
+        });
+        expect(mockRemoteQueue).not.toHaveBeenCalled();
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-remote-ws-connect', { detail: { baseUrl: 'https://owner.example' } })));
+        expect(mockRemoteQueue).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('task-remote-missed')).toBeInTheDocument();
+    });
+});
+
 // Manual refresh uses the expanded list's scope plus the full rail pins read.
 describe('RepoChatTab: manual rail refresh', () => {
     let host: HTMLElement;
@@ -3136,9 +3189,10 @@ describe('RepoChatTab: manual rail refresh', () => {
             React.createElement(Probe))));
         await act(async () => fireEvent.click(refresh()));
         const source = JSON.stringify(['https://owner.example', '']);
-        expect(queueState.repoQueueMap[workspaceId].taskDataSource).toBe(source);
-        expect(queueState.repoHistoryMap[workspaceId].source).toBe(source);
-        expect(queueState.repoHistoryMap[workspaceId].items[0].id).toBe('remote-history');
+        const key = workspaceReadCacheKey(workspaceId, source);
+        expect(queueState.repoQueueMap[key].taskDataSource).toBe(source);
+        expect(queueState.repoHistoryMap[key].source).toBe(source);
+        expect(queueState.repoHistoryMap[key].items[0].id).toBe('remote-history');
     });
 
     it('never reads local rows for an unresolved remote owner', async () => {

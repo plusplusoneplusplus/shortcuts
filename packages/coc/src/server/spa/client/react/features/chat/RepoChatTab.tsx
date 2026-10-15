@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { cn } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
-import { readWorkspaceQueue, workspaceReadSource } from '../../api/workspaceReads';
+import { readWorkspaceQueue, workspaceReadCacheKey, workspaceReadSource } from '../../api/workspaceReads';
 import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
@@ -191,8 +191,9 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const unresolvedRemote = !sidebarOwnerAvailable || !!parseRemoteCloneKey(routeId) && !cloneClient.options?.baseUrl;
     const matchesSource = (recordSource?: string) => !unresolvedRemote && (recordSource
         ? recordSource === source : !cloneClient.options?.baseUrl);
-    const historyCache = queueState.repoHistoryMap?.[workspaceId];
-    const queueCache = queueState.repoQueueMap[workspaceId];
+    const cacheKey = workspaceReadCacheKey(workspaceId, source);
+    const historyCache = queueState.repoHistoryMap?.[cacheKey];
+    const queueCache = queueState.repoQueueMap[cacheKey];
     const cachedHistory = matchesSource(historyCache?.source) ? historyCache : undefined;
     const cachedQueue = matchesSource(queueCache?.taskDataSource) ? queueCache : undefined;
 
@@ -382,6 +383,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     }, [workspaceId, queueDispatch, cloneClient, withPendingChatStamps, ownerKey, source, unresolvedRemote]);
 
     useEffect(() => () => { fetchGenerationRef.current++; historyGenerationRef.current++; }, []);
+    useEffect(() => () => readWorkspaceQueue.invalidate(cloneClient, workspaceId), [cloneClient, workspaceId]);
     const fetchQueueAndHistory = useCallback(async (refresh = false, reportErrors = false) => {
         // In container mode, skip fetch if agent hasn't been resolved yet —
         // the effect will re-fire once currentAgentId is set.
@@ -416,28 +418,13 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             // Only update queue/pause state when the queue fetch actually succeeded —
             // a transient network error must not clear the running list out from under
             // the user (this was the "no tasks in queue" flash on rapid repo switches).
-            if (queueData && live.queue === liveRef.current.queue) {
-                const nextRunning = queueData.running || [];
-                const nextQueued = queueData.queued || [];
-                const nextStats = queueData.stats || undefined;
-                setRunning(nextRunning);
-                setQueued(nextQueued);
-                setIsPaused(!!nextStats?.isPaused);
-                setPausedUntil(nextStats?.pausedUntil);
-                setPauseSource(nextStats?.pauseSource);
-                setPauseReason(nextStats?.pauseReason);
-                setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
-                setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
-                setAutopilotPauseSource(nextStats?.autopilotPauseSource);
-                setTaskDelayMinutes(nextStats?.taskDelayMinutes);
-                setTaskDelayUntil(nextStats?.taskDelayUntil);
-                setAutopilotTaskDelayMinutes(nextStats?.autopilotTaskDelayMinutes);
-                setAutopilotTaskDelayUntil(nextStats?.autopilotTaskDelayUntil);
+            if (queueData) {
                 queueDispatch({
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: workspaceId,
                     source: workspaceReadSource(client),
-                    queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
+                    expectedRevision: live.queue?.taskRevision ?? 0,
+                    queue: queueData,
                 });
             }
 
@@ -473,10 +460,25 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             // Keep the last successful snapshot if a reader fails.
         }
         setLoading(false);
+        if (!reportErrors && errors.length) console.warn('Could not refresh sidebar data', ...errors);
         if (reportErrors && errors.length) throw new Error(errors.map(error => error instanceof Error ? error.message : String(error)).join('; '));
     }, [workspaceId, queueDispatch, appState.currentAgentId, cloneClient, withPendingChatStamps, withPendingGroupStamps, unresolvedRemote, ownerKey, source]);
 
     const fetchQueue = fetchQueueAndHistory;
+
+    useEffect(() => {
+        if (unresolvedRemote) return;
+        const baseUrl = cloneClient.options?.baseUrl || undefined;
+        const eventName = baseUrl ? 'coc-remote-ws-connect' : 'coc-local-ws-connect';
+        const onConnect = (event: Event) => {
+            if ((event as CustomEvent).detail?.baseUrl !== baseUrl) return;
+            // A new socket has no replay. Force a fresh read even if an earlier
+            // request is still pending; the shared reader supersedes that result.
+            void fetchQueue(true);
+        };
+        window.addEventListener(eventName, onConnect);
+        return () => window.removeEventListener(eventName, onConnect);
+    }, [cloneClient, unresolvedRemote, fetchQueue]);
 
     const handleLoadMore = useCallback(async () => {
         setLoadingMore(true);
@@ -691,7 +693,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
      */
     const awaitingInputProcessIds = useMemo(() => {
         const ids = new Set<string>();
-        const procs = Array.isArray(appState.processes) ? appState.processes : [];
+        const procs = !cloneClient.options?.baseUrl && !unresolvedRemote && Array.isArray(appState.processes) ? appState.processes : [];
         for (const proc of procs) {
             if (proc && typeof proc.pendingAskUserCount === 'number' && proc.pendingAskUserCount > 0) {
                 ids.add(proc.id);
@@ -705,7 +707,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             }
         }
         return ids;
-    }, [appState.processes, running]);
+    }, [appState.processes, running, cloneClient, unresolvedRemote]);
     const { markReadByProcessId } = useNotifications();
 
     // Chat-list feed: bucket a mid-`/compact` conversation into RUNNING TASKS.
@@ -722,9 +724,9 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // rows into `running` (and out of `history`). Returns the same references
     // when nothing is compacting, so the ChatListPane props stay stable.
     const workspaceProcesses = useMemo(
-        () => (Array.isArray(appState.processes) ? appState.processes : [])
+        () => (!cloneClient.options?.baseUrl && !unresolvedRemote && Array.isArray(appState.processes) ? appState.processes : [])
             .filter((p: any) => p?.workspaceId === workspaceId),
-        [appState.processes, workspaceId],
+        [appState.processes, workspaceId, cloneClient, unresolvedRemote],
     );
     const { running: mergedRunning, history: mergedHistory } = useMemo(
         () => mergeCompactingConversations({ running, history, processes: workspaceProcesses as any }),

@@ -26,6 +26,8 @@ import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchApi } from './hooks/useApi';
+import { getCocClientFor } from './api/cocClient';
+import { workspaceReadSource } from './api/workspaceReads';
 import { getCocClientForWorkspace } from './repos/cloneRegistry';
 import { RemoteCloneEventBridge } from './features/remote-shell/RemoteCloneEventBridge';
 import { ToastContainer, useToast } from './ui';
@@ -168,7 +170,7 @@ function AppInner() {
         return [...ids];
     }, [appState.workspaces]);
 
-    const onMessage = useCallback((msg: any) => {
+    const onMessage = useCallback((msg: any, baseUrl?: string) => {
         if (!msg || !msg.type) return;
 
         // Rebroadcast cron-* WebSocket messages as a generic custom event so
@@ -179,11 +181,11 @@ function AppInner() {
 
         switch (msg.type) {
             case 'process-added':
-                if (msg.process) appDispatch({ type: 'PROCESS_ADDED', process: msg.process });
+                if (msg.process && !baseUrl) appDispatch({ type: 'PROCESS_ADDED', process: msg.process });
                 break;
             case 'process-updated':
                 if (msg.process) {
-                    appDispatch({ type: 'PROCESS_UPDATED', process: msg.process });
+                    if (!baseUrl) appDispatch({ type: 'PROCESS_UPDATED', process: msg.process });
                     const terminalStatuses = ['completed', 'failed', 'cancelled'];
                     if (terminalStatuses.includes(msg.process.status)) {
                         appDispatch({ type: 'INVALIDATE_CONVERSATION', processId: msg.process.id });
@@ -209,17 +211,20 @@ function AppInner() {
                 }
                 break;
             case 'process-removed':
-                if (msg.processId) appDispatch({ type: 'PROCESS_REMOVED', processId: msg.processId });
+                if (msg.processId && !baseUrl) appDispatch({ type: 'PROCESS_REMOVED', processId: msg.processId });
                 break;
             case 'processes-cleared':
-                appDispatch({ type: 'PROCESSES_CLEARED' });
-                seenProcessIdsRef.current.clear();
+                if (!baseUrl) {
+                    appDispatch({ type: 'PROCESSES_CLEARED' });
+                    seenProcessIdsRef.current.clear();
+                }
                 break;
             case 'queue-updated':
                 if (msg.queue) {
                     if (msg.queue.repoId) {
-                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: String(msg.queue.repoId), queue: msg.queue });
-                    } else {
+                        queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: String(msg.queue.repoId),
+                            queue: msg.queue, source: workspaceReadSource(getCocClientFor(baseUrl)) });
+                    } else if (!baseUrl) {
                         queueDispatch({ type: 'QUEUE_UPDATED', queue: msg.queue });
                     }
                 }

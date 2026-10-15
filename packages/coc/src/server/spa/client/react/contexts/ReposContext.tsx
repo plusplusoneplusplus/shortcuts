@@ -52,6 +52,7 @@ import {
 } from '../repos/cloneIdentity';
 import { setActiveCloneForRouting } from '../repos/cloneRegistry';
 import { getCocClientFor } from '../api/cocClient';
+import { workspaceReadSource } from '../api/workspaceReads';
 import { useRepoGroupAggregatedChatsEnabled } from '../hooks/feature-flags/useRepoGroupAggregatedChatsEnabled';
 import { RepoGroupBadgeFeed, type RepoGroupUnreadBadge } from '../repos/RepoGroupBadgeFeed';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
@@ -187,11 +188,12 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             const queueReposRes = await listQueueRepos();
             const queueRepos = queueReposRes?.repos || [];
             for (const qr of queueRepos) {
-                const match = enriched.find(r => r.workspace.rootPath === qr.rootPath);
+                const match = enriched.find(r => !isRemoteWorkspace(r.workspace) && r.workspace.rootPath === qr.rootPath);
                 const repoId = match?.workspace.id ?? qr.repoId;
                 queueDispatch({
                     type: 'REPO_QUEUE_STATS_UPDATED',
                     repoId,
+                    source: workspaceReadSource(getCocClientFor()),
                     stats: {
                         queued: qr.queuedCount ?? 0,
                         running: qr.runningCount ?? 0,

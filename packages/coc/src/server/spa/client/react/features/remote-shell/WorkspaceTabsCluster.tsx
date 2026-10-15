@@ -18,6 +18,7 @@ import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, describ
 import { useShellNavigation } from './useShellNavigation';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useWorkspaceRemoval } from './useWorkspaceRemoval';
+import { useCocClient } from '../../repos/cloneRouting';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
@@ -68,7 +69,8 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const rawActiveTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
     const activeTab = rawActiveTab === 'chats' ? 'activity' : rawActiveTab;
 
-    const { running: runningCount, queued: queuedCount } = useRepoQueueStats(workspaceId);
+    const queueClient = useCocClient(ws);
+    const { running: runningCount, queued: queuedCount } = useRepoQueueStats(workspaceId, queueClient, getRepoSelectionId(repo));
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(workspaceId);
 
     const tabs = useMemo(() => computeVisibleSubTabs({
