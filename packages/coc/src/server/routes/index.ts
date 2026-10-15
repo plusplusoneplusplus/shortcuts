@@ -335,6 +335,7 @@ export interface RegisterRoutesOptions {
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
     notesSearchService: NotesSearchService;
+    watchService?: import('../shared/native-watch-service').NativeWatchServiceLike;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; scrubberReady: Promise<number> } {
@@ -2012,6 +2013,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
 
     const wikiManager = registerWikiRoutes(routes, {
+        watchService: opts.watchService,
         wikis: wikiOptions?.wikis,
         aiEnabled: wikiOptions?.aiEnabled,
         dataDir,

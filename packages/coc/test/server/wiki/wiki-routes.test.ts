@@ -16,7 +16,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createExecutionServer } from '../../../src/server/index';
+import { createExecutionServer as createServer } from '../../../src/server/index';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 import type { ComponentGraph } from '../../../src/server/wiki/types';
 
@@ -87,6 +87,19 @@ function createTempWikiDir(graph?: ComponentGraph): string {
 function removeTempDir(dirPath: string): void {
     try { fs.rmSync(dirPath, { recursive: true, force: true }); } catch { /* ignore */ }
 }
+
+const serverDataDirs: string[] = [];
+
+async function createExecutionServer(options: NonNullable<Parameters<typeof createServer>[0]> = {}) {
+    if (options.dataDir) return createServer(options);
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikiroutes-data-'));
+    serverDataDirs.push(dataDir);
+    return createServer({ ...options, dataDir });
+}
+
+afterEach(() => {
+    for (const dir of serverDataDirs.splice(0)) removeTempDir(dir);
+});
 
 function httpRequest(
     url: string,

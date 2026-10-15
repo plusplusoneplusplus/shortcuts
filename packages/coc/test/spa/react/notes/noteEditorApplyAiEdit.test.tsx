@@ -221,6 +221,24 @@ describe('NoteEditor diff-on-reload', () => {
         });
     });
 
+    it('reloads the open note when a native rescan invalidates every path', async () => {
+        await renderEditor('test.md');
+        mockLoadContent.mockResolvedValueOnce({ content: 'updated content', path: 'test.md' });
+        await act(async () => {
+            fireNotesChanged('ws1', []);
+        });
+        expect(mockLoadContent).toHaveBeenCalledTimes(2);
+        expect(mockSetContent).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores full-rescan invalidation for another workspace', async () => {
+        await renderEditor('test.md');
+        await act(async () => {
+            fireNotesChanged('other-ws', []);
+        });
+        expect(mockLoadContent).toHaveBeenCalledTimes(1);
+    });
+
     // ── Identical content skips reload and decorations ──
 
     it('skips setContent when notes-changed delivers identical content', async () => {

@@ -6,22 +6,22 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { FakeNativeWatchService } from '../../helpers/fake-native-watch-service';
+import { getServerLogger } from '../../../src/server/logging/server-logger';
 import {
     WikiManager,
     WikiData,
     ContextBuilder,
     ConversationSessionManager,
-    FileWatcher,
 } from '../../../src/server/wiki/index';
 import type {
-    WikiRegistration,
-    WikiRuntime,
-    WikiManagerOptions,
     ComponentGraph,
     AskAIFunction,
 } from '../../../src/server/wiki/index';
+
+vi.mock('fs', async importOriginal => ({ ...await importOriginal<typeof import('fs')>() }));
 
 // ============================================================================
 // Test Helpers
@@ -70,7 +70,7 @@ function makeComponentGraph(overrides?: Partial<ComponentGraph>): ComponentGraph
 }
 
 function createTempWikiDir(graph: ComponentGraph): string {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-test-'));
+    const tmpDir = fs.mkdtempSync(path.resolve('.coc-wikimgr-test-'));
     fs.writeFileSync(
         path.join(tmpDir, 'component-graph.json'),
         JSON.stringify(graph, null, 2),
@@ -89,7 +89,7 @@ function createTempWikiDir(graph: ComponentGraph): string {
 
 function createTempWikiDir2(graph: ComponentGraph): string {
     // Second helper to create a distinct wiki dir with different content
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-test2-'));
+    const tmpDir = fs.mkdtempSync(path.resolve('.coc-wikimgr-test2-'));
     fs.writeFileSync(
         path.join(tmpDir, 'component-graph.json'),
         JSON.stringify(graph, null, 2),
@@ -135,6 +135,7 @@ describe('WikiManager', () => {
     }
 
     afterEach(() => {
+        vi.restoreAllMocks();
         for (const dir of tempDirs) {
             removeTempDir(dir);
         }
@@ -360,28 +361,6 @@ describe('WikiManager', () => {
             expect(manager.getRegisteredIds()).toHaveLength(0);
         });
 
-        it('should stop file watchers on disposeAll', () => {
-            const wikiDir = makeTempDir();
-            // Create a temp repo dir to watch
-            const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-repo-'));
-            tempDirs.push(repoDir);
-
-            const manager = new WikiManager();
-            manager.register({
-                wikiId: 'w',
-                wikiDir,
-                aiEnabled: false,
-                watch: true,
-                repoPath: repoDir,
-            });
-
-            const fw = manager.get('w')!.fileWatcher;
-            expect(fw).not.toBeNull();
-            expect(fw!.isWatching).toBe(true);
-
-            manager.disposeAll();
-            expect(fw!.isWatching).toBe(false);
-        });
     });
 
     // ========================================================================
@@ -391,7 +370,7 @@ describe('WikiManager', () => {
     describe('invalid wiki directory', () => {
         it('should throw for non-existent wikiDir', () => {
             const manager = new WikiManager();
-            const fakeDir = path.join(os.tmpdir(), 'does-not-exist-' + Date.now());
+            const fakeDir = path.resolve('does-not-exist-wiki-fixture');
 
             expect(() => manager.register({
                 wikiId: 'bad',
@@ -404,7 +383,7 @@ describe('WikiManager', () => {
         });
 
         it('should throw for wikiDir missing component-graph.json', () => {
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-empty-'));
+            const tmpDir = fs.mkdtempSync(path.resolve('.coc-wikimgr-empty-'));
             tempDirs.push(tmpDir);
 
             const manager = new WikiManager();
@@ -419,7 +398,7 @@ describe('WikiManager', () => {
         });
 
         it('should throw with wiki ID context for malformed graph', () => {
-            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-bad-'));
+            const tmpDir = fs.mkdtempSync(path.resolve('.coc-wikimgr-bad-'));
             tempDirs.push(tmpDir);
             fs.writeFileSync(path.join(tmpDir, 'component-graph.json'), '{ invalid json');
 
@@ -432,107 +411,6 @@ describe('WikiManager', () => {
             })).toThrow(/my-wiki/);
 
             expect(manager.getRegisteredIds()).toHaveLength(0);
-        });
-    });
-
-    // ========================================================================
-    // FileWatcher integration
-    // ========================================================================
-
-    describe('FileWatcher integration', () => {
-        it('should create FileWatcher when watch=true and repoPath set', () => {
-            const wikiDir = makeTempDir();
-            const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-repo-'));
-            tempDirs.push(repoDir);
-
-            const manager = new WikiManager();
-            manager.register({
-                wikiId: 'w',
-                wikiDir,
-                aiEnabled: false,
-                watch: true,
-                repoPath: repoDir,
-            });
-
-            const runtime = manager.get('w')!;
-            expect(runtime.fileWatcher).not.toBeNull();
-            expect(runtime.fileWatcher!.isWatching).toBe(true);
-
-            manager.disposeAll();
-        });
-
-        it('should not create FileWatcher when watch=false', () => {
-            const wikiDir = makeTempDir();
-            const manager = new WikiManager();
-
-            manager.register({
-                wikiId: 'w',
-                wikiDir,
-                aiEnabled: false,
-                watch: false,
-            });
-
-            expect(manager.get('w')!.fileWatcher).toBeNull();
-
-            manager.disposeAll();
-        });
-
-        it('should not create FileWatcher when watch=true but no repoPath', () => {
-            const wikiDir = makeTempDir();
-            const manager = new WikiManager();
-
-            manager.register({
-                wikiId: 'w',
-                wikiDir,
-                aiEnabled: false,
-                watch: true,
-            });
-
-            expect(manager.get('w')!.fileWatcher).toBeNull();
-
-            manager.disposeAll();
-        });
-
-        it('should fire onWikiReloaded callback when FileWatcher triggers onChange', async () => {
-            const wikiDir = makeTempDir();
-            const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-repo-'));
-            tempDirs.push(repoDir);
-
-            // Create a source file that matches a component path
-            const authDir = path.join(repoDir, 'src', 'auth');
-            fs.mkdirSync(authDir, { recursive: true });
-            fs.writeFileSync(path.join(authDir, 'index.ts'), 'export {}');
-
-            const reloadedCalls: Array<{ wikiId: string; ids: string[] }> = [];
-
-            const manager = new WikiManager({
-                onWikiReloaded: (wikiId, ids) => {
-                    reloadedCalls.push({ wikiId, ids });
-                },
-            });
-
-            manager.register({
-                wikiId: 'w',
-                wikiDir,
-                aiEnabled: false,
-                watch: true,
-                repoPath: repoDir,
-                watchDebounceMs: 100,
-            });
-
-            // Give the watcher time to register with the OS
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            // Trigger a file change
-            fs.writeFileSync(path.join(authDir, 'new-file.ts'), 'export const x = 1;');
-
-            // Wait for debounce (100ms) + OS propagation margin
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            expect(reloadedCalls.length).toBeGreaterThanOrEqual(1);
-            expect(reloadedCalls[0].wikiId).toBe('w');
-
-            manager.disposeAll();
         });
     });
 
@@ -552,6 +430,155 @@ describe('WikiManager', () => {
             expect(runtime.sessionManager).toBeInstanceOf(ConversationSessionManager);
 
             manager.disposeAll();
+        });
+
+        describe('WikiManager FileWatcher integration', () => {
+            let watchService: FakeNativeWatchService;
+            const wikiDir = path.resolve('wiki-fixture');
+            const repoDir = path.resolve('repo-fixture');
+            const timestamp = new Date(0);
+            const directoryStats: fs.Stats = {
+                dev: 0, ino: 0, mode: fs.constants.S_IFDIR | 0o755, nlink: 1,
+                uid: 0, gid: 0, rdev: 0, size: 0, blksize: 4096, blocks: 0,
+                atimeMs: 0, mtimeMs: 0, ctimeMs: 0, birthtimeMs: 0,
+                atime: timestamp, mtime: timestamp, ctime: timestamp, birthtime: timestamp,
+                isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false,
+                isBlockDevice: () => false, isCharacterDevice: () => false,
+                isFIFO: () => false, isSocket: () => false,
+            };
+
+            beforeEach(() => {
+                watchService = new FakeNativeWatchService();
+                vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+                vi.spyOn(fs, 'statSync').mockReturnValue(directoryStats);
+                vi.spyOn(WikiData.prototype, 'load').mockImplementation(() => {});
+                vi.spyOn(WikiData.prototype, 'reload').mockImplementation(() => {});
+                vi.spyOn(WikiData.prototype, 'graph', 'get').mockReturnValue(makeComponentGraph());
+                for (const method of ['mkdtempSync', 'mkdirSync', 'writeFileSync', 'readFileSync', 'readdirSync', 'rmSync'] as const) {
+                    vi.spyOn(fs, method).mockImplementation(() => {
+                        throw new Error(`Watcher integration must not perform filesystem I/O: ${method}`);
+                    });
+                }
+            });
+
+            afterEach(() => {
+                watchService.dispose();
+                vi.restoreAllMocks();
+            });
+
+            it('should create FileWatcher when watch=true and repoPath set', () => {
+                const manager = new WikiManager({ watchService });
+                manager.register({
+                    wikiId: 'w',
+                    workspaceId: 'workspace-a',
+                    wikiDir,
+                    aiEnabled: false,
+                    watch: true,
+                    repoPath: repoDir,
+                });
+
+                const runtime = manager.get('w')!;
+                expect(runtime.fileWatcher).not.toBeNull();
+                expect(runtime.fileWatcher!.isWatching).toBe(true);
+                expect(watchService.subscriptions.get(1)?.options.workspaceId).toBe('workspace-a');
+                manager.disposeAll();
+                expect(runtime.fileWatcher!.isWatching).toBe(false);
+                expect(watchService.subscriptions.size).toBe(0);
+            });
+
+            it('should not create FileWatcher when watch=false', () => {
+                const manager = new WikiManager({ watchService });
+                manager.register({ wikiId: 'w', wikiDir, aiEnabled: false, watch: false });
+                expect(manager.get('w')!.fileWatcher).toBeNull();
+                manager.disposeAll();
+            });
+
+            it('should not create FileWatcher when watch=true but no repoPath', () => {
+                const manager = new WikiManager({ watchService });
+                manager.register({ wikiId: 'w', wikiDir, aiEnabled: false, watch: true });
+                expect(manager.get('w')!.fileWatcher).toBeNull();
+                manager.disposeAll();
+            });
+
+            it('reloads and invalidates context between rebuilding and reloaded callbacks', () => {
+                const order: string[] = [];
+                const reload = vi.mocked(WikiData.prototype.reload).mockImplementation(() => { order.push('reload'); });
+                const onWikiReloaded = vi.fn(() => { order.push('reloaded'); });
+                const onWikiRebuilding = vi.fn(() => { order.push('rebuilding'); });
+                const manager = new WikiManager({ watchService, onWikiReloaded, onWikiRebuilding });
+                manager.register({
+                    wikiId: 'w', workspaceId: 'workspace-a', wikiDir,
+                    aiEnabled: false, watch: true, repoPath: repoDir, watchDebounceMs: 100,
+                });
+
+                manager.ensureContextBuilder('w');
+                expect(manager.get('w')!.contextBuilder).not.toBeNull();
+                expect(watchService.subscriptions.get(1)?.options.debounceMs).toBe(100);
+                watchService.emit(1, ['src/auth/new-file.ts']);
+                expect(order).toEqual(['rebuilding', 'reload', 'reloaded']);
+                expect(reload).toHaveBeenCalledOnce();
+                expect(onWikiRebuilding).toHaveBeenCalledWith('w', ['auth-module']);
+                expect(onWikiReloaded).toHaveBeenCalledWith('w', ['auth-module']);
+                expect(manager.get('w')!.contextBuilder).toBeNull();
+                manager.disposeAll();
+            });
+
+            it('reloads all component ids on rescan and isolates shared physical roots by workspace', () => {
+                const onWikiReloaded = vi.fn();
+                const manager = new WikiManager({ watchService, onWikiReloaded });
+                const registration = { wikiDir, repoPath: repoDir, watch: true, aiEnabled: false };
+                manager.register({ ...registration, wikiId: 'a', workspaceId: 'workspace-a' });
+                manager.register({ ...registration, wikiId: 'b', workspaceId: 'workspace-b' });
+                const stale = watchService.subscriptions.get(1)!.onBatch;
+                watchService.emit(2, [], true);
+                expect(WikiData.prototype.reload).toHaveBeenCalledOnce();
+                expect(onWikiReloaded).toHaveBeenCalledExactlyOnceWith('b', ['auth-module', 'db-layer']);
+                manager.unregister('a');
+                stale({ subscriptionId: 1, paths: [], rescan: true });
+                expect(onWikiReloaded).toHaveBeenCalledOnce();
+                expect(watchService.subscriptions.has(2)).toBe(true);
+                manager.disposeAll();
+            });
+
+            it('requires an explicit owning workspace for repository watching', () => {
+                const manager = new WikiManager({ watchService });
+                expect(() => manager.register({
+                    wikiId: 'w', wikiDir, repoPath: repoDir, watch: true, aiEnabled: false,
+                })).toThrow('workspaceId is required');
+                expect(watchService.subscriptions.size).toBe(0);
+            });
+
+            it.each([true, false])('logs ordinary subscription failures with error callback enabled: %s', hasCallback => {
+                const error = new Error('watch failed');
+                vi.spyOn(watchService, 'subscribe').mockImplementationOnce(() => { throw error; });
+                const warn = vi.spyOn(getServerLogger(), 'warn').mockImplementation(() => {});
+                const onWikiError = vi.fn();
+                const manager = new WikiManager({ watchService, onWikiError: hasCallback ? onWikiError : undefined });
+                manager.register({
+                    wikiId: 'w', workspaceId: 'workspace-a', wikiDir,
+                    repoPath: repoDir, watch: true, aiEnabled: false,
+                });
+                expect(warn).toHaveBeenCalledExactlyOnceWith({
+                    err: error, wikiId: 'w', workspaceId: 'workspace-a',
+                }, 'Wiki repository watcher failed to start');
+                if (hasCallback) expect(onWikiError).toHaveBeenCalledExactlyOnceWith('w', error);
+                else expect(onWikiError).not.toHaveBeenCalled();
+                expect(manager.get('w')!.fileWatcher).toBeNull();
+                manager.disposeAll();
+            });
+
+            it('propagates native load errors and cleans up allocated AI session timers', () => {
+                const error = new NativeAddonLoadError('missing native watch');
+                vi.spyOn(watchService, 'subscribe').mockImplementationOnce(() => { throw error; });
+                const destroy = vi.spyOn(ConversationSessionManager.prototype, 'destroyAll');
+                const manager = new WikiManager({ watchService, aiSendMessage: noopAI });
+                expect(() => manager.register({
+                    wikiId: 'w', workspaceId: 'workspace-a', wikiDir,
+                    repoPath: repoDir, watch: true, aiEnabled: true,
+                })).toThrow(error);
+                expect(destroy).toHaveBeenCalledOnce();
+                expect(manager.getRegisteredIds()).toEqual([]);
+            });
         });
 
         it('should not create sessionManager when aiEnabled=false', () => {
@@ -621,37 +648,4 @@ describe('WikiManager', () => {
         });
     });
 
-    // ========================================================================
-    // Event callbacks
-    // ========================================================================
-
-    describe('event callbacks', () => {
-        it('should call onWikiError when FileWatcher reports an error', () => {
-            const wikiDir = makeTempDir();
-            const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-wikimgr-repo-'));
-            tempDirs.push(repoDir);
-
-            const errors: Array<{ wikiId: string; error: Error }> = [];
-
-            const manager = new WikiManager({
-                onWikiError: (wikiId, error) => {
-                    errors.push({ wikiId, error });
-                },
-            });
-
-            manager.register({
-                wikiId: 'w',
-                wikiDir,
-                aiEnabled: false,
-                watch: true,
-                repoPath: repoDir,
-            });
-
-            // Verify the callback is wired (the FileWatcher is created with an onError)
-            const runtime = manager.get('w')!;
-            expect(runtime.fileWatcher).not.toBeNull();
-
-            manager.disposeAll();
-        });
-    });
 });

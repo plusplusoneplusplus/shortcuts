@@ -1,421 +1,332 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as fs from 'fs';
-import * as os from 'os';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as path from 'path';
-import type {
-    NativeNotesIndex,
-    NativeNotesIndexAddon,
-    NativeNotesSearchResponse,
-} from '@plusplusoneplusplus/coc-native';
-import {
-    NotesSearchService,
-    type NotesSearchScope,
-    type NotesSearchWatchFactory,
-} from '../../src/server/notes/notes-search-service';
+import { NativeAddonLoadError, type NativeNotesIndex } from '@plusplusoneplusplus/coc-native';
+import { NotesSearchService, type NotesSearchScope } from '../../src/server/notes/notes-search-service';
+import { FakeNativeWatchService } from '../helpers/fake-native-watch-service';
 
-interface Deferred<T> {
-    promise: Promise<T>;
-    resolve(value: T): void;
-    reject(error: unknown): void;
-}
-
-interface FakeWatch {
-    watchPath: string;
-    emit(eventType: string, filename: string | Buffer | null): void;
-    error(error: Error): void;
-    close: ReturnType<typeof vi.fn>;
-}
-
-function deferred<T>(): Deferred<T> {
+function deferred<T>() {
     let resolve!: (value: T) => void;
     let reject!: (error: unknown) => void;
-    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-        resolve = resolvePromise;
-        reject = rejectPromise;
-    });
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
 
-function emptyResponse(label?: string): NativeNotesSearchResponse {
+function createIndex(label = 'snapshot') {
     return {
-        results: label ? [{ path: `${label}.md`, matches: [{ line: 0, text: `${label}.md` }] }] : [],
-        truncated: false,
-    };
-}
-
-function createIndex(label?: string): NativeNotesIndex & {
-    search: ReturnType<typeof vi.fn>;
-    refresh: ReturnType<typeof vi.fn>;
-    refreshChanged: ReturnType<typeof vi.fn>;
-} {
-    return {
-        search: vi.fn(async () => emptyResponse(label)),
+        search: vi.fn(async () => ({
+            results: [{ path: `${label}.md`, matches: [{ line: 0, text: label }] }],
+            truncated: false,
+        })),
         refresh: vi.fn(async () => undefined),
-        refreshChanged: vi.fn(async () => undefined),
-    } as unknown as NativeNotesIndex & {
-        search: ReturnType<typeof vi.fn>;
-        refresh: ReturnType<typeof vi.fn>;
-        refreshChanged: ReturnType<typeof vi.fn>;
+        refreshChanged: vi.fn(async (_paths: string[]) => undefined),
     };
 }
 
-function createAddon(
-    build: (root: string, options?: { skipSymlinks?: boolean }) => Promise<NativeNotesIndex>,
-): NativeNotesIndexAddon & { buildNotesIndex: ReturnType<typeof vi.fn> } {
-    return {
-        buildNotesIndex: vi.fn(build),
-        NotesIndex: class NotesIndex {} as never,
-    } as unknown as NativeNotesIndexAddon & { buildNotesIndex: ReturnType<typeof vi.fn> };
+function scope(workspaceId = 'ws', rootId = 'default', root = 'notes', isTaskDerived = false): NotesSearchScope {
+    return { workspaceId, rootId, absolutePath: path.resolve(root), isDefault: rootId === 'default', isTaskDerived };
 }
 
-function createWatchHarness(): { watches: FakeWatch[]; watchFactory: NotesSearchWatchFactory } {
-    const watches: FakeWatch[] = [];
-    const watchFactory: NotesSearchWatchFactory = (watchPath, onEvent, onError) => {
-        const close = vi.fn();
-        watches.push({
-            watchPath,
-            emit: onEvent,
-            error: onError,
-            close,
-        });
-        return { close };
-    };
-    return { watches, watchFactory };
-}
-
-function scope(
-    workspaceId: string,
-    rootId: string,
-    absolutePath: string,
-    isDefault = rootId === 'default',
-    isTaskDerived = rootId.startsWith('task:'),
-): NotesSearchScope {
-    return { workspaceId, rootId, absolutePath, isDefault, isTaskDerived };
-}
-
-async function flushDebounce(): Promise<void> {
-    await vi.runAllTimersAsync();
-    await Promise.resolve();
+// Flush only promise continuations: neither watcher delivery nor refresh uses timers.
+async function settle(): Promise<void> {
+    for (let i = 0; i < 12; i++) await Promise.resolve();
 }
 
 describe('NotesSearchService', () => {
     const services: NotesSearchService[] = [];
-    const tempDirs: string[] = [];
-
-    beforeEach(() => {
-        vi.useFakeTimers();
-    });
-
     afterEach(() => {
         for (const service of services) service.dispose();
-        for (const tempDir of tempDirs) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        }
         services.length = 0;
-        tempDirs.length = 0;
-        vi.useRealTimers();
+        vi.restoreAllMocks();
     });
 
-    function makeRoot(name = 'notes'): string {
-        const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-search-service-'));
-        tempDirs.push(parent);
-        const root = path.join(parent, name);
-        fs.mkdirSync(root, { recursive: true });
-        return root;
-    }
-
-    function makeService(
-        addon: NativeNotesIndexAddon,
-        watchFactory: NotesSearchWatchFactory,
-        logger = { error: vi.fn(), warn: vi.fn() },
-    ): NotesSearchService {
+    function setup(build: (root: string) => Promise<NativeNotesIndex> = async () => createIndex()) {
+        const watchService = new FakeNativeWatchService();
+        const buildNotesIndex = vi.fn(build);
+        const logger = { error: vi.fn(), warn: vi.fn() };
         const service = new NotesSearchService({
-            nativeAddon: addon,
-            watchFactory,
-            debounceMs: 10,
+            nativeAddon: { buildNotesIndex },
+            watchService,
             logger,
         });
         services.push(service);
-        return service;
+        return { service, watchService, buildNotesIndex, logger };
     }
 
-    it('shares one lazy initial build across concurrent first searches', async () => {
-        const root = makeRoot();
+    it('shares a lazy initial build and refreshes batches delivered during that build', async () => {
         const build = deferred<NativeNotesIndex>();
-        const index = createIndex('shared');
-        const addon = createAddon(async () => build.promise);
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-
-        const first = service.search(scope('ws-a', 'default', root), 'one');
-        const second = service.search(scope('ws-a', 'default', root), 'two');
-
-        expect(addon.buildNotesIndex).toHaveBeenCalledOnce();
-        expect(watches).toHaveLength(1);
+        const index = createIndex();
+        const { service, watchService, buildNotesIndex } = setup(() => build.promise);
+        expect(watchService.subscriptions.size).toBe(0);
+        const first = service.search(scope(), 'one');
+        const second = service.search(scope(), 'two');
+        watchService.emit(1, ['a.md']);
+        watchService.emit(1, ['b.md', 'b.md']);
+        expect(buildNotesIndex).toHaveBeenCalledOnce();
+        expect(watchService.subscriptions.get(1)?.options).toEqual({
+            workspaceId: 'ws', root: path.resolve('notes'), recursive: true,
+            ignoreDirs: [], extensions: [], respectGitignore: false, debounceMs: 300,
+        });
         build.resolve(index);
-        await expect(Promise.all([first, second])).resolves.toHaveLength(2);
-        expect(index.search).toHaveBeenCalledTimes(2);
-    });
-
-    it('builds identical physical roots independently for each workspace and root id', async () => {
-        const root = makeRoot();
-        const indexes = [createIndex('workspace-a'), createIndex('workspace-b'), createIndex('other-root')];
-        const addon = createAddon(async () => indexes.shift()!);
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-
-        const [workspaceA, workspaceB, otherRoot] = await Promise.all([
-            service.search(scope('ws-a', 'default', root), 'q'),
-            service.search(scope('ws-b', 'default', root), 'q'),
-            service.search(scope('ws-a', 'configured', root, false), 'q'),
-        ]);
-
-        expect(addon.buildNotesIndex).toHaveBeenCalledTimes(3);
-        expect(watches).toHaveLength(3);
-        expect(workspaceA.results[0].path).toBe('workspace-a.md');
-        expect(workspaceB.results[0].path).toBe('workspace-b.md');
-        expect(otherRoot.results[0].path).toBe('other-root.md');
-    });
-
-    it('allows different scopes to build concurrently', async () => {
-        const rootA = makeRoot('a');
-        const rootB = makeRoot('b');
-        const firstBuild = deferred<NativeNotesIndex>();
-        const secondBuild = deferred<NativeNotesIndex>();
-        const addon = createAddon(root => root === rootA ? firstBuild.promise : secondBuild.promise);
-        const { watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-
-        const first = service.search(scope('ws-a', 'default', rootA), 'q');
-        const second = service.search(scope('ws-b', 'default', rootB), 'q');
-        expect(addon.buildNotesIndex).toHaveBeenCalledTimes(2);
-
-        firstBuild.resolve(createIndex());
-        secondBuild.resolve(createIndex());
         await Promise.all([first, second]);
+        await settle();
+        expect(index.search).toHaveBeenCalledTimes(2);
+        expect(index.refreshChanged.mock.calls).toEqual([[['a.md']], [['b.md']]]);
     });
 
-    it('starts managed, configured, and task-derived roots lazily with the right symlink policy', async () => {
-        const managed = makeRoot('managed');
-        const configured = makeRoot('configured');
-        const task = makeRoot('task');
-        const addon = createAddon(async () => createIndex());
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-
-        expect(watches).toHaveLength(0);
-        await service.search(scope('ws', 'default', managed), 'q');
-        await service.search(scope('ws', 'docs', configured, false), 'q');
-        await service.search(scope('ws', 'task:abc', task, false), 'q');
-
-        expect(watches.map(watch => watch.watchPath)).toEqual([managed, configured, task]);
-        expect(addon.buildNotesIndex).toHaveBeenNthCalledWith(1, managed, { skipSymlinks: false });
-        expect(addon.buildNotesIndex).toHaveBeenNthCalledWith(2, configured, { skipSymlinks: true });
-        expect(addon.buildNotesIndex).toHaveBeenNthCalledWith(3, task, { skipSymlinks: true });
+    it('keeps the same physical root independent for every workspace and root id', async () => {
+        const indexes = [createIndex('a'), createIndex('b'), createIndex('c')];
+        let next = 0;
+        const { service, watchService, buildNotesIndex } = setup(async () => indexes[next++]);
+        const results = await Promise.all([
+            service.search(scope('a'), 'q'), service.search(scope('b'), 'q'),
+            service.search(scope('a', 'configured'), 'q'),
+        ]);
+        expect(buildNotesIndex).toHaveBeenCalledTimes(3);
+        expect(watchService.subscriptions.size).toBe(3);
+        expect(results.map(result => result.results[0].path)).toEqual(['a.md', 'b.md', 'c.md']);
+        watchService.emit(2, ['b.md']);
+        await settle();
+        expect(indexes[1].refreshChanged).toHaveBeenCalledWith(['b.md']);
+        expect(indexes[0].refreshChanged).not.toHaveBeenCalled();
+        expect(indexes[2].refreshChanged).not.toHaveBeenCalled();
     });
 
-    it('coalesces Markdown changes and preserves changes arriving during an in-flight refresh', async () => {
-        const root = makeRoot();
-        fs.writeFileSync(path.join(root, 'a.md'), 'a');
-        fs.mkdirSync(path.join(root, 'nested'));
-        fs.writeFileSync(path.join(root, 'nested', 'b.md'), 'b');
-        const firstRefresh = deferred<void>();
+    it('builds separate scopes concurrently with their authorized symlink policies', async () => {
+        const first = deferred<NativeNotesIndex>();
+        const second = deferred<NativeNotesIndex>();
+        const { service, buildNotesIndex } = setup(root => root === path.resolve('managed') ? first.promise : second.promise);
+        const searches = [
+            service.search(scope('a', 'default', 'managed'), 'q'),
+            service.search(scope('a', 'task:abc', 'task', true), 'q'),
+        ];
+        expect(buildNotesIndex).toHaveBeenNthCalledWith(1, path.resolve('managed'), { skipSymlinks: false });
+        expect(buildNotesIndex).toHaveBeenNthCalledWith(2, path.resolve('task'), { skipSymlinks: true });
+        first.resolve(createIndex());
+        second.resolve(createIndex());
+        await Promise.all(searches);
+    });
+
+    it('passes a debounce override to the native subscription, including for missing roots', async () => {
+        const watchService = new FakeNativeWatchService();
+        const service = new NotesSearchService({
+            nativeAddon: { buildNotesIndex: async () => createIndex() },
+            watchService, debounceMs: 42,
+        });
+        services.push(service);
+        await service.search(scope('ws', 'default', 'missing/nested/notes'), 'q');
+        expect(watchService.subscriptions.get(1)?.options).toMatchObject({
+            root: path.resolve('missing/nested/notes'), debounceMs: 42,
+        });
+    });
+
+    it('refreshes Markdown removals incrementally and coalesces batches while refresh is in flight', async () => {
+        const inFlight = deferred<void>();
         const index = createIndex();
-        index.refreshChanged.mockImplementationOnce(async () => firstRefresh.promise);
-        const addon = createAddon(async () => index);
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-        await service.search(scope('ws', 'default', root), 'q');
-
-        watches[0].emit('change', 'a.md');
-        await vi.advanceTimersByTimeAsync(10);
-        expect(index.refreshChanged).toHaveBeenCalledWith(['a.md']);
-
-        watches[0].emit('change', 'nested\\b.md');
-        await vi.advanceTimersByTimeAsync(10);
-        expect(index.refreshChanged).toHaveBeenCalledTimes(1);
-
-        firstRefresh.resolve(undefined);
-        await Promise.resolve();
-        await Promise.resolve();
-        await flushDebounce();
-        expect(index.refreshChanged).toHaveBeenNthCalledWith(2, ['nested/b.md']);
-
-        watches[0].emit('change', 'deleted.md');
-        await flushDebounce();
-        expect(index.refreshChanged).toHaveBeenNthCalledWith(3, ['deleted.md']);
-    });
-
-    it('uses full recovery for rename, directory, missing-path, and oversized batches', async () => {
-        const root = makeRoot();
-        fs.mkdirSync(path.join(root, 'nested'));
-        const index = createIndex();
-        const addon = createAddon(async () => index);
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-        await service.search(scope('ws', 'default', root), 'q');
-
-        watches[0].emit('rename', 'renamed.md');
-        await flushDebounce();
-        watches[0].emit('change', 'nested');
-        await flushDebounce();
-        watches[0].emit('change', null);
-        await flushDebounce();
-        for (let i = 0; i <= 1_024; i++) {
-            watches[0].emit('change', `deleted-${i}.md`);
-        }
-        await flushDebounce();
-        watches[0].error(new Error('watch overflow'));
-        await flushDebounce();
-
-        expect(index.refresh).toHaveBeenCalledTimes(5);
-        expect(index.refreshChanged).not.toHaveBeenCalled();
-        expect(watches[0].close).toHaveBeenCalledOnce();
-        expect(watches).toHaveLength(2);
-    });
-
-    it('retains a failed snapshot, logs its scope, and retries fully on a later change', async () => {
-        const root = makeRoot();
-        const healthyRoot = makeRoot('healthy');
-        fs.writeFileSync(path.join(root, 'a.md'), 'a');
-        fs.writeFileSync(path.join(root, 'b.md'), 'b');
-        fs.writeFileSync(path.join(healthyRoot, 'healthy.md'), 'healthy');
-        const index = createIndex('old');
-        const healthyIndex = createIndex('healthy');
-        index.refreshChanged.mockRejectedValueOnce(new Error('read failed'));
-        const addon = createAddon(async candidate => candidate === root ? index : healthyIndex);
-        const { watches, watchFactory } = createWatchHarness();
-        const logger = { error: vi.fn(), warn: vi.fn() };
-        const service = makeService(addon, watchFactory, logger);
-        await service.search(scope('ws-failed', 'docs', root, false), 'q');
-        await service.search(scope('ws-healthy', 'default', healthyRoot), 'q');
-
-        watches[0].emit('change', 'a.md');
-        await flushDebounce();
+        index.refreshChanged.mockImplementationOnce(() => inFlight.promise);
+        const { service, watchService } = setup(async () => index);
+        await service.search(scope(), 'q');
+        watchService.emit(1, ['a.md', 'a.md', 'nested\\b.md']);
+        await settle();
+        expect(index.refreshChanged).toHaveBeenCalledWith(['a.md', 'nested/b.md']);
+        watchService.emit(1, ['deleted.md']);
+        watchService.emit(1, ['deleted.md', 'new.md']);
+        await settle();
         expect(index.refreshChanged).toHaveBeenCalledOnce();
+        inFlight.resolve(undefined);
+        await settle();
+        expect(index.refreshChanged).toHaveBeenNthCalledWith(2, ['deleted.md', 'new.md']);
+    });
+
+    it.each([
+        { paths: [], rescan: true },
+        { paths: ['renamed-directory'], rescan: false },
+        { paths: ['deleted/directory'], rescan: false },
+        { paths: ['asset.txt'], rescan: false },
+        { paths: [''], rescan: false },
+        { paths: ['../outside.md'], rescan: false },
+        { paths: ['C:\\outside.md'], rescan: false },
+        { paths: [path.resolve('outside.md')], rescan: false },
+        { paths: Array.from({ length: 1_025 }, (_, i) => `${i}.md`), rescan: false },
+    ])('fully refreshes ambiguous, rescan, and oversized batches ($rescan)', async ({ paths, rescan }) => {
+        const index = createIndex();
+        const { service, watchService } = setup(async () => index);
+        await service.search(scope(), 'q');
+        watchService.emit(1, paths, rescan);
+        await settle();
+        expect(index.refresh).toHaveBeenCalledOnce();
+        expect(index.refreshChanged).not.toHaveBeenCalled();
+        expect(watchService.subscriptions.size).toBe(1);
+    });
+
+    it('ignores empty batches and gives a queued rescan priority over incremental work', async () => {
+        const inFlight = deferred<void>();
+        const index = createIndex();
+        index.refreshChanged.mockImplementationOnce(() => inFlight.promise);
+        const { service, watchService } = setup(async () => index);
+        await service.search(scope(), 'q');
+        watchService.emit(1);
+        await settle();
+        expect(index.refreshChanged).not.toHaveBeenCalled();
+        watchService.emit(1, ['a.md']);
+        await settle();
+        watchService.emit(1, ['b.md']);
+        watchService.emit(1, [], true);
+        watchService.emit(1, ['c.md']);
+        inFlight.resolve(undefined);
+        await settle();
+        expect(index.refresh).toHaveBeenCalledOnce();
+        expect(index.refreshChanged).toHaveBeenCalledOnce();
+    });
+
+    it('bounds pending paths across batches while a full refresh is in flight', async () => {
+        const inFlight = deferred<void>();
+        const index = createIndex();
+        index.refresh.mockImplementationOnce(() => inFlight.promise);
+        const { service, watchService } = setup(async () => index);
+        await service.search(scope(), 'q');
+        watchService.emit(1, [], true);
+        await settle();
+        watchService.emit(1, Array.from({ length: 700 }, (_, i) => `${i}.md`));
+        watchService.emit(1, Array.from({ length: 700 }, (_, i) => `${i + 700}.md`));
+        expect(index.refresh).toHaveBeenCalledOnce();
+        inFlight.resolve(undefined);
+        await settle();
+        expect(index.refresh).toHaveBeenCalledTimes(2);
+        expect(index.refreshChanged).not.toHaveBeenCalled();
+    });
+
+    it('retains the snapshot on refresh failure and waits for another batch before a full retry', async () => {
+        const index = createIndex('retained');
+        index.refreshChanged.mockRejectedValueOnce(new Error('read failed'));
+        const { service, watchService, logger } = setup(async () => index);
+        await service.search(scope(), 'q');
+        watchService.emit(1, ['a.md']);
+        await settle();
         expect(logger.error).toHaveBeenCalledWith(
-            expect.objectContaining({ workspaceId: 'ws-failed', rootId: 'docs' }),
+            expect.objectContaining({ workspaceId: 'ws', rootId: 'default' }),
             'Notes search index refresh failed',
         );
-        await expect(service.search(scope('ws-failed', 'docs', root, false), 'q'))
-            .resolves.toEqual(emptyResponse('old'));
-        watches[1].emit('change', 'healthy.md');
-        await flushDebounce();
-        expect(healthyIndex.refreshChanged).toHaveBeenCalledWith(['healthy.md']);
-        await expect(service.search(scope('ws-healthy', 'default', healthyRoot), 'q'))
-            .resolves.toEqual(emptyResponse('healthy'));
-
-        watches[0].emit('change', 'b.md');
-        await flushDebounce();
+        expect(index.refresh).not.toHaveBeenCalled();
+        expect((await service.search(scope(), 'q')).results[0].path).toBe('retained.md');
+        await settle();
+        expect(index.refresh).not.toHaveBeenCalled();
+        watchService.emit(1, ['b.md']);
+        await settle();
         expect(index.refresh).toHaveBeenCalledOnce();
     });
 
-    it('isolates initial build failures to their own scope and permits a later retry', async () => {
-        const failedRoot = makeRoot('failed');
-        const healthyRoot = makeRoot('healthy');
-        const healthyIndex = createIndex('healthy');
-        let failedAttempts = 0;
-        const addon = createAddon(async root => {
-            if (root === failedRoot && failedAttempts++ === 0) throw new Error('build failed');
-            return root === failedRoot ? createIndex('recovered') : healthyIndex;
-        });
-        const { watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-
-        await expect(service.search(scope('ws-a', 'default', failedRoot), 'q')).rejects.toThrow('build failed');
-        await expect(service.search(scope('ws-b', 'default', healthyRoot), 'q'))
-            .resolves.toEqual(emptyResponse('healthy'));
-        await expect(service.search(scope('ws-a', 'default', failedRoot), 'q'))
-            .resolves.toEqual(emptyResponse('recovered'));
-    });
-
-    it('watches a missing root through its ancestor and rebinds after recovery creates it', async () => {
-        const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-search-missing-'));
-        tempDirs.push(parent);
-        const root = path.join(parent, 'missing', 'notes');
+    it('retries fully when a batch arrives during a failed refresh without overlapping refreshes', async () => {
+        const inFlight = deferred<void>();
         const index = createIndex();
-        const addon = createAddon(async () => index);
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
-
-        await service.search(scope('ws', 'default', root), 'q');
-        expect(watches[0].watchPath).toBe(parent);
-
-        fs.mkdirSync(root, { recursive: true });
-        watches[0].emit('rename', 'missing');
-        await flushDebounce();
-
+        index.refreshChanged.mockImplementationOnce(() => inFlight.promise);
+        const { service, watchService } = setup(async () => index);
+        await service.search(scope(), 'q');
+        watchService.emit(1, ['a.md']);
+        await settle();
+        watchService.emit(1, ['b.md']);
+        expect(index.refresh).not.toHaveBeenCalled();
+        inFlight.reject(new Error('read failed'));
+        await settle();
         expect(index.refresh).toHaveBeenCalledOnce();
-        expect(watches[0].close).toHaveBeenCalledOnce();
-        expect(watches[1].watchPath).toBe(root);
+        expect(index.refreshChanged).toHaveBeenCalledOnce();
     });
 
-    it('evicts configured roots, complete root sets, and whole workspaces without cross-scope effects', async () => {
-        const managed = makeRoot('managed');
-        const configured = makeRoot('configured');
-        const task = makeRoot('task');
-        const other = makeRoot('other');
-        const addon = createAddon(async () => createIndex());
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
+    it('isolates build failures and permits later searches to retry', async () => {
+        let attempts = 0;
+        const { service, watchService } = setup(async root => {
+            if (root === path.resolve('failed') && attempts++ === 0) throw new Error('build failed');
+            return createIndex();
+        });
+        await expect(service.search(scope('a', 'default', 'failed'), 'q')).rejects.toThrow('build failed');
+        await expect(service.search(scope('b'), 'q')).resolves.toBeDefined();
+        await expect(service.search(scope('a', 'default', 'failed'), 'q')).resolves.toBeDefined();
+        expect(watchService.subscriptions.size).toBe(2);
+    });
 
+    it.each([new Error('watch failed'), new NativeAddonLoadError('missing native watch')])(
+        'propagates subscription failures without caching an unwatched entry: %s', async error => {
+            const { service, watchService, buildNotesIndex } = setup();
+            vi.spyOn(watchService, 'subscribe').mockImplementationOnce(() => { throw error; });
+            await expect(service.search(scope(), 'q')).rejects.toBe(error);
+            expect(service.hasScope('ws', 'default')).toBe(false);
+            expect(buildNotesIndex).not.toHaveBeenCalled();
+            await expect(service.search(scope(), 'q')).resolves.toBeDefined();
+            expect(watchService.subscriptions.size).toBe(1);
+        },
+    );
+
+    it('reconciles configured and complete roots, preserves task roots, and reactivates tombstones', async () => {
+        const { service, watchService } = setup();
         await Promise.all([
-            service.search(scope('ws', 'default', managed), 'q'),
-            service.search(scope('ws', 'docs', configured, false), 'q'),
-            service.search(scope('ws', 'task:abc', task, false), 'q'),
-            service.search(scope('other-ws', 'default', other), 'q'),
+            service.search(scope(), 'q'), service.search(scope('ws', 'docs'), 'q'),
+            service.search(scope('ws', 'task:abc', 'task', true), 'q'),
+            service.search(scope('other'), 'q'),
+            service.search(scope('ws', 'task:configured'), 'q'),
         ]);
-
         service.reconcileConfiguredRoots('ws', []);
         expect(service.hasScope('ws', 'docs')).toBe(false);
-        expect(service.hasScope('ws', 'default')).toBe(true);
+        expect(service.hasScope('ws', 'task:configured')).toBe(false);
         expect(service.hasScope('ws', 'task:abc')).toBe(true);
-        expect(watches[1].close).toHaveBeenCalledOnce();
-        await expect(service.search(scope('ws', 'docs', configured, false), 'q')).rejects.toThrow(
-            "Notes search root 'docs' is unavailable",
-        );
-
+        expect(watchService.subscriptions.has(2)).toBe(false);
+        await expect(service.search(scope('ws', 'docs'), 'q')).rejects.toThrow('unavailable');
         service.reconcileConfiguredRoots('ws', ['docs']);
-        await expect(service.search(scope('ws', 'docs', configured, false), 'q')).resolves.toBeDefined();
-
-        const configuredTaskPrefix = makeRoot('configured-task-prefix');
-        await service.search(scope('ws', 'task:literal', configuredTaskPrefix, false, false), 'q');
-        service.reconcileConfiguredRoots('ws', ['docs']);
-        expect(service.hasScope('ws', 'task:literal')).toBe(false);
-
+        await expect(service.search(scope('ws', 'docs'), 'q')).resolves.toBeDefined();
         service.reconcileWorkspaceRoots('ws', ['default']);
         expect(service.hasScope('ws', 'task:abc')).toBe(false);
-        expect(service.hasScope('other-ws', 'default')).toBe(true);
-
         service.evictWorkspace('ws');
-        expect(service.hasScope('ws', 'default')).toBe(false);
-        expect(service.hasScope('other-ws', 'default')).toBe(true);
-        await expect(service.search(scope('ws', 'default', managed), 'q')).rejects.toThrow(
-            "Notes search workspace 'ws' is unavailable",
-        );
-
+        expect(service.hasScope('other', 'default')).toBe(true);
+        await expect(service.search(scope(), 'q')).rejects.toThrow("workspace 'ws' is unavailable");
         service.activateWorkspace('ws');
-        await expect(service.search(scope('ws', 'default', managed), 'q')).resolves.toBeDefined();
+        await expect(service.search(scope(), 'q')).resolves.toBeDefined();
     });
 
-    it('closes all watchers, rejects new work after disposal, and lets in-flight search finish', async () => {
-        const root = makeRoot();
-        const searchResult = deferred<NativeNotesSearchResponse>();
+    it('ignores stale callbacks and queued refreshes after eviction while allowing captured searches to finish', async () => {
+        const build = deferred<NativeNotesIndex>();
         const index = createIndex();
-        index.search.mockImplementationOnce(async () => searchResult.promise);
-        const addon = createAddon(async () => index);
-        const { watches, watchFactory } = createWatchHarness();
-        const service = makeService(addon, watchFactory);
+        const { service, watchService } = setup(() => build.promise);
+        const search = service.search(scope(), 'q');
+        const stale = watchService.subscriptions.get(1)!.onBatch;
+        watchService.emit(1, ['queued.md']);
+        service.evictRoot('ws', 'default');
+        stale({ subscriptionId: 1, paths: ['stale.md'], rescan: true });
+        build.resolve(index);
+        await expect(search).resolves.toBeDefined();
+        await settle();
+        expect(index.refresh).not.toHaveBeenCalled();
+        expect(index.refreshChanged).not.toHaveBeenCalled();
+        expect(watchService.subscriptions.size).toBe(0);
+    });
 
-        const inFlight = service.search(scope('ws', 'default', root), 'q');
-        await Promise.resolve();
+    it('replaces root paths and disposes only owned subscriptions, ignoring late callbacks', async () => {
+        const index = createIndex();
+        const { service, watchService } = setup(async () => index);
+        const unrelatedId = watchService.subscribe({
+            workspaceId: 'ws', root: path.resolve('unrelated'), recursive: true,
+            ignoreDirs: [], extensions: [], respectGitignore: false, debounceMs: 10,
+        }, () => {});
+        await service.search(scope(), 'q');
+        const old = watchService.subscriptions.get(2)!.onBatch;
+        await service.search(scope('ws', 'default', 'replacement'), 'q');
+        old({ subscriptionId: 2, paths: [], rescan: true });
+        expect(watchService.subscriptions.has(2)).toBe(false);
+        const late = watchService.subscriptions.get(3)!.onBatch;
         service.dispose();
+        service.dispose();
+        late({ subscriptionId: 3, paths: [], rescan: true });
+        await settle();
+        expect(index.refresh).not.toHaveBeenCalled();
+        expect(watchService.subscriptions.has(unrelatedId)).toBe(true);
+        await expect(service.search(scope(), 'q')).rejects.toThrow('disposed');
+    });
 
-        expect(watches[0].close).toHaveBeenCalledOnce();
-        await expect(service.search(scope('ws', 'default', root), 'new')).rejects.toThrow(
-            'Notes search service is disposed',
-        );
-        searchResult.resolve(emptyResponse('finished'));
-        await expect(inFlight).resolves.toEqual(emptyResponse('finished'));
+    it('does not retain a disposed root entry when its replacement subscription fails', async () => {
+        const { service, watchService, buildNotesIndex } = setup();
+        await service.search(scope(), 'q');
+        vi.spyOn(watchService, 'subscribe').mockImplementationOnce(() => { throw new Error('watch failed'); });
+        await expect(service.search(scope('ws', 'default', 'replacement'), 'q')).rejects.toThrow('watch failed');
+        expect(service.hasScope('ws', 'default')).toBe(false);
+        await expect(service.search(scope(), 'q')).resolves.toBeDefined();
+        expect(buildNotesIndex).toHaveBeenCalledTimes(2);
+        expect(watchService.subscriptions.size).toBe(1);
     });
 });

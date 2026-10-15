@@ -203,7 +203,32 @@ Actual-addon coverage lives in `test/teams.test.ts`.
 
 - `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability. `git` runs `git -C <repo> <args>` with the timeout and buffer caps Node's `execFile` used to enforce. `repo_index` contains the gitignore-aware walker, scorer, immutable file-list snapshot, fuzzy matcher, and atomic refresh state. `content_search` searches file *contents* across the same walk, on ripgrep's `grep-searcher`/`grep-regex`; an optional exact repo-relative candidate set bypasses ignore rejection but prunes traversal to candidate files and their ancestor directories, preserving Git-tracked ignored files without enumerating unrelated ignored trees. Candidates still compose with scope and include/exclude globs. It holds no state, so every query is a fresh parallel walk bounded only by its caps. `notes_index` contains immutable Markdown-content snapshots, JavaScript-compatible lowercase caches, bounded search, full rebuilds, and bounded root-relative incremental upserts/removals under a root-specific symlink policy. Refresh writers serialize per index, build against the last complete snapshot, and atomically swap only on success. `sqlite` owns the general database core: one re-entrant writer per handle, a bounded read pool for typed async operations, cached synchronous writer statements, language-neutral values, and callback transactions. Each read connection limits its SQLite memory map to 64 MiB; the writer retains SQLite's default. Nested transactions use savepoints, and named binding ignores unused object keys so store row objects keep the better-sqlite3-compatible call shape. `dangerous_command` is a hardcoded disallow list of shell-command shapes, holding no state and touching no filesystem. N-API is only behind the optional `napi` feature, which the addon enables so result/DTO structs in `repo_files` and `content_search` derive their JS object shape in place (`#[cfg_attr(feature = "napi", napi_derive::napi(object, ...))]`) instead of being mirrored in the binding crate; add new boundary DTOs the same way. Without the feature (the LSP binary, `cargo test -p coc-native-core`) nothing links Node. All Rust unit tests live here under `tests/`.
 - `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per Node-facing capability registering its own classes and functions (`repo_files.rs` exposes the `RepoFiles` handle over core's `repo_files`, including the whole-root `repo_index` behind quick-open). `RepoFiles.searchFiles()` returns the public match shape; `searchFilesRanked()` returns the same matches with the complete native ordering tuple for server-side cross-repo merges. Filesystem/scanning work returns an `AsyncTask` on libuv; async auth/Teams work runs on Tokio. Pure boundary/lifecycle tests run without a Node environment; actual N-API marshalling is tested through the built addon.
-- `rust/lsp/` — `coc-symbols-lsp`: the symbol index as a stdio language server, so CoC reaches it over the same `/ws/language-server` transport that runs clangd instead of a bespoke HTTP route. It is a plain `[[bin]]` linking `coc-native-core` directly — no N-API anywhere, so it runs with no Node in the picture and `cargo test -p coc-symbols-lsp` needs no built addon. `framing.rs` mirrors the rules in `packages/coc/src/server/language-servers/jsonrpc.ts` (byte lengths, case-insensitive headers, a cap on the declared length); `uri.rs` reads `file://` including an encoded Windows drive; `transport.rs` funnels every write through one mutex, because the dispatch loop and the background indexer both send; `server.rs` owns the lifecycle. The index build runs on a worker thread and reports through `$/progress` under one reused token, which is what moves the Node session between `indexing` and `ready` — so the `end` notification is sent on the failure path too. `--database <path>` is how the host names the index file; the runtime adapter supplies it, and that resolved path never reaches a browser payload. `positions.rs` and `locations.rs` carry the coordinate conversion the navigation answers need: the index stores one-based lines and one-based UTF-8 *byte* columns, LSP wants zero-based lines and UTF-16 characters, so a range is only correct once the target line's text has been read — `LineCache` bounds that to one read per file per request and is deliberately not kept between requests. `textDocument/references` reads the occurrence table, prepends the definition table's rows when `context.includeDeclaration` is set (the specification's default), and emits each position once. `workspace/symbol` is the palette query and is camel-case aware: `fuzzy.rs` scores a candidate by *where* each character landed — a word start (a camel hump, or a letter after `_`, `-`, `.`, `:`) far outweighs a letter mid-word, and an all-word-starts match (`fwc` → `findWorkspaceConfig`) takes a further bonus. Two sources feed one ranking: the prefix index stays the fast path, and `SymbolStore::search_subsequence` adds the `LIKE '%f%w%c%'` candidates a prefix cannot see. Both are merged, deduplicated on location, scored, and only *then* truncated to `WORKSPACE_SYMBOL_LIMIT` — capping the SQL instead would hand the scorer an arbitrary slice and silently drop the best matches. Each result carries `cocMatchIndices`, the UTF-16 offsets the score was based on, as an extension field a standard client ignores and CoC's palette highlights from. An empty query still answers `[]`. `textDocument/documentSymbol` answers the flat `SymbolInformation` shape, not `DocumentSymbol`: the index stores the point where a name appears and no enclosing span, and fabricating one would make an outline lie about where a function ends. `indexer.rs` owns everything after the cold build: `textDocument/didSave` queues the saved file on one serial worker thread, which coalesces whatever else is waiting into a single `sync_changed_paths` and logs the outcome through `window/logMessage`. A save is filtered by `is_c_family_path` in the dispatch loop rather than in the worker — every save in the editor arrives on that notification, and most of them have nothing to index. `watcher.rs` covers the third source of change, the one CoC never sees: a branch switch, a `git pull`, a file written by a build script. It watches the root recursively with `notify` and feeds the *same* queue the save path uses, so a file reported twice is still parsed once and a checkout touching thousands of files collapses into as few syncs as the worker can keep up with. Its `PathFilter` keeps the watched set equal to the cold build's: C-family extensions only, never under `.git`, and the root `.gitignore` plus `.git/info/exclude` applied — nested `.gitignore` files are deliberately not read, because loading them needs a walk and the cost of a miss is one wasted targeted sync. A platform that refuses to watch is logged and shrugged off; saves and cold builds still work, and failing the session over a background convenience would be worse. Unlike the addon, this crate has integration tests: `tests/harness/` spawns the real executable over real pipes and holds the shared `initialize`/`index`/`request` helpers, `tests/handshake.rs` covers the lifecycle, `tests/navigation.rs` the four navigation requests, `tests/incremental.rs` what a save does to the store, and `tests/watcher.rs` what a write behind the editor's back does to it — all against an index the server builds for itself.
+- `rust/lsp/` — `coc-symbols-lsp`: a plain stdio language-server binary linking
+  `coc-native-core` without Node or N-API. CoC uses the same `/ws/language-server`
+  transport as clangd; `cargo test -p coc-symbols-lsp` needs no built addon.
+  `framing.rs` mirrors the host JSON-RPC byte lengths, case-insensitive headers
+  and declared-length cap. `uri.rs` reads encoded Windows file URIs;
+  `transport.rs` serializes all writes through one mutex; `server.rs` owns lifecycle.
+  Index builds run on a worker with `$/progress` under one reused token, including
+  an end notification on failure. The host supplies `--database <path>` without
+  exposing that resolved path to browser payloads.
+  `positions.rs` and `locations.rs` convert one-based UTF-8 byte coordinates to
+  zero-based UTF-16 through request-local `LineCache` reads.
+  References include declaration rows when `context.includeDeclaration` is set
+  and deduplicate positions. `workspace/symbol` merges prefix-index and
+  `SymbolStore::search_subsequence` candidates before ranking/truncation.
+  `fuzzy.rs` favors word starts and all-word-start acronyms; `cocMatchIndices`
+  carries UTF-16 highlight offsets. Empty queries return `[]`.
+  `textDocument/documentSymbol` returns flat `SymbolInformation` because the index
+  stores definition points rather than enclosing spans.
+  `indexer.rs` serializes saves and native watch batches, deduplicates targeted
+  paths and performs a full sync for rescan. Saves are C-family-filtered by the
+  dispatch loop. `watcher.rs` owns a core watch-service subscription with C-family
+  extensions and Git ignore rules; backend filtering, debounce and recovery live
+  in core. Ordinary startup watch failure is logged through `window/logMessage`.
+  `tests/harness/` spawns the executable over real pipes; handshake, navigation
+  and incremental-save integration tests exercise the server-built index.
+  Real-filesystem watch contracts live in core.
 - `src/loader.ts` — resolves and loads the binary. Deliberately capability-agnostic: it validates only that the module loaded, never which exports it has.
 - `src/symbols-lsp.ts` — resolves the `coc-symbols-lsp` *executable* from disk, by the same precedence the addon uses. Kept apart from `loader.ts` because nothing here is loaded: the path is handed to the language-server manager, which spawns it. A missing executable is a reported reason, not a throw — see "Binary resolution".
 - `src/native-bindings.ts` — **generated, do not edit.** The `#[napi]` type surface as TypeScript, produced by `npm run build:native`.
@@ -657,21 +682,38 @@ Recorded on a 2-core arm64 box, 25 iterations, medians. "spawns" is how many git
 - **Error strings and status codes are the contract.** The 403 refusals, the 404s, the 409 collision and the five 500 prefixes are user-visible API bodies, some of which the SPA matches on. N-API carries only a `Status` and a reason, so `notes_fs.rs` prefixes the reason with `[notes-fs:<code>] ` and `toNotesFsError()` in `src/notes-fs.ts` parses it back. An unprefixed failure decodes as a 500 with its message intact, so a marshalling bug cannot masquerade as a 404.
 - **A conflict is a result, not an error.** `writeNote` answers `{ status: 'conflict', currentMtime, currentContent }` so the SPA can offer a merge. The rule is `Math.round(current) !== Math.round(expected)` — the rounding is part of the contract, because the client got its mtime as a JSON number and filesystems disagree about sub-millisecond precision. A missing file is never a conflict; that is the first save of a new note.
 - **Autosave is atomic.** The write goes to a `.tmp` sibling and is renamed into place, so the search indexer, the git autocommit and another tab never observe a half-written note. On a selected root the tmp path is containment-checked too.
-- **Writes update the live search index in Rust, not across a second N-API crossing.** `notes_index` keeps a registry of live indexes keyed by canonical root path, and a successful write, create, rename or delete upserts or removes the affected paths in that snapshot. A root with no live index is a no-op — the index builds lazily on first search. The `fs.watch` pipeline in `NotesSearchService` is untouched and still covers external edits (AI writes, sync, manual edits); a double refresh of the same path is harmless, because the upsert is idempotent.
+- **Writes update the live search index in Rust, not across a second N-API crossing.** `notes_index` keeps a registry of live indexes keyed by canonical root path, and a successful write, create, rename or delete upserts or removes the affected paths in that snapshot. A root with no live index is a no-op because the index builds lazily on first search. `NotesSearchService` consumes shared native watch batches for external edits and performs full refreshes for rescan; duplicate incremental refreshes are idempotent.
 - **A directory rename is a bounded prefix re-scan, and it degrades rather than lies.** Above the changed-path bound, or when the incremental path refuses a batch, it falls back to a full `refresh()`. `apply_changes` never fails the caller: the file is already on disk, and failing a save because the index could not be updated would be a lie the watcher repairs a second later anyway.
 - **The capability guard lists every export.** `src/notes-fs.ts` requires all eight, so a binary from before a later slice fails at load with the rebuild instruction rather than at the first call with `undefined is not a function`. Add each new `#[napi]` function in `notes_fs.rs` to that list.
 
 ## Filesystem watch batching
 
 `rust/core/src/watch/` defines `WatchBatch` and the subscription-local
-`PendingBatch` state machine. Input paths are already filtered, root-relative
-and forward-slashed. Trailing-edge debounce uses an explicit monotonic clock;
+`PendingBatch` state machine, composed by `WatchService`. Canonical real-root
+keys share one native watcher across workspace-owned subscriptions; removing
+the last subscription closes it. Recursive subscriptions upgrade shared
+backends while shallow deliveries stay non-recursive. Filters apply extensions,
+ignored directory names/root-relative prefixes and cached nested Git ignore
+rules; `.git` paths are excluded. Input paths are root-relative and
+forward-slashed. Trailing-edge debounce uses an explicit monotonic clock;
 `deadline()` lets a backend wait for the next flush without polling. Batches
 deduplicate and sort paths, retaining at most 4,096 paths and 1 MiB of UTF-8
-path bytes. Overflow or `mark_rescan()` clears partial paths and emits one
-`rescan: true` batch. `rust/core/tests/watch_batch.rs` covers these rules without
-filesystem access or sleeps. OS watcher ownership and Node transport are separate
-from this batching primitive.
+path bytes. The bounded 1,024-event ingress escalates overflow to rescan.
+Backend errors, root lifecycle changes and structural directory events clear
+partial paths and require full reload. A 100 ms native health check discovers
+missing/replaced roots and retries failed watches without postponing pending
+rescan deadlines. Windows UNC roots use native polling at one-second intervals.
+Operational failures are logged; missing/stale addons remain broken installs.
+
+`rust/napi/src/watch.rs` exposes `NativeWatchService` through one unreferenced
+TSFN wake token and bounded, coalesced per-subscription delivery. Its active-ID
+gates discard callbacks after removal/disposal. Blocking core commands never
+hold the delivery mutex. `src/watch.ts` aliases generated DTOs and checks every
+required method. Server consumers share the process owner through
+`shared/native-watch-service.ts`, with scoped server lifetimes that isolate
+equal workspace IDs across local servers. Folder layout stays in TypeScript.
+Consumer tests inject batch delivery; real-filesystem watch tests live in core
+and wait on channels. Pure batch tests use an explicit clock.
 
 ## Build / test
 

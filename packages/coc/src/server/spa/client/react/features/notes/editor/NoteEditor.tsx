@@ -1162,7 +1162,9 @@ export function NoteEditor({
             const detail = (e as CustomEvent).detail as { wsId: string; changedPaths: string[] } | undefined;
             if (!detail || detail.wsId !== workspaceIdRef.current) return;
             const normalizedNotePath = notePath.replace(/\\/g, '/');
-            const match = detail.changedPaths.some(p => p.replace(/\\/g, '/') === normalizedNotePath);
+            // An empty path list invalidates every note after a native rescan.
+            const match = detail.changedPaths.length === 0
+                || detail.changedPaths.some(p => p.replace(/\\/g, '/') === normalizedNotePath);
             if (!match) return;
             // Skip reload when it's an echo of our own save
             if (Date.now() - lastSaveAtRef.current < 1000) return;

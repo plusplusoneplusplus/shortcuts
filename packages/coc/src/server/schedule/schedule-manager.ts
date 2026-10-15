@@ -3,7 +3,7 @@
  *
  *   - ScheduleTimerRegistry  — owns (repoId, scheduleId) → setTimeout handle map
  *   - ScheduleRunHistory     — owns runHistory map + SQLite persistence
- *   - RepoScheduleWatcher    — owns fs.FSWatcher + debounce timers
+ *   - RepoScheduleWatcher    — owns a native watch subscription
  *   - ScheduleExecutor       — owns executeRun, runningSchedules
  *
  * Manager itself handles user-schedule CRUD, repo-schedule loading,
@@ -30,6 +30,7 @@ import { ScheduleRunHistory } from './schedule-run-history';
 import { RepoScheduleWatcher } from './repo-schedule-watcher';
 import { ScheduleExecutor } from './schedule-executor';
 import { normalizeChatMode } from '../tasks/task-types';
+import type { NativeWatchServiceLike } from '../shared/native-watch-service';
 import type {
     ScheduleEntry,
     ScheduleRunRecord,
@@ -78,7 +79,7 @@ export class ScheduleManager extends EventEmitter {
     // Collaborators
     private readonly timers = new ScheduleTimerRegistry<ScheduleRuntimeKey>();
     private readonly history = new ScheduleRunHistory();
-    private readonly watcher = new RepoScheduleWatcher();
+    private readonly watcher: RepoScheduleWatcher;
     private readonly executor: ScheduleExecutor;
     // Dependencies
     private readonly persistence: ScheduleYamlPersistence;
@@ -91,10 +92,12 @@ export class ScheduleManager extends EventEmitter {
         queueManager: TaskQueueManager | null = null,
         overrideStore: RepoScheduleOverrideStore | null = null,
         dataDir?: string,
+        watchService?: NativeWatchServiceLike,
     ) {
         super();
         this.persistence = persistence;
         this.overrideStore = overrideStore;
+        this.watcher = new RepoScheduleWatcher(watchService);
         this.executor = new ScheduleExecutor(
             queueManager,
             this.history,
@@ -664,11 +667,12 @@ export class ScheduleManager extends EventEmitter {
     async registerWorkspacePath(repoId: string, rootPath: string): Promise<RepoScheduleReloadResult> {
         this.workspacePaths.set(repoId, rootPath);
         const result = await this.reloadRepoSchedules(repoId);
-        const scheduleDir = getRepoScheduleDir(rootPath);
-        // Fire-and-forget: watch() handles missing dirs and unsupported platforms gracefully.
-        this.watcher.watch(repoId, scheduleDir, async () => { await this.reloadRepoSchedules(repoId); }).catch(err => {
-            getServerLogger().warn({ err, repoId }, 'ScheduleManager: failed to watch repo schedule dir');
-        });
+        if (rootPath) {
+            const scheduleDir = getRepoScheduleDir(rootPath);
+            await this.watcher.watch(repoId, scheduleDir, async () => { await this.reloadRepoSchedules(repoId); });
+        } else {
+            this.watcher.unwatch(repoId);
+        }
         return result;
     }
 

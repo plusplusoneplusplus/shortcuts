@@ -1,78 +1,41 @@
-/**
- * Watches `.vscode/workflows/` directories for registered workspaces and
- * fires a debounced callback when workflow files change.  Uses Node.js
- * built-in `fs.watch` with the `recursive` option (supported natively
- * on macOS and Windows; on Linux requires Node 19+).
- *
- * Mirrors task-watcher.ts pattern.
- */
-
-import * as fs from 'fs';
-import * as path from 'path';
-import { DebouncedWatcherRegistry } from '../shared/debounced-watcher-registry';
-
-// ============================================================================
-// Types
-// ============================================================================
+import { getNativeWatchService, type NativeWatchServiceLike } from '../shared/native-watch-service';
+import { affectsWatchedDirectory } from '../shared/watch-paths';
 
 export type WorkflowsChangedCallback = (workspaceId: string) => void;
 
-// ============================================================================
-// WorkflowWatcher
-// ============================================================================
-
-const DEBOUNCE_MS = 300;
-
 export class WorkflowWatcher {
-    private registry = new DebouncedWatcherRegistry<string>(DEBOUNCE_MS);
-    private onWorkflowsChanged: WorkflowsChangedCallback;
+    private subscriptions = new Map<string, number>();
 
-    constructor(onWorkflowsChanged: WorkflowsChangedCallback) {
-        this.onWorkflowsChanged = onWorkflowsChanged;
-    }
+    constructor(
+        private onWorkflowsChanged: WorkflowsChangedCallback,
+        private watchService: NativeWatchServiceLike = getNativeWatchService(),
+    ) {}
 
-    /**
-     * Start watching a workspace's `.vscode/workflows/` directory.
-     * No-ops gracefully if the directory does not exist.
-     */
     watchWorkspace(workspaceId: string, rootPath: string): void {
-        if (this.registry.isWatching(workspaceId)) {
-            return;
-        }
-
-        const pipelinesDir = path.join(rootPath, '.vscode', 'workflows');
-
-        try {
-            const stat = fs.statSync(pipelinesDir);
-            if (!stat.isDirectory()) {
-                return;
+        if (this.subscriptions.has(workspaceId)) return;
+        const id = this.watchService.subscribe({
+            workspaceId, root: rootPath, recursive: true, debounceMs: 300,
+            ignoreDirs: [], extensions: [], respectGitignore: false,
+        }, batch => {
+            if (this.subscriptions.get(workspaceId) !== batch.subscriptionId) return;
+            if (batch.rescan || batch.paths.some(file => affectsWatchedDirectory(file, '.vscode/workflows'))) {
+                this.onWorkflowsChanged(workspaceId);
             }
-        } catch {
-            return;
-        }
-
-        this.registry.watch(
-            workspaceId,
-            pipelinesDir,
-            (key, _changedFiles) => this.onWorkflowsChanged(key),
-            {
-                onError: (key) => this.registry.unwatch(key),
-            },
-        );
+        });
+        this.subscriptions.set(workspaceId, id);
     }
 
     unwatchWorkspace(workspaceId: string): void {
-        this.registry.unwatch(workspaceId);
+        const id = this.subscriptions.get(workspaceId);
+        this.subscriptions.delete(workspaceId);
+        if (id !== undefined) this.watchService.unsubscribe(id);
     }
 
-    /**
-     * Close all watchers (called on server shutdown).
-     */
     closeAll(): void {
-        this.registry.closeAll();
+        for (const workspaceId of this.subscriptions.keys()) this.unwatchWorkspace(workspaceId);
     }
 
     isWatching(workspaceId: string): boolean {
-        return this.registry.isWatching(workspaceId);
+        return this.subscriptions.has(workspaceId);
     }
 }

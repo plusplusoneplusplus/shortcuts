@@ -19,6 +19,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { NotesSearchService } from '../notes/notes-search-service';
+import { getNativeWatchService, type NativeWatchServiceLike } from '../shared/native-watch-service';
 
 // ============================================================================
 // Types
@@ -45,23 +46,24 @@ export interface WatcherInfrastructure {
 export async function createWatcherInfrastructure(
     store: ProcessStore,
     dataDir: string,
-    wsServer: ProcessWebSocketServer,
-    bridge: MultiRepoQueueRouter,
+    wsServer: Pick<ProcessWebSocketServer, 'broadcastProcessEvent'>,
+    bridge: Pick<MultiRepoQueueRouter, 'registerRepoId'>,
     notesSearchService?: Pick<NotesSearchService, 'activateWorkspace' | 'evictWorkspace'>,
+    watchService: NativeWatchServiceLike = getNativeWatchService(),
 ): Promise<WatcherInfrastructure> {
     const taskWatcher = new TaskWatcher((workspaceId) => {
         taskCache.invalidateWorkspace(workspaceId);
         wsServer.broadcastProcessEvent({ type: 'tasks-changed', workspaceId, timestamp: Date.now() });
-    });
+    }, watchService);
     const pipelineWatcher = new WorkflowWatcher((workspaceId) => {
         wsServer.broadcastProcessEvent({ type: 'workflows-changed', workspaceId, timestamp: Date.now() });
-    });
+    }, watchService);
     const templateWatcher = new TemplateWatcher((workspaceId) => {
         wsServer.broadcastProcessEvent({ type: 'templates-changed', workspaceId, timestamp: Date.now() });
-    });
+    }, watchService);
     const notesWatcher = new NotesWatcher((workspaceId, changedPaths) => {
         wsServer.broadcastProcessEvent({ type: 'notes-changed', workspaceId, changedPaths, timestamp: Date.now() });
-    });
+    }, watchService);
 
     // Bootstrap watchers for workspaces that already exist (server restart scenario)
     const existingWorkspaces = await store.getWorkspaces();
@@ -73,8 +75,10 @@ export async function createWatcherInfrastructure(
             }
         }
         taskWatcher.watchWorkspace(ws.id, resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id }).absolutePath);
-        pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
-        templateWatcher.watchWorkspace(ws.id, ws.rootPath);
+        if (ws.rootPath) {
+            pipelineWatcher.watchWorkspace(ws.id, ws.rootPath);
+            templateWatcher.watchWorkspace(ws.id, ws.rootPath);
+        }
         notesWatcher.watchWorkspace(ws.id, getRepoDataPath(dataDir, ws.id, 'notes'));
         bridge.registerRepoId(ws.id, ws.rootPath);
     }
@@ -92,8 +96,10 @@ export async function createWatcherInfrastructure(
             }
         }
         taskWatcher.watchWorkspace(workspace.id, resolveTaskRoot({ dataDir, rootPath: workspace.rootPath, workspaceId: workspace.id }).absolutePath);
-        pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
-        templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        if (workspace.rootPath) {
+            pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+            templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+        }
         notesWatcher.watchWorkspace(workspace.id, getRepoDataPath(dataDir, workspace.id, 'notes'));
         notesSearchService?.activateWorkspace(workspace.id);
         bridge.registerRepoId(workspace.id, workspace.rootPath);
@@ -105,6 +111,7 @@ export async function createWatcherInfrastructure(
         templateWatcher.unwatchWorkspace(id);
         notesWatcher.unwatchWorkspace(id);
         notesSearchService?.evictWorkspace(id);
+        watchService.unwatchWorkspace(id);
         return originalRemove(id);
     };
 
