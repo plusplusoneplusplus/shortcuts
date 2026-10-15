@@ -97,6 +97,11 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- Server composition provisions one UUID in `<dataDir>/server-identity.json` and
+  exposes `serverIdentity` through `/api/health`. It identifies the installation
+  across workspaces, transports and port changes. Preserve it on restart; invalid
+  or unreadable identity files fail startup rather than silently replacing identity.
+
 - Admitted chat image files stay at their existing per-turn paths after success,
   error or cancellation so local delegated children can read them. This temporary
   policy preserves rejected/unadmitted and non-image cleanup, including mixed uploads.

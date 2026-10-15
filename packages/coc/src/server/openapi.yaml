@@ -1440,6 +1440,10 @@ components:
       type: object
       required: [status, uptime, processCount, nativeFileIndex, nativeNotesIndex]
       properties:
+        serverIdentity:
+          type: string
+          format: uuid
+          description: Durable server data-directory identity, shared by workspaces and independent of transport endpoints.
         status:
           type: string
           description: Server status (always "ok" when reachable)

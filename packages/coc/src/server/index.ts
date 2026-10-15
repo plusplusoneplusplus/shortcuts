@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { createRequestHandler } from './router';
+import { getOrCreateServerIdentity } from './servers/server-identity';
 import { registerAllRoutes } from './routes/index';
 import { ProcessWebSocketServer, toProcessSummary } from './streaming/websocket';
 import { generateDashboardHtml } from './spa';
@@ -229,6 +230,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
     fs.mkdirSync(dataDir, { recursive: true });
+    const serverIdentity = getOrCreateServerIdentity(dataDir);
 
     // Resolve the default WSL distro before anything normalizes a path into a
     // workspace identity. The lookup spawns `wsl.exe`, so it has to happen once,
@@ -957,6 +959,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const rawHostname = os.hostname();
     const handler = createRequestHandler({
+        serverIdentity,
         routes, spaHtml: () => {
             // Use RuntimeConfigService snapshot for feature flags so admin
             // config updates are reflected without re-reading disk on every

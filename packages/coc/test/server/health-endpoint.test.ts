@@ -5,6 +5,9 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import * as http from 'http';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 const nativeStatuses = vi.hoisted(() => ({
     file: vi.fn(() => ({ loaded: true, binaryPath: '/native/current.node' })),
@@ -19,6 +22,7 @@ vi.mock('@plusplusoneplusplus/coc-native', () => ({
 }));
 
 import { createRequestHandler } from '../../src/server/router';
+import { getOrCreateServerIdentity } from '../../src/server/servers/server-identity';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../src/server/types';
 
@@ -72,11 +76,15 @@ describe('GET /api/health', () => {
     let server: http.Server;
     let baseUrl: string;
     let store: ProcessStore;
+    let dataDir: string;
+    let serverIdentity: string;
 
     beforeAll(async () => {
         store = createMockStore(42);
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-health-identity-'));
+        serverIdentity = getOrCreateServerIdentity(dataDir);
         const routes: Route[] = [];
-        const handler = createRequestHandler({ routes, spaHtml: '<html></html>', store });
+        const handler = createRequestHandler({ routes, spaHtml: '<html></html>', store, serverIdentity });
         server = http.createServer(handler);
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
         const addr = server.address() as { port: number };
@@ -85,6 +93,7 @@ describe('GET /api/health', () => {
 
     afterAll(async () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
+        fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
     it('returns processCount from getProcessCount()', async () => {
@@ -92,6 +101,7 @@ describe('GET /api/health', () => {
         expect(resp.status).toBe(200);
         const body = JSON.parse(resp.body);
         expect(body.status).toBe('ok');
+        expect(body.serverIdentity).toBe(serverIdentity);
         expect(body.processCount).toBe(42);
         expect(typeof body.uptime).toBe('number');
         expect(body.nativeFileIndex).toEqual({ loaded: true, binaryPath: '/native/current.node' });
@@ -122,5 +132,21 @@ describe('GET /api/health', () => {
         await request(`${baseUrl}/api/health`);
         expect(store.getProcessCount).toHaveBeenCalledOnce();
         expect(store.getAllProcesses).not.toHaveBeenCalled();
+    });
+
+    it('advertises the same identity when served through a different port', async () => {
+        const other = http.createServer(createRequestHandler({
+            routes: [], spaHtml: '', store, serverIdentity: getOrCreateServerIdentity(dataDir),
+        }));
+        await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+        try {
+            const port = (other.address() as { port: number }).port;
+            expect(`http://127.0.0.1:${port}`).not.toBe(baseUrl);
+            const original = JSON.parse((await request(`${baseUrl}/api/health`)).body);
+            const reconnected = JSON.parse((await request(`http://127.0.0.1:${port}/api/health`)).body);
+            expect(reconnected.serverIdentity).toBe(original.serverIdentity);
+        } finally {
+            await new Promise<void>((resolve) => other.close(() => resolve()));
+        }
     });
 });
