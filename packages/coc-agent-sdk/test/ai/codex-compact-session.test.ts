@@ -20,6 +20,7 @@ import { CodexSDKService } from '../../src/codex-sdk-service';
 import { resolveCodexExecutablePath } from '../../src/codex-exec-path';
 import { CompactUnsupportedError, isCompactUnsupportedError } from '../../src/sdk-service-interface';
 import { CODEX_PROVIDER } from '../../src/sdk-service-registry';
+import { getSDKLogger, initSDKLogger, resetSDKLogger } from '../../src/logger';
 
 vi.mock('child_process', () => ({
     spawn: vi.fn(),
@@ -101,6 +102,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
     afterEach(() => {
         delete process.env.COC_CODEX_COMPACT_TIMEOUT_MS;
         vi.restoreAllMocks();
+        resetSDKLogger();
     });
 
     it('drives the full handshake → thread/resume → compact/start flow and reports tokensRemoved', async () => {
@@ -312,12 +314,15 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         );
     });
 
-    it('ignores customInstructions: sends { threadId } only and warns', async () => {
+    it('ignores Sentinel customInstructions: sends { threadId } only and warns', async () => {
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
+        initSDKLogger({ level: 'silent' });
+        const warn = vi.spyOn(getSDKLogger(), 'warn').mockImplementation(() => {});
 
         const svc = makeAvailableService();
-        const promise = svc.compactSession(THREAD_ID, 'focus on the auth flow');
+        const instructions = 'Preserve Sentinel’s active goals, unresolved asks, decisions, blockers and next actions. Retain explicit authorizations, their scope, cancellations and superseding instructions. Keep exact owner/workspace/conversation IDs and to-do/job IDs, links and status. Distinguish proposed, authorized, attempted, completed, failed and cancelled work. Never infer permission or success; remove stale details and duplication.';
+        const promise = svc.compactSession(THREAD_ID, instructions);
         await flushMicrotasks();
 
         child.writeStdoutLine(RESUME_ACK);
@@ -327,6 +332,8 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         await promise;
         const compactStart = child.sentMessages().find(m => m.method === 'thread/compact/start');
         expect(compactStart?.params).toEqual({ threadId: THREAD_ID });
+        expect(warn).toHaveBeenCalledWith({ provider: CODEX_PROVIDER, sessionId: THREAD_ID },
+            'Codex compaction ignores customInstructions (thread/compact/start accepts threadId only)');
     });
 
     it('rejects when disposed', async () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompactUnsupportedError, getLogger, TaskQueueManager, type AIProcess, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
-import { cancelQueuedCompaction, compactProcess } from '../../../src/server/processes/compact-process';
+import { cancelQueuedCompaction, compactProcess, SENTINEL_COMPACTION_INSTRUCTIONS } from '../../../src/server/processes/compact-process';
 import {
     autoCompactCancelledMetadata, maybeAutoCompactAfterResponse, parseAutoCompactSettings, readAutoCompact,
     resumeAutoCompact, saveAutoCompactSettings, settleAutoCompaction,
@@ -86,19 +86,22 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect(await autoState()).toMatchObject({ enabled: true, thresholdTokens: 800, consecutiveFailures: 0 });
     });
 
-    it('queues one background compaction after a response strictly exceeds the threshold, then succeeds', async () => {
+    it.each(['copilot', 'claude'] as const)('queues one background %s compaction with the Sentinel default after exceeding the threshold', async provider => {
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, provider } });
         await enable();
         await respond({ currentTokens: 800, tokenLimit: LIMIT });
         expect(compactTasks()).toHaveLength(0);
         await respond({ currentTokens: 900, tokenLimit: LIMIT });
         const task = queuedCompact()!;
-        expect(task.payload).toMatchObject({ kind: 'compact', trigger: 'auto', processId: proc.id, workspaceId: 'ws-a' });
+        expect(task.payload).toMatchObject({ kind: 'compact', trigger: 'auto', processId: proc.id, workspaceId: 'ws-a',
+            customInstructions: SENTINEL_COMPACTION_INSTRUCTIONS });
         expect(await autoState()).toMatchObject({ taskId: task.id, lastEvaluatedTurnIndex: 1 });
-        expect((await current()).metadata?.compaction).toMatchObject({ state: 'queued', taskId: task.id });
+        expect((await current()).metadata?.compaction).toMatchObject({ state: 'queued', taskId: task.id,
+            customInstructions: SENTINEL_COMPACTION_INSTRUCTIONS });
         expect(compactSession).not.toHaveBeenCalled();
 
         await run(task);
-        expect(compactSession).toHaveBeenCalledWith('session-1', undefined);
+        expect(compactSession).toHaveBeenCalledWith('session-1', SENTINEL_COMPACTION_INSTRUCTIONS);
         const state = await autoState();
         expect(state).toMatchObject({ consecutiveFailures: 0, lastResult: { outcome: 'succeeded', tokensBefore: 900, tokensAfter: 300, tokenLimit: LIMIT, turnIndex: 1 } });
         expect(state?.taskId).toBeUndefined();

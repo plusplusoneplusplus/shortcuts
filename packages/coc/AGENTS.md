@@ -104,6 +104,10 @@ references before editing. Paths are package-relative.
   Promote buffered turns before the boundary; later arrivals cannot steer across it.
   Cancel removes queued compaction only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
+  `compact-process.ts` resolves one shared Sentinel instruction from `metadata.mode` for
+  automatic and unfocused manual compaction; explicit manual focus overrides it verbatim.
+  Ordinary chats retain provider defaults. Copilot and Claude accept the instruction;
+  Codex ignores custom instructions and warns.
   Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
   checks `currentTokens > thresholdTokens` after a persisted response, one attempt per
   response, always queued; model limits never rescale the absolute threshold. The default

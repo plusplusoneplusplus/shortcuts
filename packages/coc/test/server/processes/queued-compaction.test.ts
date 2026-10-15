@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RepoQueueRegistry, TaskQueueManager, type AIProcess, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
-import { compactProcess, cancelQueuedCompaction } from '../../../src/server/processes/compact-process';
+import { compactProcess, cancelQueuedCompaction, SENTINEL_COMPACTION_INSTRUCTIONS } from '../../../src/server/processes/compact-process';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -148,6 +148,33 @@ describe('queued conversation compaction admission', () => {
         expect((await store.getProcess(proc.id))!.metadata!.compaction!.customInstructions).toBe('original');
     });
 
+    it.each([undefined, '', ' \n ', '  manual focus  '])('resolves queued Sentinel instructions from current owner metadata (%s)', async customInstructions => {
+        const autoCompact = { enabled: false, thresholdTokens: 800 };
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode: 'sentinel', autoCompact } });
+        // The caller's snapshot predates the authoritative persisted mode.
+        const outcome = await compactProcess(store as any, proc, customInstructions, bridge);
+        const expected = customInstructions?.trim() ? customInstructions : SENTINEL_COMPACTION_INSTRUCTIONS;
+        const task = queue.getTask(outcome.taskId!)!;
+        expect(task.payload).toMatchObject({ workspaceId: 'ws-a', processId: proc.id, customInstructions: expected });
+        expect(task.config).toMatchObject({ retryOnFailure: false, retryAttempts: 0, pauseOnFailure: false,
+            timeoutMs: 0, cancelRunning: false });
+        expect((await store.getProcess(proc.id))!.metadata).toMatchObject({
+            workspaceId: 'ws-a', autoCompact, compaction: { customInstructions: expected },
+        });
+        await finishActive(); await runNext(); await runNext(); await runNext();
+        expect(compactSession).toHaveBeenCalledWith('session-before-2', expected);
+        expect((await store.getProcess(proc.id))!.metadata!.autoCompact).toEqual(autoCompact);
+    });
+
+    it.each([undefined, '', ' \n ', '  ordinary focus  '])('keeps ordinary queued instructions unchanged with autoCompact enabled (%s)', async customInstructions => {
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode: 'ask',
+            autoCompact: { enabled: true, thresholdTokens: 800 } } });
+        const outcome = await compactProcess(store as any, proc, customInstructions, bridge);
+        expect(queue.getTask(outcome.taskId!)!.payload.customInstructions).toBe(customInstructions);
+        await finishActive(); await runNext(); await runNext(); await runNext();
+        expect(compactSession).toHaveBeenCalledWith('session-before-2', customInstructions?.trim() ? customInstructions : undefined);
+    });
+
     it('cancel removes only compaction and preserves earlier turn dependencies', async () => {
         const outcome = await compactProcess(store as any, proc, undefined, bridge);
         const after = await arrive('after');
@@ -206,10 +233,21 @@ describe('queued conversation compaction admission', () => {
     });
 
     it('does not block another conversation or workspace', async () => {
-        await compactProcess(store as any, proc, undefined, bridge);
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode: 'sentinel' } });
+        await compactProcess(store as any, (await store.getProcess(proc.id))!, undefined, bridge);
+        const other: AIProcess = { ...proc, id: 'other-process', status: 'completed', sdkSessionId: 'other-session',
+            pendingMessages: [], metadata: { type: 'chat', workspaceId: 'ws-b', mode: 'ask', provider: 'copilot' } };
+        await store.addProcess(other);
+        await compactProcess(store as any, other, undefined, bridge);
+        expect(compactSession).toHaveBeenCalledExactlyOnceWith('other-session', undefined);
+        expect((await store.getProcess(other.id))!.metadata).toMatchObject({ workspaceId: 'ws-b',
+            compaction: { state: 'completed' } });
+        expect((await store.getProcess(other.id))!.metadata!.compaction!.customInstructions).toBeUndefined();
         queue.enqueue({ id: 'other', processId: 'other-process', repoId: 'ws-b', type: 'chat', priority: 'normal', payload: {}, config: {} });
         expect(queue.peek()!.id).toBe('other');
         expect((await store.getProcess(proc.id))!.metadata!.workspaceId).toBe('ws-a');
         expect(queue.getQueued().find(task => task.payload.kind === 'compact')!.payload.workspaceId).toBe('ws-a');
+        expect(queue.getQueued().find(task => task.payload.kind === 'compact')!.payload.customInstructions)
+            .toBe(SENTINEL_COMPACTION_INSTRUCTIONS);
     });
 });

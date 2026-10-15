@@ -4148,6 +4148,19 @@ describe('ClaudeSDKService.compactSession (native /compact)', () => {
         expect(capture.prompt).toBe('/compact');
     });
 
+    it('forwards the exact Sentinel instruction as the native /compact argument', async () => {
+        const instructions = 'Preserve Sentinel’s active goals, unresolved asks, decisions, blockers and next actions. Retain explicit authorizations, their scope, cancellations and superseding instructions. Keep exact owner/workspace/conversation IDs and to-do/job IDs, links and status. Distinguish proposed, authorized, attempted, completed, failed and cancelled work. Never infer permission or success; remove stale details and duplication.';
+        const capture: CompactCapture = {};
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: compactSuccessMessages(9000, 1000), capture }),
+        );
+
+        await svc.compactSession('session-sentinel', instructions);
+
+        expect(capture.prompt).toBe(`/compact ${instructions}`);
+        expect(capture.resume).toBe('session-sentinel');
+    });
+
     it('reports a no-op (success:false) without throwing when compaction finds too few messages', async () => {
         queryFn.mockImplementation(
             makeCompactQuery({
