@@ -566,6 +566,14 @@ fn process_event(subscription: &mut Subscription, event: &Event, now: Instant) {
         if !subscription.options.recursive && relative.components().count() > 1 {
             continue;
         }
+        // Directory timestamp and attribute updates never change which files
+        // exist; Windows reports one for the parent of added entries, sometimes
+        // well after the entry itself. Entries arrive as their own events.
+        if matches!(event.kind, EventKind::Modify(kind) if !matches!(kind, notify::event::ModifyKind::Name(_)))
+            && path.is_dir()
+        {
+            continue;
+        }
         let directory_event = path.is_dir()
             || matches!(
                 event.kind,
@@ -751,6 +759,50 @@ mod tests {
                 subscription.pending.drain_ready(now).is_some_and(|batch| batch.rescan),
                 "{path}"
             );
+        }
+    }
+
+    #[test]
+    fn directory_metadata_updates_do_not_force_rescans_but_structural_changes_do() {
+        let root = tempfile::Builder::new().prefix("watch-dir-modify-").tempdir_in(".").unwrap();
+        std::fs::create_dir(root.path().join("src")).unwrap();
+        let now = Instant::now();
+        let mut options = subscription(root.path(), true, 0);
+        options.filter.extensions = vec!["md".into()];
+        let mut subscription = Subscription {
+            options,
+            root_key: "root".into(),
+            pending: PendingBatch::new(1, 0),
+            ignores: HashMap::new(),
+        };
+        let directory = root.path().join("src");
+        for kind in [
+            notify::event::ModifyKind::Any,
+            notify::event::ModifyKind::Metadata(notify::event::MetadataKind::WriteTime),
+            notify::event::ModifyKind::Data(notify::event::DataChange::Any),
+        ] {
+            let event = Event::new(EventKind::Modify(kind)).add_path(directory.clone());
+            process_event(&mut subscription, &event, now);
+            assert_eq!(subscription.pending.deadline(), None, "{kind:?}");
+        }
+        let file = Event::new(EventKind::Modify(notify::event::ModifyKind::Any))
+            .add_path(directory.join("kept.md"));
+        process_event(&mut subscription, &file, now);
+        assert_eq!(
+            subscription.pending.drain_ready(now),
+            Some(WatchBatch {
+                subscription_id: 1,
+                paths: vec!["src/kept.md".into()],
+                rescan: false
+            })
+        );
+        for kind in [
+            EventKind::Create(notify::event::CreateKind::Any),
+            EventKind::Modify(notify::event::ModifyKind::Name(notify::event::RenameMode::To)),
+        ] {
+            let event = Event::new(kind).add_path(directory.clone());
+            process_event(&mut subscription, &event, now);
+            assert!(subscription.pending.drain_ready(now).is_some_and(|batch| batch.rescan));
         }
     }
 
