@@ -280,7 +280,9 @@ describe('WorkItemCommitReviewPane commit chat lens', () => {
 
         fireEvent.click(screen.getByTestId('commit-review-back-btn'));
 
-        await waitFor(() => expect(screen.getByTestId('diff-section')).toBeTruthy());
+        // The overview focuses one file of the commit inside CommitDetail.
+        await waitFor(() => expect(screen.getByTestId('commit-detail')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('file-diff-section')).toBeTruthy());
         expect(screen.getByTestId('commit-chat-side-panel')).toBeTruthy();
         expect(screen.queryByTestId('commit-chat-lens')).toBeNull();
 
@@ -288,6 +290,6 @@ describe('WorkItemCommitReviewPane commit chat lens', () => {
 
         await waitFor(() => expect(screen.getByTestId('commit-chat-lens')).toBeTruthy());
         expect(localStorage.getItem(placementKey)).toBeNull();
-        expect(screen.getByTestId('diff-section').className).toContain('overflow-auto');
+        expect(screen.getByTestId('file-diff-section').className).toContain('overflow-auto');
     });
 });
