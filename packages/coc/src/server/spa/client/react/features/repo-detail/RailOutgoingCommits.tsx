@@ -5,6 +5,7 @@ import { COMMIT_PAGE_SIZE, outgoingCommits } from '../git/commits/outgoingCommit
 import { workspaceReadSource } from '../../api/workspaceReads';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { syncState } from './railGitModel';
+import { cn } from '../../ui';
 
 interface Props {
     client: CocClient;
@@ -14,13 +15,15 @@ interface Props {
     readAt?: number;
     loading: boolean;
     failed: boolean;
+    /** Group cards omit a confirmed empty comparison and use tighter spacing. */
+    compact?: boolean;
     onOpen: (commit: GitCommit) => void;
     onRetry: () => void;
 }
 
 /** Mounted only inside an open Sync preview; never fetches or mutates Git. */
 export function RailOutgoingCommits(props: Props) {
-    const { client, routingRef, workspaceId, info, readAt, loading, failed, onRetry } = props;
+    const { client, routingRef, workspaceId, info, readAt, loading, failed, compact, onRetry } = props;
     const sync = syncState(info);
     const unresolved = !!parseRemoteCloneKey(routingRef) && !client.options?.baseUrl;
     const key = JSON.stringify([routingRef, workspaceReadSource(client), workspaceId, info?.branch, info?.upstream, info?.ahead, info?.behind, readAt]);
@@ -29,8 +32,9 @@ export function RailOutgoingCommits(props: Props) {
     else if (failed || unresolved || sync.kind === 'unknown') message = 'Outgoing commits unavailable.';
     else if (sync.kind === 'detached') message = 'Outgoing commits unavailable on detached HEAD.';
     else if (sync.kind === 'no-upstream') message = 'No upstream; outgoing commits cannot be compared.';
-    return <section aria-label="Outgoing commits" className="mt-2 min-w-0" data-testid="rail-outgoing">
-        <div className="mb-1 text-[10px] font-semibold text-[#656d76] dark:text-[#aaa]">Outgoing commits</div>
+    if (compact && !message && sync.kind === 'compared' && info?.ahead === 0) return null;
+    return <section aria-label="Outgoing commits" className={cn('min-w-0', compact ? 'mt-1' : 'mt-2')} data-testid="rail-outgoing">
+        {(!compact || !message) && <div className={cn('text-[10px] font-semibold text-[#656d76] dark:text-[#aaa]', !compact && 'mb-1')}>Outgoing commits</div>}
         {message
             ? <div role="status" className="text-[11px] text-[#656d76] dark:text-[#aaa]">{message}</div>
             : <OutgoingHistory key={key} client={client} workspaceId={workspaceId} ahead={info?.ahead ?? 0} onOpen={props.onOpen} onRetry={onRetry} />}

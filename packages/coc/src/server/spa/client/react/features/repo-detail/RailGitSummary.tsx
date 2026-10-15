@@ -254,20 +254,20 @@ function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry, client
         {(input.members ?? []).map(member => {
             const line = describeGroupMember(member);
             return (
-                <li key={member.id} className={cn(GROUP_ROW_CLASS, 'flex items-start gap-2')} data-testid="rail-git-member" data-member={member.id}>
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-1.5">
+                <li key={member.id} className={GROUP_ROW_CLASS} data-testid="rail-git-member" data-member={member.id}>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5">
                             <span className="min-w-0 break-all font-medium">{member.name}</span>
                             <span className={cn(META_CLASS, 'min-w-0 break-all font-mono')}>{line.branch}</span>
                         </div>
-                        <div className={cn(META_CLASS, 'break-all')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
-                        {syncPreview && <RailOutgoingCommits client={client} routingRef={routingRef} workspaceId={member.id}
-                            info={member.info} readAt={input.read.readAt} loading={input.read.loading} failed={member.stale || input.read.failed}
-                            onOpen={commit => { dismiss(); onOpenMember(member.id, commit); }} onRetry={onRetry} />}
+                        {!member.stale && member.info?.isGitRepo && (
+                            <button type="button" className={cn(COMPACT_ACTION_CLASS, 'inline-flex h-6 min-w-6 shrink-0 items-center justify-center leading-none')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>
+                        )}
                     </div>
-                    {!member.stale && member.info?.isGitRepo && (
-                        <button type="button" className={cn(COMPACT_ACTION_CLASS, 'shrink-0')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>
-                    )}
+                    <div className={cn(META_CLASS, 'break-all leading-tight')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                    {syncPreview && <RailOutgoingCommits compact client={client} routingRef={routingRef} workspaceId={member.id}
+                        info={member.info} readAt={input.read.readAt} loading={input.read.loading} failed={member.stale || input.read.failed}
+                        onOpen={commit => { dismiss(); onOpenMember(member.id, commit); }} onRetry={onRetry} />}
                 </li>
             );
         })}

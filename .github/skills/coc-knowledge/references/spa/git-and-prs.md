@@ -22,7 +22,11 @@ SHA/subject formatting with expanded Git. Status changes revoke prior reads,
 and missing comparisons or inconsistent history remain explicit. Navigation
 supplies transient `SET_GIT_ROUTE.knownCommit` metadata, consumed only for the
 matching page/member/SHA/clone owner, so paged commits open without enabling SHA
-lookup. Group previews read member repositories, never a group range.
+lookup. Group previews read member repositories, never a group range; their
+compact cards skip history reads and empty subsections only when a successful,
+resolved upstream comparison explicitly reports zero ahead. Pending, failed and
+unavailable comparisons remain visible. Single-repository previews retain the
+explicit empty-history state.
 
 
 `features/git/RepoGitTab.tsx` is a composition shell over `features/git/repoGitTab/`:

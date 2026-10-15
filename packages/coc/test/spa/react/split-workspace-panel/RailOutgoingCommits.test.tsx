@@ -81,6 +81,56 @@ describe('rail outgoing history', () => {
         expect(screen.queryByRole('button', { name: /^Open commit/ })).toBeNull();
     });
 
+    it('omits confirmed zero outgoing sections in compact cards without reading history', () => {
+        const { props, listCommits } = setup();
+        const view = render(<RailOutgoingCommits {...props} compact info={{ ...info, ahead: 0, behind: 4, dirty: true }} />);
+        expect(screen.queryByTestId('rail-outgoing')).toBeNull();
+        expect(listCommits).not.toHaveBeenCalled();
+        view.rerender(<RailOutgoingCommits {...props} compact />);
+        expect(screen.getByTestId('rail-outgoing')).toHaveClass('mt-1');
+        expect(screen.getByRole('status')).toHaveTextContent('Loading outgoing commits');
+    });
+
+    it.each([
+        ['loading zero', { info: { ...info, ahead: 0 }, loading: true }, 'Reading outgoing status'],
+        ['failed zero', { info: { ...info, ahead: 0 }, failed: true }, 'unavailable'],
+        ['unknown comparison', { info: { ...info, ahead: 0, upstream: undefined } }, 'unavailable'],
+        ['missing upstream', { info: { ...info, ahead: 0, upstream: null } }, 'No upstream'],
+        ['detached zero', { info: { ...info, ahead: 0, detached: true } }, 'detached HEAD'],
+        ['missing status', { info: null }, 'unavailable'],
+        ['unresolved zero', { info: { ...info, ahead: 0 }, routingRef: 'remote:missing:repo-a' }, 'unavailable'],
+    ])('keeps compact %s visible without a redundant heading', (_name, patch, message) => {
+        const { props, listCommits } = setup();
+        render(<RailOutgoingCommits {...props} {...patch} compact />);
+        expect(screen.getByRole('status')).toHaveTextContent(message);
+        expect(screen.getByRole('region', { name: 'Outgoing commits' })).toBeInTheDocument();
+        expect(screen.queryByText('Outgoing commits')).toBeNull();
+        expect(screen.queryByText('No outgoing commits.')).toBeNull();
+        expect(listCommits).not.toHaveBeenCalled();
+    });
+
+    it('does not treat an omitted ahead count as confirmed zero in compact cards', async () => {
+        const { props, listCommits } = setup();
+        render(<RailOutgoingCommits {...props} compact info={{ ...info, ahead: undefined }} />);
+        expect(await screen.findByRole('alert')).toHaveTextContent('history is unavailable');
+        expect(listCommits).toHaveBeenCalledOnce();
+    });
+
+    it('keeps populated compact history, owner navigation and retryable errors', async () => {
+        const { props, listCommits } = setup('https://owner.example');
+        const view = render(<RailOutgoingCommits {...props} compact />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Open commit 0000002: Change 2' }));
+        expect(props.onOpen).toHaveBeenCalledWith(commit(2));
+        expect(listCommits).toHaveBeenCalledWith('repo-a', { limit: 50, skip: undefined, refresh: true });
+        expect(screen.getByText('Outgoing commits')).not.toHaveClass('mb-1');
+        listCommits.mockRejectedValue(new Error('History unavailable'));
+        view.rerender(<RailOutgoingCommits {...props} compact readAt={2} />);
+        expect(await screen.findByRole('alert')).toHaveTextContent('History unavailable');
+        fireEvent.click(screen.getByRole('button', { name: 'Retry outgoing read' }));
+        expect(props.onRetry).toHaveBeenCalledOnce();
+        expect(screen.queryByText('No outgoing commits.')).toBeNull();
+    });
+
     it('reports errors and retries through the owner status read', async () => {
         const { props, listCommits } = setup();
         listCommits.mockRejectedValue(new Error('Owner offline'));

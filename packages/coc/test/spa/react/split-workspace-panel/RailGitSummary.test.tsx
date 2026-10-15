@@ -376,7 +376,7 @@ describe('collapsed rail Git summary · repo group', () => {
         { workspaceId: 'ws-gone', stale: true, staleReason: 'workspace-removed' },
     ] as RepoGroupMember[];
 
-    it('keeps every member in dense rows with wrapping identity, status and a separate small Git action', async () => {
+    it.each(['changes', 'sync'])('keeps every member in compact %s cards with wrapping identity and a same-row Git action', async preview => {
         const client = fakeClient();
         const longName = 'repository-'.repeat(20);
         const longBranch = 'feature/'.repeat(30);
@@ -394,8 +394,8 @@ describe('collapsed rail Git summary · repo group', () => {
             'ws-7': info(),
         } });
         render(panel(<GroupRailGit selectionId="group-product" routingRef="group-product" client={client} members={groupMembers} scopeLabel="Local / Group" />, 'group-product'));
-        const trigger = screen.getByTestId('split-workspace-left-git-changes');
-        await waitFor(() => expect(trigger).toHaveTextContent('R5'));
+        const trigger = screen.getByTestId(`split-workspace-left-git-${preview}`);
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-changes')).toHaveTextContent('R5'));
         await act(async () => trigger.focus());
         const popup = screen.getByRole('dialog');
         const rows = within(popup).getAllByTestId('rail-git-member');
@@ -406,11 +406,12 @@ describe('collapsed rail Git summary · repo group', () => {
         expect(name.parentElement).toHaveClass('flex', 'flex-wrap');
         expect(name).toHaveClass('break-all');
         expect(branch).toHaveClass('break-all');
-        expect(rows[0]).toHaveClass('flex', 'py-1');
+        expect(rows[0]).toHaveClass('py-1', 'px-2', 'border-b');
+        expect(rows[0]).not.toHaveClass('flex');
         const action = within(rows[0]).getByRole('button', { name: `Open ${longName} Git` });
         expect(action).toHaveTextContent(/^Git$/);
-        expect(action).toHaveClass('shrink-0');
-        expect(action.parentElement).toBe(rows[0]);
+        expect(action).toHaveClass('shrink-0', 'h-6', 'min-w-6', 'items-center');
+        expect(action.parentElement).toBe(name.parentElement!.parentElement);
         expect(action.previousElementSibling).toHaveClass('min-w-0', 'flex-1');
         expect(rows[0]).toHaveTextContent('Uncommitted changes · ↑3 ↓1 vs origin/feature/search-panel');
         expect(rows[1]).toHaveTextContent('Working tree clean · ↑0 ↓0');
@@ -418,6 +419,12 @@ describe('collapsed rail Git summary · repo group', () => {
         expect(rows[3]).toHaveTextContent('Detached HEAD');
         expect(rows[3]).toHaveTextContent('No upstream comparison');
         expect(rows[6]).toHaveTextContent('Sync unknown');
+        if (preview === 'sync') {
+            expect(within(rows[1]).queryByTestId('rail-outgoing')).toBeNull();
+            expect(client.git.listCommits).not.toHaveBeenCalledWith('ws-1', expect.anything());
+            expect(within(rows[6]).getByRole('status')).toHaveTextContent('Outgoing commits unavailable');
+            expect(await within(rows[0]).findAllByRole('button', { name: /^Open commit/ })).toHaveLength(3);
+        }
         for (const index of [4, 5, 8]) {
             expect(rows[index]).toHaveTextContent('Unavailable');
             expect(within(rows[index]).queryByRole('button')).toBeNull();
@@ -440,6 +447,33 @@ describe('collapsed rail Git summary · repo group', () => {
         } finally {
             Object.defineProperty(window, 'innerWidth', viewportWidth);
         }
+    });
+
+    it.each([undefined, 'https://owner.example'])('keeps zero-outgoing dirty/behind cards and Git navigation on owner %s', async baseUrl => {
+        const client = fakeClient(baseUrl);
+        const selectionId = baseUrl ? 'remote:team:group-product' : 'group-product';
+        client.workspaces.gitInfoBatch.mockResolvedValue({ results: {
+            'ws-harbor': info({ ahead: 0, behind: 2 }),
+            'ws-beacon': info({ ahead: 0, behind: 0, dirty: false }),
+        } });
+        render(panel(<GroupRailGit selectionId={selectionId} routingRef={selectionId} client={client} members={members} scopeLabel="Group" />, 'group-product'));
+        const trigger = screen.getByTestId('split-workspace-left-git-sync');
+        await waitFor(() => expect(trigger).toHaveTextContent('↕1'));
+        act(() => trigger.focus());
+        await waitFor(() => expect(screen.getAllByTestId('rail-git-member')[0]).toHaveTextContent('Uncommitted changes · ↑0 ↓2'));
+        expect(screen.getByRole('dialog')).toHaveTextContent('1 of 2 repositories changed');
+        expect(screen.getAllByTestId('rail-git-member')).toHaveLength(3);
+        for (const row of screen.getAllByTestId('rail-git-member').slice(0, 2)) {
+            expect(within(row).queryByTestId('rail-outgoing')).toBeNull();
+        }
+        expect(client.git.listCommits).not.toHaveBeenCalled();
+        const action = screen.getByRole('button', { name: 'Open Beacon Git' });
+        act(() => screen.getByRole('button', { name: 'Open Harbor Git' }).focus());
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowDown' });
+        expect(action).toHaveFocus();
+        fireEvent.click(action);
+        expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: 'ws-beacon', commitHash: null, filePath: null });
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it.each([undefined, 'http://team-host'])('keeps keyboard entry, dismissal and member navigation on owner %s', async baseUrl => {

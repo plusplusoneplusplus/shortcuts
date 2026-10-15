@@ -109,7 +109,10 @@ shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
 the rail while preserving the popup's Git links. Owner changes reset the selector.
 The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
-history paging and outgoing prefix, with shared `CommitIdentity` rows. Owner,
+history paging and outgoing prefix, with shared `CommitIdentity` rows. Group
+cards keep identity, branch and Git navigation together and omit outgoing
+sections only for a successful, resolved upstream comparison with explicit zero
+ahead; pending, failed and unavailable comparisons remain visible. Owner,
 branch, upstream and status-read changes discard old history. Missing upstream,
 failed reads and inconsistent counts remain explicit; hover never fetches or
 mutates Git. Commit navigation carries a transient owner-qualified known commit
