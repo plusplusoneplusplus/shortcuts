@@ -62,90 +62,78 @@ impl CredentialStore for AuthSdkCredentialStore {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn entry(service: &str, key: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new(service, key).map_err(map_error)
-}
-
-#[cfg(target_os = "windows")]
-fn map_error(error: keyring::Error) -> AuthError {
-    match error {
-        keyring::Error::NoStorageAccess(_) => AuthError::new(ErrorCode::StorageDenied),
-        keyring::Error::PlatformFailure(_) => AuthError::new(ErrorCode::StorageUnavailable),
-        _ => AuthError::new(ErrorCode::StorageFailed),
-    }
-}
-
 impl CredentialStore for OsCredentialStore {
     fn read(&self, key: &str) -> Result<Option<Secret>> {
         #[cfg(target_os = "windows")]
-        {
-            match entry(&self.service, key)?.get_secret() {
-                Ok(bytes) => {
-                    let bytes = zeroize::Zeroizing::new(bytes);
-                    let value = String::from_utf8(bytes.to_vec())
-                        .map_err(|_| AuthError::new(ErrorCode::StorageFailed))?;
-                    Ok(Some(Secret::new(value)))
-                }
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(error) => Err(map_error(error)),
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            linux::read(&self.service, key)
-        }
+        { windows::read(&self.service, key) }
         #[cfg(target_os = "macos")]
-        {
-            macos::read(&self.service, key)
-        }
+        { macos::read(&self.service, key) }
+        #[cfg(target_os = "linux")]
+        { linux::read(&self.service, key) }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        {
-            let _ = key;
-            fail(ErrorCode::StorageUnavailable)
-        }
+        { let _ = key; fail(ErrorCode::StorageUnavailable) }
     }
 
     fn write(&self, key: &str, value: &Secret) -> Result<()> {
         #[cfg(target_os = "windows")]
-        {
-            entry(&self.service, key)?.set_secret(value.expose().as_bytes()).map_err(map_error)
-        }
-        #[cfg(target_os = "linux")]
-        {
-            linux::write(&self.service, key, value)
-        }
+        { windows::write(&self.service, key, value) }
         #[cfg(target_os = "macos")]
-        {
-            macos::write(&self.service, key, value)
-        }
+        { macos::write(&self.service, key, value) }
+        #[cfg(target_os = "linux")]
+        { linux::write(&self.service, key, value) }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        {
-            let _ = (key, value);
-            fail(ErrorCode::StorageUnavailable)
-        }
+        { let _ = (key, value); fail(ErrorCode::StorageUnavailable) }
     }
 
     fn delete(&self, key: &str) -> Result<()> {
         #[cfg(target_os = "windows")]
-        {
-            match entry(&self.service, key)?.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                Err(error) => Err(map_error(error)),
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            linux::delete(&self.service, key)
-        }
+        { windows::delete(&self.service, key) }
         #[cfg(target_os = "macos")]
-        {
-            macos::delete(&self.service, key)
-        }
+        { macos::delete(&self.service, key) }
+        #[cfg(target_os = "linux")]
+        { linux::delete(&self.service, key) }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        {
-            let _ = key;
-            fail(ErrorCode::StorageUnavailable)
+        { let _ = key; fail(ErrorCode::StorageUnavailable) }
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod windows {
+    use super::*;
+
+    fn entry(service: &str, key: &str) -> Result<keyring::Entry> {
+        keyring::Entry::new(service, key).map_err(map)
+    }
+
+    fn map(error: keyring::Error) -> AuthError {
+        AuthError::new(match error {
+            keyring::Error::NoStorageAccess(_) => ErrorCode::StorageDenied,
+            keyring::Error::PlatformFailure(_) => ErrorCode::StorageUnavailable,
+            _ => ErrorCode::StorageFailed,
+        })
+    }
+
+    pub fn read(service: &str, key: &str) -> Result<Option<Secret>> {
+        match entry(service, key)?.get_secret() {
+            Ok(bytes) => {
+                let bytes = zeroize::Zeroizing::new(bytes);
+                let value = String::from_utf8(bytes.to_vec())
+                    .map_err(|_| AuthError::new(ErrorCode::StorageFailed))?;
+                Ok(Some(Secret::new(value)))
+            }
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(map(error)),
+        }
+    }
+
+    pub fn write(service: &str, key: &str, value: &Secret) -> Result<()> {
+        entry(service, key)?.set_secret(value.expose().as_bytes()).map_err(map)
+    }
+
+    pub fn delete(service: &str, key: &str) -> Result<()> {
+        match entry(service, key)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(map(error)),
         }
     }
 }
@@ -166,7 +154,6 @@ mod macos {
     fn options(service: &str, key: &str) -> PasswordOptions {
         let mut options = PasswordOptions::new_generic_password(service, key);
         options.set_access_synchronized(Some(false));
-        // The library has no setter for this per-query noninteractive policy.
         #[allow(deprecated)]
         unsafe {
             options.query.push((
@@ -241,7 +228,6 @@ mod linux {
     }
 
     fn connect() -> Result<SecretService> {
-        // Zero prompt timeout prevents storage UI from appearing.
         SecretService::connect_with_max_prompt_timeout(EncryptionType::Dh, 0).map_err(map)
     }
 
