@@ -86,3 +86,6 @@ export {
     GitOpMetadata,
     GitOpsStoreOptions,
 } from './git-ops-store';
+
+export { pullRequestGit, type PullRequestGit } from './pull-request-git';
+export { discoverGitRepoRoot } from './discover-repo-root';

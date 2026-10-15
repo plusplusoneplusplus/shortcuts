@@ -21,7 +21,7 @@ export interface PullRequestFileCliResult {
 }
 
 export type PullRequestFileCliRunner = (
-    command: string,
+    command: 'gh' | 'az',
     args: string[],
     options: { cwd: string },
 ) => Promise<PullRequestFileCliResult>;
@@ -106,7 +106,7 @@ function bufferOf(value: Buffer | string): Buffer {
 }
 
 export function defaultPullRequestFileCliRunner(
-    command: string,
+    command: 'gh' | 'az',
     args: string[],
     options: { cwd: string },
 ): Promise<PullRequestFileCliResult> {

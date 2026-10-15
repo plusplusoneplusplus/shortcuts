@@ -25,6 +25,8 @@ export interface ExecGitOptions {
     timeout?: number;
     /** Working directory override (rarely needed; `-C` is preferred). */
     cwd?: string;
+    /** Environment overrides inherited by the Git process on host and WSL. */
+    env?: Record<string, string>;
     /** Cancellation for TypeScript WSL transport; unsupported for host execution. */
     signal?: AbortSignal;
 }
@@ -180,7 +182,10 @@ export async function runGitViaWsl(
     try {
         const { stdout } = await execFileAsync(
             getWslExecutablePath(),
-            buildWslCommandArgs(executionContext, ['git', ...args]),
+            buildWslCommandArgs(executionContext, [
+                ...(options.env ? ['env', ...Object.entries(options.env).map(([key, value]) => `${key}=${value}`)] : []),
+                'git', ...args,
+            ]),
             {
                 timeout: options.timeout ?? DEFAULT_TIMEOUT,
                 maxBuffer: options.maxBuffer,
@@ -274,7 +279,7 @@ export async function execGitAsync(
         return runGitViaWsl(
             executionContext,
             ['-C', execRepoRoot, ...args],
-            { maxBuffer, timeout, cwd: options?.cwd, errorArgs: args, signal: options?.signal },
+            { maxBuffer, timeout, cwd: options?.cwd, errorArgs: args, signal: options?.signal, env: options?.env },
         );
     }
 
@@ -287,5 +292,6 @@ export async function execGitAsync(
         maxBuffer: toUint32(maxBuffer, DEFAULT_MAX_BUFFER),
         timeout: toUint32(timeout, DEFAULT_TIMEOUT),
         cwd: options?.cwd,
+        env: options?.env,
     });
 }

@@ -164,6 +164,14 @@ per-file routes pass display limits into Rust and share `git/git-response.ts` wi
 conversion; untruncated responses omit truncation metadata. Host commit/range/comparison patches
 come from a per-root Rust `GitPatchStore` keyed by resolved object IDs; the benchmark
 shares its range files and summaries.
+
+CoC PR submission injects Forge `pullRequestGit` separately from `gh`/`az`.
+Host operations use Rust; WSL uses `runGitViaWsl` with argv `env` overrides.
+Default branch: symbolic origin HEAD, remote HEAD (15s, no prompt), then `main`.
+Fetch/push: 600s, no prompt. Worktree paths retain WSL identity; provider CLIs
+use the caller's checkout. Forge `discoverGitRepoRoot` handles host/WSL discovery
+from files or directories.
+
 Full-text working-tree snapshots read object IDs through Forge `readGitBlob`, with
 raw bytes, an inclusive size cap and `GitBlobTooLargeError`. Host execution uses
 native `gitReadBlob`; WSL uses the streaming byte transport in Forge. Both stop

@@ -155,6 +155,13 @@ describe('execGitAsync on the native path', () => {
         );
     });
 
+    it('passes environment overrides to Rust while retaining the inherited runtime', async () => {
+        await expect(execGitAsync(['config', '--get', 'forge.testenv'], repo, { env: {
+            GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'forge.testenv', GIT_CONFIG_VALUE_0: 'from-native-env',
+        } })).resolves.toBe('from-native-env');
+        expect(mockedExecFileAsync).not.toHaveBeenCalled();
+    });
+
     it('uses defaults generous enough for an ordinary command', async () => {
         await expect(execGitAsync(['log', '--format=%s'], repo)).resolves.toBe('initial commit');
     });
