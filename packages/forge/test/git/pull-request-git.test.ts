@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
-import { pullRequestGit } from '../../src/git/pull-request-git';
+import { createPullRequestGit, pullRequestGit } from '../../src/git/pull-request-git';
 import { ensureGitSafeDirectoryAsync } from '../../src/git/safe-directory';
 import { execFileAsync } from '../../src/utils/exec-utils';
 import { resolveWorkspaceExecutionContext, translatePathForHostFilesystem } from '../../src/utils/workspace-execution';
@@ -131,5 +131,18 @@ it('rejects a worktree from another distro before creating a branch', async () =
     vi.mocked(resolveWorkspaceExecutionContext).mockReturnValue(wsl);
     await expect(pullRequestGit.addWorktree(repo, 'topic', String.raw`\\wsl$\Debian\tmp\worktree`, 'main'))
         .rejects.toThrow('expected "Ubuntu"');
+    expect(execFileAsync).not.toHaveBeenCalled();
+});
+
+it('keeps the exact commands and deadlines when a caller injects its own runner', async () => {
+    const run = vi.fn().mockResolvedValueOnce('origin/release').mockResolvedValueOnce('');
+    const git = createPullRequestGit(run);
+    expect(await git.defaultBranch(repo)).toBe('release');
+    await git.pushBranch(repo, 'topic');
+    expect(run.mock.calls).toEqual([
+        [repo, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']],
+        [repo, ['push', '-u', 'origin', 'topic'], { timeout: 600_000, env: { GIT_TERMINAL_PROMPT: '0' } }],
+    ]);
+    expect(native).not.toHaveBeenCalled();
     expect(execFileAsync).not.toHaveBeenCalled();
 });

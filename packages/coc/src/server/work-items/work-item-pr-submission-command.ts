@@ -20,6 +20,7 @@ import {
     isLocalOnlyWorkflowLeaf,
     requireWorkItem,
     settleWorkItemBroadcast,
+    workItemRunnerPullRequestGit,
     workspaceRootPath,
     type WorkItemCommandRunner,
     type WorkItemCommandScope,
@@ -142,7 +143,12 @@ export async function submitWorkItemPullRequest(options: {
         commits: [...change.commits].reverse().map(commit => commit.sha),
         branch: branchName,
         autoMerge: false,
-    }, { runCommand: options.runCommand, tempDir: options.tempDir });
+    }, {
+        runCommand: options.runCommand,
+        // The runner executes the PR's git commands too; Forge still chooses them.
+        git: workItemRunnerPullRequestGit(options.runCommand),
+        tempDir: options.tempDir,
+    });
     return { branchName: created.branch, prUrl: created.url, prNumber: created.id };
 }
 
