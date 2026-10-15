@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Per-tab registry "Features" sections (AI & Execution, Chat, Appearance,
+ * Per-tab registry "Features" sections (AI & Execution, Chat, Sentinel, Appearance,
  * Integrations). Each tab lists only the toggles placed on it; Save sends
  * only that tab's keys; Cancel reverts only that tab's edits.
  */
@@ -34,7 +34,7 @@ import type { AdminFeatureSettings } from '../../../src/server/spa/client/react/
 import type { FeatureSettingTab } from '../../../src/config/admin-setting-definitions';
 
 type SectionTab = Exclude<FeatureSettingTab, 'features'>;
-const SECTION_TABS: SectionTab[] = ['ai', 'chat', 'appearance', 'integrations'];
+const SECTION_TABS: SectionTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'integrations'];
 
 let controller: AdminFeatureSettings;
 
@@ -118,7 +118,7 @@ describe('TabFeatureSettingsCard', () => {
     });
 
     it('omits the ledger toggle and keeps Sentinel Mode and Scrubber independently default-off', () => {
-        render(<Harness tabs={['ai']} />);
+        render(<Harness tabs={['sentinel']} />);
         expect(screen.queryByTestId('toggle-sentinel-todo-ledger-enabled')).toBeNull();
         expect(controller.featureValues).not.toHaveProperty('features.sentinelTodoLedger');
         expect(controller.featureValues['features.sentinelTodoScrubber']).toBe(false);
@@ -182,37 +182,83 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.isTabDirty(tab)).toBe(false);
     });
 
-    it('cancel on one tab keeps unsaved edits on another tab', () => {
-        render(<Harness tabs={['ai', 'appearance']} />);
-        const aiDef = toggleDef('ai');
+    it.each<SectionTab>(['ai', 'sentinel'])('cancel on %s keeps unsaved edits on another tab', tab => {
+        render(<Harness tabs={[tab, 'appearance']} />);
+        const aiDef = toggleDef(tab);
         const appDef = toggleDef('appearance');
         const aiBefore = controller.featureValues[aiDef.key];
         const appBefore = controller.featureValues[appDef.key];
         fireEvent.click(screen.getByTestId(aiDef.ui!.testId));
         fireEvent.click(screen.getByTestId(appDef.ui!.testId));
 
-        act(() => controller.handleCancelTab('ai'));
+        act(() => controller.handleCancelTab(tab));
 
         expect(controller.featureValues[aiDef.key]).toBe(aiBefore);
         expect(controller.featureValues[appDef.key]).toBe(!appBefore);
-        expect(controller.isTabDirty('ai')).toBe(false);
+        expect(controller.isTabDirty(tab)).toBe(false);
         expect(controller.isTabDirty('appearance')).toBe(true);
     });
 
-    it('saving one tab leaves another tab\'s edits pending', async () => {
-        render(<Harness tabs={['chat', 'integrations']} />);
-        const chatDef = toggleDef('chat');
+    it.each<SectionTab>(['chat', 'sentinel'])('saving %s leaves another tab\'s edits pending', async tab => {
+        render(<Harness tabs={[tab, 'integrations']} />);
+        const chatDef = toggleDef(tab);
         const intDef = toggleDef('integrations');
         fireEvent.click(screen.getByTestId(chatDef.ui!.testId));
         fireEvent.click(screen.getByTestId(intDef.ui!.testId));
 
-        await act(async () => { await controller.handleSaveTab('chat'); });
+        await act(async () => { await controller.handleSaveTab(tab); });
 
         const payload = updateConfig.mock.calls[0][0] as Record<string, unknown>;
         expect(intDef.key in payload).toBe(false);
-        expect(controller.isTabDirty('chat')).toBe(false);
+        expect(controller.isTabDirty(tab)).toBe(false);
         expect(controller.isTabDirty('integrations')).toBe(true);
     });
+
+    it('keeps a failed Sentinel save dirty and cancels back to hydrated values only', async () => {
+        render(<Harness tabs={['sentinel', 'chat']} />);
+        act(() => controller.hydrate({
+            sentinel: { enabled: true },
+            features: { sentinelTodoTags: true, sentinelResultCards: false },
+        }));
+        expect(controller.isTabDirty('sentinel')).toBe(false);
+        fireEvent.click(screen.getByTestId('toggle-sentinel-todo-tags-enabled'));
+        const chatDef = toggleDef('chat');
+        fireEvent.click(screen.getByTestId(chatDef.ui!.testId));
+        updateConfig.mockRejectedValueOnce(new Error('Save failed'));
+        await act(async () => { await controller.handleSaveTab('sentinel'); });
+        expect(controller.isTabDirty('sentinel')).toBe(true);
+        expect(controller.savingTab).toBeNull();
+        expect(applyRuntimeConfigPatch).not.toHaveBeenCalled();
+
+        act(() => controller.handleCancelTab('sentinel'));
+        expect(controller.featureValues['sentinel.enabled']).toBe(true);
+        expect(controller.featureValues['features.sentinelTodoTags']).toBe(true);
+        expect(controller.featureValues['features.sentinelResultCards']).toBe(false);
+        expect(controller.isTabDirty('sentinel')).toBe(false);
+        expect(controller.isTabDirty('chat')).toBe(true);
+    });
+
+    it.each<FeatureSettingTab>(['ai', 'chat', 'appearance', 'integrations', 'features'])(
+        'saving or canceling %s cannot consume pending Sentinel edits',
+        async tab => {
+            render(<Harness tabs={['sentinel']} />);
+            const def = getTabFeatureSettings(tab).find(d => d.value.kind === 'boolean' && !d.ui!.dependsOn)!;
+            fireEvent.click(screen.getByTestId('toggle-sentinel-enabled'));
+            act(() => controller.setFeatureValues(prev => ({ ...prev, [def.key]: prev[def.key] !== true })));
+            await act(async () => { await controller.handleSaveTab(tab); });
+            expect(controller.isTabDirty(tab)).toBe(false);
+            expect(controller.isTabDirty('sentinel')).toBe(true);
+            const payload = updateConfig.mock.calls[0][0];
+            const runtimePatch = applyRuntimeConfigPatch.mock.calls[0][0];
+            for (const sentinel of getTabFeatureSettings('sentinel')) {
+                expect(Object.keys(payload)).not.toContain(sentinel.key);
+                expect(runtimePatch).not.toHaveProperty(sentinel.runtimeFlag!);
+            }
+            act(() => controller.handleCancelTab(tab));
+            expect(controller.featureValues['sentinel.enabled']).toBe(true);
+            expect(controller.isTabDirty('sentinel')).toBe(true);
+        },
+    );
 
     it('the section Save button calls updateConfig', async () => {
         render(<Harness tabs={['chat']} />);

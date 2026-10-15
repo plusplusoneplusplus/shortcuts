@@ -9,6 +9,12 @@ function makeClient(baseUrl = '') {
     return { client: new CocClient({ baseUrl, fetch }), fetch };
 }
 
+it('manual Git refresh bypasses the server cache on the owning endpoint', async () => {
+    const { client, fetch } = makeClient('https://owner.example');
+    await readWorkspaceGitInfo(client, 'ws-one', true);
+    expect(String(fetch.mock.calls[0][0])).toBe('https://owner.example/api/workspaces/ws-one/git-info?refresh=true');
+});
+
 describe.each([
     ['Git info', readWorkspaceGitInfo],
     ['queue', readWorkspaceQueue],
@@ -26,6 +32,21 @@ describe.each([
     });
 
     describe('refresh supersession', () => {
+        it('invalidates sharing without cancelling current consumers and replaces their result on a fresh read', async () => {
+            const { client, fetch } = makeClient();
+            let finish!: (value: Response) => void;
+            fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+            const abandoned = read(client, 'ws-one');
+            read.invalidate(client, 'ws-one');
+            const fresh = read(client, 'ws-one');
+            expect(fresh).not.toBe(abandoned);
+            expect(fetch).toHaveBeenCalledTimes(2);
+            const value = await fresh;
+            finish(new Response(JSON.stringify({ queued: [{ id: 'stale' }], running: [] }),
+                { headers: { 'content-type': 'application/json' } }));
+            expect(await abandoned).toEqual(value);
+        });
+
         it('an unresolved seed follows refreshes after earlier replacements have settled', async () => {
             const { client, fetch } = makeClient();
             let resolveSeed!: (response: Response) => void;

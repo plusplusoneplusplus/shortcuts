@@ -46,10 +46,13 @@ visual layer.
 
 ## Clone routing
 
-`RepoDetail.tsx` routes the queue seed through `useCocClient(sourceSelectionId)`
-and `api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
-Queue hydration accepts an empty task list only from its recorded server/API
-source; stats-only placeholders still require a seed. Router, chat openers and
+`RepoDetail.tsx` routes queue reconciliation through
+`useWorkspaceQueueSeed`, `useCocClient(sourceSelectionId)` and
+`api/workspaceReads.ts`, sharing concurrent reads with `RepoChatTab`.
+Mount and owning-socket reconnect revalidate cached rows; reconnect reads
+supersede pending requests. Queue/history cache keys isolate server/API owners.
+Reducer task revisions reject pre-snapshot REST writes, while stats-only
+placeholders still admit task hydration. Router, chat openers and
 panel hosts use `selectedTaskIdByRepo[sourceSelectionId]` for one concrete owner;
 remote selections never mirror into bare workspace keys. Explicit chat routes
 retain missing/unavailable process identities for detail errors, and unresolved
@@ -58,9 +61,9 @@ Resume Queue use `getCocClientForWorkspace(ws.id)`. Work-item commit reviews rec
 through `WorkItemsTab` and `WorkItemCommitReviewPane` as
 `attachmentDestinationId`; diff payloads keep the plain workspace id.
 `/chat/launch-terminal` deliberately stays on the local-origin
-`fetchApi` — it spawns a terminal on whichever machine runs the server. The queue
-store is still fed by the LOCAL websocket only, so remote-sourced rows can be
-overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
+`fetchApi` — it spawns a terminal on whichever machine runs the server. Local and
+remote queue WebSocket snapshots retain their owning source; remote aggregates
+and process events cannot replace page-origin queue or process-index state.
 
 ## Workspace right panel
 
@@ -94,11 +97,17 @@ come from owner-verified compact snapshots; unknown modes are omitted and Ralph
 session identity is preserved. Nonzero count controls expand the left column
 when selected. `features.railManualRefresh` (default on, Appearance) gates
 `RefreshSidebarButton`; `RepoChatTab.handleRefresh` shares the expanded list's
-queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read and
-an optional `refreshList` for aggregate groups. Reads retain owner/source and
-reject superseded/live-stale snapshots; unavailable owners report errors without
-local fallback. Refresh keeps navigation, selection and collapse state and never
-mutates scheduling. Missing config/bootstrap settings enable refresh; explicit
+queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read,
+an optional `refreshList` for aggregate groups and the host's `refreshGit`.
+Hosts own `useRepoRailGit`/`useGroupRailGit` and supply their status to rail
+views; manual refresh reads Git even with tiles disabled or the sidebar expanded.
+Git-info single/batch reads bypass server freshness/backoff and report failures;
+groups read live members on their owner, never their virtual root.
+Independent domains settle before busy clears and report partial errors. Reads
+retain owner/source and reject superseded/live-stale snapshots; unavailable
+owners report errors without local fallback. Refresh preserves drafts, navigation,
+selection and collapse state and never fetches, pulls or mutates Git or scheduling.
+Missing config/bootstrap settings enable refresh; explicit
 saved false disables it. With `features.railGitSummary`
 on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;
@@ -109,11 +118,17 @@ shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
 the rail while preserving the popup's Git links. Owner changes reset the selector.
 The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
-history paging and outgoing prefix, with shared `CommitIdentity` rows. Owner,
+history paging and outgoing prefix, with shared `CommitIdentity` rows. Group
+cards keep identity, branch and Git navigation together and omit outgoing
+sections only for a successful, resolved upstream comparison with explicit zero
+ahead; pending, failed and unavailable comparisons remain visible. Owner,
 branch, upstream and status-read changes discard old history. Missing upstream,
 failed reads and inconsistent counts remain explicit; hover never fetches or
-mutates Git. Commit navigation carries a transient owner-qualified known commit
-through `SET_GIT_ROUTE`, including paged rows and server-qualified group/member scope.
+mutates Git. Outgoing rows use the rail's detail intent to cancel full-sidebar
+peek timers without changing either sidebar collapse flag. Commit navigation
+replaces the owner-qualified hash, records its route suffix and carries the exact
+known commit through `SET_GIT_ROUTE`, retaining paged metadata and group/member scope
+without invoking generic tab navigation.
 `features.railStatusActions` defaults on, with
 explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
 rail slot (`layout/railStatusSlot.ts`)

@@ -440,6 +440,24 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.workItems?.sync?.github).toEqual({ owner: 'octo-org', repo: 'octo-repo' });
     });
 
+    it('isolates GitHub host/account preferences by workspace and preserves invalid selections for explicit failure', () => {
+        writeRepoPreferences(tmpDir, 'workspace-a', {
+            workItems: { sync: { github: { host: 'github.example', login: 'account-a' } } },
+        });
+        writeRepoPreferences(tmpDir, 'workspace-b', {
+            workItems: { sync: { github: { login: 'account-b' } } },
+        });
+        expect(readRepoPreferences(tmpDir, 'workspace-a').workItems?.sync?.github)
+            .toEqual({ host: 'github.example', login: 'account-a' });
+        expect(readRepoPreferences(tmpDir, 'workspace-b').workItems?.sync?.github)
+            .toEqual({ login: 'account-b' });
+        writeRepoPreferences(tmpDir, 'workspace-a', {
+            workItems: { sync: { github: { host: '', login: '' } } },
+        });
+        expect(readRepoPreferences(tmpDir, 'workspace-a').workItems?.sync?.github)
+            .toEqual({ host: '', login: '' });
+    });
+
     it('round-trips workspace dreams opt-in preference', () => {
         writeRepoPreferences(tmpDir, 'r', { dreams: { enabled: true } });
         const loaded = readRepoPreferences(tmpDir, 'r');
@@ -3120,6 +3138,26 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
             },
         }));
     });
+
+    it.each([{ host: null }, { login: 42 }, { login: '' }])(
+        'PATCH invalid GitHub auth selection stays unusable instead of restoring the previous selection: %j',
+        async selection => {
+            writeRepoPreferences(tmpDir, 'workspace-a', {
+                workItems: { sync: { github: { host: 'github.example', login: 'account-a' } } },
+            });
+            const routes: Route[] = [];
+            registerPreferencesRoutes(routes, tmpDir);
+            const found = findRoute(routes, 'PATCH', '/api/workspaces/workspace-a/preferences')!;
+            const res = fakeRes();
+            await found.route.handler(fakeReq('PATCH', {
+                workItems: { sync: { github: selection } },
+            }), res, found.match);
+            expect(res.statusCode).toBe(200);
+            const github = readRepoPreferences(tmpDir, 'workspace-a').workItems?.sync?.github;
+            if ('host' in selection) expect(github?.host).toBe('');
+            if ('login' in selection) expect(github?.login).toBe('');
+        },
+    );
 
     it('PATCH workItems Azure Boards polling prefs preserves GitHub prefs and triggers live callback', async () => {
         writeRepoPreferences(tmpDir, 'my_work', {

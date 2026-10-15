@@ -2,6 +2,8 @@ import { getRemoteUrl } from '@plusplusoneplusplus/forge';
 import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 
 export interface WorkItemSyncGithubPreference {
+    host?: string;
+    login?: string;
     owner?: string;
     repo?: string;
     [key: string]: unknown;
@@ -29,11 +31,12 @@ export type GitHubWorkItemSyncRepo =
         repo: string;
         url: string;
         source: 'preference' | 'workspaceRemote' | 'origin';
+        login?: string;
     }
     | {
         available: false;
         provider: 'github';
-        reason: 'incomplete-preference' | 'missing-workspace' | 'missing-origin' | 'non-github-origin';
+        reason: 'incomplete-preference' | 'invalid-host' | 'missing-workspace' | 'missing-origin' | 'non-github-origin';
     };
 
 export interface ResolveGitHubWorkItemSyncRepoOptions {
@@ -42,7 +45,7 @@ export interface ResolveGitHubWorkItemSyncRepoOptions {
     readOriginRemote?: (rootPath: string) => string | undefined | Promise<string | undefined>;
 }
 
-export function parseGitHubRemoteUrl(remoteUrl: string): { owner: string; repo: string; url: string } | undefined {
+export function parseGitHubRemoteUrl(remoteUrl: string, host = 'github.com'): { owner: string; repo: string; url: string } | undefined {
     const trimmed = remoteUrl.trim();
     if (!trimmed) return undefined;
 
@@ -50,14 +53,15 @@ export function parseGitHubRemoteUrl(remoteUrl: string): { owner: string; repo: 
     let owner: string | undefined;
     let repo: string | undefined;
 
-    const scpLike = normalized.match(/^git@github\.com:([^/]+)\/(.+)$/i);
+    const scpLike = normalized.match(/^git@([^:]+):([^/]+)\/(.+)$/i);
     if (scpLike) {
-        owner = scpLike[1];
-        repo = scpLike[2];
+        if (scpLike[1].toLowerCase() !== host) return undefined;
+        owner = scpLike[2];
+        repo = scpLike[3];
     } else {
         try {
             const parsed = new URL(normalized);
-            if (parsed.hostname.toLowerCase() !== 'github.com') return undefined;
+            if (parsed.hostname.toLowerCase() !== host || parsed.port) return undefined;
             const parts = parsed.pathname.replace(/^\/+/, '').split('/');
             if (parts.length >= 2) {
                 owner = parts[0];
@@ -77,7 +81,7 @@ export function parseGitHubRemoteUrl(remoteUrl: string): { owner: string; repo: 
     return {
         owner: cleanOwner,
         repo: cleanRepo,
-        url: `https://github.com/${cleanOwner}/${cleanRepo}`,
+        url: `https://${host}/${cleanOwner}/${cleanRepo}`,
     };
 }
 
@@ -109,6 +113,12 @@ export async function readGitOriginRemote(rootPath: string): Promise<string | un
 
 export async function resolveGitHubWorkItemSyncRepo(options: ResolveGitHubWorkItemSyncRepoOptions): Promise<GitHubWorkItemSyncRepo> {
     const pref = options.preferences?.workItems?.sync?.github;
+    const host = pref?.host ?? 'github.com';
+    if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(host)) {
+        return { available: false, provider: 'github', reason: 'invalid-host' };
+    }
+    const normalizedHost = host.toLowerCase();
+    const account = pref?.login !== undefined ? { login: pref.login } : {};
     const prefOwner = pref?.owner?.trim();
     const prefRepo = pref?.repo?.trim();
     if (prefOwner || prefRepo) {
@@ -120,16 +130,17 @@ export async function resolveGitHubWorkItemSyncRepo(options: ResolveGitHubWorkIt
             provider: 'github',
             owner: prefOwner,
             repo: prefRepo,
-            url: `https://github.com/${prefOwner}/${prefRepo}`,
+            url: `https://${normalizedHost}/${prefOwner}/${prefRepo}`,
             source: 'preference',
+            ...account,
         };
     }
 
     const workspaceRemote = options.workspace?.remoteUrl;
     if (workspaceRemote) {
-        const parsed = parseGitHubRemoteUrl(workspaceRemote);
+        const parsed = parseGitHubRemoteUrl(workspaceRemote, normalizedHost);
         if (parsed) {
-            return { available: true, provider: 'github', source: 'workspaceRemote', ...parsed };
+            return { available: true, provider: 'github', source: 'workspaceRemote', ...parsed, ...account };
         }
     }
 
@@ -143,10 +154,10 @@ export async function resolveGitHubWorkItemSyncRepo(options: ResolveGitHubWorkIt
         return { available: false, provider: 'github', reason: 'missing-origin' };
     }
 
-    const parsed = parseGitHubRemoteUrl(originRemote);
+    const parsed = parseGitHubRemoteUrl(originRemote, normalizedHost);
     if (!parsed) {
         return { available: false, provider: 'github', reason: 'non-github-origin' };
     }
 
-    return { available: true, provider: 'github', source: 'origin', ...parsed };
+    return { available: true, provider: 'github', source: 'origin', ...parsed, ...account };
 }

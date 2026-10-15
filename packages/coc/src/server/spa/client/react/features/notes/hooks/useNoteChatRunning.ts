@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { useQueueOptional } from '../../../contexts/QueueContext';
+import { workspaceReadCacheKey, workspaceReadSource } from '../../../api/workspaceReads';
 
 /**
  * Live "chat ongoing" signal for the notes tree (AC-01).
@@ -69,8 +70,8 @@ export function useNoteChatRunning(workspaceId: string): (node: NoteTreeNode) =>
     const [bindings, setBindings] = useState<Record<string, string>>({});
 
     const runningTaskIds = useMemo(
-        () => collectRunningTaskIds(queue?.state.repoQueueMap[workspaceId]),
-        [queue?.state.repoQueueMap, workspaceId],
+        () => collectRunningTaskIds(queue?.state.repoQueueMap[workspaceReadCacheKey(workspaceId, workspaceReadSource(cloneClient))]),
+        [queue?.state.repoQueueMap, workspaceId, cloneClient],
     );
 
     // A stable key over the running set so the bindings re-fetch fires only when

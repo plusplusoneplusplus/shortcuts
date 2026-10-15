@@ -91,6 +91,7 @@ const BACKGROUND_CONCURRENCY = 4;
  */
 export class GitInfoCacheService {
     private entries = new Map<string, GitInfoEntry>();
+    private refreshReads = new Map<string, Promise<GitInfoCacheRead>>();
     private timer: ReturnType<typeof setInterval> | null = null;
     private fetchFn: ((workspaceId: string) => Promise<GitInfoResult | GitInfoFetchValue>) | null = null;
     private getActiveWorkspaceIds: (() => string[]) | null = null;
@@ -163,12 +164,27 @@ export class GitInfoCacheService {
      * - Fresh (age ≤ STALE_THRESHOLD_MS): return cached data immediately.
      * - Stale / missing: await in-flight fetch (or start one) before returning.
      */
-    async getOrFetch(workspaceId: string): Promise<GitInfoResult> {
-        return (await this.getOrFetchWithOutcome(workspaceId)).data;
+    async getOrFetch(workspaceId: string, refresh = false): Promise<GitInfoResult> {
+        return (await this.getOrFetchWithOutcome(workspaceId, refresh)).data;
     }
 
     /** Return git-info together with cache and subprocess observability metadata. */
-    async getOrFetchWithOutcome(workspaceId: string): Promise<GitInfoCacheRead> {
+    async getOrFetchWithOutcome(workspaceId: string, refresh = false): Promise<GitInfoCacheRead> {
+        if (refresh) {
+            const pending = this.refreshReads.get(workspaceId);
+            if (pending) { return pending; }
+            const read = (async () => {
+                // A manual read starts after any earlier status read, bypassing
+                // both the freshness window and failure backoff.
+                await this.entries.get(workspaceId)?.inflight;
+                const data = await this.triggerFetch(workspaceId);
+                const completed = this.entries.get(workspaceId);
+                if (completed?.failureCount) { throw new Error('Could not read Git status.'); }
+                return this.buildRead(data, 'invalidated', completed, true);
+            })().finally(() => { this.refreshReads.delete(workspaceId); });
+            this.refreshReads.set(workspaceId, read);
+            return read;
+        }
         const entry = this.entries.get(workspaceId);
 
         if (!entry) {

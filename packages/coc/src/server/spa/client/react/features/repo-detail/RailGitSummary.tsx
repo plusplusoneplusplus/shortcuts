@@ -10,7 +10,8 @@ import { BranchPickerModal } from '../git/branches/BranchPickerModal';
 import { isExplorerDirty } from './explorer/explorerDirtyStore';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { cn } from '../../ui';
-import { useApp } from '../../contexts/AppContext';
+import { useApp, type AppAction } from '../../contexts/AppContext';
+import { buildGitRouteHash, buildGitRouteSuffix } from '../../layout/gitRoute';
 import { formatRelativeTime } from '../../utils/format';
 import type { RepoGroupMember } from '../../repos/repoGroupService';
 import { BRANCH_RANGE_DEEP_LINK } from '../git/repoGitTab/useRepoGitSelection';
@@ -47,6 +48,18 @@ const GROUP_ROW_CLASS = 'border-b border-[#e5e5e5] px-2 py-1 text-[11px] last:bo
 const META_CLASS = 'text-[10px] text-[#656d76] dark:text-[#aaa]';
 /** Re-read on preview at most this often; hover alone can retrigger it. */
 const PREVIEW_REFRESH_MS = 5000;
+
+function openOutgoingCommit(rail: RailControls, dispatch: (action: AppAction) => void,
+    routeWorkspaceId: string, workspaceId: string, sourceSelectionId: string, commit: GitCommit) {
+    rail.onOpenGit?.('branch', 'detail');
+    const route = { routeWorkspaceId, workspaceId, commitHash: commit.hash, filePath: null };
+    const routeSelectionId = routeWorkspaceId === workspaceId ? sourceSelectionId : routeWorkspaceId;
+    // Keep the workspace shell and supplied metadata: generic hash navigation
+    // switches tabs and republishes the route without the already-read commit.
+    window.history.replaceState(null, '', buildGitRouteHash({ ...route, routeWorkspaceId: routeSelectionId }));
+    dispatch({ type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: routeSelectionId, suffix: buildGitRouteSuffix(route) });
+    dispatch({ type: 'SET_GIT_ROUTE', ...route, knownCommit: { sourceSelectionId, commit } });
+}
 
 interface Tiles {
     changes: RailGitTile;
@@ -132,7 +145,13 @@ interface RepoProps {
 
 /** Rail Git tiles for one repository on its owning server. */
 export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: RepoProps) {
-    const { input, refresh } = useRepoRailGit({ client, routingRef, workspaceId, enabled: true });
+    const status = useRepoRailGit({ client, routingRef, workspaceId, enabled: true });
+    return <RepoRailGitView workspaceId={workspaceId} routingRef={routingRef} client={client} scopeLabel={scopeLabel} status={status} />;
+}
+
+export function RepoRailGitView({ workspaceId, routingRef, client, scopeLabel, status }: RepoProps & { status: ReturnType<typeof useRepoRailGit> }) {
+    const { input } = status;
+    const refresh = useCallback(() => { void status.refresh(); }, [status.refresh]);
     const rail = useRail(refresh);
     const { dispatch } = useApp();
     if (!rail) return null;
@@ -151,9 +170,7 @@ export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: Rep
     };
     const canSwitch = !!input.info.data?.isGitRepo && !(parseRemoteCloneKey(routingRef) && !client.options?.baseUrl);
     const openCommit = (commit: GitCommit) => {
-        rail.onOpenGit?.('branch');
-        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: workspaceId, workspaceId, commitHash: commit.hash, filePath: null,
-            knownCommit: { sourceSelectionId: routingRef, commit } });
+        openOutgoingCommit(rail, dispatch, workspaceId, workspaceId, routingRef, commit);
     };
     const body = (dismiss: () => void, syncPreview: boolean) => (
         <RepoPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}:${workspaceId}`}
@@ -222,7 +239,13 @@ interface GroupProps {
 
 /** Rail Git tiles for a repo group: member counts plus a per-member preview. */
 export function GroupRailGit({ selectionId, routingRef, client, members, scopeLabel }: GroupProps) {
-    const { input, refresh } = useGroupRailGit({ client, routingRef, members, enabled: true });
+    const status = useGroupRailGit({ client, routingRef, members, enabled: true });
+    return <GroupRailGitView selectionId={selectionId} routingRef={routingRef} client={client} members={members} scopeLabel={scopeLabel} status={status} />;
+}
+
+export function GroupRailGitView({ selectionId, routingRef, client, scopeLabel, status }: GroupProps & { status: ReturnType<typeof useGroupRailGit> }) {
+    const { input } = status;
+    const refresh = useCallback(() => { void status.refresh(); }, [status.refresh]);
     const rail = useRail(refresh);
     const { dispatch } = useApp();
     if (!rail) return null;
@@ -235,9 +258,13 @@ export function GroupRailGit({ selectionId, routingRef, client, members, scopeLa
     const openGit = () => rail.onOpenGit?.('changes');
     const actions: Actions = { openChanges: openGit, openSync: openGit };
     const openMember = (memberId: string, commit?: GitCommit) => {
+        if (commit) {
+            openOutgoingCommit(rail, dispatch, selectionId, memberId,
+                routingRefForPanelOwner(routingRef, memberId) ?? memberId, commit);
+            return;
+        }
         rail.onOpenGit?.('branch');
-        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: commit?.hash ?? null, filePath: null,
-            ...(commit ? { knownCommit: { sourceSelectionId: routingRefForPanelOwner(routingRef, memberId) ?? memberId, commit } } : {}) });
+        dispatch({ type: 'SET_GIT_ROUTE', routeWorkspaceId: selectionId, workspaceId: memberId, commitHash: null, filePath: null });
     };
     const body = (dismiss: () => void, syncPreview: boolean) => <GroupPreviewBody key={`${routingRef}:${client.options?.baseUrl ?? 'local'}`}
         input={input} tiles={tiles} dismiss={dismiss} onOpenMember={openMember} onRetry={refresh}
@@ -254,20 +281,20 @@ function GroupPreviewBody({ input, tiles, dismiss, onOpenMember, onRetry, client
         {(input.members ?? []).map(member => {
             const line = describeGroupMember(member);
             return (
-                <li key={member.id} className={cn(GROUP_ROW_CLASS, 'flex items-start gap-2')} data-testid="rail-git-member" data-member={member.id}>
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-1.5">
+                <li key={member.id} className={GROUP_ROW_CLASS} data-testid="rail-git-member" data-member={member.id}>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5">
                             <span className="min-w-0 break-all font-medium">{member.name}</span>
                             <span className={cn(META_CLASS, 'min-w-0 break-all font-mono')}>{line.branch}</span>
                         </div>
-                        <div className={cn(META_CLASS, 'break-all')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
-                        {syncPreview && <RailOutgoingCommits client={client} routingRef={routingRef} workspaceId={member.id}
-                            info={member.info} readAt={input.read.readAt} loading={input.read.loading} failed={member.stale || input.read.failed}
-                            onOpen={commit => { dismiss(); onOpenMember(member.id, commit); }} onRetry={onRetry} />}
+                        {!member.stale && member.info?.isGitRepo && (
+                            <button type="button" className={cn(COMPACT_ACTION_CLASS, 'inline-flex h-6 min-w-6 shrink-0 items-center justify-center leading-none')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>
+                        )}
                     </div>
-                    {!member.stale && member.info?.isGitRepo && (
-                        <button type="button" className={cn(COMPACT_ACTION_CLASS, 'shrink-0')} aria-label={`Open ${member.name} Git`} title={`Open ${member.name} Git`} onClick={() => { dismiss(); onOpenMember(member.id); }}>Git</button>
-                    )}
+                    <div className={cn(META_CLASS, 'break-all leading-tight')}>{[line.changes, line.sync].filter(Boolean).join(' · ')}</div>
+                    {syncPreview && <RailOutgoingCommits compact client={client} routingRef={routingRef} workspaceId={member.id}
+                        info={member.info} readAt={input.read.readAt} loading={input.read.loading} failed={member.stale || input.read.failed}
+                        onOpen={commit => { dismiss(); onOpenMember(member.id, commit); }} onRetry={onRetry} />}
                 </li>
             );
         })}

@@ -218,7 +218,10 @@ export async function buildWorkItemSyncStatusRouteResponse(
     }
 
     const providerContext = await buildProviderContext(workspaceId);
-    const remoteProvider = detectWorkItemSyncProviderFromRemoteUrl(providerContext.workspace?.remoteUrl);
+    const remoteProvider = detectWorkItemSyncProviderFromRemoteUrl(
+        providerContext.workspace?.remoteUrl,
+        providerContext.preferences.workItems?.sync?.github?.host,
+    );
     const providerNames = providerName
         ? [providerName]
         : remoteProvider ? [remoteProvider] : [];
@@ -307,7 +310,8 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
         const configuredOwner = status.repository?.owner;
         const configuredRepo = status.repository?.repo;
-        if (!configuredOwner || !configuredRepo) {
+        const configuredUrl = status.repository?.url;
+        if (!configuredOwner || !configuredRepo || !configuredUrl) {
             throw providerUnavailableError(status);
         }
 
@@ -318,8 +322,9 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 provider: 'github',
                 owner: configuredOwner,
                 repo: configuredRepo,
-                url: status.repository?.url ?? `https://github.com/${configuredOwner}/${configuredRepo}`,
+                url: configuredUrl,
                 source: (status.repository?.source as 'preference' | 'workspaceRemote' | 'origin') ?? 'origin',
+                login: providerContext.preferences.workItems?.sync?.github?.login,
             },
         };
     }
@@ -413,13 +418,13 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 let issueNumber = explicitIssueNumber;
                 if (issueUrl) {
-                    const urlMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/i.exec(issueUrl);
-                    if (!urlMatch) {
+                    const urlMatch = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/i.exec(issueUrl);
+                    if (!urlMatch || urlMatch[1].toLowerCase() !== new URL(repo.url).hostname) {
                         throw badRequest(
-                            'issueUrl must be a valid GitHub issue URL: https://github.com/<owner>/<repo>/issues/<number>',
+                            'issueUrl must be a valid GitHub issue URL on the workspace-configured host.',
                         );
                     }
-                    const [, urlOwner, urlRepo, issueNumberStr] = urlMatch;
+                    const [, , urlOwner, urlRepo, issueNumberStr] = urlMatch;
                     const urlIssueNumber = parseInt(issueNumberStr, 10);
                     if (
                         urlOwner.toLowerCase() !== configuredOwner.toLowerCase() ||

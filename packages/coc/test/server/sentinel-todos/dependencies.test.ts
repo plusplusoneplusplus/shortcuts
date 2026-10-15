@@ -1,8 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
-import ts from 'typescript';
+import { build } from 'esbuild';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
     MAX_TODO_DEPENDENCIES, SentinelTodoError, SentinelTodoStore,
@@ -189,11 +190,16 @@ describe('Sentinel dependency graph storage', () => {
     it('serializes simultaneous inverse edges so exactly one wins and no cycle is committed', async () => {
         const a = create('A');
         const b = create('B');
-        const source = fs.readFileSync(new URL('../../../src/server/sentinel-todos/sentinel-todo-store.ts', import.meta.url), 'utf8');
         const moduleFile = path.join(database.dataDir, 'store.cjs');
-        fs.writeFileSync(moduleFile, ts.transpileModule(source, {
-            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-        }).outputText);
+        const { metafile } = await build({
+            entryPoints: [fileURLToPath(new URL('../../../src/server/sentinel-todos/sentinel-todo-store.ts', import.meta.url))],
+            outfile: moduleFile, bundle: true, packages: 'external', platform: 'node', format: 'cjs', target: 'es2022',
+            alias: { '@plusplusoneplusplus/coc-client': fileURLToPath(new URL('../../../../coc-client/src/index.ts', import.meta.url)) },
+            metafile: true,
+        });
+        expect(Object.values(metafile.outputs).flatMap(output => output.imports)).not.toContainEqual(
+            expect.objectContaining({ path: '@plusplusoneplusplus/coc-client', external: true }),
+        );
         const workers = [a, b].map((item, index) => new Worker(`
             const { parentPort, workerData } = require('node:worker_threads');
             const { NativeDatabase } = require('@plusplusoneplusplus/coc-native');

@@ -207,7 +207,7 @@ describe('job and review labels', () => {
     });
 
     it('words job execution apart from fulfillment and marks remote jobs unavailable', () => {
-        expect(sentinelTodoJobStateLabel(job({ state: 'completed' }))).toBe('Job completed');
+        expect(sentinelTodoJobStateLabel(job({ state: 'completed' }))).toBe('Completed');
         expect(sentinelTodoJobStateLabel(job({ state: 'failed', reason: 'boom' }))).toBe('Job failed');
         expect(sentinelTodoJobStateLabel(job({ state: 'running' }))).toBe('Running');
         expect(sentinelTodoJobStateLabel(job({ state: 'unavailable' }, { kind: 'remote', serverId: 'srv-2' }))).toBe('Status unavailable');

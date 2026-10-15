@@ -203,7 +203,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
             if (mounted.current) setBusy(false);
         }
     };
-    return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, act: findingAction, proposalCount: proposals.length, acceptAll }}>
+    return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
         {toolbar}
         <section aria-label="To-do Scrubber" data-testid="sentinel-scrubber-strip"
             className="sticky top-0 z-10 flex flex-col gap-1 rounded border border-[#e0e0e0] bg-white p-2 dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">

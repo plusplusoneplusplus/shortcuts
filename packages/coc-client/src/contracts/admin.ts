@@ -133,6 +133,7 @@ export interface AdminResolvedConfig {
     sentinelTodoScrubber?: boolean;
     toolScripting?: boolean;
     sentinelTodoTags?: boolean;
+    sentinelTodoExternalReferences?: boolean;
     sentinelPrOutcomeWake?: boolean;
     sentinelDesktopMirror?: boolean;
     botManagedConversations?: boolean;
@@ -234,6 +235,7 @@ export interface AdminConfigUpdate {
   'features.sentinelTodoScrubber'?: boolean;
   'features.toolScripting'?: boolean;
   'features.sentinelTodoTags'?: boolean;
+  'features.sentinelTodoExternalReferences'?: boolean;
   'features.sentinelPrOutcomeWake'?: boolean;
   'features.sentinelDesktopMirror'?: boolean;
   'features.quickAskSidenotes'?: boolean;
@@ -302,6 +304,7 @@ export interface RuntimeDashboardConfig {
     teamsMessageReactionEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoTagsEnabled: boolean;
+    sentinelTodoExternalReferencesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     toolScriptingEnabled: boolean;
     sentinelPrOutcomeWakeEnabled: boolean;

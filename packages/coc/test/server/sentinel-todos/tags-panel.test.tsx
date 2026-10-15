@@ -19,7 +19,8 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber', () => ({
     SentinelTodoScrubber: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode }) => <>{toolbar}{children}</>,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding', () => ({
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding', async importOriginal => ({
+    ...(await importOriginal<object>()),
     AcceptAllScrubProposals: () => null, SentinelTodoScrubFinding: () => null,
 }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoTriggers', () => ({ SentinelTodoTriggers: () => null }));
@@ -66,7 +67,7 @@ beforeEach(() => {
             processId: owner.processId, ledgerRevision: snapshot.revision, tagOnly: true });
         return { close: vi.fn() };
     });
-    applyRuntimeConfigPatch({ sentinelTodoTagsEnabled: true, sessionContextAttachmentsEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoTagsEnabled: true, sentinelTodoExternalReferencesEnabled: false, sessionContextAttachmentsEnabled: false });
     snapshot = { revision: 1, items: [item('item-one', { tagIds: ['tag-ui'], tagOrigin: 'suggested', tagMatch: { state: 'matched' } })], tagLibrary: library() };
     api.get.mockImplementation(async () => snapshot);
     api.update.mockImplementation(async (_ws, _parent, id, patch) => {
@@ -106,6 +107,174 @@ afterEach(() => {
 });
 
 describe('Sentinel to-do tags', () => {
+    it('reloads an existing snapshot when the runtime tag gate becomes enabled without resetting selection or text drafts', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoTagsEnabled: false });
+        snapshot.tagLibrary = undefined;
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = selectItem();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit', exact: true }));
+        fireEvent.change(within(detail).getByLabelText('Title'), { target: { value: 'Unsaved title' } });
+        const pending = deferred<SentinelTodoLedgerResponse>();
+        api.get.mockReturnValueOnce(pending.promise);
+        act(() => applyRuntimeConfigPatch({ sentinelTodoTagsEnabled: true }));
+        expect(screen.getByText('Loading tags...')).toBeTruthy();
+        expect((screen.getByRole('button', { name: 'Manage tags' }) as HTMLButtonElement).disabled).toBe(true);
+        await act(async () => pending.resolve({ ...snapshot, tagLibrary: library() }));
+        expect(api.get).toHaveBeenCalledTimes(2);
+        expect((within(detail).getByLabelText('Title') as HTMLInputElement).value).toBe('Unsaved title');
+        expect(screen.getByTestId('sentinel-todo-detail-item-one')).toBe(detail);
+        fireEvent.click(screen.getByRole('button', { name: 'Manage tags' }));
+        expect(screen.getByRole('dialog', { name: 'Manage tags' })).toBeTruthy();
+    });
+
+    it('distinguishes loading, missing projection and read errors, with retry recovery and no fabricated library', async () => {
+        const pending = deferred<SentinelTodoLedgerResponse>();
+        api.get.mockReturnValueOnce(pending.promise);
+        render(<UnifiedTodoTab owner={owner} />);
+        expect(screen.getByText('Loading tags...')).toBeTruthy();
+        expect((screen.getByRole('button', { name: 'Retry tags' }) as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Retry tags' }));
+        expect(api.get).toHaveBeenCalledTimes(1);
+        await act(async () => pending.resolve({ revision: 1, items: snapshot.items }));
+        expect(screen.getByText(/Tags may be disabled or unsupported/)).toBeTruthy();
+        selectItem();
+        api.get.mockRejectedValueOnce(new Error('Connection lost'));
+        fireEvent.click(screen.getByRole('button', { name: 'Retry tags' }));
+        await screen.findByText('Could not load tags: Connection lost');
+        expect((screen.getByRole('button', { name: 'Manage tags' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(screen.queryByRole('button', { name: 'Add tag' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Retry tags' }));
+        await waitFor(() => expect((screen.getByRole('button', { name: 'Manage tags' }) as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(screen.getByRole('button', { name: 'Manage tags' }));
+        expect(screen.getByRole('button', { name: 'Edit tag Interface' })).toBeTruthy();
+        expect(api.getTags).not.toHaveBeenCalled();
+        expect(api.createTag).not.toHaveBeenCalled();
+    });
+
+    it('keeps Manage tags independent of selection, closing and reopening details', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        for (const selection of ['none', 'selected', 'closed', 'reopened']) {
+            if (selection === 'selected' || selection === 'reopened') selectItem();
+            if (selection === 'closed') fireEvent.click(screen.getByRole('button', { name: 'Close To-do details' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Manage tags' }));
+            expect(screen.getByRole('dialog', { name: 'Manage tags' })).toBeTruthy();
+            fireEvent.click(screen.getByRole('button', { name: 'Close tags' }));
+        }
+    });
+
+    it('preserves a tag filter when closing a filtered-out selection and returns focus to the list', async () => {
+        snapshot.items.push(item('docs-item', { tagIds: ['tag-docs'] }));
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        selectItem();
+        fireEvent.change(screen.getByLabelText('Tag'), { target: { value: 'tag-docs' } });
+        expect(screen.queryByTestId('sentinel-todo-row-item-one')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Close To-do details' }));
+        const list = screen.getByTestId('sentinel-todo-list');
+        await waitFor(() => expect(document.activeElement).toBe(list));
+        expect((screen.getByLabelText('Tag') as HTMLSelectElement).value).toBe('tag-docs');
+        expect(screen.getByTestId('sentinel-todo-row-docs-item')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        expect((screen.getByLabelText('Tag') as HTMLSelectElement).value).toBe('tag-docs');
+        expect(screen.queryByRole('button', { name: 'Close To-do details' })).toBeNull();
+        selectItem('docs-item');
+        expect(screen.getByRole('button', { name: 'Close To-do details' })).toBeTruthy();
+    });
+
+    it('reports disconnected owning servers and never retries against the local server', async () => {
+        render(<UnifiedTodoTab owner={{ ...owner, ownerRoutingRef: 'remote:offline:ws-owner' }} />);
+        await screen.findByText('Could not load tags: Owning server is not connected.');
+        fireEvent.click(screen.getByRole('button', { name: 'Retry tags' }));
+        expect((screen.getByRole('button', { name: 'Manage tags' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(api.get).not.toHaveBeenCalled();
+        expect(api.getTags).not.toHaveBeenCalled();
+        expect(api.createTag).not.toHaveBeenCalled();
+    });
+
+    it('keeps tag, text and external-reference drafts through close, refresh, reopening and owner remounts', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoExternalReferencesEnabled: true });
+        const remote = { ...owner, ownerRoutingRef: 'remote:server-a:ws-owner' };
+        registerCloneBaseUrls([{ cloneKey: remote.ownerRoutingRef, workspaceId: 'ws-owner', baseUrl: 'https://server-a.test' }]);
+        const view = render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = selectItem();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit tags' }));
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Docs' }));
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit', exact: true }));
+        fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Keep this title' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add reference' }));
+        fireEvent.change(screen.getByLabelText('Reference 1 URL'), { target: { value: 'https://example.test/draft' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Close To-do details' }));
+        expect(detail.hidden).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        selectItem();
+        expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Keep this title');
+        expect((screen.getByLabelText('Reference 1 URL') as HTMLInputElement).value).toBe('https://example.test/draft');
+        expect((screen.getByRole('checkbox', { name: 'Docs' }) as HTMLInputElement).checked).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Close To-do details' }));
+        view.rerender(<UnifiedTodoTab owner={remote} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        expect(screen.queryByRole('button', { name: 'Close To-do details' })).toBeNull();
+        selectItem();
+        expect(screen.queryByLabelText('Title')).toBeNull();
+        expect(screen.queryByRole('checkbox', { name: 'Docs' })).toBeNull();
+        view.rerender(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        expect(screen.queryByRole('button', { name: 'Close To-do details' })).toBeNull();
+        selectItem();
+        expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Keep this title');
+        expect((screen.getByLabelText('Reference 1 URL') as HTMLInputElement).value).toBe('https://example.test/draft');
+        expect((screen.getByRole('checkbox', { name: 'Docs' }) as HTMLInputElement).checked).toBe(true);
+        expect(api.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks Close during tag mutations and their ledger refresh, then allows deselection', async () => {
+        const pending = deferred<object>();
+        const refresh = deferred<SentinelTodoLedgerResponse>();
+        api.update.mockReturnValueOnce(pending.promise);
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        selectItem();
+        fireEvent.click(screen.getByRole('button', { name: 'Edit tags' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save tags' }));
+        const close = screen.getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement;
+        expect(close.disabled).toBe(true);
+        fireEvent.click(close);
+        expect(screen.getByTestId('sentinel-todo-detail-item-one').hidden).toBe(false);
+        api.get.mockReturnValueOnce(refresh.promise);
+        await act(async () => pending.resolve({}));
+        expect(close.disabled).toBe(true);
+        await act(async () => refresh.resolve(snapshot));
+        expect(close.disabled).toBe(false);
+        fireEvent.click(close);
+        expect(screen.getByTestId('sentinel-todo-detail-item-one').hidden).toBe(true);
+    });
+
+    it('drops late local tag snapshots and retries only on the new remote owner', async () => {
+        const pending = deferred<SentinelTodoLedgerResponse>();
+        api.get.mockReturnValueOnce(pending.promise);
+        const remote = { ...owner, ownerRoutingRef: 'remote:server-a:ws-owner' };
+        registerCloneBaseUrls([{ cloneKey: remote.ownerRoutingRef, workspaceId: 'ws-owner', baseUrl: 'https://server-a.test' }]);
+        const view = render(<UnifiedTodoTab owner={owner} />);
+        snapshot = { revision: 2, items: [item('remote-item')] };
+        view.rerender(<UnifiedTodoTab owner={remote} />);
+        await screen.findByTestId('sentinel-todo-row-remote-item');
+        await act(async () => pending.resolve({ revision: 1, items: [item()], tagLibrary: library() }));
+        expect(screen.getByText(/Tags may be disabled or unsupported/)).toBeTruthy();
+        expect(screen.queryByTestId('sentinel-todo-row-item-one')).toBeNull();
+        snapshot = { ...snapshot, tagLibrary: { revision: 0, tags: [] } };
+        fireEvent.click(screen.getByRole('button', { name: 'Retry tags' }));
+        await waitFor(() => expect((screen.getByRole('button', { name: 'Manage tags' }) as HTMLButtonElement).disabled).toBe(false));
+        expect(references.at(-1)).toBe(remote.ownerRoutingRef);
+        fireEvent.click(screen.getByRole('button', { name: 'Manage tags' }));
+        expect(screen.getByText('No tags yet. Add a named tag to start.')).toBeTruthy();
+        expect(screen.queryByText('Interface')).toBeNull();
+    });
+
     it('refreshes tag-only events but never autoopens a closed tab at ledger revision one', () => {
         const input = sentinelTodoTabInput(owner, 'parent-chat');
         const opened = openTab(EMPTY_UNIFIED_PANEL, input);
@@ -408,7 +577,7 @@ describe('Sentinel to-do tags', () => {
         expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Manage tags' }));
         snapshot = { ...snapshot, tagLibrary: undefined };
         act(() => events.refresh());
-        await screen.findByText('Tags unavailable for this ledger.');
+        await screen.findByText(/Tags may be disabled or unsupported/);
         expect((screen.getByRole('button', { name: 'Manage tags' }) as HTMLButtonElement).disabled).toBe(true);
         expect(api.getTags).not.toHaveBeenCalled();
         view.unmount();

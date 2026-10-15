@@ -3,6 +3,14 @@ import { GitClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('GitClient', () => {
+  it('requests a strict manual working-tree status read', async () => {
+    const adapter = createMockAdapter({});
+    await new GitClient(adapter).getWorkingTreeChanges('repo/a', { refresh: true });
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/repo%2Fa/git/changes', options: { query: { refresh: true } } },
+    ]);
+  });
+
   it('calls commit and branch-range routes with encoded workspace and ref segments', async () => {
     const adapter = createMockAdapter({});
     const client = new GitClient(adapter);

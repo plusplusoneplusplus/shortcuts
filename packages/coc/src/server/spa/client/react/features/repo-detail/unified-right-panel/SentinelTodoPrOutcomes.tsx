@@ -18,6 +18,7 @@ interface Props {
     item: SentinelTodoItem;
     client?: CocClient;
     ledgerRevision: number;
+    onBusyChange?: (busy: boolean) => void;
 }
 
 export function SentinelTodoPrOutcomes(props: Props) {
@@ -35,12 +36,16 @@ export function SentinelTodoPrOutcomes(props: Props) {
 
 type Snapshot = SentinelPrOutcomesResponse;
 
-function OutcomeDetails({ owner, item, client, ledgerRevision }: Props & { client: CocClient }) {
+function OutcomeDetails({ owner, item, client, ledgerRevision, onBusyChange }: Props & { client: CocClient }) {
     const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
     const current = useRef<Snapshot | null>(null);
     const [readError, setReadError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        onBusyChange?.(busy);
+        return () => onBusyChange?.(false);
+    }, [busy, onBusyChange]);
     const [loading, setLoading] = useState(true);
     const live = useRef(false);
     const sequence = useRef(0);

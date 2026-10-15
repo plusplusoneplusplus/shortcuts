@@ -87,6 +87,13 @@ describe('useRemoteCloneEvents', () => {
         expect(connectSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('subscribes an online group owner even when no physical repository from that server is listed', () => {
+        mockUseRepos.mockReturnValue({ repos: [],
+            remoteGroupWorkspaces: [remoteRepo('group-only', 'https://group-owner.example', 'online').workspace] });
+        renderHook(() => useRemoteCloneEvents(vi.fn()));
+        expect(connectSpy).toHaveBeenCalledWith('https://group-owner.example', expect.any(Object));
+    });
+
     it('skips clones that are not online (offline / connecting)', () => {
         mockUseRepos.mockReturnValue({
             repos: [
@@ -105,7 +112,7 @@ describe('useRemoteCloneEvents', () => {
 
         const msg = { type: 'process-updated', process: { id: 'p1', status: 'completed' } };
         sockets.get('http://127.0.0.1:4000')!.opts.onMessage(msg);
-        expect(onMessage).toHaveBeenCalledWith(msg);
+        expect(onMessage).toHaveBeenCalledWith(msg, 'http://127.0.0.1:4000');
     });
 
     it('emits the owner base URL with remote socket messages', () => {

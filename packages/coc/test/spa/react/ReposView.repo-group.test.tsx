@@ -15,7 +15,8 @@ import { useEffect, type ReactNode } from 'react';
 let mockLoading = false;
 let mockRepos: any[] = [];
 
-vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../../src/server/spa/client/react/contexts/ReposContext')>(),
     useRepos: () => ({ repos: mockRepos, loading: mockLoading, fetchRepos: vi.fn(), unseenCounts: {} }),
     ReposProvider: ({ children }: { children: ReactNode }) => children,
 }));

@@ -228,6 +228,17 @@ session state. Failed states open an action panel with sanitized runtime detail,
 an optional recovery command, and Retry. Language-independent browsing remains
 available while language features are detached.
 
+The Monaco completion provider translates its zero-based trigger kinds to LSP's
+one-based kinds before sending `textDocument/completion` through the owning
+document handle. Typing and explicit invocation use LSP kind 1, trigger
+characters use kind 2, and incomplete-list retriggers use kind 3.
+Completion stays registered for eligible models even without a server capability.
+Ready/indexing servers with completion support supply authoritative items; empty
+or failed requests and unavailable/unsupported servers fall back to deduplicated
+current-document words. Fallback matches prefixes case-insensitively, preserves
+word spelling, and caps each list at 200 items with incomplete retriggering.
+Cancelled requests and disposed providers publish neither server nor word items.
+
 Language Servers settings reads live runtime rows from
 `GET /api/workspaces/:id/language-servers`. Rows are grouped by definition and
 project root, so mixed multi-root outcomes remain visible. Runtime payloads use

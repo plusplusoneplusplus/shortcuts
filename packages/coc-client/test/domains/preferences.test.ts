@@ -3,6 +3,18 @@ import { PreferencesClient, type GlobalPreferences } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('PreferencesClient', () => {
+  it('sends explicit GitHub host/account preferences only to the selected workspace', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PreferencesClient(adapter);
+    await client.patchRepo('workspace/a', {
+      workItems: { sync: { github: { host: 'github.example', login: 'account-a' } } },
+    });
+    expect(adapter.calls).toMatchObject([{
+      path: '/workspaces/workspace%2Fa/preferences',
+      options: { method: 'PATCH', body: { workItems: { sync: { github: { host: 'github.example', login: 'account-a' } } } } },
+    }]);
+  });
+
   it('calls global and per-repo preference endpoints', async () => {
     const adapter = createMockAdapter({});
     const client = new PreferencesClient(adapter);

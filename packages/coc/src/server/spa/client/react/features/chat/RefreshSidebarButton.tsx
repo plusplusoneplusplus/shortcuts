@@ -8,7 +8,7 @@ export function RefreshSidebarButton({ busy, onRefresh }: { busy: boolean; onRef
         type="button"
         data-testid="split-workspace-left-refresh"
         aria-label="Refresh sidebar"
-        title="Refresh sidebar"
+        title="Refresh chats and Git status"
         aria-busy={busy}
         disabled={busy}
         className="flex h-7 w-7 items-center justify-center rounded text-[#848484] transition-colors hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50 disabled:opacity-50"

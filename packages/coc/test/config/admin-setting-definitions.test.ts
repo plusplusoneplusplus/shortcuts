@@ -394,7 +394,7 @@ describe('Features card UI metadata', () => {
         expect(scrubber.default).toBe(false);
         expect(scrubber.runtime).toBe('live');
         expect(scrubber.ui).toMatchObject({
-            group: 'aiModes', testId: 'toggle-sentinel-todo-scrubber-enabled',
+            tab: 'sentinel', group: 'sentinelTodos', testId: 'toggle-sentinel-todo-scrubber-enabled',
         });
         expect(scrubber.ui?.dependsOn).toBeUndefined();
         expect(buildRuntimeFeatureFlags({}).sentinelTodoScrubberEnabled).toBe(false);
@@ -631,7 +631,7 @@ describe('Features card UI metadata', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelResultCards')!;
         expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
-        expect(def.ui?.tab).toBe('chat');
+        expect(def.ui?.tab).toBe('sentinel');
         expect(def.ui?.hint).toMatch(/enabled by default/i);
         expect(def.ui?.hint).toMatch(/presentation only/i);
         expect(DEFAULT_CONFIG.features.sentinelResultCards).toBe(true);
@@ -774,11 +774,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.ralphMultiAgentGrill': 'ai',
         'forEach.enabled': 'ai',
         'mapReduce.enabled': 'ai',
-        'sentinel.enabled': 'ai',
-        'features.sentinelTodoDependencies': 'ai',
-        'features.sentinelTodoTags': 'ai',
-        'features.sentinelTodoScrubber': 'ai',
-        'features.sentinelPrOutcomeWake': 'ai',
         'dangerousCommandGuard.enabled': 'ai',
         'effortLevels.enabled': 'ai',
         'copilot.transformTransport': 'ai',
@@ -787,11 +782,19 @@ describe('feature toggle settings-tab placement', () => {
         'features.chatFolders': 'chat',
         'features.chatProviderSwitching': 'chat',
         'features.chatHistoryPaging': 'chat',
-        'features.sentinelResultCards': 'chat',
         'features.composerWordHint': 'chat',
         'features.quickAskSidenotes': 'chat',
         'features.sessionContextAttachments': 'chat',
         'features.chatStyleSelector': 'chat',
+        // Sentinel
+        'sentinel.enabled': 'sentinel',
+        'features.sentinelTodoDependencies': 'sentinel',
+        'features.sentinelTodoTags': 'sentinel',
+        'features.sentinelTodoExternalReferences': 'sentinel',
+        'features.sentinelTodoScrubber': 'sentinel',
+        'features.sentinelPrOutcomeWake': 'sentinel',
+        'features.sentinelResultCards': 'sentinel',
+        'features.sentinelDesktopMirror': 'sentinel',
         // Appearance
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
@@ -810,7 +813,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.teamsBridgeObservability': 'integrations',
         'features.teamsAiAnswerRelay': 'integrations',
         'features.teamsMessageReaction': 'integrations',
-        'features.sentinelDesktopMirror': 'integrations',
         'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
         'mcpOauth.autoRefresh.enabled': 'integrations',
@@ -855,6 +857,25 @@ describe('feature toggle settings-tab placement', () => {
     };
 
     const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
+
+    it('keeps exactly the existing Sentinel inventory, defaults and runtime contracts', () => {
+        const sentinelDefs = ADMIN_SETTING_DEFINITIONS.filter(d => /sentinel/i.test(d.key));
+        const sentinelKeys = Object.keys(EXPECTED_TABS).filter(key => EXPECTED_TABS[key] === 'sentinel').sort();
+        expect(sentinelDefs.map(d => d.key).sort()).toEqual(sentinelKeys);
+        expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'sentinel').map(d => d.key).sort()).toEqual(sentinelKeys);
+        const runtime = buildRuntimeFeatureFlags({});
+        for (const def of sentinelDefs) {
+            const expectedDefault = def.key === 'features.sentinelResultCards';
+            expect(def.default, def.key).toBe(expectedDefault);
+            expect(readAdminSettingValue(def, {}), def.key).toBe(expectedDefault);
+            expect(def.runtime, def.key).toBe('live');
+            expect(def.runtimeFlag).toBe(def.key === 'sentinel.enabled'
+                ? 'sentinelEnabled' : `${def.key.slice('features.'.length)}Enabled`);
+            expect(runtime[def.runtimeFlag!], def.key).toBe(expectedDefault);
+            expect(def.ui?.dependsOn, def.key).toBeUndefined();
+            expect(def.ui?.badge, def.key).toBe('experimental');
+        }
+    });
 
     it('places every ui setting on a valid settings tab', () => {
         for (const def of uiDefs) {

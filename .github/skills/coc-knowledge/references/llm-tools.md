@@ -91,6 +91,14 @@ default `regular`; ledger metadata only, independent of status). `done`/`needs_a
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
 arguments are rejected by the tool; the store enforces user-only archive/restore for manual items.
 
+Default-off live `features.sentinelTodoExternalReferences` offers create/update
+`externalReferences` with `{ kind: 'pr' | 'email' | 'link', url, title? }` entries.
+An array replaces external links only, `[]` clears, and omission preserves.
+Output `references` combines these entries with unchanged conversation attachments;
+missing kind identifies a conversation. Safe URLs are validated and deduplicated.
+Display references never bind PR outputs, monitor, fulfill dependencies, mark Done
+or authorize work. Native PR verdict-only tools cannot edit them.
+
 With default-off `features.sentinelTodoDependencies` enabled,
 `set_dependencies` replaces all prerequisites using `itemId`, `expectedRevision`
 and typed `dependsOn` edges. `bind_pr_output` explicitly selects one exact produced
@@ -169,6 +177,7 @@ revision conflicts. Remote evidence is inspected in its owning chat; routing/own
 
 The `submit-commits-as-pr` skill calls this tool with a nonempty exact commit SHA
 array, oldest first, and explicit `autoMerge: true` unless the user disables it.
+PR-body guidance lives in the skill and tool's `body` schema.
 Invoking the skill authorizes that default; general tool calls still default to
 false. Commit-mode submission uses an isolated worktree and aborts conflicts
 without moving the active branch/HEAD. A successful result with `bound: false`

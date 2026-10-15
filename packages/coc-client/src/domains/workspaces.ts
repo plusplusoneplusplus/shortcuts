@@ -131,17 +131,19 @@ export class WorkspacesClient {
     });
   }
 
-  gitInfo(workspaceId: string): Promise<GitInfoResponse> {
-    return this.transport.request<GitInfoResponse>(`/workspaces/${encodePathSegment(workspaceId)}/git-info`);
+  gitInfo(workspaceId: string, options?: { refresh?: boolean }): Promise<GitInfoResponse> {
+    return this.transport.request<GitInfoResponse>(`/workspaces/${encodePathSegment(workspaceId)}/git-info`, {
+      query: options?.refresh ? { refresh: true } : undefined,
+    });
   }
 
   gitInfoBatch(
     workspaceIds: string[],
-    options?: Pick<CocRequestOptions, 'signal'> & { trigger?: string },
+    options?: Pick<CocRequestOptions, 'signal'> & { trigger?: string; refresh?: boolean },
   ): Promise<GitInfoBatchResponse> {
     return this.transport.request<GitInfoBatchResponse>('/git-info/batch', {
       method: 'POST',
-      body: { workspaceIds: [...workspaceIds], ...(options?.trigger ? { trigger: options.trigger } : {}) },
+      body: { workspaceIds: [...workspaceIds], ...(options?.trigger ? { trigger: options.trigger } : {}), ...(options?.refresh ? { refresh: true } : {}) },
       signal: options?.signal,
     });
   }

@@ -17,6 +17,24 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 describe('useRepoQueueStats', () => {
+    it('retains simultaneous local and remote owners with colliding workspace ids', () => {
+        const local = new CocClient({ baseUrl: '' });
+        const remote = new CocClient({ baseUrl: 'https://owner.example' });
+        const { result } = renderHook(() => ({
+            local: useRepoQueueJobs('same-id', local),
+            remote: useRepoQueueJobs('same-id', remote),
+            dispatch: useQueue().dispatch,
+        }), { wrapper: Wrap });
+        act(() => {
+            result.current.dispatch({ type: 'REPO_QUEUE_UPDATED', repoId: 'same-id',
+                source: workspaceReadSource(remote), queue: { running: [{ id: 'remote-job' }], queued: [] } });
+            result.current.dispatch({ type: 'REPO_QUEUE_UPDATED', repoId: 'same-id',
+                queue: { running: [{ id: 'local-job' }], queued: [] } });
+        });
+        expect(result.current.local.running.map(job => job.id)).toEqual(['local-job']);
+        expect(result.current.remote.running.map(job => job.id)).toEqual(['remote-job']);
+    });
+
     it('shares exact eligible rows/counts for every job type and the selected group only', () => {
         const { result, rerender } = renderHook(({ id }) => ({
             jobs: useRepoQueueJobs(id),
@@ -66,7 +84,7 @@ describe('useRepoQueueStats', () => {
         expect(result.current.jobs.running).toEqual([]);
         expect(result.current.stats.running).toBe(0);
         rerender({ client: local });
-        expect(result.current.stats.running).toBe(0);
+        expect(result.current.stats.running).toBe(1);
     });
 
     it('does not borrow the local snapshot when a concrete remote route is unresolved', () => {

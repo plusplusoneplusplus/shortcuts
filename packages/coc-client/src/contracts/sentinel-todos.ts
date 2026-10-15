@@ -90,7 +90,9 @@ export interface SentinelTodoJobLink {
  * A reference-only link to an existing conversation on the owning server. It
  * has no execution state, is never reviewed, and never changes item status.
  */
-export interface SentinelTodoReference {
+export interface SentinelTodoConversationReference {
+  /** Missing kind identifies an existing conversation reference. */
+  kind?: 'conversation';
   processId: string;
   workspaceId: string;
   openLink: string;
@@ -98,6 +100,15 @@ export interface SentinelTodoReference {
   attachedAt: string;
   attachedBy: SentinelTodoActor;
 }
+
+/** Display metadata only: never PR output evidence or execution authority. */
+export interface SentinelTodoExternalReference {
+  kind: 'pr' | 'email' | 'link';
+  url: string;
+  title?: string;
+}
+
+export type SentinelTodoReference = SentinelTodoConversationReference | SentinelTodoExternalReference;
 
 /** Evidence selectors, not evidence receipts or execution authority. */
 export type SentinelTodoDependencyCondition =
@@ -240,6 +251,7 @@ export interface SentinelTodoLedgerResponse {
 }
 
 export interface CreateSentinelTodoRequest {
+  externalReferences?: SentinelTodoExternalReference[];
   tagIds?: string[];
   matchMultiple?: boolean;
   /** Defaults to `normal`; updates cannot change it. */
@@ -256,8 +268,10 @@ export interface CreateSentinelTodoRequest {
   idempotencyKey?: string;
 }
 
-/** `null` clears an optional field; omitted fields stay unchanged. */
+/** Omitted fields stay unchanged; nullable fields explicitly support clearing. */
 export interface UpdateSentinelTodoRequest {
+  /** Replaces external references only; [] clears them, omission preserves all references. */
+  externalReferences?: SentinelTodoExternalReference[];
   /** Required when tagIds is supplied, including an explicit empty selection. */
   expectedTagRevision?: number;
   tagIds?: string[];

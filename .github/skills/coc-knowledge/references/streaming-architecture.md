@@ -165,13 +165,13 @@ Reconnects invalidate open readers to recover missed boundaries.
 
 ### Per-clone global sockets
 
-`useWebSocket` opens the global `/ws` to the LOCAL server only. When remote clones are shown,
-`RemoteCloneEventBridge` (`spa/client/react/features/remote-shell/`) opens one additional
-global `/ws` per ONLINE remote clone (`getCocClientFor(baseUrl).events.connect`, deduped by
-`baseUrl`) and feeds their messages into the same `onMessage` dispatcher, so remote
-`process-added/updated/removed` events reach the dashboard and remote task rows transition
-`running → completed` live. Per-process token SSE is already routed per-clone via
-`useChatSSE`/`cloneApiBase`.
+`useWebSocket` opens the page-origin global `/ws`. `RemoteCloneEventBridge`
+(`spa/client/react/features/remote-shell/`) opens one additional socket per online
+remote server represented by a repository or repo group, deduplicated by `baseUrl`.
+Its shared `onMessage` dispatcher carries that owner: scoped queue snapshots retain
+the server/API source, while remote aggregates and process events cannot replace
+page-origin aggregate queues or the local process index. Queue summaries retain
+`processId` for resumed conversations. Per-process SSE uses `useChatSSE`/`cloneApiBase`.
 
 ReposContext designates its local socket with `broadcastProcessUpdates`; only this
 socket publishes `coc-local-ws-message` process snapshots. RemoteCloneEventBridge

@@ -101,6 +101,36 @@ describe('SentinelTodosClient', () => {
     });
   });
 
+  it('round-trips typed references and preserves replacement, omission and clear on the exact encoded owner', async () => {
+    const externalReferences = [
+      { kind: 'pr' as const, url: 'https://github.com/example/project/pull/42', title: 'Implementation' },
+      { kind: 'email' as const, url: 'mailto:review@example.invalid', title: 'Email' },
+      { kind: 'link' as const, url: 'https://docs.example.invalid/design' },
+    ];
+    const conversation = {
+      processId: 'queue_design', workspaceId: 'target-ws', openLink: '#repos/target-ws/chats/queue_design',
+      attachedAt: '2026-01-01T00:00:00.000Z', attachedBy: 'user' as const,
+    };
+    const references = [conversation, ...externalReferences];
+    const adapter = createMockAdapter({ item: { id: 'item/a', references }, ledgerRevision: 3 });
+    const client = new SentinelTodosClient(adapter);
+    const create = { title: 'Deliver feature', externalReferences };
+    expect((await client.create('owner ws', 'parent/a', create)).item.references).toEqual(references);
+    const replace = { expectedRevision: 3, externalReferences: [externalReferences[1]] };
+    expect((await client.update('owner ws', 'parent/a', 'item/a', replace)).item.references).toEqual(references);
+    await client.update('owner ws', 'parent/a', 'item/a', { expectedRevision: 4, notes: 'Preserve references' });
+    await client.update('owner ws', 'parent/a', 'item/a', { expectedRevision: 5, externalReferences: [] });
+    const base = '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items';
+    expect(adapter.calls).toEqual([
+      { path: base, options: { method: 'POST', body: create } },
+      { path: `${base}/item%2Fa`, options: { method: 'PATCH', body: replace } },
+      { path: `${base}/item%2Fa`, options: { method: 'PATCH', body: { expectedRevision: 4, notes: 'Preserve references' } } },
+      { path: `${base}/item%2Fa`, options: { method: 'PATCH', body: { expectedRevision: 5, externalReferences: [] } } },
+    ]);
+    const readAdapter = createMockAdapter({ revision: 3, items: [{ id: 'item/a', references }] });
+    expect((await new SentinelTodosClient(readAdapter).get('owner ws', 'parent/a')).items[0].references).toEqual(references);
+  });
+
   it('sends priority on create and priority-only update', async () => {
     const adapter = createMockAdapter({ item: { id: 'i1' }, ledgerRevision: 1 });
     const client = new SentinelTodosClient(adapter);

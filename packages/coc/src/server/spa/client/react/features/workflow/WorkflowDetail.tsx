@@ -14,6 +14,8 @@ import { WorkflowAIRefinePanel } from './WorkflowAIRefinePanel';
 import { WorkflowDetailView } from '../../processes/dag/WorkflowDetailView';
 import type { WorkflowInfo } from '../../repos/repoGrouping';
 import { TaskDefs } from '../../../../../tasks/task-types';
+import { useCocClient } from '../../repos/cloneRouting';
+import { workspaceReadCacheKey, workspaceReadSource } from '../../api/workspaceReads';
 
 export interface WorkflowDetailProps {
     workspaceId: string;
@@ -27,6 +29,7 @@ export interface WorkflowDetailProps {
 export function WorkflowDetail({ workspaceId, pipeline, onClose, onDeleted, onRunSuccess, refreshKey }: WorkflowDetailProps) {
     const { addToast } = useGlobalToast();
     const { state: queueState } = useQueue();
+    const client = useCocClient(workspaceId);
     const { state: appState } = useApp();
     const [mode, setMode] = useState<'view' | 'edit'>('view');
     const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
@@ -42,7 +45,7 @@ export function WorkflowDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
     const [running, setRunning] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
 
-    const repoQueue = queueState.repoQueueMap[workspaceId];
+    const repoQueue = queueState.repoQueueMap[workspaceReadCacheKey(workspaceId, workspaceReadSource(client))];
     const activeTaskCount = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
         (t: any) =>
             t.type === TaskDefs.runWorkflow.kind && (

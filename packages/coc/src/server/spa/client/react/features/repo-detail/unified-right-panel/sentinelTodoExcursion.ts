@@ -17,7 +17,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import type { SentinelTodoPriority, SentinelTodoStatus } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoExternalReference, SentinelTodoPriority, SentinelTodoStatus } from '@plusplusoneplusplus/coc-client';
 import { buildRepoGroupChatHash, parseRepoGroupChatDeepLink } from '../../../layout/dashboardRoutes';
 import { decodeSegment, encodeSegment, repoHashBase, tokenizeHash } from '../../../layout/routePath';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
@@ -198,13 +198,23 @@ export interface SentinelTodoView {
     expandedIds?: readonly string[];
     selectedId?: string | null;
     detailOpen?: boolean;
+    tagDrafts?: Readonly<Record<string, {
+        draft: { ids: string[]; revision: number; tagRevision: number } | null;
+        confirm: { revision: number; tagRevision: number } | null;
+    }>>;
     sections?: {
         done: boolean; archived: boolean; manual: boolean; manualDone: boolean; manualArchived: boolean;
     };
     itemDrafts?: Readonly<Record<string, {
-        editing: { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority; baseRevision: number } | null;
+        editing: {
+            title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority; baseRevision: number;
+            externalReferences?: SentinelTodoExternalReference[];
+            externalReferencesChanged?: boolean;
+            initialFields?: { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
+        } | null;
         statusDraft: { status: SentinelTodoStatus; reason: string } | null;
         error: string | null;
+        notesOpen?: boolean;
     }>>;
     /** A link to focus once, on the next mount after Back. */
     focusLinkKey?: string;

@@ -82,7 +82,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
             type: 'object',
             properties: {
                 title: { type: 'string', description: 'PR title.' },
-                body: { type: 'string', description: 'PR description (markdown).' },
+                body: { type: 'string', description: 'Markdown explaining what changed, why, and material validation/limitations; omit SHA manifests and internal automation bookkeeping unless requested (keep exact SHAs in tool arguments/job evidence).' },
                 base: { type: 'string', description: 'Target branch. Defaults to the repo\'s default branch.' },
                 draft: { type: 'boolean', description: 'Open as a draft PR. Default false.' },
                 autoFix: { type: 'boolean', description: 'Opt into Auto-fix CI & conflicts: authorize validated repairs, commits and pushes to this existing PR in its owner conversation, including green-CI merge conflicts. Explicit true upgrades a CI-only monitor; false/omitted preserves its scope. Requires triggers.enabled. Set true only with user authorization for both CI and conflict repairs; does not bypass approvals or auto-merge policy.' },

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { z } from 'zod';
 import type { SentinelTodoDependencyEvaluation, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
+import { externalReferenceSchema, externalReferencesSchema, MAX_TODO_EXTERNAL_REFERENCES } from './sentinel-todo-external-references';
 
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
@@ -71,6 +72,7 @@ const jobLinkSchema = z.object({
  * never reviewed, and never changes the item's status.
  */
 const referenceSchema = z.object({
+    kind: z.literal('conversation').optional(),
     processId: id,
     workspaceId: id,
     openLink: z.string().min(1).max(2_000),
@@ -150,7 +152,7 @@ const itemSchema = z.object({
     updatedBy: actorSchema,
     idempotencyKey: id.optional(),
     jobs: z.array(jobLinkSchema).max(MAX_TODO_JOB_LINKS),
-    references: z.array(referenceSchema).max(MAX_TODO_REFERENCES),
+    references: z.array(z.union([referenceSchema, externalReferenceSchema])).max(MAX_TODO_REFERENCES + MAX_TODO_EXTERNAL_REFERENCES),
     dependsOn: dependenciesSchema.default([]),
     evidence: z.array(evidenceSchema).default([]),
     /** Last user edit; job outcomes recorded before it must not override it. */
@@ -175,6 +177,7 @@ export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt
 export type SentinelTodoDependency = z.infer<typeof todoDependencySchema>;
 
 export const todoCreateSchema = z.object({
+    externalReferences: externalReferencesSchema.optional(),
     tagIds: tagIdsSchema.optional(),
     matchMultiple: z.boolean().optional(),
     type: todoTypeSchema.optional(),
@@ -188,6 +191,7 @@ export const todoCreateSchema = z.object({
 }).strict();
 /** `null` clears an optional field; omitted fields are left unchanged. */
 export const todoPatchSchema = z.object({
+    externalReferences: externalReferencesSchema.optional(),
     expectedTagRevision: z.number().int().nonnegative().optional(),
     tagIds: tagIdsSchema.optional(),
     matchMultiple: z.boolean().optional(),
@@ -466,6 +470,12 @@ export class SentinelTodoStore {
                     REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
             );
         `))();
+        db.transaction(() => {
+            const columns = db.prepare('PRAGMA table_info(sentinel_todo_items)').all<{ name: string }>();
+            if (!columns.some(column => column.name === 'external_references')) {
+                db.exec("ALTER TABLE sentinel_todo_items ADD COLUMN external_references TEXT NOT NULL DEFAULT '[]'");
+            }
+        })();
     }
 
     get(owner: SentinelTodoOwner): SentinelTodoLedger {
@@ -563,7 +573,7 @@ export class SentinelTodoStore {
                 createdBy: opts.actor,
                 updatedBy: opts.actor,
                 jobs: [],
-                references: [],
+                references: fields.externalReferences ?? [],
                 ...(fields.tagIds !== undefined ? { tagIds: fields.tagIds, tagOrigin: 'manual', tagRevision: 1 } : {}),
                 ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
             });
@@ -694,6 +704,10 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = { ...current };
+            if (fields.externalReferences !== undefined) {
+                next.references = [...current.references.filter(isConversationReference),
+                    ...fields.externalReferences];
+            }
             if (fields.tagIds !== undefined) {
                 this.validateTagIds(owner, fields.tagIds);
                 if (fields.expectedTagRevision === undefined) throw new SentinelTodoError('invalid', 'Tag assignments require expectedTagRevision');
@@ -726,7 +740,7 @@ export class SentinelTodoStore {
             if (fields.outcome === null) delete next.outcome;
             else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
             // Priority is metadata: a priority-only edit must not supersede a linked job's result.
-            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
+            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'externalReferences', 'tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
                 next.userEditedAt = now;
             }
             if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
@@ -797,18 +811,20 @@ export class SentinelTodoStore {
             if (current.type === 'manual') {
                 throw new SentinelTodoError('invalid', 'Conversation references attach to normal items only');
             }
-            if (current.references.some(ref => ref.processId === reference.processId)) {
+            const conversations = current.references.filter(isConversationReference);
+            if (conversations.some(ref => ref.processId === reference.processId)) {
                 return { item: current, ledgerRevision: ledger.revision, changed: false };
             }
             if (current.revision !== expectedRevision) {
                 throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
             }
-            if (current.references.length >= MAX_TODO_REFERENCES) {
+            if (conversations.length >= MAX_TODO_REFERENCES) {
                 throw new SentinelTodoError('limit', `An item references at most ${MAX_TODO_REFERENCES} conversations`);
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = {
-                ...current, references: [...current.references, { ...reference, attachedAt: now, attachedBy: actor }],
+                ...current, references: [...conversations, { ...reference, attachedAt: now, attachedBy: actor },
+                    ...current.references.filter(ref => !isConversationReference(ref))],
             };
             return { ...this.commit(owner, ledger, index, next, actor, now), changed: true };
         });
@@ -1012,7 +1028,7 @@ export class SentinelTodoStore {
             notes: row.notes, status: row.status, priority: row.priority, archived: row.archived === 1,
             revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
             createdBy: row.created_by, updatedBy: row.updated_by, jobs: byItem.get(row.id) ?? [],
-            references: references.get(row.id) ?? [],
+            references: [...references.get(row.id) ?? [], ...parse(externalReferencesSchema, JSON.parse(row.external_references))],
             dependsOn: dependencies.get(row.id) ?? [],
             evidence: evidence.get(row.id) ?? [],
             ...jsonField('targetRepo', row.target_repo), ...jsonField('outcome', row.outcome),
@@ -1048,7 +1064,7 @@ export class SentinelTodoStore {
             reference_workspace_id, open_link, title, attached_at, attached_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (workspace_id, parent_process_id, item_id, process_id) DO NOTHING`);
-        item.references.forEach((ref, order) => statement.run(
+        item.references.filter(isConversationReference).forEach((ref, order) => statement.run(
             owner.workspaceId, owner.processId, item.id, ref.processId, order,
             ref.workspaceId, ref.openLink, ref.title ?? null, ref.attachedAt, ref.attachedBy,
         ));
@@ -1086,7 +1102,7 @@ export class SentinelTodoStore {
 const ITEM_FIELDS = [
     'type', 'title', 'completion_condition', 'notes', 'target_repo', 'status', 'status_reason',
     'priority', 'outcome', 'archived', 'revision', 'created_at', 'updated_at', 'created_by',
-    'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision',
+    'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision', 'external_references',
 ] as const;
 
 interface ItemRow {
@@ -1095,6 +1111,7 @@ interface ItemRow {
     outcome: string | null; archived: number; revision: number; created_at: string; updated_at: string;
     created_by: string; updated_by: string; idempotency_key: string | null; user_edited_at: string | null;
     user_verdict_revision: number | null;
+    external_references: string;
 }
 
 interface ReferenceRow {
@@ -1117,11 +1134,16 @@ function itemRow(owner: SentinelTodoOwner, item: SentinelTodoItem) {
         created_at: item.createdAt, updated_at: item.updatedAt, created_by: item.createdBy, updated_by: item.updatedBy,
         idempotency_key: item.idempotencyKey ?? null, user_edited_at: item.userEditedAt ?? null,
         user_verdict_revision: item.userVerdictRevision ?? null,
+        external_references: JSON.stringify(item.references.filter(ref => ref.kind !== undefined && ref.kind !== 'conversation')),
     };
 }
 
 function encode(value: unknown): string | null {
     return value === undefined ? null : JSON.stringify(value);
+}
+
+function isConversationReference(reference: SentinelTodoItem['references'][number]): reference is SentinelTodoReference {
+    return reference.kind === undefined || reference.kind === 'conversation';
 }
 
 function optional(key: string, value: string | number | null): Record<string, unknown> {

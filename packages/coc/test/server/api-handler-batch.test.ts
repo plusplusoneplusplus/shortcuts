@@ -12,9 +12,11 @@ import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
+import { gitInfoCache } from '../../src/server/git/git-info-cache';
 
 const gitServiceMocks = vi.hoisted(() => ({
     detectRemoteUrl: vi.fn(),
+    getRepositoryStatus: vi.fn(),
 }));
 
 // ============================================================================
@@ -84,15 +86,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         detectRemoteUrl: gitServiceMocks.detectRemoteUrl,
         BranchService: vi.fn().mockImplementation(function () { return ({
-            getRepositoryStatus: vi.fn(async function () { return ({
-                branch: 'main',
-                isDetached: false,
-                dirty: true,
-                ahead: 1,
-                behind: 0,
-                trackingBranch: 'origin/main',
-                unborn: false,
-            }); }),
+            getRepositoryStatus: gitServiceMocks.getRepositoryStatus,
         }); }),
         GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async () => 'main'),
@@ -118,6 +112,14 @@ describe('POST /api/git-info/batch', () => {
     let server: http.Server;
     let baseUrl: string;
     let store: MockProcessStore;
+
+    beforeEach(() => {
+        gitInfoCache.clear();
+        gitServiceMocks.getRepositoryStatus.mockReset().mockResolvedValue({
+            branch: 'main', isDetached: false, dirty: true, ahead: 1, behind: 0,
+            trackingBranch: 'origin/main', unborn: false,
+        });
+    });
 
     beforeAll(async () => {
         store = createMockProcessStore();
@@ -158,6 +160,38 @@ describe('POST /api/git-info/batch', () => {
         expect(data.results['ws-1'].detached).toBe(false);
         expect(data.results['ws-2']).toBeDefined();
         expect(gitServiceMocks.detectRemoteUrl).not.toHaveBeenCalled();
+    });
+
+    it('manual single and batch status reads bypass fresh server metadata', async () => {
+        const initial = await request(`${baseUrl}/api/workspaces/ws-1/git-info`);
+        expect(initial.json().branch).toBe('main');
+        gitServiceMocks.getRepositoryStatus.mockResolvedValue({
+            branch: 'feature', dirty: false, ahead: 4, behind: 2, trackingBranch: 'origin/feature',
+        });
+        expect((await request(`${baseUrl}/api/workspaces/ws-1/git-info`)).json().branch).toBe('main');
+        const fresh = await request(`${baseUrl}/api/workspaces/ws-1/git-info?refresh=true`);
+        expect(fresh.status).toBe(200);
+        expect(fresh.json()).toMatchObject({ branch: 'feature', dirty: false, ahead: 4, behind: 2 });
+        gitServiceMocks.getRepositoryStatus.mockResolvedValue({ branch: 'next', dirty: true });
+        const batch = await request(`${baseUrl}/api/git-info/batch`, {
+            method: 'POST', body: JSON.stringify({ workspaceIds: ['ws-1', 'ws-2'], refresh: true }),
+        });
+        expect(batch.json().results['ws-1'].branch).toBe('next');
+        expect(batch.json().results['ws-2'].branch).toBe('next');
+    });
+
+    it('manual failures are unavailable, with successful batch members preserved', async () => {
+        await request(`${baseUrl}/api/workspaces/ws-1/git-info`);
+        gitServiceMocks.getRepositoryStatus.mockResolvedValueOnce(null);
+        const single = await request(`${baseUrl}/api/workspaces/ws-1/git-info?refresh=true`);
+        expect(single.status).toBe(503);
+        expect(single.json()).toEqual({ error: 'Could not read Git status.' });
+        gitServiceMocks.getRepositoryStatus.mockResolvedValueOnce(null);
+        const batch = await request(`${baseUrl}/api/git-info/batch`, {
+            method: 'POST', body: JSON.stringify({ workspaceIds: ['ws-1', 'ws-2'], refresh: true }),
+        });
+        expect(batch.json().results['ws-1']).toBeNull();
+        expect(batch.json().results['ws-2'].branch).toBe('main');
     });
 
     it('returns null for unknown workspace IDs', async () => {

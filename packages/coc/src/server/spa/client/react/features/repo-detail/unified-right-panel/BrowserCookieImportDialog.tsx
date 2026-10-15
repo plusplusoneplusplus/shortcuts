@@ -47,7 +47,7 @@ export function BrowserCookieImportDialog({ bridge, viewId, relatedEngine, initi
             <textarea id={`${id}-cookies`} value={cookies} onChange={e => setCookies(e.target.value)} rows={6}
                 placeholder='name=value; name2=value2 or a JSON cookie array' autoComplete="off" spellCheck={false}
                 disabled={busy} maxLength={65536} className={`${fieldClass} font-mono`} />
-            <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Choose the original site’s domain even if this tab has redirected to a login page. Cookies are shared across workspaces using this browser engine. After import, open the original URL.</p>
+            <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Choose the original site’s domain even if this tab has redirected to a login page. Name=value pairs persist for 30 days across CoC restarts; JSON controls expiry, including session cookies. Cookies are shared across workspaces using this browser engine. After import, open the original URL.</p>
             {error && <p role="alert" className="text-xs text-[#a1260d] dark:text-[#f48771]">{error}</p>}
         </div>
     </Dialog>;

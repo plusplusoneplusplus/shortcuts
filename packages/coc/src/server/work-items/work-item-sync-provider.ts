@@ -24,7 +24,7 @@ export function isSupportedWorkItemSyncProvider(value: string): value is WorkIte
     return SUPPORTED_WORK_ITEM_SYNC_PROVIDERS.includes(value as WorkItemSyncProviderName);
 }
 
-export function detectWorkItemSyncProviderFromRemoteUrl(remoteUrl?: string | null): WorkItemSyncProviderName | undefined {
+export function detectWorkItemSyncProviderFromRemoteUrl(remoteUrl?: string | null, githubHost = 'github.com'): WorkItemSyncProviderName | undefined {
     const trimmed = remoteUrl?.trim();
     if (!trimmed) return undefined;
 
@@ -39,7 +39,7 @@ export function detectWorkItemSyncProviderFromRemoteUrl(remoteUrl?: string | nul
     })();
     const lowerHost = host?.toLowerCase();
 
-    if (lowerHost === 'github.com') return 'github';
+    if (lowerHost === githubHost.toLowerCase()) return 'github';
     if (lowerHost === 'dev.azure.com' || lowerHost === 'ssh.dev.azure.com' || lowerHost?.endsWith('.visualstudio.com')) {
         return 'azure-boards';
     }

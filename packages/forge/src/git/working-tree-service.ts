@@ -158,10 +158,10 @@ export class WorkingTreeService {
     /**
      * Get all working-tree changes (staged, unstaged, and untracked).
      */
-    async getAllChanges(repoRoot: string, options?: { includeStats?: boolean }): Promise<GitChange[]> {
+    async getAllChanges(repoRoot: string, options?: { includeStats?: boolean; throwOnError?: boolean }): Promise<GitChange[]> {
         const repositoryName = path.basename(repoRoot);
-        // Deliberately outside the try: every *git* failure here means "no
-        // changes to show", but a missing or capability-stale binary is a
+        // Deliberately outside the try: ordinary callers tolerate Git failures,
+        // while strict status reads reject them. A capability-stale binary is a
         // NativeAddonLoadError naming the rebuild, and swallowing it would
         // render an empty Git tab for a repository full of changes.
         const addon = loadNativeGit();
@@ -194,6 +194,7 @@ export class WorkingTreeService {
             return changes;
         } catch (error) {
             getLogger().error('Git', 'getAllChanges failed', error instanceof Error ? error : undefined);
+            if (options?.throwOnError) { throw error; }
             return [];
         }
     }

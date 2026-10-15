@@ -12,7 +12,7 @@
  * misses the registry and falls back to the local-origin singleton — unchanged.
  */
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useCocClient } from '../../../../src/server/spa/client/react/repos/cloneRouting';
@@ -146,7 +146,10 @@ function ChatQueueReader({ workspaceId }: { workspaceId: string }) {
     return null;
 }
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
-    RepoChatTab: (props: { workspaceId: string }) => seedAlongsideChat ? <ChatQueueReader {...props} /> : null,
+    RepoChatTab: (props: { workspaceId: string; refreshGit?: () => Promise<void> }) => <>
+        <button data-testid="sidebar-git-refresh" onClick={() => void props.refreshGit?.()}>Refresh</button>
+        {seedAlongsideChat && <ChatQueueReader {...props} />}
+    </>,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
@@ -167,7 +170,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({ Tas
 vi.mock('../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
 import { RepoDetail } from '../../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
-import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/QueueContext';
+import { QueueProvider, useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -185,6 +188,8 @@ function jsonResponse(data: unknown): Partial<Response> {
 const PAUSED_QUEUE = { queued: [], running: [], stats: { isPaused: true } };
 
 function renderDetail(wsId: string, serverId?: string) {
+    let queue: ReturnType<typeof useQueue>;
+    function Probe() { queue = useQueue(); return null; }
     const repo = {
         workspace: { id: wsId, rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null, ...(serverId ? { remote: { serverId, cloneKey: `remote:${serverId}:${wsId}`, baseUrl: REMOTE_BASE } } : {}) },
         gitInfo: { isGitRepo: true },
@@ -194,10 +199,11 @@ function renderDetail(wsId: string, serverId?: string) {
     const detail = (key?: string) => (
         <QueueProvider>
             <RepoDetail key={key} repo={repo} repos={[repo]} onRefresh={vi.fn()} />
+            <Probe />
         </QueueProvider>
     );
     const view = render(detail());
-    return { ...view, remount: () => view.rerender(detail('revisit')) };
+    return { ...view, remount: () => view.rerender(detail('revisit')), queue: () => queue };
 }
 
 describe('RepoDetail queue — remote-clone request routing', () => {
@@ -226,6 +232,20 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         const owner = screen.getByTestId('repo-git-owner');
         expect(owner.getAttribute('data-destination')).toBe(serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
         expect(owner.getAttribute('data-workspace')).toBe(REMOTE_WS);
+    });
+
+    it.each([undefined, 'one', 'two'])('wires manual sidebar status reads to owner %s even without Git tiles', async serverId => {
+        if (serverId) registerCloneBaseUrls([{ workspaceId: REMOTE_WS, cloneKey: `remote:${serverId}:${REMOTE_WS}`, baseUrl: REMOTE_BASE }]);
+        renderDetail(REMOTE_WS, serverId);
+        await act(async () => {});
+        urls.length = 0;
+        await act(async () => fireEvent.click(screen.getByTestId('sidebar-git-refresh')));
+        const expectedBase = serverId ? `${REMOTE_BASE}/api` : '';
+        expect(urls.filter(url => url.includes('/git-info') || url.includes('/git/changes'))).toEqual([
+            `${expectedBase}/workspaces/${REMOTE_WS}/git-info?refresh=true`,
+            `${expectedBase}/workspaces/${REMOTE_WS}/git/changes?refresh=true`,
+        ]);
+        expect(mockDispatch.mock.calls.some(([action]) => action.type === 'SET_GIT_ROUTE')).toBe(false);
     });
 
     it.each([undefined, 'one', 'two'])('passes repo owner %s to the PR tab', serverId => {
@@ -267,14 +287,37 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         }
     });
 
-    it('does not reseed a loaded empty queue when the detail remounts', async () => {
+    it('revalidates a cached empty queue when the detail remounts to recover missed events', async () => {
         const view = renderDetail(LOCAL_WS);
         await screen.findByTestId('repo-header-resume-btn');
         expect(queueSeedUrls(urls, LOCAL_WS)).toHaveLength(1);
 
+        vi.mocked(fetch).mockImplementation(input => {
+            const url = String(input);
+            urls.push(url);
+            return Promise.resolve(jsonResponse(url.includes('/queue?repoId=')
+                ? { ...PAUSED_QUEUE, running: [{ id: 'missed-running' }] } : PAUSED_QUEUE) as Response);
+        });
         view.remount();
         expect(await screen.findByTestId('repo-header-resume-btn')).toBeInTheDocument();
-        expect(queueSeedUrls(urls, LOCAL_WS)).toHaveLength(1);
+        await waitFor(() => expect(view.queue().state.repoQueueMap[LOCAL_WS].running).toEqual([{ id: 'missed-running' }]));
+        expect(queueSeedUrls(urls, LOCAL_WS)).toHaveLength(2);
+    });
+
+    it('rejects the initial empty seed after a newer live running snapshot arrives', async () => {
+        let finish!: (value: Response) => void;
+        vi.mocked(fetch).mockImplementation(input => {
+            const url = String(input);
+            urls.push(url);
+            return url.includes('/queue?repoId=') ? new Promise(resolve => { finish = resolve; })
+                : Promise.resolve(jsonResponse(PAUSED_QUEUE) as Response);
+        });
+        const view = renderDetail(LOCAL_WS);
+        const running = [{ id: 'live-running', type: 'chat' }];
+        act(() => view.queue().dispatch({ type: 'REPO_QUEUE_UPDATED', repoId: LOCAL_WS,
+            queue: { running, queued: [] } }));
+        await act(async () => finish(jsonResponse(PAUSED_QUEUE) as Response));
+        expect(view.queue().state.repoQueueMap[LOCAL_WS].running).toEqual(running);
     });
 
     it.each([LOCAL_WS, REMOTE_WS])('shares the queue seed with the chat reader for %s', async wsId => {
@@ -294,7 +337,7 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         await waitFor(() => expect(queueSeedUrls(urls, REMOTE_WS)).toHaveLength(2));
         view.remount();
         await screen.findByTestId('repo-header-resume-btn');
-        expect(queueSeedUrls(urls, REMOTE_WS)).toHaveLength(2);
+        expect(queueSeedUrls(urls, REMOTE_WS)).toHaveLength(3);
         expect(queueSeedUrls(urls, REMOTE_WS)[1]).toMatch(new RegExp(`^${REMOTE_BASE}`));
     });
 

@@ -113,6 +113,9 @@ Notes, Settings, Git, or PRs does not flip them off and paint a second dock.
 
 Hash parsing stays in `dashboardRoutes.ts` (`parseAdminSubTab`,
 `parseSettingsSubTabFromHash`, `parseAdminDatabaseDeepLink`) and `adminNavigation.ts`.
+Configure includes a registry-driven Sentinel settings tab at `#admin/settings/sentinel`;
+its inventory, discovery and draft boundaries are documented in
+[Admin Config](../admin-config.md#sentinel-settings).
 Below the shell's 600px container breakpoint the sidebar collapses into
 `.ar-mobile-tab-select`; the nav buttons still exist but are hidden, so at phone width
 sections are reached with `selectOption('settings:appearance')`.

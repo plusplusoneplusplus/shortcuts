@@ -67,6 +67,21 @@ Epic roots expose no manual pull. Adding children under provider-backed roots us
 normal create flow, which pushes the child to the provider before storing its mirror
 metadata.
 
+### GitHub sync authentication
+
+`workItems.sync.github.login` selects an explicit gh-cli account on the workspace's
+owning server; `host` defaults to `github.com` and explicitly selects enterprise
+remotes. These non-secret preferences belong to the concrete workspace, not the
+shared storage origin. Status, import, conversion, child creation, edits and polling
+carry that selection into `GhCliGitHubWorkItemIssueTransport`.
+
+The transport reads `readGitHubCredential({ source: 'gh-cli', account })` from
+`coc-native` for each REST request and sends its token directly to the selected
+host's HTTPS API (`api.github.com` or enterprise `/api/v3`). Redirects fail; account
+and source fallback, ambient token routing and token caching are excluded. Missing
+selection fails with setup guidance. Auth, network and HTTP errors expose redacted
+actionable messages; only an issue API HTTP 404 means the issue is missing.
+
 ## Commit review
 
 `RepoDetail` supplies its concrete repo selection id as `attachmentDestinationId`

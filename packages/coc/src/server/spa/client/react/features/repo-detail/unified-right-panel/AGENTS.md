@@ -91,7 +91,7 @@ from same-id clones never merge into one tab.
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
-| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes; pairs use host-only, secure session cookies at `/` with SameSite Lax. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. |
+| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes and supplied expiry/session semantics; pairs use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import, surviving CoC restarts in that engine's installation-wide profile. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. |
 | `BrowserAddressBar.tsx` | Shared address editing and optional history combobox. Blank input makes no suggestion queries or dropdown; clearing invalidates replies. Main ranks eight suggestions with case-preserving suffix completion. Stored-URL activation, Escape, deletion/paste/caret/IME and owner checks preserve editing. Standard Copy adds escaped HTML plus the raw URL only for a fully selected, unedited committed page; drafts, partial selections and cut retain native defaults. Optional native address menus dispatch ordinary editing commands. See the knowledge shell reference for committed-page identity and clipboard fallback contracts. |
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
@@ -748,16 +748,22 @@ active normal count and, when nonzero, how many normal items display Needs atten
 `UnifiedTodoTab` always uses list/detail presentation measured by `useContainerWidth`
 on the actual panel. At 660px the compact selectable list and detail editor scroll
 independently; below that width selection opens details and Back returns focus to
-the selected row. Native pressed buttons expose selection; arrows/Home/End move
-row focus without selecting. Visited editors stay mounted but hidden across
-selection and resizing, retaining item, status-reason and dependency drafts.
+the selected row. Detail Close clears selection, returns list focus and preserves
+owner-scoped deselection across refreshes/remounts. Pending item, tag, dependency
+and PR-outcome mutations, plus pending Scrubber actions, block Close. Native pressed buttons expose selection;
+arrows/Home/End move row focus without selecting. Visited editors stay mounted
+but hidden across selection and resizing, retaining drafts.
 List cards combine status, priority, wrapping title and an ellipsis menu in a compact header,
 with target/Updated/latest-job metadata below. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
-references and editing controls live in the detail pane.
+conversation references and editing controls live in the detail pane.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
-including Untagged, and a detail picker with Manage tags. Filtering uses the full
-owner snapshot independently of the recent history budget. Library edits keep
+including Untagged, a selection-independent library manager and a detail picker.
+Enabling the live gate reloads the full owner snapshot without resetting drafts.
+Absent libraries distinguish loading, read failure and owning-server unavailability,
+with explicit retry; missing capability never fabricates an empty library.
+Filtering uses the full owner snapshot independently of the recent history budget.
+Item tag drafts share the owner-scoped remembered view across remounts. Library edits keep
 parent identity; deletion confirms removal from all items. Explicit picks and
 clears are manual; re-suggest confirms replacing them. Classification notices
 remain separate from save errors, status and execution controls. Narrow panels
@@ -771,13 +777,25 @@ mouse and touch selection. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
-(`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
-start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
+(`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
+notes over two lines or 160 characters have an optional collapse toggle
+(`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
+owner-scoped, in-memory `SentinelTodoView` across refreshes and remounts.
+The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
-`Tracked only · never run` tag. Referenced conversations
-(`item.references`, absent on older servers) render in the detail pane as compact, truncated `Ref` links
-below jobs, with no execution or review label.
+`Tracked only · never run` tag. Conversation entries in `item.references`
+(missing `kind` also means conversation) render below jobs as compact, truncated
+`Ref` links with owner-correct excursions and no execution or review label.
+Default-off runtime `sentinelTodoExternalReferencesEnabled` adds wrapping PR,
+Email and Link anchors to every card and detail view. PR labels identify their
+provider, repository and number; hover titles retain the complete URL. Only
+HTTP(S), plus `mailto:` for email references, render as links. Native anchors
+preserve keyboard and modified-click behavior, isolate card events, and use the
+desktop panel browser when available. Add/Edit forms manage multiple external
+references within their existing Save, draft, revision and error lifecycle.
+Untouched references are omitted from writes; an explicit empty list clears only
+external references, never conversation references.
 
 `SentinelTodoDependencies` is gated by default-off
 `sentinelTodoDependenciesEnabled`. Its owner/item-keyed details add independent

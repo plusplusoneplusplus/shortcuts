@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const mockQueueDispatch = vi.fn();
 const mockGetRepoGroup = vi.fn();
@@ -58,9 +59,9 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetailPane', 
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', async () => {
     const { createPortal } = await import('react-dom');
     return {
-    RepoChatTab: ({ workspaceId, renderList, detailOverride, detailContainer, detailActive, refreshList, sidebarOwnerAvailable, sourceSelectionId }: any) => (
+    RepoChatTab: ({ workspaceId, renderList, detailOverride, detailContainer, detailActive, refreshList, refreshGit, sidebarOwnerAvailable, sourceSelectionId }: any) => (
         <div data-testid="stub-chat-tab" data-workspace={workspaceId} data-owner-available={sidebarOwnerAvailable} data-route={sourceSelectionId}>
-            <button onClick={() => void refreshList?.()} aria-label="Refresh sidebar">Refresh</button>
+            <button onClick={() => void Promise.allSettled([refreshList?.(), refreshGit?.()])} aria-label="Refresh sidebar">Refresh</button>
             {renderList
                 ? renderList({ selectedTaskId: mockSelectedTaskId, selectTask: mockSelectTask })
                 : <div data-testid="native-chat-list" />}
@@ -118,6 +119,44 @@ beforeEach(() => {
 });
 
 describe('RepoGroupView — aggregated chats', () => {
+    it.each([undefined, 'https://owner.example'])('refreshes chats and only live member Git on group owner %s', async baseUrl => {
+        resetCloneRegistryForTests();
+        const selectionId = baseUrl ? `remote:owner:${GROUP_ID}` : GROUP_ID;
+        if (baseUrl) {
+            registerCloneBaseUrls([{ workspaceId: GROUP_ID, cloneKey: selectionId, baseUrl }]);
+            mockRemoteGroups = [{ id: GROUP_ID, name: 'Group', baseUrl, remote: { serverId: 'owner', cloneKey: selectionId } }];
+        }
+        mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, members: [
+            { workspaceId: 'ws-a', stale: false, readOnly: false },
+            { workspaceId: 'ws-b', stale: false, readOnly: false },
+            { workspaceId: 'ws-stale', stale: true, readOnly: false },
+        ] });
+        const fetch = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ results: {
+            'ws-a': { isGitRepo: true, branch: 'main', dirty: true },
+            'ws-b': { isGitRepo: true, branch: 'feature', dirty: false },
+        } })));
+        vi.stubGlobal('fetch', fetch);
+        try {
+            render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+            await screen.findAllByTestId('repo-group-chat-row');
+            await act(async () => {});
+            mockGetRepoGroupChats.mockClear();
+            fetch.mockClear();
+            await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh sidebar' })));
+            expect(mockGetRepoGroupChats).toHaveBeenCalledWith(GROUP_ID, expect.any(Object), baseUrl, expect.any(AbortSignal));
+            const gitReads = fetch.mock.calls.filter(([url]) => String(url).includes('/git-info/batch'));
+            expect(gitReads).toHaveLength(1);
+            expect(String(gitReads[0][0])).toBe(`${baseUrl ?? ''}/api/git-info/batch`);
+            expect(JSON.parse(String(gitReads[0][1]?.body))).toEqual({
+                workspaceIds: ['ws-a', 'ws-b'], refresh: true, trigger: 'manual-refresh',
+            });
+        } finally {
+            cleanup();
+            vi.unstubAllGlobals();
+            resetCloneRegistryForTests();
+        }
+    });
+
     it('keeps the native group list when the flag is off and never reads the feed', async () => {
         mockFlag = false;
         render(<RepoGroupView workspaceId={GROUP_ID} />);

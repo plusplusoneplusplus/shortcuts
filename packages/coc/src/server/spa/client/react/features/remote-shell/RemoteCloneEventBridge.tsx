@@ -24,7 +24,7 @@ import { useApp } from '../../contexts/AppContext';
 import { createBrowserSocketRelay } from '../../shared/file-path/browser-control-relay';
 
 /** Distinct baseUrls of currently-online remote clones (one socket per server). */
-function onlineRemoteBaseUrls(repos: RepoData[]): string[] {
+function onlineRemoteBaseUrls(repos: Pick<RepoData, 'workspace'>[]): string[] {
     const set = new Set<string>();
     for (const repo of repos) {
         const ws = repo.workspace;
@@ -39,8 +39,8 @@ function onlineRemoteBaseUrls(repos: RepoData[]): string[] {
  * Keep a live global event socket open to each online remote clone, routing every
  * message into the shared dashboard `onMessage` handler.
  */
-export function useRemoteCloneEvents(onMessage: (msg: any) => void, browserRoutingRef: string | null = null): void {
-    const { repos } = useRepos();
+export function useRemoteCloneEvents(onMessage: (msg: any, baseUrl?: string) => void, browserRoutingRef: string | null = null): void {
+    const { repos, remoteGroupWorkspaces } = useRepos();
     const routingRef = useRef(browserRoutingRef);
     routingRef.current = browserRoutingRef;
     const relaysRef = useRef(new Map<string, ReturnType<typeof createBrowserSocketRelay>>());
@@ -53,7 +53,7 @@ export function useRemoteCloneEvents(onMessage: (msg: any) => void, browserRouti
     }, [onMessage]);
 
     // Stable key for the online-clone set — reconcile sockets only when it changes.
-    const key = onlineRemoteBaseUrls(repos).join('|');
+    const key = onlineRemoteBaseUrls([...repos, ...(remoteGroupWorkspaces ?? []).map(workspace => ({ workspace }))]).join('|');
     const connectionsRef = useRef<Map<string, ProcessWebSocketConnection>>(new Map());
 
     useEffect(() => {
@@ -79,7 +79,7 @@ export function useRemoteCloneEvents(onMessage: (msg: any) => void, browserRouti
                         onStatusChange: status => { if (status === 'closed') relaysRef.current.get(baseUrl)?.onClose(); },
                         onMessage: (msg: any) => {
                             if (relaysRef.current.get(baseUrl)?.onMessage(msg)) return;
-                            onMessageRef.current(msg);
+                            onMessageRef.current(msg, baseUrl);
                             window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
                                 detail: { message: msg, baseUrl },
                             }));
@@ -108,7 +108,7 @@ export function useRemoteCloneEvents(onMessage: (msg: any) => void, browserRouti
 }
 
 /** Null-rendering bridge that wires remote-clone events into `onMessage`. */
-export function RemoteCloneEventBridge({ onMessage }: { onMessage: (msg: any) => void }): null {
+export function RemoteCloneEventBridge({ onMessage }: { onMessage: (msg: any, baseUrl?: string) => void }): null {
     const { state } = useApp();
     useRemoteCloneEvents(onMessage, state.selectedRepoId);
     return null;

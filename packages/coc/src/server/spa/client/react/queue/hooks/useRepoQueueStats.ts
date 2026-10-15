@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import { useQueue } from '../../contexts/QueueContext';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
-import { workspaceReadSource } from '../../api/workspaceReads';
+import { workspaceReadCacheKey, workspaceReadSource } from '../../api/workspaceReads';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 
 export interface QueueJob {
@@ -33,7 +33,7 @@ export const isHidden = (t: { type?: string; payload?: any }) => t.type === Task
 export function useRepoQueueJobs(workspaceId: string, client?: CocClient, routingRef?: string) {
     const { state } = useQueue();
     return useMemo<{ running: QueueJob[]; queued: QueueJob[] }>(() => {
-        const entry = state.repoQueueMap[workspaceId];
+        const entry = state.repoQueueMap[workspaceReadCacheKey(workspaceId, client && workspaceReadSource(client))];
         // Untagged WebSocket snapshots belong to the page-origin server only.
         const unresolvedRemote = parseRemoteCloneKey(routingRef) && !client?.options?.baseUrl;
         const matchesSource = !unresolvedRemote && (!client || (entry?.taskDataSource
@@ -47,7 +47,7 @@ export function useRepoQueueJobs(workspaceId: string, client?: CocClient, routin
     }, [state.repoQueueMap, workspaceId, client, routingRef]);
 }
 
-export function useRepoQueueStats(workspaceId: string, client?: CocClient): RepoQueueStats {
-    const jobs = useRepoQueueJobs(workspaceId, client);
+export function useRepoQueueStats(workspaceId: string, client?: CocClient, routingRef?: string): RepoQueueStats {
+    const jobs = useRepoQueueJobs(workspaceId, client, routingRef);
     return useMemo(() => ({ running: jobs.running.length, queued: jobs.queued.length }), [jobs]);
 }

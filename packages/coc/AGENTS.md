@@ -203,6 +203,9 @@ references before editing. Paths are package-relative.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
+- Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
+  `#admin/settings/sentinel`. Features search links to that tab; saves and cancels
+  affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
 - `copilot.transformTransport` is an installation-wide Admin setting (Direct HTTP default, restart required).
   Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
   System One, the shared Copilot decision backend, and titles use `gpt-6-luna`.
@@ -348,6 +351,13 @@ references before editing. Paths are package-relative.
   `attach_reference`) live in `sentinel_todo_references`, apart from job links: normal items
   only, the chat must exist in the named local workspace, duplicates are no-ops, and they never
   change status, create execution/review state, or message the referenced chat.
+  The `references` contract combines conversation entries (missing kind means conversation)
+  with typed `pr`/`email`/`link` external entries. Default-off live
+  `features.sentinelTodoExternalReferences` gates external reads and create/update
+  `externalReferences`: omission preserves, an array replaces external entries only, and `[]`
+  clears them without removing conversations. The additive item JSON column defaults to `[]`.
+  Safe URLs are validated and deduplicated; external metadata never binds PR outputs,
+  creates watches, fulfills prerequisites, changes status or grants authority.
   Job execution/delivery/assessment are derived on read with exact parent/child workspace,
   process and session identity; remote links are always `unavailable`. Job mode is a compact
   read-time projection: batch-read local process metadata from the shared database, validate
@@ -661,7 +671,7 @@ references before editing. Paths are package-relative.
   `messaging/safe-error-diagnostics.ts` fields only, never raw errors. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - `features.sentinelDesktopMirror` is live/default-off under Admin → Configure →
-  Integrations. Stage newly submitted dashboard messages before canonical admission;
+  Sentinel. Stage newly submitted dashboard messages before canonical admission;
   confirm buffered writes immediately and persist exact workspace/process/request
   correlation. Hydrate authoritative bindings first; pin their account/destination.
   Connector inputs, reviews, retries and stored history never create mirror intents.

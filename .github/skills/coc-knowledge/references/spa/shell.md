@@ -272,7 +272,7 @@ The SPA shell, editors, terminals, file previews and system browser are unaffect
 
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 
-Main-process validation rejects unrelated domains, invalid fields and partitioned cookies before writes; engine failures omit cookie values. Imports coordinate with profile cleanup and never navigate. JSON retains attributes and exact values, including literal double quotes and backslashes escaped with JSON syntax. Pairs retain quotes/backslashes literally, trim surrounding spaces, and default to host-only, secure session cookies at `/` with SameSite Lax. Values reject controls, non-ASCII characters, spaces, semicolons and commas; pairs reject controls before trimming. Size and batch limits apply.
+Main-process validation rejects unrelated domains, invalid fields and partitioned cookies before writes; engine failures omit cookie values. Imports coordinate with profile cleanup and never navigate. JSON retains attributes, supplied expiry/session semantics and exact values, including literal double quotes and backslashes escaped with JSON syntax. Pairs retain quotes/backslashes literally, trim surrounding spaces, and use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import. Both engines receive Unix-second expiry in their installation-wide profiles. Values reject controls, non-ASCII characters, spaces, semicolons and commas; pairs reject controls before trimming. Size and batch limits apply.
 
 Electron `cookies.set` and WebView2 `CreateCookie`/`AddOrUpdateCookie` receive values without unquoting or decoding. Import compatibility does not guarantee site authentication. Cookie text stays in dialog memory. Native surfaces use `useNativeViewPlacement` to hide for overlapping DOM content and explicit `data-native-view-overlay` elements. DOM webviews stay visible under menus, dialogs and toasts.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
@@ -301,7 +301,7 @@ with no API or app-state dependencies, so the URL needs no query parameters.
 |---------|---------|
 | `AppContext` | Global app state, workspace selection |
 | `QueueContext` | Queue state, enqueue/cancel actions |
-| `TaskContext` | Active task tracking |
+| `TaskContext` | Task-file selection and task-change signals |
 | `ToastContext` | Toast notification queue |
 | `FloatingChatsContext` | Floating chat window management |
 
@@ -380,10 +380,15 @@ LLM-tools key after a successful `updateLlmToolsConfig`.
 `api/workspaceReads.ts` shares concurrent Git-info and queue reads by routed
 client and workspace, releasing requests on success or failure. It retains no
 settled snapshots. Explicit queue refreshes supersede pending snapshots; older
-readers receive the replacement result. `RepoDetail` seeds queue task data only when it is absent;
-`QueueContext.repoQueueMap.taskDataLoaded` distinguishes loaded empty queues
-from stats-only placeholders, and `taskDataSource` records the server/API owner.
-`RepoChatTab` refreshes queue data on each mount.
+readers receive the replacement result. Scope cleanup invalidates sharing of
+pending queue reads so remounts revalidate without cancelling other consumers.
+Queue/history caches use
+`workspaceReadCacheKey(workspaceId, source)` to isolate remote and container owners.
+`taskDataLoaded` distinguishes loaded empty queues from stats-only placeholders;
+`taskRevision` changes only with task snapshots and guards delayed REST writes in
+the reducer. `RepoDetail`'s `useWorkspaceQueueSeed` and `RepoChatTab` reconcile on
+mount and the owning socket's reconnect, including pending requests. Failed reads
+retain confirmed rows and report errors; reconciliation adds no polling.
 
 `queue/hooks/useRepoQueueStats.ts` shares eligible rows through `useRepoQueueJobs`;
 the selected group's queue stays independent of its members. Owner-aware readers
@@ -407,8 +412,18 @@ the sidebar; row actions stay collapsed, and `queueJobHash` preserves owner rout
 
 `features.railGitSummary` (default off) adds changes, sync and branch-spine tiles
 through `SplitWorkspacePanel`'s `railGit` slot, reusing `RailHoverPreview`.
-Repos read git-info plus working-tree changes from their owner; groups batch
-member git-info on the group's server and list each member's own branch.
+Hosts own `useRailGitSummary`'s status readers and pass their state to the rail
+views. Repos read git-info plus working-tree changes from their owner; groups
+batch member git-info on the group's server and list each member's own branch.
+`RepoChatTab.handleRefresh` shares expanded and collapsed refresh duties,
+awaiting chats, full pins, aggregate feeds and the host's Git reader independently.
+Manual Git reads work with tiles disabled, bypass server freshness/backoff,
+and reject failures rather than returning cached or empty success.
+`git/changes?refresh=true` selects Forge's strict working-tree status read;
+ordinary working-tree callers retain their existing error policy.
+Busy covers every domain; partial errors retain successful reads and report
+through the existing toast. Refresh preserves drafts, selection, filters, scroll
+and collapse without navigation, Git fetch/pull or scheduling mutations.
 Changes count distinct paths with conflicts first; sync compares only against the
 reported `upstream`. Unknown, failed, detached and no-upstream states never render
 clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`
@@ -604,6 +619,13 @@ ledger from the owning server through `client.sentinelTodos.get` with `full: tru
 only the descriptor persists. The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
+Detail Close remembers owner-scoped deselection and restores list focus; pending
+item, tag, dependency, PR-outcome and Scrubber mutations block it. Item tag drafts share the
+remembered owner view across remounts. The live tag gate reloads the owner snapshot
+on enable; missing libraries expose loading/error/unavailable states and retry,
+without fabricating capability or depending on selection.
+Detail notes default to expanded; explicit visibility choices share the owner/item-scoped
+in-memory `SentinelTodoView` with drafts across refreshes and remounts.
 Compact list headers combine wrapping titles, status, priority and shared overflow
 actions; job metadata wraps below. Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details;
@@ -629,7 +651,12 @@ from cached local/remote/group metadata; the current repo omits its badge and
 remote labels include the configured server name. Exact-owner target labels and
 last-known offline names provide fallbacks; unavailable metadata stays explicit
 and accessible. Pills add no metadata reads or polling. Execution/review labels never write item verdicts;
-reference-only conversations keep navigation without job badges. Normal tracking
+reference-only conversations keep navigation without job badges. Default-off live
+`sentinelTodoExternalReferencesEnabled` adds typed PR/email/web reference chips to
+cards and an external-link editor in the existing detail form. External replacements
+and clears preserve conversation attachments; omission preserves external links.
+External links follow shared desktop/web navigation without selecting the card or
+starting a conversation excursion. References remain display metadata. Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin

@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure';
+export type FeatureGroupId = 'dashboard' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -87,6 +87,9 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'devTools', heading: 'Development Tools', testId: 'feature-group-dev-tools' },
     { id: 'workItems', heading: 'Work Items', testId: 'feature-group-work-items' },
     { id: 'aiModes', heading: 'AI Execution Modes', testId: 'feature-group-ai-modes' },
+    { id: 'sentinelMode', heading: 'Mode & Results', testId: 'feature-group-sentinel-mode' },
+    { id: 'sentinelTodos', heading: 'To-do & PR Outcomes', testId: 'feature-group-sentinel-todos' },
+    { id: 'sentinelMessaging', heading: 'Messaging', testId: 'feature-group-sentinel-messaging' },
     { id: 'review', heading: 'Code Review & Collaboration', testId: 'feature-group-review' },
     { id: 'infrastructure', heading: 'Infrastructure', testId: 'feature-group-infrastructure' },
 ];
@@ -98,9 +101,9 @@ export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
  * matching SPA `SettingsSubTab` ids; kept local so this module stays free of
  * SPA imports.
  */
-export type FeatureSettingTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations';
+export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'features' | 'integrations';
 
-export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'appearance', 'features', 'integrations'];
+export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'features', 'integrations'];
 
 export interface AdminSettingUiSpec {
     /** Settings tab the row renders on. Defaults to `'features'` when omitted. */
@@ -622,7 +625,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'sentinel.enabled', default: false, runtime: 'live', runtimeFlag: 'sentinelEnabled',
         ui: {
-            tab: 'ai', group: 'aiModes', order: 32, label: 'Sentinel Mode', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelMode', order: 32, label: 'Sentinel Mode', badge: 'experimental',
             hint: 'Show the Sentinel dispatcher mode in the dashboard chat picker. Phone threads always use it. Disabled by default.',
             testId: 'toggle-sentinel-enabled',
         },
@@ -630,7 +633,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
-            tab: 'ai', group: 'aiModes', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
             hint: 'Author explicit prerequisites in one Sentinel ledger. Readiness never grants execution authority. Disabled by default.',
             testId: 'toggle-sentinel-todo-dependencies-enabled',
         },
@@ -638,7 +641,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelTodoTags', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoTagsEnabled',
         ui: {
-            tab: 'ai', group: 'aiModes', order: 32.56, label: 'Sentinel To-do tags', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.56, label: 'Sentinel To-do tags', badge: 'experimental',
             hint: 'Parent-scoped user-defined tracking tags with best-effort matching. Tags never grant execution authority. Disabled by default.',
             testId: 'toggle-sentinel-todo-tags-enabled',
         },
@@ -646,15 +649,23 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
-            tab: 'ai', group: 'aiModes', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
             hint: 'Review exact tracked delegated PR outcomes without granting repair or delegation authority. Requires native triggers. Disabled by default.',
             testId: 'toggle-sentinel-pr-outcome-wake-enabled',
         },
     }),
     bool({
+        key: 'features.sentinelTodoExternalReferences', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoExternalReferencesEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.59, label: 'Sentinel To-do external references', badge: 'experimental',
+            hint: 'Display and edit PR, email and web links as references only. References never bind PR outputs or authorize work. Disabled by default.',
+            testId: 'toggle-sentinel-todo-external-references-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
-            tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
             hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Disabled by default.',
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
@@ -928,7 +939,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelDesktopMirror', default: false, runtime: 'live', runtimeFlag: 'sentinelDesktopMirrorEnabled',
         ui: {
-            tab: 'integrations', group: 'dashboard', order: 61.8, label: 'Sentinel desktop messaging mirror', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelMessaging', order: 61.8, label: 'Sentinel desktop messaging mirror', badge: 'experimental',
             hint: 'Mirror newly accepted dashboard messages and final answers to their active local Sentinel messaging binding. WhatsApp uploads allow up to 10 files and 10 MiB total; invalid or oversized uploads reject submission. Delivery failures appear in the chat; uncertain sends require manual reconciliation. Existing history is not replayed.',
             testId: 'toggle-sentinel-desktop-mirror-enabled',
         },
@@ -1123,7 +1134,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelResultCards', default: true, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
         ui: {
-            tab: 'chat', group: 'aiModes', order: 48, label: 'Sentinel result cards', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelMode', order: 48, label: 'Sentinel result cards', badge: 'experimental',
             hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Enabled by default.',
             testId: 'toggle-sentinel-result-cards-enabled',
         },

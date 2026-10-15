@@ -13,11 +13,11 @@
  *     is what keeps a second Monaco instance showing a diff, a search buffer or
  *     a canvas snippet in the same language from being answered out of this
  *     document's buffer.
- *   - A provider only exists while the server advertises the matching
- *     capability. Capabilities arrive with the attach, and a restart or a
- *     configuration change can change them, so the registration is recomputed
- *     whenever the advertised set changes. While no session has reported
- *     capabilities yet we register optimistically: an unsupported request
+ *   - Except for completion's document-word fallback, providers only exist while
+ *     the server advertises the matching capability. Capabilities arrive with
+ *     the attach, and a restart or configuration change can change them.
+ *     Registration is recomputed whenever the advertised set changes. Before
+ *     capabilities arrive we register optimistically: an unsupported request
  *     answers empty, whereas a missing provider would answer nothing at all
  *     even after the server turns out to support the feature.
  *   - Monaco's `CancellationToken` becomes an `AbortSignal`, so a superseded
@@ -59,6 +59,7 @@ import {
     type SemanticTokensSupport,
 } from './semanticTokens';
 import {
+    MONACO_COMPLETION_KIND,
     toCompletionList,
     toHover,
     toLocationLinks,
@@ -355,6 +356,29 @@ function sameWorkspace(documentUri: string, target: string): boolean {
     return target.startsWith(prefix);
 }
 
+function documentWordCompletions(text: string, range: MonacoRange): ProviderCompletionList {
+    const line = text.split('\n')[range.startLineNumber - 1] ?? '';
+    const prefix = line.slice(range.startColumn - 1, range.endColumn - 1).toLowerCase();
+    const words = new Set<string>();
+    for (const match of text.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) {
+        const word = match[0];
+        const folded = word.toLowerCase();
+        if (folded !== prefix && folded.startsWith(prefix)) {
+            words.add(word);
+            if (words.size === 200) break;
+        }
+    }
+    return {
+        suggestions: [...words].map(word => ({
+            label: word,
+            insertText: word,
+            kind: MONACO_COMPLETION_KIND.text,
+            range,
+        })),
+        incomplete: words.size === 200,
+    };
+}
+
 async function runRequest<T>(
     view: LanguageDocumentView,
     method: string,
@@ -521,6 +545,7 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
     }));
 
     let registrations: ProviderDisposable[] = [];
+    let disposed = false;
 
     // Monaco re-fetches tokens when the provider fires `onDidChange`. Listeners
     // live for the whole registration, so a refresh reaches whichever provider
@@ -763,37 +788,45 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                 },
             }));
         }
-        if (supportsFeature(state, 'completion')) {
-            next.push(monaco.languages.registerCompletionItemProvider(languageId, {
-                triggerCharacters: triggerCharacters(state, 'completion', 'triggerCharacters'),
-                provideCompletionItems: async (target, position, context, token) => {
-                    if (!owns(target)) {
-                        return null;
-                    }
-                    // Monaco already computed the word at the cursor; it is the
-                    // range every item without an explicit edit replaces.
-                    const word = target.getWordUntilPosition(position);
-                    const fallbackRange: MonacoRange = {
-                        startLineNumber: position.lineNumber,
-                        startColumn: word.startColumn,
-                        endLineNumber: position.lineNumber,
-                        endColumn: position.column,
-                    };
-                    const params = view.documentParams({
-                        position: toLspPosition(position),
-                        context: {
-                            triggerKind: context?.triggerKind ?? 1,
-                            ...(context?.triggerCharacter ? { triggerCharacter: context.triggerCharacter } : {}),
-                        },
-                    });
-                    const result = await runRequest(view, 'textDocument/completion', params, token);
-                    if (result === null) {
-                        return { suggestions: [], incomplete: false };
-                    }
-                    return toCompletionList(result, fallbackRange);
-                },
-            }));
-        }
+        next.push(monaco.languages.registerCompletionItemProvider(languageId, {
+            triggerCharacters: triggerCharacters(state, 'completion', 'triggerCharacters'),
+            provideCompletionItems: async (target, position, context, token) => {
+                if (disposed || !owns(target) || token.isCancellationRequested) {
+                    return null;
+                }
+                // Monaco already computed the word at the cursor; it is the
+                // range every item without an explicit edit replaces.
+                const word = target.getWordUntilPosition(position);
+                const fallbackRange: MonacoRange = {
+                    startLineNumber: position.lineNumber,
+                    startColumn: word.startColumn,
+                    endLineNumber: position.lineNumber,
+                    endColumn: position.column,
+                };
+                const params = view.documentParams({
+                    position: toLspPosition(position),
+                    context: {
+                        // Monaco uses 0/1/2; LSP uses 1/2/3 for the same triggers.
+                        triggerKind: (context?.triggerKind ?? 0) + 1,
+                        ...(context?.triggerCharacter ? { triggerCharacter: context.triggerCharacter } : {}),
+                    },
+                });
+                const currentState = view.getSnapshot().state;
+                const canComplete = view.isReady()
+                    && (currentState?.status === 'ready' || currentState?.status === 'indexing')
+                    && supportsFeature(currentState, 'completion');
+                const result = canComplete
+                    ? await runRequest(view, 'textDocument/completion', params, token)
+                    : null;
+                if (disposed || token.isCancellationRequested) {
+                    return null;
+                }
+                const list = toCompletionList(result, fallbackRange);
+                return list.suggestions.length > 0
+                    ? list
+                    : documentWordCompletions(target.getValue?.() ?? view.getText(), fallbackRange);
+            },
+        }));
         if (supportsFeature(state, 'signatureHelp')) {
             next.push(monaco.languages.registerSignatureHelpProvider(languageId, {
                 signatureHelpTriggerCharacters: triggerCharacters(state, 'signatureHelp', 'triggerCharacters'),
@@ -878,7 +911,6 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
         }
     });
 
-    let disposed = false;
     return {
         dispose: () => {
             if (disposed) {

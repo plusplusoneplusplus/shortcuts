@@ -20,8 +20,8 @@ export interface RailControls {
     onPreview: () => void;
     /** Focus a stable rail control when the last preview row is removed. */
     onFocusRail?: () => void;
-    /** Expand the sidebar with its Git half open; `changes` reveals the working tree. */
-    onOpenGit?: (target: 'changes' | 'branch') => void;
+    /** Default opens the Git sidebar; detail intent preserves sidebar state. */
+    onOpenGit?: (target: 'changes' | 'branch', intent?: 'sidebar' | 'detail') => void;
 }
 export const RailControlsContext = createContext<RailControls | null>(null);
 

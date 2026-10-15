@@ -52,6 +52,7 @@ describe('Sentinel tag routes without a live server', () => {
         expect(created.status).toBe(200);
         const id = created.body.tags[0].id;
         expect(await request('GET', base)).toMatchObject({ status: 200, body: { tagLibrary: created.body } });
+        expect(await request('GET', `${base}?full=true`)).toMatchObject({ status: 200, body: { tagLibrary: created.body } });
         expect(await request('PATCH', `${base}/tags/${id}`, { ...tag, expectedRevision: 1, name: 'Server' }))
             .toMatchObject({ status: 200, body: { revision: 2, tags: [{ name: 'Server' }] } });
         expect((await request('DELETE', `${base}/tags/${id}`, { expectedRevision: 1, confirmed: true })).status).toBe(409);
@@ -82,6 +83,7 @@ describe('Sentinel tag routes without a live server', () => {
             expect((await request(method, base + suffix, tag)).status).toBe(404);
         }
         expect((await request('GET', base)).body.tagLibrary).toBeUndefined();
+        expect((await request('GET', `${base}?full=true`)).body.tagLibrary).toBeUndefined();
         enabled = true;
         expect((await request('GET', `${base}/tags`)).body.tags).toHaveLength(1);
     });

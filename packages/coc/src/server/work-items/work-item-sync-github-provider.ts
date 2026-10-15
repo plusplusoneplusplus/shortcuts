@@ -1,6 +1,5 @@
-import { execFile } from 'child_process';
 import * as crypto from 'crypto';
-import { promisify } from 'util';
+import { AuthError, NativeAddonLoadError, readGitHubCredential } from '@plusplusoneplusplus/coc-native';
 import type { WorkItemSyncProviderStatus } from '@plusplusoneplusplus/coc-client';
 import {
     buildGitHubWorkItemIssueUpdate,
@@ -88,12 +87,6 @@ interface GitHubRestIssue {
     pull_request?: unknown;
 }
 
-type ExecFileAsync = (
-    file: string,
-    args: string[],
-    options: { encoding: 'utf8'; windowsHide: true; maxBuffer: number },
-) => Promise<{ stdout: string; stderr: string }>;
-
 /**
  * Surfaced when a GitHub→local pull kept an unpushed local edit instead of
  * applying the conflicting remote value, so the divergence is observable.
@@ -180,27 +173,25 @@ export interface ConvertGitHubEpicTreeTrackerResult {
     localUpdated: number;
 }
 
-// Resolve child_process.execFile lazily so importing this module has no
-// load-time side effects (tests with partial child_process mocks would
-// otherwise fail on the export access before any transport is used).
-let lazyExecFileAsync: ExecFileAsync | undefined;
-const execFileAsync: ExecFileAsync = (file, args, options) => {
-    lazyExecFileAsync ??= promisify(execFile) as ExecFileAsync;
-    return lazyExecFileAsync(file, args, options);
-};
-
 function repoApiPath(repo: AvailableGitHubWorkItemSyncRepo, suffix = ''): string {
     return `repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}${suffix}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+function isNotFoundError(error: unknown): boolean {
+    return error instanceof GitHubWorkItemSyncError && error.status === 404;
 }
 
-function isNotFoundError(error: unknown): boolean {
-    if (!isRecord(error)) return false;
-    const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
-    return message.includes('404') || message.includes('not found');
+export class GitHubWorkItemSyncError extends Error {
+    constructor(message: string, readonly status?: number) {
+        super(message);
+        this.name = 'GitHubWorkItemSyncError';
+    }
+}
+
+export function githubWorkItemSyncErrorMessage(error: unknown): string {
+    return error instanceof GitHubWorkItemSyncError
+        ? error.message
+        : 'GitHub sync failed. Check the selected gh-cli account and repository access on the owning server.';
 }
 
 function normalizeRestIssue(issue: GitHubRestIssue): GitHubWorkItemIssue | undefined {
@@ -232,10 +223,13 @@ function matchesTextFilter(issue: GitHubWorkItemIssue, q: string | undefined): b
 }
 
 export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTransport {
-    constructor(private readonly run: ExecFileAsync = execFileAsync) {}
+    constructor(
+        private readonly request: typeof fetch = fetch,
+        private readonly readCredential: typeof readGitHubCredential = readGitHubCredential,
+    ) {}
 
     async getRepository(repo: AvailableGitHubWorkItemSyncRepo): Promise<void> {
-        await this.ghJson(repo, [repoApiPath(repo)]);
+        await this.githubJson(repo, repoApiPath(repo));
     }
 
     async listIssues(repo: AvailableGitHubWorkItemSyncRepo, filters: GitHubWorkItemIssueListFilters = {}): Promise<GitHubWorkItemIssue[]> {
@@ -245,14 +239,9 @@ export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTra
         let page = 1;
 
         while (result.length < limit) {
-            const rawIssues = await this.ghJson<GitHubRestIssue[]>(repo, [
-                repoApiPath(repo, '/issues'),
-                '--method', 'GET',
-                '-f', 'state=all',
-                '-F', 'per_page=100',
-                '-F', `page=${page}`,
-                ...(labels?.length ? ['-f', `labels=${labels.join(',')}`] : []),
-            ]);
+            const query = new URLSearchParams({ state: 'all', per_page: '100', page: String(page) });
+            if (labels?.length) query.set('labels', labels.join(','));
+            const rawIssues = await this.githubJson<GitHubRestIssue[]>(repo, `${repoApiPath(repo, '/issues')}?${query}`);
             const normalized = rawIssues
                 .map(normalizeRestIssue)
                 .filter((issue): issue is GitHubWorkItemIssue => issue !== undefined)
@@ -267,9 +256,7 @@ export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTra
 
     async getIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number): Promise<GitHubWorkItemIssue | undefined> {
         try {
-            return normalizeRestIssue(await this.ghJson<GitHubRestIssue>(repo, [
-                repoApiPath(repo, `/issues/${issueNumber}`),
-            ]));
+            return normalizeRestIssue(await this.githubJson<GitHubRestIssue>(repo, repoApiPath(repo, `/issues/${issueNumber}`)));
         } catch (error) {
             if (isNotFoundError(error)) return undefined;
             throw error;
@@ -277,54 +264,81 @@ export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTra
     }
 
     async createIssue(repo: AvailableGitHubWorkItemSyncRepo, input: GitHubWorkItemIssueCreateInput): Promise<GitHubWorkItemIssue> {
-        const issue = normalizeRestIssue(await this.ghJson<GitHubRestIssue>(repo, [
-            repoApiPath(repo, '/issues'),
-            '--method', 'POST',
-            ...this.issueFields(input),
-        ]));
+        const issue = normalizeRestIssue(await this.githubJson<GitHubRestIssue>(repo, repoApiPath(repo, '/issues'), 'POST', input));
         if (!issue) throw new Error(`GitHub API for ${repo.owner}/${repo.repo} did not return a created issue.`);
         return issue;
     }
 
     async updateIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number, input: GitHubWorkItemIssueUpdateInput): Promise<GitHubWorkItemIssue> {
-        const issue = normalizeRestIssue(await this.ghJson<GitHubRestIssue>(repo, [
-            repoApiPath(repo, `/issues/${issueNumber}`),
-            '--method', 'PATCH',
-            ...this.issueFields(input),
-            '-f', `state=${input.state}`,
-        ]));
+        const issue = normalizeRestIssue(await this.githubJson<GitHubRestIssue>(repo, repoApiPath(repo, `/issues/${issueNumber}`), 'PATCH', input));
         if (!issue) throw new Error(`GitHub API for ${repo.owner}/${repo.repo} did not return an updated issue.`);
         return issue;
     }
 
-    private async ghJson<T>(repo: AvailableGitHubWorkItemSyncRepo, args: string[]): Promise<T> {
-        const { stdout } = await this.run('gh', ['api', ...args], {
-            encoding: 'utf8',
-            windowsHide: true,
-            maxBuffer: 10 * 1024 * 1024,
-        });
+    private async githubJson<T>(
+        repo: AvailableGitHubWorkItemSyncRepo,
+        path: string,
+        method = 'GET',
+        body?: GitHubWorkItemIssueCreateInput | GitHubWorkItemIssueUpdateInput,
+    ): Promise<T> {
+        const host = new URL(repo.url).hostname.toLowerCase();
+        const login = repo.login;
+        if (!login || !/^[A-Za-z0-9_-]+$/.test(login)) {
+            throw new GitHubWorkItemSyncError(
+                "Set workItems.sync.github.login to an explicit gh-cli account (letters, digits, underscores or hyphens; no whitespace) in this workspace's preferences on the owning server.",
+            );
+        }
+        const signal = AbortSignal.timeout(30_000);
+        let credential;
         try {
-            return JSON.parse(stdout) as T;
+            credential = await this.readCredential({ source: 'gh-cli', account: { host, login } }, signal);
+        } catch (error) {
+            const reason = error instanceof AuthError ? error.code
+                : error instanceof NativeAddonLoadError ? 'NativeAddonUnavailable' : 'CredentialUnavailable';
+            throw new GitHubWorkItemSyncError(
+                `GitHub sync authentication failed (${reason}). Check workItems.sync.github.host/login and run gh auth login --hostname <host> on the owning server; rebuild coc-native if its auth capability is unavailable.`,
+            );
+        }
+        if (credential.host.toLowerCase() !== host || credential.login !== login
+            || !credential.token || /[\s\x00-\x1f\x7f]/.test(credential.token)) {
+            throw new GitHubWorkItemSyncError('GitHub sync received an invalid or mismatched credential for the selected host/account.');
+        }
+        let response: Response;
+        try {
+            response = await this.request(`https://${host === 'github.com' ? 'api.github.com' : `${host}/api/v3`}/${path}`, {
+                method,
+                headers: {
+                    Authorization: `Bearer ${credential.token}`,
+                    Accept: 'application/vnd.github+json',
+                    'Content-Type': 'application/json',
+                    'X-GitHub-Api-Version': '2022-11-28',
+                    'User-Agent': 'coc-work-item-sync',
+                },
+                body: body === undefined ? undefined : JSON.stringify(body),
+                redirect: 'error',
+                signal,
+            });
         } catch {
-            throw new Error(`GitHub API for ${repo.owner}/${repo.repo} returned invalid JSON.`);
+            throw new GitHubWorkItemSyncError('GitHub sync request failed or timed out. Check connectivity to the selected GitHub host on the owning server.');
         }
-    }
-
-    private issueFields(input: GitHubWorkItemIssueCreateInput): string[] {
-        const args = [
-            '-f', `title=${input.title}`,
-            '-f', `body=${input.body}`,
-        ];
-        for (const label of input.labels) {
-            args.push('-f', `labels[]=${label}`);
+        if (!response.ok) {
+            throw new GitHubWorkItemSyncError(
+                `GitHub sync API request failed (HTTP ${response.status}). Check the selected account's repository permissions, token scopes, SSO authorization and rate limits.`,
+                response.status,
+            );
         }
-        return args;
+        try {
+            return await response.json() as T;
+        } catch {
+            throw new GitHubWorkItemSyncError('GitHub sync API returned invalid JSON.');
+        }
     }
 }
 
 function unavailableRepoStatus(repo: UnavailableGitHubWorkItemSyncRepo): WorkItemSyncProviderStatus {
     const messageByReason: Record<UnavailableGitHubWorkItemSyncRepo['reason'], string> = {
         'incomplete-preference': 'GitHub sync owner/repo preference must include both owner and repo.',
+        'invalid-host': 'GitHub sync host must be a hostname without a scheme, path or port.',
         'missing-workspace': 'GitHub sync could not resolve the current workspace.',
         'missing-origin': 'GitHub sync could not find a git origin remote for this workspace.',
         'non-github-origin': 'GitHub sync requires a GitHub origin remote or workspace owner/repo override.',
@@ -337,7 +351,7 @@ function unavailableRepoStatus(repo: UnavailableGitHubWorkItemSyncRepo): WorkIte
         auth: {
             mode: 'external',
             authenticated: false,
-            message: 'GitHub sync uses external authentication; run gh auth login or set GITHUB_TOKEN for the server process.',
+            message: 'Select workItems.sync.github.login in the workspace preferences and sign in with gh auth login on the owning server.',
         },
     };
 }
@@ -356,17 +370,17 @@ function availableRepoStatus(repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyn
         auth: {
             mode: 'external',
             authenticated: true,
-            message: 'GitHub sync is using external GitHub authentication.',
+            message: 'GitHub sync uses the native auth SDK with the selected gh-cli host/account on the owning server.',
         },
     };
 }
 
-function authUnavailableStatus(repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyncProviderStatus {
+function authUnavailableStatus(repo: AvailableGitHubWorkItemSyncRepo, error: unknown): WorkItemSyncProviderStatus {
     return {
         provider: 'github',
         available: false,
         reason: 'auth-unavailable',
-        message: `GitHub sync could not reach ${repo.owner}/${repo.repo} using external authentication.`,
+        message: githubWorkItemSyncErrorMessage(error),
         repository: {
             provider: 'github',
             owner: repo.owner,
@@ -377,7 +391,7 @@ function authUnavailableStatus(repo: AvailableGitHubWorkItemSyncRepo): WorkItemS
         auth: {
             mode: 'external',
             authenticated: false,
-            message: 'Run gh auth login or set GITHUB_TOKEN for the server process.',
+            message: githubWorkItemSyncErrorMessage(error),
         },
     };
 }
@@ -997,8 +1011,8 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             try {
                 await transport.getRepository(repo);
                 return availableRepoStatus(repo);
-            } catch {
-                return authUnavailableStatus(repo);
+            } catch (error) {
+                return authUnavailableStatus(repo, error);
             }
         },
     };

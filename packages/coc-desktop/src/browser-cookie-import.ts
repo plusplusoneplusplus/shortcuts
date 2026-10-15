@@ -8,6 +8,7 @@ export interface BrowserImportCookie {
     secure: boolean;
     httpOnly: boolean;
     sameSite: 'lax' | 'strict' | 'no_restriction';
+    /** Unix seconds for both engines; omitted for session cookies. */
     expirationDate?: number;
 }
 
@@ -28,10 +29,11 @@ export function parseBrowserCookies(domain: unknown, input: unknown): BrowserImp
         try { items = JSON.parse(input); } catch { throw new Error('Cookie JSON is invalid.'); }
     } else {
         if (/[\x00-\x1f\x7f]/.test(input)) { throw new Error('Cookie pairs must not contain control characters.'); }
+        const expirationDate = Date.now() / 1000 + 30 * 24 * 60 * 60;
         items = input.trim().replace(/^Cookie:\s*/i, '').split(';').map(pair => {
             const index = pair.indexOf('=');
             if (index < 1) throw new Error('Use name=value pairs separated by semicolons.');
-            return { name: pair.slice(0, index).trim(), value: pair.slice(index + 1).trim() };
+            return { name: pair.slice(0, index).trim(), value: pair.slice(index + 1).trim(), expirationDate };
         });
     }
     if (!Array.isArray(items) || !items.length || items.length > 200) throw new Error('Use a JSON array or cookie pairs, with 1 to 200 cookies.');

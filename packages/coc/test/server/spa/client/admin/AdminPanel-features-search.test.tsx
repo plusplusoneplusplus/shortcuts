@@ -7,16 +7,19 @@
  * and the guarantee that the query never leaks into the save payload.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
+const routing = vi.hoisted(() => ({ apiBase: '', selectedRepoId: null as string | null }));
+
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
-    getApiBase: () => '',
+    getApiBase: () => routing.apiBase,
     isRalphEnabled: () => false,
     isServersEnabled: () => false,
     applyRuntimeConfigPatch: () => { },
@@ -55,7 +58,7 @@ vi.mock('../../../../../src/server/spa/client/react/admin/StorageSection', () =>
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
-        state: { activeAdminSubTab: 'settings' },
+        state: { activeAdminSubTab: 'settings', selectedRepoId: routing.selectedRepoId },
         dispatch: vi.fn(),
     }),
 }));
@@ -80,12 +83,15 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 beforeEach(() => {
+    routing.apiBase = '';
+    routing.selectedRepoId = null;
     if (typeof window !== 'undefined') {
         window.location.hash = '';
     }
 });
 
 import { AdminPanel } from '../../../../../src/server/spa/client/react/admin/AdminPanel';
+import { getCocClientFor } from '../../../../../src/server/spa/client/react/api/cocClient';
 import { resolveFeatureBadge } from '../../../../../src/server/spa/client/react/admin/FeatureSettingsCard';
 import {
     ADMIN_SETTING_DEFINITIONS,
@@ -296,6 +302,111 @@ describe('AdminPanel — Workspace Features search', () => {
         expect(window.location.hash).toBe('#admin/settings/appearance');
         expect(screen.getByTestId('settings-tab-features-appearance')).toBeTruthy();
     });
+
+    it('discovers every Sentinel setting as a link to its single owning tab', async () => {
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        const defs = ADMIN_SETTING_DEFINITIONS.filter(def => getFeatureSettingTab(def) === 'sentinel');
+        expect(defs).toHaveLength(8);
+        for (const def of defs) {
+            expect(screen.queryByText(def.ui!.label)).toBeNull();
+        }
+        fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'Sentinel' } });
+        for (const def of defs) {
+            expect(screen.queryByTestId(def.ui!.testId)).toBeNull();
+            const link = screen.getByTestId(`feature-search-link-${def.ui!.testId}`);
+            expect(link.getAttribute('href')).toBe('#admin/settings/sentinel');
+            expect(link.textContent).toBe('in Sentinel');
+        }
+        fireEvent.click(screen.getByTestId('feature-search-link-toggle-sentinel-todo-external-references-enabled'));
+        expect(window.location.hash).toBe('#admin/settings/sentinel');
+        expect(screen.getByRole('tab', { name: /Sentinel/ }).getAttribute('aria-selected')).toBe('true');
+        for (const def of defs) {
+            expect(screen.getAllByTestId(def.ui!.testId)).toHaveLength(1);
+        }
+        expect(screen.getByText('Mode & Results')).toBeTruthy();
+        expect(screen.getByText('To-do & PR Outcomes')).toBeTruthy();
+        for (const tab of ['ai', 'chat', 'integrations']) {
+            fireEvent.click(screen.getByTestId(`settings-subtab-${tab}`));
+            for (const def of defs) expect(screen.queryByTestId(def.ui!.testId)).toBeNull();
+        }
+        expect(screen.getByTestId('toggle-teams-ai-answer-relay-enabled')).toBeTruthy();
+        expect(mockFetch.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
+    });
+
+    it('opens Sentinel with the standard keyboard-focusable settings tab', async () => {
+        const user = userEvent.setup();
+        render(<AdminPanel />);
+        const tab = await screen.findByRole('tab', { name: /Sentinel/ });
+        tab.focus();
+        await user.keyboard('{Enter}');
+        expect(await screen.findByTestId('settings-tab-features-sentinel')).toBeTruthy();
+        expect(document.activeElement).toBe(tab);
+        expect(tab.getAttribute('aria-selected')).toBe('true');
+        expect(tab.classList.contains('ar-subtab')).toBe(true);
+        expect(window.location.hash).toBe('#admin/settings/sentinel');
+    });
+
+    it.each(['/api', '/api/agents/test-agent'])(
+        'loads and saves Sentinel through the existing Admin owner at %s, independently of other drafts',
+        async apiBase => {
+            routing.apiBase = apiBase;
+            routing.selectedRepoId = 'remote:test-server:test-repo';
+            getCocClientFor('https://remote.example.com');
+            window.location.hash = '#admin/settings/sentinel';
+            render(<AdminPanel />);
+            const sentinelCard = await screen.findByTestId('settings-tab-features-sentinel');
+            const mode = screen.getByTestId('toggle-sentinel-enabled') as HTMLInputElement;
+            expect(mode.checked).toBe(false);
+            expect((screen.getByTestId('toggle-sentinel-result-cards-enabled') as HTMLInputElement).checked).toBe(true);
+            expect(mockFetch.mock.calls.some(([url]) => url === `${apiBase}/admin/config`)).toBe(true);
+            expect(mockFetch.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
+            expect(within(sentinelCard).getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
+
+            fireEvent.click(mode);
+            fireEvent.click(screen.getByTestId('settings-subtab-ai'));
+            const aiToggle = screen.getByTestId('toggle-ralph-enabled') as HTMLInputElement;
+            const aiBefore = aiToggle.checked;
+            fireEvent.click(aiToggle);
+            fireEvent.click(screen.getByTestId('settings-subtab-chat'));
+            fireEvent.click(screen.getByTestId('toggle-chat-folders-enabled'));
+            fireEvent.click(screen.getByTestId('settings-subtab-integrations'));
+            fireEvent.click(screen.getByTestId('toggle-teams-message-reaction-enabled'));
+            fireEvent.click(screen.getByTestId('settings-subtab-features'));
+            fireEvent.click(screen.getByTestId('toggle-terminal-enabled'));
+            fireEvent.click(screen.getByTestId('settings-subtab-sentinel'));
+            expect((screen.getByTestId('toggle-sentinel-enabled') as HTMLInputElement).checked).toBe(true);
+
+            const card = screen.getByTestId('settings-tab-features-sentinel');
+            fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }));
+            expect((screen.getByTestId('toggle-sentinel-enabled') as HTMLInputElement).checked).toBe(false);
+            fireEvent.click(screen.getByTestId('toggle-sentinel-todo-external-references-enabled'));
+            fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+            await waitFor(() => expect(within(card).getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true));
+
+            const puts = mockFetch.mock.calls.filter(([, opts]) => opts?.method === 'PUT');
+            expect(puts).toHaveLength(1);
+            expect(puts[0][0]).toBe(`${apiBase}/admin/config`);
+            const payload = JSON.parse(puts[0][1].body);
+            const defs = ADMIN_SETTING_DEFINITIONS.filter(def => getFeatureSettingTab(def) === 'sentinel');
+            expect(Object.keys(payload).sort()).toEqual(defs.map(def => def.key).sort());
+            expect(payload['features.sentinelTodoExternalReferences']).toBe(true);
+            expect(payload['sentinel.enabled']).toBe(false);
+            expect(payload['features.sentinelResultCards']).toBe(true);
+
+            for (const [tab, testId, expected] of [
+                ['ai', 'toggle-ralph-enabled', !aiBefore],
+                ['chat', 'toggle-chat-folders-enabled', true],
+                ['integrations', 'toggle-teams-message-reaction-enabled', true],
+                ['features', 'toggle-terminal-enabled', false],
+            ] as const) {
+                fireEvent.click(screen.getByTestId(`settings-subtab-${tab}`));
+                expect(screen.getByTestId(testId)).toHaveProperty('checked', expected);
+                const testIdCard = tab === 'features' ? 'settings-features' : `settings-tab-features-${tab}`;
+                expect(within(screen.getByTestId(testIdCard)).getByRole('button', { name: 'Save' })).toHaveProperty('disabled', false);
+            }
+        },
+    );
 
     it('keeps pending Appearance edits when canceling or saving the Features card', async () => {
         render(<AdminPanel />);

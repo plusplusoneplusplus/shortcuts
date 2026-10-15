@@ -73,6 +73,10 @@ export interface PerRepoPreferences {
   workItems?: {
     sync?: {
       github?: {
+        /** GitHub hostname (defaults to github.com); enterprise hosts require explicit selection. */
+        host?: string;
+        /** Exact gh-cli account read by the native auth SDK on this workspace's owning server. */
+        login?: string;
         /** Optional non-secret owner override when origin cannot identify the GitHub repo. */
         owner?: string;
         /** Optional non-secret repository-name override when origin cannot identify the GitHub repo. */

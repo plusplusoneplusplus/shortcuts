@@ -12,6 +12,8 @@ import { formatDuration, statusIcon, formatRelativeTime } from '../../utils/form
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import type { QueueTaskSummary } from '@plusplusoneplusplus/coc-client';
+import { useCocClient } from '../../repos/cloneRouting';
+import { workspaceReadCacheKey, workspaceReadSource } from '../../api/workspaceReads';
 
 export interface WorkflowRunHistoryProps {
     workspaceId: string;
@@ -21,6 +23,7 @@ export interface WorkflowRunHistoryProps {
 
 export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: WorkflowRunHistoryProps) {
     const { state: queueState } = useQueue();
+    const client = useCocClient(workspaceId);
     const [history, setHistory] = useState<QueueTaskSummary[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -45,7 +48,7 @@ export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: Wo
     }, [fetchHistory, refreshKey]);
 
     // Active tasks for this pipeline from WebSocket queue state
-    const repoQueue = queueState.repoQueueMap[workspaceId];
+    const repoQueue = queueState.repoQueueMap[workspaceReadCacheKey(workspaceId, workspaceReadSource(client))];
     const activeTasks = [...(repoQueue?.running || []), ...(repoQueue?.queued || [])].filter(
         (t: any) =>
             t.type === TaskDefs.runWorkflow.kind && (

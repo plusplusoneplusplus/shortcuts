@@ -129,7 +129,7 @@ export function createWebSocketInfrastructure(
 
     // Helper to map task arrays to WS-friendly summaries
     const mapQueued = (t: any, executionMode?: string | null) => ({
-        id: t.id, repoId: t.repoId, type: t.type, priority: t.priority,
+        id: t.id, repoId: t.repoId, processId: t.processId, type: t.type, priority: t.priority,
         ...(t.type === 'chat' ? { executionMode: executionMode ?? null } : {}),
         status: t.status, displayName: t.displayName, createdAt: t.createdAt,
         // Freeze state has to ride along: this payload replaces the SPA's queue
