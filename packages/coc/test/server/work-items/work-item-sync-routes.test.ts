@@ -20,6 +20,12 @@ import {
 } from '../../../src/server/work-items';
 import { readRepoPreferences, writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { readProvidersConfig, writeProvidersConfig } from '../../../src/server/providers/providers-config';
+import { type readGitHubCredential } from '@plusplusoneplusplus/coc-native';
+import {
+    GhCliGitHubWorkItemIssueTransport,
+    createGitHubWorkItemSyncProviderAdapter,
+    type GitHubWorkItemIssueTransport,
+} from '../../../src/server/work-items/work-item-sync-github-provider';
 
 const REPO_ID = 'sync-test-repo';
 const SECOND_REPO_ID = 'sync-test-repo-2';
@@ -126,6 +132,7 @@ class FakeAzureBoardsTransport implements AzureBoardsWorkItemTransport {
 function makeServer(
     providers: WorkItemSyncProviderAdapter[] = [],
     options: {
+        githubTransport?: GitHubWorkItemIssueTransport;
         azureBoardsTransport?: AzureBoardsWorkItemTransport;
         workspaces?: WorkspaceInfo[];
         onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
@@ -167,6 +174,7 @@ function makeServer(
         getHierarchyEnabled: () => hierarchyEnabled,
         getSyncEnabled: () => syncEnabled,
         providers,
+        githubTransport: options.githubTransport,
         azureBoardsTransport: options.azureBoardsTransport,
         onGitHubBackedEpicTreeChanged: options.onGitHubBackedEpicTreeChanged,
         onAzureBoardsBackedEpicTreeChanged: options.onAzureBoardsBackedEpicTreeChanged,
@@ -177,6 +185,7 @@ function makeServer(
 async function startServer(
     providers: WorkItemSyncProviderAdapter[] = [],
     options: {
+        githubTransport?: GitHubWorkItemIssueTransport;
         azureBoardsTransport?: AzureBoardsWorkItemTransport;
         workspaces?: WorkspaceInfo[];
         onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
@@ -242,6 +251,76 @@ afterEach(async () => {
 });
 
 describe('Work Item Sync Routes', () => {
+    it('rejects incomplete provider repository identity instead of guessing github.com for import', async () => {
+        const provider: WorkItemSyncProviderAdapter = {
+            provider: 'github',
+            async getStatus() {
+                return {
+                    provider: 'github', available: true,
+                    repository: { provider: 'github', owner: 'example-org', repo: 'example-repo' },
+                };
+            },
+        };
+        await startServer([provider]);
+        const result = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-github`, { issueNumber: 12 });
+        expect(result.status).toBe(409);
+        expect(result.body.code).toBe('WORK_ITEM_SYNC_PROVIDER_UNAVAILABLE');
+    });
+
+    it('keeps native account selection through status and import on the concrete workspace owner', async () => {
+        const read = vi.fn<typeof readGitHubCredential>().mockImplementation(async options => ({
+            host: options.account === 'active-cli-account' ? '' : options.account.host,
+            login: options.account === 'active-cli-account' ? '' : options.account.login,
+            token: 'synthetic-route-token',
+        }));
+        const api = vi.fn<typeof fetch>().mockImplementation(async url => {
+            const pathname = new URL(String(url)).pathname;
+            if (pathname.endsWith('/issues')) return Response.json([]);
+            if (pathname.endsWith('/issues/12')) {
+                return Response.json({
+                    number: 12, title: 'Enterprise Epic', state: 'open', body: 'Preserved description',
+                    html_url: 'https://github.example/example-org/example-repo/issues/12',
+                    labels: ['coc:type:epic'],
+                });
+            }
+            return Response.json({});
+        });
+        const transport = new GhCliGitHubWorkItemIssueTransport(api, read);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: { sync: { github: { host: 'github.example', login: 'account-a' } } },
+        });
+        writeRepoPreferences(tmpDir, SECOND_REPO_ID, {
+            workItems: { sync: { github: { host: 'github.example', login: 'account-b' } } },
+        });
+        await startServer([createGitHubWorkItemSyncProviderAdapter({ transport })], {
+            githubTransport: transport,
+            workspaces: [REPO_ID, SECOND_REPO_ID].map(id => ({
+                id, name: 'Example', rootPath: tmpDir, remoteUrl: 'https://github.example/example-org/example-repo.git',
+            })),
+        });
+
+        const status = await request('GET', `/api/workspaces/${SECOND_REPO_ID}/work-items/sync/status`);
+        expect(status.body).toMatchObject({ remoteProvider: 'github', provider: { available: true } });
+        expect(read.mock.calls[0][0]).toEqual({ source: 'gh-cli', account: { host: 'github.example', login: 'account-b' } });
+        const imported = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-github`, {
+            issueUrl: 'https://github.example/example-org/example-repo/issues/12',
+        });
+        expect(imported.status).toBe(201);
+        expect(read.mock.calls.slice(1).every(([options]) =>
+            options.source === 'gh-cli' && options.account.host === 'github.example' && options.account.login === 'account-a',
+        )).toBe(true);
+        expect(api.mock.calls.every(([url]) => String(url).startsWith('https://github.example/api/v3/repos/'))).toBe(true);
+        expect(JSON.stringify(imported.body)).not.toContain('synthetic-route-token');
+        expect(JSON.stringify(status.body)).not.toContain('synthetic-route-token');
+        const before = api.mock.calls.length;
+        const wrongHost = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-github`, {
+            issueUrl: 'https://github.com/example-org/example-repo/issues/13',
+        });
+        expect(wrongHost.status).toBe(400);
+        // Repository availability is checked, but the wrong host never reaches an issue API.
+        expect(api.mock.calls.slice(before).every(([url]) => !String(url).includes('/issues'))).toBe(true);
+    });
+
     it('reports disabled status when hierarchy is disabled', async () => {
         hierarchyEnabled = false;
         syncEnabled = true;

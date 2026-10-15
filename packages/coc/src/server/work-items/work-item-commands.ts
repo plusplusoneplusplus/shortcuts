@@ -36,6 +36,7 @@ import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from './wo
 import { githubIssueContentRevision } from './work-item-sync-github-issue';
 import {
     GhCliGitHubWorkItemIssueTransport,
+    githubWorkItemSyncErrorMessage,
     createGitHubIssueForLocalChild,
     parentReferenceForGitHubMirrorChild,
     updateGitHubIssueForLocalMirror,
@@ -345,6 +346,7 @@ function validateTrackerRootPlacement(
 function githubRepoUnavailableError(repo: Exclude<GitHubWorkItemSyncRepo, { available: true }>): APIError {
     const messageByReason: Record<typeof repo.reason, string> = {
         'incomplete-preference': 'GitHub sync owner/repo preference must include both owner and repo.',
+        'invalid-host': 'GitHub sync host must be a hostname without a scheme, path or port.',
         'missing-workspace': 'GitHub sync could not resolve the current workspace.',
         'missing-origin': 'GitHub sync could not find a git origin remote for this workspace.',
         'non-github-origin': 'GitHub sync requires a GitHub origin remote or workspace owner/repo override.',
@@ -569,10 +571,10 @@ async function resolveAvailableGitHubRepo(
     const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
     try {
         await transport.getRepository(repo);
-    } catch {
+    } catch (error) {
         throw new APIError(
             409,
-            `GitHub sync could not reach ${repo.owner}/${repo.repo} using external authentication.`,
+            githubWorkItemSyncErrorMessage(error),
             'WORK_ITEM_GITHUB_AUTH_UNAVAILABLE',
         );
     }

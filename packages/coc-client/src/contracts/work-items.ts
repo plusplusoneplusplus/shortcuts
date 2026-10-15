@@ -109,6 +109,7 @@ export interface WorkItemSyncProviderStatus {
     | 'provider-unavailable'
     | 'provider-disabled'
     | 'incomplete-preference'
+    | 'invalid-host'
     | 'missing-workspace'
     | 'missing-origin'
     | 'missing-org-url'

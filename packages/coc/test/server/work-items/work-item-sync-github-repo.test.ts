@@ -6,6 +6,35 @@ import {
 } from '../../../src/server/work-items/work-item-sync-github-repo';
 
 describe('work item GitHub sync repo detection', () => {
+    it.each([
+        'https://github.example/octo-org/octo-repo.git',
+        'git@github.example:octo-org/octo-repo.git',
+        'ssh://git@github.example/octo-org/octo-repo.git',
+    ])('accepts enterprise remotes only for the explicitly selected host: %s', async remoteUrl => {
+        expect(parseGitHubRemoteUrl(remoteUrl)).toBeUndefined();
+        expect(detectWorkItemSyncProviderFromRemoteUrl(remoteUrl)).toBeUndefined();
+        expect(detectWorkItemSyncProviderFromRemoteUrl(remoteUrl, 'github.example')).toBe('github');
+        const resolved = await resolveGitHubWorkItemSyncRepo({
+            workspace: { remoteUrl },
+            preferences: { workItems: { sync: { github: { host: 'GITHUB.EXAMPLE', login: 'selected-account' } } } },
+        });
+        expect(resolved).toMatchObject({
+            available: true, url: 'https://github.example/octo-org/octo-repo',
+            owner: 'octo-org', repo: 'octo-repo', login: 'selected-account',
+        });
+    });
+
+    it.each(['', 'https://github.example', 'github.example/api', 'github.example:443', 'user@github.example'])(
+        'rejects invalid host selection without falling back to github.com: %s', async host => {
+            const readOriginRemote = () => { throw new Error('must not read origin for invalid settings'); };
+            expect(await resolveGitHubWorkItemSyncRepo({
+                workspace: { remoteUrl: 'https://github.com/octo-org/octo-repo.git' },
+                preferences: { workItems: { sync: { github: { host, login: 'selected-account' } } } },
+                readOriginRemote,
+            })).toEqual({ available: false, provider: 'github', reason: 'invalid-host' });
+        },
+    );
+
     it('classifies supported work item sync providers from repo remote URL forms', () => {
         expect(detectWorkItemSyncProviderFromRemoteUrl('https://github.com/octo-org/octo-repo.git')).toBe('github');
         expect(detectWorkItemSyncProviderFromRemoteUrl('git@github.com:octo-org/octo-repo.git')).toBe('github');

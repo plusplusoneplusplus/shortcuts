@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { readGitHubCredential } from '@plusplusoneplusplus/coc-native';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -21,6 +22,7 @@ import {
     type WorkItemGitHubPullPollerTimerApi,
 } from '../../../src/server/work-items';
 import type { WorkItem } from '../../../src/server/work-items';
+import { GhCliGitHubWorkItemIssueTransport } from '../../../src/server/work-items/work-item-sync-github-provider';
 
 const REPO_ID = 'github-poller-test-repo';
 const ORIGIN_ID = 'gh_plusplusoneplusplus_shortcuts';
@@ -161,6 +163,40 @@ async function primeOriginTreeCache(): Promise<string> {
 }
 
 describe('WorkItemGitHubPullPoller', () => {
+    it('uses native credentials selected by the concrete workspace and rereads account preferences between polls', async () => {
+        const rootIssue = makeIssue(100, 'Polling Epic', { labels: ['coc:type:epic'] });
+        await importTree(store, new Map([[100, rootIssue]]));
+        const read = vi.fn<typeof readGitHubCredential>().mockImplementation(async options => {
+            if (options.account === 'active-cli-account') throw new Error('Explicit account required');
+            return { ...options.account, token: 'synthetic-poller-token' };
+        });
+        const raw = { number: 100, title: 'Polling Epic', state: 'open', body: '', labels: ['coc:type:epic'], html_url: rootIssue.htmlUrl };
+        const api = vi.fn<typeof fetch>().mockImplementation(async url =>
+            Response.json(new URL(String(url)).pathname.endsWith('/issues') ? [raw] : raw),
+        );
+        const poller = new WorkItemGitHubPullPoller({
+            dataDir: tmpDir,
+            processStore: processStore(tmpDir),
+            workItemStore: store,
+            transport: new GhCliGitHubWorkItemIssueTransport(api, read),
+        });
+        try {
+            for (const login of ['account-a', 'account-b']) {
+                read.mockClear();
+                writeRepoPreferences(tmpDir, REPO_ID, { workItems: { sync: { github: { login } } } });
+                const result = await poller.pollWorkspace(REPO_ID);
+                expect(result.rootsSynced).toBe(1);
+                expect(result.errors).toEqual([]);
+                expect(read).toHaveBeenCalled();
+                expect(read.mock.calls.every(([options]) =>
+                    options.source === 'gh-cli' && options.account.host === 'github.com' && options.account.login === login,
+                )).toBe(true);
+            }
+        } finally {
+            poller.dispose();
+        }
+    });
+
     it('configures per-workspace polling and honors disabled preferences', async () => {
         const issues = new Map<number, GitHubWorkItemIssue>([
             [100, makeIssue(100, 'Polling Epic', {

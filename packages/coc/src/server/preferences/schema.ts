@@ -191,6 +191,9 @@ const ActivityFiltersSchema = z.object({
 }).strip().transform(dropIfEmpty);
 
 const WorkItemsSyncGithubSchema = z.object({
+    // Invalid auth selections remain unusable rather than restoring a prior account during a patch.
+    host: z.string().optional().catch(''),
+    login: z.string().optional().catch(''),
     owner: z.string().trim().min(1).max(100).optional().catch(undefined),
     repo: z.string().trim().min(1).max(100).optional().catch(undefined),
     pollingEnabled: z.boolean().optional().catch(undefined),
