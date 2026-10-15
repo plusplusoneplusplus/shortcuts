@@ -180,9 +180,13 @@ test.describe('Git right-panel — CommitDetail commit info header', () => {
             const firstRow = page.locator('[data-testid^="commit-row-"]').first();
             await firstRow.click();
 
-            // On desktop, the auto-selected first commit should already show the header
-            // but clicking explicitly ensures it. Wait for commit-detail to be visible.
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 10_000 });
+            const summary = page.getByTestId('commit-info-summary');
+            await expect(summary).toBeVisible();
+            await expect(summary).toContainText('fix: update index');
+            await expect(summary).toHaveAttribute('aria-expanded', 'false');
+            await expect(page.getByTestId('commit-info-header')).toBeHidden();
+            await summary.click();
 
             // Verify commit info header metadata
             await expect(page.getByTestId('commit-info-header')).toBeVisible({ timeout: 5_000 });
@@ -190,6 +194,9 @@ test.describe('Git right-panel — CommitDetail commit info header', () => {
             await expect(page.getByTestId('commit-info-author')).toContainText('test');
             await expect(page.getByTestId('commit-info-date')).toBeVisible();
             await expect(page.getByTestId('commit-info-hash')).toBeVisible();
+            await page.getByTestId('commit-info-collapse-btn').click();
+            await expect(summary).toBeVisible();
+            await expect(page.getByTestId('commit-info-header')).toBeHidden();
         } finally {
             safeRmSync(tmpDir);
         }
@@ -211,6 +218,7 @@ test.describe('Git right-panel — Copy hash feedback', () => {
 
             // Click first commit to show detail
             await page.locator('[data-testid^="commit-row-"]').first().click();
+            await page.getByTestId('commit-info-summary').click();
             await expect(page.getByTestId('commit-info-header')).toBeVisible({ timeout: 5_000 });
 
             const hash = execFileSync('git', ['rev-parse', 'HEAD'], {

@@ -10,12 +10,8 @@
  * getScrollableAncestor() walking up the DOM to find the nearest element
  * with overflow:auto/scroll.
  *
- * Both tests navigate to the *second* hunk to assert movement.  Hunk nav aims
- * a hunk one third down the scrollport, and the single-file panel hides the
- * raw git preamble (the sticky header already names the file), so the first
- * hunk starts ~37 px below the top edge — above that one-third mark, giving
- * scrollTo() a negative target that clamps to 0.  Landing on hunk 1 is a
- * legitimate no-op; only hunk 2 (50+ lines down) is a scroll.
+ * Focused file review selects the first hunk on load, so one next action
+ * reaches the second hunk and one previous action returns to the first.
  */
 
 import * as fs from 'fs';
@@ -84,6 +80,9 @@ async function setupMocks(
     wsId: string,
     commitHash: string,
 ): Promise<void> {
+    // These assertions cover the classic viewer's DOM scroll container.
+    await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
+
     // Mock git commits list
     await page.route(
         (url: string) => new URL(url).pathname.includes(`/workspaces/${wsId}/git/commits`) &&
@@ -107,6 +106,17 @@ async function setupMocks(
                     unpushedCount: 0,
                 }),
             }),
+    );
+
+    await page.route(
+        (url: string) => new URL(url).pathname === `/api/workspaces/${wsId}/git/commits/${commitHash}/files`,
+        route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                files: [{ path: FILE_PATH, status: 'M', additions: 2, deletions: 2 }],
+            }),
+        }),
     );
 
     // Mock branch-range (on default branch — suppresses BranchChanges section)
@@ -191,18 +201,10 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
 
         const scrollBefore = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
 
-        // Click ▼ next hunk twice: hunk 1 is already at the top edge, hunk 2 is
-        // ~50 lines below the fold
+        // Focused review starts on hunk 1; one click reaches hunk 2.
         await page.getByTestId('next-hunk-btn').click();
-        await page.waitForTimeout(400);
-        await page.getByTestId('next-hunk-btn').click();
-        // Wait for smooth-scroll animation to settle
-        await page.waitForTimeout(700);
-
-        const scrollAfter = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
-
-        // The scroll container must have moved downward toward the second hunk
-        expect(scrollAfter).toBeGreaterThan(scrollBefore);
+        await expect.poll(() => scrollContainer.evaluate((el: HTMLElement) => el.scrollTop))
+            .toBeGreaterThan(scrollBefore);
     });
 
     test('▲ prev-hunk scrolls the commit-detail container back toward the first hunk', async ({
@@ -226,12 +228,10 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         // file-diff-section is the actual scrollable container (overflow-auto)
         const scrollContainer = page.getByTestId('file-diff-section');
 
-        // Navigate to the second (last) hunk using the next-hunk button twice
-        // This sets the internal hunk index so prev-hunk knows where to go back to
+        // Focused review starts on hunk 1.
         await page.getByTestId('next-hunk-btn').click();
-        await page.waitForTimeout(400);
-        await page.getByTestId('next-hunk-btn').click();
-        await page.waitForTimeout(400);
+        await expect.poll(() => scrollContainer.evaluate((el: HTMLElement) => el.scrollTop))
+            .toBeGreaterThan(100);
 
         const scrollAtSecondHunk = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
 
@@ -240,11 +240,7 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
 
         // Click ▲ prev hunk — should scroll back toward the first hunk
         await page.getByTestId('prev-hunk-btn').click();
-        await page.waitForTimeout(700);
-
-        const scrollAfterPrev = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
-
-        // Must have scrolled upward from the second hunk
-        expect(scrollAfterPrev).toBeLessThan(scrollAtSecondHunk);
+        await expect.poll(() => scrollContainer.evaluate((el: HTMLElement) => el.scrollTop))
+            .toBeLessThan(scrollAtSecondHunk);
     });
 });
