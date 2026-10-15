@@ -96,6 +96,75 @@ describe('Sentinel to-do conversation references', () => {
             expect(todos.get(owner).items[0].references).toHaveLength(1);
         });
 
+        it('distinguishes server and workspace collisions, but replays the same identity before CAS', () => {
+            const item = pendingItem();
+            const base = { processId: 'same-chat', workspaceId: 'ws-a', openLink: '#exact', title: 'Cached chat' };
+            const targets = [base, { ...base, workspaceId: 'ws-b' },
+                { ...base, serverIdentity: 'server-a', serverLabel: 'SSH host', workspaceLabel: 'Workspace A', verification: 'unverified' as const },
+                { ...base, serverIdentity: 'server-b', serverLabel: 'Tunnel host', verification: 'verified' as const },
+                { ...base, serverIdentity: 'server-a', workspaceId: 'ws-b' }];
+            let accepted = item;
+            for (const target of targets) {
+                accepted = todos.attachReference(owner, item.id, accepted.revision, target, 'sentinel').item;
+            }
+            expect(accepted.references).toHaveLength(5);
+            expect(accepted).toMatchObject({ status: item.status, statusReason: item.statusReason, jobs: [] });
+            expect(accepted.userVerdictRevision).toBe(item.userVerdictRevision);
+            accepted = todos.update(owner, item.id, accepted.revision, { notes: 'Retain all conversation identities' }, 'user').item;
+            const ledger = todos.get(owner);
+            for (const target of targets) {
+                expect(todos.attachReference(owner, item.id, 1, { ...target, title: 'Different cached title' }, 'user'))
+                    .toEqual({ item: accepted, ledgerRevision: ledger.revision, changed: false });
+            }
+            expectTodoError(() => todos.attachReference(owner, item.id, 1,
+                { ...base, serverIdentity: 'server-c' }, 'user'), 'conflict');
+            database.close();
+            const reopened = createTodoTestDatabase(database.dataDir);
+            try { expect(new SentinelTodoStore(reopened.db).get(owner)).toEqual(ledger); }
+            finally { reopened.close(); }
+        });
+
+        it('migrates existing local references without changing their data or shared schema version', () => {
+            const item = pendingItem();
+            const local = todos.attachReference(owner, item.id, 1,
+                { processId: 'same-chat', workspaceId: 'ws-a', openLink: '#local', title: 'Local chat' }, 'user');
+            const version = database.db.pragma('user_version', { simple: true });
+            database.db.exec(`ALTER TABLE sentinel_todo_references RENAME TO reference_backup;
+                CREATE TABLE sentinel_todo_references (
+                    workspace_id TEXT NOT NULL, parent_process_id TEXT NOT NULL, item_id TEXT NOT NULL,
+                    process_id TEXT NOT NULL, reference_order INTEGER NOT NULL CHECK (reference_order >= 0),
+                    reference_workspace_id TEXT NOT NULL, open_link TEXT NOT NULL, title TEXT,
+                    attached_at TEXT NOT NULL, attached_by TEXT NOT NULL CHECK (attached_by IN ('user', 'sentinel')),
+                    PRIMARY KEY (workspace_id, parent_process_id, item_id, process_id),
+                    UNIQUE (workspace_id, parent_process_id, item_id, reference_order),
+                    FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                        REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+                );
+                INSERT INTO sentinel_todo_references SELECT workspace_id, parent_process_id, item_id,
+                    process_id, reference_order, reference_workspace_id, open_link, title, attached_at, attached_by FROM reference_backup;
+                DROP TABLE reference_backup;`);
+            const migrated = new SentinelTodoStore(database.db);
+            expect(migrated.get(owner)).toEqual({ revision: local.ledgerRevision, items: [local.item] });
+            expect(database.db.pragma('user_version', { simple: true })).toBe(version);
+            const remote = migrated.attachReference(owner, item.id, 2, { processId: 'same-chat', workspaceId: 'ws-a',
+                serverIdentity: 'other-server', openLink: '#remote', verification: 'unverified' }, 'sentinel');
+            expect(new SentinelTodoStore(database.db).get(owner).items[0]).toEqual(remote.item);
+            expect(remote.item.references).toHaveLength(2);
+            expect(database.db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+            database.db.prepare('DELETE FROM sentinel_todo_items WHERE id = ?').run(item.id);
+            expect(database.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_references').get()).toEqual({ count: 0 });
+        });
+
+        it('rejects invalid stable identities and verification metadata without writing', () => {
+            const item = pendingItem();
+            const input = { processId: 'chat', workspaceId: 'ws-a', openLink: '#exact' };
+            for (const metadata of [{ serverIdentity: '' }, { serverIdentity: 'x'.repeat(201) },
+                { verification: 'offline' }, { serverLabel: '' }, { workspaceLabel: 'x'.repeat(201) }]) {
+                expectTodoError(() => todos.attachReference(owner, item.id, 1, { ...input, ...metadata } as never, 'user'), 'invalid');
+            }
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
         it('rejects manual items, system actors, unknown items, unknown fields and the limit', () => {
             const manual = todos.create(owner, { type: 'manual', title: 'Call vendor' }, { actor: 'user' }).item;
             const input = { processId: 'queue_design', workspaceId: 'ws-a', openLink: '#x' };
@@ -205,6 +274,8 @@ describe('Sentinel to-do conversation references', () => {
                 .toMatchObject({ status: 409, body: { code: 'conflict', current: { revision: 2 } } });
             expect((await post(item.id, { processId: 'queue_design', workspaceId: 'ws-a' })).status).toBe(400);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_design', workspaceId: 'ws-a', jobs: [] })).status).toBe(400);
+            expect((await post(item.id, { expectedRevision: 2, processId: 'queue_design', workspaceId: 'ws-a',
+                serverIdentity: 'untrusted-server', verification: 'verified' })).status).toBe(400);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_nope', workspaceId: 'ws-a' })).status).toBe(404);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(200);
             expect(todos.get(owner).items[0].references).toHaveLength(2);

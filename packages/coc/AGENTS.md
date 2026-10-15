@@ -132,6 +132,12 @@ references before editing. Paths are package-relative.
   `features.sentinelPrOutcomeWake`, independently of CI/conflict repair permission.
   Outcome reviews use dedicated read-only admission; stopped Sentinel reviews restore
   stop and never promote ordinary buffered work. Per-item pause retains terminal evidence.
+- Sentinel To-do conversation references use durable server/workspace/process identity
+  for storage and idempotent attachment. `SentinelTodoStore` migrates local rows
+  transactionally without changing the shared process schema version; omitted
+  `serverIdentity` means the ledger's server. Persist labels and verification as
+  display metadata, never endpoints or registry aliases as durable identity.
+  Public attachment remains owner-verified through `SentinelTodoService`.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial

@@ -99,7 +99,12 @@ internal tracking and graph reads retain the full ledger), `create` (normal item
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
 return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
 optional `conversationWorkspaceId` defaulting to the chat's; a reference-only link that never changes status or
-counts as a job/review). Creation accepts immutable `type: normal | manual` (default normal);
+counts as a job/review). Store deduplication uses durable server/workspace/process
+identity; omitted `serverIdentity` denotes the ledger's server. Reference records retain
+server/workspace labels and `verified | unverified` state. Local-row migration preserves
+links, order, attribution and ledger revisions without changing the process schema version.
+The public attachment command still resolves conversations on its owning server.
+Creation accepts immutable `type: normal | manual` (default normal);
 manual items require only a title, with optional Notes/Done when. `create`/`update` accept `priority` (`high`/`regular`,
 default `regular`; ledger metadata only, independent of status). `done`/`needs_attention` require a `reason` (also enforced by the store for non-user actors); `done` stores
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore

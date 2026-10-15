@@ -87,12 +87,19 @@ export interface SentinelTodoJobLink {
 }
 
 /**
- * A reference-only link to an existing conversation on the owning server. It
+ * A reference-only link to an existing conversation. It
  * has no execution state, is never reviewed, and never changes item status.
  */
 export interface SentinelTodoConversationReference {
   /** Missing kind identifies an existing conversation reference. */
   kind?: 'conversation';
+  /** Durable destination identity; absent means the ledger's owning server.
+   * Never a forwarded endpoint or a registry-local server alias. */
+  serverIdentity?: string;
+  serverLabel?: string;
+  workspaceLabel?: string;
+  /** Cached offline references remain unverified until checked online. */
+  verification?: 'verified' | 'unverified';
   processId: string;
   workspaceId: string;
   openLink: string;
