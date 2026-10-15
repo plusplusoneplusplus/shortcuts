@@ -753,9 +753,11 @@ test.describe('Explorer deterministic LSP completion', () => {
                 await page.keyboard.type('documentFall');
                 const widget = page.locator(`${APP_PANEL} .suggest-widget`);
                 await expect(widget).toBeVisible({ timeout: 10_000 });
-                await expect(widget.getByText('documentFallbackWord', { exact: true })).toBeVisible();
+                const fallbackWord = widget.getByText('documentFallbackWord', { exact: true });
+                await expect(fallbackWord).toBeVisible();
                 await expect(widget.getByText('srvWidget', { exact: true })).toHaveCount(0);
-                await page.keyboard.press('Tab');
+                // Slow requests can also suggest the evolving prefix; pick the asserted word.
+                await fallbackWord.click();
                 await expect.poll(() => caretLineText(page, APP_PANEL)).toBe('documentFallbackWord');
             } finally {
                 safeRmSync(tmpDir);
