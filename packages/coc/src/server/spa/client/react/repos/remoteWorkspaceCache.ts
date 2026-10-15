@@ -18,6 +18,8 @@ const CACHE_KEY = 'coc-remote-workspace-cache';
 export interface RemoteWorkspaceCacheEntry {
     /** The effectiveUrl the workspaces were last fetched from. */
     baseUrl: string;
+    /** Destination identity observed when this workspace list was fetched. */
+    serverIdentity?: string;
     /** Last-known raw (untagged) workspace list for the server. */
     workspaces: WorkspaceInfo[];
     /** Epoch ms of the last successful refresh. */
@@ -30,12 +32,11 @@ export type RemoteWorkspaceCache = Record<string, RemoteWorkspaceCacheEntry>;
 let memoryCache: RemoteWorkspaceCache | null = null;
 
 function isCacheEntry(value: unknown): value is RemoteWorkspaceCacheEntry {
-    return (
-        typeof value === 'object' &&
-        value !== null &&
-        typeof (value as RemoteWorkspaceCacheEntry).baseUrl === 'string' &&
-        Array.isArray((value as RemoteWorkspaceCacheEntry).workspaces)
-    );
+    if (typeof value !== 'object' || value === null) return false;
+    const entry = value as Partial<RemoteWorkspaceCacheEntry>;
+    return typeof entry.baseUrl === 'string' && Array.isArray(entry.workspaces)
+        && (entry.serverIdentity === undefined
+            || (typeof entry.serverIdentity === 'string' && entry.serverIdentity.trim().length > 0));
 }
 
 function readFromStorage(): RemoteWorkspaceCache {
@@ -76,12 +77,13 @@ export function loadRemoteWorkspaceCache(): RemoteWorkspaceCache {
 /** Upsert one server's last-known list. Stamps `updatedAt` and persists. */
 export function saveRemoteWorkspaceCacheEntry(
     serverId: string,
-    entry: { baseUrl: string; workspaces: WorkspaceInfo[] },
+    entry: Pick<RemoteWorkspaceCacheEntry, 'baseUrl' | 'workspaces' | 'serverIdentity'>,
 ): void {
     const cache = loadRemoteWorkspaceCache();
     cache[serverId] = {
         baseUrl: entry.baseUrl,
         workspaces: entry.workspaces,
+        ...(entry.serverIdentity ? { serverIdentity: entry.serverIdentity } : {}),
         updatedAt: Date.now(),
     };
     writeToStorage(cache);

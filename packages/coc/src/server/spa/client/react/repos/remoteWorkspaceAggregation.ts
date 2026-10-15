@@ -59,6 +59,8 @@ export interface RemoteWorkspaceMarker {
     baseUrl: string;
     /** Stable registry id of the contributing server (persistence/caching only). */
     serverId: string;
+    /** Durable destination identity; independent of the registry alias and endpoint. */
+    serverIdentity?: string;
     /** Human-readable server label for badges/grouping. */
     serverLabel: string;
     /** Dashboard selection/routing key for this exact remote clone. */
@@ -103,6 +105,8 @@ export type RemoteWorkflowsMap = Record<string, unknown[]>;
 
 export interface RemoteWorkspaceSource {
     serverId: string;
+    /** Identity observed for the contributed workspace list, including cached rows. */
+    serverIdentity?: string;
     serverLabel: string;
     baseUrl: string;
     /** Whether the contributed workspaces are live (online) or cached (offline). */
@@ -187,7 +191,7 @@ export interface RemoteTagStatus {
  * offline connection with an idle queue.
  */
 export function tagRemoteWorkspaces(
-    server: Pick<RemoteServer, 'id' | 'label'>,
+    server: Pick<RemoteServer, 'id' | 'label' | 'serverIdentity'>,
     baseUrl: string,
     workspaces: WorkspaceInfo[],
     offline: boolean,
@@ -201,6 +205,7 @@ export function tagRemoteWorkspaces(
         remote: {
             baseUrl,
             serverId: server.id,
+            ...(server.serverIdentity ? { serverIdentity: server.serverIdentity } : {}),
             serverLabel,
             cloneKey: buildRemoteCloneKey(server.id, workspace.id),
             offline,
@@ -280,7 +285,8 @@ function offlineSourceFromCache(
     cache: ReturnType<typeof loadRemoteWorkspaceCache>,
 ): RemoteWorkspaceSource | null {
     const cached = cache[server.id];
-    if (!cached || cached.workspaces.length === 0) {
+    if (!cached || cached.workspaces.length === 0
+        || (server.serverIdentity && cached.serverIdentity && server.serverIdentity !== cached.serverIdentity)) {
         return null;
     }
     // Prefer the server's current effectiveUrl, else the cached one used last time.
@@ -291,13 +297,16 @@ function offlineSourceFromCache(
     // Cached entries carry the server's repo groups too, so an offline server's
     // groups stay visible (greyed + read-only) instead of vanishing. (AC-04)
     const { repos, groups } = splitRemoteWorkspaces(cached.workspaces);
+    // Cached rows retain their observed owner, even if the current probe has no identity.
+    const cachedServer = { ...server, serverIdentity: cached.serverIdentity };
     return {
         serverId: server.id,
+        ...(cached.serverIdentity ? { serverIdentity: cached.serverIdentity } : {}),
         serverLabel: server.label || server.id,
         baseUrl,
         online: false,
-        workspaces: tagRemoteWorkspaces(server, baseUrl, repos, true, { connection }),
-        groupWorkspaces: tagRemoteWorkspaces(server, baseUrl, groups, true, { connection }),
+        workspaces: tagRemoteWorkspaces(cachedServer, baseUrl, repos, true, { connection }),
+        groupWorkspaces: tagRemoteWorkspaces(cachedServer, baseUrl, groups, true, { connection }),
         gitInfo: {},
         workflows: {},
     };
@@ -348,11 +357,14 @@ async function loadOnlineSource(
         }
 
         // Persist the raw (untagged) list so a later offline load can re-tag it.
-        saveRemoteWorkspaceCacheEntry(server.id, { baseUrl, workspaces: [...visible, ...groupRows] });
+        saveRemoteWorkspaceCacheEntry(server.id, {
+            baseUrl, serverIdentity: server.serverIdentity, workspaces: [...visible, ...groupRows],
+        });
 
         return {
             source: {
                 serverId: server.id,
+                ...(server.serverIdentity ? { serverIdentity: server.serverIdentity } : {}),
                 serverLabel,
                 baseUrl,
                 online: true,

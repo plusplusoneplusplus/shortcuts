@@ -104,6 +104,10 @@ references before editing. Paths are package-relative.
   Remote health/runtime/list contracts carry this identity separately from registry
   aliases. Managed entries refresh identity while online; endpoint changes require a
   new probe. Registry edits/removals and newer probes revoke delayed health results.
+  Dashboard remote workspace sources/markers and their offline cache retain the
+  identity observed with the workspace list. Cached rows keep that identity while
+  disconnected; a known replacement identity excludes the old cached rows. Missing
+  identity stays unknown and must never be replaced with a registry alias or URL.
 
 - Admitted chat image files stay at their existing per-turn paths after success,
   error or cancellation so local delegated children can read them. This temporary

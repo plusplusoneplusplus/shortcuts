@@ -469,9 +469,11 @@ plus git-info batch. For each `online` registry server (`/api/servers`) it fetch
 fetch.
 
 Each remote workspace carries a `remote` marker
-`{ baseUrl, serverId, serverLabel, offline, connection, queue }` plus a top-level
-`baseUrl`, the routing key. There are no composite IDs and no serverId namespace; local
-workspaces carry neither, so `isRemoteWorkspace()` separates them. `connection` mirrors
+`{ baseUrl, serverId, serverIdentity?, serverLabel, cloneKey, offline, connection, queue }`
+plus a top-level `baseUrl`. `serverId` is the connection alias; `serverIdentity` is the
+optional durable destination identity from runtime health. Raw workspace ids stay
+unchanged; `cloneKey` qualifies dashboard selection by alias. Local workspaces carry
+neither marker nor `baseUrl`, so `isRemoteWorkspace()` separates them. `connection` mirrors
 the registry runtime status (`online`/`connecting`/`offline`/`failed`/`idle`) so the dot
 can tell connecting from offline; `queue` (`running`/`queued`/`paused`/`idle`, from
 `remoteQueueStatusFromRepo` keyed by `repoId` = workspace id) falls back to `'idle'`
@@ -483,8 +485,13 @@ from the per-server batch, and are skipped by the local Phase-2 git-info update.
 Offline or unreachable servers contribute their last-known list from a two-layer
 (in-memory + `localStorage['coc-remote-workspace-cache']`) per-server cache
 (`repos/remoteWorkspaceCache.ts`), each entry flagged `offline` with the real
-`connection` preserved. `ReposContext` retains aggregation warnings so target pickers
-can explain skipped servers while leaving healthy repos usable.
+`connection` preserved. Sources, repo markers and group markers retain the identity
+observed with that workspace list, including across reloads and port changes.
+A known runtime/cache identity mismatch excludes cached rows; a successful live read
+replaces the cache and its identity. Missing live identity clears identity on a
+successful refresh; cached unknown identity stays unknown. Identity metadata does not
+verify current chat ownership. `ReposContext` retains aggregation warnings so target
+pickers can explain skipped servers while leaving healthy repos usable.
 
 `ReposContext` loads workspace topology, summaries, and the initial git-info batch
 together; process lifecycle traffic never repeats that path. Its WebSocket handler
