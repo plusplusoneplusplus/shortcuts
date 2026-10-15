@@ -13,6 +13,7 @@
  */
 
 import type { ConversationTurn, ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
+import { parseRemoteCloneKey, type WorkspaceDirectory } from '../servers/workspace-directory';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface SearchConversationsArgs {
@@ -55,6 +56,8 @@ export interface SearchConversationsToolOptions {
     currentProcessId?: string;
     /** Optional summarizer callback for AI-generated session summaries. */
     summarizer?: Summarizer;
+    /** Shared owner-server remote directory used by list_workspaces. */
+    directory?: WorkspaceDirectory;
 }
 
 const MAX_RESULTS = 100;
@@ -210,7 +213,7 @@ export function createSearchConversationsTool(
                 },
                 workspaceId: {
                     type: 'string',
-                    description: 'Optional workspace ID to scope the search.',
+                    description: 'Workspace ID to scope the search. Title lookup also accepts a remote clone key from list_workspaces.',
                 },
                 since: {
                     type: 'string',
@@ -252,11 +255,8 @@ export function createSearchConversationsTool(
                 if (!title || query || !effectiveWorkspaceId) {
                     return { error: 'Title lookup requires a nonempty title and workspaceId, without query.', code: 'invalid' };
                 }
-                if (effectiveWorkspaceId.startsWith('remote:')) {
-                    return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
-                }
                 return handleTitleMode(store, effectiveWorkspaceId, title, since, until,
-                    effectiveLimit, effectiveOffset, currentProcessId);
+                    effectiveLimit, effectiveOffset, currentProcessId, opts.directory);
             }
 
             // ================================================================
@@ -368,30 +368,58 @@ async function handleTitleMode(
     limit: number,
     offset: number,
     currentProcessId: string | undefined,
+    directory?: WorkspaceDirectory,
 ) {
-    if (!store.getProcessSummaries) {
+    const remote = parseRemoteCloneKey(workspaceId);
+    if (workspaceId.startsWith('remote:') && (!remote || !directory?.getRemoteChatSummaries)) {
+        return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
+    }
+    if (!remote && !store.getProcessSummaries) {
         return { error: 'Title lookup is unavailable (requires process summaries).', code: 'unavailable' };
     }
-    const workspaces = await store.getWorkspaces();
-    const workspaceLabel = workspaces.find(ws => ws.id === workspaceId)?.name ?? workspaceId;
+    let workspaceLabel: string;
+    let server = 'local';
+    if (remote) {
+        const listing = await directory!.list();
+        const entry = listing.entries.find(ws => ws.id === workspaceId);
+        if (!entry?.online) return { error: 'Remote workspace is unavailable.', code: 'unavailable' };
+        workspaceLabel = entry.name;
+        server = entry.server;
+    } else {
+        const workspaces = await store.getWorkspaces();
+        workspaceLabel = workspaces.find(ws => ws.id === workspaceId)?.name ?? workspaceId;
+    }
     const results: ReturnType<typeof toRecentResult>[] = [];
     const needle = title.toLowerCase();
     let total = 0;
     const pageSize = 200;
     for (let scanOffset = 0; ; scanOffset += pageSize) {
-        const page = await store.getProcessSummaries({ workspaceId, type: 'chat', since, until, limit: pageSize, offset: scanOffset });
+        let page: { entries: ProcessIndexEntry[]; total: number };
+        try {
+            page = remote
+                ? await directory!.getRemoteChatSummaries!(remote.serverId, remote.workspaceId,
+                    { since, until, limit: pageSize, offset: scanOffset })
+                : await store.getProcessSummaries!({ workspaceId, type: 'chat', since, until, limit: pageSize, offset: scanOffset });
+        } catch (error) {
+            if (!remote) throw error;
+            // Transport details may contain endpoints. Do not expose them or return partial matches.
+            return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
+        }
         for (const entry of page.entries) {
-            const displayedTitle = entry.customTitle || entry.title || entry.promptPreview;
-            if (entry.workspaceId !== workspaceId || entry.id === currentProcessId || entry.archived
+            const displayedTitle = entry.customTitle || entry.title || entry.promptPreview || '';
+            if (entry.workspaceId !== (remote?.workspaceId ?? workspaceId) || (!remote && entry.id === currentProcessId) || entry.archived
                 || entry.type !== 'chat' || !displayedTitle.toLowerCase().includes(needle)) continue;
-            if (total >= offset && results.length < limit) results.push({ ...toRecentResult(entry), title: displayedTitle });
+            if (total >= offset && results.length < limit) results.push({ ...toRecentResult(entry), workspaceId, title: displayedTitle });
             total++;
         }
         if (!page.entries.length || scanOffset + page.entries.length >= page.total) break;
     }
     return {
         mode: 'title' as const,
-        results: results.map(result => ({ ...result, server: 'local', workspaceLabel })),
+        results: results.map(result => ({
+            ...result, server, workspaceLabel,
+            ...(remote ? { serverId: remote.serverId, conversationWorkspaceId: remote.workspaceId } : {}),
+        })),
         total, limit, offset, hasMore: offset + results.length < total,
         ambiguous: total > 1,
         message: total > 1 ? 'Multiple chats match. Ask the user which chat to attach.' : `Found ${total} matching chat(s).`,

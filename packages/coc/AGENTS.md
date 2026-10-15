@@ -78,7 +78,10 @@ references before editing. Paths are package-relative.
   and retain the clone chat link for inspecting the outcome.
 - `search_conversations` title lookup scans workspace-scoped chat summaries before
   result pagination, uses displayed titles, and reports ambiguity with server/workspace
-  labels. Unsupported remote title routes fail without local reads.
+  labels. Remote clone keys use the shared workspace directory's index-only summary
+  reader at each server's current endpoint. Keep server/raw workspace identity in results;
+  exclude the invoking process only for local searches. Unavailable remote reads discard
+  partial matches and never fall back to local chat reads.
 - `send_to_conversation` create mode defaults to Medium when model/tier are omitted;
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw

@@ -18,7 +18,7 @@
  */
 
 import type { ChatProvider } from '../tasks/task-types';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCache, type CacheHandle } from '../cache';
 import { isRepoGroupWorkspaceId, readRepoGroup } from '../workspaces/repo-group-workspace';
@@ -100,6 +100,10 @@ export interface WorkspaceDirectory {
      * unreachable, and a plain Error when it rejects the request.
      */
     listRemoteChats(serverId: string, workspaceId: string, limit: number): Promise<RemoteChatSummary[]>;
+    /** Index-only chat metadata; resolves the current endpoint on every page. */
+    getRemoteChatSummaries?(serverId: string, workspaceId: string, filter: {
+        limit: number; offset: number; since?: Date; until?: Date;
+    }): Promise<{ entries: ProcessIndexEntry[]; total: number }>;
     /** Start a chat on a remote server. Throws an Error with a model-facing message. */
     startRemoteChat(request: RemoteChatRequest): Promise<RemoteChatResult>;
 }
@@ -309,6 +313,28 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 entries.push(...result.entries);
             }
             return { entries, servers };
+        },
+
+        async getRemoteChatSummaries(serverId, workspaceId, filter) {
+            const server = options.remoteServers?.list().find(s => s.id === serverId);
+            if (!server?.effectiveUrl) throw new RemoteServerOfflineError(server ? serverName(server) : serverId);
+            const query = new URLSearchParams({
+                workspace: workspaceId, type: 'chat', limit: String(filter.limit), offset: String(filter.offset),
+            });
+            if (filter.since) query.set('since', filter.since.toISOString());
+            if (filter.until) query.set('until', filter.until.toISOString());
+            const body = await requestJson(`${server.effectiveUrl}/api/processes/summaries?${query}`, listTimeoutMs);
+            if (!Array.isArray(body?.summaries) || !Number.isSafeInteger(body.total) || body.total < 0
+                || body.summaries.length > filter.limit
+                || body.summaries.some((entry: ProcessIndexEntry) => !entry
+                    || ['id', 'workspaceId', 'type', 'status', 'startTime', 'promptPreview']
+                        .some(key => typeof (entry as unknown as Record<string, unknown>)[key] !== 'string')
+                    || (entry.title !== undefined && typeof entry.title !== 'string')
+                    || (entry.customTitle !== undefined && typeof entry.customTitle !== 'string'))) {
+                throw new Error('Invalid remote chat summaries response');
+            }
+            // Preserve the raw page length for pagination; the caller verifies ownership.
+            return { entries: body.summaries, total: body.total };
         },
 
         async listRemoteChats(serverId, workspaceId, limit) {

@@ -76,10 +76,14 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 `title` selects literal case-insensitive displayed-title matching, scoped by explicit
 or invoking `workspaceId`, and cannot combine with `query`. It scans chat summaries
 in 200-row pages before matching-result pagination, excludes archived/current chats,
-and returns local server/workspace labels plus `ambiguous` across all matches.
+and returns server/workspace labels plus `ambiguous` across all matches.
 Custom titles take precedence over generated titles and prompt previews. Ambiguous
-results instruct the Sentinel to ask which chat to attach. Title lookup reads no
-transcripts; unsupported remote clone keys return unavailable without local reads.
+results instruct the Sentinel to ask which chat to attach. Remote clone keys use
+`WorkspaceDirectory.getRemoteChatSummaries` and the selected registered server's
+current endpoint (`GET /api/processes/summaries`). Results retain the clone key,
+server ID and raw workspace ID. Only local searches exclude the invoking process
+ID; remote IDs may collide. Unavailable or invalid remote pages discard partial
+matches without local chat fallback. Title lookup reads no transcripts.
 
 ### sentinel_todos
 
