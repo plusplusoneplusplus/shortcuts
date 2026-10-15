@@ -164,6 +164,10 @@ per-file routes pass display limits into Rust and share `git/git-response.ts` wi
 conversion; untruncated responses omit truncation metadata. Host commit/range/comparison patches
 come from a per-root Rust `GitPatchStore` keyed by resolved object IDs; the benchmark
 shares its range files and summaries.
+Full-text working-tree snapshots read object IDs through Forge `readGitBlob`, with
+raw bytes, an inclusive size cap and `GitBlobTooLargeError`. Host execution uses
+native `gitReadBlob`; WSL uses the streaming byte transport in Forge. Both stop
+on overflow and preserve index-only blobs. Binary detection stays in CoC.
 Native range capabilities resolve refs and ahead counts. Rust plans/executes host Git and processes
 patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. WorkingTreeService per-file patches and CoC working-tree patch routes also use
 this backend with full context; routes apply native truncation and expose native-load

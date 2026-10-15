@@ -214,6 +214,15 @@ describe('byte fidelity', () => {
         expect(unstaged.head.content).toBe('\n\n  padded  \n\n');
     });
 
+    it('bounds the default blob IO even when called without a size preflight', async () => {
+        write('large.bin', Buffer.alloc(MAX_WORKING_TREE_CONTENT_BYTES + 1, 1));
+        git('add', 'large.bin');
+        const sha = git('rev-parse', ':large.bin').trim();
+        await expect(createWorkingTreeContentIO(repo).readBlob(sha)).rejects.toMatchObject({
+            code: 'GIT_BLOB_TOO_LARGE',
+        });
+    });
+
     it('keeps leading and trailing whitespace of an index blob', async () => {
         write('ws.txt', 'x\n');
         commitAll();

@@ -159,6 +159,7 @@ const GIT_EXPORTS = [
     'gitCommitDiff',
     'gitFileContentAtCommit',
     'gitFileBytesAtCommit',
+    'gitReadBlob',
     'gitFileExistsAtCommit',
     'gitValidateRef',
     'gitRangeDefaultBranch',

@@ -17,6 +17,7 @@
 //! TypeScript caller routes through `wsl.exe` itself and never reaches this
 //! module; Rust only ever runs git on the native host.
 
+pub mod blob;
 pub mod branch;
 pub mod commit;
 pub mod config;
@@ -101,6 +102,8 @@ pub enum GitErrorKind {
     Cancelled,
     /// Output passed `max_buffer_bytes`.
     MaxBuffer,
+    /// A raw blob read exceeded its inclusive byte cap.
+    BlobTooLarge,
     /// The child never started — no `git` on PATH, a `cwd` that is gone, or
     /// the temp files a `--no-index` diff needs could not be written.
     Spawn,
@@ -161,23 +164,28 @@ struct Captured {
     overflowed: bool,
 }
 
-/// Read to EOF, keeping at most `cap` bytes and discarding the rest.
-///
-/// Reading past the cap rather than stopping keeps the child from blocking on
-/// a full pipe while its sibling stream is still being drained; the discarded
-/// tail costs nothing, since the call is about to fail anyway.
-fn read_capped(mut stream: impl Read, cap: usize) -> Captured {
+/// Keep at most `cap` bytes. Blob reads stop after the first excess byte so
+/// the owner can kill the child immediately; text commands drain both pipes.
+fn read_capped(mut stream: impl Read, cap: usize, stop_on_overflow: bool) -> Captured {
     let mut bytes = Vec::new();
     let mut overflowed = false;
     let mut chunk = [0u8; 64 * 1024];
     loop {
-        match stream.read(&mut chunk) {
+        let read_limit = if stop_on_overflow {
+            cap.saturating_sub(bytes.len()).saturating_add(1).min(chunk.len())
+        } else {
+            chunk.len()
+        };
+        match stream.read(&mut chunk[..read_limit]) {
             Ok(0) => break,
             Ok(read) => {
                 if bytes.len() + read > cap {
                     overflowed = true;
                     let room = cap.saturating_sub(bytes.len());
                     bytes.extend_from_slice(&chunk[..room]);
+                    if stop_on_overflow {
+                        break;
+                    }
                 } else {
                     bytes.extend_from_slice(&chunk[..read]);
                 }
@@ -203,6 +211,7 @@ fn drain_with_timeout(
     rx: mpsc::Receiver<StreamResult>,
     timeout: Option<Duration>,
     cancellation: &[Arc<AtomicBool>],
+    stop_on_overflow: bool,
 ) -> (Captured, Captured, Option<GitErrorKind>) {
     let deadline = timeout.map(|t| Instant::now() + t);
     let mut stdout = None;
@@ -239,7 +248,14 @@ fn drain_with_timeout(
             None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
         };
         match received {
-            Ok(StreamResult::Stdout(captured)) => stdout = Some(captured),
+            Ok(StreamResult::Stdout(captured)) => {
+                let overflowed = captured.overflowed;
+                stdout = Some(captured);
+                if stop_on_overflow && overflowed {
+                    let _ = child.kill();
+                    break Some(GitErrorKind::BlobTooLarge);
+                }
+            }
             Ok(StreamResult::Stderr(captured)) => stderr = Some(captured),
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => break None,
@@ -299,10 +315,20 @@ pub fn run_git_global(args: &[String], options: &GitCommandOptions) -> Result<St
 /// passes two temp-file paths as `OsStr` so a non-UTF-8 `TMPDIR` still names
 /// the right files, and only the error text renders them lossily.
 fn run_command(
-    mut command: Command,
+    command: Command,
     args: &[String],
     options: &GitCommandOptions,
 ) -> Result<String, GitError> {
+    let bytes = run_command_bytes(command, args, options, false)?;
+    Ok(strip_one_trailing_newline(&String::from_utf8_lossy(&bytes)).to_string())
+}
+
+fn run_command_bytes(
+    mut command: Command,
+    args: &[String],
+    options: &GitCommandOptions,
+    stop_on_overflow: bool,
+) -> Result<Vec<u8>, GitError> {
     if options.cancellation.iter().any(|token| token.load(Ordering::Acquire)) {
         return Err(GitError::new(GitErrorKind::Cancelled, args, "patch scope cancelled"));
     }
@@ -324,17 +350,25 @@ fn run_command(
     let cap = options.max_buffer_bytes;
     if let Some(stream) = child.stdout.take() {
         let tx = tx.clone();
-        std::thread::spawn(move || tx.send(StreamResult::Stdout(read_capped(stream, cap))));
+        std::thread::spawn(move || {
+            tx.send(StreamResult::Stdout(read_capped(stream, cap, stop_on_overflow)))
+        });
     }
     if let Some(stream) = child.stderr.take() {
         let tx = tx.clone();
-        std::thread::spawn(move || tx.send(StreamResult::Stderr(read_capped(stream, cap))));
+        std::thread::spawn(move || {
+            tx.send(StreamResult::Stderr(read_capped(
+                stream,
+                if stop_on_overflow { DEFAULT_MAX_BUFFER_BYTES } else { cap },
+                false,
+            )))
+        });
     }
     drop(tx);
 
     let timeout = (options.timeout_ms > 0).then(|| Duration::from_millis(options.timeout_ms));
     let (stdout, stderr, stopped) =
-        drain_with_timeout(&mut child, rx, timeout, &options.cancellation);
+        drain_with_timeout(&mut child, rx, timeout, &options.cancellation, stop_on_overflow);
     let status = child.wait();
 
     let stderr_text = String::from_utf8_lossy(&stderr.bytes).into_owned();
@@ -352,8 +386,7 @@ fn run_command(
             if status.success()
                 || status.code().is_some_and(|code| options.success_exit_codes.contains(&code)) =>
         {
-            let text = String::from_utf8_lossy(&stdout.bytes).into_owned();
-            Ok(strip_one_trailing_newline(&text).to_string())
+            Ok(stdout.bytes)
         }
         Ok(status) => Err(GitError::new(GitErrorKind::Exit(status.code()), args, stderr_text)),
         Err(_) => Err(GitError::new(GitErrorKind::Spawn, args, stderr_text)),

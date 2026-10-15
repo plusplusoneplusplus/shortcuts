@@ -43,8 +43,10 @@ use coc_native_core::git::status::{
     parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
 };
 use coc_native_core::git::{run_git, GitCommandOptions, GitError, DEFAULT_TIMEOUT_MS};
+use napi::bindgen_prelude::JsObjectValue;
 use napi::bindgen_prelude::{AsyncTask, Buffer, Error, Result, Status, Task};
 use napi::Env;
+use napi::JsValue;
 use napi_derive::napi;
 
 /// Per-call overrides for one git invocation. Every field is optional;
@@ -495,6 +497,68 @@ pub fn git_file_content_at_commit(
     path: String,
 ) -> AsyncTask<GitFileContentAtCommitTask> {
     AsyncTask::new(GitFileContentAtCommitTask { repo_root: PathBuf::from(repo_root), rev, path })
+}
+
+/// Options for a byte-exact, bounded blob read. Zero timeout disables the deadline.
+#[napi(object)]
+pub struct GitReadBlobOptions {
+    pub max_bytes: u32,
+    pub timeout: Option<u32>,
+}
+
+pub struct GitReadBlobTask {
+    repo_root: PathBuf,
+    sha: String,
+    max_bytes: usize,
+    timeout_ms: u64,
+    too_large: bool,
+}
+
+impl Task for GitReadBlobTask {
+    type Output = Vec<u8>;
+    type JsValue = Buffer;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        coc_native_core::git::blob::read_blob(
+            &self.repo_root,
+            &self.sha,
+            self.max_bytes,
+            self.timeout_ms,
+        )
+        .map_err(|error| {
+            self.too_large = error.kind == coc_native_core::git::GitErrorKind::BlobTooLarge;
+            to_napi_error(error)
+        })
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Buffer> {
+        Ok(Buffer::from(output))
+    }
+
+    fn reject(&mut self, env: Env, error: Error) -> Result<Buffer> {
+        if !self.too_large {
+            return Err(error);
+        }
+        let value = napi::JsError::from(error).into_unknown(env);
+        value.coerce_to_object()?.set_named_property("code", "GIT_BLOB_TOO_LARGE")?;
+        Err(Error::from(value))
+    }
+}
+
+/// Read raw blob bytes by object ID, including blobs reachable only from the index.
+#[napi(ts_return_type = "Promise<Buffer>")]
+pub fn git_read_blob(
+    repo_root: String,
+    sha: String,
+    options: GitReadBlobOptions,
+) -> AsyncTask<GitReadBlobTask> {
+    AsyncTask::new(GitReadBlobTask {
+        repo_root: PathBuf::from(repo_root),
+        sha,
+        max_bytes: options.max_bytes as usize,
+        timeout_ms: options.timeout.map_or(DEFAULT_TIMEOUT_MS, u64::from),
+        too_large: false,
+    })
 }
 
 pub struct GitFileBytesAtCommitTask {
