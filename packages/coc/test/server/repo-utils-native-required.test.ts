@@ -1,15 +1,4 @@
-/**
- * The native addon is a hard dependency of git-root discovery.
- *
- * `findGitRoot` answers every failure with `null`, and for a path outside any
- * repository that is the right answer. For a binary that is missing or too old
- * it is the wrong one, and quietly so: `extractRepoId` is what partitions the
- * task queue per repository, so a swallowed load error would report every task
- * as belonging to no repo at all and collapse the partitioning — with nothing
- * anywhere naming the rebuild that fixes it.
- *
- * Hence `loadNativeGit()` sitting outside the try/catch, and hence this suite.
- */
+/** Forge load failures must reach callers so queue partitioning never silently collapses. */
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -22,11 +11,9 @@ const LOAD_ERROR = new Error(
         '`npm run build:native -w packages/coc-native`.',
 );
 
-vi.mock('@plusplusoneplusplus/coc-native', async importOriginal => ({
-    ...(await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>()),
-    loadNativeGit: () => {
-        throw LOAD_ERROR;
-    },
+vi.mock('@plusplusoneplusplus/forge', async importOriginal => ({
+    ...(await importOriginal<typeof import('@plusplusoneplusplus/forge')>()),
+    discoverGitRepoRoot: async () => { throw LOAD_ERROR; },
 }));
 
 import { extractRepoId, findGitRoot } from '../../src/server/git/repo-utils';

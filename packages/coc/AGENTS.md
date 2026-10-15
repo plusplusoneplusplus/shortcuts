@@ -628,7 +628,12 @@ references before editing. Paths are package-relative.
   Explicit override, quota/runtime, and dispatch failures never trigger substitution.
   Omitted provider keeps ordinary inheritance. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
-- Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
+- Create PRs via `src/server/git/create-pull-request-service.ts`, with typed Forge
+  `pullRequestGit` operations and a `gh`/`az`-only CLI runner. Forge owns host Rust
+  and WSL dispatch, including repository discovery (`discoverGitRepoRoot`), raw
+  blob reads and linked-worktree path translation. PR default resolution uses
+  symbolic origin HEAD, a 15s noninteractive remote probe, then `main`; fetch/push
+  use 600s with `GIT_TERMINAL_PROMPT=0`.
   The `submit-commits-as-pr` skill uses only `create_pull_request` with nonempty exact
   commits and explicit auto-merge (on unless disabled); general tool defaults stay unchanged.
   Successful structured `create_pull_request` results use forge’s shared detector for

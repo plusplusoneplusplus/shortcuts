@@ -15,8 +15,8 @@
  *
  * If the branch already has an open PR, that PR is returned instead.
  *
- * Every git/`gh`/`az` call goes through the injected {@link PrCliRunner}, so
- * tests drive the whole flow with a fake runner.
+ * Git uses typed Forge operations; the injected {@link PrCliRunner} runs only
+ * `gh`/`az`. Tests can replace either dependency independently.
  */
 
 import * as childProcess from 'child_process';
@@ -24,7 +24,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { promisify } from 'util';
-import { execGitAsync } from '@plusplusoneplusplus/forge';
+import { pullRequestGit, type PullRequestGit } from '@plusplusoneplusplus/forge';
 
 const COMMAND_MAX_BUFFER = 1024 * 1024 * 10;
 const REMOTE = 'origin';
@@ -41,7 +41,7 @@ export interface PrCliResult {
  * Runs one CLI command. Must reject on a non-zero exit. A missing executable
  * should reject with `code: 'ENOENT'` (Node's `execFile` does this).
  */
-export type PrCliRunner = (command: string, args: string[], options: { cwd: string }) => Promise<PrCliResult>;
+export type PrCliRunner = (command: 'gh' | 'az', args: string[], options: { cwd: string }) => Promise<PrCliResult>;
 
 export interface CreatePullRequestInput {
     /** The caller's checkout (the chat's workspace/working directory). */
@@ -100,6 +100,7 @@ export class CreatePullRequestError extends Error {
 
 export interface CreatePullRequestDeps {
     runCommand?: PrCliRunner;
+    git?: PullRequestGit;
     /** Parent directory for temporary worktrees and argument files. Defaults to `os.tmpdir()`. */
     tempDir?: string;
 }
@@ -243,14 +244,10 @@ function safeJson(text: string): any {
 // ---------------------------------------------------------------------------
 
 /**
- * git runs in forge's native path; `gh`/`az` start a child process. On Windows
+ * `gh`/`az` start a child process. On Windows
  * `az` is a `.cmd` shim, so it goes through `cmd.exe`.
  */
-export async function defaultPrCliRunner(command: string, args: string[], options: { cwd: string }): Promise<PrCliResult> {
-    if (command === 'git') {
-        const stdout = await execGitAsync(args, options.cwd, { maxBuffer: COMMAND_MAX_BUFFER, timeout: 0 });
-        return { stdout, stderr: '' };
-    }
+export async function defaultPrCliRunner(command: 'gh' | 'az', args: string[], options: { cwd: string }): Promise<PrCliResult> {
     const [file, fileArgs] = command === 'az' && process.platform === 'win32'
         ? [process.env.ComSpec?.trim() || 'cmd.exe', ['/d', '/s', '/c', 'az', ...args]]
         : [command, args];
@@ -270,7 +267,7 @@ export async function defaultPrCliRunner(command: string, args: string[], option
 // Service
 // ---------------------------------------------------------------------------
 
-const CLI_INFO: Record<PullRequestProvider, { cli: string; install: string; login: string }> = {
+const CLI_INFO: Record<PullRequestProvider, { cli: 'gh' | 'az'; install: string; login: string }> = {
     github: { cli: 'gh', install: 'https://cli.github.com', login: 'gh auth login' },
     ado: { cli: 'az', install: 'https://aka.ms/azure-cli', login: 'az login' },
 };
@@ -290,27 +287,26 @@ function isMissingExecutable(err: unknown): boolean {
 
 class PullRequestRun {
     private readonly run: PrCliRunner;
+    private readonly gitOps: PullRequestGit;
 
     constructor(private readonly input: CreatePullRequestInput, private readonly deps: CreatePullRequestDeps) {
         this.run = deps.runCommand ?? defaultPrCliRunner;
+        this.gitOps = deps.git ?? pullRequestGit;
     }
 
-    private async git(cwd: string, ...args: string[]): Promise<string> {
+    private async git<T>(operation: () => Promise<T>): Promise<T> {
         try {
-            return (await this.run('git', args, { cwd })).stdout.trim();
+            return await operation();
         } catch (err) {
-            throw new CreatePullRequestError('command-failed', `git ${args.join(' ')} failed: ${errorText(err)}`);
+            throw new CreatePullRequestError('command-failed', errorText(err));
         }
     }
 
-    /** True when the git command exits zero. */
-    private async gitOk(cwd: string, ...args: string[]): Promise<boolean> {
+    private async gitOk(operation: () => Promise<unknown>): Promise<boolean> {
         try {
-            await this.run('git', args, { cwd });
+            await operation();
             return true;
-        } catch {
-            return false;
-        }
+        } catch { return false; }
     }
 
     private async cli(provider: PullRequestProvider, cwd: string, args: string[]): Promise<string> {
@@ -352,20 +348,7 @@ class PullRequestRun {
     private async resolveBase(repoRoot: string): Promise<string> {
         const explicit = this.input.base?.trim();
         if (explicit) return explicit;
-        try {
-            const head = (await this.run('git', ['symbolic-ref', '--quiet', '--short', `refs/remotes/${REMOTE}/HEAD`], { cwd: repoRoot })).stdout.trim();
-            if (head.startsWith(`${REMOTE}/`)) return head.slice(REMOTE.length + 1);
-        } catch {
-            // Fall through to asking the remote.
-        }
-        try {
-            const out = (await this.run('git', ['ls-remote', '--symref', REMOTE, 'HEAD'], { cwd: repoRoot })).stdout;
-            const match = out.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD/m);
-            if (match) return match[1];
-        } catch {
-            // Fall back to the common default.
-        }
-        return 'main';
+        return this.gitOps.defaultBranch(repoRoot);
     }
 
     async execute(): Promise<CreatePullRequestResult> {
@@ -379,7 +362,7 @@ class PullRequestRun {
 
         let remoteUrl: string;
         try {
-            remoteUrl = (await this.run('git', ['config', '--get', `remote.${REMOTE}.url`], { cwd: repoRoot })).stdout.trim();
+            remoteUrl = await this.gitOps.remoteUrl(repoRoot);
         } catch {
             throw new CreatePullRequestError('unknown-remote', `The repository at ${repoRoot} has no \`${REMOTE}\` remote.`);
         }
@@ -404,20 +387,16 @@ class PullRequestRun {
             .filter(Boolean);
         let commits: string[];
         if (tokens.length === 1 && tokens[0].includes('..')) {
-            commits = (await this.git(repoRoot, 'rev-list', '--reverse', tokens[0])).split(/\s+/).filter(Boolean);
+            commits = await this.git(() => this.gitOps.commitsInRange(repoRoot, tokens[0]));
         } else {
             const shas: string[] = [];
             for (const token of tokens) {
-                shas.push(await this.git(repoRoot, 'rev-parse', '--verify', `${token}^{commit}`));
+                shas.push(await this.git(() => this.gitOps.resolveCommit(repoRoot, token)));
             }
             if (shas.length === 1) {
                 commits = shas;
             } else {
-                // Topological, oldest-first order regardless of the order given.
-                const wanted = new Set(shas);
-                commits = (await this.git(repoRoot, 'rev-list', '--reverse', '--topo-order', ...shas))
-                    .split(/\s+/)
-                    .filter(sha => wanted.has(sha));
+                commits = await this.git(() => this.gitOps.orderCommits(repoRoot, shas));
             }
         }
         if (commits.length === 0) {
@@ -427,8 +406,8 @@ class PullRequestRun {
     }
 
     private async branchExists(repoRoot: string, name: string): Promise<boolean> {
-        return await this.gitOk(repoRoot, 'rev-parse', '--verify', '--quiet', `refs/heads/${name}`)
-            || await this.gitOk(repoRoot, 'rev-parse', '--verify', '--quiet', `refs/remotes/${REMOTE}/${name}`);
+        return await this.gitOps.refExists(repoRoot, `refs/heads/${name}`)
+            || await this.gitOps.refExists(repoRoot, `refs/remotes/${REMOTE}/${name}`);
     }
 
     private async commitsMode(
@@ -440,31 +419,30 @@ class PullRequestRun {
     ): Promise<CreatePullRequestResult> {
         const { repoRoot } = this.input;
         const commits = await this.resolveCommits(repoRoot);
-        await this.git(repoRoot, 'fetch', REMOTE, base);
+        await this.git(() => this.gitOps.fetchBranch(repoRoot, base));
 
         const baseName = this.input.branch?.trim() || branchBaseName(
-            await this.git(repoRoot, 'rev-parse', '--short', commits[0]),
-            await this.git(repoRoot, 'log', '-1', '--pretty=%s', commits[0]),
+            await this.git(() => this.gitOps.shortSha(repoRoot, commits[0])),
+            await this.git(() => this.gitOps.commitSubject(repoRoot, commits[0])),
         );
         let branch = baseName;
         for (let i = 2; await this.branchExists(repoRoot, branch); i++) {
             branch = `${baseName}-${i}`;
         }
 
-        const worktree = path.join(tempParent, 'worktree');
-        await this.git(repoRoot, 'worktree', 'add', '-b', branch, worktree, `${REMOTE}/${base}`);
+        const worktree = await this.git(() => this.gitOps.addWorktree(repoRoot, branch, path.join(tempParent, 'worktree'), base));
         let keepBranch = false;
         try {
             for (const sha of commits) {
-                if (await this.gitOk(worktree, 'cherry-pick', sha)) continue;
+                if (await this.gitOk(() => this.gitOps.cherryPick(worktree, sha))) continue;
                 // An empty pick (change already on base) leaves CHERRY_PICK_HEAD and a clean tree.
-                const pending = await this.gitOk(worktree, 'rev-parse', '--verify', '--quiet', 'CHERRY_PICK_HEAD');
-                const status = pending ? await this.git(worktree, 'status', '--porcelain') : 'unknown';
+                const pending = await this.gitOps.refExists(worktree, 'CHERRY_PICK_HEAD');
+                const status = pending ? await this.git(() => this.gitOps.status(worktree)) : 'unknown';
                 if (pending && !status) {
-                    await this.git(worktree, 'cherry-pick', '--skip');
+                    await this.git(() => this.gitOps.skipCherryPick(worktree));
                     continue;
                 }
-                await this.gitOk(worktree, 'cherry-pick', '--abort');
+                await this.gitOk(() => this.gitOps.abortCherryPick(worktree));
                 throw new CreatePullRequestError(
                     'conflict',
                     `Cherry-picking ${sha} onto ${REMOTE}/${base} conflicted. The run was aborted and cleaned up; `
@@ -473,9 +451,9 @@ class PullRequestRun {
                 );
             }
 
-            await this.git(worktree, 'fetch', REMOTE, base);
-            if (!await this.gitOk(worktree, 'rebase', `${REMOTE}/${base}`)) {
-                await this.gitOk(worktree, 'rebase', '--abort');
+            await this.git(() => this.gitOps.fetchBranch(worktree, base));
+            if (!await this.gitOk(() => this.gitOps.rebase(worktree, base))) {
+                await this.gitOk(() => this.gitOps.abortRebase(worktree));
                 throw new CreatePullRequestError(
                     'conflict',
                     `Rebasing onto ${REMOTE}/${base} conflicted. The run was aborted and cleaned up; `
@@ -483,13 +461,15 @@ class PullRequestRun {
                 );
             }
 
-            await this.git(worktree, 'push', '-u', REMOTE, branch);
+            await this.git(() => this.gitOps.pushBranch(worktree, branch));
             keepBranch = true;
-            return await this.openPullRequest(provider, worktree, branch, base, title, mergeMethod, tempParent);
+            // Provider CLIs only need the shared origin and explicit branch args.
+            // Use the caller's checkout: Windows CLIs cannot read WSL worktree gitdir paths.
+            return await this.openPullRequest(provider, repoRoot, branch, base, title, mergeMethod, tempParent);
         } finally {
-            await this.gitOk(repoRoot, 'worktree', 'remove', '--force', worktree);
+            await this.gitOk(() => this.gitOps.removeWorktree(repoRoot, worktree));
             if (!keepBranch) {
-                await this.gitOk(repoRoot, 'branch', '-D', branch);
+                await this.gitOk(() => this.gitOps.deleteBranch(repoRoot, branch));
             }
         }
     }
@@ -502,7 +482,7 @@ class PullRequestRun {
         tempParent: string,
     ): Promise<CreatePullRequestResult> {
         const { repoRoot } = this.input;
-        const branch = await this.git(repoRoot, 'rev-parse', '--abbrev-ref', 'HEAD');
+        const branch = await this.git(() => this.gitOps.currentBranch(repoRoot));
         if (!branch || branch === 'HEAD') {
             throw new CreatePullRequestError('detached-head', 'HEAD is detached; check out a branch or pass `commits`.');
         }
@@ -513,11 +493,10 @@ class PullRequestRun {
             );
         }
 
-        const localSha = await this.git(repoRoot, 'rev-parse', 'HEAD');
-        const remoteLine = await this.git(repoRoot, 'ls-remote', '--heads', REMOTE, `refs/heads/${branch}`);
-        const remoteSha = remoteLine.split(/\s+/)[0] ?? '';
+        const localSha = await this.git(() => this.gitOps.headSha(repoRoot));
+        const remoteSha = await this.git(() => this.gitOps.remoteBranchSha(repoRoot, branch));
         if (remoteSha !== localSha) {
-            await this.git(repoRoot, 'push', '-u', REMOTE, branch);
+            await this.git(() => this.gitOps.pushBranch(repoRoot, branch));
         }
         return this.openPullRequest(provider, repoRoot, branch, base, title, mergeMethod, tempParent);
     }

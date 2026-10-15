@@ -59,7 +59,7 @@ describe.runIf(process.platform === 'win32')('BranchService inside a WSL distro'
         expect(result).toEqual({ success: true });
         expect(mockedExecFileAsync).toHaveBeenCalledWith(
             expect.stringContaining('wsl.exe'),
-            [...IN_DISTRO, 'git', 'checkout', 'main'],
+            [...IN_DISTRO, 'env', 'GIT_TERMINAL_PROMPT=0', 'git', 'checkout', 'main'],
             expect.objectContaining({
                 windowsHide: true,
                 env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
@@ -81,7 +81,7 @@ describe.runIf(process.platform === 'win32')('BranchService inside a WSL distro'
         expect(mockedExecFileAsync).toHaveBeenNthCalledWith(
             5,
             expect.stringContaining('wsl.exe'),
-            [...IN_DISTRO, 'git', 'fetch', '--no-tags', '--', 'upstream', 'refs/heads/release/2.0'],
+            [...IN_DISTRO, 'env', 'GIT_TERMINAL_PROMPT=0', 'git', 'fetch', '--no-tags', '--', 'upstream', 'refs/heads/release/2.0'],
             expect.objectContaining({ timeout: 600_000 }),
         );
     });
@@ -95,7 +95,7 @@ describe.runIf(process.platform === 'win32')('BranchService inside a WSL distro'
 
         expect(mockedExecFileAsync).toHaveBeenCalledWith(
             expect.stringContaining('wsl.exe'),
-            [...IN_DISTRO, 'git', 'fetch', '/home/tester/other'],
+            [...IN_DISTRO, 'env', 'GIT_TERMINAL_PROMPT=0', 'git', 'fetch', '/home/tester/other'],
             expect.anything(),
         );
     });
