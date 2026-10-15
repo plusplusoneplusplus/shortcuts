@@ -46,6 +46,13 @@ export type {
 } from './auth';
 
 export { loadNativeRepoFiles, nativeRepoFilesStatus } from './repo-files';
+export { loadNativeWatch, nativeWatchStatus } from './watch';
+export type {
+    NativeWatchAddon,
+    NativeWatchBatch,
+    NativeWatchHandle,
+    NativeWatchSubscriptionOptions,
+} from './watch';
 export type {
     NativeContentMatch,
     NativeContentSearchOptions,
