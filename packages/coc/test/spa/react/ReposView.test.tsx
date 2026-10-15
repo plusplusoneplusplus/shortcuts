@@ -45,7 +45,8 @@ vi.mock('../../../src/server/spa/client/react/repos/repositoryService', () => ({
 }));
 
 // Mock ReposContext so ReposView renders without making real API calls
-vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../../src/server/spa/client/react/contexts/ReposContext')>(),
     useRepos: () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -741,6 +742,23 @@ describe('RepoDetail', () => {
         });
         render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
         expect(screen.getByText('My Project')).toBeDefined();
+    });
+
+    it('switches repository detail without a ReposProvider', () => {
+        const first = makeRepo({
+            workspace: { id: 'ws-first', name: 'First Project', rootPath: '/first' },
+        });
+        const second = makeRepo({
+            workspace: { id: 'ws-second', name: 'Second Project', rootPath: '/second' },
+        });
+        const repos = [first, second];
+        const onRefresh = vi.fn();
+        const { rerender } = render(<Wrap><RepoDetail repo={first} repos={repos} onRefresh={onRefresh} /></Wrap>);
+        expect(screen.getByText('First Project')).toBeDefined();
+
+        rerender(<Wrap><RepoDetail repo={second} repos={repos} onRefresh={onRefresh} /></Wrap>);
+        expect(screen.getByText('Second Project')).toBeDefined();
+        expect(screen.queryByText('First Project')).toBeNull();
     });
 
     it('renders sub-tab bar with all tabs', () => {
