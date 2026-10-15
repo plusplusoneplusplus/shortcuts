@@ -1244,37 +1244,37 @@ async fn process_runner_missing_executable_and_bounded_output_are_redacted() {
 
 #[test]
 fn secret_store_rejects_non_sdk_entries_without_account_access() {
-    use crate::OsCredentialStore;
+    let store = crate::AuthSdkCredentialStore::os();
     for key in [
         "copilot-cli/fixture",
         "auth-sdk:v1:short",
         "auth-sdk:v1:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
     ] {
-        assert_eq!(code(OsCredentialStore.read(key)), ErrorCode::InvalidConfiguration);
+        assert_eq!(code(store.read(key)), ErrorCode::InvalidConfiguration);
         assert_eq!(
-            code(OsCredentialStore.write(key, &Secret::new("fixture".into()))),
+            code(store.write(key, &Secret::new("fixture".into()))),
             ErrorCode::InvalidConfiguration
         );
-        assert_eq!(code(OsCredentialStore.delete(key)), ErrorCode::InvalidConfiguration);
+        assert_eq!(code(store.delete(key)), ErrorCode::InvalidConfiguration);
     }
 }
 
 #[test]
 #[ignore = "Explicit isolated OS-store fixture; enable in native CI only"]
 fn isolated_os_store_fixture() {
-    use crate::OsCredentialStore;
+    let store = crate::AuthSdkCredentialStore::os();
     let directory = tempfile::tempdir().unwrap();
     let key = format!(
         "auth-sdk:v1:{}",
         config::hash(&["isolated-fixture", &directory.path().to_string_lossy()])
     );
-    assert!(OsCredentialStore.read(&key).unwrap().is_none());
-    OsCredentialStore.write(&key, &Secret::new("synthetic-refresh-fixture".into())).unwrap();
-    let stored = OsCredentialStore.read(&key);
-    let deleted = OsCredentialStore.delete(&key);
+    assert!(store.read(&key).unwrap().is_none());
+    store.write(&key, &Secret::new("synthetic-refresh-fixture".into())).unwrap();
+    let stored = store.read(&key);
+    let deleted = store.delete(&key);
     assert_eq!(stored.unwrap().unwrap().expose(), "synthetic-refresh-fixture");
     deleted.unwrap();
-    assert!(OsCredentialStore.read(&key).unwrap().is_none());
+    assert!(store.read(&key).unwrap().is_none());
 }
 
 #[cfg(target_os = "linux")]
@@ -1292,30 +1292,30 @@ fn linux_unavailable_store_is_an_explicit_failure() {
 #[test]
 #[ignore = "Writes and deletes one isolated SDK credential in Windows Credential Manager"]
 fn windows_isolated_os_store_fixture_utf8_capacity_and_roundtrip() {
-    use crate::OsCredentialStore;
+    let store = crate::AuthSdkCredentialStore::os();
     let directory = tempfile::tempdir().unwrap();
     let key = format!(
         "auth-sdk:v1:{}",
         config::hash(&["isolated-utf8-fixture", &directory.path().to_string_lossy()])
     );
     let result = (|| -> Result<()> {
-        assert!(OsCredentialStore.read(&key)?.is_none());
+        assert!(store.read(&key)?.is_none());
         for value in ["x".repeat(2560), "\u{e9}".repeat(1280)] {
             let secret = Secret::new(value);
-            OsCredentialStore.write(&key, &secret)?;
-            assert_eq!(OsCredentialStore.read(&key)?.unwrap().expose(), secret.expose());
+            store.write(&key, &secret)?;
+            assert_eq!(store.read(&key)?.unwrap().expose(), secret.expose());
         }
         assert_eq!(
-            code(OsCredentialStore.write(&key, &Secret::new("x".repeat(2561)))),
+            code(store.write(&key, &Secret::new("x".repeat(2561)))),
             ErrorCode::StorageFailed,
         );
-        assert_eq!(OsCredentialStore.read(&key)?.unwrap().expose(), "\u{e9}".repeat(1280));
+        assert_eq!(store.read(&key)?.unwrap().expose(), "\u{e9}".repeat(1280));
         Ok(())
     })();
-    let deleted = OsCredentialStore.delete(&key);
+    let deleted = store.delete(&key);
     result.unwrap();
     deleted.unwrap();
-    assert!(OsCredentialStore.read(&key).unwrap().is_none());
+    assert!(store.read(&key).unwrap().is_none());
 }
 
 #[cfg(target_os = "linux")]
@@ -1323,7 +1323,7 @@ fn windows_isolated_os_store_fixture_utf8_capacity_and_roundtrip() {
 #[ignore = "Subprocess isolates DBus environment"]
 fn linux_unavailable_store_child() {
     let key = format!("auth-sdk:v1:{}", config::hash(&["unavailable-fixture"]));
-    assert_eq!(code(crate::OsCredentialStore.read(&key)), ErrorCode::StorageUnavailable);
+    assert_eq!(code(crate::AuthSdkCredentialStore::os().read(&key)), ErrorCode::StorageUnavailable);
 }
 
 #[tokio::test]

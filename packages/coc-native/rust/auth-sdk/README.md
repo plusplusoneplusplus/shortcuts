@@ -235,9 +235,16 @@ credentials/login/consent are needed; it never starts interactive sign-in.
 
 ## Storage and security boundaries
 
-Refresh credentials use exact `auth-sdk:v1:<digest>` keys: Windows Credential
-Manager, non-synchronizing macOS Keychain, and Linux Secret Service with encrypted
-DBus sessions. There is no plaintext or Linux keyutils fallback. Linux/macOS
+`CredentialStore` is a key-format–agnostic trait for OS-backed credential stores.
+`OsCredentialStore` implements it with a caller-chosen service name and no key
+validation: Windows Credential Manager, non-synchronizing macOS Keychain, and
+Linux Secret Service with encrypted DBus sessions. `AuthSdkCredentialStore`
+wraps any `CredentialStore` and enforces exact `auth-sdk:v1:<64 hex>` key format
+before delegating — use it for SDK-owned credentials (Microsoft OAuth refresh
+tokens). `AuthSdkCredentialStore::os()` is the production convenience constructor
+(`AuthSdkCredentialStore` wrapping `OsCredentialStore` with service `"auth-sdk"`).
+
+There is no plaintext or Linux keyutils fallback. Linux/macOS
 storage queries reject locked/denied stores without opening an unlock prompt.
 Windows stores UTF-8 secret blobs rather than UTF-16 passwords; its 2,560-byte
 credential limit applies to the complete encoded refresh credential.

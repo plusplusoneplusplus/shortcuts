@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     contracts::{bounded, fail, Lifetime},
-    Clock, CredentialStore, ErrorCode, OsCredentialStore, Refresh, Result, SystemClock, Token,
+    AuthSdkCredentialStore, Clock, CredentialStore, ErrorCode, Refresh, Result, SystemClock, Token,
 };
 use std::{
     collections::HashMap,
@@ -25,7 +25,7 @@ impl Default for Dependencies {
     fn default() -> Self {
         Self {
             clock: Arc::new(SystemClock),
-            store: Arc::new(OsCredentialStore),
+            store: Arc::new(AuthSdkCredentialStore::os()),
             http: Arc::new(ReqwestTransport),
             cli: Arc::new(ProcessCliRunner::default()),
         }

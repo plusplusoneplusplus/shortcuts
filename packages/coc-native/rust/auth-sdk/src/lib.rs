@@ -8,4 +8,4 @@ mod process;
 mod storage;
 
 pub use contracts::*;
-pub use storage::{CredentialStore, OsCredentialStore};
+pub use storage::{AuthSdkCredentialStore, CredentialStore, OsCredentialStore};
