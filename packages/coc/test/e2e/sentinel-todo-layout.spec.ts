@@ -272,7 +272,12 @@ for (const dark of [false, true]) {
         await expect(details.getByRole('link', { name: 'Earlier job', exact: true })).toBeVisible();
         await expect(details.getByTestId('sentinel-todo-job-owner').first()).toHaveText('Child repo');
         await expect(details.getByRole('link', { name: 'Reference only' })).toBeVisible();
-        await details.getByRole('button', { name: 'Show notes (50 lines)' }).click();
+        const notesToggle = details.getByRole('button', { name: 'Hide notes', exact: true });
+        await expect(notesToggle).toBeVisible();
+        await expect(notesToggle).toHaveAttribute('aria-expanded', 'true');
+        const notes = details.locator('[id$="-notes"]');
+        await expect(notes).toBeVisible();
+        await expect(notes).toContainText('Recorded detail line 0');
         await details.evaluate(element => { element.scrollTop = 100; });
         expect(await details.evaluate(element => element.scrollTop)).toBe(100);
         expect(await list.evaluate(element => element.scrollTop)).toBe(0);

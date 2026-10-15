@@ -149,8 +149,13 @@ for (const remote of [false, true]) {
             await selectText(page, detail.locator('dd').first(), 'Fixture completion condition');
             await selectText(page, detail.getByTestId('sentinel-todo-updated-selected'), 'Updated');
             await selectText(page, detail.getByText('Dependencies - ALL required', { exact: true }), 'Dependencies - ALL required');
-            await detail.getByRole('button', { name: 'Show notes (40 lines)' }).click();
+            const notesToggle = detail.getByTestId('sentinel-todo-notes-toggle-selected');
+            await expect(notesToggle).toBeVisible();
+            await expect(notesToggle).toHaveAccessibleName('Hide notes');
+            await expect(notesToggle).toHaveAttribute('aria-expanded', 'true');
             const notes = detail.locator('[id$="-notes"]');
+            await expect(notes).toBeVisible();
+            await expect(notes).toContainText('Selectable fixture note 0');
             await selectText(page, notes, 'Selectable fixture note 0');
             await page.evaluate(() => {
                 document.addEventListener('copy', event => {
@@ -171,7 +176,14 @@ for (const remote of [false, true]) {
             await details.evaluate(element => { element.scrollTop = 100; });
             expect(await details.evaluate(element => element.scrollTop)).toBe(100);
             await detail.getByRole('button', { name: 'Hide notes' }).click();
+            await expect(notesToggle).toHaveAttribute('aria-expanded', 'false');
             await expect(notes).toHaveCount(0);
+            await detail.getByRole('button', { name: 'Show notes (40 lines)' }).click();
+            await expect(notesToggle).toHaveAccessibleName('Hide notes');
+            await expect(notesToggle).toHaveAttribute('aria-expanded', 'true');
+            await expect(notes).toBeVisible();
+            await expect(notes).toContainText('Selectable fixture note 0');
+            expect(await page.evaluate(() => window.sentinelTodoSelectionFixture.writes)).toEqual([]);
             await detail.getByRole('button', { name: 'Edit', exact: true }).click();
             await expect(detail.getByLabel('Title', { exact: true })).toHaveValue('Selectable fixture title');
             await detail.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -208,7 +220,12 @@ test('touch detail retains native selection and scrolling affordances', async ({
     try {
         await mount(page, 360);
         const detail = page.getByTestId('sentinel-todo-detail-selected');
-        await detail.getByRole('button', { name: 'Show notes (40 lines)' }).tap();
+        const notesToggle = detail.getByRole('button', { name: 'Hide notes', exact: true });
+        await expect(notesToggle).toBeVisible();
+        await expect(notesToggle).toHaveAttribute('aria-expanded', 'true');
+        const notes = detail.locator('[id$="-notes"]');
+        await expect(notes).toBeVisible();
+        await expect(notes).toContainText('Selectable fixture note 0');
         const title = detail.getByRole('heading').locator('span').first();
         expect(await title.evaluate(element => {
             const style = getComputedStyle(element);
