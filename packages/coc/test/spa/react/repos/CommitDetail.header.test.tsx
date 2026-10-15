@@ -9,6 +9,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitReviewFiles', () => ({
+    useCommitReviewFiles: () => ({ files: [], loading: false, retry: vi.fn() }),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({
+    GitFileReview: () => <div data-testid="git-file-review" />,
+}));
+
 // --- Module mocks (hoisted by Vitest) ---
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
@@ -244,7 +251,7 @@ describe('CommitDetail — commit info header', () => {
     it('still renders diff below the header', async () => {
         await renderDetail({ commit: makeCommit() });
         expect(screen.getByTestId('commit-info-header')).toBeTruthy();
-        expect(screen.getByTestId('diff-section')).toBeTruthy();
+        expect(screen.getByTestId('git-file-review')).toBeTruthy();
     });
 
     it('header collapsible wrapper uses overflow auto when expanded so long bodies are scrollable', async () => {
@@ -259,7 +266,7 @@ describe('CommitDetail — commit info header', () => {
     it('collapsed metadata is hidden and copy still works without expanding it', async () => {
         const commit = makeCommit();
         await renderDetail({ commit });
-        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Hide commit details' })); });
+        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
         const header = screen.getByTestId('commit-info-header');
         expect(header.parentElement!.hidden).toBe(true);
         expect(screen.queryByRole('button', { name: 'Hide commit details' })).toBeNull();

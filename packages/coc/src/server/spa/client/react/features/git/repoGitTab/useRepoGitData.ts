@@ -230,6 +230,9 @@ export function useRepoGitData({ workspaceId, selection, onInitialLoad }: UseRep
                 } else {
                     setOnDefaultBranch(false);
                     const rangeInfo: BranchRangeInfo = {
+                        commits: 'commits' in data ? data.commits : undefined,
+                        baseSha: 'baseSha' in data ? data.baseSha : undefined,
+                        headSha: 'headSha' in data ? data.headSha : undefined,
                         baseRef: data.baseRef,
                         headRef: data.headRef,
                         commitCount: data.commitCount,

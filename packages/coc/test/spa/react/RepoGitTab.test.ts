@@ -747,13 +747,14 @@ describe('RepoGitTab', () => {
             expect(source).toContain('<CommitDetail');
         });
 
-        it('renders FileDiffPanel for commit-file view', () => {
-            expect(source).toContain('<FileDiffPanel');
+        it('keeps commit-file routes inside the persistent commit review', () => {
+            expect(source).toContain('<CommitDetail');
+            expect(source).toContain('scrollToFilePath={filePath}');
         });
 
-        it('renders FileDiffPanel for branch-file view', () => {
-            // branch-file case also uses FileDiffPanel now
-            expect(source).toContain('createBranchRangeDiffSource');
+        it('keeps branch-file routes inside the persistent branch review', () => {
+            expect(source).toContain("view?.type === 'branch-range' || view?.type === 'branch-file'");
+            expect(source).toContain("scrollToFilePath={view.type === 'branch-file' ? view.filePath : undefined}");
         });
 
         it('imports CommitList', () => {
@@ -768,9 +769,10 @@ describe('RepoGitTab', () => {
             expect(source).not.toContain("import { CommitFileContent }");
         });
 
-        it('imports FileDiffPanel and DiffSource factories', () => {
-            expect(source).toContain("import { FileDiffPanel } from '../diff/FileDiffPanel'");
-            expect(source).toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from '../diff/diffSource'");
+        it('delegates focused file rendering and acquisition to the review surfaces', () => {
+            expect(source).toContain("import { BranchRangeOverview }");
+            expect(source).not.toContain("import { FileDiffPanel } from '../diff/FileDiffPanel'");
+            expect(source).not.toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from '../diff/diffSource'");
         });
 
         it('imports GitPanelHeader', () => {

@@ -15,6 +15,8 @@ import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getWsPath } from '../../../utils/config';
 import { cloneWsUrl } from '../../../api/wsUrl';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
+import { getGitReviewClient } from '../diff/diffSource';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
 import type { UpdateDiffCommentRequest } from './useDiffComments';
@@ -62,10 +64,10 @@ async function pollTaskResult<T>(client: CocClient, taskId: string, timeoutMs = 
     throw new Error('Task timed out');
 }
 
-export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCommentsReturn {
-    // Route every commit-comment REST call to the workspace's clone server
-    // (AC-07); the WS subscription below stays on cloneWsUrl unchanged (AC-03).
-    const cloneClient = useCocClient(wsId);
+export function useAllCommitComments(wsId: string, hash: string, routingTarget?: string | null): UseAllCommitCommentsReturn {
+    // Reads, mutations and subscriptions share the concrete review owner.
+    const defaultClient = useCocClient(wsId);
+    const cloneClient = routingTarget === undefined ? defaultClient : getGitReviewClient(wsId, routingTarget);
     const [comments, setComments] = useState<DiffComment[]>([]);
     const [loading, setLoading] = useState(false);
     const [resolving, setResolving] = useState(false);
@@ -113,11 +115,11 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
         updates: UpdateDiffCommentRequest,
     ): Promise<void> => {
         const storageKey = await computeStorageKey(comment.context);
-        const updated = await patchDiffComment(wsId, storageKey, comment.id, updates);
+        const updated = await patchDiffComment(wsId, storageKey, comment.id, updates, cloneClient);
         if (mountedRef.current) {
             setComments(prev => prev.map(c => c.id === comment.id ? updated : c));
         }
-    }, [wsId]);
+    }, [wsId, cloneClient]);
 
     const resolveComment = useCallback(async (comment: DiffComment): Promise<void> => {
         return updateComment(comment, { status: 'resolved' });
@@ -129,11 +131,11 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
 
     const deleteComment = useCallback(async (comment: DiffComment): Promise<void> => {
         const storageKey = await computeStorageKey(comment.context);
-        await deleteDiffCommentById(wsId, storageKey, comment.id);
+        await deleteDiffCommentById(wsId, storageKey, comment.id, cloneClient);
         if (mountedRef.current) {
             setComments(prev => prev.filter(c => c.id !== comment.id));
         }
-    }, [wsId]);
+    }, [wsId, cloneClient]);
 
     // ------------------------------------------------------------------
     // resolveWithAI — commit-level batch resolve via AI
@@ -233,7 +235,7 @@ export function useAllCommitComments(wsId: string, hash: string): UseAllCommitCo
 
     useEffect(() => {
         if (!wsId || !hash) return;
-        const ws = new WebSocket(cloneWsUrl(getWsPath()));
+        const ws = new WebSocket(cloneWsUrl(getWsPath(), routingTarget === null ? undefined : lookupCloneBaseUrl(routingTarget ?? wsId)));
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-commit-diff', wsId, hash }));
         });

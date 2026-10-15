@@ -6,6 +6,7 @@
  * without depending on a single DiffCommentContext at hook construction time.
  */
 
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getApiBase } from './config';
 import type { DiffComment, DiffCommentContext } from '../../comments/diff-comment-types';
 import type { UpdateDiffCommentRequest } from '../features/git/hooks/useDiffComments';
@@ -58,8 +59,9 @@ export async function listDiffCommentsForRange(
     wsId: string,
     oldRef: string,
     newRef: string,
+    client?: CocClient,
 ): Promise<DiffComment[]> {
-    const data = await getCocClientForWorkspace(wsId).git.listDiffComments(wsId, { oldRef, newRef });
+    const data = await (client ?? getCocClientForWorkspace(wsId)).git.listDiffComments(wsId, { oldRef, newRef });
     return (data.comments ?? []) as DiffComment[];
 }
 
@@ -68,10 +70,11 @@ export async function patchDiffComment(
     storageKey: string,
     id: string,
     updates: UpdateDiffCommentRequest,
+    client?: CocClient,
 ): Promise<DiffComment> {
     // Route to the workspace's clone (AC-07): remote clones hit their own server,
     // local/unknown ids resolve to the default origin (unchanged).
-    const data = await getCocClientForWorkspace(wsId).git.updateDiffComment(wsId, storageKey, id, updates);
+    const data = await (client ?? getCocClientForWorkspace(wsId)).git.updateDiffComment(wsId, storageKey, id, updates);
     return data.comment as DiffComment;
 }
 
@@ -79,6 +82,7 @@ export async function deleteDiffCommentById(
     wsId: string,
     storageKey: string,
     id: string,
+    client?: CocClient,
 ): Promise<void> {
-    await getCocClientForWorkspace(wsId).git.deleteDiffComment(wsId, storageKey, id);
+    await (client ?? getCocClientForWorkspace(wsId)).git.deleteDiffComment(wsId, storageKey, id);
 }

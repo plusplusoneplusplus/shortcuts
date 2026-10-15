@@ -1,42 +1,20 @@
-/**
- * BranchRangeOverview — right-panel view for branch-range mode.
- *
- * Shows a draggable split panel with BranchCommitStrip (top) and
- * BranchAllFilesDiff (bottom), plus resize/drag state and branch
- * comment count fetching.
- */
-
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { listDiffCommentsForRange } from '../../../utils/diffCommentApi';
-import { BranchCommitStrip } from './BranchCommitStrip';
-import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
-import type { DiffComment } from '../../../../comments/diff-comment-types';
 import type { GitCommitItem } from '../commits/CommitList';
-import { outgoingCommits } from '../commits/outgoingCommits';
 import type { BranchRangeInfo } from './BranchChanges';
 import { useGitReviewPopOut, gitReviewBranchPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
-import { createGitRangeContextDragPayload } from '../../chat/sessionContextDrag';
-import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
+import { createGitRangeContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { lookupCloneBaseUrl, resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { useCloneBaseUrl } from '../../../repos/cloneRouting';
+import { getGitReviewClient } from '../diff/diffSource';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 import { popOutOpened } from '../../../utils/popOutWindow';
-
-const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
-const DEFAULT_UPPER_HEIGHT = 160;
-const MIN_UPPER_HEIGHT = 80;
-
-function loadUpperHeight(): number {
-    try {
-        const stored = localStorage.getItem(RANGE_STORAGE_KEY);
-        if (stored !== null) {
-            const parsed = Number(stored);
-            if (Number.isFinite(parsed) && parsed >= MIN_UPPER_HEIGHT) return parsed;
-        }
-    } catch { /* ignore */ }
-    return DEFAULT_UPPER_HEIGHT;
-}
+import { GitFileReview } from '../diff/GitFileReview';
+import { createBranchRangeDiffSource } from '../diff/diffSource';
+import { CommitDetail } from '../commits/CommitDetail';
 
 export interface BranchRangeOverviewProps {
     workspaceId: string;
@@ -46,170 +24,80 @@ export interface BranchRangeOverviewProps {
     files?: BranchRangeFile[];
     unpushedCount?: number;
     onFileSelect?: (filePath: string) => void;
+    onNavigateToFile?: (filePath: string, target: 'first' | 'last') => void;
     onAllCommentsClick?: () => void;
     onAskAI?: () => void;
+    onQueueTask?: () => void;
     isPopOut?: boolean;
-    /** When set, scrolls the file list to the given file. */
     scrollToFilePath?: string | null;
-    /** Comparison base for the range. Defaults to 'default-branch'. */
+    initialHunkTarget?: 'first' | 'last';
     baseMode?: GitRangeBaseMode;
-    /** Called when the user flips the base toggle. Omit to hide the toggle. */
     onBaseModeChange?: (mode: GitRangeBaseMode) => void;
 }
 
-export function BranchRangeOverview({ workspaceId, attachmentDestinationId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath, baseMode = 'default-branch', onBaseModeChange }: BranchRangeOverviewProps) {
-    const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
-    const [isDragging, setIsDragging] = useState(false);
+export function BranchRangeOverview(props: BranchRangeOverviewProps) {
+    const owner = props.attachmentDestinationId;
+    const endpoint = useCloneBaseUrl(owner === props.workspaceId ? undefined : owner ?? props.workspaceId);
+    if (owner && owner !== props.workspaceId && resolveCloneRoute(owner).kind === 'unresolved-remote') {
+        return <div role="alert" className="p-2 text-xs">Git review owner is unavailable</div>;
+    }
+    // Resolved commit identities, not mutable HEAD/ref labels, scope review state.
+    const identity = JSON.stringify([props.attachmentDestinationId ?? props.workspaceId, props.workspaceId,
+        endpoint, props.baseMode, props.range.mergeBase, props.range.baseRef, props.range.headRef,
+        props.range.baseSha, props.range.headSha, props.range.commits?.map(commit => commit.hash), props.files]);
+    return <BranchReview key={identity} {...props} comparisonKey={identity} />;
+}
+function BranchReview({ workspaceId, attachmentDestinationId, range, files = [], onFileSelect, onNavigateToFile,
+    onAllCommentsClick, onAskAI, onQueueTask, isPopOut, scrollToFilePath, initialHunkTarget,
+    baseMode = 'default-branch', onBaseModeChange, comparisonKey }: BranchRangeOverviewProps & { comparisonKey: string }) {
+    const [scope, setScope] = useState('');
     const [branchCommentCount, setBranchCommentCount] = useState(0);
-    const rangeContainerRef = useRef<HTMLDivElement>(null);
-    const startYRef = useRef(0);
-    const startHeightRef = useRef(0);
     const { markPoppedOut } = useGitReviewPopOut();
+    // Only server-provided range commits are eligible; the history page may be filtered or incomplete.
+    const commits = range.commits ?? [];
+    const selectedCommit = commits.find(commit => commit.hash === scope);
     const sessionContextPayload = isSessionContextAttachmentsEnabled()
-        ? createGitRangeContextDragPayload(range, { activeWorkspaceId: workspaceId })
-        : null;
-
+        ? createGitRangeContextDragPayload(range, { activeWorkspaceId: workspaceId }) : null;
+    const revision = JSON.stringify([range.baseSha ?? range.mergeBase, range.headSha ?? commits[0]?.hash, range.baseRef]);
+    const source = useMemo(() => createBranchRangeDiffSource(workspaceId, {
+        files: files.map(file => file.path), baseMode, range, revision,
+        routingTarget: attachmentDestinationId === workspaceId ? null : attachmentDestinationId,
+    }), [workspaceId, files, baseMode, range, revision, attachmentDestinationId]);
+    useEffect(() => {
+        let cancelled = false;
+        Promise.resolve().then(() => listDiffCommentsForRange(workspaceId, range.baseRef, range.headRef, getGitReviewClient(workspaceId, attachmentDestinationId === workspaceId ? null : attachmentDestinationId)))
+            .then(comments => { if (!cancelled) setBranchCommentCount(comments.length); })
+            .catch(() => { if (!cancelled) setBranchCommentCount(0); });
+        return () => { cancelled = true; };
+    }, [workspaceId, attachmentDestinationId, range.baseRef, range.headRef]);
     const handlePopOut = useCallback(() => {
-        const cloneBaseUrl = attachmentDestinationId === workspaceId
-            ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+        const cloneBaseUrl = attachmentDestinationId === workspaceId ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
         const url = buildGitBranchRangePopOutUrl(workspaceId, cloneBaseUrl, baseMode, attachmentDestinationId);
-        const win = window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800');
-        if (popOutOpened(win)) {
-            markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
-        }
-    }, [workspaceId, attachmentDestinationId, markPoppedOut, baseMode]);
-
-    const getMaxUpperHeight = useCallback(() => {
-        if (!rangeContainerRef.current) return 400;
-        return Math.floor(rangeContainerRef.current.clientHeight * 0.5);
-    }, []);
-
-    const onDragMove = useCallback((clientY: number) => {
-        const delta = clientY - startYRef.current;
-        const maxHeight = getMaxUpperHeight();
-        const newHeight = Math.min(Math.max(startHeightRef.current + delta, MIN_UPPER_HEIGHT), maxHeight);
-        setUpperHeight(newHeight);
-    }, [getMaxUpperHeight]);
-
-    const onDragEnd = useCallback(() => {
-        setIsDragging(false);
-    }, []);
-
-    // Persist height when drag ends
-    useEffect(() => {
-        if (!isDragging) {
-            try { localStorage.setItem(RANGE_STORAGE_KEY, String(upperHeight)); } catch { /* ignore */ }
-        }
-    }, [isDragging, upperHeight]);
-
-    // Fetch branch-range comment count
-    useEffect(() => {
-        listDiffCommentsForRange(workspaceId, range.baseRef, range.headRef)
-            .then((comments: DiffComment[]) => setBranchCommentCount(comments.length))
-            .catch(() => setBranchCommentCount(0));
-    }, [workspaceId, range.baseRef, range.headRef]);
-
-    // Global mouse/touch listeners while dragging
-    useEffect(() => {
-        if (!isDragging) return;
-        const handleMouseMove = (e: MouseEvent) => { e.preventDefault(); onDragMove(e.clientY); };
-        const handleMouseUp = () => onDragEnd();
-        const handleTouchMove = (e: TouchEvent) => {
-            if (e.touches.length === 1) { e.preventDefault(); onDragMove(e.touches[0].clientY); }
-        };
-        const handleTouchEnd = () => onDragEnd();
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.addEventListener('touchmove', handleTouchMove, { passive: false });
-        document.addEventListener('touchend', handleTouchEnd);
-
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.removeEventListener('touchmove', handleTouchMove);
-            document.removeEventListener('touchend', handleTouchEnd);
-        };
-    }, [isDragging, onDragMove, onDragEnd]);
-
-    const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        startYRef.current = e.clientY;
-        startHeightRef.current = upperHeight;
-        setIsDragging(true);
-    }, [upperHeight]);
-
-    const handleDividerTouchStart = useCallback((e: React.TouchEvent) => {
-        if (e.touches.length !== 1) return;
-        startYRef.current = e.touches[0].clientY;
-        startHeightRef.current = upperHeight;
-        setIsDragging(true);
-    }, [upperHeight]);
-
-    return (
-        <div
-            ref={rangeContainerRef}
-            className={`commit-detail flex flex-col h-full overflow-hidden${isDragging ? ' select-none' : ''}`}
-            data-testid="commit-detail"
-        >
-            {/* Upper panel — commit strip */}
-            <div
-                style={{ height: upperHeight, minHeight: MIN_UPPER_HEIGHT }}
-                className="flex-shrink-0 overflow-hidden border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
-                data-testid="branch-range-overview-upper"
-            >
-                <BranchCommitStrip
-                    commits={outgoingCommits(rangeCommits ?? [], unpushedCount ?? 0)}
-                    branchRangeData={range}
-                    onAllCommentsClick={onAllCommentsClick}
-                    commentCount={branchCommentCount}
-                    onAskAI={onAskAI}
-                    sessionContextPayload={sessionContextPayload}
-                    baseMode={baseMode}
-                    onBaseModeChange={onBaseModeChange}
-                />
-            </div>
-
-            {/* Toolbar — pop-out button */}
-            {!isPopOut && (
-                <div className="flex items-center justify-end px-4 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]">
-                    <button
-                        onClick={handlePopOut}
-                        title="Open in new window"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="branch-range-popout-btn"
-                    >
-                        ↗️
-                    </button>
-                </div>
-            )}
-
-            {/* Draggable horizontal divider */}
-            <div
-                className="h-1 flex-shrink-0 cursor-row-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors"
-                onMouseDown={handleDividerMouseDown}
-                onTouchStart={handleDividerTouchStart}
-                data-testid="branch-range-overview-divider"
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize panels"
-                tabIndex={0}
-            />
-
-            {/* Lower panel — all files diff */}
-            <div
-                className="flex-1 min-h-0 overflow-y-auto"
-                data-testid="branch-range-overview-lower"
-            >
-                <BranchAllFilesDiff
-                    workspaceId={workspaceId}
-                    files={rangeFiles ?? []}
-                    onFileSelect={onFileSelect ?? (() => {})}
-                    scrollToFilePath={scrollToFilePath}
-                    baseMode={baseMode}
-                    range={range}
-                />
-            </div>
+        if (popOutOpened(window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800'))) markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
+    }, [workspaceId, attachmentDestinationId, baseMode, markPoppedOut]);
+    return <div className="commit-detail flex flex-col h-full min-w-0 overflow-hidden" data-testid="branch-range-review">
+        <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-commit-strip-header">
+            <span className="truncate max-w-[180px] font-medium" draggable={!!sessionContextPayload}
+                data-session-context-source={sessionContextPayload ? 'true' : undefined} data-session-context-kind={sessionContextPayload ? 'range' : undefined}
+                onDragStart={sessionContextPayload ? event => writePointerContextDragData(event.dataTransfer, sessionContextPayload) : undefined}
+                title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as range context` : range.headRef}>{range.branchName || range.headRef}</span>
+            {onBaseModeChange ? <select className="bg-transparent min-h-7 max-w-[190px]" aria-label="Comparison base" value={baseMode} onChange={event => onBaseModeChange(event.target.value as GitRangeBaseMode)}>
+                <option value="default-branch">vs {baseMode === 'default-branch' ? range.baseRef : 'default branch'}</option><option value="upstream">Unpushed{baseMode === 'upstream' ? ` · ${range.baseRef}` : ''}</option>
+            </select> : <span className="text-[#848484]">vs {range.baseRef}</span>}
+            <select className="bg-transparent min-h-7 max-w-[260px]" aria-label="Commit scope" value={scope} onChange={event => setScope(event.target.value)}>
+                <option value="">All {range.commitCount} commits</option>{!commits.length && range.commitCount > 0 && <option disabled>Commit scope unavailable</option>}{range.commitCount > commits.length && commits.length > 0 && <option disabled>Showing newest {commits.length} commits</option>}{commits.map(commit => <option key={commit.hash} value={commit.hash}>{commit.shortHash} {commit.subject}</option>)}
+            </select>
+            <span className="text-[#16825d]">+{range.additions}</span><span className="text-[#d32f2f]">−{range.deletions}</span>
+            {range.baseModeFallback && <span className="text-[#848484]" data-testid="branch-range-base-fallback">no upstream — showing vs {range.baseRef}</span>}
+            <span className="flex-1" />
+            {onAskAI && <button type="button" className="min-h-7 px-1" aria-label="Ask AI about branch changes" onClick={onAskAI} data-testid="branch-range-ask-ai-btn">Ask AI</button>}
+            {onQueueTask && <button type="button" className="min-h-7 px-1" onClick={onQueueTask}>Task</button>}
+            {onAllCommentsClick && <button type="button" className="min-h-7 px-1" aria-label="Show all branch comments" onClick={onAllCommentsClick}>Comments{branchCommentCount ? ` · ${branchCommentCount}` : ''}</button>}
+            {!isPopOut && <button type="button" className="min-h-7 px-1" aria-label="Open in new window" title="Open in new window" onClick={handlePopOut} data-testid="branch-range-popout-btn">↗</button>}
         </div>
-    );
+        {selectedCommit ? <CommitDetail key={selectedCommit.hash} workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} hash={selectedCommit.hash} commit={selectedCommit} isPopOut={isPopOut} />
+            : <GitFileReview workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} comparisonKey={comparisonKey}
+                files={files} source={source} selectedPath={scrollToFilePath} initialHunkTarget={initialHunkTarget}
+                onSelect={onNavigateToFile ?? (onFileSelect ? path => onFileSelect(path) : undefined)} />}
+    </div>;
 }

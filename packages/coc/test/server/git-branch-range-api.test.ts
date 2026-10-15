@@ -22,6 +22,7 @@ import { gitCache } from '../../src/server/git/git-cache';
 // ============================================================================
 
 const mockDetectCommitRange = vi.fn();
+const mockLoadGitHistory = vi.fn();
 const mockGetRangeDiff = vi.fn();
 const mockGetFileDiff = vi.fn();
 const mockGetCurrentBranch = vi.fn().mockResolvedValue('feature/foo');
@@ -36,6 +37,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
+        loadGitHistory: (...args: unknown[]) => mockLoadGitHistory(...args),
         loadRangePatch: async (root: string, base: string, head: string, file: string, options?: { maxLines?: number }) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
             return loadNativeGit().processGitPatch(await mockGetFileDiff(root, base, head, file, options), options?.maxLines);
@@ -163,6 +165,7 @@ describe('Git Branch Range API endpoints', () => {
 
     beforeEach(() => {
         mockDetectCommitRange.mockReset();
+        mockLoadGitHistory.mockReset().mockResolvedValue([]);
         mockGetRangeDiff.mockReset();
         mockGetFileDiff.mockReset();
         mockExecSync.mockReset();
@@ -190,6 +193,31 @@ describe('Git Branch Range API endpoints', () => {
             expect(data.files).toHaveLength(2);
             expect(data.additions).toBe(35);
             expect(data.deletions).toBe(2);
+        });
+
+        it('supplies the resolved range commits through the shared history loader', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            mockLoadGitHistory.mockResolvedValue([{ hash: 'abc123', shortHash: 'abc123', subject: 'Real change', authorName: 'Author', authorEmail: 'a@example.test', date: '2026-01-01', parentHashes: 'parent1 parent2', body: 'Details' }]);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            expect(res.json().commits).toEqual([{ hash: 'abc123', shortHash: 'abc123', subject: 'Real change', author: 'Author', authorEmail: 'a@example.test', date: '2026-01-01', parentHashes: ['parent1', 'parent2'], body: 'Details' }]);
+            expect(mockLoadGitHistory).toHaveBeenCalledWith(expect.any(String), { maxCount: 500, skip: 0 }, 'origin/main..HEAD');
+        });
+        it('returns resolved base/head identities even when only the base moves', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            mockLoadGitHistory.mockImplementation((_root, options, rev) => Promise.resolve(options.maxCount === 1 ? [{ hash: rev === 'HEAD' ? 'head-sha' : 'base-sha' }] : []));
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            expect(res.json()).toMatchObject({ baseSha: 'base-sha', headSha: 'head-sha', commits: [] });
+            expect(mockLoadGitHistory).toHaveBeenCalledWith(expect.any(String), { maxCount: 1, skip: 0 }, 'origin/main');
+            expect(mockLoadGitHistory).toHaveBeenCalledWith(expect.any(String), { maxCount: 1, skip: 0 }, 'HEAD');
+        });
+
+        it('keeps file comparison available when scope metadata fails', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            mockLoadGitHistory.mockRejectedValue(new Error('History unavailable'));
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            expect(res.status).toBe(200);
+            expect(res.json().files).toHaveLength(2);
+            expect(res.json().commits).toBeUndefined();
         });
 
         it('returns onDefaultBranch with branchName when detectCommitRange returns null', async () => {

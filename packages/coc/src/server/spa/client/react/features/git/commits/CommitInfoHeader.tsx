@@ -15,7 +15,7 @@ export function CommitInfoHeader({ commit, fileCount, headerCollapsed, headerId,
     return (
         <div className="shrink-0 min-w-0" style={{ maxHeight: '40vh', overflow: 'auto' }}>
             {headerCollapsed && (
-                <div className="flex items-center gap-2 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526]">
+                <div className="flex items-center gap-2 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526]">
                     <button
                         type="button"
                         data-testid="commit-info-summary"
@@ -32,7 +32,7 @@ export function CommitInfoHeader({ commit, fileCount, headerCollapsed, headerId,
                     <button
                         type="button"
                         onClick={onCopy}
-                        className="inline-flex shrink-0 items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-2 py-1 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                        className="inline-flex shrink-0 items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-1.5 py-0.5 min-h-7 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
                         title={hashCopied ? 'Copied!' : 'Copy commit hash'}
                         aria-label={hashCopied ? 'Copied!' : 'Copy commit hash'}
                         data-testid="commit-summary-copy-hash"
@@ -55,7 +55,7 @@ export function CommitInfoHeader({ commit, fileCount, headerCollapsed, headerId,
                             <button
                                 type="button"
                                 onClick={onCopy}
-                                className="inline-flex items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f7f8fa] dark:bg-[#2d2d30] px-2 py-1 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                className="inline-flex items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f7f8fa] dark:bg-[#2d2d30] px-1.5 py-0.5 min-h-7 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
                                 title={hashCopied ? 'Copied!' : 'Copy commit hash'}
                                 aria-label={hashCopied ? 'Copied!' : 'Copy commit hash'}
                                 data-testid="commit-info-copy-hash"
