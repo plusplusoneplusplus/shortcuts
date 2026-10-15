@@ -5,17 +5,24 @@ detail/diff pane, and the commit-bound chat panels.
 
 ## CommitDetail
 
-`CommitDetail.tsx` and the pop-out commit adapter share `CommitInfoHeader.tsx`
-for subject, body, author, date, parents, file count, and copyable SHA. Expanded
-metadata scrolls within a bounded height; collapsed headers retain subject and SHA. Collapsed metadata uses `hidden` so its controls leave the
-keyboard order. Header and classification-settings disclosures reset on
-`(workspaceId, hash)` changes. Settings reuse `ClassifyDiffAiControls` and the
-workspace-scoped `useModalJobAiSelection`; disable selectors during classification.
-Review and view control groups wrap independently in narrow panes. Icon buttons
-need accessible names, and panel toggles expose their pressed state.
-The review opener carries `attachmentDestinationId` as URL `sourceSelectionId`;
-endpoint lookup uses that concrete owner, with explicit local owners staying on
-the page origin. Omitted owners retain workspace-based lookup.
+`CommitDetail.tsx` and the pop-out adapter use `CommitInfoHeader.tsx` for
+subject, body, author, date, parents, file count and copyable SHA. Metadata starts
+collapsed, uses `hidden` outside the keyboard order, and resets with the owner
+and commit. Classification settings reuse `ClassifyDiffAiControls` and the
+workspace-scoped AI selection; disable selectors during classification.
+
+`useCommitReviewFiles` reads file metadata through the concrete owner client and
+discards superseded results. `GitFileReview` owns directory grouping, search,
+filters, selection, viewed tracking, overview and the narrow file drawer. Only
+the selected `FileDiffPanel` mounts; never load a combined patch for navigation.
+The file panel retains diff engines, hunk navigation, comments, find, truncation
+and fallback behavior. Review state keys include owner, workspace and comparison.
+Commit-level comments and classification remain available above the review.
+
+Icon buttons need accessible names; panel toggles expose pressed state. Review
+openers serialize `attachmentDestinationId` as `sourceSelectionId` and resolve
+that exact endpoint. Explicit local owners stay on the page origin. Omitted
+owners retain workspace-based lookup.
 
 ## Commit review lifetime
 

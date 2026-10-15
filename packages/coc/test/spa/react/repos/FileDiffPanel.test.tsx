@@ -706,7 +706,7 @@ describe('FileDiffPanel', () => {
     it('renders file path in header', () => {
         render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
 
-        expect(screen.getByTestId('truncated-path').textContent).toBe('src/foo.ts');
+        expect(screen.getByTestId('file-diff-path').querySelector('strong')!.textContent).toBe('foo.ts');
     });
 
     it('does not render a back button by default', () => {
@@ -760,7 +760,7 @@ describe('FileDiffPanel', () => {
         );
 
         expect(screen.getByTestId('file-diff-back-btn')).toBeTruthy();
-        expect(screen.getByTestId('truncated-path')).toBeTruthy();
+        expect(screen.getByTestId('file-diff-path').querySelector('strong')!).toBeTruthy();
         expect(screen.getByTestId('file-position-indicator').textContent).toBe('1/2');
         expect(screen.getByTestId('hunk-nav-buttons')).toBeTruthy();
         expect(screen.getByTestId('diff-engine-toggle')).toBeTruthy();
@@ -828,7 +828,7 @@ describe('FileDiffPanel', () => {
             filePath: 'src/foo.ts',
             oldRef: 'branch-base',
             newRef: 'branch-head',
-        });
+        }, undefined);
     });
 
     // ── handleAskAIDiff ──
@@ -1082,7 +1082,7 @@ describe('FileDiffPanel', () => {
             const onNavigateToFile = vi.fn();
             render(<FileDiffPanel workspaceId="ws1" filePath={files[0]} source={makeCommitSource({ files })} onNavigateToFile={onNavigateToFile} />);
             expect(screen.getByTestId('file-diff-path').tagName).toBe('SPAN');
-            fireEvent.click(screen.getByTestId('truncated-path'));
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!);
             expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
             expect(onNavigateToFile).not.toHaveBeenCalled();
         });
@@ -1114,7 +1114,7 @@ describe('FileDiffPanel', () => {
                 source={makeCommitSource({ files: fallback === 'single file' ? files.slice(0, 1) : fallback === 'empty list' ? [] : files })}
                 onNavigateToFile={fallback === 'no callback' ? undefined : onNavigateToFile} />);
             expect(screen.getByTestId('file-diff-path').tagName).toBe('SPAN');
-            fireEvent.click(screen.getByTestId('truncated-path'));
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!);
             expect(screen.queryByRole('dialog', { name: 'Jump to changed file' })).toBeNull();
             expect(onNavigateToFile).not.toHaveBeenCalled();
         });
@@ -1127,7 +1127,7 @@ describe('FileDiffPanel', () => {
                     <FileDiffPanel workspaceId="ws-member" filePath={files[0]} source={makeCommitSource({ files })} onNavigateToFile={onNavigateToFile} />
                 </UnifiedPanelHostProvider>,
             );
-            fireEvent.click(screen.getByTestId('truncated-path'), { [key]: true });
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!, { [key]: true });
             expect(mockOpenUnifiedPanelTab).toHaveBeenCalledExactlyOnceWith('ws-scope', expect.objectContaining({
                 kind: 'file', ownerWorkspaceId: 'ws-member', chatId: 'chat-1', resourceId: files[0], label: 'foo.ts',
             }));
@@ -1202,7 +1202,7 @@ describe('FileDiffPanel', () => {
 
         it.each([['ctrlKey'], ['metaKey']])('opens the file in its own panel tab on %s+click', (key) => {
             renderHosted({ workspaceId: 'ws-scope', chatId: 'chat-1' });
-            fireEvent.click(screen.getByTestId('truncated-path'), { [key]: true });
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!, { [key]: true });
             expect(mockOpenUnifiedPanelTab).toHaveBeenCalledTimes(1);
             expect(mockOpenUnifiedPanelTab).toHaveBeenCalledWith('ws-scope', expect.objectContaining({
                 kind: 'file',
@@ -1213,15 +1213,28 @@ describe('FileDiffPanel', () => {
             }));
         });
 
+        it.each([
+            ['ws-member', null],
+            ['remote:one:ws-member', 'remote:one:ws-member'],
+        ] as const)('keeps the mounted owner %s when opening an editor tab', (owner, routingRef) => {
+            render(<UnifiedPanelHostProvider host={{ workspaceId: 'ws-scope', chatId: null }}>
+                <FileDiffPanel workspaceId="ws-member" attachmentDestinationId={owner} filePath="src/foo.ts" source={makeCommitSource()} />
+            </UnifiedPanelHostProvider>);
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!, { ctrlKey: true });
+            expect(mockOpenUnifiedPanelTab).toHaveBeenCalledWith('ws-scope', expect.objectContaining({
+                ownerWorkspaceId: 'ws-member', ownerRoutingRef: routingRef,
+            }));
+        });
+
         it('does nothing on a plain click', () => {
             renderHosted({ workspaceId: 'ws-scope', chatId: null });
-            fireEvent.click(screen.getByTestId('truncated-path'));
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!);
             expect(mockOpenUnifiedPanelTab).not.toHaveBeenCalled();
         });
 
         it('does nothing when no unified panel hosts the diff', () => {
             renderHosted(null);
-            fireEvent.click(screen.getByTestId('truncated-path'), { ctrlKey: true });
+            fireEvent.click(screen.getByTestId('file-diff-path').querySelector('strong')!, { ctrlKey: true });
             expect(mockOpenUnifiedPanelTab).not.toHaveBeenCalled();
         });
     });

@@ -91,6 +91,13 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitReviewFiles', () => ({
+    useCommitReviewFiles: () => ({ files: MOCK_FILES, loading: false, retry: vi.fn() }),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({
+    GitFileReview: () => <div data-testid="git-file-review" />,
+}));
+
 // Stub UnifiedDiffViewer with parseDiffFileList returning a predictable list
 const MOCK_FILES = [
     { path: 'src/foo.ts', status: 'M', additions: 1, deletions: 1 },
@@ -247,13 +254,13 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
     });
 
-    it('keeps the view toggle, hunk nav and panel buttons on the same row as the classify controls', async () => {
+    it('keeps commit actions together above the focused review', async () => {
         await renderDetail();
         const bar = screen.getByTestId('commit-classify-bar');
         for (const id of ['commit-classify-button', 'commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
             expect(bar.contains(screen.getByTestId(id))).toBe(true);
         }
-        expect(bar.querySelector('[data-testid="diff-view-toggle"], [data-testid="diff-view-unified"]')).toBeTruthy();
+        expect(bar.contains(screen.getByTestId('git-file-review'))).toBe(false);
     });
 
     it('wraps review and view groups independently inside a size container', async () => {
@@ -279,7 +286,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         for (const id of ['commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
             expect(right.contains(screen.getByTestId(id))).toBe(true);
         }
-        expect(right.querySelector('[data-testid="diff-view-toggle"], [data-testid="diff-view-unified"]')).toBeTruthy();
+        expect(right.contains(screen.getByTestId('git-file-review'))).toBe(false);
     });
 
     it('never lets a toolbar control wrap its own text', async () => {

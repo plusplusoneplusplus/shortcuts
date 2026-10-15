@@ -161,7 +161,7 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s fallba
             expect(screen.getByTestId('classic-viewer').textContent).toContain('Keep this comment');
             expect(classicProps?.comments).toBe(comments);
             expect(classicProps?.diff).toBe('@@ -1 +1 @@\n-before\n+after');
-            expect(useComments).toHaveBeenCalledWith('ws-a', source.commentContext('src/a.ts'));
+            expect(useComments).toHaveBeenCalledWith('ws-a', source.commentContext('src/a.ts'), undefined);
             expect(usePatch).toHaveBeenCalledWith(source.fileDiffUrl('src/a.ts'), source.fileDiffUrl('src/a.ts', true), 'ws-a');
             expect(screen.getByTestId('full-context-toggle-btn')).toBeTruthy();
             fireEvent.click(screen.getByTestId('load-full-diff-btn'));

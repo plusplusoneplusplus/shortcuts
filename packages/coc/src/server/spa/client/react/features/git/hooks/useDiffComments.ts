@@ -10,6 +10,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getWsPath } from '../../../utils/config';
 import { useCocClient } from '../../../repos/cloneRouting';
+import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
+import { getGitReviewClient } from '../diff/diffSource';
 import { cloneWsUrl } from '../../../api/wsUrl';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
@@ -110,11 +112,11 @@ function contextMatches(comment: DiffComment, ctx: DiffCommentContext): boolean 
 export function useDiffComments(
     wsId: string,
     context: DiffCommentContext | null,
+    routingTarget?: string | null,
 ): UseDiffCommentsReturn {
-    // Route every diff-comment REST call to the selected clone's server (AC-07).
-    // The diff-comment-updated WebSocket subscription below keeps using
-    // cloneWsUrl(getWsPath()) unchanged (AC-03).
-    const cloneClient = useCocClient(wsId);
+    // Reads, mutations and subscriptions share the concrete review owner.
+    const defaultClient = useCocClient(wsId);
+    const cloneClient = routingTarget === undefined ? defaultClient : getGitReviewClient(wsId, routingTarget);
     const [comments, setComments] = useState<DiffComment[]>([]);
     const [loading, setLoading]   = useState(true);
     const [error, setError]       = useState<string | null>(null);
@@ -209,12 +211,12 @@ export function useDiffComments(
         const ctx = contextRef.current;
         if (!ctx) throw new Error('No diff context');
         const storageKey = await computeStorageKey(ctx);
-        const comment = await patchDiffComment(wsId, storageKey, id, req);
+        const comment = await patchDiffComment(wsId, storageKey, id, req, cloneClient);
         if (mountedRef.current) {
             setComments(prev => prev.map(c => c.id === id ? comment : c));
         }
         return comment;
-    }, [wsId]);
+    }, [wsId, cloneClient]);
 
     // ------------------------------------------------------------------
     // deleteComment — DELETE /api/diff-comments/:wsId/:storageKey/:id
@@ -227,7 +229,7 @@ export function useDiffComments(
             const ctx = contextRef.current;
             if (!ctx) throw new Error('No diff context');
             const storageKey = await computeStorageKey(ctx);
-            await deleteDiffCommentById(wsId, storageKey, id);
+            await deleteDiffCommentById(wsId, storageKey, id, cloneClient);
             if (mountedRef.current) {
                 setComments(prev => prev.filter(c => c.id !== id));
             }
@@ -236,7 +238,7 @@ export function useDiffComments(
                 setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         }
-    }, [wsId, deletingIds]);
+    }, [wsId, cloneClient, deletingIds]);
 
     // ------------------------------------------------------------------
     // resolveComment / unresolveComment
@@ -466,7 +468,7 @@ export function useDiffComments(
 
     useEffect(() => {
         if (!context) return;
-        const ws = new WebSocket(cloneWsUrl(getWsPath()));
+        const ws = new WebSocket(cloneWsUrl(getWsPath(), routingTarget === null ? undefined : lookupCloneBaseUrl(routingTarget ?? wsId)));
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'subscribe-diff', context }));
         });

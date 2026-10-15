@@ -5,7 +5,7 @@
 
 import type { IncomingMessage } from 'http';
 import * as url from 'url';
-import { GitRangeService, loadRangePatch } from '@plusplusoneplusplus/forge';
+import { GitRangeService, loadRangePatch, loadGitHistory } from '@plusplusoneplusplus/forge';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/forge';
 import { handleAPIError, badRequest, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
@@ -92,8 +92,22 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                     gitCache.set(cacheKey, result);
                     return result;
                 }
+                // Reuse Forge's native/WSL history transport. Metadata failure must
+                // not hide an otherwise valid comparison. Bound the scope menu.
+                const [commits, baseSha, headSha] = await Promise.all([
+                    loadGitHistory(ws.rootPath, { maxCount: 500, skip: 0 }, `${range.baseRef}..${range.headRef}`)
+                        .then(items => items.map(commit => ({
+                            hash: commit.hash, shortHash: commit.shortHash, subject: commit.subject,
+                            author: commit.authorName, authorEmail: commit.authorEmail, date: commit.date,
+                            parentHashes: commit.parentHashes.split(' ').filter(Boolean), body: commit.body,
+                        }))).catch(() => undefined),
+                    loadGitHistory(ws.rootPath, { maxCount: 1, skip: 0 }, range.baseRef).then(items => items[0]?.hash).catch(() => undefined),
+                    loadGitHistory(ws.rootPath, { maxCount: 1, skip: 0 }, range.headRef).then(items => items[0]?.hash).catch(() => undefined),
+                ]);
+                signal.throwIfAborted();
                 const result = {
                     ...range,
+                    commits, baseSha, headSha,
                     ...(range.files && { files: normalizeRangeFiles(range.files) }),
                 };
                 signal.throwIfAborted();

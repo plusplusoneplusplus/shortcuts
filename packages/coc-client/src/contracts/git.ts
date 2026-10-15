@@ -37,6 +37,9 @@ export interface GitDiffResponse {
 export type GitRangeBaseMode = 'default-branch' | 'upstream';
 
 export interface GitBranchRangeInfo {
+  /** Resolved snapshot identity for mutable comparison refs. */
+  baseSha?: string;
+  headSha?: string;
   baseRef: string;
   headRef: string;
   commitCount: number;

@@ -16,6 +16,8 @@ const transport = vi.hoisted(() => ({
 
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => transport.client,
+    lookupCloneBaseUrl: () => undefined,
+    resolveCloneRoute: () => ({ kind: 'local' }),
 }));
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: () => transport.client,
@@ -281,7 +283,7 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         fireEvent.click(within(cardOf('c1')).getByTitle('Edit'));
         fireEvent.change(within(cardOf('c1')).getByTestId('comment-edit-textarea'), { target: { value: 'edited note' } });
         await act(async () => { fireEvent.click(within(cardOf('c1')).getByText('Save')); });
-        expect(transport.patch).toHaveBeenLastCalledWith('ws-a', 'storage-key', 'c1', { comment: 'edited note' });
+        expect(transport.patch).toHaveBeenLastCalledWith('ws-a', 'storage-key', 'c1', { comment: 'edited note' }, transport.client);
         await act(async () => { fireEvent.click(within(cardOf('c1')).getByTitle('Resolve')); });
         expect(stored[0].status).toBe('resolved');
         expect(fake().decorations[0].kind).toBe('resolved');
@@ -290,7 +292,7 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         expect(stored[0].status).toBe('open');
         fireEvent.click(within(cardOf('c1')).getByTitle('Delete'));
         await act(async () => { fireEvent.click(within(cardOf('c1')).getByText('Confirm')); });
-        expect(transport.delete).toHaveBeenCalledWith('ws-a', 'storage-key', 'c1');
+        expect(transport.delete).toHaveBeenCalledWith('ws-a', 'storage-key', 'c1', transport.client);
         expect(stored).toEqual([]);
         expect(fake().zones.size).toBe(0);
     });

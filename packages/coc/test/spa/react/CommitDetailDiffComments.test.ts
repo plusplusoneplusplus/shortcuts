@@ -131,8 +131,8 @@ describe('CommitDetail — source structure (commit-level comments)', () => {
         expect(source).not.toContain("import { useDiffComments }");
     });
 
-    it('imports UnifiedDiffViewer', () => {
-        expect(source).toContain('UnifiedDiffViewer');
+    it('delegates focused diff rendering to GitFileReview', () => {
+        expect(source).toContain('GitFileReview');
     });
 
     it('imports CommentSidebar', () => {

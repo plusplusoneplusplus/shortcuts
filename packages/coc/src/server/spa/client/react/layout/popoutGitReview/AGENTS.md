@@ -22,19 +22,20 @@ here.
   `PopOutReviewChatSlot.tsx` — shared controls, file rail + diff column layout,
   and chat placement (side panel vs. lens).
 - `CommitReviewContent.tsx`, `PrReviewContent.tsx`,
-  `BranchRangeReviewContent.tsx` — per-review-type adapters: data loading, diff
-  source construction, and which capabilities they opt into. Commit descriptions
-  use the Git tab's `CommitInfoHeader`; PR descriptions use `PrDescription` and
-  `getPullRequestReviewSummaryText` from the inline PR overview. Description
-  sections remain above selected-file diffs and use bounded overflow. The shell
-  keeps loaded subjects/titles and identifiers available, with description
-  disclosure state scoped to the workspace and review target. Stale metadata
-  responses are discarded when adapters unmount or change targets.
+  `BranchRangeReviewContent.tsx` — review-type adapters. Commit review loads
+  metadata through `useCommitReviewFiles` and uses `GitFileReview`; branch review
+  uses `BranchRangeOverview` with the same navigator and focused file panel.
+  Both retain concrete owner routing and session-local viewed state. PR review
+  uses `PopOutReviewLayout` and its origin-persisted review progress.
+  Commit descriptions use the collapsed `CommitInfoHeader`; PR descriptions use
+  `PrDescription` and `getPullRequestReviewSummaryText`. Metadata has bounded
+  overflow, resets by owner/target and discards superseded reads. The shell keeps
+  loaded subjects/titles and identifiers in the window header.
 
 ## Conventions
 
-- Adapters configure the kernel; they never re-implement selection, priority
-  navigation, comment mapping, or chat placement.
+- Adapters reuse shared review layouts and chat slots; they never duplicate
+  diff acquisition or rendering.
 - Route metadata keeps `sourceSelectionId` separate from the raw `workspaceId`
   and clone endpoint. Clone registration includes that exact key and its guard
   checks the concrete owner. The shell forwards it as `attachmentDestinationId`
@@ -45,10 +46,11 @@ here.
   active chats receive `sourceSelectionId`. Closed, minimized or hidden review
   composers leave seeds buffered until an eligible composer mounts or becomes
   visible. Inline review hosts do not opt into this buffer.
-- Capabilities are opt-in via optional `progress` / `classification` arguments.
-  Branch-range currently opts into neither, which is why its rail hides the
-  priority and filter affordances.
-- Commit review progress is session-local; PR progress persists per
+- PR kernel capabilities are opt-in through `progress` / `classification`.
+  Commit classification uses the same controls and model; branch scope exposes
+  the exact comparison commits and reuses commit review for a selected commit.
+- Commit and branch viewed state is session-local and owner/comparison scoped;
+  PR progress persists per
   `(originId, workspaceId, repoId, prId)` and is keyed by head SHA.
 - Test-id prefixes are `commit-popout` and `pr-popout`; the toolbar renders
   identical markup for both, and a parity test asserts that.

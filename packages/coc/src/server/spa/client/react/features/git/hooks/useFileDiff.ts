@@ -43,19 +43,19 @@ export interface FileDiffState {
 export function useFileDiff(
     url: string | null,
     fullUrl?: string | null,
-    workspaceId?: string,
+    workspaceId?: string | null,
 ): FileDiffState {
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(url !== null);
     const [error, setError] = useState<string | null>(null);
     const [truncated, setTruncated] = useState(false);
     const [totalLines, setTotalLines] = useState(0);
-    const [fullRequested, setFullRequested] = useState(false);
+    const [fullRequested, setFullRequested] = useState<string | null>(null);
     const [fullContextUnavailable, setFullContextUnavailable] = useState<boolean | undefined>(undefined);
 
-    // Track the latest url to avoid stale fetches
-    const urlRef = useRef(url);
-    urlRef.current = url;
+    const requestRef = useRef<AbortController | null>(null);
+    const generationRef = useRef(0);
+    useEffect(() => () => { generationRef.current++; requestRef.current?.abort(); }, []);
 
     const applyResult = useCallback((result: DiffFetchResult) => {
         setDiff(result.diff);
@@ -65,6 +65,10 @@ export function useFileDiff(
     }, []);
 
     const doFetch = useCallback((fetchUrl: string) => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
+        const generation = ++generationRef.current;
         // Cache hit: apply synchronously with no loading flash and no network.
         const cached = peekDiffCache(workspaceId ?? '', fetchUrl);
         if (cached) {
@@ -75,25 +79,25 @@ export function useFileDiff(
         }
         setLoading(true);
         setError(null);
-        fetchDiffFromSource(workspaceId ?? '', fetchUrl)
+        fetchDiffFromSource(workspaceId ?? '', fetchUrl, controller.signal)
             .then((result: DiffFetchResult) => {
                 // Guard against stale responses after url changed
-                if (urlRef.current !== url) return;
+                if (generationRef.current !== generation || controller.signal.aborted) return;
                 applyResult(result);
             })
             .catch((err: Error) => {
-                if (urlRef.current !== url) return;
+                if (generationRef.current !== generation || controller.signal.aborted) return;
                 setError(err.message || 'Failed to load diff');
             })
             .finally(() => {
-                if (urlRef.current !== url) return;
+                if (generationRef.current !== generation || controller.signal.aborted) return;
                 setLoading(false);
             });
     }, [url, workspaceId, applyResult]);
 
     // Initial fetch on URL change
     useEffect(() => {
-        setFullRequested(false);
+        setFullRequested(null);
         setTruncated(false);
         setTotalLines(0);
         setFullContextUnavailable(undefined);
@@ -104,24 +108,25 @@ export function useFileDiff(
             return;
         }
         doFetch(url);
+        return () => { generationRef.current++; requestRef.current?.abort(); };
     }, [url, doFetch]);
 
     // Full-diff fetch when requested
     useEffect(() => {
-        if (!fullRequested || !fullUrl) return;
+        if (!fullRequested || fullRequested !== url || !fullUrl) return;
         doFetch(fullUrl);
-    }, [fullRequested, fullUrl, doFetch]);
+    }, [fullRequested, url, fullUrl, doFetch]);
 
     const retry = useCallback(() => {
         if (!url) return;
         setError(null);
-        doFetch(fullRequested && fullUrl ? fullUrl : url);
+        doFetch(fullRequested === url && fullUrl ? fullUrl : url);
     }, [url, fullUrl, fullRequested, doFetch]);
 
     const requestFullDiff = useCallback(() => {
         if (!truncated || !fullUrl) return;
-        setFullRequested(true);
-    }, [truncated, fullUrl]);
+        setFullRequested(url);
+    }, [truncated, fullUrl, url]);
 
     return { diff, loading, error, retry, truncated, totalLines, requestFullDiff, fullContextUnavailable };
 }

@@ -102,9 +102,14 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList
     isTouchOnly: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
-    CommitDetail: ({ hash, attachmentDestinationId }: { hash: string; attachmentDestinationId?: string }) => (
-        <div data-testid="stub-commit-detail" data-hash={hash} data-owner={attachmentDestinationId} />
-    ),
+    CommitDetail: ({ hash, attachmentDestinationId, scrollToFilePath, onNavigateToFile, initialHunkTarget }: {
+        hash: string; attachmentDestinationId?: string; scrollToFilePath?: string;
+        onNavigateToFile?: (path: string, target: 'first' | 'last') => void; initialHunkTarget?: string;
+    }) => <div data-testid="stub-commit-detail" data-hash={hash} data-owner={attachmentDestinationId}>
+        {scrollToFilePath && <div data-testid="stub-file-diff" data-file={scrollToFilePath} data-hunk-target={initialHunkTarget ?? 'none'}>
+            <button data-testid="stub-file-diff-next" onClick={() => onNavigateToFile?.('src/b.ts', 'first')}>next file</button>
+        </div>}
+    </div>,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
     BranchRangeOverview: ({ attachmentDestinationId }: { attachmentDestinationId?: string }) => (

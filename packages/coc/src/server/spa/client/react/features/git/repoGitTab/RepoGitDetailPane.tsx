@@ -9,15 +9,12 @@
  * subtree renders inline and portaled into the split-workspace detail region.
  */
 
-import { useMemo } from 'react';
 import { CommitReviewChat } from '../commits/CommitReviewChat';
 import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import type { GitCommitItem } from '../commits/CommitList';
 import { CommitDetail } from '../commits/CommitDetail';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
-import { FileDiffPanel } from '../diff/FileDiffPanel';
-import { createCommitDiffSource, createBranchRangeDiffSource } from '../diff/diffSource';
 import { WorkingTreeFileDiff } from '../working-tree/WorkingTreeFileDiff';
 import { WorkingTreeAllComments } from '../working-tree/WorkingTreeAllComments';
 import type { BranchRangeInfo } from '../branches/BranchChanges';
@@ -78,7 +75,7 @@ export function RepoGitDetailPane({
     // A restored branch view can outlive its branch range (the user has since
     // switched to the default branch): say so instead of rendering a range
     // that is not there.
-    if ((view?.type === 'branch-range' || view?.type === 'branch-range-comments') && !branchRangeData) {
+    if ((view?.type === 'branch-range' || view?.type === 'branch-range-comments' || view?.type === 'branch-file') && !branchRangeData) {
         return (
             <div className="flex-1 flex items-center justify-center text-sm text-[#848484]" data-testid="git-detail-no-branch-range">
                 No branch changes to show
@@ -86,7 +83,7 @@ export function RepoGitDetailPane({
         );
     }
 
-    if (view?.type === 'branch-range') {
+    if (view?.type === 'branch-range' || view?.type === 'branch-file') {
         return (
             <BranchRangeOverview
                 attachmentDestinationId={attachmentDestinationId}
@@ -95,30 +92,15 @@ export function RepoGitDetailPane({
                 commits={commits}
                 unpushedCount={unpushedCount}
                 files={branchRangeFiles}
+                scrollToFilePath={view.type === 'branch-file' ? view.filePath : undefined}
+                initialHunkTarget={hunkTarget}
+                onNavigateToFile={onNavigateToBranchFile}
                 onFileSelect={onBranchFileSelect}
                 onAllCommentsClick={onAllBranchCommentsClick}
                 onAskAI={() => { void onBranchAskAI('ask'); }}
                 onQueueTask={() => { void onBranchAskAI('task'); }}
                 baseMode={baseMode}
                 onBaseModeChange={onBaseModeChange}
-            />
-        );
-    }
-
-    if (view?.type === 'branch-file') {
-        return (
-            <FileDiffPanel
-                attachmentDestinationId={attachmentDestinationId}
-                key={view.filePath}
-                source={createBranchRangeDiffSource(workspaceId, {
-                    files: (branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort(),
-                    baseMode,
-                    range: branchRangeData ?? undefined,
-                })}
-                workspaceId={workspaceId}
-                filePath={view.filePath}
-                onNavigateToFile={onNavigateToBranchFile}
-                initialHunkTarget={hunkTarget}
             />
         );
     }
@@ -196,18 +178,15 @@ function CommitReviewDetail({ workspaceId, attachmentDestinationId, hash, commit
     onCommitClassified: RepoGitDetailPaneProps['onCommitClassified'];
 }) {
     const chat = useCommitChatPresentation({ workspaceId, commitHash: hash });
-    const source = useMemo(() => createCommitDiffSource(workspaceId, hash, { commit }), [workspaceId, hash, commit]);
     return <div className="relative flex h-full min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-            {filePath ? <FileDiffPanel
-                workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
-                source={source} filePath={filePath} reviewChat={chat}
-                onNavigateToFile={(fp, target) => onNavigateToCommitFile(hash, fp, target)}
-                initialHunkTarget={hunkTarget}
-            /> : <CommitDetail
+            <CommitDetail
                 workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
                 hash={hash} commit={commit} reviewChat={chat} onClassified={onCommitClassified}
-            />}
+                scrollToFilePath={filePath}
+                onNavigateToFile={(path, target) => onNavigateToCommitFile(hash, path, target)}
+                initialHunkTarget={hunkTarget}
+            />
         </div>
         <CommitReviewChat workspaceId={workspaceId} sourceSelectionId={attachmentDestinationId} hash={hash} commitMessage={commit?.subject} chat={chat} />
     </div>;

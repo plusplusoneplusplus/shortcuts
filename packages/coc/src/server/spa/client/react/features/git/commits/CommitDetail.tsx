@@ -1,24 +1,15 @@
 /**
  * CommitDetail — right-panel view for a selected commit.
  *
- * Shows the unified diff for the full commit (commit-overview mode).
+ * Shows metadata, review actions and one focused file diff with persistent navigation.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
 import { copyToClipboard } from '../../../utils/format';
-import { useCachedDiff } from '../hooks/useCommitDiffCache';
-import { Spinner, Button } from '../../../ui';
-import { UnifiedDiffViewer, HunkNavButtons, parseDiffFileList } from '../diff/UnifiedDiffViewer';
-import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
-import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
-import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
-import { useDiffViewMode } from '../hooks/useDiffViewMode';
-import { DiffViewToggle } from '../diff/DiffViewToggle';
+import { useCommitReviewFiles } from '../hooks/useCommitReviewFiles';
+import { GitFileReview } from '../diff/GitFileReview';
+import { createCommitDiffSource } from '../diff/diffSource';
 import { DIFF_TOOLBAR_NARROW_HIDDEN } from '../diff/diffToolbarClasses';
-import { DiffMiniMap } from '../diff/DiffMiniMap';
-import { DiffFindWidget } from '../diff/DiffFindWidget';
-import { useDiffFind } from '../diff/useDiffFind';
-import { useDiffFindShortcut } from '../diff/useDiffFindShortcut';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitReviewChat } from './CommitReviewChat';
@@ -27,8 +18,8 @@ import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
-import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
+import { lookupCloneBaseUrl, resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { useClassification } from '../diff/useClassification';
 import { useModalJobAiSelection } from '../../../shared/ModalJobAiControls';
 import { ClassifyDiffAiControls } from '../diff/ClassifyDiffAiControls';
@@ -56,48 +47,39 @@ export interface CommitDetailProps {
     scrollToFilePath?: string | null;
     /** Called when a classification result becomes available for this commit. */
     onClassified?: () => void;
+    onNavigateToFile?: (path: string, target: 'first' | 'last') => void;
+    initialHunkTarget?: 'first' | 'last';
 }
 
-export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat }: CommitDetailProps) {
-    const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
-        () => ({ workspaceId, ref: { type: 'commit', commitHash: hash } }),
-        [workspaceId, hash],
-    );
+export function CommitDetail(props: CommitDetailProps) {
+    const owner = props.attachmentDestinationId;
+    const endpoint = useCloneBaseUrl(owner === props.workspaceId ? undefined : owner ?? props.workspaceId);
+    if (owner && owner !== props.workspaceId && resolveCloneRoute(owner).kind === 'unresolved-remote') {
+        return <div role="alert" className="p-2 text-xs">Git review owner is unavailable</div>;
+    }
+    return <CommitDetailBody key={JSON.stringify([owner ?? props.workspaceId, props.workspaceId, props.hash, endpoint])} {...props} />;
+}
+
+function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat, onNavigateToFile, initialHunkTarget }: CommitDetailProps) {
+    const [focusComment, setFocusComment] = useState<DiffComment | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const localChat = useCommitChatPresentation({ workspaceId, commitHash: hash, supportsChat: !reviewChat });
     const chat = reviewChat ?? localChat;
     const { chatOpen, toggleChat } = chat;
-    // Track currently-navigated file (for priority nav within the unified diff)
+    // Shared selection for priority navigation, deep links and comment jumps.
     const [navFilePath, setNavFilePath] = useState<string | null>(null);
 
-    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
-    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [hashCopied, setHashCopied] = useState(false);
-    const [viewMode, setViewMode] = useDiffViewMode();
-    const [headerCollapsed, setHeaderCollapsed] = useState(false);
+    const [headerCollapsed, setHeaderCollapsed] = useState(true);
     const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
     const aiSettingsId = useId();
     const headerId = useId();
 
-    const diffUrl = hash
-        ? getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, hash)
-        : null;
-
-    const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
-
-    // ── In-diff find (Ctrl/Cmd+F) ──
-    // Same wiring as FileDiffPanel: search the FULL commit diff model so matches
-    // in virtualized (>500-line) regions are still counted, and let the viewer's
-    // scrollLineIntoView handle drive the virtualizer to the active match.
-    const scrollActiveMatchIntoView = useCallback((lineIndex: number) => {
-        viewerRef.current?.scrollLineIntoView(lineIndex);
-    }, []);
-    const find = useDiffFind(diffLines, scrollActiveMatchIntoView);
-    useDiffFindShortcut(scrollContainerRef, find.openFind);
-
-    // File list from diff for classification + priority navigation
-    const fileList = useMemo(() => diff ? parseDiffFileList(diff) : [], [diff]);
+    const fileState = useCommitReviewFiles(workspaceId, hash, attachmentDestinationId);
+    const fileList = fileState.files;
+    const source = useMemo(() => createCommitDiffSource(workspaceId, hash ?? '', {
+        commit, files: fileList.map(file => file.path), routingTarget: attachmentDestinationId === workspaceId ? null : attachmentDestinationId,
+    }), [workspaceId, hash, commit, fileList, attachmentDestinationId]);
 
     // Classification — session-scoped, mirrors commit popout
     const classificationKey: ClassificationKey = useMemo(
@@ -117,7 +99,7 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
     }, [classification.state.status]);
 
     // Review progress — session-local only (no server persistence)
-    const reviewProgress = usePrReviewProgress(hash ?? '');
+    const reviewProgress = usePrReviewProgress(JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, hash]));
 
     // Priority navigation (next/prev unreviewed or high-priority file)
     const classifyStatusForNav = classification.state.status;
@@ -151,7 +133,6 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
         if (priorityNav.nextPath) {
             setNavFilePath(priorityNav.nextPath);
             reviewProgress.markVisited(priorityNav.nextPath);
-            viewerRef.current?.scrollToFile(priorityNav.nextPath);
         }
     }, [priorityNav.nextPath, reviewProgress]);
 
@@ -159,7 +140,6 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
         if (priorityNav.prevPath) {
             setNavFilePath(priorityNav.prevPath);
             reviewProgress.markVisited(priorityNav.prevPath);
-            viewerRef.current?.scrollToFile(priorityNav.prevPath);
         }
     }, [priorityNav.prevPath, reviewProgress]);
 
@@ -177,7 +157,7 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
         aiLoadingIds: commitAiLoadingIds,
         aiErrors: commitAiErrors,
         clearAiError: clearCommitAiError,
-    } = useAllCommitComments(workspaceId, hash ?? '');
+    } = useAllCommitComments(workspaceId, hash ?? '', attachmentDestinationId === workspaceId ? null : attachmentDestinationId);
 
     const { dispatch: queueDispatch } = useQueue();
     const { markPoppedOut } = useGitReviewPopOut();
@@ -233,44 +213,12 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
     }, [commitFixWithAI, queueDispatch, workspaceId]);
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
-        const dc = comment as DiffComment;
-        const lineIdx = dc.selection?.diffLineStart;
-        if (lineIdx == null) return;
-        const el = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-diff-line-index="${lineIdx}"]`);
-        if (!el) return;
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('ring-2', 'ring-yellow-400');
-        setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
+        setNavFilePath((comment as DiffComment).context.filePath);
+        setFocusComment(comment as DiffComment);
     }, []);
+    useEffect(() => { setNavFilePath(scrollToFilePath ?? null); }, [workspaceId, hash, attachmentDestinationId, scrollToFilePath]);
 
-    // Reset collapse state on commit change
-    useEffect(() => {
-        setHeaderCollapsed(false);
-        setAiSettingsOpen(false);
-        setHashCopied(false);
-    }, [workspaceId, hash]);
-
-    // Auto-collapse on scroll
-    useEffect(() => {
-        const el = scrollContainerRef.current;
-        if (!el) return;
-        const handleScroll = () => {
-            if (el.scrollTop > 24) {
-                setHeaderCollapsed(true);
-            }
-        };
-        el.addEventListener('scroll', handleScroll);
-        return () => el.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    // Scroll to file when requested via prop
-    useEffect(() => {
-        if (!scrollToFilePath) return;
-        const timer = setTimeout(() => {
-            viewerRef.current?.scrollToFile(scrollToFilePath);
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [scrollToFilePath]);
+    useEffect(() => { setHeaderCollapsed(true); setAiSettingsOpen(false); setHashCopied(false); setFocusComment(null); }, [workspaceId, attachmentDestinationId, hash]);
 
     const handleToggleHeader = useCallback(() => {
         setHeaderCollapsed(c => !c);
@@ -298,7 +246,7 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
             )}
             {/* Size container: narrow panes hide labels and wrap complete control groups. */}
             <div className="sticky top-0 z-10 [container-type:inline-size] border-y border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f7f8fa] dark:bg-[#2a2a2a]">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2" data-testid="commit-classify-bar">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1" data-testid="commit-classify-bar">
                     <div className="flex flex-nowrap items-center gap-2 min-w-0" data-testid="commit-classify-left">
                         <button
                             type="button"
@@ -390,10 +338,10 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
                                     <div className="h-full bg-[#2d8d65]" style={{ width: `${Math.min(100, reviewProgress.state.reviewedFiles.size / fileList.length * 100)}%` }} />
                                 </div>
                             )}
-                            <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+
                         </div>
                         <div className="flex flex-nowrap items-center gap-1" data-testid="commit-view-controls">
-                            <DiffViewToggle mode={viewMode} onChange={setViewMode} appearance="quiet" />
+
                             <span aria-hidden="true" className="mx-1 h-4 w-px bg-[#e0e0e0] dark:bg-[#444]" />
                             <button
                                 onClick={() => setSidebarOpen(o => !o)}
@@ -469,61 +417,17 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
 
             {/* Diff view + sidebar */}
             <div className="relative flex flex-1 min-h-0">
-                {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
-                {find.open && diff && !diffLoading && !diffError && (
-                    <DiffFindWidget
-                        query={find.query}
-                        caseSensitive={find.caseSensitive}
-                        matchCount={find.matchCount}
-                        activeIndex={find.activeIndex}
-                        onQueryChange={find.setQuery}
-                        onToggleCaseSensitive={find.toggleCaseSensitive}
-                        onNext={find.goToNext}
-                        onPrev={find.goToPrev}
-                        onClose={find.closeFind}
-                    />
-                )}
-                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1 outline-none" data-testid="diff-section" tabIndex={-1}>
-                    {diffLoading ? (
-                        <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
-                            <Spinner size="sm" /> Loading diff...
-                        </div>
-                    ) : diffError ? (
-                        <div className="flex items-center gap-2" data-testid="diff-error">
-                            <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{diffError}</span>
-                            <Button variant="secondary" size="sm" onClick={handleRetryDiff} data-testid="retry-diff-btn">Retry</Button>
-                        </div>
-                    ) : diff ? (
-                        viewMode === 'split' ? (
-                            <SideBySideDiffViewer
-                                ref={viewerRef}
-                                diff={diff}
-                                onLinesReady={setDiffLines}
-                                matchRangesByLine={find.matchRangesByLine}
-                                showFileBanners
-                                onFileNavigate={setNavFilePath}
-                                diffSelectionDragSource={diffSelectionDragSource}
-                                data-testid="diff-content"
-                            />
-                        ) : (
-                            <UnifiedDiffViewer
-                                ref={viewerRef}
-                                diff={diff}
-                                onLinesReady={setDiffLines}
-                                matchRangesByLine={find.matchRangesByLine}
-                                showFileBanners
-                                onFileNavigate={setNavFilePath}
-                                diffSelectionDragSource={diffSelectionDragSource}
-                                data-testid="diff-content"
-                            />
-                        )
-                    ) : (
-                        <div className="text-xs text-[#848484]" data-testid="diff-empty">(empty diff)</div>
-                    )}
-                </div>
-                {diff && !diffLoading && !diffError && (
-                    <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
-                )}
+                <GitFileReview
+                    workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
+                    comparisonKey={hash ?? ''} source={source} files={fileList}
+                    selectedPath={navFilePath} initialHunkTarget={initialHunkTarget}
+                    onSelect={(path, target) => { setNavFilePath(path); onNavigateToFile?.(path, target); }}
+                    reviewChat={chat} focusComment={focusComment} reviewedFiles={reviewProgress.state.reviewedFiles}
+                    onToggleReviewed={reviewProgress.toggleReviewed}
+                    loading={fileState.loading} error={fileState.error} onRetry={fileState.retry}
+                    getHunkClassification={classification.getHunkClassification}
+                    hunkActiveFilters={classification.state.status === 'ready' ? classification.state.activeFilters : undefined}
+                />
 
                 {sidebarOpen && (
                     <CommentSidebar
