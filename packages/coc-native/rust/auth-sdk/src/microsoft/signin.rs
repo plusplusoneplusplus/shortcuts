@@ -1,7 +1,5 @@
-use super::{
-    config::timeout_valid, coordination::CredentialLock, identity, oauth,
-    provider::default_dependencies, Dependencies, OAuthOptions,
-};
+use super::{config::timeout_valid, identity, oauth, provider::default_dependencies, Dependencies, OAuthOptions};
+use crate::oauth::CredentialLock;
 use crate::{
     contracts::{bounded, fail, Lifetime},
     Account, AuthError, ErrorCode, Result, Secret, Token,
@@ -236,7 +234,7 @@ impl MicrosoftOAuthSignIn {
         let result = bounded(&self.life, &self.cancel, self.timeout, async {
             let metadata =
                 identity::metadata(self.dependencies.http.as_ref(), &self.options).await?;
-            let mut form = super::http::Form(vec![
+            let mut form = crate::oauth::Form(vec![
                 ("client_id".into(), self.options.client_id.clone()),
                 ("scope".into(), self.options.scopes.join(" ")),
             ]);
@@ -326,7 +324,7 @@ impl MicrosoftOAuthSignIn {
             let (response, metadata, nonce) = match *flow {
                 Flow::Browser { listener, redirect, state, verifier, nonce, metadata } => {
                     let code = callback(listener, state.expose()).await?;
-                    let mut form = super::http::Form(vec![
+                    let mut form = crate::oauth::Form(vec![
                         ("client_id".into(), self.options.client_id.clone()),
                         ("grant_type".into(), "authorization_code".into()),
                         ("code".into(), code.expose().to_owned()),
@@ -346,7 +344,7 @@ impl MicrosoftOAuthSignIn {
                     if self.dependencies.clock.now_ms() >= expires_at {
                         return fail(ErrorCode::TokenExpired);
                     }
-                    let mut form = super::http::Form(vec![
+                    let mut form = crate::oauth::Form(vec![
                         ("client_id".into(), self.options.client_id.clone()),
                         (
                             "grant_type".into(),

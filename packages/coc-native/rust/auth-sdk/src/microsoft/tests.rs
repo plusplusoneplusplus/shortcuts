@@ -947,7 +947,7 @@ async fn advisory_lock_contention_is_bounded_and_released() {
     let f = Fixture::new();
     f.seed(&f.oauth());
     let key = f.oauth().credential_key(&Account { id: ACCOUNT.into(), tenant: TENANT.into() });
-    let lock = coordination::CredentialLock::acquire(f.directory.path(), &key).await.unwrap();
+    let lock = crate::oauth::CredentialLock::acquire(f.directory.path(), &key).await.unwrap();
     let mut options = f.options(Refresh::Auto, true);
     options.timeout = Duration::from_millis(100);
     let p = MicrosoftTokenProvider::with_dependencies(options, f.deps.clone()).unwrap();
@@ -1330,7 +1330,7 @@ fn linux_unavailable_store_child() {
 async fn competing_processes_coordinate_on_the_same_credential_lock() {
     let f = Fixture::new();
     let key = "cross-process-fixture";
-    let lock = coordination::CredentialLock::acquire(f.directory.path(), key).await.unwrap();
+    let lock = crate::oauth::CredentialLock::acquire(f.directory.path(), key).await.unwrap();
     let output = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--ignored", "--exact", "microsoft::tests::coordination_child"])
         .env("AUTH_SDK_TEST_LOCK_DIR", f.directory.path())
@@ -1346,7 +1346,7 @@ async fn coordination_child() {
     let directory = std::env::var_os("AUTH_SDK_TEST_LOCK_DIR").unwrap();
     let result = tokio::time::timeout(
         Duration::from_millis(100),
-        coordination::CredentialLock::acquire(
+        crate::oauth::CredentialLock::acquire(
             std::path::Path::new(&directory),
             "cross-process-fixture",
         ),

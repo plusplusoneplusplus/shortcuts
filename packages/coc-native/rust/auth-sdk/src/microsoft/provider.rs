@@ -269,7 +269,7 @@ impl MicrosoftTokenProvider {
             match &self.options.source {
                 MicrosoftTokenSource::OAuth { options, account } => {
                     let key = options.credential_key(account);
-                    let _lock = super::coordination::CredentialLock::acquire(
+                    let _lock = crate::oauth::CredentialLock::acquire(
                         &options.coordination_dir,
                         &key,
                     )

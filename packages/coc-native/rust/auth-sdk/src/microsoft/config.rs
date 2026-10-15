@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::{contracts::fail, Account, ErrorCode, Refresh, Result};
@@ -104,13 +103,7 @@ pub(crate) fn cli_argument(value: &str) -> bool {
 }
 
 pub(crate) fn hash(parts: &[&str]) -> String {
-    // Length prefixes prevent delimiter collisions in namespace / scope keys.
-    let mut digest = Sha256::new();
-    for part in parts {
-        digest.update((part.len() as u64).to_be_bytes());
-        digest.update(part.as_bytes());
-    }
-    format!("{:x}", digest.finalize())
+    crate::contracts::hash(parts)
 }
 
 pub(crate) fn timeout_valid(timeout: Duration) -> bool {

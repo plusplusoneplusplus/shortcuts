@@ -1,12 +1,14 @@
 # auth-sdk
 
 Standalone, unpublished Rust library in the native Cargo workspace. It has no
-Node dependency or application policy. `auth_sdk::microsoft` implements Microsoft
-public-cloud, US-government and China-cloud OAuth, plus Azure CLI acquisition.
+Node dependency or application policy. `auth_sdk::oauth` provides vendor-neutral
+OAuth primitives: token exchange, HTTP transport, and file-advisory lock
+coordination. `auth_sdk::microsoft` builds on `oauth` for Microsoft public-cloud,
+US-government and China-cloud OAuth, plus Azure CLI acquisition.
 `auth_sdk::github` reads existing, explicitly selected Copilot CLI and GitHub CLI credentials.
 Shared `Account`, `Token`, `Secret`, `Clock`, `CredentialStore`, lifecycle and
-`AuthError` contracts are vendor-neutral. Future vendors use separate modules,
-not a universal vendor options object.
+`AuthError` contracts are vendor-neutral. Future vendors use separate modules
+and the shared `oauth` primitives, not a universal vendor options object.
 
 The N-API addon exports `MicrosoftTokenProvider` and `MicrosoftOAuthSignIn` through
 the native package. Nothing automatically instantiates them. Existing consumers,
@@ -139,14 +141,17 @@ Raw CLI output never enters diagnostics.
 
 ## Token lifecycle
 
-Rust `exchange_refresh_token(http, options, refresh, cancel, deadline)` exchanges a
-caller-owned `Secret` without credential-store access or account metadata.
-`OAuthRefreshOptions` validates a supported Microsoft HTTPS login origin, tenant
+`oauth::exchange_refresh_token(http, options, refresh, cancel, deadline)` is the
+vendor-neutral refresh exchange. `ExchangeOptions` takes a `token_endpoint` URL,
+`client_id`, `scopes` and optional `resource` — no vendor host validation. It
+posts directly using the shared transport, zeroized form and response parser.
+
+`microsoft::exchange_refresh_token` wraps the generic exchange: it validates
+Microsoft-specific `OAuthRefreshOptions` (supported HTTPS login origin, tenant
 UUID or `common`/`organizations`/`consumers`, client UUID, scopes and optional
-resource. It posts directly to the authority's v2 token endpoint using the shared
-transport, zeroized form and response parser. Callers prepare scopes (including
-`offline_access` and any `.default` normalization) and own scheduling, cache
-updates, credential coordination and persistence.
+resource), resolves the token endpoint, then delegates. Callers prepare scopes
+(including `offline_access` and any `.default` normalization) and own scheduling,
+cache updates, credential coordination and persistence.
 
 `OAuthRefreshResponse` reports secret-wrapped access, optional rotated refresh
 and unverified ID tokens, token type, relative expiry and optional reported scope.

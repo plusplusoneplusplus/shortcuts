@@ -4,6 +4,7 @@
 mod contracts;
 pub mod github;
 pub mod microsoft;
+pub mod oauth;
 mod process;
 mod storage;
 
