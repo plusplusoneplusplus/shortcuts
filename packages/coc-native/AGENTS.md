@@ -661,6 +661,18 @@ Recorded on a 2-core arm64 box, 25 iterations, medians. "spawns" is how many git
 - **A directory rename is a bounded prefix re-scan, and it degrades rather than lies.** Above the changed-path bound, or when the incremental path refuses a batch, it falls back to a full `refresh()`. `apply_changes` never fails the caller: the file is already on disk, and failing a save because the index could not be updated would be a lie the watcher repairs a second later anyway.
 - **The capability guard lists every export.** `src/notes-fs.ts` requires all eight, so a binary from before a later slice fails at load with the rebuild instruction rather than at the first call with `undefined is not a function`. Add each new `#[napi]` function in `notes_fs.rs` to that list.
 
+## Filesystem watch batching
+
+`rust/core/src/watch/` defines `WatchBatch` and the subscription-local
+`PendingBatch` state machine. Input paths are already filtered, root-relative
+and forward-slashed. Trailing-edge debounce uses an explicit monotonic clock;
+`deadline()` lets a backend wait for the next flush without polling. Batches
+deduplicate and sort paths, retaining at most 4,096 paths and 1 MiB of UTF-8
+path bytes. Overflow or `mark_rescan()` clears partial paths and emits one
+`rescan: true` batch. `rust/core/tests/watch_batch.rs` covers these rules without
+filesystem access or sleeps. OS watcher ownership and Node transport are separate
+from this batching primitive.
+
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
