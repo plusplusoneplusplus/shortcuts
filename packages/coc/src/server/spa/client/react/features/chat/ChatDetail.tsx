@@ -3016,6 +3016,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     ) : (
                     <>
                     <ConversationArea
+                        conversationMode={effectiveConversationMode}
+                        conversationOwnerKey={JSON.stringify([historyOwner, historyBaseUrl])}
                         sourceSelectionId={sourceSelectionId}
                         sourceBaseUrl={sourceBaseUrl}
                         loading={loading}

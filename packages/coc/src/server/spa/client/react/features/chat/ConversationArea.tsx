@@ -76,6 +76,9 @@ export interface ConversationAreaProps {
     workspaceId?: string;
     sourceSelectionId?: string;
     sourceBaseUrl?: string;
+    conversationMode?: string;
+    /** Resolved server/workspace owner, including remote endpoint identity. */
+    conversationOwnerKey?: string;
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
     /** Ref attached to the inner turns container (for minimap navigation) */
@@ -238,6 +241,8 @@ export function ConversationArea({
     workspaceId,
     sourceSelectionId,
     sourceBaseUrl,
+    conversationMode,
+    conversationOwnerKey,
     isScrolledUp,
     scrollRef,
     turnsContainerRef,
@@ -412,6 +417,8 @@ export function ConversationArea({
                                             <ConversationTurnBubble
                                                 sourceSelectionId={sourceSelectionId}
                                                 sourceBaseUrl={sourceBaseUrl}
+                                                conversationMode={conversationMode}
+                                                conversationOwnerKey={conversationOwnerKey}
                                                 key={`pinned-${turn.turnIndex ?? i}`}
                                                 turn={turn}
                                                 taskId={taskId}
@@ -581,6 +588,8 @@ export function ConversationArea({
                                                 <ConversationTurnBubble
                                                     sourceSelectionId={sourceSelectionId}
                                                     sourceBaseUrl={sourceBaseUrl}
+                                                    conversationMode={conversationMode}
+                                                    conversationOwnerKey={conversationOwnerKey}
                                                     turn={turn}
                                                     taskId={taskId}
                                                     wsId={wsId}

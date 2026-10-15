@@ -98,6 +98,9 @@ interface ConversationTurnBubbleProps {
     wsId?: string;
     sourceSelectionId?: string;
     sourceBaseUrl?: string;
+    conversationMode?: string;
+    /** Resolved server/workspace owner, including remote endpoint identity. */
+    conversationOwnerKey?: string;
     /** Index of this turn in the conversation, emitted as data-turn-index for snapshot selection. */
     turnIndex?: number;
     /** Called when user selects "Attach as context" from the right-click menu. */
@@ -1283,7 +1286,7 @@ function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, conversationMode, conversationOwnerKey, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
@@ -1301,8 +1304,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     // Shared with nested chat-markdown renderers (e.g. the expanded task_complete
     // body) so they resolve the same workspace and embed options as this turn.
     const chatRenderContext = useMemo<ChatRenderContextValue>(
-        () => ({ wsId, chatId: taskId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
-        [wsId, taskId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
+        () => ({ wsId, chatId: taskId, conversationMode, conversationOwnerKey, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
+        [wsId, taskId, conversationMode, conversationOwnerKey, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
     );
     const assistantRender = useMemo(
         () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),

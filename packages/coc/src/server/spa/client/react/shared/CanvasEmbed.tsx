@@ -14,6 +14,8 @@ import { useKustoEmbedGroup } from './KustoEmbedGroup';
 export interface CanvasEmbedProps {
     workspaceId: string;
     canvasId: string;
+    /** Transcript-owned choice survives HTML portal remounts, per occurrence. */
+    disclosureState?: { expanded?: boolean; onChange: (expanded: boolean) => void };
 }
 
 /** Compact one-line summary of a Kusto canvas for its collapsed header. */
@@ -91,12 +93,13 @@ function CanvasEmbedOpenAction({
     );
 }
 
-export function CanvasEmbed({ workspaceId, canvasId }: CanvasEmbedProps) {
-    const { chatId } = useChatRenderContext();
-    return <CanvasEmbedContent key={JSON.stringify([workspaceId, chatId, canvasId])} workspaceId={workspaceId} canvasId={canvasId} />;
+export function CanvasEmbed({ workspaceId, canvasId, disclosureState }: CanvasEmbedProps) {
+    const { chatId, conversationOwnerKey } = useChatRenderContext();
+    return <CanvasEmbedContent key={JSON.stringify([conversationOwnerKey, workspaceId, chatId, canvasId])} workspaceId={workspaceId} canvasId={canvasId} disclosureState={disclosureState} />;
 }
 
-function CanvasEmbedContent({ workspaceId, canvasId }: CanvasEmbedProps) {
+function CanvasEmbedContent({ workspaceId, canvasId, disclosureState }: CanvasEmbedProps) {
+    const { conversationMode } = useChatRenderContext();
     const client = useCocClient(workspaceId);
     const [canvas, setCanvas] = useState<Canvas | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -104,8 +107,8 @@ function CanvasEmbedContent({ workspaceId, canvasId }: CanvasEmbedProps) {
     const group = useKustoEmbedGroup();
     const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
     const [connectionSlotEl, setConnectionSlotEl] = useState<HTMLDivElement | null>(null);
-    // A manual choice overrides only this embed's existing Kusto group default.
-    const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+    // A manual choice overrides conversation and Kusto group defaults.
+    const [userExpanded, setUserExpanded] = useState<boolean | null>(() => disclosureState?.expanded ?? null);
     const isKusto = canvas?.type === 'kusto';
     const summary = useMemo(() => isKusto ? kustoSummary(canvas) : null, [canvas, isKusto]);
     const register = group?.register;
@@ -115,7 +118,7 @@ function CanvasEmbedContent({ workspaceId, canvasId }: CanvasEmbedProps) {
         return register(wrapperEl);
     }, [isKusto, register, wrapperEl]);
 
-    const expanded = userExpanded ?? (!isKusto || !group || group.isLast(wrapperEl));
+    const expanded = userExpanded ?? (conversationMode !== 'sentinel' && (!isKusto || !group || group.isLast(wrapperEl)));
     const title = canvas?.title || (isKusto ? 'Kusto query' : canvas || error ? 'Canvas' : 'Loading canvas…');
 
     useEffect(() => {
@@ -147,7 +150,10 @@ function CanvasEmbedContent({ workspaceId, canvasId }: CanvasEmbedProps) {
                 <button
                     type="button"
                     className={`flex min-w-0 items-center gap-2 rounded py-1 text-left hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007acc] ${isKusto && expanded ? 'max-w-[45%]' : 'flex-1'}`}
-                    onClick={() => setUserExpanded(!expanded)}
+                    onClick={() => {
+                        setUserExpanded(!expanded);
+                        disclosureState?.onChange(!expanded);
+                    }}
                     aria-expanded={expanded}
                     aria-controls={bodyId}
                     data-testid={isKusto ? 'canvas-embed-kusto-toggle' : 'canvas-embed-toggle'}
@@ -156,6 +162,7 @@ function CanvasEmbedContent({ workspaceId, canvasId }: CanvasEmbedProps) {
                     <span className="text-[10px] text-[#848484]" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
                     <span className="min-w-0 truncate font-semibold">{title}</span>
                 </button>
+                {canvas && <span className="shrink-0 text-[10px] text-[#657188] dark:text-[#a0a0a0]">{canvas.type === 'code' ? canvas.language || 'code' : canvas.type}</span>}
                 {isKusto && (
                     <>
                         <div
