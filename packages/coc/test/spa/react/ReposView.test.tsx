@@ -45,11 +45,15 @@ vi.mock('../../../src/server/spa/client/react/repos/repositoryService', () => ({
 }));
 
 // Mock ReposContext so ReposView renders without making real API calls
-vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', async (importOriginal) => ({
-    ...await importOriginal<typeof import('../../../src/server/spa/client/react/contexts/ReposContext')>(),
-    useRepos: () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} }),
-    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
+vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', async (importOriginal) => {
+    const useRepos = () => ({ repos: [], loading: false, fetchRepos: vi.fn(), unseenCounts: {} });
+    return {
+        ...await importOriginal<typeof import('../../../src/server/spa/client/react/contexts/ReposContext')>(),
+        useRepos,
+        useReposOptional: useRepos,
+        ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+    };
+});
 
 // Mock heavy tab components that have side effects (API calls, context deps) when always-mounted via display:none
 vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({

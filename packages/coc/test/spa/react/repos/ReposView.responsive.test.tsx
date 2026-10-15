@@ -162,16 +162,20 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoCopilo
     RepoCopilotTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', async (importOriginal) => ({
-    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/contexts/ReposContext')>(),
-    useRepos: () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', async (importOriginal) => {
+    const useRepos = () => ({
         repos: mockRepos,
         loading: false,
         fetchRepos: vi.fn(),
         unseenCounts: {},
-    }),
-    ReposProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
+    });
+    return {
+        ...await importOriginal<typeof import('../../../../src/server/spa/client/react/contexts/ReposContext')>(),
+        useRepos,
+        useReposOptional: useRepos,
+        ReposProvider: ({ children }: { children: React.ReactNode }) => children,
+    };
+});
 
 // ── Import components under test AFTER mocks ───────────────────────────
 
