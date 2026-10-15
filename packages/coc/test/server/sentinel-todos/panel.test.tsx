@@ -1351,29 +1351,61 @@ describe('UnifiedTodoTab', () => {
             expect(screen.queryByTestId('sentinel-todo-attention-count')).toBeNull();
         });
 
-        it('folds long notes behind a toggle and shows short notes inline', async () => {
-            const longNotes = 'Tried forcing LF.\nDid not help on cached runners.\nNext: compare bytes.\n';
-            get.mockResolvedValue(ledger([item({ id: 'long', notes: longNotes }), item({ id: 'short', notes: 'Check SSO too' })]));
+        it.each([
+            { kind: 'multiline', notes: 'Tried forcing LF.\nDid not help on cached runners.\nNext: compare bytes.\n', collapsible: true },
+            { kind: 'long single-line', notes: 'Compare bytes without losing any note content. '.repeat(8), collapsible: true },
+            { kind: 'short', notes: 'Check SSO too', collapsible: false },
+        ])('shows full $kind notes initially in details without changing compact cards', async ({ notes, collapsible }) => {
+            get.mockResolvedValue(ledger([item({ notes })]));
             render(<UnifiedTodoTab owner={OWNER} />);
-            let long = await screen.findByTestId('sentinel-todo-row-long');
-            fireEvent.click(within(long).getByRole('button', { pressed: false }));
-            long = screen.getByTestId(long.dataset.testid!.replace('sentinel-todo-row-', 'sentinel-todo-detail-'));
-            const toggle = within(long).getByTestId('sentinel-todo-notes-toggle-long');
-            expect(toggle.textContent).toBe('Show notes (3 lines)');
-            expect(toggle.getAttribute('aria-expanded')).toBe('false');
-            expect(long.textContent).not.toContain('compare bytes');
-            // Done when stays visible above the folded notes.
-            expect(within(long).getByText('Login test passes')).toBeTruthy();
-            fireEvent.click(toggle);
-            expect(toggle.getAttribute('aria-expanded')).toBe('true');
-            expect(toggle.textContent).toBe('Hide notes');
-            expect(document.getElementById(toggle.getAttribute('aria-controls')!)?.textContent).toContain('compare bytes');
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            const assertCompact = () => {
+                expect(row.textContent).not.toContain(notes);
+                expect(within(row).queryByText('Notes')).toBeNull();
+                expect(within(row).queryByTestId('sentinel-todo-notes-toggle-i1')).toBeNull();
+            };
+            assertCompact();
+            fireEvent.click(within(row).getByRole('button', { pressed: false }));
+            const detail = screen.getByTestId('sentinel-todo-detail-i1');
+            const text = within(detail).getByText(notes, { normalizer: value => value });
+            expect(text.textContent).toBe(notes);
+            expect(text.classList.contains('whitespace-pre-wrap')).toBe(true);
+            expect(text.classList.contains('break-words')).toBe(true);
+            expect(within(detail).getByText('Login test passes')).toBeTruthy();
+            const toggle = within(detail).queryByTestId('sentinel-todo-notes-toggle-i1');
+            if (collapsible) {
+                expect(toggle?.textContent).toBe('Hide notes');
+                expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+                expect(toggle?.getAttribute('aria-controls')).toBe(text.id);
+                fireEvent.click(toggle!);
+                expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+                expect(toggle?.textContent).toMatch(/^Show notes \(\d+ lines\)$/);
+                expect(document.getElementById(text.id)).toBeNull();
+                expect(within(detail).getByText('Login test passes')).toBeTruthy();
+                fireEvent.click(toggle!);
+                expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+                expect(toggle?.textContent).toBe('Hide notes');
+                expect(document.getElementById(text.id)?.textContent).toBe(notes);
+            } else {
+                expect(toggle).toBeNull();
+            }
+            assertCompact();
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
+        });
 
-            let short = screen.getByTestId('sentinel-todo-row-short');
-            fireEvent.click(within(short).getByRole('button', { pressed: false }));
-            short = screen.getByTestId(short.dataset.testid!.replace('sentinel-todo-row-', 'sentinel-todo-detail-'));
-            expect(within(short).queryByTestId('sentinel-todo-notes-toggle-short')).toBeNull();
-            expect(within(short).getByText('Check SSO too')).toBeTruthy();
+        it.each(['normal', 'manual'] as const)('omits empty notes and their controls for $type items', async type => {
+            get.mockResolvedValue(ledger([item({ notes: '', type })]));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.click(within(row).getByRole('button', { pressed: false }));
+            const detail = screen.getByTestId('sentinel-todo-detail-i1');
+            expect(within(detail).queryByText('Notes')).toBeNull();
+            expect(within(detail).queryByTestId('sentinel-todo-notes-toggle-i1')).toBeNull();
+            expect(within(detail).getByText('Login test passes')).toBeTruthy();
+            expect(within(row).queryByText('Notes')).toBeNull();
+            expect(create).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
         });
 
         it('ignores pressing the current status and offers no In review choice', async () => {
@@ -1655,6 +1687,72 @@ describe('UnifiedTodoTab split layout', () => {
             expect(toggle.getAttribute('aria-expanded')).toBe('false');
             expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: true })).toBeTruthy();
         }
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { width: 360, reopened: false }, { width: 800, reopened: false },
+        { width: 360, reopened: true }, { width: 800, reopened: true },
+    ])('retains explicit notes visibility across selection, refresh and remount ($width px, reopened=$reopened)', async ({ width, reopened }) => {
+        panelWidth = width;
+        let tracked = item({ notes: 'First line.\nSecond line.\nThird line.' });
+        const untouched = item({ id: 'i2', title: 'Untouched', notes: 'Other first.\nOther second.\nOther third.' });
+        get.mockImplementation(async () => ledger([tracked, untouched], tracked.revision));
+        const mounted = render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        const toggle = within(detail()).getByRole('button', { name: 'Hide notes' });
+        fireEvent.click(toggle);
+        if (reopened) fireEvent.click(toggle);
+        const assertNotes = () => {
+            expect(within(detail()).getByTestId('sentinel-todo-notes-toggle-i1').getAttribute('aria-expanded')).toBe(String(reopened));
+            expect(within(detail()).queryByText(tracked.notes, { normalizer: value => value }) !== null).toBe(reopened);
+        };
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER }} />);
+        assertNotes();
+        if (width < 660) fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+        select('i2');
+        expect(within(detail('i2')).getByRole('button', { name: 'Hide notes' }).getAttribute('aria-expanded')).toBe('true');
+        expect(within(detail('i2')).getByText(untouched.notes, { normalizer: value => value })).toBeTruthy();
+        if (width < 660) fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+        select();
+        assertNotes();
+        tracked = { ...tracked, notes: `${tracked.notes}\nRefreshed content.`, revision: 2 };
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        assertNotes();
+        const { onMessage } = connect.mock.calls[0][0] as { onMessage: (message: unknown) => void };
+        await act(async () => onMessage({ type: 'sentinel-todos-changed', workspaceId: OWNER.ownerWorkspaceId,
+            processId: OWNER.processId, ledgerRevision: 3 }));
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+        assertNotes();
+        mounted.unmount();
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-detail-i1');
+        assertNotes();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { ...OWNER, processId: 'other-chat' },
+        { ...OWNER, ownerWorkspaceId: 'other-workspace' },
+        { ...OWNER, ownerRoutingRef: 'remote:other-server:ws-1' },
+    ])('isolates remembered notes visibility by ledger owner (%j)', async otherOwner => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'other-server', baseUrl: 'https://owner.example' }]);
+        get.mockResolvedValue(ledger([item({ notes: 'First line.\nSecond line.\nThird line.' })]));
+        const mounted = render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        fireEvent.click(within(detail()).getByRole('button', { name: 'Hide notes' }));
+        mounted.rerender(<UnifiedTodoTab owner={otherOwner} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        select();
+        expect(within(detail()).getByRole('button', { name: 'Hide notes' }).getAttribute('aria-expanded')).toBe('true');
+        mounted.rerender(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-detail-i1');
+        expect(within(detail()).getByRole('button', { name: 'Show notes (3 lines)' }).getAttribute('aria-expanded')).toBe('false');
+        expect(create).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
     });
 

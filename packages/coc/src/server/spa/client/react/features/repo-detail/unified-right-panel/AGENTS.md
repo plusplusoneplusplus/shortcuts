@@ -771,8 +771,11 @@ mouse and touch selection. Payloads
 contain the stable item reference and owner, not notes or job data; attaching never
 writes the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
-(`Saved status: …`), then Reason, Done when, Outcome and Notes; notes over two lines or 160 characters
-start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
+(`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
+notes over two lines or 160 characters have an optional collapse toggle
+(`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
+owner-scoped, in-memory `SentinelTodoView` across refreshes and remounts.
+The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
 `Tracked only · never run` tag. Conversation entries in `item.references`

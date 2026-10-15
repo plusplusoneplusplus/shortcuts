@@ -210,6 +210,7 @@ export interface SentinelTodoView {
         } | null;
         statusDraft: { status: SentinelTodoStatus; reason: string } | null;
         error: string | null;
+        notesOpen?: boolean;
     }>>;
     /** A link to focus once, on the next mount after Back. */
     focusLinkKey?: string;

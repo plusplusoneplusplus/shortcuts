@@ -881,15 +881,15 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [error, setError] = useState<string | null>(restoredDraft?.error ?? null);
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const [busy, setBusy] = useState(false);
-    const [notesOpen, setNotesOpen] = useState(false);
+    const [notesOpen, setNotesOpen] = useState(restoredDraft?.notesOpen ?? true);
     const lastAction = useRef<(() => Promise<void>) | null>(null);
     const live = useRef(true);
     useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
     useLayoutEffect(() => {
         rememberSentinelTodoView(owner, { itemDrafts: {
-            ...recallSentinelTodoView(owner).itemDrafts, [item.id]: { editing, statusDraft, error },
+            ...recallSentinelTodoView(owner).itemDrafts, [item.id]: { editing, statusDraft, error, notesOpen },
         } });
-    }, [owner, item.id, editing, statusDraft, error]);
+    }, [owner, item.id, editing, statusDraft, error, notesOpen]);
 
     const run = async (action: () => Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null>,
         onDone: () => void, onConflict?: (current?: SentinelTodoItem) => void) => {
