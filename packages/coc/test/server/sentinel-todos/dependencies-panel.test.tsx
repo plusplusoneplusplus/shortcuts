@@ -48,6 +48,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: false }); });
 
 describe('owner-scoped dependency details', () => {
+    it('reports pending dependency mutations through reload and releases the close guard on unmount', async () => {
+        let finish!: (value: object) => void;
+        save.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        let finishReload!: () => void;
+        onLedgerChange.mockReturnValueOnce(new Promise<void>(resolve => { finishReload = resolve; }));
+        const onBusyChange = vi.fn();
+        const view = render(<SentinelTodoDependencies {...props()} onBusyChange={onBusyChange} />);
+        await screen.findByText('Waiting');
+        expect(onBusyChange).toHaveBeenLastCalledWith(false);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit dependencies' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save dependencies' }));
+        expect(onBusyChange).toHaveBeenLastCalledWith(true);
+        await act(async () => finish({}));
+        expect(onBusyChange).toHaveBeenLastCalledWith(true);
+        await act(async () => finishReload());
+        expect(onBusyChange).toHaveBeenLastCalledWith(false);
+        view.unmount();
+        expect(onBusyChange).toHaveBeenLastCalledWith(false);
+    });
+
     it.each([
         [{ ownerWorkspaceId: 'ws-owner', processId: 'queue_parent', ownerRoutingRef: null }, undefined],
         [{ ownerWorkspaceId: 'ws-owner', processId: 'queue_parent' }, 'ws-owner'],

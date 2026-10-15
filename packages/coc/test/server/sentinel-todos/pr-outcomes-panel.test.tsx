@@ -56,6 +56,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelPrOutcomeWakeEnabled: false }); });
 
 describe('compact Sentinel PR outcome evidence', () => {
+    it('reports mutation busy state for detail Close and releases it on completion or removal', async () => {
+        const pending = deferred<Snapshot>();
+        mocks.pause.mockReturnValueOnce(pending.promise);
+        const onBusyChange = vi.fn();
+        const view = render(<SentinelTodoPrOutcomes owner={owner} item={item()} ledgerRevision={1} onBusyChange={onBusyChange} />);
+        await screen.findByRole('link');
+        expect(onBusyChange).toHaveBeenLastCalledWith(false);
+        fireEvent.click(screen.getByRole('button', { name: 'Pause notifications' }));
+        expect(onBusyChange).toHaveBeenLastCalledWith(true);
+        await act(async () => pending.resolve(snapshot({ revision: 4, paused: true })));
+        expect(onBusyChange).toHaveBeenLastCalledWith(false);
+        view.unmount();
+        expect(onBusyChange).toHaveBeenLastCalledWith(false);
+    });
+
     it('defaults off, makes no requests and responds to config changes', async () => {
         applyRuntimeConfigPatch({ sentinelPrOutcomeWakeEnabled: false });
         mount();

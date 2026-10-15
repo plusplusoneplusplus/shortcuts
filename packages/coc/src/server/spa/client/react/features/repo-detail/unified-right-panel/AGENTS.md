@@ -748,16 +748,22 @@ active normal count and, when nonzero, how many normal items display Needs atten
 `UnifiedTodoTab` always uses list/detail presentation measured by `useContainerWidth`
 on the actual panel. At 660px the compact selectable list and detail editor scroll
 independently; below that width selection opens details and Back returns focus to
-the selected row. Native pressed buttons expose selection; arrows/Home/End move
-row focus without selecting. Visited editors stay mounted but hidden across
-selection and resizing, retaining item, status-reason and dependency drafts.
+the selected row. Detail Close clears selection, returns list focus and preserves
+owner-scoped deselection across refreshes/remounts. Pending item, tag, dependency
+and PR-outcome mutations, plus pending Scrubber actions, block Close. Native pressed buttons expose selection;
+arrows/Home/End move row focus without selecting. Visited editors stay mounted
+but hidden across selection and resizing, retaining drafts.
 List cards combine status, priority, wrapping title and an ellipsis menu in a compact header,
 with target/Updated/latest-job metadata below. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 conversation references and editing controls live in the detail pane.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
-including Untagged, and a detail picker with Manage tags. Filtering uses the full
-owner snapshot independently of the recent history budget. Library edits keep
+including Untagged, a selection-independent library manager and a detail picker.
+Enabling the live gate reloads the full owner snapshot without resetting drafts.
+Absent libraries distinguish loading, read failure and owning-server unavailability,
+with explicit retry; missing capability never fabricates an empty library.
+Filtering uses the full owner snapshot independently of the recent history budget.
+Item tag drafts share the owner-scoped remembered view across remounts. Library edits keep
 parent identity; deletion confirms removal from all items. Explicit picks and
 clears are manual; re-suggest confirms replacing them. Classification notices
 remain separate from save errors, status and execution controls. Narrow panels

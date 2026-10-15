@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CocClient, SentinelTodoItem, SentinelTodoTag, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
+import { recallSentinelTodoView, rememberSentinelTodoView } from './sentinelTodoExcursion';
 import './sentinelTodoTags.css';
 
 function subscribeConfig(listener: () => void) {
@@ -72,8 +73,11 @@ function useTagAction(scope: TagScope) {
     return { busy, error, run };
 }
 
-export function SentinelTodoTagToolbar({ filter, onFilter, multiple, onMultiple, library, ...scope }: Omit<TagScope, 'library'> & {
+export function SentinelTodoTagToolbar({ filter, onFilter, multiple, onMultiple, library, loading, loadError, onRetry, ...scope }: Omit<TagScope, 'library'> & {
     library?: SentinelTodoTagLibrary;
+    loading: boolean;
+    loadError: string | null;
+    onRetry: () => void;
     filter: string; onFilter: (filter: string) => void;
     multiple: boolean; onMultiple: (multiple: boolean) => void;
 }) {
@@ -91,7 +95,13 @@ export function SentinelTodoTagToolbar({ filter, onFilter, multiple, onMultiple,
             <input type="checkbox" checked={multiple} disabled={!library} onChange={event => onMultiple(event.target.checked)} />
             Match multiple tags
         </label>
-        {!library && <span role="status" className="sentinel-tags-muted">Tags unavailable for this ledger.</span>}
+        {!library && <>
+            <span role={loadError ? 'alert' : 'status'} className="sentinel-tags-muted">
+                {loading ? 'Loading tags...' : loadError ? `Could not load tags: ${loadError}`
+                    : 'Tags unavailable from the owning server. Tags may be disabled or unsupported there.'}
+            </span>
+            <Button size="sm" variant="secondary" disabled={loading} onClick={onRetry}>Retry tags</Button>
+        </>}
         {manage && library && <TagManager {...scope} library={library} onClose={() => setManage(false)} />}
     </div>;
 }
@@ -166,11 +176,23 @@ function TagManager({ onClose, ...scope }: TagScope & { onClose: () => void }) {
     </Dialog>;
 }
 
-export function SentinelTodoTagPicker({ item, multiple, ...scope }: TagScope & { item: SentinelTodoItem; multiple: boolean }) {
+export function SentinelTodoTagPicker({ item, multiple, onBusyChange, ...scope }: TagScope & {
+    item: SentinelTodoItem; multiple: boolean; onBusyChange?: (busy: boolean) => void;
+}) {
     const { library, client, owner } = scope;
-    const [draft, setDraft] = useState<{ ids: string[]; revision: number; tagRevision: number } | null>(null);
-    const [confirm, setConfirm] = useState<{ revision: number; tagRevision: number } | null>(null);
+    const [restored] = useState(() => recallSentinelTodoView(owner).tagDrafts?.[item.id]);
+    const [draft, setDraft] = useState<{ ids: string[]; revision: number; tagRevision: number } | null>(restored?.draft ?? null);
+    const [confirm, setConfirm] = useState<{ revision: number; tagRevision: number } | null>(restored?.confirm ?? null);
     const { busy, error, run } = useTagAction(scope);
+    useEffect(() => {
+        onBusyChange?.(busy);
+        return () => onBusyChange?.(false);
+    }, [busy, onBusyChange]);
+    useLayoutEffect(() => {
+        rememberSentinelTodoView(owner, { tagDrafts: {
+            ...recallSentinelTodoView(owner).tagDrafts, [item.id]: { draft, confirm },
+        } });
+    }, [owner, item.id, draft, confirm]);
     const missingSelections = draft?.ids.some(id => !library.tags.some(tag => tag.id === id)) === true;
     const suggest = (confirmed = false) => {
         if (item.tagOrigin === 'manual' && !confirmed) {

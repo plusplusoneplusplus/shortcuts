@@ -198,6 +198,10 @@ export interface SentinelTodoView {
     expandedIds?: readonly string[];
     selectedId?: string | null;
     detailOpen?: boolean;
+    tagDrafts?: Readonly<Record<string, {
+        draft: { ids: string[]; revision: number; tagRevision: number } | null;
+        confirm: { revision: number; tagRevision: number } | null;
+    }>>;
     sections?: {
         done: boolean; archived: boolean; manual: boolean; manualDone: boolean; manualArchived: boolean;
     };

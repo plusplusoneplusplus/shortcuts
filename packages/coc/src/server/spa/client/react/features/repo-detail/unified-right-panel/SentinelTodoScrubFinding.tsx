@@ -6,10 +6,11 @@ type FindingAction = 'accept' | 'dismiss' | 'undo';
 export const ScrubberFindingsContext = createContext<{
     findings: ReadonlyMap<string, SentinelScrubFindingRecord>;
     busy: boolean;
+    mutationPending: boolean;
     act: (record: SentinelScrubFindingRecord, action: FindingAction) => Promise<void>;
     proposalCount: number;
     acceptAll: () => Promise<void>;
-}>({ findings: new Map(), busy: false, act: async () => {}, proposalCount: 0, acceptAll: async () => {} });
+}>({ findings: new Map(), busy: false, mutationPending: false, act: async () => {}, proposalCount: 0, acceptAll: async () => {} });
 
 export function AcceptAllScrubProposals() {
     const { proposalCount, busy, acceptAll } = useContext(ScrubberFindingsContext);

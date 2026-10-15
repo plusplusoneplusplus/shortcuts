@@ -59,6 +59,7 @@ const fakeClient = {
 };
 
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
+import { ScrubberFindingsContext } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding';
 import { useUnifiedPanelTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openTab, EMPTY_UNIFIED_PANEL } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -143,6 +144,84 @@ afterEach(() => {
 });
 
 describe('UnifiedTodoTab', () => {
+    it('blocks Close for pending scrubber mutations but not unavailable finding actions', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        const findings = { findings: new Map(), busy: true, proposalCount: 0, act: vi.fn(), acceptAll: vi.fn() };
+        const view = render(<ScrubberFindingsContext.Provider value={{ ...findings, mutationPending: true }}>
+            <UnifiedTodoTab owner={OWNER} />
+        </ScrubberFindingsContext.Provider>);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(within(row).getByRole('button'));
+        const close = screen.getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement;
+        expect(close.disabled).toBe(true);
+        view.rerender(<ScrubberFindingsContext.Provider value={{ ...findings, mutationPending: false }}>
+            <UnifiedTodoTab owner={OWNER} />
+        </ScrubberFindingsContext.Provider>);
+        expect(close.disabled).toBe(false);
+        fireEvent.click(close);
+        expect(screen.getByTestId('sentinel-todo-detail-i1').hidden).toBe(true);
+    });
+
+    it.each([800, 320])('closes details by keyboard at %ipx, preserves list state, stays deselected on refresh/remount and reopens normally', async width => {
+        vi.mocked(Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')!.get!).mockReturnValue(width);
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second item' })]));
+        const view = render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        const list = screen.getByTestId('sentinel-todo-list');
+        list.scrollTop = 80;
+        fireEvent.scroll(list);
+        const rowButton = within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button');
+        fireEvent.click(rowButton);
+        const close = screen.getByRole('button', { name: 'Close To-do details' });
+        expect(close.title).toBe('Close To-do details');
+        close.focus();
+        await userEvent.setup().keyboard('{Enter}');
+        await waitFor(() => expect(document.activeElement).toBe(rowButton));
+        expect(rowButton.getAttribute('aria-pressed')).toBe('false');
+        expect(screen.getByTestId('sentinel-todo-detail-i1').hidden).toBe(true);
+        expect(list.hidden).toBe(false);
+        expect(list.scrollTop).toBe(80);
+        view.rerender(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-refresh').getAttribute('aria-busy')).toBe('false'));
+        expect(screen.queryByRole('button', { name: 'Close To-do details' })).toBeNull();
+        view.unmount();
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await screen.findByTestId('sentinel-todo-row-i1');
+        expect(screen.queryByRole('button', { name: 'Close To-do details' })).toBeNull();
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button'));
+        expect(screen.getByRole('button', { name: 'Close To-do details' })).toBeTruthy();
+        expect(screen.getByTestId('sentinel-todo-detail-i1').hidden).toBe(false);
+    });
+
+    it('retains a status-reason draft through Close and blocks Close until pending item saves and refresh finish', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(within(row).getByRole('button'));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        chooseStatus(detail, 'Needs attention');
+        fireEvent.change(screen.getByLabelText('Reason for Needs attention'), { target: { value: 'Waiting for review' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Close To-do details' }));
+        fireEvent.click(within(row).getByRole('button'));
+        expect((screen.getByLabelText('Reason for Needs attention') as HTMLInputElement).value).toBe('Waiting for review');
+        const pending = deferred<object>();
+        const refresh = deferred<SentinelTodoLedgerResponse>();
+        update.mockReturnValueOnce(pending.promise);
+        get.mockReturnValueOnce(refresh.promise);
+        fireEvent.click(screen.getByRole('button', { name: 'Set status' }));
+        const close = screen.getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement;
+        expect(close.disabled).toBe(true);
+        fireEvent.click(close);
+        expect(detail.hidden).toBe(false);
+        await act(async () => pending.resolve({}));
+        expect(close.disabled).toBe(true);
+        await act(async () => refresh.resolve(ledger([item({ status: 'needs_attention', revision: 2 })], 2)));
+        expect(close.disabled).toBe(false);
+        fireEvent.click(close);
+        expect(detail.hidden).toBe(true);
+    });
+
     it('shows older active work plus recent Done with Refresh and older access', async () => {
         const items = Array.from({ length: 105 }, (_, index) => item({
             id: `item-${index}`, title: `Item ${index}`,

@@ -19,6 +19,7 @@ interface Props {
     onLedgerChange: () => void | Promise<void>;
     onItemLink: (itemId: string) => void;
     onArtifactLink: (reference: string, workspaceId?: string) => void;
+    onBusyChange?: (busy: boolean) => void;
 }
 
 function conditionLabel(edge: SentinelTodoDependency): string {
@@ -43,7 +44,7 @@ export function SentinelTodoDependencies(props: Props) {
     return <DependencyDetails key={`${sentinelTodoOwnerKey(props.owner)}\n${props.item.id}`} {...props} />;
 }
 
-function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLedgerChange, onItemLink, onArtifactLink }: Props) {
+function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLedgerChange, onItemLink, onArtifactLink, onBusyChange }: Props) {
     const client = useCocClient(owner.ownerRoutingRef === null ? undefined : owner.ownerRoutingRef ?? owner.ownerWorkspaceId);
     const id = useId();
     const [evaluation, setEvaluation] = useState<SentinelTodoDependencyEvaluation | null>(null);
@@ -51,6 +52,10 @@ function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLed
     const [error, setError] = useState<string | null>(null);
     const [conflictRevision, setConflictRevision] = useState<number | null>(null);
     const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        onBusyChange?.(busy);
+        return () => onBusyChange?.(false);
+    }, [busy, onBusyChange]);
     const [editing, setEditing] = useState(false);
     const [baseRevision, setBaseRevision] = useState(item.revision);
     const [draft, setDraft] = useState<SentinelTodoDependency[]>(item.dependsOn ?? []);

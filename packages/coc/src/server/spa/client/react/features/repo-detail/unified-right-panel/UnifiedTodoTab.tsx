@@ -10,7 +10,7 @@
  * normal Done and Archived sections.
  */
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import type {
     CocClient,
     SentinelTodoItem,
@@ -46,7 +46,7 @@ import { externalReferences, SentinelTodoExternalReferences, SentinelTodoExterna
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
-import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
+import { AcceptAllScrubProposals, ScrubberFindingsContext, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
 import { SentinelTodoScrubber } from './SentinelTodoScrubber';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import {
@@ -334,6 +334,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         void load();
         return () => { mounted.current = false; loadSeq.current += 1; };
     }, [load]);
+    const previousTagsEnabled = useRef(tagsEnabled);
+    useEffect(() => {
+        const enabledNow = tagsEnabled && !previousTagsEnabled.current;
+        previousTagsEnabled.current = tagsEnabled;
+        if (enabledNow) void load();
+    }, [tagsEnabled, load]);
     useSentinelTodoEvents(owner, () => { void load(); });
 
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
@@ -497,8 +503,20 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         setDetailOpen(true);
         setExpanded(previous => new Set([...previous, id]));
         if (!wide) requestAnimationFrame(() => {
+            if (!mounted.current || viewRef.current.selectedId !== id || !viewRef.current.detailOpen
+                || (document.activeElement !== document.body && !scrollRef.current?.contains(document.activeElement))) return;
             [...(panelRef.current?.querySelectorAll<HTMLElement>('[data-todo-heading]') ?? [])]
                 .find(heading => heading.dataset.todoHeading === id)?.focus({ preventScroll: true });
+        });
+    };
+    const closeDetails = () => {
+        const id = selectedId;
+        setSelectedId(null);
+        setDetailOpen(false);
+        requestAnimationFrame(() => {
+            if (!mounted.current || viewRef.current.selectedId !== null) return;
+            focusRow(id);
+            if (!scrollRef.current?.contains(document.activeElement)) scrollRef.current?.focus({ preventScroll: true });
         });
     };
     const selected = ledger?.items.find(item => item.id === selectedId);
@@ -601,7 +619,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     )}
                 </div>
             </div>}>
-            {tagsEnabled && ledger !== null && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
+            {tagsEnabled && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
+                loading={loading} loadError={loadError} onRetry={refresh}
                 filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
@@ -610,6 +629,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             )}
             <div className="flex min-h-[160px] flex-1 gap-2">
             <div ref={scrollRef}
+                tabIndex={-1}
                 onScroll={event => { scrollTop.current = event.currentTarget.scrollTop; }}
                 style={wide ? { flex: '0 0 43%' } : undefined}
                 hidden={!wide && detailOpen && !!selected}
@@ -725,7 +745,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </p>}
                 <ul className="flex flex-col gap-1">
                     {(ledger?.items ?? []).filter(item => expanded.has(item.id) || item.id === selectedId).map(item =>
-                        <TodoDetail key={item.id} {...rowProps(item)} hidden={item.id !== selectedId} />)}
+                        <TodoDetail key={item.id} {...rowProps(item)} hidden={item.id !== selectedId} onClose={closeDetails} />)}
                 </ul>
             </section>
             </div>
@@ -766,6 +786,7 @@ type TodoDetailProps = {
     tagLibrary?: SentinelTodoTagLibrary;
     tagClient: CocClient;
     matchMultiple: boolean;
+    onClose: () => void;
 };
 
 function useTodoAttachment(owner: SentinelTodoOwner, item: SentinelTodoItem) {
@@ -873,7 +894,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
     </li>;
 }
 
-function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple }: TodoDetailProps) {
+function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple, onClose }: TodoDetailProps) {
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
@@ -881,6 +902,11 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [error, setError] = useState<string | null>(restoredDraft?.error ?? null);
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const [busy, setBusy] = useState(false);
+    const [tagsBusy, setTagsBusy] = useState(false);
+    const [dependenciesBusy, setDependenciesBusy] = useState(false);
+    const [outcomesBusy, setOutcomesBusy] = useState(false);
+    const { mutationPending: scrubberBusy } = useContext(ScrubberFindingsContext);
+    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || scrubberBusy;
     const [notesOpen, setNotesOpen] = useState(restoredDraft?.notesOpen ?? true);
     const lastAction = useRef<(() => Promise<void>) | null>(null);
     const live = useRef(true);
@@ -961,15 +987,24 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                 <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
                     className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />
             )}
-            <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
-                className="m-0 flex flex-wrap items-center gap-1.5 break-words px-2 py-2 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
-                <span className="min-w-0 w-full">{item.title}</span>
-                <StatusBadge status={displayStatus} />
-                {high && <HighPriorityBadge itemId={item.id} />}
-                {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
-            </h2>
+            <div className="flex items-start">
+                <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
+                    className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-1.5 break-words px-2 py-2 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                    <span className="min-w-0 w-full">{item.title}</span>
+                    <StatusBadge status={displayStatus} />
+                    {high && <HighPriorityBadge itemId={item.id} />}
+                    {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
+                </h2>
+                <button type="button" aria-label="Close To-do details" title="Close To-do details"
+                    disabled={closeBlocked} onClick={() => { if (!closeBlocked) onClose(); }}
+                    className="m-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                        <path d="m4 4 8 8M12 4l-8 8" />
+                    </svg>
+                </button>
+            </div>
             {tagLibrary && <SentinelTodoTagPicker item={item} owner={owner} client={tagClient} library={tagLibrary}
-                multiple={matchMultiple} onLedgerChange={onLedgerChange} />}
+                multiple={matchMultiple} onLedgerChange={onLedgerChange} onBusyChange={setTagsBusy} />}
             <SentinelTodoScrubFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (
@@ -983,7 +1018,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             </div>
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
-            {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} />}
+            {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} onBusyChange={setOutcomesBusy} />}
             {/* Reference-only conversations: navigation links with no execution or review state. */}
             {item.references?.some(ref => ref.kind === undefined || ref.kind === 'conversation') && (
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Referenced conversations for ${item.title}`}>
@@ -1001,7 +1036,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             )}
             <SentinelTodoExternalReferences item={item} />
             <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
-                expanded onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} />
+                expanded onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} onBusyChange={setDependenciesBusy} />
             <div id={`${domId}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">
                     {error && (
                         <Notice tone="error" testId={`sentinel-todo-row-error-${item.id}`}

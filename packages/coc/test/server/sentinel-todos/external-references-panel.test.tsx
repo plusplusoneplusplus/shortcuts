@@ -22,7 +22,8 @@ vi.mock('../../../src/server/spa/client/react/shared/file-path/browser-bridge', 
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber', () => ({
     SentinelTodoScrubber: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode }) => <>{toolbar}{children}</>,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding', () => ({
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding', async importOriginal => ({
+    ...(await importOriginal<object>()),
     AcceptAllScrubProposals: () => null, SentinelTodoScrubFinding: () => null,
 }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoTriggers', () => ({ SentinelTodoTriggers: () => null }));
