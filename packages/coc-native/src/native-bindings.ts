@@ -102,6 +102,14 @@ export declare class NativeStatementHandle {
   iterate(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
 }
 
+export declare class NativeWatchService {
+  constructor(onBatch: (arg: WatchBatch) => void)
+  subscribe(options: NativeWatchSubscriptionOptions): number
+  unsubscribe(id: number): void
+  unwatchWorkspace(workspaceId: string): void
+  dispose(): void
+}
+
 /** An in-memory content index for one already-authorized Notes root. */
 export declare class NotesIndex {
   /**
@@ -921,6 +929,16 @@ export interface NativeSqliteReadStats {
   fullScanSteps: number
 }
 
+export interface NativeWatchSubscriptionOptions {
+  workspaceId: string
+  root: string
+  recursive: boolean
+  ignoreDirs: Array<string>
+  extensions: Array<string>
+  respectGitignore: boolean
+  debounceMs: number
+}
+
 /** Which regime a content read or write runs under. */
 export interface NotesContentOptions {
   /** The managed default root, with the absolute-path escape hatch. */
@@ -1429,4 +1447,10 @@ export interface RepoTreeEntry {
 export interface RepoTreeListing {
   entries: Array<RepoTreeEntry>
   truncated: boolean
+}
+
+export interface WatchBatch {
+  subscriptionId: number
+  paths: Array<string>
+  rescan: boolean
 }
