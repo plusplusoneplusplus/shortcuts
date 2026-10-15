@@ -79,7 +79,10 @@ references before editing. Paths are package-relative.
 - `search_conversations` title lookup scans workspace-scoped chat summaries before
   result pagination, uses displayed titles, and reports ambiguity with server/workspace
   labels. Remote clone keys use the shared workspace directory's index-only summary
-  reader at each server's current endpoint. Keep server/raw workspace identity in results;
+  reader at the current endpoint, binding every page to one endpoint and durable server
+  identity. Directory caches retain observed identity and reject known replacement owners;
+  delayed reads cannot publish after destination changes. Keep connection aliases, durable
+  server identity and raw workspace identity separate in results;
   exclude the invoking process only for local searches. Unavailable remote reads discard
   partial matches and never fall back to local chat reads.
 - `send_to_conversation` create mode defaults to Medium when model/tier are omitted;

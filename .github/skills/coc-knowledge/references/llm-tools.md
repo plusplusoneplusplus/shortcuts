@@ -81,7 +81,11 @@ Custom titles take precedence over generated titles and prompt previews. Ambiguo
 results instruct the Sentinel to ask which chat to attach. Remote clone keys use
 `WorkspaceDirectory.getRemoteChatSummaries` and the selected registered server's
 current endpoint (`GET /api/processes/summaries`). Results retain the clone key,
-server ID and raw workspace ID. Only local searches exclude the invoking process
+connection alias, optional durable `serverIdentity` and raw workspace ID. Directory
+rows/cache retain observed identity; a known replacement excludes cached rows. A
+summary scan binds to the listing identity and one internal endpoint/identity target;
+changes before or during any page reject the scan. Delayed workspace reads cannot
+publish after destination changes. Only local searches exclude the invoking process
 ID; remote IDs may collide. Unavailable or invalid remote pages discard partial
 matches without local chat fallback. Title lookup reads no transcripts.
 

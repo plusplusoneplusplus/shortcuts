@@ -17,7 +17,7 @@ function setup(kind = 'ssh', entries = [entry('current')]) {
         getWorkspaces: vi.fn().mockResolvedValue([{ id: 'shared-workspace', name: 'Local workspace' }]),
         getProcessSummaries: vi.fn(), getProcess: vi.fn(), searchConversations: vi.fn(),
     } as unknown as ProcessStore;
-    const server = { id: 'remote-server', label: 'Build machine', kind, effectiveUrl: 'http://localhost:51000' };
+    const server = { id: 'remote-server', label: 'Build machine', kind, effectiveUrl: 'http://localhost:51000', serverIdentity: 'installation-a' as string | undefined };
     const servers = [server];
     const fetchImpl = vi.fn(async (url: string | URL) => {
         const parsed = new URL(String(url));
@@ -42,7 +42,7 @@ describe('remote title lookup', () => {
         const { search, store, fetchImpl, selected } = setup(kind);
         expect(await search({ since: '2026-10-01', until: '2026-10-16' })).toMatchObject({
             total: 1, ambiguous: false, results: [{ processId: 'current', workspaceId: selected,
-                conversationWorkspaceId: 'shared-workspace', serverId: 'remote-server', server: 'Build machine', workspaceLabel: 'Remote project' }],
+                conversationWorkspaceId: 'shared-workspace', serverId: 'remote-server', serverIdentity: 'installation-a', server: 'Build machine', workspaceLabel: 'Remote project' }],
         });
         const url = new URL(String(fetchImpl.mock.calls[1][0]));
         expect(url.pathname).toBe('/api/processes/summaries');
@@ -67,9 +67,9 @@ describe('remote title lookup', () => {
 
     it('reads chat metadata only from the selected server when remote workspace and process IDs collide', async () => {
         const { search, servers, fetchImpl } = setup();
-        servers.push({ id: 'another-server', label: 'Another machine', kind: 'devtunnel', effectiveUrl: 'http://localhost:53000' });
+        servers.push({ id: 'another-server', label: 'Another machine', kind: 'devtunnel', effectiveUrl: 'http://localhost:53000', serverIdentity: 'installation-b' });
         const result = await search({ workspaceId: buildRemoteCloneKey('another-server', 'shared-workspace') });
-        expect(result).toMatchObject({ total: 1, results: [{ processId: 'current', serverId: 'another-server', server: 'Another machine' }] });
+        expect(result).toMatchObject({ total: 1, results: [{ processId: 'current', serverId: 'another-server', serverIdentity: 'installation-b', server: 'Another machine' }] });
         const summaryUrls = fetchImpl.mock.calls.map(([url]) => new URL(String(url)))
             .filter(url => url.pathname === '/api/processes/summaries');
         expect(summaryUrls.map(url => url.port)).toEqual(['53000']);
@@ -113,6 +113,99 @@ describe('remote title lookup', () => {
             fetchImpl.mockImplementation(async url => new URL(String(url)).pathname.endsWith('/summaries') ? Response.json(body) : normal(url));
             expect(await search()).toMatchObject({ code: 'unavailable' });
         });
+
+    it.each(['ssh', 'devtunnel'])('keeps observed %s workspace identity offline and rejects replacement caches', async kind => {
+        const { directory, server } = setup(kind);
+        expect((await directory.list()).entries.find(ws => ws.id.startsWith('remote:')))
+            .toMatchObject({ serverIdentity: 'installation-a', online: true });
+        server.effectiveUrl = '';
+        expect((await directory.list()).entries.find(ws => ws.id.startsWith('remote:')))
+            .toMatchObject({ serverIdentity: 'installation-a', online: false });
+        server.serverIdentity = 'installation-b';
+        expect((await directory.list()).entries.filter(ws => ws.id.startsWith('remote:'))).toEqual([]);
+        server.effectiveUrl = 'http://localhost:52000';
+        expect((await directory.list()).entries.find(ws => ws.id.startsWith('remote:')))
+            .toMatchObject({ serverIdentity: 'installation-b', online: true });
+    });
+
+    it('keeps cached unknown ownership unknown, then clears identity on a successful unidentified refresh', async () => {
+        const { directory, server } = setup();
+        server.serverIdentity = undefined;
+        await directory.list();
+        server.effectiveUrl = '';
+        server.serverIdentity = 'installation-a';
+        const offline = (await directory.list()).entries.find(ws => ws.id.startsWith('remote:'))!;
+        expect(offline.online).toBe(false);
+        expect(offline.serverIdentity).toBeUndefined();
+        server.effectiveUrl = 'http://localhost:52000';
+        await directory.list();
+        server.serverIdentity = undefined;
+        expect((await directory.list()).entries.find(ws => ws.id.startsWith('remote:'))!.serverIdentity).toBeUndefined();
+    });
+
+    it.each(['ssh', 'devtunnel'])('discards delayed %s workspace results after a replacement and does not cache them', async kind => {
+        const { directory, server, fetchImpl } = setup(kind);
+        const normal = fetchImpl.getMockImplementation()!;
+        fetchImpl.mockImplementationOnce(async url => {
+            const response = await normal(url);
+            server.serverIdentity = 'installation-b';
+            return response;
+        });
+        expect((await directory.list()).entries.filter(ws => ws.id.startsWith('remote:'))).toEqual([]);
+        server.effectiveUrl = '';
+        expect((await directory.list()).entries.filter(ws => ws.id.startsWith('remote:'))).toEqual([]);
+    });
+
+    it.each(['endpoint', 'identity', 'missing-identity', 'removed'])(
+        'rejects the next page when %s changes between reads', async change => {
+            const { directory, server, servers, fetchImpl } = setup();
+            const first = await directory.getRemoteChatSummaries!('remote-server', 'shared-workspace', { limit: 200, offset: 0 });
+            if (change === 'endpoint') server.effectiveUrl = 'http://localhost:52000';
+            if (change === 'identity') server.serverIdentity = 'installation-b';
+            if (change === 'missing-identity') server.serverIdentity = undefined;
+            if (change === 'removed') servers.length = 0;
+            await expect(directory.getRemoteChatSummaries!('remote-server', 'shared-workspace',
+                { limit: 200, offset: 200, target: first.target })).rejects.toThrow();
+            expect(fetchImpl).toHaveBeenCalledTimes(1);
+        });
+
+    it('discards earlier title matches when a later page belongs to a replacement destination', async () => {
+        const { search, server, fetchImpl } = setup('ssh', Array.from({ length: 201 }, (_, i) => entry(String(i))));
+        const normal = fetchImpl.getMockImplementation()!;
+        fetchImpl.mockImplementation(async url => {
+            const response = await normal(url);
+            if (new URL(String(url)).searchParams.get('offset') === '200') server.serverIdentity = 'installation-b';
+            return response;
+        });
+        expect(await search()).toEqual({ error: 'Remote title lookup is unavailable.', code: 'unavailable' });
+    });
+
+    it('requires the workspace listing identity before the first summary request', async () => {
+        const { directory, fetchImpl } = setup();
+        await expect(directory.getRemoteChatSummaries!('remote-server', 'shared-workspace',
+            { limit: 200, offset: 0, serverIdentity: 'installation-b' })).rejects.toThrow();
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it.each(['ssh', 'devtunnel'])('rejects %s summary results whose destination changes during the read', async kind => {
+        const { search, server, fetchImpl } = setup(kind);
+        const normal = fetchImpl.getMockImplementation()!;
+        fetchImpl.mockImplementation(async url => {
+            const response = await normal(url);
+            if (new URL(String(url)).pathname.endsWith('/summaries')) server.serverIdentity = 'installation-b';
+            return response;
+        });
+        expect(await search()).toEqual({ error: 'Remote title lookup is unavailable.', code: 'unavailable' });
+    });
+
+    it('allows older unidentified servers without inventing durable identity or exposing read endpoints', async () => {
+        const { search, server } = setup();
+        server.serverIdentity = undefined;
+        const result = await search() as any;
+        expect(result.total).toBe(1);
+        expect(result.results[0].serverIdentity).toBeUndefined();
+        expect(JSON.stringify(result)).not.toMatch(/localhost|effectiveUrl|target/);
+    });
 
     it('wires the owner directory through the normal chat tool bundle', async () => {
         const { store, directory, selected } = setup();

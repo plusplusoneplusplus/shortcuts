@@ -13,7 +13,7 @@
  */
 
 import type { ConversationTurn, ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
-import { parseRemoteCloneKey, type WorkspaceDirectory } from '../servers/workspace-directory';
+import { parseRemoteCloneKey, type RemoteChatReadTarget, type WorkspaceDirectory } from '../servers/workspace-directory';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface SearchConversationsArgs {
@@ -379,12 +379,15 @@ async function handleTitleMode(
     }
     let workspaceLabel: string;
     let server = 'local';
+    let serverIdentity: string | undefined;
+    let target: RemoteChatReadTarget | undefined;
     if (remote) {
         const listing = await directory!.list();
         const entry = listing.entries.find(ws => ws.id === workspaceId);
         if (!entry?.online) return { error: 'Remote workspace is unavailable.', code: 'unavailable' };
         workspaceLabel = entry.name;
         server = entry.server;
+        serverIdentity = entry.serverIdentity;
     } else {
         const workspaces = await store.getWorkspaces();
         workspaceLabel = workspaces.find(ws => ws.id === workspaceId)?.name ?? workspaceId;
@@ -394,16 +397,20 @@ async function handleTitleMode(
     let total = 0;
     const pageSize = 200;
     for (let scanOffset = 0; ; scanOffset += pageSize) {
-        let page: { entries: ProcessIndexEntry[]; total: number };
+        let page: { entries: ProcessIndexEntry[]; total: number; target?: typeof target };
         try {
             page = remote
                 ? await directory!.getRemoteChatSummaries!(remote.serverId, remote.workspaceId,
-                    { since, until, limit: pageSize, offset: scanOffset })
+                    { since, until, limit: pageSize, offset: scanOffset, serverIdentity, target })
                 : await store.getProcessSummaries!({ workspaceId, type: 'chat', since, until, limit: pageSize, offset: scanOffset });
         } catch (error) {
             if (!remote) throw error;
             // Transport details may contain endpoints. Do not expose them or return partial matches.
             return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
+        }
+        if (remote && page.target) {
+            target = page.target;
+            serverIdentity = target.serverIdentity;
         }
         for (const entry of page.entries) {
             const displayedTitle = entry.customTitle || entry.title || entry.promptPreview || '';
@@ -418,7 +425,8 @@ async function handleTitleMode(
         mode: 'title' as const,
         results: results.map(result => ({
             ...result, server, workspaceLabel,
-            ...(remote ? { serverId: remote.serverId, conversationWorkspaceId: remote.workspaceId } : {}),
+            ...(remote ? { serverId: remote.serverId, conversationWorkspaceId: remote.workspaceId,
+                ...(serverIdentity ? { serverIdentity } : {}) } : {}),
         })),
         total, limit, offset, hasMore: offset + results.length < total,
         ambiguous: total > 1,
