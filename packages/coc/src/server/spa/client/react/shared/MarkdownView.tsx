@@ -28,6 +28,7 @@ import { useSvgFences } from './svg/useSvgFences';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
 import { CanvasEmbed } from './CanvasEmbed';
+import { useChatRenderContext } from '../features/chat/conversation/ChatRenderContext';
 import { ExcalidrawPreview } from './ExcalidrawPreview';
 import { mountHtmlEmbeds } from './htmlEmbedMount';
 import { mountMapEmbeds } from './mapEmbedMount';
@@ -80,6 +81,14 @@ function getProcessDeepLinkHash(href: string | null): string | null {
 }
 
 export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionCopy, tableWrapToggle = false }: MarkdownViewProps) {
+    const { wsId, chatId, conversationMode, conversationOwnerKey } = useChatRenderContext();
+    // HTML updates replace portal targets. Keep explicit choices in the transcript
+    // owner, never in a global canvas cache or shared across repeated references.
+    const expansionChoices = React.useMemo(() => new Map<string, boolean>(), [conversationOwnerKey, wsId, chatId]);
+    const disclosureState = (workspaceId: string, canvasId: string, occurrence: string) => {
+        const key = JSON.stringify([workspaceId, chatId, canvasId, occurrence]);
+        return { expanded: expansionChoices.get(key), onChange: (expanded: boolean) => { expansionChoices.set(key, expanded); } };
+    };
     const containerRef = useRef<HTMLDivElement>(null);
     const [headingPortals, setHeadingPortals] = React.useState<
         { element: HTMLElement; markdown: string; key: string }[]
@@ -354,13 +363,19 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                         key={key}
                         workspaceId={workspaceId}
                         canvasId={canvasId}
+                        disclosureState={disclosureState(workspaceId, canvasId, key)}
                     />,
                     mountEl
                 )
             )}
             {excalidrawPortals.map(({ mountEl, workspaceId, canvasId, key }) =>
                 createPortal(
-                    <ExcalidrawPreview
+                    conversationMode === 'sentinel' ? <CanvasEmbed
+                        key={key}
+                        workspaceId={workspaceId}
+                        canvasId={canvasId}
+                        disclosureState={disclosureState(workspaceId, canvasId, key)}
+                    /> : <ExcalidrawPreview
                         key={key}
                         workspaceId={workspaceId}
                         canvasId={canvasId}

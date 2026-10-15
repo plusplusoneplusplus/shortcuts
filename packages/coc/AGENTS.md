@@ -585,8 +585,11 @@ references before editing. Paths are package-relative.
   containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
   file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
   Inline `CanvasEmbed` disclosures keep hidden bodies and Kusto connection portals
-  mounted/inert to preserve drafts. State is per occurrence and resets by workspace,
-  chat and canvas identity; panel opening stays separate and owner-routed.
+  mounted/inert to preserve drafts. Sentinel mode defaults every inline kind to
+  collapsed; ordinary defaults and dedicated panels retain their behavior. Pass the
+  resolved conversation mode through pinned/normal bubbles and `ChatRenderContext`.
+  Manual choices survive HTML portal remounts per owner-qualified occurrence;
+  workspace/chat/canvas changes isolate state. Panel opening stays owner-routed.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
   Cover actual column widths and overflow with the Kusto browser regression suite.

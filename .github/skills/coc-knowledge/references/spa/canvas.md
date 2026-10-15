@@ -213,12 +213,18 @@ descriptor and picks the renderer from the persisted `type`: Excalidraw a view-o
 `KustoView`, markdown/code a document preview. `.md-excalidraw-embed` placeholders in
 historical message HTML remain supported.
 
-All generic embeds share a title disclosure, initially expanded except for the
-existing Kusto group default. Collapse hides and makes the mounted body inert,
-preserving extension iframe state and editor drafts while reclaiming its layout
-space. Disclosure state is independent per occurrence and resets on workspace,
-chat or canvas identity changes. Loading and errors use the same wrapper.
-The existing `canvas.enabled` rendering gate controls availability.
+All generic embeds share a title/type disclosure. Sentinel conversations default every
+kind to collapsed, including Kusto's last group member and historical Excalidraw
+placeholders. `ChatDetail` passes its resolved conversation mode through
+`ConversationArea`, both pinned and normal bubbles, and `ChatRenderContext`;
+embed defaults never infer mode from titles or individual turns. Ordinary chats keep
+expanded generic embeds and the Kusto group default. Dedicated panels keep their own state.
+
+Collapsed bodies and Kusto connection portals stay mounted, hidden and inert,
+preserving iframe state and drafts without layout space. Manual choices override
+defaults per occurrence. `MarkdownView` retains choices across HTML-driven portal
+remounts, scoped by resolved server/workspace owner, chat, canvas and occurrence; changing ownership
+resets that memory. Loading and errors use the same disclosure and rendering gate.
 
 With the unified right panel enabled for the embed's own chat, a loaded embed
 retains a separate **Open in panel** action in its header, including while collapsed.

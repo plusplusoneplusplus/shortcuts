@@ -50,14 +50,16 @@ function renderEmbed({
     host,
     chatId = 'task-A',
     workspaceId = 'ws-1',
+    conversationMode,
 }: {
     host: UnifiedPanelHost | null;
     chatId?: string;
     workspaceId?: string;
+    conversationMode?: string;
 }) {
     return render(
         <UnifiedPanelHostProvider host={host}>
-            <ChatRenderContextProvider value={{ wsId: workspaceId, chatId }}>
+            <ChatRenderContextProvider value={{ wsId: workspaceId, chatId, conversationMode }}>
                 <CanvasEmbed workspaceId={workspaceId} canvasId="canvas-9" />
             </ChatRenderContextProvider>
         </UnifiedPanelHostProvider>,
@@ -84,12 +86,12 @@ describe('canvas embed → unified panel canvas tab', () => {
         localStorage.clear();
     });
 
-    it('opens a collapsed embedded canvas as a chat-owned tab in the hosting panel', async () => {
-        renderEmbed({ host: { workspaceId: 'ws-1', chatId: 'task-A' } });
+    it.each(['sentinel', 'ask'])('opens a collapsed %s embed as a chat-owned tab in the hosting panel', async conversationMode => {
+        renderEmbed({ host: { workspaceId: 'ws-1', chatId: 'task-A' }, conversationMode });
         await screen.findByTestId('canvas-embed-document');
 
         await act(async () => {
-            screen.getByTestId('canvas-embed-toggle').click();
+            if (conversationMode !== 'sentinel') screen.getByTestId('canvas-embed-toggle').click();
         });
         expect(screen.getByTestId('canvas-embed-body')).not.toBeVisible();
         await act(async () => {

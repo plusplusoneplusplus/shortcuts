@@ -21,6 +21,10 @@ export interface ChatRenderContextValue {
      * lands, and markdown is rendered too deep to thread it through by prop.
      */
     chatId?: string;
+    /** Actual displayed conversation mode, independent of titles and per-turn modes. */
+    conversationMode?: string;
+    /** Resolved server/workspace owner, including remote endpoint identity. */
+    conversationOwnerKey?: string;
     htmlEmbedEnabled?: boolean;
     excalidrawEmbedEnabled?: boolean;
     canvasEmbedEnabled?: boolean;
