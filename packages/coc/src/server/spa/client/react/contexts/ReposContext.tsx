@@ -17,6 +17,7 @@ import {
 import { useApp } from './AppContext';
 import { useQueue } from './QueueContext';
 import { fetchUnseenCount, SEEN_STATE_CHANGED_EVENT, type SeenStateChange } from '../hooks/preferences/seenStateApi';
+import { publishDashboardTopology } from '../shared/dashboard-discovery/topology';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
 import { isContainerMode } from '../utils/config';
@@ -137,6 +138,15 @@ export function ReposProvider({ children }: { children: ReactNode }) {
         ...appState.workspaces.filter(workspace => isRepoGroupWorkspaceId(workspace.id)),
         ...remoteGroupWorkspaces,
     ] : [], [aggregatedChats, appState.workspaces, remoteGroupWorkspaces]);
+
+    useEffect(() => {
+        publishDashboardTopology(appState.selectedRepoId, [
+            ...appState.workspaces,
+            ...repos.filter(repo => isRemoteWorkspace(repo.workspace)).map(repo => repo.workspace),
+            ...remoteGroupWorkspaces,
+        ]);
+    }, [appState.selectedRepoId, appState.workspaces, repos, remoteGroupWorkspaces]);
+    useEffect(() => () => publishDashboardTopology(null, []), []);
 
     const selectedRepoIdRef = useRef<string | null>(null);
 

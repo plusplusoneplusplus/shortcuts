@@ -63,6 +63,7 @@ export interface RemoteWorkspaceMarker {
     serverIdentity?: string;
     /** Human-readable server label for badges/grouping. */
     serverLabel: string;
+    serverKind?: RemoteServer['kind'];
     /** Dashboard selection/routing key for this exact remote clone. */
     cloneKey?: string;
     /** True when this entry came from cache because the server is offline/unreachable. */
@@ -191,7 +192,7 @@ export interface RemoteTagStatus {
  * offline connection with an idle queue.
  */
 export function tagRemoteWorkspaces(
-    server: Pick<RemoteServer, 'id' | 'label' | 'serverIdentity'>,
+    server: Pick<RemoteServer, 'id' | 'label' | 'serverIdentity'> & Partial<Pick<RemoteServer, 'kind'>>,
     baseUrl: string,
     workspaces: WorkspaceInfo[],
     offline: boolean,
@@ -207,6 +208,7 @@ export function tagRemoteWorkspaces(
             serverId: server.id,
             ...(server.serverIdentity ? { serverIdentity: server.serverIdentity } : {}),
             serverLabel,
+            ...(server.kind ? { serverKind: server.kind } : {}),
             cloneKey: buildRemoteCloneKey(server.id, workspace.id),
             offline,
             connection,

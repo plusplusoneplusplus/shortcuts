@@ -184,19 +184,27 @@ or joining remote ownership through the page-origin process index; see
 
 `ProcessWebSocketServer.dashboardDiscovery` owns `DashboardDiscoveryRelay`.
 `coc-client/dashboard-discovery.ts` defines the read-only topology protocol.
-A dashboard advertises its raw owning workspace, opaque topology revision and focus;
-`listWorkspaces` selects the most recently focused matching socket. Capability
-withdrawal, owner/revision changes, socket errors/close and shutdown revoke pending
-reads. Focus-only updates preserve admitted reads.
+`ReposContext` publishes visible repos, groups and cached offline rows through
+`shared/dashboard-discovery/topology.ts`. Its opaque revision changes with selection,
+labels, ownership, availability or endpoint routing; equivalent refreshes preserve it.
+Unknown installation identities stay absent. Local rows use the local server label;
+remote markers retain registry labels and transport kinds.
 
-Requests carry a random ID, raw owner workspace and the selected revision. Replies
-must come from that exact socket. Results project at most 2,000 workspace rows with
-bounded identities, server/workspace labels, repo/group type, server kind and online
-state. Endpoint fields and duplicate known server/workspace identities reject the
-whole result; unknown identities remain absent. These are dashboard observations,
-not verified destination ownership. Abort and the 10-second deadline forward
-cancellation and release request state. Messages bypass broadcasts/container forwarding;
-dashboard failures expose generic errors without connection details.
+`useWebSocket`'s designated local socket and `RemoteCloneEventBridge`'s existing
+remote sockets host `createDashboardDiscoverySocketRelay`. Only the socket owning
+the exact selected workspace advertises its raw workspace and document focus.
+No desktop bridge is required. Scope withdrawal, owner/revision changes, socket
+errors/close and shutdown revoke pending reads. Focus-only changes preserve them.
+The server selects the most recently focused matching socket.
+
+Requests carry a random ID, raw owner workspace and selected revision. Replies
+must come from that exact socket. Producers reject stale/foreign scopes and project
+labels, identity, repo/group type, transport and availability without private routes.
+Known duplicate installation/workspace aliases coalesce, preferring an online row.
+The relay validates at most 2,000 bounded rows, rejecting endpoint fields and duplicate
+known identities. Observations do not verify destination ownership. Abort and the
+10-second deadline forward cancellation and release state. Messages bypass global
+broadcasts/container forwarding; failures expose generic errors without connection details.
 
 ### Targeted desktop browser control
 

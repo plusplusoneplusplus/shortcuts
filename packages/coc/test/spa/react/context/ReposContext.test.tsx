@@ -87,6 +87,8 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
+import { getDashboardTopology } from '../../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
+
 const makeWorkspace = (id: string, name = id) => ({
     id,
     name,
@@ -227,6 +229,25 @@ describe('ReposContext', () => {
         _resetRemoteSelectionForTests();
         _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
+    });
+
+    it('publishes the selected owner and full dashboard topology, then clears it on unmount', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('local')]);
+        const aggregate = remoteAggregate('remote-server', 'http://localhost:5000', 'remote-workspace');
+        aggregate.groupWorkspaces = tagRemoteWorkspaces(
+            { id: 'offline-server', label: 'Offline', kind: 'devtunnel', serverIdentity: 'cached-identity' },
+            'http://localhost:6000', [{ ...makeWorkspace('group-g'), virtual: true }], true,
+        );
+        aggregateRemoteWorkspacesMock.mockResolvedValue(aggregate);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        await waitFor(() => expect(getDashboardTopology().routes).toHaveLength(3));
+        expect(getDashboardTopology().selectedRef).toBe('local');
+        expect(getDashboardTopology().routes).toContainEqual(expect.objectContaining({
+            row: expect.objectContaining({ workspaceId: 'group-g', serverIdentity: 'cached-identity', online: false, serverKind: 'devtunnel' }),
+        }));
+        unmount();
+        expect(getDashboardTopology().routes).toEqual([]);
+        expect(getDashboardTopology().selectedRef).toBeNull();
     });
 
     it('seeds page-origin queue stats without matching a remote repository by its mirrored root path', async () => {

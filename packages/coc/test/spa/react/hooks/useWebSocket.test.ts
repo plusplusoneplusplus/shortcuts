@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWebSocket } from '../../../../src/server/spa/client/react/hooks/useWebSocket';
 
+import { publishDashboardTopology } from '../../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
+
 // ── Minimal WebSocket mock ────────────────────────────────────────────
 
 class MockWebSocket {
@@ -66,6 +68,29 @@ Object.defineProperty(globalThis, 'location', {
 });
 
 describe('useWebSocket', () => {
+    it('uses the existing designated socket for topology requests and withdraws on disconnect', () => {
+        publishDashboardTopology('local', [{ id: 'local', name: 'Local' } as any]);
+        const onMessage = vi.fn();
+        const hook = renderHook(() => useWebSocket({ onMessage, broadcastProcessUpdates: true }));
+        act(() => hook.result.current.connect());
+        const socket = MockWebSocket.last;
+        act(() => socket._open());
+        const capability = JSON.parse(socket.send.mock.lastCall![0]);
+        expect(capability).toEqual(expect.objectContaining({ type: 'dashboard-discovery-capability', workspaceId: 'local' }));
+        act(() => socket._message({ type: 'dashboard-workspaces-request', request: {
+            id: 'req', workspaceId: 'local', revision: capability.revision,
+        } }));
+        expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({ type: 'dashboard-workspaces-result', reply: {
+            id: 'req', ok: true, workspaces: [expect.objectContaining({ workspaceId: 'local' })],
+        } });
+        expect(onMessage).not.toHaveBeenCalled();
+        expect(MockWebSocket.instances).toHaveLength(1);
+        act(() => hook.result.current.disconnect());
+        expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({ type: 'dashboard-discovery-clear' });
+        hook.unmount();
+        publishDashboardTopology(null, []);
+    });
+
     it('rebroadcasts local process snapshots only from the designated owner socket', () => {
         const listener = vi.fn();
         window.addEventListener('coc-local-ws-message', listener);

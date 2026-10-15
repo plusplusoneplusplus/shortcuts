@@ -7,6 +7,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import type { ConnectionStatus, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 import { createBrowserSocketRelay } from '../shared/file-path/browser-control-relay';
+import { createDashboardDiscoverySocketRelay } from '../shared/dashboard-discovery/socket-relay';
 
 export type WsStatus = ConnectionStatus;
 
@@ -22,6 +23,7 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
     const connectionRef = useRef<ProcessWebSocketConnection | null>(null);
     const onMessageRef = useRef(onMessage);
     const onConnectRef = useRef(onConnect);
+    const discoveryRelayRef = useRef<ReturnType<typeof createDashboardDiscoverySocketRelay> | null>(null);
     const browserRelayRef = useRef<ReturnType<typeof createBrowserSocketRelay> | null>(null);
     const browserRoutingRefRef = useRef(browserRoutingRef);
     browserRoutingRefRef.current = browserRoutingRef;
@@ -36,11 +38,14 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
     }, [onConnect]);
 
     const doConnect = useCallback(() => {
+        discoveryRelayRef.current?.dispose();
+        discoveryRelayRef.current = null;
         browserRelayRef.current?.dispose();
         browserRelayRef.current = null;
         connectionRef.current?.close();
         connectionRef.current = getSpaCocClient().events.connect({
             onMessage: msg => {
+                if (discoveryRelayRef.current?.onMessage(msg)) return;
                 if (browserRelayRef.current?.onMessage(msg)) return;
                 if (broadcastProcessUpdates && (msg.type === 'process-added' || msg.type === 'process-updated'
                     || msg.type === 'tool-inventory-changed')) {
@@ -49,15 +54,20 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
                 onMessageRef.current(msg);
             },
             onOpen: () => {
+                discoveryRelayRef.current?.onOpen();
                 browserRelayRef.current?.onOpen();
                 window.dispatchEvent(new CustomEvent('coc-local-ws-connect', { detail: {} }));
                 onConnectRef.current?.();
             },
             onStatusChange: status => {
-                if (status === 'closed') browserRelayRef.current?.onClose();
+                if (status === 'closed') {
+                    discoveryRelayRef.current?.onClose();
+                    browserRelayRef.current?.onClose();
+                }
                 setStatus(status);
             },
         });
+        if (broadcastProcessUpdates) discoveryRelayRef.current = createDashboardDiscoverySocketRelay(connectionRef.current);
         if (browserRoutingRefRef.current !== undefined) {
             browserRelayRef.current = createBrowserSocketRelay(connectionRef.current);
             void browserRelayRef.current.update(browserRoutingRefRef.current ?? null);
@@ -69,6 +79,8 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
     }, [doConnect]);
 
     const disconnect = useCallback(() => {
+        discoveryRelayRef.current?.dispose();
+        discoveryRelayRef.current = null;
         browserRelayRef.current?.dispose();
         browserRelayRef.current = null;
         connectionRef.current?.close();
@@ -78,6 +90,8 @@ export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = f
 
     useEffect(() => {
         return () => {
+            discoveryRelayRef.current?.dispose();
+            discoveryRelayRef.current = null;
             browserRelayRef.current?.dispose();
             connectionRef.current?.close();
             connectionRef.current = null;
