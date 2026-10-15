@@ -1,4 +1,4 @@
-//! Subscription-local batching for native filesystem notifications.
+//! Shared native filesystem watching and subscription-local batching.
 //!
 //! The watch backend supplies filtered, root-relative forward-slash paths.
 //! Each subscription owns its debounce window independently of the shared root.
@@ -6,10 +6,14 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
+mod service;
+pub use service::{WatchError, WatchFilter, WatchService, WatchSubscription};
+
 pub const MAX_BATCH_PATHS: usize = 4096;
 pub const MAX_BATCH_PATH_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object))]
 pub struct WatchBatch {
     pub subscription_id: u32,
     pub paths: Vec<String>,
@@ -63,6 +67,15 @@ impl PendingBatch {
     /// reload. Retaining partial paths alongside that signal wastes queue space.
     pub fn mark_rescan(&mut self, now: Instant) {
         self.deadline = Some(now + self.debounce);
+        self.paths.clear();
+        self.path_bytes = 0;
+        self.rescan = true;
+    }
+
+    /// Promote a pending batch without letting periodic recovery retries push
+    /// its deadline out indefinitely.
+    pub fn require_rescan(&mut self, now: Instant) {
+        self.deadline.get_or_insert(now + self.debounce);
         self.paths.clear();
         self.path_bytes = 0;
         self.rescan = true;

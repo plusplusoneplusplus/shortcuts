@@ -11,6 +11,7 @@ grep-matcher = "0.1.9"
 grep-regex = "0.1.14"
 grep-searcher = "0.1.17"
 ignore = "0.4"
+notify = "8.2.0"
 # Pinned exactly: 0.87.1 declares a dependency on gix-worktree-stream 0.36.1,
 # which was never published, so it cannot be resolved at all.
 gix = { version = "=0.87.0", default-features = false, features = ["revision", "sha1", "max-performance-safe"] }
@@ -46,7 +47,7 @@ feruca = "0.12"
 regress = { version = "0.12", features = ["utf16"] }
 # The `napi` feature lets the addon expose repo-file DTOs as JS objects as is,
 # instead of mirroring each one in the binding crate. Off for the LSP binary.
-napi = { version = "3", default-features = false, features = ["napi4"], optional = true }
+napi = { version = "3", default-features = false, features = ["napi5"], optional = true }
 napi-derive = { version = "3", optional = true }
 
 [features]

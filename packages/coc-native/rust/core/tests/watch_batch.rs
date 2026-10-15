@@ -101,6 +101,37 @@ fn rescan_without_paths_still_emits_a_batch() {
 }
 
 #[test]
+fn required_rescan_promotes_paths_without_postponing_the_pending_deadline() {
+    let now = Instant::now();
+    let mut pending = PendingBatch::new(7, 300);
+    pending.record_path("partial.md".into(), now);
+    pending.require_rescan(after(now, 100));
+    assert_eq!(pending.deadline(), Some(after(now, 300)));
+    assert_eq!(pending.drain_ready(after(now, 299)), None);
+    assert_eq!(
+        pending.drain_ready(after(now, 300)),
+        Some(WatchBatch { subscription_id: 7, paths: vec![], rescan: true })
+    );
+}
+
+#[test]
+fn repeated_recovery_retries_do_not_starve_required_rescans() {
+    let now = Instant::now();
+    let mut pending = PendingBatch::new(7, 300);
+    pending.require_rescan(now);
+    for offset in [100, 200, 300] {
+        pending.require_rescan(after(now, offset));
+        assert_eq!(pending.deadline(), Some(after(now, 300)));
+    }
+    let batch = pending.drain_ready(after(now, 300)).unwrap();
+    assert!(batch.rescan);
+    assert!(batch.paths.is_empty());
+    pending.require_rescan(after(now, 400));
+    assert_eq!(pending.deadline(), Some(after(now, 700)));
+    assert!(pending.drain_ready(after(now, 700)).unwrap().rescan);
+}
+
+#[test]
 fn exact_path_limit_and_duplicates_do_not_overflow() {
     let now = Instant::now();
     let mut pending = PendingBatch::new(7, 0);
