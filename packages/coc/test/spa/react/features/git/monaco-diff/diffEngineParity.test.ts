@@ -159,11 +159,13 @@ describe('AC-08 source assertions', () => {
         for (const rel of [
             'features/git/working-tree/WorkingTreeFileDiff.tsx',
             'features/git/diff/FileDiffPanel.tsx',
-            'features/git/commits/CommitDetail.tsx',
             'features/pull-requests/PrFilesPanel.tsx',
         ]) {
             expect(importsClassic(rel), rel).toBe(true);
         }
+        // Commit review renders each file through the shared FileDiffPanel surface.
+        expect(read('features/git/commits/CommitDetail.tsx')).toMatch(/from '\.\.\/diff\/GitFileReview'/);
+        expect(read('features/git/diff/GitFileReview.tsx')).toMatch(/from '\.\/FileDiffPanel'/);
         expect(read('features/git/diff/FileDiffPanel.tsx')).toMatch(/useDiffEngine|MonacoFileDiffViewer/);
         for (const rel of ['features/git/commits/CommitDetail.tsx', 'features/pull-requests/PrFilesPanel.tsx']) {
             expect(read(rel), rel).not.toMatch(/useDiffEngine|MonacoFileDiffViewer/);

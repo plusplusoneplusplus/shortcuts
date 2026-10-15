@@ -12,17 +12,19 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOri
     };
 });
 
-vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
+    const client = {
         git: {
             commitDiffPath: (workspaceId: string, hash: string) =>
                 `/api/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(hash)}/diff`,
             commitFileDiffPath: (workspaceId: string, hash: string, filePath: string) =>
                 `/api/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${encodeURIComponent(hash)}/files/${encodeURIComponent(filePath)}/diff`,
-            listCommitFiles: vi.fn().mockResolvedValue({ files: [{ path: 'src/example.ts' }] }),
+            listCommitFiles: vi.fn().mockResolvedValue({ files: [{ path: 'src/example.ts', status: 'modified' }] }),
         },
-    }),
-}));
+    };
+    // Remote clone owners resolve to their own server; both serve the same fixture.
+    return { getSpaCocClient: () => client, getCocClientFor: () => client };
+});
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
@@ -197,6 +199,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
 import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 import { getReviewChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 function makeCommitSource(overrides: Partial<DiffSource> = {}): DiffSource {
     return {
@@ -240,9 +243,12 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();
+        resetCloneRegistryForTests();
     });
 
     it('opens CommitDetail chat as a lens by default and persists pin/unpin placement by commit', async () => {
+        // Commit review only renders for a routable owner.
+        registerCloneBaseUrls([{ workspaceId: 'ws1', cloneKey: 'remote:one:ws1', baseUrl: 'https://one.example' }]);
         const { unmount } = render(
             <CommitDetail
                 workspaceId="ws1"
@@ -258,7 +264,7 @@ describe('commit chat lens surfaces with feature flag enabled', () => {
         expect(screen.queryByTestId('commit-chat-side-panel')).toBeNull();
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-hash')).toBe('abc123');
         expect(screen.getByTestId('commit-chat-panel')).toHaveAttribute('data-source-selection', 'remote:one:ws1');
-        expect(screen.getByTestId('diff-section').className).toContain('overflow-auto');
+        expect((await screen.findByTestId('file-diff-section')).className).toContain('overflow-auto');
 
         fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
 
