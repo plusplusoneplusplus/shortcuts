@@ -265,7 +265,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     //     - cron.enabled      → cron executor, timer registry
     //
     //   Non-admin-editable (no migration needed):
-    //     - mcpOauth.enabled   → MCP OAuth infra
     //     - monitoring.heapCheck → heap monitor
     //     - skills.autoUpdate, skills.defaultSkills → startup skill install
     //     - features.autoMemoryPromotion → auto-promote scheduler
@@ -331,7 +330,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
 
     // Native Teams sign-in always needs pending lifecycle routes.
-    const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
+    const mcpOauthEnabled = resolvedConfig.mcpOauth.enabled === true;
     const mcpOauthInfra = createMcpOauthInfrastructure({
         autoRefresh: mcpOauthEnabled && resolvedConfig.mcpOauth?.autoRefresh?.enabled
             ? { enabled: true }
@@ -460,7 +459,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 }),
             };
         },
-        () => mcpOauthInfra?.manager,
+        () => mcpOauthEnabled ? mcpOauthInfra.manager : undefined,
         effectiveProvider,
         resolveAiServiceForProvider,
         resolvedConfig.features.ralphMultiAgentGrill,

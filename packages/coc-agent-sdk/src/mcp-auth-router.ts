@@ -64,7 +64,7 @@ export class McpAuthRouter {
     };
 
     login(serverName: string, serverUrl: string, requestId?: string, expectedSessionId?: string): void {
-        if (!this.active || this.owns(serverName, serverUrl) || this.logins.has(serverName)) return;
+        if (!this.active || !this.notify || this.owns(serverName, serverUrl) || this.logins.has(serverName)) return;
         const task = (async () => {
             const session = await this.sessionReady;
             if (!session || !this.active || (expectedSessionId && session.sessionId !== expectedSessionId)) return;

@@ -87,15 +87,20 @@ login never runs for those servers. Host-injected tokens stay ephemeral,
 independent of runtime OAuth storage. Unknown scopes require explicit consent
 rather than source fallback. The callback and tokens are excluded from invocation logs.
 
-The SDK hook is session-wide. Unmanaged requests are cancelled at the host
-boundary, then explicitly delegated to the same session's runtime OAuth login;
-initial sign-in and demand refresh retain runtime ownership. Readiness,
-cancellation and deadlines are invocation-scoped. Partial name/URL matches
-fail closed. `RequestRunner` omits `mcpOAuthTokenStorage`, retaining persistent
-generic OAuth in normal `copilot-cli` mode and isolated in-memory OAuth in SDK
-`empty` mode. Runtime regression fixtures verify restart reuse, refresh and
-host-token isolation through the native store; token JSON files alone do not
-prove vault state. Sessions without managed servers retain their provider-owned path.
+The SDK hook is session-wide. Startup passes the shared pending manager to chat
+executors only when the default-off, restart-required `mcpOauth.enabled` setting is
+true. Both initial and follow-up turns then provide the generic OAuth callback.
+Without that callback, managed Teams token requests still work, while unmanaged
+requests are cancelled without CoC-initiated runtime login or proactive probing.
+When enabled, unmanaged requests are cancelled at the host boundary and delegated
+to the same session's runtime OAuth login; initial sign-in and demand refresh retain
+runtime ownership. Readiness, cancellation and deadlines are invocation-scoped.
+Partial name/URL matches fail closed. `RequestRunner` omits `mcpOAuthTokenStorage`,
+retaining persistent generic OAuth in normal `copilot-cli` mode and isolated
+in-memory OAuth in SDK `empty` mode. Runtime regression fixtures verify restart
+reuse, refresh and host-token isolation through the native store; token JSON files
+alone do not prove vault state. Sessions without managed servers retain their
+provider-owned path.
 
 ## OAuth Auto-Refresh (Background)
 
