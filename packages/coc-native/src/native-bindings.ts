@@ -656,6 +656,15 @@ export declare function gitRangeResolveBaseRef(repoRoot: string, baseMode: strin
  */
 export declare function gitRangeUpstreamBranch(repoRoot: string): Promise<string | null>
 
+/** Read raw blob bytes by object ID, including blobs reachable only from the index. */
+export declare function gitReadBlob(repoRoot: string, sha: string, options: GitReadBlobOptions): Promise<Buffer>
+
+/** Options for a byte-exact, bounded blob read. Zero timeout disables the deadline. */
+export interface GitReadBlobOptions {
+  maxBytes: number
+  timeout?: number
+}
+
 /**
  * Read `git remote get-url <remote>` from configuration, with no child
  * process at all.

@@ -1,13 +1,13 @@
 /**
  * Running `git -C <repoRoot> <args>` for the rest of forge.
  *
- * There is one helper and it is async. It dispatches on where the repository
- * lives: WSL repos keep their `wsl.exe` shell-out here in TypeScript,
- * everything else runs in the native addon on a libuv worker. Nothing in forge
- * spawns git from the event-loop thread any more.
+ * Text and raw-byte helpers dispatch on where the repository lives: WSL
+ * repositories use `wsl.exe` in TypeScript; host repositories use the native
+ * addon on a libuv worker.
  */
 
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { spawn } from 'child_process';
 import { execFileAsync } from '../utils/exec-utils';
 import { ensureGitSafeDirectoryAsync } from './safe-directory';
 import {
@@ -31,6 +31,98 @@ export interface ExecGitOptions {
 
 const DEFAULT_MAX_BUFFER = 50 * 1024 * 1024; // 50 MB
 const DEFAULT_TIMEOUT = 30_000;               // 30 s
+
+export class GitBlobTooLargeError extends Error {
+    readonly code = 'GIT_BLOB_TOO_LARGE';
+
+    constructor(readonly maxBytes: number) {
+        super(`Git blob exceeds ${maxBytes} bytes`);
+        this.name = 'GitBlobTooLargeError';
+    }
+}
+
+export interface ReadGitBlobOptions {
+    maxBytes: number;
+    /** Milliseconds before termination; zero disables the deadline. */
+    timeout?: number;
+}
+
+/** Stream raw WSL output, terminating the child as soon as the byte cap is exceeded. */
+export function runGitViaWslBytes(
+    context: WslExecutionContext,
+    args: string[],
+    options: ReadGitBlobOptions,
+): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        const child = spawn(getWslExecutablePath(), buildWslCommandArgs(context, ['git', ...args]), {
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const chunks: Buffer[] = [];
+        let size = 0;
+        let stderr = Buffer.alloc(0);
+        let failure: Error | undefined;
+        const timeout = options.timeout ?? DEFAULT_TIMEOUT;
+        const timer = timeout > 0 ? setTimeout(() => {
+            failure ??= new Error(`git ${args.join(' ')} failed: timed out`);
+            child.kill();
+        }, timeout) : undefined;
+        child.stdout.on('data', (chunk: Buffer) => {
+            if (failure) return;
+            size += chunk.length;
+            if (size > options.maxBytes) {
+                failure = new GitBlobTooLargeError(options.maxBytes);
+                chunks.length = 0;
+                child.kill();
+                return;
+            }
+            chunks.push(chunk);
+        });
+        child.stderr.on('data', (chunk: Buffer) => {
+            // Diagnostics have a separate bound; they never consume the blob's budget.
+            stderr = Buffer.concat([stderr, chunk.subarray(0, Math.max(0, 64 * 1024 - stderr.length))]);
+        });
+        child.once('error', error => {
+            clearTimeout(timer);
+            reject(error);
+        });
+        child.once('close', code => {
+            clearTimeout(timer);
+            if (failure) reject(failure);
+            else if (code !== 0) reject(createGitExecError(args, { stderr }));
+            else resolve(Buffer.concat(chunks, size));
+        });
+    });
+}
+
+/** Read an object by SHA without decoding or trimming, including index-only blobs. */
+export async function readGitBlob(repoRoot: string, sha: string, options: ReadGitBlobOptions): Promise<Buffer> {
+    const timeout = options.timeout ?? DEFAULT_TIMEOUT;
+    for (const [name, value] of [['maxBytes', options.maxBytes], ['timeout', timeout]] as const) {
+        if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+            throw new RangeError(`${name} must be an unsigned 32-bit integer`);
+        }
+    }
+    const args = ['cat-file', 'blob', sha];
+    try {
+        await ensureGitSafeDirectoryAsync(repoRoot);
+    } catch (error) {
+        if (error instanceof NativeAddonLoadError) throw error;
+        throw createGitExecError(args, error);
+    }
+    const context = resolveWorkspaceExecutionContext(repoRoot);
+    if (context.kind === 'wsl') {
+        return runGitViaWslBytes(context, ['-C', translatePathForExecution(repoRoot, context), ...args], options);
+    }
+    try {
+        return await loadNativeGit().gitReadBlob(repoRoot, sha, { maxBytes: options.maxBytes, timeout });
+    } catch (error) {
+        if ((error as { code?: string })?.code === 'GIT_BLOB_TOO_LARGE') {
+            throw new GitBlobTooLargeError(options.maxBytes);
+        }
+        throw error;
+    }
+}
 
 /**
  * Render a failed git command the way routes and the UI already display it.
@@ -72,8 +164,7 @@ export interface WslGitOptions {
 /**
  * Run `git <args>` inside a WSL distro.
  *
- * The one git runner in forge that still starts a child process from Node, and
- * the only part of the move that stays in TypeScript: the native addon runs git
+ * WSL transport stays in TypeScript: the native addon runs git
  * on the host and never learns that WSL exists. `--cd` puts git in the
  * repository, so a caller only passes `-C` when it always has.
  *

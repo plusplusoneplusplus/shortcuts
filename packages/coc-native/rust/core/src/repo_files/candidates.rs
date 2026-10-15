@@ -140,7 +140,9 @@ fn directory_exclusion_pathspecs(options: &ContentSearchOptions) -> Vec<String> 
 fn candidate_error(error: GitError, limits: &GitCommandOptions) -> String {
     let detail = match error.kind {
         GitErrorKind::Timeout => format!("timed out after {} ms", limits.timeout_ms),
-        GitErrorKind::MaxBuffer => format!("output exceeded {} bytes", limits.max_buffer_bytes),
+        GitErrorKind::MaxBuffer | GitErrorKind::BlobTooLarge => {
+            format!("output exceeded {} bytes", limits.max_buffer_bytes)
+        }
         GitErrorKind::Spawn => "could not start or wait for Git".to_owned(),
         GitErrorKind::Exit(Some(code)) => format!("exit code {code}"),
         GitErrorKind::Exit(None) => "terminated without an exit code".to_owned(),

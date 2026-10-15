@@ -40,6 +40,10 @@ export {
 export {
     ExecGitOptions,
     execGitAsync,
+    readGitBlob,
+    GitBlobTooLargeError,
+    ReadGitBlobOptions,
+    runGitViaWslBytes,
     runGitViaWsl,
 } from './exec';
 
