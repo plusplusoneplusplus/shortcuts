@@ -519,6 +519,13 @@ recover on restart; interrupted running compactions settle as failed without rep
 
 ### Sentinel auto-compact
 
+`processes/compact-process.ts` resolves `SENTINEL_COMPACTION_INSTRUCTIONS` from
+authoritative `metadata.mode` for automatic and unfocused manual compaction. Nonblank
+manual instructions override it verbatim; ordinary chats retain provider defaults.
+Queued payloads and compaction metadata persist the resolved instruction. Copilot
+forwards it to the history RPC; Claude uses the native `/compact` argument; Codex
+ignores custom instructions and warns.
+
 `processes/auto-compact.ts` owns `metadata.autoCompact`, default off per conversation.
 The default `thresholdTokens` is 700000, a finite positive safe integer. The lifecycle
 runner's `onResponseCompleted` hook checks after a completed, persisted response and

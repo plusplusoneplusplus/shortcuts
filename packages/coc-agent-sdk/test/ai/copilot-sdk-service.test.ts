@@ -430,6 +430,22 @@ describe('CopilotSDKService - compactSession', () => {
         return { compact, disconnect, resumeSession, start, stop };
     }
 
+    it.each(['warm', 'cold'])('%s path forwards the exact Sentinel instruction to the compact RPC', async path => {
+        const instructions = 'Preserve Sentinel’s active goals, unresolved asks, decisions, blockers and next actions. Retain explicit authorizations, their scope, cancellations and superseding instructions. Keep exact owner/workspace/conversation IDs and to-do/job IDs, links and status. Distinguish proposed, authorized, attempted, completed, failed and cancelled work. Never infer permission or success; remove stale details and duplication.';
+        let compact: ReturnType<typeof vi.fn>;
+        if (path === 'warm') {
+            const fixture = makeCompactSession({ success: true });
+            compact = fixture.compact;
+            parkWarmHandle(vi.fn().mockResolvedValue(fixture.session));
+        } else {
+            compact = setupColdCompact({ success: true }).compact;
+        }
+
+        await service.compactSession('sess-sentinel', instructions);
+
+        expect(compact).toHaveBeenCalledExactlyOnceWith({ customInstructions: instructions });
+    });
+
     it('cold fallback: cold-starts a throwaway client, compacts, and stops it', async () => {
         const { compact, disconnect, resumeSession, start, stop } = setupColdCompact({
             success: true,
