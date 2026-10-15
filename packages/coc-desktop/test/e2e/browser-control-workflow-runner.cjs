@@ -6,7 +6,7 @@ const { app, BrowserWindow, Menu, nativeImage } = require('electron');
 const { buildSync } = require('esbuild');
 const { createServer } = require('node:http');
 const childProcess = require('node:child_process');
-const { readFileSync, writeFileSync } = require('node:fs');
+const { existsSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
 process.on('uncaughtException', error => {
@@ -88,7 +88,7 @@ const server = createServer((req, res) => {
 const ws = new ProcessWebSocketServer();
 ws.browserControl.setEnabledGetter(() => fixtureConfig.browserControl.enabled);
 ws.attach(server);
-const browserState = new BrowserToolStateStore();
+const browserState = new BrowserToolStateStore(path.join(data, 'coc-data'));
 let lastBrowserResult;
 const executeBrowser = ws.browserControl.execute.bind(ws.browserControl);
 ws.browserControl.execute = async (...args) => {
@@ -200,11 +200,16 @@ app.whenReady().then(async () => {
         return viewport.pixelRatio >= 2 && viewport.physicalWidth > 1280 ? viewport : false;
     }, 'high-DPI viewport exceeding the unscaled screenshot budget');
     const browserTool = context.tools.find(tool => tool.name === 'browser');
-    const nativeScreenshot = await browserTool.handler({ action: 'screenshot' });
+    // Screenshots always save to a workspace-scoped file; pixels attach only on request.
+    const nativeScreenshot = await browserTool.handler({ action: 'screenshot', view: true });
     const nativeBinary = nativeScreenshot.binaryResultsForLlm?.[0];
-    assert(nativeScreenshot.resultType === 'success' && nativeBinary?.mimeType === 'image/jpeg', 'Native tool screenshot failed');
+    assert(nativeScreenshot.resultType === 'success' && nativeBinary?.mimeType === 'image/jpeg',
+        `Native tool screenshot failed: ${nativeScreenshot.textResultForLlm}`);
+    const savedScreenshot = nativeScreenshot.textResultForLlm.match(/saved: !\[screenshot\]\(<([^>]+)>\)/)?.[1];
+    assert(savedScreenshot && existsSync(savedScreenshot)
+        && readFileSync(savedScreenshot).equals(Buffer.from(nativeBinary.data, 'base64')), 'Native screenshot file was not saved');
     const mcpRuntime = new CocToolRuntime(context.tools, { workspaceId: 'workspace-a', processId: 'conversation-a' });
-    const mcpScreenshot = await mcpRuntime.callTool('browser', { action: 'screenshot' });
+    const mcpScreenshot = await mcpRuntime.callTool('browser', { action: 'screenshot', view: true });
     const mcpBinary = mcpScreenshot.content.find(block => block.type === 'image');
     assert(!mcpScreenshot.isError && mcpBinary?.mimeType === nativeBinary.mimeType
         && mcpScreenshot.content[0].type === 'text', 'Provider-neutral runtime discarded the live screenshot');
