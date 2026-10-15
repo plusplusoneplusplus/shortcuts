@@ -661,10 +661,12 @@ async function peekIndexedDefinition(
 }
 
 test.describe('Explorer deterministic LSP completion', () => {
-    async function openCompletionEditor(page: Page, serverUrl: string, tmpDir: string, extension: string): Promise<void> {
+    async function openCompletionEditor(
+        page: Page, serverUrl: string, tmpDir: string, extension: string, completionMode = 'items',
+    ): Promise<void> {
         const repoDir = path.join(tmpDir, 'completion-repo');
         fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
-        fs.writeFileSync(path.join(repoDir, 'src', `app.${extension}`), 'documentFallbackWord\n\n');
+        fs.writeFileSync(path.join(repoDir, 'src', `app.${extension}`), 'documentFallbackWord srvDocumentWord\n\n');
         await seedWorkspace(serverUrl, WORKSPACE_ID, 'completion-repo', repoDir);
         await enableExplorerEditorTabs(serverUrl);
         const languages: Record<string, string> = {
@@ -689,6 +691,8 @@ test.describe('Explorer deterministic LSP completion', () => {
                     args: [path.join(__dirname, 'fixtures', 'completion-lsp.cjs')],
                     rootMarkers: [],
                     priority: 1000,
+                    initializationOptions: { completionMode },
+                    requestTimeoutMs: 2000,
                 }],
             }),
         });
@@ -709,7 +713,7 @@ test.describe('Explorer deterministic LSP completion', () => {
                 await page.keyboard.type('srv');
                 await expect(widget).toBeVisible();
                 await expect(widget.getByText('srvWidget', { exact: true })).toBeVisible();
-                await expect(widget.getByText('documentFallbackWord', { exact: true })).toHaveCount(0);
+                await expect(widget.getByText('srvDocumentWord', { exact: true })).toHaveCount(0);
                 await page.keyboard.press('Tab');
                 await expect.poll(() => caretLineText(page, APP_PANEL)).toBe('srvWidget');
                 await page.keyboard.type('.');
@@ -740,6 +744,24 @@ test.describe('Explorer deterministic LSP completion', () => {
             safeRmSync(tmpDir);
         }
     });
+
+    for (const mode of ['empty', 'unsupported', 'error', 'timeout']) {
+        test(`${mode} server completion falls back to current-document words`, async ({ page, serverUrl }) => {
+            const tmpDir = makeTmpDir();
+            try {
+                await openCompletionEditor(page, serverUrl, tmpDir, 'ts', mode);
+                await page.keyboard.type('documentFall');
+                const widget = page.locator(`${APP_PANEL} .suggest-widget`);
+                await expect(widget).toBeVisible({ timeout: 10_000 });
+                await expect(widget.getByText('documentFallbackWord', { exact: true })).toBeVisible();
+                await expect(widget.getByText('srvWidget', { exact: true })).toHaveCount(0);
+                await page.keyboard.press('Tab');
+                await expect.poll(() => caretLineText(page, APP_PANEL)).toBe('documentFallbackWord');
+            } finally {
+                safeRmSync(tmpDir);
+            }
+        });
+    }
 });
 
 // ---------------------------------------------------------------------------

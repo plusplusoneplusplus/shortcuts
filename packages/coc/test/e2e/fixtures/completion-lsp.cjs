@@ -1,6 +1,7 @@
 // A deterministic stdio LSP: deliberately reject Monaco's zero-based trigger kinds.
 const documents = new Map();
 let buffer = Buffer.alloc(0);
+let mode = 'items';
 
 function reply(id, result, error) {
     const body = JSON.stringify({ jsonrpc: '2.0', id, ...(error ? { error } : { result }) });
@@ -10,10 +11,11 @@ function reply(id, result, error) {
 function handle(message) {
     const { id, method, params } = message;
     if (method === 'initialize') {
+        mode = params.initializationOptions?.completionMode ?? 'items';
         reply(id, {
             capabilities: {
                 textDocumentSync: 1,
-                completionProvider: { triggerCharacters: ['.'] },
+                ...(mode === 'unsupported' ? {} : { completionProvider: { triggerCharacters: ['.'] } }),
             },
         });
     } else if (method === 'textDocument/didOpen') {
@@ -31,6 +33,15 @@ function handle(message) {
         const text = documents.get(params.textDocument.uri);
         if (typeof text !== 'string') {
             reply(id, null, { code: -32602, message: 'Document is not open' });
+            return;
+        }
+        if (mode === 'timeout') return;
+        if (mode === 'error') {
+            reply(id, null, { code: -32603, message: 'Fixture completion failure' });
+            return;
+        }
+        if (mode === 'empty') {
+            reply(id, { isIncomplete: false, items: [] });
             return;
         }
         const { line, character } = params.position;
