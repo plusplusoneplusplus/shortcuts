@@ -1187,6 +1187,7 @@ timeout: 300
                 '  sentinelPrOutcomeWake: true',
                 '  sentinelResultCards: true',
                 '  sentinelTodoDependencies: true',
+                '  sentinelTodoExternalReferences: true',
                 '  sentinelTodoScrubber: true',
                 '  sentinelTodoTags: true',
                 '  toolScripting: true',
@@ -1258,7 +1259,7 @@ timeout: 300
 
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake',
-            'railManualRefresh', 'railStatusActions',
+            'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1559,6 +1560,7 @@ timeout: 300
                     "sentinelPrOutcomeWake": false,
                     "sentinelResultCards": true,
                     "sentinelTodoDependencies": false,
+                    "sentinelTodoExternalReferences": false,
                     "sentinelTodoScrubber": false,
                     "sentinelTodoTags": false,
                     "sessionContextAttachments": true,
@@ -1791,6 +1793,7 @@ timeout: 300
                   "features.sentinelPrOutcomeWake": "default",
                   "features.sentinelResultCards": "default",
                   "features.sentinelTodoDependencies": "default",
+                  "features.sentinelTodoExternalReferences": "default",
                   "features.sentinelTodoScrubber": "default",
                   "features.sentinelTodoTags": "default",
                   "features.sessionContextAttachments": "default",

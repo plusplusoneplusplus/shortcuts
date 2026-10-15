@@ -191,10 +191,15 @@ describe('Sentinel dependency graph storage', () => {
         const a = create('A');
         const b = create('B');
         const moduleFile = path.join(database.dataDir, 'store.cjs');
-        await build({
+        const { metafile } = await build({
             entryPoints: [fileURLToPath(new URL('../../../src/server/sentinel-todos/sentinel-todo-store.ts', import.meta.url))],
             outfile: moduleFile, bundle: true, packages: 'external', platform: 'node', format: 'cjs', target: 'es2022',
+            alias: { '@plusplusoneplusplus/coc-client': fileURLToPath(new URL('../../../../coc-client/src/index.ts', import.meta.url)) },
+            metafile: true,
         });
+        expect(Object.values(metafile.outputs).flatMap(output => output.imports)).not.toContainEqual(
+            expect.objectContaining({ path: '@plusplusoneplusplus/coc-client', external: true }),
+        );
         const workers = [a, b].map((item, index) => new Worker(`
             const { parentPort, workerData } = require('node:worker_threads');
             const { NativeDatabase } = require('@plusplusoneplusplus/coc-native');

@@ -100,9 +100,11 @@ describe('mountDiffLanguageModel', () => {
         return { view, fm, fe, m, cleanup };
     }
 
-    it('registers hover and definition providers for the model language', () => {
+    it('registers hover, definition and document-word completion providers for the model language', () => {
         const { fm } = mount();
-        expect(fm.live().map(r => `${r.kind}:${r.languageId}`)).toEqual(['hover:typescript', 'definition:typescript']);
+        expect(fm.live().map(r => `${r.kind}:${r.languageId}`)).toEqual([
+            'hover:typescript', 'definition:typescript', 'completion:typescript',
+        ]);
     });
 
     it('hover goes to the server through the shared document and only for this model', async () => {
@@ -158,14 +160,24 @@ describe('mountDiffLanguageModel', () => {
         expect(onNavigate).not.toHaveBeenCalled();
     });
 
-    it('registers nothing for features the server does not advertise', () => {
-        const view = store.open({ path: 'src/a.ts', text: 'x' });
-        client.get('src/a.ts').attach({ state: readyState({ textDocumentSync: 1 }) });
+    it('keeps only document-word completion when the server advertises no language features', async () => {
+        const view = store.open({ path: 'src/a.ts', text: 'sharedWord\nsha' });
+        const attachment = client.get('src/a.ts');
+        attachment.attach({ state: readyState({ textDocumentSync: 1 }) });
         const fm = fakeMonaco();
-        const context = { editor: fakeEditor().editor, monaco: fm.monaco, model: model() } as unknown as DiffLanguageMountContext;
+        const m = model();
+        const context = { editor: fakeEditor().editor, monaco: fm.monaco, model: m } as unknown as DiffLanguageMountContext;
         const cleanup = mountDiffLanguageModel({ ...context, view, workspaceId: 'ws-1', languageId: 'typescript', loadSource: async () => '' });
-        expect(fm.live()).toEqual([]);
+        expect(fm.live().map(entry => entry.kind)).toEqual(['completion']);
+        const completion = fm.live()[0].provider;
+        const result = await completion.provideCompletionItems(m, { lineNumber: 2, column: 4 }, { triggerKind: 0 }, token());
+        expect(result.suggestions).toEqual([expect.objectContaining({ label: 'sharedWord', insertText: 'sharedWord' })]);
+        expect(attachment.lastRequest('textDocument/completion')).toBeUndefined();
+        expect(await completion.provideCompletionItems(
+            model('coc-diff-ref://ws-1/INDEX/src/a.ts'), { lineNumber: 2, column: 4 }, { triggerKind: 0 }, token(),
+        )).toBeNull();
         cleanup();
+        expect(fm.live()).toEqual([]);
     });
 });
 

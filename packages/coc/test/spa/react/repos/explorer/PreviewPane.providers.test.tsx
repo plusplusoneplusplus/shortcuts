@@ -309,7 +309,7 @@ describe('PreviewPane — language providers (AC-03)', () => {
         const attachment = await attachmentFor('src/a.ts');
         attachWith(attachment, { textDocumentSync: 1, hoverProvider: true });
 
-        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toEqual(['hover']));
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toEqual(['hover', 'completion']));
         expect(cueStub.live()).toHaveLength(0);
     });
 
@@ -601,7 +601,10 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect(monacoStub.live()).toHaveLength(0);
     });
 
-    it('drops a provider the replacement server no longer advertises', async () => {
+    it('drops unsupported server providers but retains document-word completion after replacement', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: 'const repeatableWord = 1;\nrep', encoding: 'utf-8', mimeType: 'text/plain',
+        });
         renderPane();
         const attachment = await attachmentFor('src/a.ts');
         attachWith(attachment);
@@ -611,7 +614,12 @@ describe('PreviewPane — language providers (AC-03)', () => {
         // with a smaller feature set; the registration follows it down.
         act(() => { attachment.status(readyState({ textDocumentSync: 1, hoverProvider: true })); });
 
-        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toEqual(['hover']));
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toEqual(['hover', 'completion']));
+        const result = await monacoStub.provider('completion').provideCompletionItems(
+            monacoStub.model, { lineNumber: 2, column: 4 }, { triggerKind: 0 }, token,
+        );
+        expect(result.suggestions).toEqual([expect.objectContaining({ label: 'repeatableWord', insertText: 'repeatableWord' })]);
+        expect(attachment.lastRequest('textDocument/completion')).toBeUndefined();
     });
 
     it('disposes the registrations when the pane goes away', async () => {
