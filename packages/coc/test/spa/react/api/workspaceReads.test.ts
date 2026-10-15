@@ -9,6 +9,12 @@ function makeClient(baseUrl = '') {
     return { client: new CocClient({ baseUrl, fetch }), fetch };
 }
 
+it('manual Git refresh bypasses the server cache on the owning endpoint', async () => {
+    const { client, fetch } = makeClient('https://owner.example');
+    await readWorkspaceGitInfo(client, 'ws-one', true);
+    expect(String(fetch.mock.calls[0][0])).toBe('https://owner.example/api/workspaces/ws-one/git-info?refresh=true');
+});
+
 describe.each([
     ['Git info', readWorkspaceGitInfo],
     ['queue', readWorkspaceQueue],

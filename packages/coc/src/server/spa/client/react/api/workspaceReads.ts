@@ -11,7 +11,7 @@ export function workspaceReadCacheKey(workspaceId: string, source?: string): str
     return JSON.stringify([source, workspaceId]);
 }
 
-function shareWorkspaceRead<T>(read: (client: CocClient, workspaceId: string) => Promise<T>) {
+function shareWorkspaceRead<T>(read: (client: CocClient, workspaceId: string, refresh: boolean) => Promise<T>) {
     type ReadGroup = { pending?: Promise<T>; latest?: Promise<T>; active: number };
     const pendingByClient = new WeakMap<CocClient, Map<string, ReadGroup>>();
     const sharedRead = (client: CocClient, workspaceId: string, refresh = false): Promise<T> => {
@@ -29,7 +29,7 @@ function shareWorkspaceRead<T>(read: (client: CocClient, workspaceId: string) =>
         const requests = pending;
         const current = group;
         current.active++;
-        const promise: Promise<T> = read(client, workspaceId).then(
+        const promise: Promise<T> = read(client, workspaceId, refresh).then(
             value => current.latest && current.latest !== promise ? current.latest : value,
             error => {
                 if (current.latest && current.latest !== promise) return current.latest;
@@ -53,7 +53,9 @@ function shareWorkspaceRead<T>(read: (client: CocClient, workspaceId: string) =>
 
 // Refreshes supersede pending snapshots, including results awaited by older readers.
 export const readWorkspaceGitInfo = shareWorkspaceRead(
-    (client, workspaceId) => client.workspaces.gitInfo(workspaceId),
+    (client, workspaceId, refresh) => refresh
+        ? client.workspaces.gitInfo(workspaceId, { refresh: true })
+        : client.workspaces.gitInfo(workspaceId),
 );
 
 export const readWorkspaceQueue = shareWorkspaceRead(

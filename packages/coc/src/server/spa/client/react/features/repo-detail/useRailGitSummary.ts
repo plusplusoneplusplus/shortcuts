@@ -3,7 +3,7 @@
  *
  * A repo reads its `git-info` (shared through `api/workspaceReads.ts`) and its
  * working tree; a group reads one `git-info` batch for its live members. Reads
- * run on mount, owner change, preview open and when `ReposContext` refreshes
+ * run on mount, owner change, preview open, manual sidebar refresh and when `ReposContext` refreshes
  * the owner's git-info after a `git-changed` event — never on a timer. Owner
  * changes and unmount discard late responses; unresolved remote owners read
  * nothing and stay unavailable.
@@ -73,18 +73,23 @@ export function useRepoRailGit({ client, routingRef, enabled, workspaceId }: Own
     const { value, setState, generation } = useOwnerRead(ownerKey, initial, { info: UNAVAILABLE, tree: UNAVAILABLE }, unresolved);
     const version = useOwnerGitInfoVersion([workspaceId], baseUrl);
 
-    const read = useCallback((refresh: boolean) => {
-        if (!enabled || unresolved) return;
+    const read = useCallback(async (refresh: boolean, reportErrors = false) => {
+        if (unresolved) {
+            if (reportErrors) throw new Error('The owning server is unavailable for Git status.');
+            return;
+        }
+        if (!enabled && !reportErrors) return;
         const current = ++generation.current;
         setState(prev => {
             const base = prev.key === ownerKey ? prev.value : initial;
             return { key: ownerKey, value: { info: { ...base.info, loading: true }, tree: { ...base.tree, loading: true } } };
         });
-        void Promise.allSettled([
+        const results = await Promise.allSettled([
             readWorkspaceGitInfo(client, workspaceId, refresh),
-            client.git.getWorkingTreeChanges(workspaceId),
-        ]).then(([info, tree]) => {
-            if (current !== generation.current) return;
+            refresh ? client.git.getWorkingTreeChanges(workspaceId, { refresh: true }) : client.git.getWorkingTreeChanges(workspaceId),
+        ]);
+        const [info, tree] = results;
+        if (current === generation.current) {
             setState(prev => prev.key !== ownerKey ? prev : {
                 key: ownerKey,
                 value: {
@@ -92,13 +97,17 @@ export function useRepoRailGit({ client, routingRef, enabled, workspaceId }: Own
                     tree: settle(prev.value.tree, tree, summarizeWorkingTree),
                 },
             });
-        });
+        }
+        if (reportErrors) {
+            const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (errors.length) throw new Error(`Git status: ${errors.map(result => result.reason instanceof Error ? result.reason.message : String(result.reason)).join('; ')}`);
+        }
         // `initial` is rebuilt each render; its content is constant.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [enabled, unresolved, ownerKey, client, workspaceId, generation, setState]);
 
-    useEffect(() => { read(false); }, [read, version]);
-    const refresh = useCallback(() => read(true), [read]);
+    useEffect(() => { void read(false); }, [read, version]);
+    const refresh = useCallback((reportErrors = false) => read(true, reportErrors), [read]);
     return { input: value, refresh };
 }
 
@@ -112,8 +121,12 @@ export function useGroupRailGit({ client, routingRef, enabled, members }: OwnerO
     const { value, setState, generation } = useOwnerRead(ownerKey, initial, { read: UNAVAILABLE }, unresolved);
     const version = useOwnerGitInfoVersion(liveIds, baseUrl);
 
-    const read = useCallback(() => {
-        if (!enabled || unresolved || members === undefined) return;
+    const read = useCallback(async (reportErrors = false) => {
+        if (unresolved || members === undefined) {
+            if (reportErrors) throw new Error('Git status: the owning server or group members are unavailable.');
+            return;
+        }
+        if (!enabled && !reportErrors) return;
         const ids = idsKey ? idsKey.split('\u0000') : [];
         const current = ++generation.current;
         if (ids.length === 0) {
@@ -121,16 +134,23 @@ export function useGroupRailGit({ client, routingRef, enabled, members }: OwnerO
             return;
         }
         setState(prev => ({ key: ownerKey, value: { read: { ...(prev.key === ownerKey ? prev.value.read : IDLE), loading: true } } }));
-        void Promise.allSettled([client.workspaces.gitInfoBatch(ids)]).then(([batch]) => {
-            if (current !== generation.current) return;
+        const [batch] = await Promise.allSettled([reportErrors
+            ? client.workspaces.gitInfoBatch(ids, { refresh: true, trigger: 'manual-refresh' })
+            : client.workspaces.gitInfoBatch(ids)]);
+        const failed = batch.status === 'fulfilled' ? ids.filter(id => !batch.value.results?.[id]) : ids;
+        if (current === generation.current) {
             setState(prev => prev.key !== ownerKey ? prev : {
                 key: ownerKey,
-                value: { read: settle(prev.value.read, batch, data => data?.results ?? {}) },
+                value: { read: settle(prev.value.read, batch, data => data.results) },
             });
-        });
+        }
+        if (reportErrors) {
+            if (batch.status === 'rejected') throw batch.reason;
+            if (failed.length) throw new Error(`Git status unavailable for ${failed.length} group member(s).`);
+        }
     }, [enabled, unresolved, members, idsKey, ownerKey, client, generation, setState]);
 
-    useEffect(() => { read(); }, [read, version]);
+    useEffect(() => { void read(); }, [read, version]);
 
     const input = useMemo<GroupRailGitInput>(() => {
         const results = value.read.data;

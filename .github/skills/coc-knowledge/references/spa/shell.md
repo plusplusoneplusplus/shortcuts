@@ -412,8 +412,18 @@ the sidebar; row actions stay collapsed, and `queueJobHash` preserves owner rout
 
 `features.railGitSummary` (default off) adds changes, sync and branch-spine tiles
 through `SplitWorkspacePanel`'s `railGit` slot, reusing `RailHoverPreview`.
-Repos read git-info plus working-tree changes from their owner; groups batch
-member git-info on the group's server and list each member's own branch.
+Hosts own `useRailGitSummary`'s status readers and pass their state to the rail
+views. Repos read git-info plus working-tree changes from their owner; groups
+batch member git-info on the group's server and list each member's own branch.
+`RepoChatTab.handleRefresh` shares expanded and collapsed refresh duties,
+awaiting chats, full pins, aggregate feeds and the host's Git reader independently.
+Manual Git reads work with tiles disabled, bypass server freshness/backoff,
+and reject failures rather than returning cached or empty success.
+`git/changes?refresh=true` selects Forge's strict working-tree status read;
+ordinary working-tree callers retain their existing error policy.
+Busy covers every domain; partial errors retain successful reads and report
+through the existing toast. Refresh preserves drafts, selection, filters, scroll
+and collapse without navigation, Git fetch/pull or scheduling mutations.
 Changes count distinct paths with conflicts first; sync compares only against the
 reported `upstream`. Unknown, failed, detached and no-upstream states never render
 clean or 0/0. Reads run on mount, owner change, preview open and `ReposContext`

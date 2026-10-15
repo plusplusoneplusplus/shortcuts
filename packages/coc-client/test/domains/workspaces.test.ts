@@ -3,6 +3,17 @@ import { WorkspacesClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('WorkspacesClient', () => {
+  it('serializes fresh status reads for one repository and a member batch', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+    await client.gitInfo('repo/a', { refresh: true });
+    await client.gitInfoBatch(['repo/a', 'repo/b'], { refresh: true, trigger: 'manual-refresh' });
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/repo%2Fa/git-info', options: { query: { refresh: true } } },
+      { path: '/git-info/batch', options: { method: 'POST', body: { workspaceIds: ['repo/a', 'repo/b'], refresh: true, trigger: 'manual-refresh' }, signal: undefined } },
+    ]);
+  });
+
   it('calls workspace list, registration, discovery, git info, and history routes', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkspacesClient(adapter);

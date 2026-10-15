@@ -83,6 +83,39 @@ describe('GitInfoCacheService', () => {
 
     // ── Stale hit ─────────────────────────────────────────────────────────────
 
+    it('manual refresh bypasses a fresh cache and coalesces concurrent refreshes', async () => {
+        cache.start(fetchFn, activeIds([]));
+        await cache.getOrFetch('ws-a');
+        fetchFn.mockResolvedValue(RESULT_B);
+        const values = await Promise.all([cache.getOrFetch('ws-a', true), cache.getOrFetch('ws-a', true)]);
+        expect(values).toEqual([RESULT_B, RESULT_B]);
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+        expect(await cache.getOrFetch('ws-a')).toEqual(RESULT_B);
+    });
+
+    it('manual refresh waits out a pre-existing read and reads status again', async () => {
+        let finish!: (value: GitInfoResult) => void;
+        fetchFn.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue(RESULT_B);
+        cache.start(fetchFn, activeIds([]));
+        const old = cache.getOrFetch('ws-a');
+        const fresh = cache.getOrFetch('ws-a', true);
+        finish(RESULT_A);
+        expect(await old).toEqual(RESULT_A);
+        expect(await fresh).toEqual(RESULT_B);
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['throw', 'unavailable'])('manual refresh rejects %s status without returning a cached/empty success and bypasses retry backoff', async failure => {
+        cache.start(fetchFn, activeIds([]));
+        await cache.getOrFetch('ws-a');
+        if (failure === 'throw') fetchFn.mockRejectedValueOnce(new Error('status failed'));
+        else fetchFn.mockResolvedValueOnce({ data: RESULT_A, gitProcessCount: 1, gitDurationMs: 1, error: true });
+        await expect(cache.getOrFetch('ws-a', true)).rejects.toThrow('Could not read Git status');
+        fetchFn.mockResolvedValue(RESULT_B);
+        expect(await cache.getOrFetch('ws-a', true)).toEqual(RESULT_B);
+        expect(fetchFn).toHaveBeenCalledTimes(3);
+    });
+
     it('re-fetches when entry is stale (age > STALE_THRESHOLD_MS)', async () => {
         // Empty active set: isolate getOrFetch staleness from any background tick.
         cache.start(fetchFn, activeIds([]));

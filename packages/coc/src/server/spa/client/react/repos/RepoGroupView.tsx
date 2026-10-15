@@ -22,12 +22,13 @@
  * not here — the Workspace tab is the chat and nothing else.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { RefreshSidebarButton } from '../features/chat/RefreshSidebarButton';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
-import { GroupRailGit } from '../features/repo-detail/RailGitSummary';
+import { GroupRailGitView } from '../features/repo-detail/RailGitSummary';
+import { useGroupRailGit } from '../features/repo-detail/useRailGitSummary';
 import { useRailGitSummaryEnabled } from '../hooks/feature-flags/useRailGitSummaryEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
@@ -42,6 +43,7 @@ import { useCocClient } from './cloneRouting';
 import { workspaceReadSource } from '../api/workspaceReads';
 import { StatusActions } from '../layout/StatusActions';
 import { useReposOptional } from '../contexts/ReposContext';
+import { ToastContext } from '../contexts/ToastContext';
 import { resolveRepoGroupName, resolveRepoGroupDisplayName } from './repoGroupName';
 import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
@@ -218,13 +220,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const unresolvedAggregateOwner = aggregatedChats && !!parseRemoteCloneKey(selectionId) && !groupBaseUrl;
     const unavailableRefreshFlight = useRef(false);
     const [unavailableRefreshing, setUnavailableRefreshing] = useState(false);
-    const refreshUnavailableGroup = useCallback(async () => {
-        if (unavailableRefreshFlight.current) return;
-        unavailableRefreshFlight.current = true;
-        setUnavailableRefreshing(true);
-        try { await chatFeed.refresh(); }
-        finally { unavailableRefreshFlight.current = false; setUnavailableRefreshing(false); }
-    }, [chatFeed.refresh]);
     const memberChat = useRepoGroupChatSelection(selectionId, aggregatedChats);
     const memberRow = chatFeed.model && memberChat.selectedKey
         ? allRepoGroupChatRows(chatFeed.model).find(row => row.key === memberChat.selectedKey)
@@ -238,6 +233,22 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         !aggregatedChats || !parseRemoteCloneKey(selectionId) || !!groupBaseUrl);
     const splitGitAvailable = isMobile || members === undefined || members.some(member => !member.stale);
     const railGitEnabled = useRailGitSummaryEnabled();
+    const railGitStatus = useGroupRailGit({ client: queueClient, routingRef: selectionId, members, enabled: railGitEnabled });
+    const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
+    const toast = useContext(ToastContext);
+    const refreshUnavailableGroup = useCallback(async () => {
+        if (unavailableRefreshFlight.current) return;
+        unavailableRefreshFlight.current = true;
+        setUnavailableRefreshing(true);
+        try {
+            const results = await Promise.allSettled([chatFeed.refresh(), refreshSidebarGit()]);
+            const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (errors.length) toast?.addToast(`Could not refresh sidebar: ${errors.map(result => result.reason instanceof Error ? result.reason.message : String(result.reason)).join('; ')}`, 'error');
+        } finally {
+            unavailableRefreshFlight.current = false;
+            setUnavailableRefreshing(false);
+        }
+    }, [chatFeed.refresh, refreshSidebarGit, toast]);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
@@ -359,12 +370,13 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:${activeTab}`,
                                 }}
                                 railGit={railGitEnabled && splitGitAvailable ? (
-                                    <GroupRailGit
+                                    <GroupRailGitView
                                         key={`${selectionId}:${workspaceReadSource(queueClient)}`}
                                         selectionId={selectionId}
                                         routingRef={selectionId}
                                         client={queueClient}
                                         members={members}
+                                        status={railGitStatus}
                                         scopeLabel={`${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group`}
                                     />
                                 ) : undefined}
@@ -397,6 +409,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}
                                         refreshList={aggregatedChats ? chatFeed.refresh : undefined}
+                                        refreshGit={refreshSidebarGit}
                                         detailOverride={memberChat.selection ? (
                                             <RepoGroupMemberChatDetail
                                                 selection={memberChat.selection}

@@ -113,6 +113,14 @@ describe('Git Working Tree Edge Cases', () => {
 
     const base = () => `http://127.0.0.1:${port}`;
 
+    it('manual status reads require working-tree errors to propagate', async () => {
+        mockGetAllChanges.mockRejectedValueOnce(new Error('Git status unavailable'));
+        const response = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/changes?refresh=true`);
+        expect(response.status).toBe(500);
+        expect(mockGetAllChanges).toHaveBeenCalledWith(WORKSPACE_ROOT, { includeStats: true, throwOnError: true });
+        expect(response.json()).not.toHaveProperty('changes');
+    });
+
     beforeAll(async () => {
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([

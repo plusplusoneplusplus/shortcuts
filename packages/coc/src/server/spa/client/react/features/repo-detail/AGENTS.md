@@ -97,11 +97,17 @@ come from owner-verified compact snapshots; unknown modes are omitted and Ralph
 session identity is preserved. Nonzero count controls expand the left column
 when selected. `features.railManualRefresh` (default on, Appearance) gates
 `RefreshSidebarButton`; `RepoChatTab.handleRefresh` shares the expanded list's
-queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read and
-an optional `refreshList` for aggregate groups. Reads retain owner/source and
-reject superseded/live-stale snapshots; unavailable owners report errors without
-local fallback. Refresh keeps navigation, selection and collapse state and never
-mutates scheduling. Missing config/bootstrap settings enable refresh; explicit
+queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read,
+an optional `refreshList` for aggregate groups and the host's `refreshGit`.
+Hosts own `useRepoRailGit`/`useGroupRailGit` and supply their status to rail
+views; manual refresh reads Git even with tiles disabled or the sidebar expanded.
+Git-info single/batch reads bypass server freshness/backoff and report failures;
+groups read live members on their owner, never their virtual root.
+Independent domains settle before busy clears and report partial errors. Reads
+retain owner/source and reject superseded/live-stale snapshots; unavailable
+owners report errors without local fallback. Refresh preserves drafts, navigation,
+selection and collapse state and never fetches, pulls or mutates Git or scheduling.
+Missing config/bootstrap settings enable refresh; explicit
 saved false disables it. With `features.railGitSummary`
 on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
 below them through the panel's `railGit` slot, mounted only while collapsed;

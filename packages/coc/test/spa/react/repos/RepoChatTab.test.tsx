@@ -3086,7 +3086,7 @@ describe('RepoChatTab: manual rail refresh', () => {
     it('defaults on and tracks explicit live opt-out and opt-in changes', async () => {
         delete (window as any).__DASHBOARD_CONFIG__;
         await renderTab('ws-1', undefined, props());
-        expect(refresh()).toHaveAttribute('title', 'Refresh sidebar');
+        expect(refresh()).toHaveAttribute('title', 'Refresh chats and Git status');
         const { DASHBOARD_CONFIG_UPDATED_EVENT } = await import('../../../../src/server/spa/client/react/utils/config');
         act(() => {
             (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: false };
@@ -3097,7 +3097,7 @@ describe('RepoChatTab: manual rail refresh', () => {
             (window as any).__DASHBOARD_CONFIG__ = { railManualRefreshEnabled: true };
             window.dispatchEvent(new Event(DASHBOARD_CONFIG_UPDATED_EVENT));
         });
-        expect(refresh()).toHaveAttribute('title', 'Refresh sidebar');
+        expect(refresh()).toHaveAttribute('title', 'Refresh chats and Git status');
     });
 
     it('sits directly before Sentinel, reloads rail data, and preserves chat/route/scroll', async () => {
@@ -3138,6 +3138,50 @@ describe('RepoChatTab: manual rail refresh', () => {
         expect(refresh().querySelector('svg')).toHaveClass('motion-safe:animate-spin');
         expect(mockFetchApi.mock.calls.filter(([url]) => url.includes('/queue?')).length).toBe(1);
         await act(async () => finish({ entries: [] }));
+        expect(refresh()).not.toBeDisabled();
+    });
+
+    it.each(['refresh-btn', 'split-workspace-left-refresh'])('shares chats and Git refresh from %s, preserving drafts, filters and collapse', async buttonId => {
+        const refreshGit = vi.fn(async () => {});
+        localStorage.setItem(ws1CollapsedKey, 'true');
+        const result = await renderTab('ws-1', undefined, props('ws-1', { refreshGit, detailContainer: host, detailActive: true }));
+        const draft = document.createElement('textarea');
+        draft.value = 'Unsaved draft';
+        result.container.appendChild(draft);
+        act(() => latestList().onSearchQueryChange('kept filter'));
+        mockFetchApi.mockClear();
+        await act(async () => fireEvent.click(screen.getByTestId(buttonId)));
+        expect(refreshGit).toHaveBeenCalledTimes(1);
+        expect(mockFetchApi).toHaveBeenCalledWith('/queue?repoId=ws-1');
+        expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/history?limit=100&offset=0');
+        expect(mockDetailPane.mock.calls.at(-1)![0].searchHighlightQuery).toBe('kept filter');
+        expect(draft.value).toBe('Unsaved draft');
+        expect(localStorage.getItem(ws1CollapsedKey)).toBe('true');
+    });
+
+    it('keeps the shared refresh busy through Git and coalesces repeated expanded/rail clicks', async () => {
+        let finish!: () => void;
+        const refreshGit = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        await renderTab('ws-1', undefined, props('ws-1', { refreshGit }));
+        act(() => { fireEvent.click(refresh()); fireEvent.click(screen.getByTestId('refresh-btn')); });
+        await waitFor(() => expect(refresh()).toBeDisabled());
+        expect(refreshGit).toHaveBeenCalledTimes(1);
+        await act(async () => finish());
+        expect(refresh()).not.toBeDisabled();
+    });
+
+    it.each(['chats', 'Git'])('refreshes the other domain when %s fails and reports the partial error', async failed => {
+        const refreshGit = vi.fn(async () => {});
+        const addToast = vi.fn();
+        await act(async () => renderWithProviders(React.createElement(RepoChatTab, props('ws-1', { refreshGit }) as any), { toastValue: { addToast } }));
+        await waitFor(() => expect(mockPinned).toHaveBeenCalled());
+        mockFetchApi.mockClear();
+        if (failed === 'Git') refreshGit.mockRejectedValueOnce(new Error('Git unavailable'));
+        else mockFetchApi.mockRejectedValue(new Error('chats unavailable'));
+        await act(async () => fireEvent.click(refresh()));
+        expect(refreshGit).toHaveBeenCalledTimes(1);
+        expect(mockFetchApi).toHaveBeenCalledWith('/queue?repoId=ws-1');
+        expect(addToast).toHaveBeenCalledWith(expect.stringContaining(`${failed} unavailable`), 'error');
         expect(refresh()).not.toBeDisabled();
     });
 

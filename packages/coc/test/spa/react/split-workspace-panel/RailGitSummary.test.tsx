@@ -5,7 +5,8 @@ import userEvent from '@testing-library/user-event';
 import type { CocClient, GitCommit, GitInfoResponse, GitWorkingTreeChangesResponse } from '@plusplusoneplusplus/coc-client';
 import { SplitWorkspacePanel, splitWorkspaceGitCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
-import { GroupRailGit, RepoRailGit } from '../../../../src/server/spa/client/react/features/repo-detail/RailGitSummary';
+import { GroupRailGit, RepoRailGit, RepoRailGitView } from '../../../../src/server/spa/client/react/features/repo-detail/RailGitSummary';
+import { useRepoRailGit } from '../../../../src/server/spa/client/react/features/repo-detail/useRailGitSummary';
 import type { RepoGroupMember } from '../../../../src/server/spa/client/react/repos/repoGroupService';
 
 import { clearExplorerDirty, setExplorerInstanceDirty } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
@@ -73,6 +74,39 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('collapsed rail Git summary · repository', () => {
+    it('publishes a manual status read into existing collapsed tiles and hover content without navigation', async () => {
+        const client = fakeClient();
+        function Host() {
+            const status = useRepoRailGit({ client, routingRef: 'ws-alpha', workspaceId: 'ws-alpha', enabled: true });
+            return <SplitWorkspacePanel workspaceId="ws-alpha" chatList={<div>Chats</div>} gitList={<div>Git</div>}
+                detail={<textarea defaultValue="Unsaved editor draft" aria-label="Draft" />}
+                railGit={<RepoRailGitView client={client} routingRef="ws-alpha" workspaceId="ws-alpha" scopeLabel="Owner" status={status} />}
+                railShortcuts={<button aria-label="Read status" onClick={() => void status.refresh(true)}>Refresh</button>} />;
+        }
+        render(<Host />);
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-sync')).toHaveTextContent('↑3↓1'));
+        const rail = screen.getByTestId('split-workspace-left-rail');
+        const draft = screen.getByRole('textbox', { name: 'Draft' });
+        client.workspaces.gitInfo.mockResolvedValue(info({ branch: 'updated', ahead: 7, behind: 2 }));
+        client.git.getWorkingTreeChanges.mockResolvedValue({ ...changes, changes: changes.changes.slice(0, 1) });
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Read status' })));
+        expect(client.workspaces.gitInfo).toHaveBeenLastCalledWith('ws-alpha', { refresh: true });
+        expect(screen.getByTestId('split-workspace-left-git-sync')).toHaveTextContent('↑7↓2');
+        expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('updated');
+        expect(screen.getByTestId('split-workspace-left-git-changes')).toHaveTextContent('~1');
+        act(() => screen.getByTestId('split-workspace-left-git-changes').focus());
+        expect(screen.getByRole('dialog')).toHaveTextContent('updated');
+        expect(screen.getByRole('dialog')).toHaveTextContent('+1 staged');
+        expect(screen.getByTestId('split-workspace-left-rail')).toBe(rail);
+        expect(screen.getByRole('textbox', { name: 'Draft' })).toBe(draft);
+        expect(draft).toHaveValue('Unsaved editor draft');
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(client.git.fetch).not.toHaveBeenCalled();
+        expect(client.git.pull).not.toHaveBeenCalled();
+        expect(client.git.switchBranch).not.toHaveBeenCalled();
+    });
+
     it('keeps hovered outgoing rows viewport-bounded without a fetch or mutation', async () => {
         const client = fakeClient();
         const width = window.innerWidth;

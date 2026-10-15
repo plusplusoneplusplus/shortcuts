@@ -64,8 +64,8 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | POST | `/api/workspaces/active` | Report selected workspace by `clientId`; `workspaceId: null` clears it |
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
 | PATCH | `/api/workspaces/:id` | Update metadata; workspace mutations broadcast `workspace-topology-changed` |
-| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, detached flag, upstream name (null when none) with its ahead/behind, and remote metadata |
-| POST | `/api/git-info/batch` | Batched cached metadata for physical workspaces |
+| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, detached flag, upstream name (null when none) with its ahead/behind, and remote metadata; `refresh=true` reads fresh local status, bypasses backoff and returns 503 on failure |
+| POST | `/api/git-info/batch` | Batched metadata for physical workspaces; body `refresh: true` bypasses freshness/backoff, returning explicit null for failed members alongside successful results |
 | GET/PATCH | `/api/workspaces/:id/preferences` | Read/update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for modes `base`, `ask`, `autopilot` |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read/update/delete one instruction file (`base`\|`ask`\|`autopilot`; `plan` is an Ask alias) |

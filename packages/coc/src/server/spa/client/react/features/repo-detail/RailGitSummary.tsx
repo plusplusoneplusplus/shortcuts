@@ -145,7 +145,13 @@ interface RepoProps {
 
 /** Rail Git tiles for one repository on its owning server. */
 export function RepoRailGit({ workspaceId, routingRef, client, scopeLabel }: RepoProps) {
-    const { input, refresh } = useRepoRailGit({ client, routingRef, workspaceId, enabled: true });
+    const status = useRepoRailGit({ client, routingRef, workspaceId, enabled: true });
+    return <RepoRailGitView workspaceId={workspaceId} routingRef={routingRef} client={client} scopeLabel={scopeLabel} status={status} />;
+}
+
+export function RepoRailGitView({ workspaceId, routingRef, client, scopeLabel, status }: RepoProps & { status: ReturnType<typeof useRepoRailGit> }) {
+    const { input } = status;
+    const refresh = useCallback(() => { void status.refresh(); }, [status.refresh]);
     const rail = useRail(refresh);
     const { dispatch } = useApp();
     if (!rail) return null;
@@ -233,7 +239,13 @@ interface GroupProps {
 
 /** Rail Git tiles for a repo group: member counts plus a per-member preview. */
 export function GroupRailGit({ selectionId, routingRef, client, members, scopeLabel }: GroupProps) {
-    const { input, refresh } = useGroupRailGit({ client, routingRef, members, enabled: true });
+    const status = useGroupRailGit({ client, routingRef, members, enabled: true });
+    return <GroupRailGitView selectionId={selectionId} routingRef={routingRef} client={client} members={members} scopeLabel={scopeLabel} status={status} />;
+}
+
+export function GroupRailGitView({ selectionId, routingRef, client, scopeLabel, status }: GroupProps & { status: ReturnType<typeof useGroupRailGit> }) {
+    const { input } = status;
+    const refresh = useCallback(() => { void status.refresh(); }, [status.refresh]);
     const rail = useRail(refresh);
     const { dispatch } = useApp();
     if (!rail) return null;

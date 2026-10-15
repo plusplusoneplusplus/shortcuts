@@ -94,6 +94,8 @@ export interface RepoChatTabProps {
     detailOverride?: ReactNode;
     /** Reload the replacement list through its owning feed. */
     refreshList?: () => Promise<void>;
+    /** Shared owner-scoped Git status read; independent of chat refresh failures. */
+    refreshGit?: () => Promise<void>;
     sidebarOwnerAvailable?: boolean;
 }
 
@@ -176,7 +178,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, detailOverride, refreshList, sidebarOwnerAvailable = true }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, detailOverride, refreshList, refreshGit, sidebarOwnerAvailable = true }: RepoChatTabProps) {
     const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -934,6 +936,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 fetchQueue(true, true),
                 pinnedRefreshRef.current?.(),
                 refreshList?.(),
+                refreshGit?.(),
             ]);
             if (ownerRef.current !== owner) return;
             const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
@@ -942,7 +945,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             refreshFlightRef.current = false;
             setIsRefreshing(false);
         }
-    }, [fetchQueue, refreshList, ownerKey, toast]);
+    }, [fetchQueue, refreshList, refreshGit, ownerKey, toast]);
 
     const handleSetGroupPin = useCallback(async (type: ProcessGroupPinType, groupId: string, pinned: boolean) => {
         const previousPins = groupPins;

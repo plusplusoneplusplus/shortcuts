@@ -146,7 +146,10 @@ function ChatQueueReader({ workspaceId }: { workspaceId: string }) {
     return null;
 }
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
-    RepoChatTab: (props: { workspaceId: string }) => seedAlongsideChat ? <ChatQueueReader {...props} /> : null,
+    RepoChatTab: (props: { workspaceId: string; refreshGit?: () => Promise<void> }) => <>
+        <button data-testid="sidebar-git-refresh" onClick={() => void props.refreshGit?.()}>Refresh</button>
+        {seedAlongsideChat && <ChatQueueReader {...props} />}
+    </>,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
@@ -229,6 +232,20 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         const owner = screen.getByTestId('repo-git-owner');
         expect(owner.getAttribute('data-destination')).toBe(serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
         expect(owner.getAttribute('data-workspace')).toBe(REMOTE_WS);
+    });
+
+    it.each([undefined, 'one', 'two'])('wires manual sidebar status reads to owner %s even without Git tiles', async serverId => {
+        if (serverId) registerCloneBaseUrls([{ workspaceId: REMOTE_WS, cloneKey: `remote:${serverId}:${REMOTE_WS}`, baseUrl: REMOTE_BASE }]);
+        renderDetail(REMOTE_WS, serverId);
+        await act(async () => {});
+        urls.length = 0;
+        await act(async () => fireEvent.click(screen.getByTestId('sidebar-git-refresh')));
+        const expectedBase = serverId ? `${REMOTE_BASE}/api` : '';
+        expect(urls.filter(url => url.includes('/git-info') || url.includes('/git/changes'))).toEqual([
+            `${expectedBase}/workspaces/${REMOTE_WS}/git-info?refresh=true`,
+            `${expectedBase}/workspaces/${REMOTE_WS}/git/changes?refresh=true`,
+        ]);
+        expect(mockDispatch.mock.calls.some(([action]) => action.type === 'SET_GIT_ROUTE')).toBe(false);
     });
 
     it.each([undefined, 'one', 'two'])('passes repo owner %s to the PR tab', serverId => {

@@ -444,8 +444,10 @@ export class GitClient {
     return this.transport.request<GitAsyncJobResponse>(workspaceGitPath(workspaceId, '/rebase-reorder'), jsonRequest('POST', { commits }));
   }
 
-  getWorkingTreeChanges(workspaceId: string): Promise<GitWorkingTreeChangesResponse> {
-    return this.transport.request<GitWorkingTreeChangesResponse>(workspaceGitPath(workspaceId, '/changes'));
+  getWorkingTreeChanges(workspaceId: string, options?: { refresh?: boolean }): Promise<GitWorkingTreeChangesResponse> {
+    return this.transport.request<GitWorkingTreeChangesResponse>(workspaceGitPath(workspaceId, '/changes'), {
+      query: options?.refresh ? { refresh: true } : undefined,
+    });
   }
 
   /**

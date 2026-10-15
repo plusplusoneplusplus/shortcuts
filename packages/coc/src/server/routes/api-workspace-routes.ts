@@ -450,14 +450,15 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git-info$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
+            const refresh = url.parse(req.url || '/', true).query.refresh === 'true';
             try {
-                const data = await gitInfoCache.getOrFetch(ws.id);
+                const data = await gitInfoCache.getOrFetch(ws.id, refresh);
                 sendJSON(res, 200, data);
             } catch {
-                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
+                sendJSON(res, 503, { error: 'Could not read Git status.' });
             }
         },
     });
@@ -489,7 +490,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 await Promise.all(batch.map(async (wsId: string) => {
                     if (!knownIds.has(wsId)) { results[wsId] = null; return; }
                     try {
-                        const read = await gitInfoCache.getOrFetchWithOutcome(wsId);
+                        const read = await gitInfoCache.getOrFetchWithOutcome(wsId, body.refresh === true);
                         results[wsId] = read.data;
                         outcomes[read.outcome] = (outcomes[read.outcome] ?? 0) + 1;
                         if (read.outcome === 'hit' || read.outcome === 'inflight' || read.outcome === 'error-retry') cacheHits++;
