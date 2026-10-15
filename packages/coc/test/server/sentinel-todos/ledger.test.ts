@@ -1,9 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase, SqliteProcessStore } from '@plusplusoneplusplus/forge';
-import ts from 'typescript';
+import { build } from 'esbuild';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRepoDataPath } from '../../../src/server/paths';
 import {
@@ -236,11 +237,11 @@ describe('SentinelTodoStore SQLite persistence', () => {
 
     it('serializes genuinely simultaneous writers and detects stale edits across worker handles', async () => {
         const { item } = store.create(owner, { title: 'Before' }, { actor: 'user' });
-        const source = fs.readFileSync(new URL('../../../src/server/sentinel-todos/sentinel-todo-store.ts', import.meta.url), 'utf8');
         const moduleFile = path.join(dataDir, 'store.cjs');
-        fs.writeFileSync(moduleFile, ts.transpileModule(source, {
-            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-        }).outputText);
+        await build({
+            entryPoints: [fileURLToPath(new URL('../../../src/server/sentinel-todos/sentinel-todo-store.ts', import.meta.url))],
+            outfile: moduleFile, bundle: true, packages: 'external', platform: 'node', format: 'cjs', target: 'es2022',
+        });
         const workers = [0, 1].map(index => new Worker(`
             const { parentPort, workerData } = require('node:worker_threads');
             const { NativeDatabase } = require('@plusplusoneplusplus/coc-native');

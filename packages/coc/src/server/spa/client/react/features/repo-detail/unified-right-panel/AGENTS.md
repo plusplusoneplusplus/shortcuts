@@ -754,7 +754,7 @@ selection and resizing, retaining item, status-reason and dependency drafts.
 List cards combine status, priority, wrapping title and an ellipsis menu in a compact header,
 with target/Updated/latest-job metadata below. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
-references and editing controls live in the detail pane.
+conversation references and editing controls live in the detail pane.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
 including Untagged, and a detail picker with Manage tags. Filtering uses the full
 owner snapshot independently of the recent history budget. Library edits keep
@@ -775,9 +775,18 @@ on drop and send (see the composer knowledge reference). Details list every job 
 start folded (`sentinelTodoFoldNotes`). The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
-`Tracked only · never run` tag. Referenced conversations
-(`item.references`, absent on older servers) render in the detail pane as compact, truncated `Ref` links
-below jobs, with no execution or review label.
+`Tracked only · never run` tag. Conversation entries in `item.references`
+(missing `kind` also means conversation) render below jobs as compact, truncated
+`Ref` links with owner-correct excursions and no execution or review label.
+Default-off runtime `sentinelTodoExternalReferencesEnabled` adds wrapping PR,
+Email and Link anchors to every card and detail view. PR labels identify their
+provider, repository and number; hover titles retain the complete URL. Only
+HTTP(S), plus `mailto:` for email references, render as links. Native anchors
+preserve keyboard and modified-click behavior, isolate card events, and use the
+desktop panel browser when available. Add/Edit forms manage multiple external
+references within their existing Save, draft, revision and error lifecycle.
+Untouched references are omitted from writes; an explicit empty list clears only
+external references, never conversation references.
 
 `SentinelTodoDependencies` is gated by default-off
 `sentinelTodoDependenciesEnabled`. Its owner/item-keyed details add independent

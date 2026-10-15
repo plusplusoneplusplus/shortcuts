@@ -324,6 +324,8 @@ export interface CLIConfig {
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoTags?: boolean;
+        /** Typed display-only external references on Sentinel items. Disabled by default. */
+        sentinelTodoExternalReferences?: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
@@ -741,6 +743,7 @@ export interface ResolvedCLIConfig {
         teamsMessageReaction: boolean;
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
+        sentinelTodoExternalReferences: boolean;
         /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
@@ -1076,6 +1079,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsMessageReaction: false,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
+        sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
         toolScripting: false,
         sentinelPrOutcomeWake: false,

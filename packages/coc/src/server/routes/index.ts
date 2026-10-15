@@ -542,6 +542,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
         getDependenciesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
         getTagsEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoTags === true,
+        getExternalReferencesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoExternalReferences === true,
         getTagsGeneration: () => opts.runtimeConfigService?.revision,
         decisions: decisionService,
         onTagsChange: (owner, ledgerRevision) => {

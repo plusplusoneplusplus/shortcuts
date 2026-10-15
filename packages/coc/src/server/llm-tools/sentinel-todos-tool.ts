@@ -23,7 +23,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { Trigger } from '../triggers/trigger-types';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary, SentinelTodoExternalReference } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
@@ -48,7 +48,7 @@ export interface SentinelTodosToolDeps {
     reviewOnly?: boolean;
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
         & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'
-            | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags'>>;
+            | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags' | 'externalReferencesEnabled'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
@@ -72,6 +72,7 @@ export interface SentinelTodosArgs {
     title?: string;
     completionCondition?: string;
     notes?: string;
+    externalReferences?: SentinelTodoExternalReference[];
     targetRepo?: TargetRepoArg;
     status?: SentinelTodoStatus;
     priority?: SentinelTodoPriority;
@@ -225,9 +226,11 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
     const { service, owner } = deps;
     const dependenciesEnabled = service.dependenciesEnabled?.() === true;
     const tagsEnabled = !deps.reviewOnly && service.tagsEnabled?.() === true;
+    const externalReferencesEnabled = !deps.reviewOnly && service.externalReferencesEnabled?.() === true;
     const tool = defineTool<SentinelTodosArgs>(SENTINEL_TODOS_TOOL_NAME, {
         description: deps.reviewOnly ? SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE : DESCRIPTION + (deps.triggers ? TRIGGER_GUIDANCE : '')
             + (tagsEnabled ? TAG_GUIDANCE : '')
+            + (externalReferencesEnabled ? ' create/update externalReferences replaces ALL external display references with typed {kind: pr|email|link, url, title?} entries; [] clears external links, omission preserves them. Attached conversation references are never replaced by this field. PRs require supported GitHub/ADO HTTPS URLs; email accepts mailto or HTTP(S) email links; link accepts HTTP(S). URLs are validated and deduplicated. References never bind PR outputs, fulfill dependencies, poll, monitor, mark Done or authorize execution; use bind_pr_output only for explicit output selections with provenance.' : '')
             + (dependenciesEnabled ? ' set_dependencies replaces ALL prerequisites using itemId, expectedRevision and dependsOn. bind_pr_output explicitly selects one exact produced PR for outputSlot with tracked_job or owner_selection provenance and reason; never choose the newest implicitly. accept_artifact records acceptance of the exact phase/reference/sha256 content version without marking Done or authorizing work. evaluate_dependencies reads fresh conjunctive readiness only; it never launches or wakes. Keep fulfillment and authorization separate.' : ''),
         parameters: {
             type: 'object',
@@ -250,6 +253,20 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     description: 'create/update: Done when; optional for manual items. Intended outcome\'s final deliverable, checked before marking done; not just an intermediate phase.',
                 },
                 notes: { type: 'string', description: 'create/update: phase milestones and spec/artifact links; replaces existing notes, so preserve prior notes.' },
+                ...(externalReferencesEnabled ? {
+                    externalReferences: {
+                        type: 'array', maxItems: 20,
+                        description: 'create/update: replace external display references only; [] clears, omission preserves. Never erases attached conversations or grants authority.',
+                        items: {
+                            type: 'object', additionalProperties: false, required: ['kind', 'url'],
+                            properties: {
+                                kind: { type: 'string', enum: ['pr', 'email', 'link'] },
+                                url: { type: 'string', minLength: 1, maxLength: 2000 },
+                                title: { type: 'string', minLength: 1, maxLength: 200 },
+                            },
+                        },
+                    },
+                } : {}),
                 targetRepo: {
                     type: 'object',
                     description: 'create/update: the repo the work runs in.',
@@ -354,6 +371,9 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 }
                 if ((args.tagIds !== undefined || args.matchMultiple !== undefined || args.expectedTagRevision !== undefined) && !service.tagsEnabled?.()) {
                     return { error: 'Sentinel tags are disabled.', code: 'disabled' };
+                }
+                if (args.externalReferences !== undefined && !service.externalReferencesEnabled?.()) {
+                    return { error: 'Sentinel external references are disabled.', code: 'disabled' };
                 }
                 if (TAG_ACTIONS.some(action => action === args?.action)) {
                     if (!service.tagsEnabled?.()) return { error: 'Sentinel tags are disabled.', code: 'disabled' };
@@ -467,6 +487,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             title: args.title ?? '',
                             ...(args.completionCondition !== undefined ? { completionCondition: args.completionCondition.trim() } : {}),
                             ...(args.notes !== undefined ? { notes: args.notes } : {}),
+                            ...(args.externalReferences !== undefined ? { externalReferences: args.externalReferences } : {}),
                             ...(args.targetRepo ? { targetRepo: args.targetRepo } : {}),
                             status,
                             ...(reason ? { statusReason: reason } : {}),
@@ -488,6 +509,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         if (args.title !== undefined) patch.title = args.title;
                         if (args.completionCondition !== undefined) patch.completionCondition = args.completionCondition;
                         if (args.notes !== undefined) patch.notes = args.notes;
+                        if (args.externalReferences !== undefined) patch.externalReferences = args.externalReferences;
                         if (args.targetRepo) patch.targetRepo = args.targetRepo;
                         if (args.status !== undefined) patch.status = args.status;
                         if (args.priority !== undefined) patch.priority = args.priority;

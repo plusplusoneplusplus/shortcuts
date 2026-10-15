@@ -188,6 +188,15 @@ process is absent. Remote ordinary/unknown modes stay omitted; Ralph session
 identity stays Ralph. Mode-change invalidations target exact local linked owners
 without advancing ledger/item revisions.
 
+`references` combines owner-verified conversation attachments with typed external
+`pr`/`email`/`link` display entries. Conversations retain their scoped table and
+missing-kind compatibility; externals use additive item-column `external_references`
+JSON defaulting to `[]`. Default-off live `features.sentinelTodoExternalReferences`
+gates external projection and authoring. Create/update `externalReferences` replaces
+only external entries; omission preserves, `[]` clears. Validation canonicalizes
+supported PRs and deduplicates safe URLs. Metadata never supplies output evidence,
+execution/review authority, monitoring or fulfillment, and leaves user verdicts intact.
+
 Default-off `features.sentinelTodoTags` uses `sentinel_todo_tag_libraries` and
 `sentinel_todo_tag_assignments` under the same workspace/parent keys. Independent
 assignment/library revisions leave content revisions and dependency authority

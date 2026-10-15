@@ -652,6 +652,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoExternalReferences', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoExternalReferencesEnabled',
+        ui: {
+            tab: 'ai', group: 'aiModes', order: 32.59, label: 'Sentinel To-do external references', badge: 'experimental',
+            hint: 'Display and edit PR, email and web links as references only. References never bind PR outputs or authorize work. Disabled by default.',
+            testId: 'toggle-sentinel-todo-external-references-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',

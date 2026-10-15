@@ -89,6 +89,7 @@ export class SentinelTodoService {
         onChange?: (change: SentinelTodoChange) => void;
         getDependenciesEnabled?: () => boolean;
         getTagsEnabled?: () => boolean;
+        getExternalReferencesEnabled?: () => boolean;
         getTagsGeneration?: () => unknown;
         decisions?: Pick<DecisionService, 'evaluate'>;
         onTagsChange?: (owner: SentinelTodoOwner, ledgerRevision: number) => void;
@@ -105,10 +106,17 @@ export class SentinelTodoService {
         return this.deps.getTagsEnabled?.() === true;
     }
 
+    externalReferencesEnabled(): boolean {
+        return this.deps.getExternalReferencesEnabled?.() === true;
+    }
+
     private visibleItem(item: SentinelTodoItem): SentinelTodoItem {
-        if (this.tagsEnabled()) return item;
-        const { tagIds, tagOrigin, tagMatch, tagRevision, ...visible } = item;
-        return visible;
+        const visible = this.externalReferencesEnabled() ? item : {
+            ...item, references: item.references.filter(ref => ref.kind === undefined || ref.kind === 'conversation'),
+        };
+        if (this.tagsEnabled()) return visible;
+        const { tagIds, tagOrigin, tagMatch, tagRevision, ...withoutTags } = visible;
+        return withoutTags;
     }
 
     private visibleWrite<T extends { item: SentinelTodoItem }>(result: T): T {
@@ -118,7 +126,7 @@ export class SentinelTodoService {
     private withVisibleErrors<T>(write: () => T): T {
         try { return write(); }
         catch (error) {
-            if (error instanceof SentinelTodoError && error.current && !this.tagsEnabled()) {
+            if (error instanceof SentinelTodoError && error.current) {
                 throw new SentinelTodoError(error.code, error.message, this.visibleItem(error.current));
             }
             throw error;
@@ -216,6 +224,12 @@ export class SentinelTodoService {
     private assertTagInput(input: { tagIds?: string[]; matchMultiple?: boolean; expectedTagRevision?: number }): void {
         if (!this.tagsEnabled() && (input?.tagIds !== undefined || input?.matchMultiple !== undefined || input?.expectedTagRevision !== undefined)) {
             throw new SentinelTodoError('not_found', 'Sentinel to-do tags are disabled');
+        }
+    }
+
+    private assertExternalReferenceInput(input: { externalReferences?: unknown }): void {
+        if (input?.externalReferences !== undefined && !this.externalReferencesEnabled()) {
+            throw new SentinelTodoError('not_found', 'Sentinel external references are disabled');
         }
     }
 
@@ -578,6 +592,7 @@ export class SentinelTodoService {
     ): Promise<{ item: SentinelTodoItem; created: boolean; ledgerRevision: number }> {
         await this.assertOwner(owner);
         this.assertTagInput(input);
+        this.assertExternalReferenceInput(input);
         const result = this.withVisibleErrors(() => this.deps.todos.create(owner, input, opts));
         if (result.created) this.emit({ owner, ledgerRevision: result.ledgerRevision, item: result.item });
         return this.visibleWrite(result.created
@@ -593,6 +608,7 @@ export class SentinelTodoService {
     ): Promise<{ item: SentinelTodoItem; ledgerRevision: number }> {
         await this.assertOwner(owner);
         this.assertTagInput(patch);
+        this.assertExternalReferenceInput(patch);
         const before = this.deps.todos.get(owner).items.find(item => item.id === itemId);
         const result = this.withVisibleErrors(() => this.deps.todos.update(owner, itemId, expectedRevision, patch, actor));
         const tagOnly = patch.tagIds !== undefined && Object.keys(patch)

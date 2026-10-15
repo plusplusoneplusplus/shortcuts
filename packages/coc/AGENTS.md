@@ -348,6 +348,13 @@ references before editing. Paths are package-relative.
   `attach_reference`) live in `sentinel_todo_references`, apart from job links: normal items
   only, the chat must exist in the named local workspace, duplicates are no-ops, and they never
   change status, create execution/review state, or message the referenced chat.
+  The `references` contract combines conversation entries (missing kind means conversation)
+  with typed `pr`/`email`/`link` external entries. Default-off live
+  `features.sentinelTodoExternalReferences` gates external reads and create/update
+  `externalReferences`: omission preserves, an array replaces external entries only, and `[]`
+  clears them without removing conversations. The additive item JSON column defaults to `[]`.
+  Safe URLs are validated and deduplicated; external metadata never binds PR outputs,
+  creates watches, fulfills prerequisites, changes status or grants authority.
   Job execution/delivery/assessment are derived on read with exact parent/child workspace,
   process and session identity; remote links are always `unavailable`. Job mode is a compact
   read-time projection: batch-read local process metadata from the shared database, validate

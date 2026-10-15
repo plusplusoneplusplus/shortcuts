@@ -19,6 +19,7 @@ import type {
     SentinelTodoStatus,
     SentinelTodoType,
     SentinelTodoTagLibrary,
+    SentinelTodoExternalReference,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
@@ -41,6 +42,7 @@ import { SentinelTodoTriggers } from './SentinelTodoTriggers';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
 import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
 import { SentinelTodoTagChips, SentinelTodoTagPicker, SentinelTodoTagToolbar, sentinelTodoMatchesTag, useSentinelTodoTagsEnabled } from './SentinelTodoTags';
+import { externalReferences, SentinelTodoExternalReferences, SentinelTodoExternalReferenceEditor, useSentinelTodoExternalReferencesEnabled } from './SentinelTodoExternalReferences';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
@@ -89,7 +91,11 @@ export interface UnifiedTodoTabProps {
 
 type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string) => void;
 
-type Draft = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
+type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
+type Draft = DraftFieldsValue & {
+    externalReferences?: SentinelTodoExternalReference[]; externalReferencesChanged?: boolean;
+    initialFields?: DraftFieldsValue;
+};
 const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', priority: 'regular' };
 
 const STATUS_STYLES: Readonly<Record<SentinelTodoDisplayStatus, { dot: string; badge: string; mark: string }>> = {
@@ -167,6 +173,7 @@ function Optional({ show }: { show: boolean }) {
 function DraftFields({ draft, onChange, idPrefix, manual = false }: {
     draft: Draft; onChange: (draft: Draft) => void; idPrefix: string; manual?: boolean;
 }) {
+    const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     return (
         <>
             <label className="block text-[11px] font-medium" htmlFor={`${idPrefix}-title`}>Title</label>
@@ -185,6 +192,9 @@ function DraftFields({ draft, onChange, idPrefix, manual = false }: {
                     <option key={priority} value={priority}>{SENTINEL_TODO_PRIORITY_LABELS[priority]}</option>
                 ))}
             </select>
+            {referencesEnabled && <SentinelTodoExternalReferenceEditor value={draft.externalReferences ?? []}
+                onChange={externalReferences => onChange({ ...draft, externalReferences, externalReferencesChanged: true })}
+                idPrefix={idPrefix} inputClass={INPUT} />}
         </>
     );
 }
@@ -260,6 +270,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [visibleLimit, setVisibleLimit] = useState(SENTINEL_TODO_RECENT_LIMIT);
     const tagsEnabled = useSentinelTodoTagsEnabled();
+    const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [tagFilter, setTagFilter] = useState('');
     const [matchMultiple, setMatchMultiple] = useState(false);
     const tagLibrary = tagsEnabled ? ledger?.tagLibrary : undefined;
@@ -352,13 +363,15 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             completionCondition: draft.completionCondition.trim(),
             notes: draft.notes,
             priority: draft.priority,
+            ...(referencesEnabled && draft.externalReferencesChanged && draft.externalReferences?.length
+                ? { externalReferences: draft.externalReferences } : {}),
             ...(type === 'manual' ? { type } : {}),
             idempotencyKey,
             ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         });
         await load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, load, tagLibrary, matchMultiple]);
+    }, [client, ownerKey, load, tagLibrary, matchMultiple, referencesEnabled]);
     const addForm = useAddItemForm((draft, key) => createItem('normal', draft, key));
     const manualForm = useAddItemForm((draft, key) => createItem('manual', draft, key));
     const openAddForm = () => { setDetailOpen(false); addForm.open(); };
@@ -856,10 +869,12 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             className="truncate px-1.5 pb-1 text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
             data-testid={`sentinel-todo-reason-preview-${item.id}`}>{item.statusReason}</div>}
         <SentinelTodoScrubFinding item={item} />
+        <SentinelTodoExternalReferences item={item} />
     </li>;
 }
 
 function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple }: TodoDetailProps) {
+    const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(restoredDraft?.statusDraft ?? null);
@@ -896,12 +911,21 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         event.preventDefault();
         if (!editing || !editing.title.trim()) return;
         const draft = editing;
+        const initial = draft.initialFields ?? { title: item.title, completionCondition: item.completionCondition,
+            notes: item.notes, priority: sentinelTodoPriority(item) };
+        const fieldsChanged = draft.title.trim() !== initial.title.trim() || draft.completionCondition.trim() !== initial.completionCondition.trim()
+            || draft.notes !== initial.notes || draft.priority !== initial.priority;
         void run(() => onSave(item, {
-            title: draft.title.trim(),
-            completionCondition: draft.completionCondition.trim(),
-            notes: draft.notes,
-            priority: draft.priority,
-            ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
+            ...(fieldsChanged ? {
+                title: draft.title.trim(),
+                completionCondition: draft.completionCondition.trim(),
+                notes: draft.notes,
+                priority: draft.priority,
+            } : {}),
+            ...(referencesEnabled && draft.externalReferencesChanged
+                && JSON.stringify(draft.externalReferences ?? []) !== JSON.stringify(externalReferences(item))
+                ? { externalReferences: draft.externalReferences ?? [] } : {}),
+            ...(fieldsChanged && tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         }, draft.baseRevision), () => setEditing(null),
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
@@ -961,9 +985,9 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
             {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} />}
             {/* Reference-only conversations: navigation links with no execution or review state. */}
-            {(item.references?.length ?? 0) > 0 && (
+            {item.references?.some(ref => ref.kind === undefined || ref.kind === 'conversation') && (
                 <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Referenced conversations for ${item.title}`}>
-                    {item.references!.map(ref => (
+                    {item.references!.filter(ref => ref.kind === undefined || ref.kind === 'conversation').map(ref => (
                         <li key={ref.processId} className="flex min-w-0 items-center gap-1" data-testid={`sentinel-todo-reference-${item.id}-${ref.processId}`}>
                             <span className="shrink-0 rounded bg-black/[0.06] px-1 text-[10px] font-medium uppercase tracking-wide text-[#616161] dark:bg-white/[0.08] dark:text-[#a0a0a0]">Ref</span>
                             <a href={ref.openLink} title={ref.title ?? ref.processId}
@@ -975,6 +999,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     ))}
                 </ul>
             )}
+            <SentinelTodoExternalReferences item={item} />
             <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
                 expanded onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} />
             <div id={`${domId}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">
@@ -1054,6 +1079,9 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing({
                                         title: item.title, completionCondition: item.completionCondition, notes: item.notes,
                                         priority: sentinelTodoPriority(item), baseRevision: item.revision,
+                                        externalReferences: externalReferences(item),
+                                        initialFields: { title: item.title, completionCondition: item.completionCondition,
+                                            notes: item.notes, priority: sentinelTodoPriority(item) },
                                     })}>Edit</Button>
                                 )}
                                 {!item.archived && item.status === 'done' && (
