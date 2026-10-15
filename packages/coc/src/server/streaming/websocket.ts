@@ -20,6 +20,8 @@ import { isLoopbackOrigin } from '../shared/cors';
 import type { BotControlPresentation, ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { projectBotControl } from '../processes/bot-control-read-model';
 import { BrowserControlRelay } from './browser-control-relay';
+import { DashboardDiscoveryRelay } from './dashboard-discovery-relay';
+import type { DashboardDiscoveryServerEvent, DashboardDiscoveryClientEvent } from '@plusplusoneplusplus/coc-client';
 import type { BrowserCommandRequest, BrowserCommandReply } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
@@ -115,7 +117,7 @@ export interface QueueSnapshot {
 }
 
 /** Server → Client message types */
-export type ServerMessage =
+export type ServerMessage = DashboardDiscoveryServerEvent
     | { type: 'browser-command'; request: BrowserCommandRequest }
     | { type: 'browser-command-cancel'; id: string }
     | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string }
@@ -173,7 +175,7 @@ export type ServerMessage =
     | { type: 'wakeup-scheduled' | 'wakeup-fired' | 'wakeup-failed' | 'wakeup-cancelled'; wakeupId: string; processId: string; status: string; workspaceId?: string; timestamp: number };
 
 /** Client → Server message types */
-export type ClientMessage =
+export type ClientMessage = DashboardDiscoveryClientEvent
     | { type: 'browser-capability'; workspaceId: string; focused: boolean }
     | { type: 'browser-capability-clear' }
     | { type: 'browser-command-result'; reply: BrowserCommandReply }
@@ -195,6 +197,7 @@ const HEARTBEAT_INTERVAL_MS = 60_000;
  */
 export class ProcessWebSocketServer {
     readonly browserControl = new BrowserControlRelay();
+    readonly dashboardDiscovery = new DashboardDiscoveryRelay();
     private clients: Set<WSClient> = new Set();
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     private wss: WebSocketServer;
@@ -251,6 +254,7 @@ export class ProcessWebSocketServer {
                 },
                 close: () => {
                     this.browserControl.disconnect(client);
+                    this.dashboardDiscovery.disconnect(client);
                     try { ws.close(); } catch { /* ignore */ }
                     this.clients.delete(client);
                 },
@@ -279,11 +283,13 @@ export class ProcessWebSocketServer {
 
             ws.on('close', (code: number, reason: Buffer) => {
                 this.browserControl.disconnect(client);
+                this.dashboardDiscovery.disconnect(client);
                 this.clients.delete(client);
                 getServerLogger().debug({ clientId, reason: reason.toString() }, 'WebSocket disconnected');
             });
             ws.on('error', (err: Error) => {
                 this.browserControl.disconnect(client);
+                this.dashboardDiscovery.disconnect(client);
                 this.clients.delete(client);
                 getServerLogger().warn({ clientId, err }, 'WebSocket error');
             });
@@ -432,6 +438,15 @@ export class ProcessWebSocketServer {
     private handleClientMessage(client: WSClient, message: ClientMessage): void {
         client.lastSeen = Date.now();
         switch (message.type) {
+            case 'dashboard-discovery-capability':
+                this.dashboardDiscovery.advertise(client, message.workspaceId, message.revision, message.focused);
+                break;
+            case 'dashboard-discovery-clear':
+                this.dashboardDiscovery.disconnect(client);
+                break;
+            case 'dashboard-workspaces-result':
+                this.dashboardDiscovery.reply(client, message.reply);
+                break;
             case 'browser-capability':
                 this.browserControl.advertise(client, message.workspaceId, message.focused);
                 break;

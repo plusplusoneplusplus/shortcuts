@@ -180,6 +180,24 @@ The bot-presentation observer uses those owner-scoped events without adding sock
 or joining remote ownership through the page-origin process index; see
 [spa/chat-conversation.md](spa/chat-conversation.md).
 
+### Targeted dashboard workspace discovery
+
+`ProcessWebSocketServer.dashboardDiscovery` owns `DashboardDiscoveryRelay`.
+`coc-client/dashboard-discovery.ts` defines the read-only topology protocol.
+A dashboard advertises its raw owning workspace, opaque topology revision and focus;
+`listWorkspaces` selects the most recently focused matching socket. Capability
+withdrawal, owner/revision changes, socket errors/close and shutdown revoke pending
+reads. Focus-only updates preserve admitted reads.
+
+Requests carry a random ID, raw owner workspace and the selected revision. Replies
+must come from that exact socket. Results project at most 2,000 workspace rows with
+bounded identities, server/workspace labels, repo/group type, server kind and online
+state. Endpoint fields and duplicate known server/workspace identities reject the
+whole result; unknown identities remain absent. These are dashboard observations,
+not verified destination ownership. Abort and the 10-second deadline forward
+cancellation and release request state. Messages bypass broadcasts/container forwarding;
+dashboard failures expose generic errors without connection details.
+
 ### Targeted desktop browser control
 
 `ProcessWebSocketServer.browserControl` implements `BrowserControlRuntime` through

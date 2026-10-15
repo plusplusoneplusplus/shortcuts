@@ -43,6 +43,10 @@ references before editing. Paths are package-relative.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
+  Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,
+  read-only topology requests. Capabilities bind a raw owner workspace and dashboard
+  revision; scope/topology changes revoke pending reads. Keep identities/labels separate
+  from endpoints and connection aliases; the relay never broadcasts or forwards commands.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history
   against current active jobs and local process title/preview updates.
