@@ -27,6 +27,13 @@ describe('single browser command contract', () => {
         expect(parseBrowserCommand(command)).toEqual(command);
     });
 
+    it.each(['jpeg', 'png'] as const)('accepts screenshot format %s and optional pixel viewing', format => {
+        for (const view of [false, true]) {
+            const command = { action: 'screenshot', ref: 'e1', format, view };
+            expect(parseBrowserCommand(command)).toEqual(command);
+        }
+    });
+
     it.each(valid)('rejects extra parameters for $action', command => {
         expect(() => parseBrowserCommand({ ...command, extra: true })).toThrow('unexpected parameter extra');
     });
@@ -54,6 +61,9 @@ describe('single browser command contract', () => {
         { action: 'open', url: 'https://fixture.test/', newTab: 1 },
         { action: 'snapshot', all: 'yes' }, { action: 'click', ref: '' },
         { action: 'tabs', ref: 'e1' }, { action: 'type', ref: 'e1' },
+        { action: 'screenshot', format: 'gif' }, { action: 'screenshot', format: 1 },
+        { action: 'screenshot', view: 'true' }, { action: 'screenshot', view: null },
+        { action: 'snapshot', format: 'png' }, { action: 'read', view: true },
     ])('rejects missing/contradictory/wrongly typed parameters %j', input => {
         expect(() => parseBrowserCommand(input)).toThrow();
     });

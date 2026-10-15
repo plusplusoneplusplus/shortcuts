@@ -818,7 +818,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         const browserControl = getWsServer()?.browserControl;
         browserControl?.setEnabledGetter(isBrowserControlEnabled);
         return browserControl;
-    }, new BrowserToolStateStore());
+    }, new BrowserToolStateStore(dataDir));
     // Async extension-canvas capabilities + host.complete. Live (admin toggle
     // takes effect without a restart) and off by default.
     const isCanvasHostApisEnabled = (): boolean => (

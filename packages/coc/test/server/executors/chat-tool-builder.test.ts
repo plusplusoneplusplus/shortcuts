@@ -24,7 +24,7 @@ describe('buildChatToolBundle', () => {
             enqueueChat: vi.fn(), sendMessage: vi.fn(), launchRalph: vi.fn(),
             createPullRequest: {} as never, cronTools: {} as never, scheduleWakeup: {} as never,
             browserRuntime: { getEnabled: () => true, execute: vi.fn() },
-            browserState: new BrowserToolStateStore(), canvasToolsEnabled: true, kustoToolsEnabled: true,
+            browserState: new BrowserToolStateStore(tmpDir), canvasToolsEnabled: true, kustoToolsEnabled: true,
             sentinelTodos: { owner: { workspaceId: WS_ID, processId: 'owner' }, service: {
                 list: vi.fn(async () => ({ items: [] })), create: vi.fn(), update: vi.fn(), linkJob: vi.fn(), attachReference: vi.fn(),
             } as never, triggers: {} as never },
@@ -53,7 +53,7 @@ describe('buildChatToolBundle', () => {
         const options = {
             dataDir: tmpDir, workspaceId: WS_ID, processId: 'browser-process', store: makeStore(),
             browserRuntime: { getEnabled: () => enabled, execute: vi.fn() },
-            browserState: new BrowserToolStateStore(),
+            browserState: new BrowserToolStateStore(tmpDir),
             canvasToolsEnabled: false, kustoToolsEnabled: false, systemOneToolEnabled: false,
         };
         expect(buildChatToolBundle(options).tools.map(tool => tool.name)).not.toContain('browser');

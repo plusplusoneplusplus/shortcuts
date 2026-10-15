@@ -17,7 +17,15 @@ import {
     type CoCExportPayload,
     type ImportResult,
 } from '../../src/server/storage/export-import-types';
-import { createSnapshotDomains } from '../../src/server/storage/snapshot/registry';
+import {
+    buildStorageWipePlan,
+    collectStorageSnapshot,
+    createSnapshotDomains,
+    executeStorageWipePlan,
+    restoreStorageSnapshotMerge,
+    restoreStorageSnapshotReplace,
+} from '../../src/server/storage/snapshot/registry';
+import { createBrowserScreenshotsDomain } from '../../src/server/storage/snapshot/browser-screenshots-domain';
 import { createCoreStoreDomain } from '../../src/server/storage/snapshot/core-store-domain';
 import { createQueueDomain } from '../../src/server/storage/snapshot/queue-domain';
 import { createImageBlobDomain } from '../../src/server/storage/snapshot/image-blob-domain';
@@ -107,6 +115,11 @@ async function seedFixture(dataDir: string, store: SqliteProcessStore, wikiDir: 
     // git ops
     writeJSON(path.join(dataDir, 'repos', 'repo-1', 'git-ops.json'), { ops: [] });
 
+    // machine-local browser screenshots
+    const screenshot = path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png');
+    fs.mkdirSync(path.dirname(screenshot), { recursive: true });
+    fs.writeFileSync(screenshot, 'machine-local screenshot');
+
     // preserved (never wiped)
     fs.writeFileSync(path.join(dataDir, 'config.yaml'), 'server: {}\n', 'utf-8');
     fs.mkdirSync(path.join(dataDir, 'skills'), { recursive: true });
@@ -131,6 +144,13 @@ describe('snapshot domain contract harness', () => {
     afterEach(() => {
         store.close();
         fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('registers every storage domain once', () => {
+        expect(createSnapshotDomains().map(domain => domain.id)).toEqual([
+            'core-store', 'queue', 'image-blobs', 'preferences', 'schedules', 'git-ops',
+            'browser-screenshots', 'delegated-jobs', 'sentinel-todos', 'sentinel-mirror-outbox',
+        ]);
     });
 
     for (const domain of createSnapshotDomains()) {
@@ -402,5 +422,53 @@ describe('snapshot domain behavior', () => {
         const result = { errors: [] as string[] };
         await domain.executeWipe({ dataDir, store, includeWikis: false }, planResult.plan, result);
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-1', 'git-ops.json'))).toBe(false);
+    });
+
+    it('browser-screenshots: export excludes machine-local files', async () => {
+        const domain = createBrowserScreenshotsDomain();
+        expect(await domain.collect({ dataDir, store })).toEqual({ data: {}, metadata: {}, warnings: [] });
+        const snapshot = JSON.stringify(await collectStorageSnapshot({ dataDir, store }));
+        expect(snapshot).not.toContain('browser-screenshots');
+        expect(snapshot).not.toContain('machine-local screenshot');
+        expect(fs.readFileSync(path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png'), 'utf-8'))
+            .toBe('machine-local screenshot');
+    });
+
+    it.each([
+        ['replace', restoreStorageSnapshotReplace],
+        ['merge', restoreStorageSnapshotMerge],
+    ] as const)('browser-screenshots: %s import preserves local files and ignores screenshot data', async (_mode, restore) => {
+        const screenshot = path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots', 'capture.png');
+        const payload = Object.assign(emptyPayload(), {
+            browserScreenshots: [{ repoId: 'repo-2', filename: 'imported.png', content: 'not portable' }],
+        });
+        const result = createImportResult();
+        await restore(payload, { dataDir, store }, result);
+        expect(result.errors).toEqual([]);
+        expect(fs.readFileSync(screenshot, 'utf-8')).toBe('machine-local screenshot');
+        expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-2', 'browser-screenshots'))).toBe(false);
+    });
+
+    it('browser-screenshots: wipe removes folders across workspaces while preserving unrelated files', async () => {
+        const first = path.join(dataDir, 'repos', 'repo-1', 'browser-screenshots');
+        const second = path.join(dataDir, 'repos', 'repo-2', 'browser-screenshots');
+        const empty = path.join(dataDir, 'repos', 'repo-empty', 'browser-screenshots');
+        fs.mkdirSync(path.join(second, 'nested'), { recursive: true });
+        fs.writeFileSync(path.join(second, 'nested', 'capture.png'), 'second screenshot');
+        fs.mkdirSync(empty, { recursive: true });
+        const preserved = path.join(dataDir, 'repos', 'repo-2', 'other.png');
+        fs.writeFileSync(preserved, 'unrelated image');
+        const ctx = { dataDir, store, includeWikis: false };
+        const plan = await buildStorageWipePlan(ctx);
+        expect(plan.domainPlans.get('browser-screenshots')).toEqual([first, second, empty]);
+        for (const directory of [first, second, empty]) expect(fs.existsSync(directory)).toBe(true);
+
+        const result = { errors: [] as string[] };
+        await executeStorageWipePlan(ctx, plan, result);
+        expect(result.errors).toEqual([]);
+        for (const directory of [first, second, empty]) expect(fs.existsSync(directory)).toBe(false);
+        expect(fs.readFileSync(preserved, 'utf-8')).toBe('unrelated image');
+        expect(fs.existsSync(path.join(dataDir, 'config.yaml'))).toBe(true);
+        expect((await createBrowserScreenshotsDomain().planWipe(ctx)).plan).toEqual([]);
     });
 });

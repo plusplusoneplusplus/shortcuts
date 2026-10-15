@@ -78,7 +78,7 @@ export class BrowserControlPage {
         return result;
     }
 
-    async screenshot(ref?: string): Promise<{ data: string; mimeType: 'image/jpeg' }> {
+    async screenshot(ref?: string, format: 'jpeg' | 'png' = 'jpeg'): Promise<{ data: string; mimeType: 'image/jpeg' | 'image/png' }> {
         const metrics = await this.send('Page.getLayoutMetrics') as { cssVisualViewport?: { clientWidth: number; clientHeight: number; pageX: number; pageY: number }; visualViewport?: { clientWidth: number; clientHeight: number; pageX: number; pageY: number } };
         const viewport = metrics.cssVisualViewport ?? metrics.visualViewport;
         if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) throw new Error('Browser viewport unavailable');
@@ -92,11 +92,11 @@ export class BrowserControlPage {
         const pixelRatio = await this.evaluate('window.devicePixelRatio');
         if (typeof pixelRatio !== 'number' || !Number.isFinite(pixelRatio) || pixelRatio <= 0) throw new Error('Browser pixel ratio unavailable');
         const result = await this.send('Page.captureScreenshot', {
-            format: 'jpeg', quality: 75, captureBeyondViewport: true,
+            format, ...(format === 'jpeg' ? { quality: 75 } : {}), captureBeyondViewport: true,
             clip: { ...clip, scale: Math.min(1, 1280 / (clip.width * pixelRatio)) },
         }) as { data?: string };
         if (!result.data) throw new Error('Browser screenshot returned no image');
-        return { data: result.data, mimeType: 'image/jpeg' };
+        return { data: result.data, mimeType: format === 'png' ? 'image/png' : 'image/jpeg' };
     }
 
     private async mouse(target: BrowserDomTarget): Promise<void> {

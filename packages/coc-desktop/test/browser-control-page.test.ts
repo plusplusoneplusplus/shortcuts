@@ -36,19 +36,23 @@ describe('engine-neutral trusted CDP actions', () => {
         await expect(page.evaluate('42')).rejects.toThrow('no valid evaluation result');
     });
 
-    it.each([1, 2])('captures binary JPEG inline, bounded to 1280 pixels at ratio %s without saving files', async pixelRatio => {
+    it.each([
+        [1, undefined], [2, undefined], [1, 'jpeg'], [2, 'jpeg'], [1, 'png'], [2, 'png'],
+    ] as const)('captures binary images inline, bounded to 1280 pixels at ratio %s with format %s', async (pixelRatio, format) => {
         const { send, page } = fixture();
+        const data = format === 'png' ? 'iVBORfixture==' : '/9j/fixture==';
         send.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 1920, clientHeight: 1080, pageX: 0, pageY: 600 } })
             .mockResolvedValueOnce({ result: { value: { valueJson: String(pixelRatio), valueTruncated: false } } })
-            .mockResolvedValueOnce({ data: '/9j/fixture==' });
-        expect(await page.screenshot()).toEqual({ data: '/9j/fixture==', mimeType: 'image/jpeg' });
+            .mockResolvedValueOnce({ data });
+        expect(await page.screenshot(undefined, format)).toEqual({ data, mimeType: format === 'png' ? 'image/png' : 'image/jpeg' });
         expect(send.mock.calls[2]).toEqual(['Page.captureScreenshot', {
-            format: 'jpeg', quality: 75, captureBeyondViewport: true,
+            format: format ?? 'jpeg', ...(format === 'png' ? {} : { quality: 75 }), captureBeyondViewport: true,
             clip: { x: 0, y: 600, width: 1920, height: 1080, scale: 1280 / (1920 * pixelRatio) },
         }]);
+        if (format === 'png') expect(send.mock.calls[2][1]).not.toHaveProperty('quality');
     });
 
-    it('crops screenshot refs in document coordinates after scrolling and reports missing images', async () => {
+    it.each(['jpeg', 'png'] as const)('crops %s screenshot refs in document coordinates after scrolling and reports missing images', async format => {
         const { send, page } = fixture();
         const metrics = { cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 5, pageY: 200 } };
         send.mockResolvedValueOnce(metrics)
@@ -56,7 +60,7 @@ describe('engine-neutral trusted CDP actions', () => {
             .mockResolvedValueOnce(metrics)
             .mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } })
             .mockResolvedValueOnce({ data: 'aGVsbG8=' });
-        await page.screenshot('e1');
+        await page.screenshot('e1', format);
         expect(send.mock.calls[4][1]?.clip).toEqual({ x: 15, y: 220, width: 100, height: 40, scale: 1 });
         send.mockResolvedValueOnce(metrics).mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } }).mockResolvedValueOnce({});
         await expect(page.screenshot()).rejects.toThrow('no image');

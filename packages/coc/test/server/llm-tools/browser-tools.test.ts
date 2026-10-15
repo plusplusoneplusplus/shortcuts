@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { BrowserCommand, BrowserControlElement, BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import { BROWSER_TOOL_PARAMETERS } from '@plusplusoneplusplus/coc-client';
 import type { ToolResultObject } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -7,9 +10,17 @@ import {
     BROWSER_TOOL_DESCRIPTION, BrowserToolStateStore, createBrowserTool, formatBrowserDelta, formatBrowserSnapshot,
 } from '../../../src/server/llm-tools/browser-tools';
 
+vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof import('node:fs')>() }));
+
 const invocation = { toolName: 'browser', toolCallId: 'call', sessionId: 'session', arguments: {} };
 const element = (ref = 'e1', name = 'Save'): BrowserControlElement => ({ ref, name, role: 'button', depth: 0 });
-function harness(stateStore = new BrowserToolStateStore(), workspaceId = 'workspace-a', processId = 'process-a') {
+let dataDir: string;
+beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-tool-')); });
+afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+});
+function harness(stateStore = new BrowserToolStateStore(dataDir), workspaceId = 'workspace-a', processId = 'process-a') {
     const execute = vi.fn<BrowserControlRuntime['execute']>(async () => ({
         tab: '1:view', title: 'Fixture', url: 'https://fixture.test/', elements: [element()],
     }));
@@ -22,7 +33,7 @@ function harness(stateStore = new BrowserToolStateStore(), workspaceId = 'worksp
 describe('compact browser tool', () => {
     it('uses one controlling-turn token across command signals and a fresh token for follow-up factories', async () => {
         const execute = vi.fn<BrowserControlRuntime['execute']>(async () => ({ text: 'fixture', textTotal: 7 }));
-        const deps = { workspaceId: 'w', processId: 'p', runtime: { getEnabled: () => true, execute }, stateStore: new BrowserToolStateStore() };
+        const deps = { workspaceId: 'w', processId: 'p', runtime: { getEnabled: () => true, execute }, stateStore: new BrowserToolStateStore(dataDir) };
         const first = createBrowserTool(deps);
         await first.handler({ action: 'read' }, { ...invocation, signal: new AbortController().signal });
         await first.handler({ action: 'read' }, { ...invocation, signal: new AbortController().signal });
@@ -187,18 +198,123 @@ describe('compact browser tool', () => {
         expect((await h.call({ action: 'read' })).error).toBe('Browser returned an invalid page text result');
     });
 
-    it('returns screenshots only inline through binaryResultsForLlm without file references', async () => {
+    it.each(['jpeg', 'png'] as const)('saves %s screenshots atomically with a repo-scoped markdown path, without pixels by default', async format => {
         const h = harness();
-        h.execute.mockResolvedValue({ image: { data: 'anBlZw==', mimeType: 'image/jpeg' } });
-        const result = await h.call({ action: 'screenshot' });
-        expect(result.binaryResultsForLlm).toEqual([{ type: 'image', data: 'anBlZw==', mimeType: 'image/jpeg', description: 'Browser screenshot' }]);
-        expect(JSON.stringify(result)).not.toMatch(/file:|\/tmp\/|screenshot\.jpg/);
+        const image = { data: Buffer.from('fixture image').toString('base64'), mimeType: `image/${format}` as const };
+        h.execute.mockResolvedValue({ title: 'Chart', url: 'https://fixture.test/', image });
+        const result = await h.call({ action: 'screenshot', format });
+        const dir = path.join(dataDir, 'repos', 'workspace-a', 'browser-screenshots', 'process-a');
+        expect(h.stateStore.screenshotDir('workspace-a', 'process-a')).toBe(dir);
+        const files = fs.readdirSync(dir);
+        expect(files).toHaveLength(1);
+        expect(files[0]).toMatch(new RegExp(`^\\d{8}-\\d{6}-\\d+\\.${format === 'jpeg' ? 'jpg' : 'png'}$`));
+        const file = path.join(dir, files[0]);
+        expect(fs.readFileSync(file).toString()).toBe('fixture image');
+        expect(result).toEqual({
+            resultType: 'success',
+            textResultForLlm: `ok · Chart · https://fixture.test/\nsaved: ![screenshot](<${file.replace(/\\/g, '/')}>)`,
+        });
+        expect(result.binaryResultsForLlm).toBeUndefined();
+        const again = await h.call({ action: 'screenshot', format, view: false });
+        expect(again.binaryResultsForLlm).toBeUndefined();
+        expect(fs.readdirSync(dir)).toHaveLength(2);
+    });
+
+    it.each(['image/jpeg', 'image/png'] as const)('attaches %s pixels only with view true and also saves the file', async mimeType => {
+        const h = harness();
+        h.execute.mockResolvedValue({ image: { data: 'anBlZw==', mimeType } });
+        const result = await h.call({ action: 'screenshot', view: true });
+        expect(result.binaryResultsForLlm).toEqual([{ type: 'image', data: 'anBlZw==', mimeType, description: 'Browser screenshot' }]);
+        expect(result.textResultForLlm).toContain('saved: ![screenshot](<');
+        expect(fs.readdirSync(h.stateStore.screenshotDir('workspace-a', 'process-a'))).toHaveLength(1);
+    });
+
+    it('rejects missing screenshots and unsupported MIME types without creating files', async () => {
+        const h = harness();
         h.execute.mockResolvedValue({});
         expect((await h.call({ action: 'screenshot' })).error).toBe('Browser returned no screenshot');
+        h.execute.mockResolvedValue(JSON.parse('{"image":{"data":"anBlZw==","mimeType":"image/gif"}}'));
+        expect((await h.call({ action: 'screenshot' })).error).toBe('Browser returned no screenshot');
+        expect(fs.existsSync(h.stateStore.screenshotDir('workspace-a', 'process-a'))).toBe(false);
+    });
+
+    it('reports write failure without a saved path or pixel result', async () => {
+        const h = harness();
+        fs.writeFileSync(path.join(dataDir, 'repos'), 'not a directory');
+        h.execute.mockResolvedValue({ image: { data: 'anBlZw==', mimeType: 'image/jpeg' } });
+        const result = await h.call({ action: 'screenshot', view: true });
+        expect(result.resultType).toBe('failure');
+        expect(result.error).toContain('Failed to save browser screenshot:');
+        expect(result.textResultForLlm).not.toContain('saved:');
+        expect(result.binaryResultsForLlm).toBeUndefined();
+    });
+
+    it('cleans the temporary file when atomic rename fails', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue({ image: { data: 'anBlZw==', mimeType: 'image/jpeg' } });
+        vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => { throw new Error('rename denied'); });
+        const result = await h.call({ action: 'screenshot' });
+        expect(result.error).toBe('Failed to save browser screenshot: rename denied');
+        expect(fs.readdirSync(h.stateStore.screenshotDir('workspace-a', 'process-a'))).toEqual([]);
+    });
+
+    it('preserves saved captures when a fresh store writes in the same second', () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-01-02T03:04:05.000Z'));
+            const image = { data: 'anBlZw==', mimeType: 'image/jpeg' as const };
+            const first = new BrowserToolStateStore(dataDir).saveScreenshot('workspace-a', 'process-a', image);
+            const second = new BrowserToolStateStore(dataDir).saveScreenshot('workspace-a', 'process-a', image);
+            expect(first).not.toBe(second);
+            expect(fs.readFileSync(first).toString()).toBe('jpeg');
+            expect(fs.readFileSync(second).toString()).toBe('jpeg');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('returns an absolute angle-bracket path when the configured data directory contains spaces', async () => {
+        const h = harness(new BrowserToolStateStore(path.join(dataDir, 'data with spaces')));
+        h.execute.mockResolvedValue({ image: { data: 'anBlZw==', mimeType: 'image/png' } });
+        const result = await h.call({ action: 'screenshot', format: 'png' });
+        const file = result.textResultForLlm.match(/!\[screenshot\]\(<(.+)>\)/)![1];
+        expect(path.isAbsolute(file)).toBe(true);
+        expect(file).toContain('data with spaces');
+        expect(fs.readFileSync(file).toString()).toBe('jpeg');
+    });
+
+    it('does not write a screenshot when aborted after capture', async () => {
+        const h = harness();
+        const controller = new AbortController();
+        h.execute.mockImplementation(async () => {
+            controller.abort(new Error('Turn stopped'));
+            return { image: { data: 'anBlZw==', mimeType: 'image/jpeg' } };
+        });
+        const result = await h.tool.handler({ action: 'screenshot' }, { ...invocation, signal: controller.signal }) as ToolResultObject;
+        expect(result.error).toBe('Turn stopped');
+        expect(fs.existsSync(h.stateStore.screenshotDir('workspace-a', 'process-a'))).toBe(false);
+    });
+
+    it('deletes only the owning process screenshots and prevents late captures from recreating them', async () => {
+        const store = new BrowserToolStateStore(dataDir);
+        const image = { data: 'anBlZw==', mimeType: 'image/jpeg' as const };
+        const file = store.saveScreenshot('workspace-a', 'process-a', image);
+        const otherProcess = store.saveScreenshot('workspace-a', 'process-b', image);
+        const otherWorkspace = store.saveScreenshot('workspace-b', 'process-a', image);
+        const h = harness(store);
+        h.execute.mockImplementation(async () => {
+            store.delete('workspace-a', 'process-a');
+            return { image };
+        });
+        expect((await h.call({ action: 'screenshot' })).error).toBe('Browser process was removed');
+        expect(fs.existsSync(file)).toBe(false);
+        expect(fs.existsSync(path.dirname(file))).toBe(false);
+        expect(fs.existsSync(otherProcess)).toBe(true);
+        expect(fs.existsSync(otherWorkspace)).toBe(true);
     });
 
     it('retains selected tabs and snapshot state across tool factories but never crosses workspace/process', async () => {
-        const store = new BrowserToolStateStore();
+        const store = new BrowserToolStateStore(dataDir);
         const first = harness(store);
         await first.call({ action: 'select', tab: '1:view' });
         const resumed = harness(store);
