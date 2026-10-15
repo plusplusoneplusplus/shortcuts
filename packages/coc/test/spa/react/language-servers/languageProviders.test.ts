@@ -198,6 +198,37 @@ describe('registerLanguageProviders', () => {
         expect(monaco.live()).toEqual(['hover', 'definition']);
     });
 
+    it.each([
+        { monacoKind: 0, lspKind: 1, character: undefined },
+        { monacoKind: 1, lspKind: 2, character: '.' },
+        { monacoKind: 2, lspKind: 3, character: undefined },
+    ])('translates Monaco completion trigger $monacoKind to LSP trigger $lspKind', async ({
+        monacoKind, lspKind, character,
+    }) => {
+        const { attachment, target } = open();
+        attachment.respond('textDocument/completion', params => {
+            // A server rejecting an invalid context must not silently empty the popup.
+            expect(params).toMatchObject({ context: { triggerKind: lspKind } });
+            return [{ label: 'console', insertText: 'console' }];
+        });
+
+        const result = await monaco.provider('completion').provideCompletionItems(
+            target, POSITION,
+            { triggerKind: monacoKind, ...(character ? { triggerCharacter: character } : {}) },
+            token(),
+        );
+
+        expect(attachment.lastRequest('textDocument/completion')?.params).toMatchObject({
+            context: { triggerKind: lspKind, ...(character ? { triggerCharacter: character } : {}) },
+        });
+        expect(result.suggestions).toHaveLength(1);
+        expect(result.suggestions[0]).toMatchObject({
+            label: 'console',
+            insertText: 'console',
+            range: { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 5 },
+        });
+    });
+
     it('carries the server trigger characters into the registration', () => {
         open();
         expect(monaco.provider('completion').triggerCharacters).toEqual(['.', '"']);
@@ -342,7 +373,7 @@ describe('registerLanguageProviders', () => {
         const list = await monaco.provider('completion').provideCompletionItems(
             target,
             POSITION,
-            { triggerKind: 2, triggerCharacter: '.' },
+            { triggerKind: 1, triggerCharacter: '.' },
             token(),
         );
 

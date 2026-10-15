@@ -782,7 +782,8 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                     const params = view.documentParams({
                         position: toLspPosition(position),
                         context: {
-                            triggerKind: context?.triggerKind ?? 1,
+                            // Monaco uses 0/1/2; LSP uses 1/2/3 for the same triggers.
+                            triggerKind: (context?.triggerKind ?? 0) + 1,
                             ...(context?.triggerCharacter ? { triggerCharacter: context.triggerCharacter } : {}),
                         },
                     });
