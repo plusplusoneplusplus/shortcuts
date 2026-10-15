@@ -57,7 +57,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until the user responds. Persists the pending payload on `AIProcess.pendingAskUser` and emits an SSE event. Results distinguish answers, skips, cancellations, `deferred: true` / `reason: "needs-context"` responses with optional notes, and `reason: "unavailable"` short-circuits on non-interactive turns. With `features.sensitiveInput` (default off, live) the schema adds a `sensitive-input` type with `sink` (`SENSITIVE_INPUT_SINKS`, v1 `browser.cookies`) and `sinkArgs` (`domain`, optional `viewId`); the flag is re-checked per call, and the payload carries sink/sinkArgs but never options, defaults or the secret. It answers only through `answerQuestions` with a strict `receipt` (`{ ok: true, count }` / `{ ok: false, reason: 'invalid-input' | 'import-failed' }`, checked by `parseSensitiveInputReceipt` in the route, live path and post-restart resume); the model gets `{ ok, sink, domain, count | reason }`, and single-answer paths (relay) are refused. `AskUserInline` keeps the paste in a masked field outside the draft store, calls the desktop preload `importCookies` (which returns `{ ok, count }`) through `sensitiveInputSink.ts`, then posts only the receipt; a dashboard without the bridge answers `{ skipped: true, reason: 'unavailable' }` (sensitive-only input), which resolves with the desktop guidance. Sensitive questions never reach the WhatsApp/Teams relay; on a connector-owned turn (`AskUserQuestionRelay.owns`) `buildAskUserWiring` resolves them `unavailable` and leaves them out of `pendingAskUser` and SSE. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments resolved; tracks resolved IDs in a per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists per-hunk diff classifications for PR/commit/branch-range review. Categories: `logic`, `mechanical`, `test`, `simple`, `generated`. New `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`; critical metadata is validated rather than dropped. |
-| `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversations. Requires a SQLite-backed `ProcessStore`. |
+| `search-conversations-tool.ts` | `search_conversations` | FTS5 transcript search, recent metadata browsing, and workspace-scoped displayed-title lookup — see below. |
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Create/post dispatch and explicit local cancellation — see below. |
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
@@ -70,6 +70,16 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
 | `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
+
+### search_conversations
+
+`title` selects literal case-insensitive displayed-title matching, scoped by explicit
+or invoking `workspaceId`, and cannot combine with `query`. It scans chat summaries
+in 200-row pages before matching-result pagination, excludes archived/current chats,
+and returns local server/workspace labels plus `ambiguous` across all matches.
+Custom titles take precedence over generated titles and prompt previews. Ambiguous
+results instruct the Sentinel to ask which chat to attach. Title lookup reads no
+transcripts; unsupported remote clone keys return unavailable without local reads.
 
 ### sentinel_todos
 

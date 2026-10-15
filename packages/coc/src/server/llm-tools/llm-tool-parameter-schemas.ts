@@ -45,6 +45,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         type: 'object',
         properties: {
             query: { type: 'string' },
+            title: { type: 'string' },
             workspaceId: { type: 'string' },
             since: { type: 'string' },
             until: { type: 'string' },

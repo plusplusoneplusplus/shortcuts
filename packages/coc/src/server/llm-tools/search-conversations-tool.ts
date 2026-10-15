@@ -3,9 +3,10 @@
  * The model calls this tool to search past AI conversation history using FTS5
  * full-text search. Requires a SQLite-backed ProcessStore.
  *
- * Two modes:
+ * Three modes:
  *   1. Keyword search — FTS5 full-text search with optional AI summarization
  *   2. Recent browse — no query, returns metadata for recent sessions (zero LLM cost)
+ *   3. Title lookup — literal displayed-title matching within a workspace
  *
  * Per-invocation factory pattern: each AI call gets its own tool instance
  * bound to the store instance, avoiding cross-request contamination.
@@ -16,6 +17,7 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface SearchConversationsArgs {
     query?: string;
+    title?: string;
     workspaceId?: string;
     since?: string;
     until?: string;
@@ -187,8 +189,10 @@ export function createSearchConversationsTool(
     const tool = defineTool<SearchConversationsArgs>('search_conversations', {
         description:
             'Search your past conversation history in this workspace, or browse recent sessions. Not a Teams/Slack chat search. ' +
-            'Two modes: (1) Recent sessions — no query, lists session metadata only (no LLM cost), scoped by workspaceId and since/until. ' +
+            'Three modes: (1) Recent sessions — no query, lists session metadata only (no LLM cost), scoped by workspaceId and since/until. ' +
             '(2) Keyword search — find topics across past sessions, optionally with AI summaries. ' +
+            '(3) Title lookup — supply title and workspaceId to find existing chats by their displayed title without reading transcripts. ' +
+            'If a title lookup is ambiguous, ask the user to choose a chat before attaching a reference. ' +
             'For periodic tasks, use no query + workspaceId + since/until to find processIds, then call get_conversation on the ones you want. ' +
             'Use proactively when the user says "remember when", "last time", "we did this before", or "as I mentioned", or references a past session. ' +
             'Better to search and confirm than to guess.',
@@ -199,6 +203,10 @@ export function createSearchConversationsTool(
                     type: 'string',
                     description:
                         'Search query (FTS5 syntax: quoted phrases, AND/OR/NOT). Omit to browse recent sessions.',
+                },
+                title: {
+                    type: 'string',
+                    description: 'Literal, case-insensitive part of the displayed chat title. Requires a workspace; do not combine with query.',
                 },
                 workspaceId: {
                     type: 'string',
@@ -238,6 +246,18 @@ export function createSearchConversationsTool(
             const since = parseIsoDateArg(args.since, 'since');
             const until = parseIsoDateArg(args.until, 'until');
             const query = args.query?.trim() ?? '';
+
+            if (args.title !== undefined) {
+                const title = args.title.trim();
+                if (!title || query || !effectiveWorkspaceId) {
+                    return { error: 'Title lookup requires a nonempty title and workspaceId, without query.', code: 'invalid' };
+                }
+                if (effectiveWorkspaceId.startsWith('remote:')) {
+                    return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
+                }
+                return handleTitleMode(store, effectiveWorkspaceId, title, since, until,
+                    effectiveLimit, effectiveOffset, currentProcessId);
+            }
 
             // ================================================================
             // Mode 1: Recent sessions (no query)
@@ -335,6 +355,46 @@ function toRecentResult(e: ProcessIndexEntry) {
         preview: e.promptPreview.length > RAW_PREVIEW_LENGTH
             ? e.promptPreview.slice(0, RAW_PREVIEW_LENGTH) + '…'
             : e.promptPreview,
+    };
+}
+
+/** Match metadata before paginating so older titles and duplicate names remain discoverable. */
+async function handleTitleMode(
+    store: ProcessStore,
+    workspaceId: string,
+    title: string,
+    since: Date | undefined,
+    until: Date | undefined,
+    limit: number,
+    offset: number,
+    currentProcessId: string | undefined,
+) {
+    if (!store.getProcessSummaries) {
+        return { error: 'Title lookup is unavailable (requires process summaries).', code: 'unavailable' };
+    }
+    const workspaces = await store.getWorkspaces();
+    const workspaceLabel = workspaces.find(ws => ws.id === workspaceId)?.name ?? workspaceId;
+    const results: ReturnType<typeof toRecentResult>[] = [];
+    const needle = title.toLowerCase();
+    let total = 0;
+    const pageSize = 200;
+    for (let scanOffset = 0; ; scanOffset += pageSize) {
+        const page = await store.getProcessSummaries({ workspaceId, type: 'chat', since, until, limit: pageSize, offset: scanOffset });
+        for (const entry of page.entries) {
+            const displayedTitle = entry.customTitle || entry.title || entry.promptPreview;
+            if (entry.workspaceId !== workspaceId || entry.id === currentProcessId || entry.archived
+                || entry.type !== 'chat' || !displayedTitle.toLowerCase().includes(needle)) continue;
+            if (total >= offset && results.length < limit) results.push({ ...toRecentResult(entry), title: displayedTitle });
+            total++;
+        }
+        if (!page.entries.length || scanOffset + page.entries.length >= page.total) break;
+    }
+    return {
+        mode: 'title' as const,
+        results: results.map(result => ({ ...result, server: 'local', workspaceLabel })),
+        total, limit, offset, hasMore: offset + results.length < total,
+        ambiguous: total > 1,
+        message: total > 1 ? 'Multiple chats match. Ask the user which chat to attach.' : `Found ${total} matching chat(s).`,
     };
 }
 
