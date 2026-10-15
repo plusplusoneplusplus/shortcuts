@@ -203,6 +203,9 @@ references before editing. Paths are package-relative.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
+- Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
+  `#admin/settings/sentinel`. Features search links to that tab; saves and cancels
+  affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
 - `copilot.transformTransport` is an installation-wide Admin setting (Direct HTTP default, restart required).
   Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
   System One, the shared Copilot decision backend, and titles use `gpt-6-luna`.
@@ -668,7 +671,7 @@ references before editing. Paths are package-relative.
   `messaging/safe-error-diagnostics.ts` fields only, never raw errors. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - `features.sentinelDesktopMirror` is live/default-off under Admin → Configure →
-  Integrations. Stage newly submitted dashboard messages before canonical admission;
+  Sentinel. Stage newly submitted dashboard messages before canonical admission;
   confirm buffered writes immediately and persist exact workspace/process/request
   correlation. Hydrate authoritative bindings first; pin their account/destination.
   Connector inputs, reviews, retries and stored history never create mirror intents.

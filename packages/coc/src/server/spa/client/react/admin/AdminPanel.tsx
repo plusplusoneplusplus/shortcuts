@@ -214,6 +214,7 @@ export function AdminPanel() {
         ai: [{ dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec }, featureTarget('ai')],
         chat: [{ dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat }, featureTarget('chat')],
         'chat-style': [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }],
+        sentinel: [featureTarget('sentinel')],
         appearance: [{ dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance }, featureTarget('appearance')],
         features: [featureTarget('features')],
         integrations: [featureTarget('integrations')],
@@ -629,6 +630,8 @@ export function AdminPanel() {
                                                     {renderTabFeatures('chat')}
                                                 </>
                                             )}
+
+                                            {settingsSubTab === 'sentinel' && renderTabFeatures('sentinel')}
 
                                             {/* ── Chat Style ── */}
                                             {settingsSubTab === 'chat-style' && chatStyleSelectorEnabled && (

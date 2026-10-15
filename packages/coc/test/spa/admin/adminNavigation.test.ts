@@ -30,6 +30,7 @@ describe('parseSettingsSubTabFromHash', () => {
     it('parses a valid explicit sub-tab', () => {
         expect(parseSettingsSubTabFromHash('#admin/settings/appearance')).toBe('appearance');
         expect(parseSettingsSubTabFromHash('#admin/settings/advanced')).toBe('advanced');
+        expect(parseSettingsSubTabFromHash('#admin/settings/sentinel')).toBe('sentinel');
     });
 
     it('returns null for an unknown sub-tab', () => {
@@ -50,6 +51,24 @@ describe('chat-style sub-tab registration', () => {
         expect(getSettingsSubTabMeta('chat-style').label).toBe('Chat Style');
         expect(getSettingsSubTabMeta('chat-style').icon).toBeTruthy();
         expect(SETTINGS_SUBTAB_DESCRIPTIONS['chat-style']).toBeTruthy();
+    });
+});
+
+describe('Sentinel sub-tab registration', () => {
+    it('has one ungated settings tab with stable navigation metadata', () => {
+        expect(SETTINGS_SUBTABS.filter(t => t.id === 'sentinel')).toEqual([
+            { id: 'sentinel', label: 'Sentinel', icon: '🛡️' },
+        ]);
+        expect(SETTINGS_SUBTAB_DESCRIPTIONS.sentinel).toBeTruthy();
+        const nav = deriveActiveNav({
+            isContainer: false, isToolEmbedded: false,
+            activeDashboardTab: 'admin', activeTab: 'settings', settingsSubTab: 'sentinel',
+        });
+        expect(nav).toMatchObject({
+            activeNavKey: 'settings:configure',
+            activeTabLabel: 'Sentinel',
+            activeBreadcrumbGroup: 'Configure',
+        });
     });
 });
 

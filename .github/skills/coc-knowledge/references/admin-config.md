@@ -22,7 +22,7 @@ The file is dependency-free (no Node/zod imports) because the SPA bundle imports
 | `config/namespace-registry.ts` | Merges every dotted key generically (`override ?? base ?? default`, admin leaves skip-undefined) and derives per-field `file`/`default` source by exact-key lookup (`getConfigValueAtPath`) |
 | `config.ts` | Derives `TOP_LEVEL_CONFIG_SOURCE_KEYS` from `TOP_LEVEL_ADMIN_SETTING_KEYS` + `FILE_ONLY_TOP_LEVEL_LEAVES`; `mergeTopLevelScalars` resolves every top-level scalar generically (`override ?? base`, always written so optional scalars keep their present-as-undefined shape) |
 | `server/config/runtime-config-handler.ts` | `buildRuntimeFeatures()` builds `RuntimeDashboardConfig.features` from all `runtimeFlag` definitions plus the hand-mapped non-admin `gitCommitLookupEnabled` |
-| `AdminPanel.tsx` | Renders registry sections on AI & Execution, Chat, Appearance, Integrations, and Features; one shared value map tracks edits, while section saves/cancels act only on that tab's keys |
+| `AdminPanel.tsx` | Renders registry sections on AI & Execution, Chat, Sentinel, Appearance, Integrations, and Features; one shared value map tracks edits, while section saves/cancels act only on that tab's keys |
 | `admin/FeatureSettingsCard.tsx` | Presents the Features tab's own rows and cross-tab search links, plus per-tab Features sections; `resolveFeatureBadge(def)` suppresses `'experimental'` when `def.default === true`, while `'restart'`/`'preview'` always render |
 | `test/config/admin-setting-definitions.test.ts` | Generic contract tests over every definition (DEFAULT_CONFIG consistency, schema accept/reject, validate/apply round-trip, merge override, source tracking, runtime-flag exposure, UI metadata) |
 
@@ -102,7 +102,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `sentinelTodoDependencies` | off | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
 | `sentinelTodoExternalReferences` | off | Live gate for typed PR/email/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
 | `sentinelPrOutcomeWake` | off | Live gate for tracked delegated-PR outcome reviews and To-do detail controls; publishes `sentinelPrOutcomeWakeEnabled`, uses native trigger infrastructure, and does not change CI/conflict repair permission |
-| `sentinelDesktopMirror` | off | Admin → Configure → Integrations → Sentinel desktop messaging mirror; live gate for newly accepted exact-owner dashboard submissions and final replies to active local Sentinel bindings. Bound submissions require an identifiable normal Teams/WhatsApp account at capture; missing identity or staging storage rejects admission safely until available. Existing history is not replayed. See [server architecture](server-architecture.md#desktop-sentinel-mirror) for durable delivery and failure policy |
+| `sentinelDesktopMirror` | off | Admin → Configure → Sentinel → Sentinel desktop messaging mirror; live gate for newly accepted exact-owner dashboard submissions and final replies to active local Sentinel bindings. Bound submissions require an identifiable normal Teams/WhatsApp account at capture; missing identity or staging storage rejects admission safely until available. Existing history is not replayed. See [server architecture](server-architecture.md#desktop-sentinel-mirror) for durable delivery and failure policy |
 | `botManagedConversations` | off | Live integration-control identification gate, independent of AI provider, Teams relay, and bridge observability; runtime capability `botManagedConversationsEnabled` |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
@@ -177,7 +177,18 @@ The page is a two-column shell (`.ar-shell` grid: `var(--ar-sidebar-w)` + `1fr`)
 
 Sidebar tabs are `.ar-nav-item` buttons grouped by user task: Configure (settings entry, AI Provider, Browser, Servers; Browser is desktop-shell only, and on the web `#admin/browser` falls back to the default admin page), Knowledge, Connections, Operations, Developer / Internals. On normal CoC, Connections has separate Teams (`admin/messaging`) and WhatsApp (`admin/whatsapp`) rows; container mode shows one combined WhatsApp/Teams Messaging section (`admin/whatsapp` falls back to it); container Agents also lives in Connections. The nav mixes admin sections (`admin-tab-*` testids), promoted settings sections (`settings-subtab-*` testids), and embedded tool routes (`skills-toggle`, `logs-toggle`, `stats-toggle`, `servers-toggle`). Under `@container ar-shell (max-width: 600px)` the sidebar is replaced by a grouped `.ar-mobile-tab-select`.
 
-The `settings` section promotes `ai`, `chat`, `chat-style`, `appearance`, `features`, `integrations`, `providers`, and `advanced` from `SETTINGS_SUBTABS` in `adminNavigation.ts`. Selection defaults to `ai` and syncs with `#admin/settings/<sub>`; the default collapses to `#admin/settings`. Tests touching non-`ai` cards navigate via `gotoSettingsSubTab(...)`. Credentials use `ProviderTokensSection`.
+The `settings` section promotes `ai`, `chat`, `chat-style`, `sentinel`, `appearance`, `features`, `integrations`, `providers`, and `advanced` from `SETTINGS_SUBTABS` in `adminNavigation.ts`. Selection defaults to `ai` and syncs with `#admin/settings/<sub>`; the default collapses to `#admin/settings`. Tests touching non-`ai` cards navigate via `gotoSettingsSubTab(...)`. Credentials use `ProviderTokensSection`.
+
+### Sentinel settings
+
+`#admin/settings/sentinel` owns eight registry controls: `sentinel.enabled` and
+`features.sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
+`sentinelTodoScrubber`, `sentinelPrOutcomeWake`, `sentinelResultCards`, and
+`sentinelDesktopMirror`. Registry groups organize mode/results, To-do/PR outcomes and
+messaging. Features search renders links to Sentinel, not duplicate controls.
+Shared triggers, execution and connector settings retain their tabs. The existing shared
+draft controller scopes saves, keyboard saves and cancels to the active tab; Admin uses
+the page-origin client and its API prefix independently of the selected workspace.
 
 ### Keyboard saving
 
@@ -192,6 +203,6 @@ Advanced/read-only views, immediate-save Browser/link/Skills controls, and per-i
 - **Section cards:** `<SettingsCard title description badge dirty saving onSave onCancel data-testid>` renders `.ar-card`.
 - **Settings rows:** local `AdminRow`, `AdminToggle`, `AdminSeg`, `AdminInputSuffix`, `SourceBadge` helpers at the bottom of `AdminPanel.tsx`; they preserve the `data-testid`s and `id`s tests rely on.
 - **Free-form sections:** `.ar-section`, `.ar-section-head`, plus `.ar-input`, `.ar-select`, `.ar-btn(-primary|-secondary|-ghost|-danger[-outline])`, `.ar-pill`, `.ar-badge`, `.ar-pre`, `.ar-code`, `.ar-mono`.
-- **Feature groups:** Features-card toggles sit in `.ar-feature-group` with an `.ar-feature-group-head` heading. Groups: Dashboard Modules, Development Tools, Work Items, AI Execution Modes, Code Review & Collaboration, Infrastructure.
+- **Feature groups:** Registry controls sit in `.ar-feature-group` with an `.ar-feature-group-head` heading. `FEATURE_CARD_GROUPS` supplies shared and Sentinel-specific headings; per-tab cards show headings when multiple groups are present.
 - **AI Provider page:** content lives in `AIProviderPage.tsx` with an `ar-subtab-row` bar — Provider routing (summary grid, routing table, feature-gated Auto editor/preview) and Model catalog (lazy `ProviderModelsSection` + `ProviderEffortTiersSection`). Styles are `aip-*` classes.
 - **New top-level tabs:** add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, `TAB_DESCRIPTIONS`, then place the destination in `navGroups` in `AdminPanel.tsx`.
