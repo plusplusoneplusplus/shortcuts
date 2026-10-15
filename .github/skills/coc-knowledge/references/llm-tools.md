@@ -62,7 +62,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
-| `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and inline screenshots. |
+| `browser-tools.ts` | `browser` | One validated 14-action desktop-browser tool with compact refs, deltas and saved screenshots with opt-in model viewing. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to a token budget via 5 progressive levels. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
@@ -488,9 +488,25 @@ read pages to 8000 and serialized eval to 4000. Expanded snapshots carry a
 full interactive baseline for correct deltas. Desktop read replies include
 `textTotal` and already apply the requested offset; eval replies contain page-bounded
 `valueJson`/`valueTruncated`, formatted without double serialization. Unpaged replies
-are invalid. Screenshots use inline
-`binaryResultsForLlm` only. `BrowserToolStateStore` serializes plain selection and
-snapshot data by workspace/process across turns; it holds no provider sessions.
+are invalid.
+
+`screenshot(ref?, format?: 'jpeg' | 'png', view?: boolean)` defaults to JPEG
+quality 75; PNG omits quality. Capture width is capped at 1280 pixels. Screenshots are
+saved atomically under
+`getRepoDataPath(dataDir, workspaceId, 'browser-screenshots')/<process>/<yyyymmdd-hhmmss>-<seq>.(jpg|png)`.
+Results contain a Markdown image link to the saved absolute path, with forward
+slashes and an angle-bracket destination. Pixels stay out of model context by
+default; `view: true` also includes `binaryResultsForLlm`.
+
+Saved-image rendering uses the page-origin image proxy; remote-clone screenshot
+paths are not resolved on their owning server.
+
+`BrowserToolStateStore(dataDir)` owns screenshot directories and serializes plain
+selection and snapshot data by workspace/process across turns; it holds no provider
+sessions. Process deletion marks state deleted to prevent late writes and removes
+its screenshot directory best effort, logging cleanup failures. The machine-local
+snapshot domain wipes screenshots and excludes them from export/import.
+
 Each tool factory owns a stable controlling-turn ID, independent of remembered
 conversation selection. Targeted relay/main activity carries it through follow-ups
 and terminal cleanup. Relay errors and malformed results remain visible failures.

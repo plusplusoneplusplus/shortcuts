@@ -147,7 +147,7 @@ describe('mode-invariant tool block', () => {
         'browser tool is live-gated in Ask and Autopilot on %s', async provider => {
             let enabled = false;
             const runtime = { getEnabled: () => enabled, execute: vi.fn().mockResolvedValue({}) };
-            const state = new BrowserToolStateStore();
+            const state = new BrowserToolStateStore('.');
             const inFlightTurns = new Map();
             const options = () => makeOptions({ provider,
                 getBrowserControlRuntime: () => runtime, getBrowserToolState: () => state, inFlightTurns });
@@ -171,7 +171,7 @@ describe('mode-invariant tool block', () => {
     it('browser activation stays persisted across follow-ups and executor recreation, and clears', async () => {
         const store = createMockProcessStore();
         await store.addProcess(makeProcess('browser-sticky', 'ask'));
-        const browserState = new BrowserToolStateStore();
+        const browserState = new BrowserToolStateStore('.');
         let enabled = true;
         const options = () => makeOptions({
             getBrowserControlRuntime: () => ({ getEnabled: () => enabled, execute: vi.fn().mockResolvedValue({}) }),
@@ -213,7 +213,7 @@ describe('mode-invariant tool block', () => {
         });
         await new ChatExecutor(createMockProcessStore(), makeOptions({
             getBrowserControlRuntime: () => runtime,
-            getBrowserToolState: () => new BrowserToolStateStore(),
+            getBrowserToolState: () => new BrowserToolStateStore('.'),
             inFlightTurns,
         })).execute(makeChatTask('ask', 'browser-no-activation', 'ws-1'), 'hello');
         expect(runtime.execute).toHaveBeenCalledTimes(1);
@@ -247,7 +247,7 @@ describe('mode-invariant tool block', () => {
         });
         await new ChatExecutor(createMockProcessStore(), makeOptions({
             getBrowserControlRuntime: () => runtime,
-            getBrowserToolState: () => new BrowserToolStateStore(),
+            getBrowserToolState: () => new BrowserToolStateStore('.'),
         })).execute(makeChatTask('ask', 'browser-no-runtime-registry', 'ws-1'), 'hello');
         expect(runtime.execute).toHaveBeenCalledOnce();
     });
@@ -261,7 +261,7 @@ describe('mode-invariant tool block', () => {
         (task.payload as any).resumedFrom = 'source';
         await new ChatExecutor(store, makeOptions({
             getBrowserControlRuntime: () => ({ getEnabled: () => true, execute: vi.fn() }),
-            getBrowserToolState: () => new BrowserToolStateStore(),
+            getBrowserToolState: () => new BrowserToolStateStore('.'),
         })).execute(task, 'Earlier user: /browser browse');
         expect((sdkMocks.mockSendMessage.mock.calls[0][0] as any).prompt.includes('Browser mode is active.')).toBe(active);
         expect((await store.getProcess(process.id))?.metadata?.browserMode).toBe(active);
@@ -275,7 +275,7 @@ describe('mode-invariant tool block', () => {
         }
         await new SpecializedChatExecutor(createMockProcessStore(), makeOptions({
             getBrowserControlRuntime: () => ({ getEnabled: () => true, execute: vi.fn() }),
-            getBrowserToolState: () => new BrowserToolStateStore(),
+            getBrowserToolState: () => new BrowserToolStateStore('.'),
         })).execute(makeChatTask('ask', 'specialized-browser', 'ws-1'), '/browser browse');
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(call.tools.map((tool: any) => tool.name)).toEqual(['browser']);

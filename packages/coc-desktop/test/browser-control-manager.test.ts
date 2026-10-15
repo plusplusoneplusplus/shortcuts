@@ -105,6 +105,27 @@ describe('main browser control scope and selection', () => {
         expect(await h.run({ action: 'read', offset: 17000 }, opened.tab)).toMatchObject({ text: '', textTotal: 16003 });
         await h.manager.dispose();
     });
+
+    it.each([undefined, 'jpeg', 'png'] as const)('forwards screenshot format %s to the shared control page', async format => {
+        const h = harness();
+        const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+        const cdp = vi.mocked(h.views[0].cdp!);
+        cdp.mockClear();
+        cdp.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 } })
+            .mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } })
+            .mockResolvedValueOnce({ data: 'fixture==' });
+        expect(await h.run({ action: 'screenshot', ...(format ? { format } : {}) }, opened.tab)).toMatchObject({
+            tab: opened.tab, title: 'Fixture', url: 'https://fixture.test/',
+            image: { data: 'fixture==', mimeType: format === 'png' ? 'image/png' : 'image/jpeg' },
+        });
+        expect(cdp.mock.calls.map(([method]) => method)).toEqual(['Page.getLayoutMetrics', 'Runtime.evaluate', 'Page.captureScreenshot']);
+        expect(cdp).toHaveBeenLastCalledWith('Page.captureScreenshot', {
+            format: format ?? 'jpeg', ...(format === 'png' ? {} : { quality: 75 }), captureBeyondViewport: true,
+            clip: { x: 0, y: 0, width: 800, height: 600, scale: 1 },
+        });
+        await h.manager.dispose();
+    });
+
     it('includes real engine popup URL views in their opener workspace, focuses them and rejects calls when closed', async () => {
         const h = harness();
         await h.manager.open(1, 'opener', 'https://fixture.test/', 'w');

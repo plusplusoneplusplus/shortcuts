@@ -7,7 +7,8 @@ export const BROWSER_ACTIONS = [
 export const BROWSER_TOOL_DESCRIPTION = 'Use only when browser mode is active (user typed /browser); otherwise never call. '
     + 'tabs; open(url,newTab?); select(tab); snapshot(ref?,all?); read(ref?,offset?); click(ref); type(ref,text,submit?); '
     + 'select_option(ref,value); press(key); scroll(ref?|direction); navigate(direction:back|forward|reload); '
-    + 'wait(text|ms); screenshot(ref?); eval(js). Use eN snapshot refs. Screenshots only on request.';
+    + 'wait(text|ms); screenshot(ref?,format?,view?); eval(js). Use eN refs. Screenshots only on request. '
+    + 'Screenshots save to files; read to inspect or reply with returned markdown to show. JPEG default; view=true attaches pixels.';
 export const BROWSER_SCHEMA_CHAR_BUDGET = 1600;
 
 export interface BrowserCommand {
@@ -25,6 +26,8 @@ export interface BrowserCommand {
     offset?: number;
     newTab?: boolean;
     submit?: boolean;
+    format?: 'jpeg' | 'png';
+    view?: boolean;
 }
 
 export interface BrowserControlElement {
@@ -54,7 +57,7 @@ export interface BrowserCommandResult {
     value?: unknown;
     valueJson?: string;
     valueTruncated?: boolean;
-    image?: { data: string; mimeType: 'image/jpeg' };
+    image?: { data: string; mimeType: 'image/jpeg' | 'image/png' };
 }
 
 export interface BrowserCommandRequest {
@@ -84,6 +87,7 @@ export const BROWSER_TOOL_PARAMETERS = {
         direction: { type: 'string' }, ms: { type: 'integer' }, js: { type: 'string' },
         all: { type: 'boolean' }, offset: { type: 'integer' },
         newTab: { type: 'boolean' }, submit: { type: 'boolean' },
+        format: { type: 'string', enum: ['jpeg', 'png'] }, view: { type: 'boolean' },
     },
     required: ['action'],
     additionalProperties: false,
@@ -102,7 +106,7 @@ const ACTION_PARAMS: Record<BrowserCommand['action'], { allowed: string[]; requi
     scroll: { allowed: ['ref', 'direction'], required: [] },
     navigate: { allowed: ['direction'], required: ['direction'] },
     wait: { allowed: ['text', 'ms'], required: [] },
-    screenshot: { allowed: ['ref'], required: [] },
+    screenshot: { allowed: ['ref', 'format', 'view'], required: [] },
     eval: { allowed: ['js'], required: ['js'] },
 };
 
@@ -118,7 +122,7 @@ export function assertBrowserCommand(raw: unknown): asserts raw is BrowserComman
     for (const [name, value] of Object.entries(args)) {
         if (name === 'action') continue;
         if (!allowed.includes(name)) throw new TypeError(`${action}: unexpected parameter ${name}`);
-        if (name === 'all' || name === 'newTab' || name === 'submit') {
+        if (name === 'all' || name === 'newTab' || name === 'submit' || name === 'view') {
             if (typeof value !== 'boolean') throw new TypeError(`${name} must be boolean`);
         } else if (name === 'offset' || name === 'ms') {
             if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || (name === 'ms' && value > 30_000)) {
@@ -138,6 +142,7 @@ export function assertBrowserCommand(raw: unknown): asserts raw is BrowserComman
         if ('direction' in args && !['up', 'down', 'left', 'right'].includes(String(args.direction))) throw new TypeError('scroll direction must be up, down, left or right');
     }
     if (action === 'navigate' && !['back', 'forward', 'reload'].includes(String(args.direction))) throw new TypeError('navigate direction must be back, forward or reload');
+    if ('format' in args && args.format !== 'jpeg' && args.format !== 'png') throw new TypeError('format must be jpeg or png');
 }
 
 export function parseBrowserCommand(raw: unknown): BrowserCommand {

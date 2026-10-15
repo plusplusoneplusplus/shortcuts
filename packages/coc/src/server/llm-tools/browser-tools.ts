@@ -1,5 +1,9 @@
 import { defineTool, type Tool, type ToolResultObject } from '@plusplusoneplusplus/coc-agent-sdk';
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { getRepoDataPath } from '../paths';
+import { getServerLogger } from '../logging/server-logger';
 import {
     BROWSER_TOOL_DESCRIPTION, BROWSER_TOOL_PARAMETERS, parseBrowserCommand,
     type BrowserCommand, type BrowserCommandResult, type BrowserControlElement, type BrowserControlRuntime,
@@ -15,11 +19,47 @@ interface BrowserToolState {
     selectedTab?: string;
     snapshots: Map<string, Map<string, string>>;
     tail: Promise<void>;
+    deleted?: boolean;
 }
 
 /** Plain owner-qualified conversation data, shared across turns, never provider sessions. */
 export class BrowserToolStateStore {
     private readonly states = new Map<string, BrowserToolState>();
+    private screenshotSequence = 0;
+
+    constructor(private readonly dataDir: string) {}
+
+    screenshotDir(workspaceId: string, processId: string): string {
+        if (!processId || processId === '.' || processId === '..' || /[/\\]/.test(processId)) {
+            throw new Error('Invalid browser screenshot process ID');
+        }
+        return path.resolve(getRepoDataPath(this.dataDir, workspaceId, 'browser-screenshots'), processId);
+    }
+
+    saveScreenshot(workspaceId: string, processId: string, image: NonNullable<BrowserCommandResult['image']>): string {
+        const dir = this.screenshotDir(workspaceId, processId);
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+        const extension = image.mimeType === 'image/png' ? 'png' : 'jpg';
+        let file: string;
+        do {
+            file = path.join(dir, `${timestamp}-${++this.screenshotSequence}.${extension}`);
+        } while (fs.existsSync(file));
+        const temp = `${file}.${randomUUID()}.tmp`;
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(temp, Buffer.from(image.data, 'base64'), { flag: 'wx' });
+            fs.renameSync(temp, file);
+        } catch (error) {
+            throw new Error(`Failed to save browser screenshot: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            try {
+                fs.rmSync(temp, { force: true });
+            } catch (error) {
+                getServerLogger().warn({ err: error }, 'Failed to remove browser screenshot temporary file');
+            }
+        }
+        return file;
+    }
 
     run<T>(workspaceId: string, processId: string, operation: (state: BrowserToolState) => Promise<T>): Promise<T> {
         const key = JSON.stringify([workspaceId, processId]);
@@ -35,7 +75,15 @@ export class BrowserToolStateStore {
     }
 
     delete(workspaceId: string, processId: string): void {
-        this.states.delete(JSON.stringify([workspaceId, processId]));
+        const key = JSON.stringify([workspaceId, processId]);
+        const state = this.states.get(key);
+        if (state) state.deleted = true;
+        this.states.delete(key);
+        try {
+            fs.rmSync(this.screenshotDir(workspaceId, processId), { recursive: true, force: true });
+        } catch (error) {
+            getServerLogger().warn({ err: error, workspaceId, processId }, 'Failed to remove browser screenshots');
+        }
     }
 }
 
@@ -102,8 +150,10 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                 if (!deps.runtime.getEnabled()) throw new Error('Browser control is disabled');
                 return await deps.stateStore.run(deps.workspaceId, deps.processId, async state => {
                     signal?.throwIfAborted();
+                    if (state.deleted) throw new Error('Browser process was removed');
                     const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, state.selectedTab, signal, turnId);
                     signal?.throwIfAborted();
+                    if (state.deleted) throw new Error('Browser process was removed');
                     if (result.tab) state.selectedTab = result.tab;
                     const tab = result.tab ?? state.selectedTab;
                     if (command.action === 'tabs') {
@@ -130,11 +180,13 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                         return success(result.valueTruncated ? result.valueJson.slice(0, BROWSER_EVAL_CAP - hint.length) + hint : result.valueJson);
                     }
                     if (command.action === 'screenshot') {
-                        if (!result.image?.data || result.image.mimeType !== 'image/jpeg') throw new Error('Browser returned no screenshot');
-                        return {
-                            ...success(status(result)),
-                            binaryResultsForLlm: [{ type: 'image', data: result.image.data, mimeType: result.image.mimeType, description: 'Browser screenshot' }],
-                        };
+                        if (!result.image?.data || !['image/jpeg', 'image/png'].includes(result.image.mimeType)) throw new Error('Browser returned no screenshot');
+                        const file = deps.stateStore.saveScreenshot(deps.workspaceId, deps.processId, result.image);
+                        const response = success(`${status(result)}\nsaved: ![screenshot](<${file.replace(/\\/g, '/')}>)`);
+                        if (command.view === true) {
+                            response.binaryResultsForLlm = [{ type: 'image', data: result.image.data, mimeType: result.image.mimeType, description: 'Browser screenshot' }];
+                        }
+                        return response;
                     }
                     if (command.action === 'wait') return success(status(result));
                     if (!Array.isArray(result.elements)) throw new Error('Browser returned no snapshot');

@@ -224,7 +224,11 @@ references before editing. Paths are package-relative.
   `getBrowserControlRuntime` and the composition-owned `getBrowserToolState`
   through the shared executor runtime. Route registration precedes WebSocket
   creation: resolve the broker lazily and bind its guard after infrastructure
-  initialization. Process removal deletes owner-qualified tool state.
+  initialization. Construct `BrowserToolStateStore` with `dataDir`; it owns
+  workspace/process screenshot storage under `getRepoDataPath(..., 'browser-screenshots')`.
+  Process removal marks owner-qualified state deleted to prevent late writes and
+  removes screenshots best effort with logged failures. Keep screenshots machine-local:
+  wipe through the snapshot registry and exclude from export/import.
   Never load browser config per turn.
   `/browser` persists prompt-only `metadata.browserMode`; tool execution does
   not require activation. Ask, Autopilot and follow-ups share registration,
