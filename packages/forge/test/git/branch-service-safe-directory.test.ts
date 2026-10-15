@@ -94,8 +94,9 @@ describe('BranchService safe-directory integration', () => {
             expect.stringContaining('wsl.exe'),
             // An argv, not `sh -lc '<string>'`: the migration took the shell out
             // of every git call, so the distro gets the arguments as written and
-            // nothing in them needs quoting.
-            ['-d', 'Ubuntu-24.04', '--cd', '/home/georgeqiao/repo', '--', 'git', 'status', '--porcelain'],
+            // nothing in them needs quoting. Windows environment variables do
+            // not cross into the distro, so the no-prompt guard rides in argv.
+            ['-d', 'Ubuntu-24.04', '--cd', '/home/georgeqiao/repo', '--', 'env', 'GIT_TERMINAL_PROMPT=0', 'git', 'status', '--porcelain'],
             expect.objectContaining({ windowsHide: true }),
         );
         expect(mockedExecAsync).not.toHaveBeenCalled();
