@@ -61,6 +61,29 @@ describe('McpAuthRouter', () => {
         expect(notify).toHaveBeenCalledWith(expect.objectContaining({ serverName: 'generic', sessionId: 'fixture-session', authorizationUrl: 'https://example.test/authorize' }));
     });
 
+    it('does not start unmanaged login without a generic OAuth callback while preserving managed auth', async () => {
+        const handler = vi.fn().mockResolvedValue({ accessToken: 'managed-fixture-token' });
+        const login = vi.fn().mockResolvedValue({ authorizationUrl: 'https://example.test/authorize' });
+        const router = new McpAuthRouter(
+            { managed: 'https://example.test/managed' }, handler, undefined, undefined, Date.now() + 10000,
+        );
+        routers.push(router);
+        const session = {
+            sessionId: 'fixture-session',
+            rpc: { mcp: { oauth: { login, handlePendingRequest: vi.fn().mockResolvedValue({ success: true }) } } },
+        } as unknown as CopilotSession;
+        router.ready(session);
+
+        expect(router.onAuthRequest(request(), context)).toEqual({ kind: 'cancelled' });
+        router.login('generic', 'https://example.test/generic');
+        await drain();
+        expect(login).not.toHaveBeenCalled();
+
+        const managed = request('managed', 'https://example.test/managed');
+        expect(await router.onAuthRequest(managed, context)).toEqual({ accessToken: 'managed-fixture-token' });
+        expect(handler).toHaveBeenCalledWith(managed, context);
+    });
+
     it('does not deadlock create/resume and drops callbacks from a failed resume', async () => {
         const { router, login, cancel, session } = setup();
         expect(router.onAuthRequest(request(), { sessionId: 'failed-resume' })).toEqual({ kind: 'cancelled' });

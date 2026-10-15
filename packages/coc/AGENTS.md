@@ -829,8 +829,11 @@ references before editing. Paths are package-relative.
   Rust owns OS refresh storage and demand renewal. TypeScript stores only verified
   account/configuration metadata. Sign-in, bridge, status and discovery share one
   owner, without Copilot-cache import or fallback. Native pending lifecycle is
-  available independently of the generic MCP OAuth flag; cancellation reaches
-  native work and host shutdown disposes all resource owners.
+  available independently of the default-off `mcpOauth.enabled` flag. Server
+  startup passes its shared pending manager to chat executors only when generic
+  OAuth is enabled; both initial and follow-up turns omit the generic callback
+  otherwise. Managed Teams tokens remain available on either path. Cancellation
+  reaches native work and host shutdown disposes all resource owners.
 - Generic MCP OAuth completion accepts the exact server's live runtime connection,
   including broker sign-in with no browser URL or token JSON file. Pending flows
   poll bounded runtime status and shared-cache state; late results cannot overwrite
