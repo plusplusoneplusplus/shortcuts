@@ -655,7 +655,7 @@ describe('UnifiedTodoTab', () => {
         { state: 'queued', label: 'Queued' },
         { state: 'running', label: 'Running' },
         { state: 'unknown', label: 'Status unknown' },
-        { state: 'completed', label: 'Job completed' },
+        { state: 'completed', label: 'Completed' },
         { state: 'failed', label: 'Job failed' },
         { state: 'cancelled', label: 'Job cancelled' },
         { state: 'capped', label: 'Job capped' },
@@ -695,7 +695,11 @@ describe('UnifiedTodoTab', () => {
             expect(link.getAttribute('href')).toBe(linked.jobs[0].openLink);
             expect(link.getAttribute('target')).toBe(remote ? '_blank' : null);
             expect(within(card).getByTestId(`sentinel-todo-status-${state === 'completed' ? 'in_review' : 'in_progress'}`)).toBeTruthy();
-            if (state === 'completed') expect(jobs.textContent).toContain('Review pending (result delivered)');
+            if (state === 'completed') {
+                expect(execution.className).toContain('text-[#16825d]');
+                expect(execution.querySelector('[aria-hidden="true"]')?.className).toContain('bg-[#16825d]');
+                expect(jobs.textContent).toContain('Review pending (result delivered)');
+            }
         }
         await assertJob();
         const row = screen.getByTestId('sentinel-todo-row-i1');
@@ -703,6 +707,8 @@ describe('UnifiedTodoTab', () => {
         const detail = screen.getByTestId('sentinel-todo-detail-i1');
         const detailExecution = within(detail).getByTestId('sentinel-todo-job-execution');
         expect(detailExecution.textContent).toBe(label);
+        expect(detailExecution.getAttribute('aria-label')).toBe(`Job execution: ${label}`);
+        expect(detailExecution.getAttribute('data-status')).toBe(state);
         expect(detailExecution.closest('li')?.className).toContain('flex-wrap');
         if (state === 'completed') {
             expect(detailExecution.textContent).not.toContain('Review');
@@ -1321,7 +1327,7 @@ describe('UnifiedTodoTab', () => {
         expect(within(row).getByTestId('sentinel-todo-status-in_progress')).toBeTruthy();
         fireEvent.click(within(row).getByRole('button', { pressed: false, name: /Fix login/ }));
         row = screen.getByTestId(row.dataset.testid!.replace('sentinel-todo-row-', 'sentinel-todo-detail-'));
-        expect(row.textContent).toContain('Job completed');
+        expect(row.textContent).toContain('Completed');
         expect(row.textContent).toContain('Review delivered');
         expect(row.textContent).toContain('Status unavailable');
         const remote = within(row).getByRole('link', { name: 'Remote fix' });

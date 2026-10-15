@@ -87,7 +87,7 @@ export function sentinelTodoStatusReason(status: SentinelTodoStatus): 'required'
 
 /**
  * A linked job's execution, worded apart from the item's fulfillment status:
- * a completed job is "Job completed", never "Done". Remote jobs never report
+ * a completed job is "Completed", never "Done". Remote jobs never report
  * back, so they read "Status unavailable" until someone records an outcome.
  */
 export function sentinelTodoJobStateLabel(job: SentinelTodoJobLink): string {
@@ -97,7 +97,7 @@ export function sentinelTodoJobStateLabel(job: SentinelTodoJobLink): string {
         case 'running': return 'Running';
         case 'unavailable': return 'Status unavailable';
         case 'unknown': return 'Status unknown';
-        case 'completed': return 'Job completed';
+        case 'completed': return 'Completed';
         case 'failed': return 'Job failed';
         case 'cancelled': return 'Job cancelled';
         case 'capped': return 'Job capped';
