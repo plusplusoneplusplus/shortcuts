@@ -6,6 +6,8 @@ OAuth primitives: token exchange, HTTP transport, and file-advisory lock
 coordination. `auth_sdk::microsoft` builds on `oauth` for Microsoft public-cloud,
 US-government and China-cloud OAuth, plus Azure CLI acquisition.
 `auth_sdk::github` reads existing, explicitly selected Copilot CLI and GitHub CLI credentials.
+`auth_sdk::claude` reads Claude Code OAuth credentials from the macOS Keychain or
+`~/.claude/.credentials.json`.
 Shared `Account`, `Token`, `Secret`, `Clock`, `CredentialStore`, lifecycle and
 `AuthError` contracts are vendor-neutral. Future vendors use separate modules
 and the shared `oauth` primitives, not a universal vendor options object.
@@ -61,6 +63,32 @@ binary capabilities and sanitized `AuthError` codes propagate without a JS
 reader fallback. Environment/custom JS resolvers and Copilot SDK RPC stay in
 TypeScript, as do Copilot API authorization and allowed token-family checks.
 JavaScript token strings cannot be zeroized.
+
+## Claude credential reading
+
+`claude::read_credentials(sources)` reads Claude Code OAuth credentials from
+the first available source:
+
+1. `credentials_file_override` — an explicit path (e.g. `$CLAUDE_CREDENTIALS_FILE`).
+   When set, this path is the only source; keychain is not consulted.
+2. `~/.claude/.credentials.json` — the default file used by Claude Code on
+   Linux/Windows and as a fallback on macOS.
+3. macOS Keychain — service `"Claude Code-credentials"`, account is the current
+   `$USER`. Used only on macOS when no file source yields credentials.
+
+`ClaudeToken` contains `access_token`, optional `refresh_token`, optional
+epoch-millisecond `expires_at` and `refresh_token_expires_at`, a `scopes` list,
+optional `subscription_type` and optional `rate_limit_tier`. Two JSON formats
+are supported: the nested `{ "claudeAiOauth": { "accessToken": … } }` format
+written by `claude login`, and a flat `{ "access_token": … }` fallback.
+
+`ClaudeCredentialSources` controls the resolution: `credentials_file_override`,
+`home_dir` (for locating `~/.claude/.credentials.json`), and `skip_keychain`
+(to suppress macOS Keychain access in tests or headless environments).
+
+This module is read-only — it never writes, refreshes or revokes credentials.
+Token refresh via the Anthropic OAuth endpoint will be added in a future commit
+using the shared `oauth::exchange_refresh_token` primitive.
 
 ## Source selection
 
