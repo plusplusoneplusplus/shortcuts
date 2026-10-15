@@ -21,8 +21,8 @@
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { execGitAsync } from '@plusplusoneplusplus/forge';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { createPullRequestGit, execGitAsync } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, PullRequestGit } from '@plusplusoneplusplus/forge';
 import { badRequest, notFound } from '../errors';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { WorkItem, WorkItemStore } from './types';
@@ -91,6 +91,15 @@ export async function defaultWorkItemCommandRunner(
         maxBuffer: COMMAND_MAX_BUFFER,
     });
     return { stdout: stdout ?? '', stderr: stderr ?? '' };
+}
+
+/**
+ * PR submission git operations executed by a Work Item runner, so the default
+ * runner's unbounded fetch/push and any injected runner see every git command.
+ * Forge still chooses the commands.
+ */
+export function workItemRunnerPullRequestGit(runCommand: WorkItemCommandRunner): PullRequestGit {
+    return createPullRequestGit(async (repoRoot, args) => (await runCommand('git', args, { cwd: repoRoot })).stdout.trim());
 }
 
 export interface WorkItemExecutionCommandContext {
