@@ -86,9 +86,23 @@ written by `claude login`, and a flat `{ "access_token": … }` fallback.
 `home_dir` (for locating `~/.claude/.credentials.json`), and `skip_keychain`
 (to suppress macOS Keychain access in tests or headless environments).
 
-This module is read-only — it never writes, refreshes or revokes credentials.
-Token refresh via the Anthropic OAuth endpoint will be added in a future commit
-using the shared `oauth::exchange_refresh_token` primitive.
+`claude::refresh_token(http, options, refresh, cancel, deadline)` refreshes
+an expired access token by posting a JSON body to the Claude token endpoint
+(`https://platform.claude.com/v1/oauth/token`). The request uses `Content-Type:
+application/json` (not form-urlencoded), matching the Claude Code CLI protocol.
+`ClaudeRefreshOptions` defaults to the production endpoint, the registered
+Claude Code client ID (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`), and five
+default scopes (`user:profile`, `user:inference`, `user:sessions:claude_code`,
+`user:mcp_servers`, `user:file_upload`). `ClaudeRefreshResponse` returns the
+new access token, a **rotated** refresh token, absolute `expires_at` in epoch
+milliseconds, and granted scopes. `is_expired(expires_at)` checks whether
+a token is within the 5-minute expiry margin.
+
+**Rotating refresh tokens:** Claude invalidates the previous refresh token
+on each exchange. If two processes refresh concurrently, one will win and
+the other's refresh token becomes invalid — logging the user out. The caller
+must coordinate externally (e.g. `CredentialLock`) and persist the new
+refresh token before using the new access token.
 
 ## Source selection
 
