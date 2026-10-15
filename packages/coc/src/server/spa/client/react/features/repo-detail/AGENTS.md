@@ -115,8 +115,11 @@ sections only for a successful, resolved upstream comparison with explicit zero
 ahead; pending, failed and unavailable comparisons remain visible. Owner,
 branch, upstream and status-read changes discard old history. Missing upstream,
 failed reads and inconsistent counts remain explicit; hover never fetches or
-mutates Git. Commit navigation carries a transient owner-qualified known commit
-through `SET_GIT_ROUTE`, including paged rows and server-qualified group/member scope.
+mutates Git. Outgoing rows use the rail's detail intent to cancel full-sidebar
+peek timers without changing either sidebar collapse flag. Commit navigation
+replaces the owner-qualified hash, records its route suffix and carries the exact
+known commit through `SET_GIT_ROUTE`, retaining paged metadata and group/member scope
+without invoking generic tab navigation.
 `features.railStatusActions` defaults on, with
 explicit saved false disabling it. When enabled, a docked `footer` gets a bottom
 rail slot (`layout/railStatusSlot.ts`)

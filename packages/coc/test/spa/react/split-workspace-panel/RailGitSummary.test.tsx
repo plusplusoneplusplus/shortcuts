@@ -120,7 +120,8 @@ describe('collapsed rail Git summary · repository', () => {
         fireEvent.click(rows[2]);
         expect(dispatch).toHaveBeenCalledWith({ type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws-alpha', workspaceId: 'ws-alpha', commitHash: outgoing[2].hash, filePath: null,
             knownCommit: { sourceSelectionId: routingRef, commit: outgoing[2] } });
-        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('0');
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-alpha'))).toBe('1');
+        expect(screen.getByTestId('split-workspace-left')).toHaveClass('hidden');
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(client.git.switchBranch).not.toHaveBeenCalled();
     });

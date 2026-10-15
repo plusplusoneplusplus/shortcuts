@@ -414,7 +414,11 @@ export function SplitWorkspacePanel({
         onExpand: toggleLeftCollapsed,
         onPreview: hoverPeek.close,
         onFocusRail: () => expandButtonRef.current?.focus(),
-        onOpenGit: target => {
+        onOpenGit: (target, intent = 'sidebar') => {
+            if (intent === 'detail') {
+                hoverPeek.close();
+                return;
+            }
             if (leftCollapsed) toggleLeftCollapsed();
             if (gitCollapsed) toggleGit();
             if (target !== 'changes') return;
