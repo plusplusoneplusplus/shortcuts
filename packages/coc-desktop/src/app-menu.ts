@@ -28,6 +28,10 @@ export interface AppMenuHandlers {
      * marker.
      */
     onCheckForUpdates: () => void;
+    /** Present while downloading; absent fraction means unknown total size. */
+    updateDownload?: { fraction?: number };
+    /** A verified download is retained for a later restart. */
+    updateReady?: boolean;
     /** The currently active update channel, used to render the channel checkmarks. */
     currentChannel?: UpdateChannel;
     /** Invoked when the user selects a new update channel from the menu. */
@@ -344,8 +348,16 @@ export function buildAppMenuTemplate(
     const elevationItems: MenuItemConstructorOptions[] = handlers.elevation
         ? [{ label: elevationStatusLabel(platform, handlers.elevation), enabled: false }]
         : [];
+    let updateLabel = handlers.updateReady ? 'Restart to update…' : CHECK_FOR_UPDATES_LABEL;
+    if (handlers.updateDownload) {
+        updateLabel = 'Downloading update…';
+        if (handlers.updateDownload.fraction !== undefined) {
+            updateLabel += ` ${Math.round(handlers.updateDownload.fraction * 100)}%`;
+        }
+    }
     const checkForUpdatesItem: MenuItemConstructorOptions = {
-        label: CHECK_FOR_UPDATES_LABEL,
+        label: updateLabel,
+        enabled: !handlers.updateDownload,
         click: handlers.onCheckForUpdates,
     };
     const updateChannelItem: MenuItemConstructorOptions = {

@@ -1,23 +1,7 @@
 /**
- * CoC Desktop — in-app update check.
- *
- * Polls the project's GitHub Releases for a newer published release and surfaces
- * a notification so the user can upgrade "from the app directly". The download is
- * one click: it opens the platform installer (or the release page) in the system
- * browser. This works for the current UNSIGNED builds on every platform —
- * detection never depends on a code signature.
- *
- * Why not silent auto-install? On macOS the OS updater (Squirrel.Mac) refuses to
- * apply an update to an unsigned/un-notarized app, so a true background install
- * is impossible until the app is signed. A notify + one-click-download flow gives
- * the same "update from the app" experience without that requirement, and on
- * macOS it also hands the user the one-line Gatekeeper quarantine fix.
- *
- * This module imports NOTHING from `electron`, so the version math, release
- * parsing, and dialog-content formatting are unit-testable under plain Node. The
- * electron wiring (showing the dialog, opening the browser, clipboard) lives in
- * `main.ts`. Network, filesystem, and platform seams are all injectable so tests
- * never hit the real network or disk.
+ * Electron-free release checks, channel preferences and native dialog content.
+ * Download verification and installation live in the update-install modules;
+ * pickDownloadUrl supplies the browser fallback for unsigned installers.
  */
 
 import * as fs from 'fs';
@@ -30,9 +14,6 @@ export const LATEST_RELEASE_API =
 /** GitHub "list releases" endpoint — includes both stable and prerelease builds. */
 export const RELEASES_LIST_API =
     'https://api.github.com/repos/plusplusoneplusplus/shortcuts/releases?per_page=20';
-
-/** The one-line command that clears macOS download quarantine for an unsigned build. */
-export const MAC_QUARANTINE_FIX = 'xattr -dr com.apple.quarantine /Applications/CoC.app';
 
 /** Update channel preference. Stable considers only published non-prerelease releases;
  *  Prerelease considers both prerelease and stable releases. */
@@ -264,56 +245,24 @@ export interface UpdatePrompt {
     buttons: string[];
     /** Resolved best-effort download URL for this platform. */
     downloadUrl: string;
-    /** macOS only: the quarantine fix command offered via a "Copy fix" button. */
-    quarantineFix?: string;
 }
 
-/**
- * Build the update dialog content for a newer release. On macOS the prompt also
- * explains the unsigned-build Gatekeeper step and offers to copy the quarantine
- * fix command; on Windows it notes the SmartScreen "Run anyway" step.
- */
+/** Build the initial opt-in dialog; checking a release never downloads it. */
 export function formatUpdatePrompt(
     release: ReleaseInfo,
     currentVersion: string,
     platform: NodeJS.Platform,
 ): UpdatePrompt {
-    const downloadUrl = pickDownloadUrl(release, platform);
-    const base: UpdatePrompt = {
+    const supported = platform === 'darwin' || platform === 'win32';
+    return {
         version: release.version,
         title: 'Update Available',
         message: `CoC ${release.version} is available — you have ${normalizeVersion(currentVersion)}.`,
-        detail: '',
-        buttons: [],
-        downloadUrl,
-    };
-    if (platform === 'darwin') {
-        return {
-            ...base,
-            detail:
-                'Click Download to get the new DMG, then drag CoC into Applications.\n\n' +
-                'This build is not yet code-signed, so on first launch macOS may say ' +
-                '"CoC is damaged." It is not corrupt — clear the download quarantine flag:\n\n' +
-                `  ${MAC_QUARANTINE_FIX}\n\n` +
-                'Use "Copy fix command" to put that on your clipboard.',
-            buttons: ['Download', 'Copy fix command', 'Skip This Version', 'Later'],
-            quarantineFix: MAC_QUARANTINE_FIX,
-        };
-    }
-    if (platform === 'win32') {
-        return {
-            ...base,
-            detail:
-                'Click Download to get the new installer, then run it.\n\n' +
-                'This installer is not yet signed, so SmartScreen may warn about an ' +
-                'unknown publisher — choose "More info → Run anyway".',
-            buttons: ['Download', 'Skip This Version', 'Later'],
-        };
-    }
-    return {
-        ...base,
-        detail: 'Click Download to get the latest release.',
-        buttons: ['Download', 'Skip This Version', 'Later'],
+        detail: supported
+            ? 'Click Update to download and verify the new version. You can choose when to restart and install it.'
+            : 'Click Download to get the latest release.',
+        buttons: [supported ? 'Update' : 'Download', 'Skip This Version', 'Later'],
+        downloadUrl: pickDownloadUrl(release, platform),
     };
 }
 

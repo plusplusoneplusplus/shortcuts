@@ -297,7 +297,13 @@ it queries the owned server's unfiltered `GET /api/queue` with a ten-second
 timeout, counts `running` across all workspaces, and requests confirmation only
 for a nonempty list. Attached or absent servers bypass the check. Invalid or
 unavailable queue data rejects restart; cancellation retains verified bytes.
-Electron supplies native dialogs, installer selection and quit through the hooks.
+`main.ts` shares one coordinator across windows and connects platform helpers,
+normal quit, window progress bars and the native menu. `update-ui.ts` supplies
+injected native Restart/Later, running-count confirmation and browser-fallback
+dialogs. The initial Update button explicitly starts the download; Skip, Later
+and channel selection retain their check semantics. Downloading disables the
+menu action and displays progress. A retained download exposes Restart to update
+and bypasses release fetching when reopened, including offline.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches

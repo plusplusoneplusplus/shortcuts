@@ -28,6 +28,9 @@ export class UpdateCoordinator {
 
     constructor(private readonly options: UpdateCoordinatorOptions) {}
 
+    /** A verified download that can be offered again without a release check. */
+    get readyRelease(): ReleaseInfo | undefined { return this.ready?.release; }
+
     /** Called only after Update, or to offer a retained download again. */
     start(release: ReleaseInfo): Promise<void> {
         if (this.handedOff) return Promise.resolve();

@@ -788,3 +788,31 @@ describe('buildEditMenu — Copy delegation (AC-06)', () => {
         expect(roleIdx(submenuOf(buildEditMenu('win32')), 'pasteAndMatchStyle')).toBe(-1);
     });
 });
+
+describe.each(['darwin', 'win32'] as const)('update menu state on %s', platform => {
+    function updateItems(state: { updateDownload?: { fraction?: number }; updateReady?: boolean }) {
+        const onCheckForUpdates = vi.fn();
+        const template = buildAppMenuTemplate(platform, 'CoC', { onCheckForUpdates, ...state });
+        const group = platform === 'darwin' ? template[0] : template.find(item => item.label === 'Help')!;
+        return { items: submenuOf(group), onCheckForUpdates };
+    }
+
+    it.each([undefined, 0, 0.42, 1])('disables the download row and displays progress %s', fraction => {
+        const { items } = updateItems({ updateDownload: { fraction }, updateReady: true });
+        const item = items.find(item => item.label?.startsWith('Downloading update…'))!;
+        expect(item.label).toBe(`Downloading update…${fraction === undefined ? '' : ` ${Math.round(fraction * 100)}%`}`);
+        expect(item.enabled).toBe(false);
+    });
+
+    it('offers a retained update using the same click action', () => {
+        const { items, onCheckForUpdates } = updateItems({ updateReady: true });
+        const item = items.find(item => item.label === 'Restart to update…')!;
+        expect(item.enabled).toBe(true);
+        expect(item.click).toBe(onCheckForUpdates);
+    });
+
+    it('restores the ordinary check action after cleanup', () => {
+        const { items } = updateItems({});
+        expect(items.find(item => item.label === CHECK_FOR_UPDATES_LABEL)?.enabled).toBe(true);
+    });
+});

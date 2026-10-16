@@ -39,7 +39,13 @@ import {
     setUpdateChannel,
     UpdateChannel,
     UpdatePrompt,
+    ReleaseInfo,
 } from './update-check';
+import { UpdateCoordinator } from './update-coordinator';
+import { createUpdateDialogs } from './update-ui';
+import { confirmUpdateRestart } from './update-restart';
+import { prepareMacUpdate, launchMacUpdate } from './update-install-mac';
+import { launchWindowsUpdate } from './update-install-win';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput, DebugMenuHandlers } from './app-menu';
 import { attachFindBar, registerFindBarIpc } from './find-bar-host';
 import {
@@ -358,23 +364,62 @@ function runAgentPreflight(): void {
     }
 }
 
-/**
- * In-app update check. Polls GitHub Releases for a newer published build and, if
- * one exists, shows a non-blocking dialog so the user can upgrade "from the app
- * directly" — one click opens the platform installer in the system browser.
- *
- * Auto (on-launch) checks honour a "Skip This Version" choice so we never nag for
- * a version the user already declined. A manual "Check for Updates…" invocation
- * (`auto = false`) ignores the skip marker and also reports "you're up to date".
- *
- * True silent auto-install is intentionally not used: macOS refuses to apply
- * updates to an unsigned app, so a notify + one-click-download flow is the only
- * thing that works across both unsigned platforms today. See `update-check.ts`.
- *
- * Never blocks startup and never throws — any failure is swallowed.
- */
+let updateCoordinator: UpdateCoordinator | undefined;
+let updateDownload: { fraction?: number } | undefined;
+let checkingForUpdate = false;
+
+/** One updater for every native window; installers launch before the normal quit drain. */
+function getUpdateCoordinator(): UpdateCoordinator {
+    if (updateCoordinator) return updateCoordinator;
+    const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options));
+    updateCoordinator = new UpdateCoordinator({
+        downloadOptions: { tempDir: app.getPath('temp') },
+        setProgress: fraction => {
+            updateDownload = fraction === null ? undefined : { fraction };
+            for (const win of BrowserWindow.getAllWindows()) {
+                win.setProgressBar(fraction === null ? -1 : fraction ?? 2);
+            }
+            setupApplicationMenu();
+        },
+        promptRestart: dialogs.promptRestart,
+        confirmRestart: () => confirmUpdateRestart({
+            server: serverHandle, confirmRunningTasks: dialogs.confirmRunningTasks,
+        }),
+        install: async download => {
+            if (process.platform === 'darwin') {
+                const prepared = await prepareMacUpdate({
+                    download,
+                    appBundle: path.resolve(process.execPath, '../../..'),
+                    oldPid: process.pid,
+                });
+                try {
+                    await launchMacUpdate(prepared);
+                } catch (error) {
+                    await prepared.cleanup();
+                    throw error;
+                }
+            } else if (process.platform === 'win32') {
+                await launchWindowsUpdate({ download, execPath: process.execPath, oldPid: process.pid });
+            } else {
+                throw new Error('In-app updates are supported only on macOS arm64 and Windows x64.');
+            }
+        },
+        quit: () => app.quit(),
+        promptError: dialogs.promptError,
+        openBrowser: url => shell.openExternal(url),
+    });
+    return updateCoordinator;
+}
+
+/** Automatic checks honor Skip; manual checks can resume a retained update offline. */
 async function runUpdateCheck(auto: boolean): Promise<void> {
+    if (checkingForUpdate) return;
+    checkingForUpdate = true;
     try {
+        if (updateCoordinator?.readyRelease) {
+            if (!auto) await updateCoordinator.start(updateCoordinator.readyRelease);
+            return;
+        }
         const channel = getUpdateChannel(defaultDataDir(), app.getVersion());
         const result = await checkForUpdate({ currentVersion: app.getVersion(), channel });
         if (result.reason !== 'newer' || !result.prompt || !result.release) {
@@ -398,9 +443,12 @@ async function runUpdateCheck(auto: boolean): Promise<void> {
             return;
         }
         process.stdout.write(`[coc-desktop] update available: ${result.release.version}\n`);
-        await promptForUpdate(result.prompt);
+        await promptForUpdate(result.prompt, result.release);
     } catch {
         // Update checking is a nicety — it must never break the app.
+    } finally {
+        checkingForUpdate = false;
+        setupApplicationMenu();
     }
 }
 
@@ -409,7 +457,7 @@ async function runUpdateCheck(auto: boolean): Promise<void> {
  * the chosen button by its label (not index) so the platform-specific button
  * sets in `formatUpdatePrompt` stay decoupled from this handler.
  */
-async function promptForUpdate(prompt: UpdatePrompt): Promise<void> {
+async function promptForUpdate(prompt: UpdatePrompt, release: ReleaseInfo): Promise<void> {
     const { response } = await dialog.showMessageBox({
         type: 'info',
         title: prompt.title,
@@ -422,15 +470,11 @@ async function promptForUpdate(prompt: UpdatePrompt): Promise<void> {
     });
     const choice = prompt.buttons[response];
     switch (choice) {
-        case 'Download':
-            void shell.openExternal(prompt.downloadUrl);
+        case 'Update':
+            await getUpdateCoordinator().start(release);
             break;
-        case 'Copy fix command':
-            if (prompt.quarantineFix) {
-                clipboard.writeText(prompt.quarantineFix);
-            }
-            // Then still send them to the download — the fix is a post-install step.
-            void shell.openExternal(prompt.downloadUrl);
+        case 'Download':
+            await shell.openExternal(prompt.downloadUrl);
             break;
         case 'Skip This Version':
             setSkippedVersion(defaultDataDir(), prompt.version);
@@ -613,6 +657,8 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
     const channel = currentChannel ?? getUpdateChannel(defaultDataDir(), app.getVersion());
     const template = buildAppMenuTemplate(process.platform, app.name, {
         onCheckForUpdates: () => void runUpdateCheck(false),
+        updateDownload,
+        updateReady: !!updateCoordinator?.readyRelease,
         currentChannel: channel,
         onSetUpdateChannel: (ch) => {
             setUpdateChannel(defaultDataDir(), ch);
