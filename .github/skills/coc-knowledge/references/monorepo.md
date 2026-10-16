@@ -283,8 +283,16 @@ hidden PowerShell helper that waits for the old PID before starting NSIS, avoidi
 NSIS process termination during shutdown. It uses `/S --force-run` and a final,
 unquoted `/D=` argument for the current executable's directory. Installer failures
 retain `install-error.txt` and reopen CoC; success removes downloads. Encoded
-PowerShell commands carry quoted path literals. The caller owns restart
-confirmation and quitting, and must await helper spawn before starting its quit drain.
+PowerShell commands carry quoted path literals.
+
+`update-coordinator.ts` owns the user-requested download/restart lifecycle through
+injected UI and installer hooks. One process-wide instance coalesces clicks,
+reports determinate or indeterminate progress, retains verified bytes for Later
+or cancelled restarts, and discards a retained release before replacing it. It
+checks restart confirmation before installation and transfers file ownership to
+the helper before quitting. Failures report their reason and offer the existing
+`pickDownloadUrl` browser path. The hooks accept an owned-server check, helper
+launch and normal quit drain; native UI integration lives in `main.ts`.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
